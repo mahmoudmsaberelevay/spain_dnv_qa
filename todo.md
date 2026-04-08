@@ -61,3 +61,6 @@
 - [x] Client company: add critical check — applicant name must NOT appear in client company docs
 - [x] Client company: add check — client company must be running for 3+ years
 - [x] Freelancing eligibility: broaden criteria — any service doable remotely/from anywhere qualifies
+
+## Change Requests (Round 3)
+- [x] Exclude freelancing contract and recommendation letter from stamp verification (no stamps required on these two documents)

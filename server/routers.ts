@@ -283,8 +283,9 @@ APPLICANT: ${passportFullName}
 ANALYSIS RULES — FOLLOW EXACTLY:
 
 1. STAMP VERIFICATION:
-   - Check for MOFA stamp AND Spain Embassy stamp on: education certificate, police clearance, company owned by applicant, client company details, birth certificates, marriage certificate.
-   - Both stamps must be present on each applicable document.
+   - Check for MOFA stamp AND Spain Embassy stamp ONLY on: education certificate, police clearance, company owned by applicant, client company details, birth certificates, marriage certificate.
+   - Both stamps must be present on each of these applicable documents.
+   - IMPORTANT: The freelancing contract (freelancing_contract) and the recommendation letter (recommendation_letter) do NOT require any stamps. Do NOT flag missing stamps on these two documents — they are exempt from stamp requirements entirely.
 
 2. COMPANY OWNED BY APPLICANT (company_owned):
    - If the ownership percentage is explicitly stated: check if it is ≥50%. If yes → pass. If no → fail.

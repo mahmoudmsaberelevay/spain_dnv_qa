@@ -261,7 +261,7 @@ export default function AnalysisReport() {
                     </div>
                     <div className="text-left">
                       <h2 className="font-semibold text-foreground">Stamp Verification</h2>
-                      <p className="text-xs text-muted-foreground">MOFA & Spain Embassy attestation check</p>
+                      <p className="text-xs text-muted-foreground">MOFA & Spain Embassy attestation — excludes contract & recommendation letter</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
