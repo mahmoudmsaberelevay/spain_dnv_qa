@@ -101,3 +101,6 @@
 - [x] UI: Full client report page with remaining docs + pending procedures
 - [x] DashboardLayout: Add Client Documentation as 3rd module in sidebar
 - [x] App.tsx: Add /docs/* routes
+
+## Change Requests (Round 7)
+- [ ] Fix ClientDocs and ClientDocDetail pages: white background, black/dark text, dark navy blue buttons (remove all dark-mode bg/text classes)
