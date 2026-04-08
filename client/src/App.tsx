@@ -15,6 +15,7 @@ import AnalysisReport from "./pages/AnalysisReport";
 
 // ─── Client Documentation Module ─────────────────────────────────────────
 import ClientDocs from "./pages/ClientDocs";
+import ClientDocsDashboard from "./pages/ClientDocsDashboard";
 import ClientDocDetail from "./pages/ClientDocDetail";
 
 // ─── Contracting Module ─────────────────────────────────────────────
@@ -95,6 +96,9 @@ function Router() {
       </Route>
 
       {/* ── Client Documentation Module ── */}
+      <Route path="/docs/dashboard">
+        <ClientDocsDashboard />
+      </Route>
       <Route path="/docs">
         <DashboardLayout>
           <ClientDocs />

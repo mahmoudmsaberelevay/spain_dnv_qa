@@ -949,9 +949,51 @@ const clientDocsRouter = router({
         allDocuments: docs,
       };
     }),
-});
 
-// ─── App Router ─────────────────────────────────────────────────────────────
+  // Dashboard: per-client completion overview
+  dashboard: protectedProcedure.query(async ({ ctx }) => {
+    const cases = await listClientCases(ctx.user.id);
+    const results = await Promise.all(
+      cases.map(async (c) => {
+        const docs = await getClientDocuments(c.id);
+        const total = docs.length;
+        const received = docs.filter(d => d.received).length;
+        const mofaDone = docs.filter(d => !d.requiresMofa || d.mofaAttested).length;
+        const embassyDone = docs.filter(d => !d.requiresEmbassy || d.embassyAttested).length;
+        // Overall completion: average of receive%, mofa%, embassy%
+        const receiveP = total > 0 ? Math.round((received / total) * 100) : 0;
+        const mofaP = total > 0 ? Math.round((mofaDone / total) * 100) : 0;
+        const embassyP = total > 0 ? Math.round((embassyDone / total) * 100) : 0;
+        const overallP = Math.round((receiveP + mofaP + embassyP) / 3);
+        // Upcoming deadlines
+        const today = new Date();
+        const daysUntil = (d: Date | null) => d ? Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
+        return {
+          id: c.id,
+          clientName: c.clientName,
+          clientCode: c.clientCode,
+          applicationType: c.applicationType,
+          maritalStatus: c.maritalStatus,
+          paralegal: c.paralegal,
+          consultant: c.consultant,
+          totalDocs: total,
+          receivedDocs: received,
+          receivePercent: receiveP,
+          mofaPercent: mofaP,
+          embassyPercent: embassyP,
+          overallPercent: overallP,
+          schengenDate: c.schengenDate,
+          embassyAppointmentDate: c.embassyAppointmentDate,
+          expectedSubmissionDate: c.expectedSubmissionDate,
+          daysToSchengen: daysUntil(c.schengenDate),
+          daysToSubmission: daysUntil(c.expectedSubmissionDate),
+        };
+      })
+    );
+    return results;
+  }),
+});
+// ─── App Routerr ─────────────────────────────────────────────────────────────
 export const appRouter = router({
   system: systemRouter,
   auth: router({

@@ -4,7 +4,26 @@ import nodemailer from "nodemailer";
 // Team emails that receive ALL transaction notifications via SMTP
 const TEAM_EMAILS = [
   "Mahmoud.saber@elevay.com",
+  "fouad.abdo@elevay.com",
+  "kirlos.nabil@elevay.com",
+  "ziad.elshurafa@elevay.com",
+  "madonna.adel@elevay.com",
+  "monica.sobhy@elevay.com",
+  "marina.kamel@elevay.com",
 ];
+
+// Map from display name → email for targeted per-case reminders
+export const TEAM_EMAIL_MAP: Record<string, string> = {
+  // Paralegals
+  Madonna: "madonna.adel@elevay.com",
+  Monica: "monica.sobhy@elevay.com",
+  Marina: "marina.kamel@elevay.com",
+  // Consultants
+  Mahmoud: "Mahmoud.saber@elevay.com",
+  Fouad: "fouad.abdo@elevay.com",
+  Kirolos: "kirlos.nabil@elevay.com",
+  Ziad: "ziad.elshurafa@elevay.com",
+};
 
 /** Create a reusable nodemailer transporter using Gmail SMTP */
 function createTransporter() {
@@ -179,3 +198,47 @@ export async function notifyReceiptPaid(
 
 // Keep old name as alias for backward compatibility
 export const notifyInvoicePaid = notifyReceiptPaid;
+
+/**
+ * Send a document reminder to the paralegal AND consultant assigned to a client case.
+ * Falls back to notifyTeam (all team) if specific emails are not found.
+ */
+export async function sendDocReminderToAssignedTeam(
+  clientName: string,
+  paralegal: string | null,
+  consultant: string | null,
+  subject: string,
+  htmlBody: string,
+  plainText: string
+): Promise<void> {
+  const recipients: string[] = [];
+  if (paralegal && TEAM_EMAIL_MAP[paralegal]) recipients.push(TEAM_EMAIL_MAP[paralegal]);
+  if (consultant && TEAM_EMAIL_MAP[consultant]) recipients.push(TEAM_EMAIL_MAP[consultant]);
+  // Deduplicate
+  const toList = Array.from(new Set(recipients));
+  if (toList.length === 0) {
+    // Fallback: notify all team
+    await notifyTeam(subject, htmlBody, plainText);
+    return;
+  }
+  const transporter = createTransporter();
+  if (transporter) {
+    const gmailUser = process.env.GMAIL_USER!;
+    try {
+      await transporter.sendMail({
+        from: `"ELEVAY System" <${gmailUser}>`,
+        to: toList.join(", "),
+        subject: `[ELEVAY] ${subject}`,
+        html: wrapInEmailTemplate(subject, htmlBody),
+        text: plainText,
+      });
+      console.log(`[EmailService] Doc reminder sent to ${toList.join(", ")} for client: ${clientName}`);
+    } catch (err) {
+      console.error("[EmailService] Failed to send doc reminder:", err);
+      await notifyOwner({ title: subject, content: plainText }).catch(() => {});
+    }
+  } else {
+    await notifyOwner({ title: subject, content: plainText }).catch(() => {});
+    console.log(`[EmailService] (no SMTP) Doc reminder fallback for: ${clientName}`);
+  }
+}

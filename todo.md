@@ -103,4 +103,11 @@
 - [x] App.tsx: Add /docs/* routes
 
 ## Change Requests (Round 7)
-- [ ] Fix ClientDocs and ClientDocDetail pages: white background, black/dark text, dark navy blue buttons (remove all dark-mode bg/text classes)
+- [x] Fix ClientDocs and ClientDocDetail pages: white background, black/dark text, dark navy blue buttons (remove all dark-mode bg/text classes)
+
+## Change Requests (Round 8)
+- [x] Upload Elevay logo to CDN and add to top of sidebar (replacing the toggle icon area)
+- [x] Build Client Documentation Dashboard page (/docs/dashboard) showing each client name + file completion %
+- [x] Add Dashboard nav item to Client Documentation module in DashboardLayout
+- [x] Update email reminders: send to both paralegal AND consultant assigned to the case
+- [x] Hardcode team email map: Madonna→madonna.adel@elevay.com, Monica→monica.sobhy@elevay.com, Marina→marina.kamel@elevay.com, Mahmoud→Mahmoud.saber@elevay.com, Fouad→fouad.abdo@elevay.com, Kirolos→kirlos.nabil@elevay.com, Ziad→ziad.elshurafa@elevay.com

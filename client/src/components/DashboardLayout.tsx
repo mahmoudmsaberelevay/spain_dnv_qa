@@ -69,6 +69,7 @@ const modules = [
     label: "Client Documentation",
     icon: FolderCheck,
     items: [
+      { icon: LayoutDashboard, label: "Dashboard", path: "/docs/dashboard" },
       { icon: Users, label: "Clients", path: "/docs" },
     ],
   },
@@ -186,7 +187,7 @@ function DashboardLayoutContent({
         <Sidebar collapsible="icon" className="border-r border-border/50" disableTransition={isResizing}>
           {/* Header — Elevay branding */}
           <SidebarHeader className="h-16 justify-center border-b border-border/40">
-            <div className="flex items-center gap-3 px-2 w-full">
+            <div className="flex items-center gap-2 px-2 w-full">
               <button
                 onClick={toggleSidebar}
                 className="h-8 w-8 flex items-center justify-center hover:bg-accent rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
@@ -195,9 +196,18 @@ function DashboardLayoutContent({
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
               {!isCollapsed && (
-                <span className="font-bold text-lg tracking-tight font-serif text-foreground">
-                  Elevay
-                </span>
+                <img
+                  src="https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/elevay-logo_9749d369.png"
+                  alt="Elevay"
+                  className="h-8 w-auto object-contain"
+                />
+              )}
+              {isCollapsed && (
+                <img
+                  src="https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/elevay-logo_9749d369.png"
+                  alt="Elevay"
+                  className="h-6 w-6 object-contain"
+                />
               )}
             </div>
           </SidebarHeader>
