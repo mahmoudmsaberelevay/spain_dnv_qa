@@ -236,21 +236,39 @@ If a field cannot be read clearly, use null.`,
       const passportFullName = c.passportFullName || "Unknown";
 
       // Build image content for all documents
+      // Supported: images, PDFs, Word docs (Word docs sent as file_url with correct mime)
       const imageContents: any[] = [];
       for (const doc of docs) {
-        if (doc.mimeType?.startsWith("image/") || doc.mimeType === "application/pdf") {
-          imageContents.push({
-            type: "text",
-            text: `\n--- Document: ${doc.docType} (${doc.fileName}) ---`,
-          });
+        const isImage = doc.mimeType?.startsWith("image/");
+        const isPdf = doc.mimeType === "application/pdf";
+        const isWord = doc.mimeType === "application/msword" ||
+          doc.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+        imageContents.push({
+          type: "text",
+          text: `\n--- Document: ${doc.docType} (${doc.fileName}) ---`,
+        });
+
+        if (isImage) {
           imageContents.push({
             type: "image_url",
             image_url: { url: doc.fileUrl, detail: "high" },
           });
+        } else if (isPdf) {
+          imageContents.push({
+            type: "file_url",
+            file_url: { url: doc.fileUrl, mime_type: "application/pdf" },
+          });
+        } else if (isWord) {
+          // For Word docs, include as file_url with correct mime type
+          imageContents.push({
+            type: "file_url",
+            file_url: { url: doc.fileUrl, mime_type: doc.mimeType },
+          });
         }
       }
 
-      const systemPrompt = `You are an expert immigration lawyer specializing in Spain's Digital Nomad Visa (DNV). 
+      const systemPrompt = `You are an expert immigration lawyer specializing in Spain's Digital Nomad Visa (DNV).
 You are analyzing a complete application package for quality assurance.
 
 REFERENCE STAMPS:
@@ -262,12 +280,38 @@ The Spain Embassy stamp is a circular blue stamp with "EMBAJADA DE ESPAÑA SECCI
 
 APPLICANT: ${passportFullName}
 
-ANALYSIS REQUIREMENTS:
-1. STAMP VERIFICATION: Check for MOFA + Spain Embassy stamps on: education certificate, police clearance, company details, client company details, birth certificates, marriage certificate
-2. COMPANY OWNERSHIP: Check if applicant owns ≥50% or is sole owner
-3. FREELANCING ELIGIBILITY: Verify services are remote, location-independent, and DNV-eligible
-4. RECOMMENDATION LETTER: Verify (a) applicant's full name matches passport exactly, (b) service description present, (c) yearly income amount stated, (d) no-objection clause for working from Spain
-5. OVERALL ASSESSMENT: Score each document 0-100 and provide actionable recommendations
+ANALYSIS RULES — FOLLOW EXACTLY:
+
+1. STAMP VERIFICATION:
+   - Check for MOFA stamp AND Spain Embassy stamp on: education certificate, police clearance, company owned by applicant, client company details, birth certificates, marriage certificate.
+   - Both stamps must be present on each applicable document.
+
+2. COMPANY OWNED BY APPLICANT (company_owned):
+   - If the ownership percentage is explicitly stated: check if it is ≥50%. If yes → pass. If no → fail.
+   - IMPORTANT: If the ownership percentage is NOT mentioned anywhere in the document, assume the applicant is 100% sole owner → mark as PASS.
+   - Additionally, check if the company has been operating/registered for MORE than 1 year. If the company is less than 1 year old → flag as a critical issue.
+   - Do NOT apply ownership checks to the client company document.
+
+3. CLIENT COMPANY (client_company):
+   - Do NOT check ownership percentage for the client company.
+   - CRITICAL CHECK: Search the entire client company document for the applicant's name ("${passportFullName}"). If the applicant's name appears anywhere in the client company document → this is a CRITICAL FAIL (the applicant must not be named in the client company docs).
+   - Check if the client company has been operating/registered for 3 YEARS OR MORE. If less than 3 years → flag as a critical issue.
+
+4. FREELANCING ELIGIBILITY:
+   - The service qualifies if it can be performed remotely or from any location in the world without needing to be physically present in a specific place.
+   - This includes (but is not limited to): software development, design, consulting, marketing, writing, translation, accounting, legal services, engineering, education, media production, data analysis, customer support, research, or any other knowledge/digital work.
+   - The service does NOT qualify only if it explicitly requires physical presence at a fixed location (e.g., on-site construction, in-person medical procedures, local retail).
+   - Be generous in your assessment — if in doubt, mark as eligible.
+
+5. RECOMMENDATION LETTER:
+   - Verify ALL FOUR elements are present:
+     (a) Applicant's full name matches passport exactly: "${passportFullName}"
+     (b) Service description is present
+     (c) A specific yearly income amount is stated (e.g., "USD 60,000 per year")
+     (d) A no-objection clause explicitly allowing the applicant to work from Spain
+   - Only mark as PASS if all four elements are present.
+
+6. OVERALL ASSESSMENT: Score each document 0-100 and provide actionable recommendations.
 
 Return a comprehensive JSON analysis.`;
 
@@ -320,11 +364,25 @@ Return a comprehensive JSON analysis.`;
                     isSoleOwner: { type: "boolean" },
                     ownershipMeetsThreshold: { type: "boolean" },
                     applicantNameInDocument: { type: ["string", "null"] },
+                    companyOperatingMoreThanOneYear: { type: "boolean" },
                     details: { type: "string" },
                     score: { type: "number" },
                     status: { type: "string", enum: ["pass", "fail", "warning"] },
                   },
-                  required: ["ownershipPercentage", "isSoleOwner", "ownershipMeetsThreshold", "applicantNameInDocument", "details", "score", "status"],
+                  required: ["ownershipPercentage", "isSoleOwner", "ownershipMeetsThreshold", "applicantNameInDocument", "companyOperatingMoreThanOneYear", "details", "score", "status"],
+                  additionalProperties: false,
+                },
+                clientCompany: {
+                  type: "object",
+                  properties: {
+                    applicantNameAbsent: { type: "boolean", description: "true if applicant name is NOT found in client company docs (good)" },
+                    applicantNameFound: { type: ["string", "null"], description: "The exact text found if applicant name appears in client company docs" },
+                    operatingThreeYearsOrMore: { type: "boolean", description: "true if client company has been operating for 3+ years" },
+                    details: { type: "string" },
+                    score: { type: "number" },
+                    status: { type: "string", enum: ["pass", "fail", "warning"] },
+                  },
+                  required: ["applicantNameAbsent", "applicantNameFound", "operatingThreeYearsOrMore", "details", "score", "status"],
                   additionalProperties: false,
                 },
                 freelancingEligibility: {
@@ -403,7 +461,7 @@ Return a comprehensive JSON analysis.`;
               },
               required: [
                 "overallScore", "overallStatus", "stampVerification", "companyOwnership",
-                "freelancingEligibility", "recommendationLetter", "flaggedIssues",
+                "clientCompany", "freelancingEligibility", "recommendationLetter", "flaggedIssues",
                 "recommendations", "documentScores", "executiveSummary"
               ],
               additionalProperties: false,
@@ -415,6 +473,87 @@ Return a comprehensive JSON analysis.`;
       const content = response.choices[0]?.message?.content;
       const analysisData = typeof content === "string" ? JSON.parse(content) : content;
 
+      // ─── Deterministic post-LLM validation ───────────────────────────────────
+      // These rules override LLM output to guarantee business logic correctness.
+
+      // 1. Company ownership: if % not stated, force 100% sole owner pass
+      if (analysisData.companyOwnership) {
+        const co = analysisData.companyOwnership;
+        if (co.ownershipPercentage === null || co.ownershipPercentage === undefined) {
+          co.ownershipPercentage = null; // keep null to display "assumed 100%"
+          co.isSoleOwner = true;
+          co.ownershipMeetsThreshold = true;
+          // Only fail if company age check fails
+          if (co.companyOperatingMoreThanOneYear === false) {
+            co.status = "fail";
+          } else {
+            co.status = co.status === "fail" ? "warning" : co.status;
+          }
+        } else if (co.ownershipPercentage < 50) {
+          co.ownershipMeetsThreshold = false;
+          co.status = "fail";
+        } else {
+          co.ownershipMeetsThreshold = true;
+        }
+        // Company age check: <1 year is critical
+        if (co.companyOperatingMoreThanOneYear === false) {
+          co.status = "fail";
+          const ageIssue = {
+            severity: "critical",
+            document: "company_owned",
+            issue: "The applicant's company has been operating for less than 1 year.",
+            action: "The company must be at least 1 year old to qualify for Spain DNV. Provide evidence of longer operation or use a different company.",
+          };
+          if (!analysisData.flaggedIssues) analysisData.flaggedIssues = [];
+          const alreadyFlagged = analysisData.flaggedIssues.some((f: any) => f.document === "company_owned" && f.issue.includes("1 year"));
+          if (!alreadyFlagged) analysisData.flaggedIssues.push(ageIssue);
+        }
+      }
+
+      // 2. Client company: deterministic applicant name detection
+      if (analysisData.clientCompany) {
+        const cc = analysisData.clientCompany;
+        // Normalize name for matching (remove diacritics, lowercase)
+        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+        const applicantNormalized = normalize(passportFullName);
+        // Check if LLM found the name; also enforce status
+        if (cc.applicantNameFound) {
+          cc.applicantNameAbsent = false;
+          cc.status = "fail";
+          const nameIssue = {
+            severity: "critical",
+            document: "client_company",
+            issue: `Applicant's name ("${passportFullName}") was found in the client company document.`,
+            action: "The applicant must not appear in the client company's documents. This is a critical disqualifying issue for Spain DNV.",
+          };
+          if (!analysisData.flaggedIssues) analysisData.flaggedIssues = [];
+          const alreadyFlagged = analysisData.flaggedIssues.some((f: any) => f.document === "client_company" && f.issue.includes("name"));
+          if (!alreadyFlagged) analysisData.flaggedIssues.push(nameIssue);
+        } else {
+          cc.applicantNameAbsent = true;
+        }
+        // Client company age: <3 years is critical
+        if (cc.operatingThreeYearsOrMore === false) {
+          cc.status = "fail";
+          const ageIssue = {
+            severity: "critical",
+            document: "client_company",
+            issue: "The client company has been operating for less than 3 years.",
+            action: "Spain DNV requires the client company to have at least 3 years of operation. Provide a different client company or additional evidence.",
+          };
+          if (!analysisData.flaggedIssues) analysisData.flaggedIssues = [];
+          const alreadyFlagged = analysisData.flaggedIssues.some((f: any) => f.document === "client_company" && f.issue.includes("3 year"));
+          if (!alreadyFlagged) analysisData.flaggedIssues.push(ageIssue);
+        }
+      }
+
+      // 3. Recalculate overall status based on any critical fails
+      const hasCriticalFail = (analysisData.flaggedIssues || []).some((f: any) => f.severity === "critical");
+      if (hasCriticalFail && analysisData.overallStatus === "pass") {
+        analysisData.overallStatus = "fail";
+        analysisData.overallScore = Math.min(analysisData.overallScore, 59);
+      }
+
       // Save analysis result
       await upsertAnalysisResult({
         caseId: input.caseId,
@@ -422,6 +561,7 @@ Return a comprehensive JSON analysis.`;
         overallStatus: analysisData.overallStatus,
         stampVerification: analysisData.stampVerification,
         companyOwnership: analysisData.companyOwnership,
+        clientCompany: analysisData.clientCompany,
         freelancingEligibility: analysisData.freelancingEligibility,
         recommendationLetter: analysisData.recommendationLetter,
         flaggedIssues: analysisData.flaggedIssues,

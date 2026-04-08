@@ -15,6 +15,13 @@
       "when": 1775636712301,
       "tag": "0001_light_xorn",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1775638777903,
+      "tag": "0002_unique_gideon",
+      "breakpoints": true
     }
   ]
 }

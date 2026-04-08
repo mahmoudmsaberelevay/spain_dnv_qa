@@ -5,13 +5,11 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Shield, Plus, Search, FolderOpen, Clock, CheckCircle2, AlertTriangle,
-  FileText, ChevronRight, Trash2, User, Mail, Globe, ArrowLeft, MoreVertical
+  FileText, ChevronRight, Trash2, User, ArrowLeft, MoreVertical
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
@@ -31,7 +29,7 @@ export default function Cases() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ clientName: "", clientEmail: "", clientNationality: "", notes: "" });
+  const [form, setForm] = useState({ clientName: "" });
   const [creating, setCreating] = useState(false);
 
   const { data: cases, isLoading, refetch } = trpc.cases.list.useQuery(undefined, {
@@ -42,7 +40,7 @@ export default function Cases() {
     onSuccess: (newCase) => {
       toast.success("Case created successfully");
       setShowCreate(false);
-      setForm({ clientName: "", clientEmail: "", clientNationality: "", notes: "" });
+      setForm({ clientName: "" });
       navigate(`/cases/${newCase?.id}/upload`);
     },
     onError: (e) => toast.error(e.message),
@@ -67,9 +65,7 @@ export default function Cases() {
   }
 
   const filtered = (cases || []).filter(c =>
-    c.clientName.toLowerCase().includes(search.toLowerCase()) ||
-    c.clientEmail?.toLowerCase().includes(search.toLowerCase()) ||
-    c.clientNationality?.toLowerCase().includes(search.toLowerCase())
+    c.clientName.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleCreate = async () => {
@@ -177,9 +173,6 @@ export default function Cases() {
                         </div>
                         <div>
                           <h3 className="font-semibold text-foreground text-sm leading-tight">{c.clientName}</h3>
-                          {c.clientNationality && (
-                            <p className="text-xs text-muted-foreground">{c.clientNationality}</p>
-                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
@@ -213,14 +206,7 @@ export default function Cases() {
                       </div>
                     )}
 
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      {c.clientEmail && (
-                        <span className="flex items-center gap-1 truncate">
-                          <Mail className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{c.clientEmail}</span>
-                        </span>
-                      )}
-                    </div>
+
                   </div>
 
                   <div className="px-5 py-3 border-t border-border bg-muted/20 flex items-center justify-between">
@@ -245,40 +231,18 @@ export default function Cases() {
           <DialogHeader>
             <DialogTitle className="font-serif text-xl">New Client Case</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="py-4">
             <div className="space-y-1.5">
-              <Label>Client Full Name <span className="text-destructive">*</span></Label>
+              <Label htmlFor="clientName">Client Full Name <span className="text-destructive">*</span></Label>
               <Input
+                id="clientName"
                 placeholder="e.g. Ahmed Mohamed Hassan"
                 value={form.clientName}
-                onChange={e => setForm(f => ({ ...f, clientName: e.target.value }))}
+                onChange={e => setForm({ clientName: e.target.value })}
+                onKeyDown={e => e.key === "Enter" && handleCreate()}
+                autoFocus
               />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Email Address</Label>
-              <Input
-                type="email"
-                placeholder="client@example.com"
-                value={form.clientEmail}
-                onChange={e => setForm(f => ({ ...f, clientEmail: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Nationality</Label>
-              <Input
-                placeholder="e.g. Egyptian"
-                value={form.clientNationality}
-                onChange={e => setForm(f => ({ ...f, clientNationality: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Notes</Label>
-              <Textarea
-                placeholder="Any additional notes about this case..."
-                value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                rows={3}
-              />
+              <p className="text-xs text-muted-foreground">Enter the client's full name exactly as it appears on their passport.</p>
             </div>
           </div>
           <DialogFooter>

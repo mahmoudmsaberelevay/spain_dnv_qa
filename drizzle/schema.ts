@@ -94,6 +94,7 @@ export const analysisResults = mysqlTable("analysisResults", {
   passportData: json("passportData"),
   stampVerification: json("stampVerification"),
   companyOwnership: json("companyOwnership"),
+  clientCompany: json("clientCompany"),
   freelancingEligibility: json("freelancingEligibility"),
   recommendationLetter: json("recommendationLetter"),
   flaggedIssues: json("flaggedIssues"),

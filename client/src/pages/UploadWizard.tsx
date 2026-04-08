@@ -127,8 +127,15 @@ export default function UploadWizard() {
     const selectedDocType = docType || (Array.isArray(step.docType) ? step.docType[0] : step.docType);
 
     for (const file of Array.from(files)) {
-      if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
-        toast.error(`${file.name}: Only images and PDFs are supported`);
+      const ALLOWED_TYPES = [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ];
+      const isImage = file.type.startsWith("image/");
+      const isAllowed = isImage || ALLOWED_TYPES.includes(file.type);
+      if (!isAllowed) {
+        toast.error(`${file.name}: Supported formats are images (JPG, PNG, TIFF, HEIC, WebP), PDF, and Word (.doc/.docx)`);
         continue;
       }
       if (file.size > 20 * 1024 * 1024) {
@@ -136,7 +143,8 @@ export default function UploadWizard() {
         continue;
       }
 
-      const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
+      const isImageFile = file.type.startsWith("image/");
+      const preview = isImageFile ? URL.createObjectURL(file) : undefined;
       const newFile: UploadedFile = { file, docType: selectedDocType, preview, uploading: true };
 
       setUploadedFiles(prev => [...prev, newFile]);
@@ -297,7 +305,7 @@ export default function UploadWizard() {
                   ref={fileInputRef}
                   type="file"
                   className="hidden"
-                  accept="image/*,application/pdf"
+                  accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.doc,.docx"
                   multiple={step.multiple}
                   onChange={e => handleFileSelect(e.target.files)}
                 />
@@ -306,7 +314,7 @@ export default function UploadWizard() {
                   {isDragging ? "Drop files here" : "Click or drag files here"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Supports JPG, PNG, PDF — up to 20MB each
+                  Supports images (JPG, PNG, TIFF, WebP, HEIC), PDF, Word (.doc/.docx) — up to 20MB
                   {step.multiple && " · Multiple files allowed"}
                 </p>
               </div>

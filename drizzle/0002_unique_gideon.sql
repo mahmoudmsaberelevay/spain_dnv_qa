@@ -1,0 +1,1 @@
+ALTER TABLE `analysisResults` ADD `clientCompany` json;

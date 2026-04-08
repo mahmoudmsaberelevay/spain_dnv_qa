@@ -317,7 +317,7 @@ export default function AnalysisReport() {
               </div>
             )}
 
-            {/* Company ownership */}
+            {/* Company owned by applicant */}
             {report.companyOwnership && (
               <div className="rounded-xl border border-border bg-card overflow-hidden">
                 <button
@@ -329,8 +329,8 @@ export default function AnalysisReport() {
                       <Building2 className="w-4 h-4 text-primary" />
                     </div>
                     <div className="text-left">
-                      <h2 className="font-semibold text-foreground">Company Ownership</h2>
-                      <p className="text-xs text-muted-foreground">Ownership threshold ≥ 50% verification</p>
+                      <h2 className="font-semibold text-foreground">Applicant’s Company</h2>
+                      <p className="text-xs text-muted-foreground">≥50% ownership · operating &gt;1 year</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -341,12 +341,14 @@ export default function AnalysisReport() {
                 {expandedSections.has("company") && (
                   <div className="px-5 pb-5 border-t border-border pt-4 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
-                      {report.companyOwnership.ownershipPercentage !== null && (
-                        <div className="p-3 rounded-lg border border-border bg-muted/20">
-                          <p className="text-xs text-muted-foreground mb-0.5">Ownership Percentage</p>
-                          <p className="text-xl font-bold text-foreground">{report.companyOwnership.ownershipPercentage}%</p>
-                        </div>
-                      )}
+                      <div className="p-3 rounded-lg border border-border bg-muted/20">
+                        <p className="text-xs text-muted-foreground mb-0.5">Ownership Percentage</p>
+                        <p className="text-xl font-bold text-foreground">
+                          {report.companyOwnership.ownershipPercentage !== null
+                            ? `${report.companyOwnership.ownershipPercentage}%`
+                            : "100% (assumed — not stated)"}
+                        </p>
+                      </div>
                       {report.companyOwnership.applicantNameInDocument && (
                         <div className="p-3 rounded-lg border border-border bg-muted/20">
                           <p className="text-xs text-muted-foreground mb-0.5">Name in Document</p>
@@ -355,10 +357,56 @@ export default function AnalysisReport() {
                       )}
                     </div>
                     <div className="space-y-2">
-                      <CheckItem label="Ownership meets 50% threshold" value={report.companyOwnership.ownershipMeetsThreshold} />
+                      <CheckItem label="Ownership ≥50% (or assumed 100% if not stated)" value={report.companyOwnership.ownershipMeetsThreshold} />
                       <CheckItem label="Applicant is sole owner" value={report.companyOwnership.isSoleOwner} />
+                      <CheckItem label="Company operating for more than 1 year" value={report.companyOwnership.companyOperatingMoreThanOneYear} />
                     </div>
                     <p className="text-sm text-muted-foreground leading-relaxed">{report.companyOwnership.details}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Client company checks */}
+            {report.clientCompany && (
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between p-5 hover:bg-muted/20 transition-colors"
+                  onClick={() => toggleSection("clientCompany")}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Building2 className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="text-left">
+                      <h2 className="font-semibold text-foreground">Client Company</h2>
+                      <p className="text-xs text-muted-foreground">Applicant name not present · operating ≥3 years</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={report.clientCompany.status} />
+                    {expandedSections.has("clientCompany") ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                  </div>
+                </button>
+                {expandedSections.has("clientCompany") && (
+                  <div className="px-5 pb-5 border-t border-border pt-4 space-y-3">
+                    <div className="space-y-2">
+                      <CheckItem
+                        label="Applicant name NOT found in client company docs (required)"
+                        value={report.clientCompany.applicantNameAbsent}
+                      />
+                      <CheckItem
+                        label="Client company operating for 3+ years"
+                        value={report.clientCompany.operatingThreeYearsOrMore}
+                      />
+                    </div>
+                    {report.clientCompany.applicantNameFound && (
+                      <div className="p-3 rounded-lg border border-red-200 bg-red-50">
+                        <p className="text-xs font-semibold text-red-700 mb-0.5">⚠ Applicant Name Detected</p>
+                        <p className="text-xs text-red-600">"{report.clientCompany.applicantNameFound}" was found in the client company document. This is a critical disqualifying issue.</p>
+                      </div>
+                    )}
+                    <p className="text-sm text-muted-foreground leading-relaxed">{report.clientCompany.details}</p>
                   </div>
                 )}
               </div>

@@ -50,3 +50,14 @@
 - [x] Vitest: case CRUD procedures
 - [x] Vitest: document upload procedure
 - [x] Vitest: analysis procedures
+
+## Change Requests (Round 2)
+- [x] Remove email and phone fields from case creation form — keep only client name
+- [x] Expand file upload to accept PDF, Word (.doc/.docx), and all image types
+- [x] Server: parse Word documents and PDFs for AI analysis (convert to readable text/images)
+- [x] Company (owned): if ownership % not mentioned, assume 100% sole ownership
+- [x] Company (owned): add check — company must be running for more than 1 year
+- [x] Client company: remove ownership check entirely
+- [x] Client company: add critical check — applicant name must NOT appear in client company docs
+- [x] Client company: add check — client company must be running for 3+ years
+- [x] Freelancing eligibility: broaden criteria — any service doable remotely/from anywhere qualifies
