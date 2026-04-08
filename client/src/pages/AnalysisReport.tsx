@@ -128,7 +128,7 @@ export default function AnalysisReport() {
       <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate(`/cases/${caseId}`)} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={() => navigate(`/analysis/cases/${caseId}`)} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-4 h-4" />
               <span className="text-sm">Back to Case</span>
             </button>

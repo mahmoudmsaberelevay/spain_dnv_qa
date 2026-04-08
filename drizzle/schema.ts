@@ -7,6 +7,7 @@ import {
   varchar,
   json,
   boolean,
+  decimal,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -106,3 +107,57 @@ export const analysisResults = mysqlTable("analysisResults", {
 
 export type AnalysisResult = typeof analysisResults.$inferSelect;
 export type InsertAnalysisResult = typeof analysisResults.$inferInsert;
+
+// ─── Contracting Module ───────────────────────────────────────────────────────
+export const contracts = mysqlTable("contracts", {
+  id: int("id").autoincrement().primaryKey(),
+  contractCode: varchar("contractCode", { length: 32 }).notNull().unique(),
+  clientName: varchar("clientName", { length: 255 }).notNull(),
+  invoicingName: varchar("invoicingName", { length: 255 }),
+  clientMobile: varchar("clientMobile", { length: 32 }),
+  familyMembers: int("familyMembers").notNull(),
+  contractValue: decimal("contractValue", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 10 }).default("EUR").notNull(),
+  status: mysqlEnum("status", ["pending", "signed", "cancelled"]).default("pending").notNull(),
+  consultantName: varchar("consultantName", { length: 128 }),
+  docUrl: text("docUrl"),
+  driveFileId: varchar("driveFileId", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type Contract = typeof contracts.$inferSelect;
+export type InsertContract = typeof contracts.$inferInsert;
+
+export const invoices = mysqlTable("invoices", {
+  id: int("id").autoincrement().primaryKey(),
+  invoiceCode: varchar("invoiceCode", { length: 32 }).notNull().unique(),
+  contractId: int("contractId").notNull(),
+  contractCode: varchar("contractCode", { length: 32 }).notNull(),
+  clientName: varchar("clientName", { length: 255 }).notNull(),
+  amountEur: decimal("amountEur", { precision: 10, scale: 2 }).notNull(),
+  amountEgp: decimal("amountEgp", { precision: 12, scale: 2 }),
+  exchangeRate: decimal("exchangeRate", { precision: 10, scale: 4 }),
+  status: mysqlEnum("status", ["unpaid", "paid"]).default("unpaid").notNull(),
+  pdfUrl: text("pdfUrl"),
+  driveFileId: varchar("driveFileId", { length: 255 }),
+  notes: text("notes"),
+  paidAt: timestamp("paidAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type Invoice = typeof invoices.$inferSelect;
+export type InsertInvoice = typeof invoices.$inferInsert;
+
+export const payments = mysqlTable("payments", {
+  id: int("id").autoincrement().primaryKey(),
+  contractId: int("contractId").notNull(),
+  invoiceId: int("invoiceId").notNull(),
+  amountEur: decimal("amountEur", { precision: 10, scale: 2 }).notNull(),
+  amountEgp: decimal("amountEgp", { precision: 12, scale: 2 }),
+  exchangeRate: decimal("exchangeRate", { precision: 10, scale: 4 }),
+  paidAt: timestamp("paidAt").defaultNow().notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type Payment = typeof payments.$inferSelect;
+export type InsertPayment = typeof payments.$inferInsert;

@@ -206,7 +206,7 @@ export default function UploadWizard() {
       <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate(`/cases/${caseId}`)} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={() => navigate(`/analysis/cases/${caseId}`)} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-4 h-4" />
               <span className="text-sm">Back to Case</span>
             </button>
@@ -363,7 +363,7 @@ export default function UploadWizard() {
                     <Button
                       variant="ghost"
                       onClick={() => {
-                        if (isLastStep) navigate(`/cases/${caseId}/report`);
+                        if (isLastStep) navigate(`/analysis/cases/${caseId}/report`);
                         else setCurrentStep(s => s + 1);
                       }}
                       className="gap-2 text-muted-foreground"
@@ -374,7 +374,7 @@ export default function UploadWizard() {
                   )}
                   {isLastStep ? (
                     <Button
-                      onClick={() => navigate(`/cases/${caseId}/report`)}
+                      onClick={() => navigate(`/analysis/cases/${caseId}/report`)}
                       disabled={!canProceed}
                       className="gap-2"
                     >

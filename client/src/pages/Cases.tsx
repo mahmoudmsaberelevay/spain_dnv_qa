@@ -41,7 +41,7 @@ export default function Cases() {
       toast.success("Case created successfully");
       setShowCreate(false);
       setForm({ clientName: "" });
-      navigate(`/cases/${newCase?.id}/upload`);
+      navigate(`/analysis/cases/${newCase?.id}/upload`);
     },
     onError: (e) => toast.error(e.message),
   });
@@ -84,7 +84,7 @@ export default function Cases() {
       <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate("/")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={() => navigate("/analysis")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-4 h-4" />
             </button>
             <div className="w-px h-5 bg-border" />
@@ -162,7 +162,7 @@ export default function Cases() {
                 <div
                   key={c.id}
                   className="group relative rounded-xl border border-border bg-card hover:border-primary/30 hover:shadow-md transition-all duration-200 cursor-pointer overflow-hidden"
-                  onClick={() => navigate(`/cases/${c.id}`)}
+                  onClick={() => navigate(`/analysis/cases/${c.id}`)}
                 >
                   <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                   <div className="p-5">

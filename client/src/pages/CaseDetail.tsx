@@ -77,7 +77,7 @@ export default function CaseDetail() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <h2 className="font-serif text-2xl font-semibold mb-2">Case Not Found</h2>
-          <Button onClick={() => navigate("/cases")} variant="outline">Back to Cases</Button>
+          <Button onClick={() => navigate("/analysis")} variant="outline">Back to Cases</Button>
         </div>
       </div>
     );
@@ -91,7 +91,7 @@ export default function CaseDetail() {
       <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate("/cases")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={() => navigate("/analysis")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-4 h-4" />
               <span className="text-sm">Cases</span>
             </button>
@@ -104,12 +104,12 @@ export default function CaseDetail() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate(`/cases/${caseId}/upload`)} className="gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => navigate(`/analysis/cases/${caseId}/upload`)} className="gap-1.5">
               <Upload className="w-3.5 h-3.5" />
               Upload Docs
             </Button>
             {(documents?.length ?? 0) > 0 && (
-              <Button size="sm" onClick={() => navigate(`/cases/${caseId}/report`)} className="gap-1.5">
+              <Button size="sm" onClick={() => navigate(`/analysis/cases/${caseId}/report`)} className="gap-1.5">
                 <BarChart3 className="w-3.5 h-3.5" />
                 {caseData.analysisCompleted ? "View Report" : "Run Analysis"}
               </Button>
@@ -199,7 +199,7 @@ export default function CaseDetail() {
                   <h2 className="font-semibold text-foreground">Uploaded Documents</h2>
                   <p className="text-xs text-muted-foreground mt-0.5">{documents?.length || 0} documents uploaded</p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => navigate(`/cases/${caseId}/upload`)} className="gap-1.5">
+                <Button variant="outline" size="sm" onClick={() => navigate(`/analysis/cases/${caseId}/upload`)} className="gap-1.5">
                   <Upload className="w-3.5 h-3.5" />
                   Add Documents
                 </Button>
@@ -214,7 +214,7 @@ export default function CaseDetail() {
                   <Upload className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
                   <p className="font-medium text-foreground mb-1">No documents uploaded</p>
                   <p className="text-sm text-muted-foreground mb-4">Start the upload wizard to add client documents.</p>
-                  <Button onClick={() => navigate(`/cases/${caseId}/upload`)} className="gap-2">
+                  <Button onClick={() => navigate(`/analysis/cases/${caseId}/upload`)} className="gap-2">
                     <Upload className="w-4 h-4" />
                     Start Upload Wizard
                   </Button>
@@ -274,7 +274,7 @@ export default function CaseDetail() {
                       : "Run the AI analysis to verify all documents and generate a QA report."}
                   </p>
                 </div>
-                <Button onClick={() => navigate(`/cases/${caseId}/report`)} className="gap-2 flex-shrink-0">
+                <Button onClick={() => navigate(`/analysis/cases/${caseId}/report`)} className="gap-2 flex-shrink-0">
                   <BarChart3 className="w-4 h-4" />
                   {caseData.analysisCompleted ? "View Report" : "Run Analysis"}
                 </Button>

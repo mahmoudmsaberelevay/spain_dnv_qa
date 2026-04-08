@@ -11,7 +11,18 @@ import {
   createCase, getCasesByUserId, getCaseById, updateCase, deleteCase,
   createDocument, getDocumentsByCaseId, getDocumentById, updateDocument, deleteDocument,
   upsertAnalysisResult, getAnalysisResultByCaseId,
+  createContract, getAllContracts, getContractById, updateContractStatus,
+  updateContractDocUrl, createInvoice, getAllInvoices, getInvoicesByContractId,
+  getInvoiceById, markInvoicePaid, updateInvoicePdfUrl, createPayment,
+  getTotalPaidByContractId, getContractStats, getFamilyMemberDistribution,
+  getRecentContracts, getPaymentsByContractId, getNextContractSequence,
+  getConsultantStats,
 } from "./db";
+import { generateContractDoc, uploadContractToStorage, calculateContractValue } from "./contractGenerator";
+import { getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
+import { generateAndUploadInvoicePdf } from "./invoiceGenerator";
+import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient } from "./emailService";
+import { uploadContractToDrive, getDriveStatus, isDriveConfigured } from "./googleDrive";
 
 const MOFA_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/mofa_stamp_a1afffba.png";
 const SPAIN_EMBASSY_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/spain_embassy_stamp_cf83213b.png";
@@ -587,6 +598,196 @@ Return a comprehensive JSON analysis.`;
     }),
 });
 
+// ─── Contracting Helpers ─────────────────────────────────────────────────────
+async function generateContractCode(): Promise<string> {
+  const seq = await getNextContractSequence();
+  const code = 26026 + seq;
+  return String(code);
+}
+function generateInvoiceCode(): string {
+  const now = new Date();
+  const year = now.getFullYear().toString().slice(-2);
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `INV${year}${month}${random}`;
+}
+
+// ─── Contracting Router ───────────────────────────────────────────────────────
+const contractingRouter = router({
+  contracts: router({
+    list: protectedProcedure.query(async () => getAllContracts()),
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const contract = await getContractById(input.id);
+        if (!contract) throw new TRPCError({ code: "NOT_FOUND", message: "Contract not found" });
+        return contract;
+      }),
+    create: protectedProcedure
+      .input(z.object({
+        clientName: z.string().min(2),
+        invoicingName: z.string().min(2),
+        clientMobile: z.string().min(5),
+        familyMembers: z.number().int().min(1),
+        consultantName: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const contractCode = await generateContractCode();
+        const contractValue = calculateContractValue(input.familyMembers);
+        const { buffer, filename } = await generateContractDoc(input.clientName, input.familyMembers, contractCode);
+        const docUrl = await uploadContractToStorage(buffer, contractCode, input.clientName);
+        const contract = await createContract({
+          contractCode, clientName: input.clientName, invoicingName: input.invoicingName,
+          clientMobile: input.clientMobile, familyMembers: input.familyMembers,
+          contractValue: contractValue.toString(), currency: "EUR", status: "pending",
+          docUrl, consultantName: input.consultantName ?? null,
+        });
+        if (isDriveConfigured() && contract) {
+          uploadContractToDrive(buffer, filename, contractCode)
+            .then((driveFileId) => updateContractDocUrl(contract.id, docUrl, driveFileId))
+            .catch((err) => console.error("[Drive] Failed to backup contract:", err));
+        }
+        await notifyNewContract(contractCode, input.clientName, input.familyMembers, contractValue);
+        return { contract, docUrl, filename };
+      }),
+    updateStatus: protectedProcedure
+      .input(z.object({ id: z.number(), status: z.enum(["pending", "signed", "cancelled"]) }))
+      .mutation(async ({ input }) => {
+        const contract = await getContractById(input.id);
+        if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
+        await updateContractStatus(input.id, input.status);
+        await notifyContractStatusChange(contract.contractCode, contract.clientName, input.status);
+        return getContractById(input.id);
+      }),
+    regenerateDoc: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const contract = await getContractById(input.id);
+        if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
+        const { buffer, filename } = await generateContractDoc(contract.clientName, contract.familyMembers, contract.contractCode);
+        const docUrl = await uploadContractToStorage(buffer, contract.contractCode, contract.clientName);
+        await updateContractDocUrl(contract.id, docUrl);
+        return { docUrl, filename };
+      }),
+    getPaymentSummary: protectedProcedure
+      .input(z.object({ contractId: z.number() }))
+      .query(async ({ input }) => {
+        const contract = await getContractById(input.contractId);
+        if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
+        const totalPaid = await getTotalPaidByContractId(input.contractId);
+        const contractValue = Number(contract.contractValue);
+        return { contractValue, totalPaid, remainingBalance: contractValue - totalPaid };
+      }),
+  }),
+  invoices: router({
+    list: protectedProcedure.query(async () => getAllInvoices()),
+    listByContract: protectedProcedure
+      .input(z.object({ contractId: z.number() }))
+      .query(async ({ input }) => getInvoicesByContractId(input.contractId)),
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const invoice = await getInvoiceById(input.id);
+        if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+        return invoice;
+      }),
+    create: protectedProcedure
+      .input(z.object({
+        contractId: z.number(),
+        amountEur: z.number().positive(),
+        notes: z.string().min(1, "Payment notes are required"),
+      }))
+      .mutation(async ({ input }) => {
+        const contract = await getContractById(input.contractId);
+        if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
+        if (contract.status !== "signed") throw new TRPCError({ code: "BAD_REQUEST", message: "Can only create invoices for signed contracts" });
+        const rateInfo = await getEurToEgpRate();
+        const amountEgp = convertEurToEgp(input.amountEur, rateInfo.rate);
+        const invoiceCode = generateInvoiceCode();
+        const totalPaid = await getTotalPaidByContractId(input.contractId);
+        const contractValue = Number(contract.contractValue);
+        const remainingBalance = contractValue - totalPaid - input.amountEur;
+        const billingName = contract.invoicingName || contract.clientName;
+        const clientMobile = contract.clientMobile || "";
+        const pdfUrl = await generateAndUploadInvoicePdf({
+          invoiceCode, contractCode: contract.contractCode, clientName: billingName, clientMobile,
+          amountEur: input.amountEur, amountEgp, exchangeRate: rateInfo.rate,
+          contractValue, totalPaid: totalPaid + input.amountEur, remainingBalance,
+          createdAt: new Date(), notes: input.notes,
+        });
+        const invoice = await createInvoice({
+          invoiceCode, contractId: input.contractId, contractCode: contract.contractCode,
+          clientName: billingName, amountEur: input.amountEur.toString(),
+          amountEgp: amountEgp.toString(), exchangeRate: rateInfo.rate.toString(),
+          status: "unpaid", pdfUrl, notes: input.notes,
+        });
+        return invoice;
+      }),
+    markPaid: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const invoice = await getInvoiceById(input.id);
+        if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+        if (invoice.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Invoice already paid" });
+        await markInvoicePaid(input.id);
+        await createPayment({
+          contractId: invoice.contractId, invoiceId: invoice.id,
+          amountEur: invoice.amountEur, amountEgp: invoice.amountEgp ?? undefined,
+          exchangeRate: invoice.exchangeRate ?? undefined, paidAt: new Date(),
+        });
+        const totalPaid = await getTotalPaidByContractId(invoice.contractId);
+        const contract = await getContractById(invoice.contractId);
+        const remainingBalance = Number(contract?.contractValue ?? 0) - totalPaid;
+        await notifyReceiptPaid(invoice.invoiceCode, invoice.contractCode, invoice.clientName, Number(invoice.amountEur), remainingBalance);
+        return getInvoiceById(input.id);
+      }),
+    sendReceiptByEmail: protectedProcedure
+      .input(z.object({ invoiceId: z.number(), clientEmail: z.string().email() }))
+      .mutation(async ({ input }) => {
+        const invoice = await getInvoiceById(input.invoiceId);
+        if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+        if (!invoice.pdfUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "No PDF available" });
+        const result = await sendReceiptToClient(input.clientEmail, invoice.clientName, invoice.invoiceCode, invoice.pdfUrl);
+        if (!result.success) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.message });
+        return result;
+      }),
+    regeneratePdf: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const invoice = await getInvoiceById(input.id);
+        if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+        const contract = await getContractById(invoice.contractId);
+        const totalPaid = await getTotalPaidByContractId(invoice.contractId);
+        const contractValue = Number(contract?.contractValue ?? 0);
+        const rateInfo = await getEurToEgpRate();
+        const amountEgp = convertEurToEgp(Number(invoice.amountEur), rateInfo.rate);
+        const pdfUrl = await generateAndUploadInvoicePdf({
+          invoiceCode: invoice.invoiceCode, contractCode: invoice.contractCode,
+          clientName: invoice.clientName, amountEur: Number(invoice.amountEur),
+          amountEgp, exchangeRate: rateInfo.rate, contractValue, totalPaid,
+          remainingBalance: contractValue - totalPaid, createdAt: new Date(invoice.createdAt),
+          notes: invoice.notes ?? undefined,
+        });
+        await updateInvoicePdfUrl(input.id, pdfUrl);
+        return { pdfUrl };
+      }),
+  }),
+  drive: router({
+    status: protectedProcedure.query(async () => getDriveStatus()),
+  }),
+  exchangeRate: router({
+    current: publicProcedure.query(async () => getEurToEgpRate()),
+  }),
+  analytics: router({
+    stats: protectedProcedure.query(async () => getContractStats()),
+    familyDistribution: protectedProcedure.query(async () => getFamilyMemberDistribution()),
+    recentContracts: protectedProcedure
+      .input(z.object({ limit: z.number().optional() }))
+      .query(async ({ input }) => getRecentContracts(input.limit ?? 10)),
+    consultantStats: protectedProcedure.query(async () => getConsultantStats()),
+  }),
+});
+
 // ─── App Router ───────────────────────────────────────────────────────────────
 export const appRouter = router({
   system: systemRouter,
@@ -601,6 +802,7 @@ export const appRouter = router({
   cases: casesRouter,
   documents: documentsRouter,
   analysis: analysisRouter,
+  contracting: contractingRouter,
 });
 
 export type AppRouter = typeof appRouter;

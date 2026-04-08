@@ -64,3 +64,14 @@
 
 ## Change Requests (Round 3)
 - [x] Exclude freelancing contract and recommendation letter from stamp verification (no stamps required on these two documents)
+
+## Elevay Platform Merge
+- [x] Merge contracting app schema (contracts, invoices, payments tables) into spain_dnv_qa schema
+- [x] Add all contracting server utilities: contractGenerator, invoiceGenerator, exchangeRate, emailService, googleDrive
+- [x] Merge contracting routers into unified appRouter under `contracting.*` namespace
+- [x] Build unified Elevay top-level navigation with module switcher (Contracting / Application Analysis)
+- [x] Integrate contracting pages: Dashboard, Contracts, Invoices, Analytics, NewContractDialog
+- [x] Integrate DNV pages under Application Analysis module
+- [x] Redesign landing/home page as Elevay brand with two module entry points
+- [x] Unified DashboardLayout with module-aware sidebar navigation
+- [x] Run all tests and save checkpoint

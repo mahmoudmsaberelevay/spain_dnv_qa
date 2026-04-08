@@ -22,6 +22,13 @@
       "when": 1775638777903,
       "tag": "0002_unique_gideon",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1775640999016,
+      "tag": "0003_classy_kitty_pryde",
+      "breakpoints": true
     }
   ]
 }
