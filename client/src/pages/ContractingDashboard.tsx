@@ -2,7 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Receipt, TrendingUp, Users, Plus, ArrowRight, Clock, UserCheck } from "lucide-react";
+import { FileText, Receipt, TrendingUp, Users, Plus, ArrowRight, Clock, UserCheck, HardDrive, ExternalLink } from "lucide-react";
 import { useLocation } from "wouter";
 import { useState } from "react";
 import NewContractDialog from "@/components/NewContractDialog";
@@ -16,6 +16,7 @@ export default function Dashboard() {
   const { data: recentContracts, isLoading: contractsLoading } = trpc.contracting.analytics.recentContracts.useQuery({ limit: 5 });
   const { data: rateInfo } = trpc.contracting.exchangeRate.current.useQuery();
   const { data: consultantStats } = trpc.contracting.analytics.consultantStats.useQuery();
+  const { data: driveStatus } = trpc.contracting.drive.status.useQuery();
 
   const statCards = [
     {
@@ -67,6 +68,30 @@ export default function Dashboard() {
           Issue New Contract
         </Button>
       </div>
+
+      {/* Google Drive Status Banner */}
+      {driveStatus && (
+        <div className={`border rounded-lg px-4 py-3 flex items-center justify-between ${
+          driveStatus.connected ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
+        }`}>
+          <div className="flex items-center gap-3">
+            <HardDrive className={`h-4 w-4 ${driveStatus.connected ? "text-green-600" : "text-red-500"}`} />
+            <span className={`text-sm font-medium ${driveStatus.connected ? "text-green-800" : "text-red-700"}`}>
+              Google Drive: {driveStatus.connected ? "Connected — contracts & invoices auto-synced" : "Not connected"}
+            </span>
+          </div>
+          {driveStatus.rootFolderUrl && (
+            <a
+              href={driveStatus.rootFolderUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 text-xs text-green-700 hover:text-green-900 font-medium"
+            >
+              Open Drive <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Exchange Rate Banner */}
       {rateInfo && (

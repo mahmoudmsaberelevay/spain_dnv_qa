@@ -68,6 +68,19 @@ export async function generateAndUploadInvoicePdf(data: ReceiptData): Promise<st
   return url;
 }
 
+/** Generate the PDF buffer only (without uploading) — used for Google Drive sync */
+export async function generateInvoicePdfBuffer(data: ReceiptData): Promise<Buffer> {
+  let signatureBuffer: Buffer | null = null;
+  try {
+    signatureBuffer = await downloadImage(SIGNATURE_CDN_URL);
+  } catch (e) {
+    console.warn("[Receipt] Could not download signature image:", e);
+  }
+  return buildPdf(data, signatureBuffer);
+}
+
+export { downloadImage };
+
 function buildPdf(data: ReceiptData, signatureBuffer: Buffer | null): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 0 });

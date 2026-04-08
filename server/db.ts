@@ -175,10 +175,10 @@ export async function updateContractStatus(id: number, status: "pending" | "sign
   await db.update(contracts).set({ status }).where(eq(contracts.id, id));
 }
 
-export async function updateContractDocUrl(id: number, docUrl: string, driveFileId?: string) {
+export async function updateContractDocUrl(id: number, docUrl: string, driveFileId?: string, driveLink?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(contracts).set({ docUrl, driveFileId: driveFileId ?? null }).where(eq(contracts.id, id));
+  await db.update(contracts).set({ docUrl, driveFileId: driveFileId ?? null, driveLink: driveLink ?? null }).where(eq(contracts.id, id));
 }
 
 export async function getNextContractSequence(): Promise<number> {
@@ -221,10 +221,10 @@ export async function markInvoicePaid(id: number) {
   await db.update(invoices).set({ status: "paid", paidAt: new Date() }).where(eq(invoices.id, id));
 }
 
-export async function updateInvoicePdfUrl(id: number, pdfUrl: string, driveFileId?: string) {
+export async function updateInvoicePdfUrl(id: number, pdfUrl: string, driveFileId?: string, driveLink?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(invoices).set({ pdfUrl, driveFileId: driveFileId ?? null }).where(eq(invoices.id, id));
+  await db.update(invoices).set({ pdfUrl, driveFileId: driveFileId ?? null, driveLink: driveLink ?? null }).where(eq(invoices.id, id));
 }
 
 export async function createPayment(data: InsertPayment) {

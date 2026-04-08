@@ -65,11 +65,16 @@ async function getRootFolder(): Promise<string> {
   return rootFolderId;
 }
 
+export interface DriveUploadResult {
+  fileId: string;
+  webViewLink: string;
+}
+
 export async function uploadContractToDrive(
   buffer: Buffer,
   filename: string,
   contractCode: string
-): Promise<string> {
+): Promise<DriveUploadResult> {
   const drive = getDriveClient();
   const rootId = await getRootFolder();
   const contractsFolderId = await getOrCreateFolder("Contracts", rootId);
@@ -88,14 +93,22 @@ export async function uploadContractToDrive(
     fields: "id, webViewLink",
   });
 
-  return res.data.id!;
+  // Make the file readable by anyone with the link
+  try {
+    await drive.permissions.create({
+      fileId: res.data.id!,
+      requestBody: { role: "reader", type: "anyone" },
+    });
+  } catch (_) { /* non-critical */ }
+
+  return { fileId: res.data.id!, webViewLink: res.data.webViewLink ?? `https://drive.google.com/file/d/${res.data.id}/view` };
 }
 
 export async function uploadInvoiceToDrive(
   buffer: Buffer,
   filename: string,
   invoiceCode: string
-): Promise<string> {
+): Promise<DriveUploadResult> {
   const drive = getDriveClient();
   const rootId = await getRootFolder();
   const invoicesFolderId = await getOrCreateFolder("Invoices", rootId);
@@ -114,7 +127,15 @@ export async function uploadInvoiceToDrive(
     fields: "id, webViewLink",
   });
 
-  return res.data.id!;
+  // Make the file readable by anyone with the link
+  try {
+    await drive.permissions.create({
+      fileId: res.data.id!,
+      requestBody: { role: "reader", type: "anyone" },
+    });
+  } catch (_) { /* non-critical */ }
+
+  return { fileId: res.data.id!, webViewLink: res.data.webViewLink ?? `https://drive.google.com/file/d/${res.data.id}/view` };
 }
 
 export async function getDriveStatus(): Promise<{ configured: boolean; connected: boolean; rootFolderUrl?: string }> {

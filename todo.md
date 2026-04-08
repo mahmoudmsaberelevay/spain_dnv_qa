@@ -111,3 +111,26 @@
 - [x] Add Dashboard nav item to Client Documentation module in DashboardLayout
 - [x] Update email reminders: send to both paralegal AND consultant assigned to the case
 - [x] Hardcode team email map: Madonna→madonna.adel@elevay.com, Monica→monica.sobhy@elevay.com, Marina→marina.kamel@elevay.com, Mahmoud→Mahmoud.saber@elevay.com, Fouad→fouad.abdo@elevay.com, Kirolos→kirlos.nabil@elevay.com, Ziad→ziad.elshurafa@elevay.com
+## Change Requests (Round 9)
+
+### Google Drive Integration
+- [x] Request GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN secrets from user
+- [x] Implement googleDrive.ts helper: authenticate with OAuth refresh token
+- [x] Contracting: upload generated contract PDF to Google Drive folder on contract creation/sign
+- [x] Contracting: upload invoice/receipt PDF to Google Drive folder on invoice creation
+- [x] Contracting: show Google Drive link on contract and invoice detail pages
+- [x] Add "Drive Sync" status indicator in Contracting dashboard
+
+### Client Documentation Dashboard Search/Filter
+- [x] Add search bar (by client name) to /docs/dashboard
+- [x] Add status filter dropdown: All / Missing Docs / Ready to Submit / Submitted
+- [x] Add paralegal filter dropdown (all 3 paralegals + "All")
+- [x] Add consultant filter dropdown (all 4 consultants + "All")
+- [x] Highlight overdue clients (Schengen expiry or submission date within 30 days)
+
+### Application Analysis PDF Report Export
+- [x] Server: generate PDF report from analysis results using pdfkit
+- [x] Server: tRPC procedure exportReport(caseId) → returns S3 URL of generated PDF
+- [x] Client: "Download PDF Report" button on AnalysisReport page
+- [x] PDF includes: client name, case ID, date, per-document results, flagged issues, recommendations
+- [x] PDF uses Elevay branding (logo, navy color scheme)

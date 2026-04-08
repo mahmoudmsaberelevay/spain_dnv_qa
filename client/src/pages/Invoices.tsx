@@ -17,7 +17,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Download, Search, Receipt, Calendar, CheckCircle, Loader2, TrendingDown, Mail,
+  Plus, Download, Search, Receipt, Calendar, CheckCircle, Loader2, TrendingDown, Mail, ExternalLink,
 } from "lucide-react";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 
@@ -277,6 +277,18 @@ export default function Invoices() {
                             >
                               <Download className="h-3.5 w-3.5" />
                               PDF
+                            </Button>
+                          )}
+                          {(invoice as any).driveLink && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 gap-1 text-xs text-green-600 hover:text-green-800 hover:bg-green-50"
+                              onClick={() => window.open((invoice as any).driveLink!, "_blank")}
+                              title="View in Google Drive"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Drive
                             </Button>
                           )}
                           {invoice.pdfUrl && (

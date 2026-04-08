@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import {
   Shield, ArrowLeft, BarChart3, CheckCircle2, XCircle, AlertTriangle,
   Loader2, RefreshCw, Stamp, Building2, ScrollText, FileText, User,
-  TrendingUp, ChevronDown, ChevronUp, Info, Star, AlertCircle
+  TrendingUp, ChevronDown, ChevronUp, Info, Star, AlertCircle, Download
 } from "lucide-react";
 
 const SEVERITY_CONFIG = {
@@ -86,7 +86,20 @@ export default function AnalysisReport() {
   const [, navigate] = useLocation();
   const { isAuthenticated } = useAuth();
   const [running, setRunning] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["stamp", "company", "freelancing", "letter"]));
+
+  const exportReport = trpc.analysis.exportReport.useMutation({
+    onSuccess: (data) => {
+      window.open(data.url, "_blank");
+      toast.success("PDF report ready — opening in new tab.");
+      setExporting(false);
+    },
+    onError: (e) => {
+      toast.error(`Export failed: ${e.message}`);
+      setExporting(false);
+    },
+  });
 
   const { data: caseData } = trpc.cases.get.useQuery({ id: caseId }, { enabled: isAuthenticated && !!caseId });
   const { data: existingResult, refetch: refetchResult } = trpc.analysis.getResult.useQuery(
@@ -141,6 +154,18 @@ export default function AnalysisReport() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {report && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setExporting(true); exportReport.mutate({ caseId }); }}
+                disabled={exporting}
+                className="gap-1.5 text-[#1e3a5f] border-[#1e3a5f]/30 hover:bg-[#1e3a5f]/5"
+              >
+                {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                Export PDF
+              </Button>
+            )}
             {report && (
               <Button variant="outline" size="sm" onClick={handleRunAnalysis} disabled={running} className="gap-1.5">
                 <RefreshCw className={`w-3.5 h-3.5 ${running ? "animate-spin" : ""}`} />

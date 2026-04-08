@@ -22,7 +22,8 @@ import { generateContractDoc, uploadContractToStorage, calculateContractValue } 
 import { getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
 import { generateAndUploadInvoicePdf } from "./invoiceGenerator";
 import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient } from "./emailService";
-import { uploadContractToDrive, getDriveStatus, isDriveConfigured } from "./googleDrive";
+import { uploadContractToDrive, uploadInvoiceToDrive, getDriveStatus, isDriveConfigured } from "./googleDrive";
+import { generateInvoicePdfBuffer } from "./invoiceGenerator";
 import {
   createClientCase, listClientCases, getClientCase, updateClientCase,
   createClientDocuments, getClientDocuments, updateClientDocument, updateClientDocumentsByIds,
@@ -601,6 +602,160 @@ Return a comprehensive JSON analysis.`;
       if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
       return getAnalysisResultByCaseId(input.caseId);
     }),
+
+  exportReport: protectedProcedure
+    .input(z.object({ caseId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await getCaseById(input.caseId);
+      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      const result = await getAnalysisResultByCaseId(input.caseId);
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "No analysis result found. Run analysis first." });
+      const report = result.fullReport ? JSON.parse(result.fullReport as string) : {};
+
+      // Build a clean text report for PDF
+      const sections: string[] = [];
+      sections.push(`SPAIN DIGITAL NOMAD VISA — ANALYSIS REPORT`);
+      sections.push(`Client: ${c.clientName}`);
+      if (c.passportFullName) sections.push(`Passport Name: ${c.passportFullName}`);
+      if (c.passportNumber) sections.push(`Passport No: ${c.passportNumber}`);
+      sections.push(`Generated: ${new Date().toLocaleDateString("en-GB", { year: "numeric", month: "long", day: "numeric" })}`);
+      sections.push(`Overall Status: ${(result.overallStatus ?? "pending").toUpperCase()} | Score: ${result.overallScore ?? "N/A"}/100`);
+      sections.push("");
+
+      const addSection = (title: string, data: any) => {
+        if (!data) return;
+        sections.push(`--- ${title} ---`);
+        if (typeof data === "object" && !Array.isArray(data)) {
+          for (const [k, v] of Object.entries(data)) {
+            if (v !== null && v !== undefined) sections.push(`  ${k}: ${JSON.stringify(v)}`);
+          }
+        } else if (Array.isArray(data)) {
+          data.forEach((item: any, i: number) => {
+            if (typeof item === "object") {
+              sections.push(`  [${i + 1}] ${item.issue ?? item.recommendation ?? JSON.stringify(item)}`);
+              if (item.action) sections.push(`      Action: ${item.action}`);
+            } else {
+              sections.push(`  - ${item}`);
+            }
+          });
+        }
+        sections.push("");
+      };
+
+      addSection("Stamp Verification", report.stampVerification);
+      addSection("Company Ownership", report.companyOwnership);
+      addSection("Client Company", report.clientCompany);
+      addSection("Freelancing Eligibility", report.freelancingEligibility);
+      addSection("Recommendation Letter", report.recommendationLetter);
+      addSection("Flagged Issues", report.flaggedIssues);
+      addSection("Recommendations", report.recommendations);
+
+      // Generate PDF using PDFKit
+      const PDFDocument = (await import("pdfkit")).default;
+      const pdfBuffer: Buffer = await new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ size: "A4", margin: 50 });
+        const chunks: Buffer[] = [];
+        doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+        doc.on("end", () => resolve(Buffer.concat(chunks)));
+        doc.on("error", reject);
+
+        const headerGrey = "#1e3a5f";
+        const white = "#FFFFFF";
+        const darkText = "#1A1A1A";
+        const midGrey = "#5E6A71";
+
+        // Header
+        doc.rect(0, 0, doc.page.width, 80).fill(headerGrey);
+        doc.fontSize(18).fillColor(white).font("Helvetica-Bold")
+          .text("ELEVAY", 50, 18, { lineBreak: false });
+        doc.fontSize(9).fillColor(white).font("Helvetica")
+          .text("RESIDENCY BY INVESTMENT", 50, 40, { lineBreak: false });
+        doc.fontSize(12).fillColor(white).font("Helvetica-Bold")
+          .text("Spain DNV Analysis Report", 0, 28, { align: "right", width: doc.page.width - 50, lineBreak: false });
+
+        let y = 100;
+        // Client info block
+        doc.fontSize(16).fillColor(darkText).font("Helvetica-Bold")
+          .text(c.clientName, 50, y);
+        y += 22;
+        if (c.passportFullName) {
+          doc.fontSize(10).fillColor(midGrey).font("Helvetica")
+            .text(`Passport: ${c.passportFullName}`, 50, y);
+          y += 16;
+        }
+        doc.fontSize(10).fillColor(midGrey).font("Helvetica")
+          .text(`Generated: ${new Date().toLocaleDateString("en-GB", { year: "numeric", month: "long", day: "numeric" })}`, 50, y);
+        y += 24;
+
+        // Status badge
+        const statusColor = result.overallStatus === "pass" ? "#16a34a" : result.overallStatus === "fail" ? "#dc2626" : "#d97706";
+        doc.rect(50, y, 180, 28).fill(statusColor);
+        doc.fontSize(12).fillColor(white).font("Helvetica-Bold")
+          .text(`${(result.overallStatus ?? "pending").toUpperCase()} — Score: ${result.overallScore ?? "N/A"}/100`, 50, y + 7, { width: 180, align: "center", lineBreak: false });
+        y += 44;
+
+        // Sections
+        const renderSection = (title: string, data: any) => {
+          if (!data) return;
+          if (y > doc.page.height - 120) { doc.addPage(); y = 50; }
+          doc.fontSize(11).fillColor(headerGrey).font("Helvetica-Bold").text(title, 50, y);
+          y += 4;
+          doc.moveTo(50, y).lineTo(doc.page.width - 50, y).lineWidth(1).strokeColor("#e2e8f0").stroke();
+          y += 10;
+          if (typeof data === "object" && !Array.isArray(data)) {
+            for (const [k, v] of Object.entries(data)) {
+              if (v === null || v === undefined) continue;
+              if (y > doc.page.height - 60) { doc.addPage(); y = 50; }
+              const label = k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase());
+              const val = typeof v === "boolean" ? (v ? "Yes" : "No") : String(v);
+              doc.fontSize(9).fillColor(midGrey).font("Helvetica-Bold").text(`${label}: `, 60, y, { continued: true, lineBreak: false });
+              doc.fontSize(9).fillColor(darkText).font("Helvetica").text(val, { lineBreak: false });
+              y += 14;
+            }
+          } else if (Array.isArray(data)) {
+            data.forEach((item: any) => {
+              if (y > doc.page.height - 80) { doc.addPage(); y = 50; }
+              if (typeof item === "object") {
+                const text = item.issue ?? item.recommendation ?? JSON.stringify(item);
+                const severity = item.severity ? ` [${item.severity.toUpperCase()}]` : "";
+                doc.fontSize(9).fillColor(item.severity === "critical" ? "#dc2626" : darkText).font("Helvetica-Bold")
+                  .text(`• ${text}${severity}`, 60, y, { width: doc.page.width - 120 });
+                y += doc.heightOfString(`• ${text}${severity}`, { width: doc.page.width - 120 }) + 4;
+                if (item.action) {
+                  if (y > doc.page.height - 60) { doc.addPage(); y = 50; }
+                  doc.fontSize(8).fillColor(midGrey).font("Helvetica")
+                    .text(`  Action: ${item.action}`, 70, y, { width: doc.page.width - 130 });
+                  y += doc.heightOfString(`  Action: ${item.action}`, { width: doc.page.width - 130 }) + 4;
+                }
+              } else {
+                doc.fontSize(9).fillColor(darkText).font("Helvetica").text(`• ${item}`, 60, y, { width: doc.page.width - 120 });
+                y += 14;
+              }
+            });
+          }
+          y += 12;
+        };
+
+        renderSection("Stamp Verification", report.stampVerification);
+        renderSection("Company Ownership", report.companyOwnership);
+        renderSection("Client Company", report.clientCompany);
+        renderSection("Freelancing Eligibility", report.freelancingEligibility);
+        renderSection("Recommendation Letter", report.recommendationLetter);
+        renderSection("Flagged Issues", report.flaggedIssues);
+        renderSection("Recommendations", report.recommendations);
+
+        // Footer
+        const pageH = doc.page.height;
+        doc.fontSize(8).fillColor(midGrey).font("Helvetica")
+          .text("ELEVAY — Residency by Investment | Cairo, Egypt & Dubai, UAE", 50, pageH - 40, { width: doc.page.width - 100, align: "center" });
+
+        doc.end();
+      });
+
+      const filename = `analysis_${c.clientName.replace(/\s+/g, "_")}_${Date.now()}.pdf`;
+      const { url } = await storagePut(`reports/${filename}`, pdfBuffer, "application/pdf");
+      return { url, filename };
+    }),
 });
 
 // ─── Contracting Helpers ─────────────────────────────────────────────────────
@@ -649,7 +804,7 @@ const contractingRouter = router({
         });
         if (isDriveConfigured() && contract) {
           uploadContractToDrive(buffer, filename, contractCode)
-            .then((driveFileId) => updateContractDocUrl(contract.id, docUrl, driveFileId))
+            .then(({ fileId, webViewLink }) => updateContractDocUrl(contract.id, docUrl, fileId, webViewLink))
             .catch((err) => console.error("[Drive] Failed to backup contract:", err));
         }
         await notifyNewContract(contractCode, input.clientName, input.familyMembers, contractValue);
@@ -726,6 +881,18 @@ const contractingRouter = router({
           amountEgp: amountEgp.toString(), exchangeRate: rateInfo.rate.toString(),
           status: "unpaid", pdfUrl, notes: input.notes,
         });
+        // Upload invoice PDF to Google Drive asynchronously
+        if (isDriveConfigured() && invoice) {
+          generateInvoicePdfBuffer({
+            invoiceCode, contractCode: contract.contractCode, clientName: billingName, clientMobile,
+            amountEur: input.amountEur, amountEgp, exchangeRate: rateInfo.rate,
+            contractValue, totalPaid: totalPaid + input.amountEur, remainingBalance,
+            createdAt: new Date(), notes: input.notes,
+          })
+            .then((buf) => uploadInvoiceToDrive(buf, `${invoiceCode}_${billingName.replace(/\s+/g, "_")}.pdf`, invoiceCode))
+            .then(({ fileId, webViewLink }) => updateInvoicePdfUrl(invoice.id, pdfUrl, fileId, webViewLink))
+            .catch((err) => console.error("[Drive] Failed to backup invoice:", err));
+        }
         return invoice;
       }),
     markPaid: protectedProcedure

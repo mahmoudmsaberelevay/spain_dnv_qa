@@ -13,7 +13,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Download, Search, FileText, Users, Calendar, CheckCircle, XCircle, Clock,
+  Plus, Download, Search, FileText, Users, Calendar, CheckCircle, XCircle, Clock, ExternalLink,
 } from "lucide-react";
 import NewContractDialog from "@/components/NewContractDialog";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
@@ -239,6 +239,18 @@ export default function Contracts() {
                             >
                               <Download className="h-3.5 w-3.5" />
                               Word
+                            </Button>
+                          )}
+                          {(contract as any).driveLink && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 gap-1 text-xs text-green-600 hover:text-green-800 hover:bg-green-50"
+                              onClick={() => window.open((contract as any).driveLink!, "_blank")}
+                              title="View in Google Drive"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Drive
                             </Button>
                           )}
                           <Button

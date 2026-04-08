@@ -122,6 +122,7 @@ export const contracts = mysqlTable("contracts", {
   consultantName: varchar("consultantName", { length: 128 }),
   docUrl: text("docUrl"),
   driveFileId: varchar("driveFileId", { length: 255 }),
+  driveLink: text("driveLink"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -140,6 +141,7 @@ export const invoices = mysqlTable("invoices", {
   status: mysqlEnum("status", ["unpaid", "paid"]).default("unpaid").notNull(),
   pdfUrl: text("pdfUrl"),
   driveFileId: varchar("driveFileId", { length: 255 }),
+  driveLink: text("driveLink"),
   notes: text("notes"),
   paidAt: timestamp("paidAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
