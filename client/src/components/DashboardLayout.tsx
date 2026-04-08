@@ -57,6 +57,7 @@ const modules = [
     label: "Application Analysis",
     icon: Search,
     items: [
+      { icon: LayoutDashboard, label: "Dashboard", path: "/analysis/dashboard" },
       { icon: FolderOpen, label: "Cases", path: "/analysis" },
     ],
   },
@@ -203,8 +204,8 @@ function DashboardLayoutContent({
                       className={cn(
                         "flex items-center justify-between w-full px-4 py-2 text-xs font-semibold uppercase tracking-widest transition-colors",
                         activeModuleId === mod.id
-                          ? "text-primary"
-                          : "text-muted-foreground hover:text-foreground"
+                          ? "text-white"
+                          : "text-white/60 hover:text-white"
                       )}
                     >
                       <div className="flex items-center gap-2">
@@ -233,11 +234,13 @@ function DashboardLayoutContent({
                               onClick={() => setLocation(item.path)}
                               tooltip={item.label}
                               className={cn(
-                                "h-9 transition-all font-normal",
-                                isActive && "bg-primary/10 text-primary font-medium"
+                                "h-9 transition-all",
+                                isActive
+                                  ? "bg-white/10 text-white font-bold"
+                                  : "text-white/70 font-normal hover:text-white hover:bg-white/5"
                               )}
                             >
-                              <item.icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
+                              <item.icon className={cn("h-4 w-4", isActive ? "text-white" : "text-white/60")} />
                               <span>{item.label}</span>
                             </SidebarMenuButton>
                           </SidebarMenuItem>

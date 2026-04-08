@@ -7,6 +7,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import DashboardLayout from "./components/DashboardLayout";
 
 // ─── Application Analysis Module ─────────────────────────────────────────────
+import AnalysisDashboard from "./pages/AnalysisDashboard";
 import Cases from "./pages/Cases";
 import CaseDetail from "./pages/CaseDetail";
 import UploadWizard from "./pages/UploadWizard";
@@ -49,6 +50,11 @@ function Router() {
       </Route>
 
       {/* ── Application Analysis Module ── */}
+      <Route path="/analysis/dashboard">
+        <DashboardLayout>
+          <AnalysisDashboard />
+        </DashboardLayout>
+      </Route>
       <Route path="/analysis">
         <DashboardLayout>
           <Cases />

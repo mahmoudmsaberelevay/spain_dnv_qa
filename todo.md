@@ -78,3 +78,8 @@
 
 ## Change Requests (Round 4)
 - [x] Update Contracting module header to show "Elevay" instead of "ELEVAY Contract Management System"
+
+## Change Requests (Round 5)
+- [x] Fix sidebar nav labels to be white; bold white for the active/selected item
+- [x] Add Dashboard overview sub-page to Application Analysis module (route: /analysis/dashboard)
+- [x] Add "Dashboard" nav item to Application Analysis module in DashboardLayout
