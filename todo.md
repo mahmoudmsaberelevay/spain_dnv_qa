@@ -75,3 +75,6 @@
 - [x] Redesign landing/home page as Elevay brand with two module entry points
 - [x] Unified DashboardLayout with module-aware sidebar navigation
 - [x] Run all tests and save checkpoint
+
+## Change Requests (Round 4)
+- [x] Update Contracting module header to show "Elevay" instead of "ELEVAY Contract Management System"
