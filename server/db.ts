@@ -288,3 +288,71 @@ export async function getConsultantStats() {
   }
   return Object.entries(stats).map(([name, s]) => ({ name, ...s }));
 }
+
+// ─── Client Documentation DB Helpers ─────────────────────────────────────────
+import { clientCases, clientDocuments, InsertClientCase, InsertClientDocument } from "../drizzle/schema";
+
+export async function createClientCase(data: InsertClientCase) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(clientCases).values(data);
+  return result;
+}
+
+export async function listClientCases(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(clientCases).where(eq(clientCases.userId, userId)).orderBy(clientCases.createdAt);
+}
+
+export async function getClientCase(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(clientCases).where(eq(clientCases.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function updateClientCase(id: number, data: Partial<InsertClientCase>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(clientCases).set(data).where(eq(clientCases.id, id));
+}
+
+export async function createClientDocuments(docs: InsertClientDocument[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (docs.length === 0) return;
+  await db.insert(clientDocuments).values(docs);
+}
+
+export async function getClientDocuments(clientCaseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(clientDocuments).where(eq(clientDocuments.clientCaseId, clientCaseId));
+}
+
+export async function updateClientDocument(id: number, data: Partial<InsertClientDocument>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(clientDocuments).set(data).where(eq(clientDocuments.id, id));
+}
+
+export async function updateClientDocumentsByIds(ids: number[], data: Partial<InsertClientDocument>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (ids.length === 0) return;
+  const { inArray } = await import("drizzle-orm");
+  await db.update(clientDocuments).set(data).where(inArray(clientDocuments.id, ids));
+}
+
+export async function getAllClientCasesForReminders() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(clientCases);
+}
+
+export async function getAllClientDocumentsForReminders() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(clientDocuments).where(eq(clientDocuments.received, true));
+}

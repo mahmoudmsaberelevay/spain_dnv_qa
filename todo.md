@@ -83,3 +83,21 @@
 - [x] Fix sidebar nav labels to be white; bold white for the active/selected item
 - [x] Add Dashboard overview sub-page to Application Analysis module (route: /analysis/dashboard)
 - [x] Add "Dashboard" nav item to Application Analysis module in DashboardLayout
+
+## Client Documentation Module (Round 6)
+- [x] DB: clientCases table (id, userId, clientName, clientCode, applicationType, maritalStatus, paralegal, consultant, schengenDate, embassyAppointmentDate, expectedSubmissionDate, createdAt)
+- [x] DB: clientDocuments table (id, clientCaseId, docKey, docName, category, received, receivedDate, mofaAttested, embassyAttested, expirationMonths, requiresMofa, requiresEmbassy)
+- [x] Server: clientDocs router with all CRUD + action procedures
+- [x] Server: document checklist generator (Freelancer / Business Owner / Family tables)
+- [x] Server: automated email reminders (1 month before Schengen expiry, 1 month before doc expiry, 12 days before submission date)
+- [x] UI: Client list page (/docs) with create new client button
+- [x] UI: Create client dialog (name, code, type, marital status, paralegal, consultant)
+- [x] UI: Client detail page (/docs/clients/:id) with 6 action buttons
+- [x] UI: Receive document action — show remaining docs, pick date per doc
+- [x] UI: MOFA attestation action — show received docs, multi-select
+- [x] UI: Embassy attestation action — show received docs, multi-select
+- [x] UI: Schengen / Embassy / Submission date pickers (calendar)
+- [x] UI: Family clients — 2 tabs (Single / Family documents)
+- [x] UI: Full client report page with remaining docs + pending procedures
+- [x] DashboardLayout: Add Client Documentation as 3rd module in sidebar
+- [x] App.tsx: Add /docs/* routes

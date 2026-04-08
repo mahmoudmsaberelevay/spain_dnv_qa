@@ -26,12 +26,15 @@ import {
   BarChart3,
   FileText,
   FolderOpen,
+  FolderCheck,
   LayoutDashboard,
   LogOut,
   PanelLeft,
   Receipt,
   Search,
   ChevronRight,
+  Stamp,
+  Users,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -59,6 +62,14 @@ const modules = [
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "/analysis/dashboard" },
       { icon: FolderOpen, label: "Cases", path: "/analysis" },
+    ],
+  },
+  {
+    id: "docs",
+    label: "Client Documentation",
+    icon: FolderCheck,
+    items: [
+      { icon: Users, label: "Clients", path: "/docs" },
     ],
   },
 ];

@@ -13,7 +13,11 @@ import CaseDetail from "./pages/CaseDetail";
 import UploadWizard from "./pages/UploadWizard";
 import AnalysisReport from "./pages/AnalysisReport";
 
-// ─── Contracting Module ───────────────────────────────────────────────────────
+// ─── Client Documentation Module ─────────────────────────────────────────
+import ClientDocs from "./pages/ClientDocs";
+import ClientDocDetail from "./pages/ClientDocDetail";
+
+// ─── Contracting Module ─────────────────────────────────────────────
 import ContractingDashboard from "./pages/ContractingDashboard";
 import Contracts from "./pages/Contracts";
 import Invoices from "./pages/Invoices";
@@ -88,6 +92,18 @@ function Router() {
       </Route>
       <Route path="/cases/:id/report">
         {(params) => <Redirect to={`/analysis/cases/${params.id}/report`} />}
+      </Route>
+
+      {/* ── Client Documentation Module ── */}
+      <Route path="/docs">
+        <DashboardLayout>
+          <ClientDocs />
+        </DashboardLayout>
+      </Route>
+      <Route path="/docs/clients/:id">
+        <DashboardLayout>
+          <ClientDocDetail />
+        </DashboardLayout>
       </Route>
 
       <Route path="/404" component={NotFound} />

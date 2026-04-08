@@ -161,3 +161,44 @@ export const payments = mysqlTable("payments", {
 });
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = typeof payments.$inferInsert;
+
+// ─── Client Documentation Module ─────────────────────────────────────────────
+export const clientCases = mysqlTable("clientCases", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  clientName: varchar("clientName", { length: 255 }).notNull(),
+  clientCode: varchar("clientCode", { length: 64 }).notNull(),
+  applicationType: mysqlEnum("applicationType", ["freelancer", "business_owner"]).notNull(),
+  maritalStatus: mysqlEnum("maritalStatus", ["single", "family"]).notNull(),
+  paralegal: mysqlEnum("paralegal", ["Madonna", "Monica", "Marina"]).notNull(),
+  consultant: mysqlEnum("consultant", ["Mahmoud", "Ziad", "Fouad", "Kirolos"]).notNull(),
+  schengenDate: timestamp("schengenDate"),
+  embassyAppointmentDate: timestamp("embassyAppointmentDate"),
+  expectedSubmissionDate: timestamp("expectedSubmissionDate"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ClientCase = typeof clientCases.$inferSelect;
+export type InsertClientCase = typeof clientCases.$inferInsert;
+
+export const clientDocuments = mysqlTable("clientDocuments", {
+  id: int("id").autoincrement().primaryKey(),
+  clientCaseId: int("clientCaseId").notNull(),
+  docKey: varchar("docKey", { length: 64 }).notNull(),       // e.g. "passport_main"
+  docName: varchar("docName", { length: 255 }).notNull(),    // e.g. "Main Applicant Passport"
+  category: mysqlEnum("category", ["main", "family"]).default("main").notNull(),
+  expirationMonths: int("expirationMonths"),                 // null = no expiry
+  requiresMofa: boolean("requiresMofa").default(false).notNull(),
+  requiresEmbassy: boolean("requiresEmbassy").default(false).notNull(),
+  // Tracking fields
+  received: boolean("received").default(false).notNull(),
+  receivedDate: timestamp("receivedDate"),
+  mofaAttested: boolean("mofaAttested").default(false).notNull(),
+  mofaAttestedDate: timestamp("mofaAttestedDate"),
+  embassyAttested: boolean("embassyAttested").default(false).notNull(),
+  embassyAttestedDate: timestamp("embassyAttestedDate"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ClientDocument = typeof clientDocuments.$inferSelect;
+export type InsertClientDocument = typeof clientDocuments.$inferInsert;

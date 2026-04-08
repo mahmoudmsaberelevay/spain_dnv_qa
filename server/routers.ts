@@ -23,6 +23,11 @@ import { getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
 import { generateAndUploadInvoicePdf } from "./invoiceGenerator";
 import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient } from "./emailService";
 import { uploadContractToDrive, getDriveStatus, isDriveConfigured } from "./googleDrive";
+import {
+  createClientCase, listClientCases, getClientCase, updateClientCase,
+  createClientDocuments, getClientDocuments, updateClientDocument, updateClientDocumentsByIds,
+} from "./db";
+import { getDocChecklist } from "../shared/clientDocDefs";
 
 const MOFA_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/mofa_stamp_a1afffba.png";
 const SPAIN_EMBASSY_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/spain_embassy_stamp_cf83213b.png";
@@ -788,7 +793,165 @@ const contractingRouter = router({
   }),
 });
 
-// ─── App Router ───────────────────────────────────────────────────────────────
+/// ─── Client Documentation Router ───────────────────────────────────────────
+const clientDocsRouter = router({
+  // Create a new client case and auto-generate the document checklist
+  create: protectedProcedure
+    .input(z.object({
+      clientName: z.string().min(1),
+      clientCode: z.string().min(1),
+      applicationType: z.enum(["freelancer", "business_owner"]),
+      maritalStatus: z.enum(["single", "family"]),
+      paralegal: z.enum(["Madonna", "Monica", "Marina"]),
+      consultant: z.enum(["Mahmoud", "Ziad", "Fouad", "Kirolos"]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await createClientCase({ ...input, userId: ctx.user.id });
+      const insertId = (result as any).insertId as number;
+      const checklist = getDocChecklist(input.applicationType, input.maritalStatus);
+      const docs = checklist.map(d => ({
+        clientCaseId: insertId,
+        docKey: d.docKey,
+        docName: d.docName,
+        category: d.category,
+        expirationMonths: d.expirationMonths,
+        requiresMofa: d.requiresMofa,
+        requiresEmbassy: d.requiresEmbassy,
+      }));
+      await createClientDocuments(docs);
+      return { id: insertId };
+    }),
+
+  list: protectedProcedure.query(async ({ ctx }) => {
+    return listClientCases(ctx.user.id);
+  }),
+
+  get: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const c = await getClientCase(input.id);
+      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      const docs = await getClientDocuments(input.id);
+      return { ...c, documents: docs };
+    }),
+
+  // Mark selected documents as received with their issue date
+  receiveDocuments: protectedProcedure
+    .input(z.object({
+      clientCaseId: z.number(),
+      items: z.array(z.object({
+        docId: z.number(),
+        receivedDate: z.string(), // ISO date string
+      })),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await getClientCase(input.clientCaseId);
+      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      for (const item of input.items) {
+        await updateClientDocument(item.docId, {
+          received: true,
+          receivedDate: new Date(item.receivedDate),
+        });
+      }
+      return { success: true };
+    }),
+
+  // Mark selected received documents as MOFA attested
+  markMofa: protectedProcedure
+    .input(z.object({
+      clientCaseId: z.number(),
+      docIds: z.array(z.number()),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await getClientCase(input.clientCaseId);
+      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      await updateClientDocumentsByIds(input.docIds, {
+        mofaAttested: true,
+        mofaAttestedDate: new Date(),
+      });
+      return { success: true };
+    }),
+
+  // Mark selected received documents as Embassy attested
+  markEmbassy: protectedProcedure
+    .input(z.object({
+      clientCaseId: z.number(),
+      docIds: z.array(z.number()),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await getClientCase(input.clientCaseId);
+      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      await updateClientDocumentsByIds(input.docIds, {
+        embassyAttested: true,
+        embassyAttestedDate: new Date(),
+      });
+      return { success: true };
+    }),
+
+  // Set appointment / submission dates
+  setDates: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      schengenDate: z.string().nullable().optional(),
+      embassyAppointmentDate: z.string().nullable().optional(),
+      expectedSubmissionDate: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await getClientCase(input.id);
+      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      const update: Record<string, Date | null> = {};
+      if (input.schengenDate !== undefined)
+        update.schengenDate = input.schengenDate ? new Date(input.schengenDate) : null;
+      if (input.embassyAppointmentDate !== undefined)
+        update.embassyAppointmentDate = input.embassyAppointmentDate ? new Date(input.embassyAppointmentDate) : null;
+      if (input.expectedSubmissionDate !== undefined)
+        update.expectedSubmissionDate = input.expectedSubmissionDate ? new Date(input.expectedSubmissionDate) : null;
+      await updateClientCase(input.id, update as any);
+      return { success: true };
+    }),
+
+  // Full client report: remaining docs + pending procedures
+  report: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const c = await getClientCase(input.id);
+      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      const docs = await getClientDocuments(input.id);
+
+      const notReceived = docs.filter(d => !d.received);
+      const receivedNotMofa = docs.filter(d => d.received && d.requiresMofa && !d.mofaAttested);
+      const receivedNotEmbassy = docs.filter(d => d.received && d.requiresEmbassy && !d.embassyAttested);
+
+      // Compute expiry warnings for received docs
+      const expiryWarnings = docs
+        .filter(d => d.received && d.receivedDate && d.expirationMonths)
+        .map(d => {
+          const expiryDate = new Date(d.receivedDate!);
+          expiryDate.setMonth(expiryDate.getMonth() + d.expirationMonths!);
+          const daysLeft = Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          return { ...d, expiryDate: expiryDate.toISOString(), daysLeft };
+        })
+        .filter(d => d.daysLeft <= 30)
+        .sort((a, b) => a.daysLeft - b.daysLeft);
+
+      const totalDocs = docs.length;
+      const receivedCount = docs.filter(d => d.received).length;
+      const mofaComplete = docs.filter(d => !d.requiresMofa || d.mofaAttested).length;
+      const embassyComplete = docs.filter(d => !d.requiresEmbassy || d.embassyAttested).length;
+
+      return {
+        clientCase: c,
+        summary: { totalDocs, receivedCount, mofaComplete, embassyComplete },
+        notReceived,
+        receivedNotMofa,
+        receivedNotEmbassy,
+        expiryWarnings,
+        allDocuments: docs,
+      };
+    }),
+});
+
+// ─── App Router ─────────────────────────────────────────────────────────────
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -803,6 +966,7 @@ export const appRouter = router({
   documents: documentsRouter,
   analysis: analysisRouter,
   contracting: contractingRouter,
+  clientDocs: clientDocsRouter,
 });
 
 export type AppRouter = typeof appRouter;
