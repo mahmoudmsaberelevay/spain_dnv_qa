@@ -174,3 +174,5 @@
 ## Change Requests (Round 12)
 - [x] Update all account initial balances from CSV file
 - [x] Add salary column to employees table and replace all employees from CSV (28 employees with salaries)
+- [x] Fix EGP total balance: only sum Cash EGP + Arab African EGP + CIB EGP + AIB EGP (exclude Rent Credit, Imprest, etc.)
+- [x] Fix Ziad Credit currency from EGP to EUR

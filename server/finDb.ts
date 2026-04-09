@@ -190,10 +190,14 @@ export async function getFinancialSummary(year: number) {
     lte(finTransactions.transactionDate, endOfMonth),
   ));
 
-  // Total EGP balance (only EGP accounts)
+  // Total EGP balance (only main EGP bank/cash accounts — excludes credit, imprest, rent)
+  const egpMainAccounts = ['Cash EGP', 'ARAB African EGP', 'CIB EGP', 'AIB EGP'];
   const [egpBalance] = await db.select({
     total: sql<string>`COALESCE(SUM(${finAccounts.balance}), 0)`,
-  }).from(finAccounts).where(eq(finAccounts.currency, "EGP"));
+  }).from(finAccounts).where(and(
+    eq(finAccounts.currency, "EGP"),
+    sql`${finAccounts.name} IN (${sql.join(egpMainAccounts.map(n => sql`${n}`), sql`, `)})`
+  ));
 
   // Expense by category (yearly)
   const expenseByCategory = await db.select({
