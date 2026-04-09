@@ -42,9 +42,11 @@ export default function FinAccounts() {
     grouped.set(a.currency, arr);
   });
 
-  // Currency totals
+  // Currency totals (EGP excludes Imprest Account and Rent Credit)
+  const EGP_EXCLUDED = ['Imprest Account', 'Rent Credit'];
   const totals = new Map<string, number>();
   accounts?.forEach(a => {
+    if (a.currency === 'EGP' && EGP_EXCLUDED.includes(a.name)) return;
     totals.set(a.currency, (totals.get(a.currency) ?? 0) + Number(a.balance));
   });
 
