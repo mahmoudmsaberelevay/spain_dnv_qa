@@ -170,3 +170,6 @@
 - [x] Automated monthly email with PDF reports on last day of month
 - [x] Bulk Excel upload for transactions
 - [x] Sidebar navigation for Financial Module
+
+## Change Requests (Round 12)
+- [x] Update all account initial balances from CSV file
