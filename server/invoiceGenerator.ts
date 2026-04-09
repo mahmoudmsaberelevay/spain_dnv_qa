@@ -3,9 +3,9 @@ import https from "https";
 import http from "http";
 import { storagePut } from "./storage";
 
-// Full signature (ELEVAY stamp + handwritten) — complete crop
+// Full signature (ELEVAY stamp + handwritten) — tagline removed
 const SIGNATURE_CDN_URL =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/kN35iJC3mTAPmbEMAFkqBd/signature_full_eb898951.png";
+  "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/signature_cropped_b08d8a31.png";
 
 export interface ReceiptData {
   invoiceCode: string;
@@ -111,19 +111,15 @@ function buildPdf(data: ReceiptData, signatureBuffer: Buffer | null): Promise<Bu
     const headerH = 80;
     doc.rect(L, y, W, headerH).fill(headerGrey);
 
-    // Left: ELEVAY / RESIDENCY BY / INVESTMENT
-    doc.fontSize(16).fillColor(white).font("Helvetica-Bold")
-       .text("ELEVAY", L + 16, y + 14, { lineBreak: false });
-    doc.fontSize(10).fillColor(white).font("Helvetica-Bold")
-       .text("RESIDENCY BY", L + 16, y + 34, { lineBreak: false });
-    doc.fontSize(10).fillColor(white).font("Helvetica-Bold")
-       .text("INVESTMENT", L + 16, y + 50, { lineBreak: false });
+    // Left: ELEVAY only (large)
+    doc.fontSize(28).fillColor(white).font("Helvetica-Bold")
+       .text("ELEVAY", L + 16, y + 22, { lineBreak: false });
 
     // Right: RECEIPT label (white) + receipt number (white)
     doc.fontSize(18).fillColor(white).font("Helvetica-Bold")
        .text("RECEIPT", R - 220, y + 14, { width: 210, align: "right", lineBreak: false });
     doc.fontSize(11).fillColor(white).font("Helvetica-Bold")
-       .text(`1# ${data.invoiceCode}`, R - 220, y + 42, { width: 210, align: "right", lineBreak: false });
+       .text(data.invoiceCode, R - 220, y + 42, { width: 210, align: "right", lineBreak: false });
 
     y += headerH + 20;
 
