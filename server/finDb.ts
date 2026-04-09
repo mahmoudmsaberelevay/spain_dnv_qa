@@ -3,6 +3,7 @@ import { getDb } from "./db";
 import {
   finAccounts, finCategories, finEmployees, finClients, finCommissions, finTransactions,
   InsertFinAccount, InsertFinCategory, InsertFinEmployee, InsertFinClient, InsertFinCommission, InsertFinTransaction,
+  clientCases,
 } from "../drizzle/schema";
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
@@ -237,6 +238,15 @@ export async function getFinancialSummary(year: number) {
   );
   const monthlyProfit = (monthlyProfitRows as unknown as any[]).map(r => ({ month: String(r.month), type: r.type as string, total: String(r.total) }));
 
+  // Consultant Yearly Signing — clients with stage submission or approved, grouped by consultant
+  const [consultantSigningRows] = await db.execute(
+    sql`SELECT ${clientCases.consultant} AS consultant, COUNT(*) AS count FROM ${clientCases} WHERE ${clientCases.stage} IN ('submission', 'approved') AND ${clientCases.createdAt} >= ${startOfYear} AND ${clientCases.createdAt} <= ${endOfYear} GROUP BY 1`
+  );
+  const consultantSigning = (consultantSigningRows as unknown as any[]).map(r => ({
+    consultant: r.consultant as string,
+    count: Number(r.count),
+  }));
+
   return {
     yearlyIncome: Number(yearlyIncome.total),
     monthlyIncome: Number(monthlyIncome.total),
@@ -249,5 +259,6 @@ export async function getFinancialSummary(year: number) {
     incomeByCategory,
     employeeExpenses,
     monthlyProfitBreakdown: monthlyProfit,
+    consultantSigning,
   };
 }

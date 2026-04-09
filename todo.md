@@ -181,3 +181,7 @@
 - [x] Fix EGP total to include ALL EGP accounts except Imprest Account and Rent Credit (was only summing 4 accounts, now sums 10)
 - [x] Fix TiDB MONTH() GROUP BY compatibility issue that was crashing the Financial Dashboard
 - [x] Fix Total EGP on Accounts page (/finance/accounts) to exclude Imprest Account and Rent Credit
+
+## Change Requests (Round 14)
+- [x] Add Consultant Yearly Signing section to Financial Dashboard (Mahmoud, Ziad, Kirolos, Fouad)
+- [x] Add 3 Quick Transaction buttons (Income, Expense, Transfer) to Financial Dashboard

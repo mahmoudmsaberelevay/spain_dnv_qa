@@ -1,14 +1,25 @@
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, TrendingDown, DollarSign, Wallet, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Wallet, ArrowUpRight, ArrowDownRight, Plus, Minus, ArrowLeftRight, Users } from "lucide-react";
 import { useMemo } from "react";
+import { useLocation } from "wouter";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
 
+const CONSULTANTS = ["Mahmoud", "Ziad", "Kirolos", "Fouad"];
+const CONSULTANT_COLORS: Record<string, { bg: string; text: string; icon: string }> = {
+  Mahmoud: { bg: "bg-blue-50", text: "text-blue-700", icon: "bg-blue-100" },
+  Ziad: { bg: "bg-purple-50", text: "text-purple-700", icon: "bg-purple-100" },
+  Kirolos: { bg: "bg-amber-50", text: "text-amber-700", icon: "bg-amber-100" },
+  Fouad: { bg: "bg-emerald-50", text: "text-emerald-700", icon: "bg-emerald-100" },
+};
+
 export default function FinancialDashboard() {
+  const [, navigate] = useLocation();
   const { data: summary, isLoading } = trpc.financial.dashboard.summary.useQuery({ year: new Date().getFullYear() });
   const { data: accounts } = trpc.financial.accounts.list.useQuery();
   const { data: categories } = trpc.financial.categories.list.useQuery();
@@ -64,15 +75,46 @@ export default function FinancialDashboard() {
   const usdAccounts = accounts?.filter(a => a.currency === "USD" && Number(a.balance) !== 0) ?? [];
   const eurAccounts = accounts?.filter(a => a.currency === "EUR" && Number(a.balance) !== 0) ?? [];
 
+  // Consultant signing map
+  const signingMap = new Map<string, number>();
+  summary.consultantSigning?.forEach(s => signingMap.set(s.consultant, s.count));
+  const totalSignings = CONSULTANTS.reduce((sum, c) => sum + (signingMap.get(c) ?? 0), 0);
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold">Financial Dashboard</h1>
-        {roleData && (
-          <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium capitalize">
-            {roleData.role} Access
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {roleData && (
+            <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium capitalize">
+              {roleData.role} Access
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Quick Transaction Buttons */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <Button
+          onClick={() => navigate("/finance/income")}
+          className="bg-green-600 hover:bg-green-700 text-white shadow-sm"
+        >
+          <Plus className="h-4 w-4 mr-1.5" /> Income
+        </Button>
+        <Button
+          onClick={() => navigate("/finance/expenses")}
+          variant="destructive"
+          className="shadow-sm"
+        >
+          <Minus className="h-4 w-4 mr-1.5" /> Expense
+        </Button>
+        <Button
+          onClick={() => navigate("/finance/transfers")}
+          variant="outline"
+          className="border-blue-300 text-blue-700 hover:bg-blue-50 shadow-sm"
+        >
+          <ArrowLeftRight className="h-4 w-4 mr-1.5" /> Transfer
+        </Button>
       </div>
 
       {/* Yearly KPIs */}
@@ -114,6 +156,37 @@ export default function FinancialDashboard() {
           </Card>
         ))}
       </div>
+
+      {/* Consultant Yearly Signing */}
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-semibold">Consultant Yearly Signing ({new Date().getFullYear()})</CardTitle>
+            <span className="text-sm font-medium text-muted-foreground">Total: {totalSignings}</span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {CONSULTANTS.map((name) => {
+              const count = signingMap.get(name) ?? 0;
+              const colors = CONSULTANT_COLORS[name];
+              return (
+                <div key={name} className={`rounded-xl p-4 ${colors.bg} transition-all hover:scale-[1.02]`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`h-10 w-10 rounded-full ${colors.icon} flex items-center justify-center`}>
+                      <Users className={`h-5 w-5 ${colors.text}`} />
+                    </div>
+                    <div>
+                      <p className={`text-sm font-semibold ${colors.text}`}>{name}</p>
+                      <p className={`text-2xl font-bold ${colors.text}`}>{count}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Expense Categories */}
