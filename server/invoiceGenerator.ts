@@ -5,7 +5,7 @@ import { storagePut } from "./storage";
 
 // CDN assets
 const LOGO_CDN_URL =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/elevay_logo_final_86f0d878.png";
+  "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/bird_logo_trimmed_4fc28cf5.png";
 const SIGNATURE_CDN_URL =
   "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/signature_original_40ea0ddc.png";
 
@@ -119,29 +119,29 @@ function buildPdf(
     // ══════════════════════════════════════════════════════════════════════
     const logoBoxSize = 90;
 
-    // Grey square logo box
-    doc.rect(L, y, logoBoxSize, logoBoxSize).fill(greyBg);
-
-    // Logo image inside the box — add 4px padding on all sides so bird fits fully
+    // Bird logo — no grey box, just the bird image directly
     if (logoBuffer) {
       try {
-        const pad = 4;
-        doc.image(logoBuffer, L + pad, y + pad, { width: logoBoxSize - pad * 2, height: logoBoxSize - pad * 2 });
+        // Bird is taller than wide (100x179 px). Scale to fit in logoBoxSize height.
+        const birdH = logoBoxSize;
+        const birdW = Math.round(birdH * (100 / 179));
+        doc.image(logoBuffer, L, y, { width: birdW, height: birdH });
       } catch (e) {
         console.warn("[Receipt] Could not embed logo:", e);
       }
     }
 
     // "ELEVAY" bold large text — vertically centered with the logo box
-    // Box top = y, box bottom = y + logoBoxSize (90). Text height ~36pt ≈ 36px.
-    // Subtitle height ~10pt. Total block ≈ 36 + 8 + 10 = 54. Center offset = (90-54)/2 = 18
+    // Bird width at logoBoxSize height = round(90 * 100/179) ≈ 50px
+    const birdW = Math.round(logoBoxSize * (100 / 179));
+    const textX = L + birdW + 16;
     const elevayTextY = y + Math.round((logoBoxSize - 54) / 2);
     doc.fontSize(36).fillColor(greyBg).font("Helvetica-Bold")
-       .text("ELEVAY", L + logoBoxSize + 14, elevayTextY, { lineBreak: false });
+       .text("ELEVAY", textX, elevayTextY, { lineBreak: false });
 
     // "EXPANDING YOUR FREEDOM" subtitle
     doc.fontSize(10).fillColor(midGrey).font("Helvetica")
-       .text("EXPANDING YOUR FREEDOM", L + logoBoxSize + 14, elevayTextY + 44, { lineBreak: false });
+       .text("EXPANDING YOUR FREEDOM", textX, elevayTextY + 44, { lineBreak: false });
 
     // "Reciept" title on the right (italic-style, light grey)
     doc.fontSize(32).fillColor(lightGrey).font("Helvetica")
@@ -202,10 +202,13 @@ function buildPdf(
     doc.rect(L, y, W, serviceRowH).lineWidth(0.5).strokeColor("#CCCCCC").stroke();
     doc.fontSize(9).fillColor(darkText).font("Helvetica")
        .text("Service Payment - Spain Digital Nomad Residency", L + 6, y + 6, { width: col1W - 12, lineBreak: false });
+    // Add space between € sign and number in description table
+    const eurAmtFormatted = formatCurrency(data.amountEur, "EUR").replace(/^(€|EUR\s*)/, "€ ");
+    const egpAmtFormatted = formatCurrency(data.amountEgp, "EGP").replace(/^(EGP\s*)/, "EGP ");
     doc.fontSize(9).fillColor(darkText).font("Helvetica-Bold")
-       .text(formatCurrency(data.amountEur, "EUR"), col2X, y + 6, { width: col2W, align: "center", lineBreak: false });
+       .text(eurAmtFormatted, col2X, y + 6, { width: col2W, align: "center", lineBreak: false });
     doc.fontSize(9).fillColor(darkText).font("Helvetica-Bold")
-       .text(formatCurrency(data.amountEgp, "EGP"), col3X, y + 6, { width: col3W, align: "center", lineBreak: false });
+       .text(egpAmtFormatted, col3X, y + 6, { width: col3W, align: "center", lineBreak: false });
     y += serviceRowH;
 
     // Note row (spans full width)
