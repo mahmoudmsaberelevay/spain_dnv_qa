@@ -3,14 +3,16 @@ import https from "https";
 import http from "http";
 import { storagePut } from "./storage";
 
-// Full signature (ELEVAY stamp + handwritten) — tagline removed
+// CDN assets
+const LOGO_CDN_URL =
+  "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/elevay_logo_final_86f0d878.png";
 const SIGNATURE_CDN_URL =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/signature_cropped_b08d8a31.png";
+  "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/signature_original_40ea0ddc.png";
 
 export interface ReceiptData {
   invoiceCode: string;
   contractCode: string;
-  clientName: string;       // invoicing name (English)
+  clientName: string;
   clientMobile?: string;
   amountEur: number;
   amountEgp: number;
@@ -53,16 +55,16 @@ function downloadImage(url: string): Promise<Buffer> {
   });
 }
 
-/** Generate a PDF receipt using PDFKit (no Chromium required) */
+/** Generate a PDF receipt using PDFKit and upload to S3 */
 export async function generateAndUploadInvoicePdf(data: ReceiptData): Promise<string> {
-  let signatureBuffer: Buffer | null = null;
-  try {
-    signatureBuffer = await downloadImage(SIGNATURE_CDN_URL);
-  } catch (e) {
-    console.warn("[Receipt] Could not download signature image:", e);
-  }
+  const [logoBuffer, signatureBuffer] = await Promise.allSettled([
+    downloadImage(LOGO_CDN_URL),
+    downloadImage(SIGNATURE_CDN_URL),
+  ]).then((results) =>
+    results.map((r) => (r.status === "fulfilled" ? r.value : null))
+  );
 
-  const pdfBuffer = await buildPdf(data, signatureBuffer);
+  const pdfBuffer = await buildPdf(data, logoBuffer as Buffer | null, signatureBuffer as Buffer | null);
   const filename = `receipts/${data.invoiceCode}_${data.clientName.replace(/\s+/g, "_")}_${Date.now()}.pdf`;
   const { url } = await storagePut(filename, pdfBuffer, "application/pdf");
   return url;
@@ -70,18 +72,22 @@ export async function generateAndUploadInvoicePdf(data: ReceiptData): Promise<st
 
 /** Generate the PDF buffer only (without uploading) — used for Google Drive sync */
 export async function generateInvoicePdfBuffer(data: ReceiptData): Promise<Buffer> {
-  let signatureBuffer: Buffer | null = null;
-  try {
-    signatureBuffer = await downloadImage(SIGNATURE_CDN_URL);
-  } catch (e) {
-    console.warn("[Receipt] Could not download signature image:", e);
-  }
-  return buildPdf(data, signatureBuffer);
+  const [logoBuffer, signatureBuffer] = await Promise.allSettled([
+    downloadImage(LOGO_CDN_URL),
+    downloadImage(SIGNATURE_CDN_URL),
+  ]).then((results) =>
+    results.map((r) => (r.status === "fulfilled" ? r.value : null))
+  );
+  return buildPdf(data, logoBuffer as Buffer | null, signatureBuffer as Buffer | null);
 }
 
 export { downloadImage };
 
-function buildPdf(data: ReceiptData, signatureBuffer: Buffer | null): Promise<Buffer> {
+function buildPdf(
+  data: ReceiptData,
+  logoBuffer: Buffer | null,
+  signatureBuffer: Buffer | null
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 0 });
     const chunks: Buffer[] = [];
@@ -90,110 +96,138 @@ function buildPdf(data: ReceiptData, signatureBuffer: Buffer | null): Promise<Bu
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    // ── Colour Palette (no red — all text matches row context) ──────────────
-    const headerGrey  = "#5E6A71";   // ELEVAY grey — header background
-    const white       = "#FFFFFF";   // header text
-    const darkText    = "#1A1A1A";   // body labels, names, dates, amounts
-    const midGrey     = "#5E6A71";   // secondary labels (exchange rate, sub-text)
-    const rowGrey     = "#D0D5D8";   // table header row background
-    const summaryBg   = "#E8EBEC";   // summary rows background
+    // ── Color palette matching template ─────────────────────────────────
+    const greyBg    = "#7A8C95";   // logo box background + table header bg
+    const lightGrey = "#B0BEC5";   // "Reciept" title color
+    const darkText  = "#1A1A1A";   // body text
+    const midGrey   = "#6B7B84";   // secondary text, exchange rate
+    const tableHdr  = "#7A8C95";   // description table header bg
+    const summaryHdr = "#5E6A71";  // summary table left-column bg
+    const summaryVal = "#8A9BA3";  // summary table right-column bg
+    const white     = "#FFFFFF";
 
-    // Page geometry
-    const L = 50;                    // left margin
-    const R = 545;                   // right edge
-    const W = R - L;                 // usable width = 495
+    // Page geometry (A4 = 595 x 842 pts)
+    const PW = 595;
+    const L  = 50;   // left margin
+    const R  = 545;  // right margin
+    const W  = R - L; // 495 usable width
 
-    let y = 40; // current vertical cursor
-
-    // ══════════════════════════════════════════════════════════════════════
-    // HEADER BOX
-    // ══════════════════════════════════════════════════════════════════════
-    const headerH = 80;
-    doc.rect(L, y, W, headerH).fill(headerGrey);
-
-    // Left: ELEVAY only (large)
-    doc.fontSize(28).fillColor(white).font("Helvetica-Bold")
-       .text("ELEVAY", L + 16, y + 22, { lineBreak: false });
-
-    // Right: RECEIPT label (white) + receipt number (white)
-    doc.fontSize(18).fillColor(white).font("Helvetica-Bold")
-       .text("RECEIPT", R - 220, y + 14, { width: 210, align: "right", lineBreak: false });
-    doc.fontSize(11).fillColor(white).font("Helvetica-Bold")
-       .text(data.invoiceCode, R - 220, y + 42, { width: 210, align: "right", lineBreak: false });
-
-    y += headerH + 20;
+    let y = 40;
 
     // ══════════════════════════════════════════════════════════════════════
-    // BILL TO + DATE
+    // HEADER: Logo box (left) + "Reciept" title (right)
     // ══════════════════════════════════════════════════════════════════════
-    // Left: BILL TO label + client name (dark) + mobile (dark)
-    doc.fontSize(11).fillColor(darkText).font("Helvetica-Bold")
-       .text("BILL TO:", L, y, { lineBreak: false });
-    doc.fontSize(12).fillColor(darkText).font("Helvetica-Bold")
-       .text(data.clientName.toUpperCase(), L, y + 18, { lineBreak: false });
-    if (data.clientMobile) {
-      doc.fontSize(10).fillColor(darkText).font("Helvetica")
-         .text(data.clientMobile, L, y + 36, { lineBreak: false });
+    const logoBoxSize = 90;
+
+    // Grey square logo box
+    doc.rect(L, y, logoBoxSize, logoBoxSize).fill(greyBg);
+
+    // Logo image inside the box
+    if (logoBuffer) {
+      try {
+        doc.image(logoBuffer, L, y, { width: logoBoxSize, height: logoBoxSize });
+      } catch (e) {
+        console.warn("[Receipt] Could not embed logo:", e);
+      }
     }
 
-    // Right: Date label + date value (dark)
-    doc.fontSize(11).fillColor(darkText).font("Helvetica-Bold")
-       .text("Date", R - 160, y, { width: 160, align: "right", lineBreak: false });
-    doc.fontSize(11).fillColor(darkText).font("Helvetica")
-       .text(formatDate(data.createdAt), R - 160, y + 18, { width: 160, align: "right", lineBreak: false });
+    // "ELEVAY" bold large text next to logo
+    doc.fontSize(36).fillColor(greyBg).font("Helvetica-Bold")
+       .text("ELEVAY", L + logoBoxSize + 14, y + 10, { lineBreak: false });
 
-    y += data.clientMobile ? 60 : 44;
+    // "EXPANDING YOUR FREEDOM" subtitle
+    doc.fontSize(10).fillColor(midGrey).font("Helvetica")
+       .text("EXPANDING YOUR FREEDOM", L + logoBoxSize + 14, y + 54, { lineBreak: false });
 
-    // ── Horizontal divider ─────────────────────────────────────────────────
-    doc.moveTo(L, y).lineTo(R, y).lineWidth(1.5).strokeColor(headerGrey).stroke();
-    y += 16;
+    // "Reciept" title on the right (italic-style, light grey)
+    doc.fontSize(32).fillColor(lightGrey).font("Helvetica")
+       .text("Reciept", R - 160, y + 20, { width: 160, align: "right", lineBreak: false });
+
+    y += logoBoxSize + 30;
+
+    // ══════════════════════════════════════════════════════════════════════
+    // CLIENT INFO + DATE / INVOICE #
+    // ══════════════════════════════════════════════════════════════════════
+    // Left: "To:" + client name + phone
+    doc.fontSize(10).fillColor(darkText).font("Helvetica-Bold")
+       .text("To:", L, y, { continued: true })
+       .font("Helvetica")
+       .text(`  ${data.clientName}`, { lineBreak: false });
+    if (data.clientMobile) {
+      doc.fontSize(10).fillColor(darkText).font("Helvetica")
+         .text(data.clientMobile, L + 22, y + 14, { lineBreak: false });
+    }
+
+    // Right: Date + Invoice #
+    const rightColX = PW / 2 + 20;
+    const labelW = 65;
+    const valX = rightColX + labelW;
+
+    doc.fontSize(10).fillColor(darkText).font("Helvetica-Bold")
+       .text("Date:", rightColX, y, { width: labelW, lineBreak: false });
+    doc.fontSize(10).fillColor(darkText).font("Helvetica")
+       .text(formatDate(data.createdAt), valX, y, { lineBreak: false });
+
+    doc.fontSize(10).fillColor(darkText).font("Helvetica-Bold")
+       .text("Invoice #:", rightColX, y + 14, { width: labelW, lineBreak: false });
+    doc.fontSize(10).fillColor(darkText).font("Helvetica")
+       .text(data.invoiceCode, valX, y + 14, { lineBreak: false });
+
+    y += 50;
 
     // ══════════════════════════════════════════════════════════════════════
     // DESCRIPTION TABLE
     // ══════════════════════════════════════════════════════════════════════
-    const colEurX  = R - 170;
-    const colEgpX  = R - 80;
-    const colW     = 80;
+    const col1W = W * 0.55;   // Description column
+    const col2W = W * 0.225;  // EUROS column
+    const col3W = W * 0.225;  // EGP column
+    const col2X = L + col1W;
+    const col3X = col2X + col2W;
 
-    // Table header row (grey bg, white text)
-    const thH = 24;
-    doc.rect(L, y, W, thH).fill(rowGrey);
-    doc.fontSize(10).fillColor(white).font("Helvetica-Bold");
-    doc.text("DESCRIPTION", L + 10, y + 7, { lineBreak: false });
-    doc.text("EUR", colEurX, y + 7, { width: colW, align: "center", lineBreak: false });
-    doc.text("EGP", colEgpX, y + 7, { width: colW, align: "center", lineBreak: false });
+    // Table header row
+    const thH = 22;
+    doc.rect(L, y, W, thH).fill(tableHdr);
+    doc.fontSize(9).fillColor(white).font("Helvetica-Bold");
+    doc.text("DESCRIPTION", L + 6, y + 7, { width: col1W - 6, lineBreak: false });
+    doc.text("EUROS", col2X, y + 7, { width: col2W, align: "center", lineBreak: false });
+    doc.text("EGP", col3X, y + 7, { width: col3W, align: "center", lineBreak: false });
     y += thH;
 
-    // Table data row (white bg, values in red)
-    const descText = `Spanish Residency Service — Digital Nomad Program${data.notes ? `\n${data.notes}` : ""}`;
-    const rowH = 56;
-    doc.rect(L, y, W, rowH).fill(white);
-    // thin border
-    doc.rect(L, y, W, rowH).lineWidth(0.5).strokeColor("#CCCCCC").stroke();
-
-    doc.fontSize(11).fillColor(darkText).font("Helvetica-Bold")
-       .text("Service Payment", L + 10, y + 8, { lineBreak: false });
+    // Table data row — service line
+    const serviceRowH = 20;
+    doc.rect(L, y, W, serviceRowH).lineWidth(0.5).strokeColor("#CCCCCC").stroke();
     doc.fontSize(9).fillColor(darkText).font("Helvetica")
-       .text(descText, L + 10, y + 24, { width: colEurX - L - 20 });
-
-    // EUR/EGP amounts: font size reduced by 2 (was 11 → now 9)
+       .text("Service Payment - Spain Digital Nomad Residency", L + 6, y + 6, { width: col1W - 12, lineBreak: false });
     doc.fontSize(9).fillColor(darkText).font("Helvetica-Bold")
-       .text(formatCurrency(data.amountEur, "EUR"), colEurX, y + 20, { width: colW, align: "center", lineBreak: false });
+       .text(formatCurrency(data.amountEur, "EUR"), col2X, y + 6, { width: col2W, align: "center", lineBreak: false });
     doc.fontSize(9).fillColor(darkText).font("Helvetica-Bold")
-       .text(formatCurrency(data.amountEgp, "EGP"), colEgpX, y + 20, { width: colW, align: "center", lineBreak: false });
+       .text(formatCurrency(data.amountEgp, "EGP"), col3X, y + 6, { width: col3W, align: "center", lineBreak: false });
+    y += serviceRowH;
 
-    y += rowH + 14;
+    // Note row (spans full width)
+    const noteText = data.notes || "";
+    const noteRowH = 22;
+    doc.rect(L, y, W, noteRowH).lineWidth(0.5).strokeColor("#CCCCCC").stroke();
+    doc.fontSize(9).fillColor(darkText).font("Helvetica")
+       .text(noteText, L + 6, y + 7, { width: W - 12, lineBreak: false });
+    y += noteRowH + 14;
 
-    // ── Exchange Rate line (grey text) ─────────────────────────────────────
-    doc.fontSize(10).fillColor(midGrey).font("Helvetica")
+    // ══════════════════════════════════════════════════════════════════════
+    // EXCHANGE RATE LINE
+    // ══════════════════════════════════════════════════════════════════════
+    doc.moveTo(L, y).lineTo(R, y).lineWidth(0.5).strokeColor("#CCCCCC").stroke();
+    y += 6;
+    doc.fontSize(9).fillColor(midGrey).font("Helvetica")
        .text(
          `Exchange Rate: 1 EUR = ${data.exchangeRate.toFixed(4)} EGP (as of ${formatDate(data.createdAt)})`,
          L, y, { lineBreak: false }
        );
-    y += 28;
+    y += 20;
+    doc.moveTo(L, y).lineTo(R, y).lineWidth(0.5).strokeColor("#CCCCCC").stroke();
+    y += 16;
 
     // ══════════════════════════════════════════════════════════════════════
-    // SUMMARY TABLE
+    // SUMMARY TABLE (2 columns: label | value)
     // ══════════════════════════════════════════════════════════════════════
     const summaryRows = [
       { label: "TOTAL CONTRACT VALUE", value: formatCurrency(data.contractValue, "EUR") },
@@ -201,14 +235,20 @@ function buildPdf(data: ReceiptData, signatureBuffer: Buffer | null): Promise<Bu
       { label: "REMAINING BALANCE",    value: formatCurrency(data.remainingBalance, "EUR") },
     ];
 
+    const sLabelW = W * 0.55;
+    const sValW   = W * 0.45;
+    const sValX   = L + sLabelW;
+
     for (const row of summaryRows) {
-      const rH = 26;
-      doc.rect(L, y, W, rH).fill(summaryBg);
-      doc.rect(L, y, W, rH).lineWidth(0.5).strokeColor("#BBBBBB").stroke();
-      doc.fontSize(10).fillColor(darkText).font("Helvetica-Bold")
-         .text(row.label, L + 10, y + 8, { lineBreak: false });
-      doc.fontSize(10).fillColor(darkText).font("Helvetica-Bold")
-         .text(row.value, R - 160, y + 8, { width: 150, align: "right", lineBreak: false });
+      const rH = 24;
+      // Left cell (dark grey bg, white text)
+      doc.rect(L, y, sLabelW, rH).fill(summaryHdr);
+      doc.fontSize(9).fillColor(white).font("Helvetica-Bold")
+         .text(row.label, L + 6, y + 8, { width: sLabelW - 12, lineBreak: false });
+      // Right cell (medium grey bg, white text)
+      doc.rect(sValX, y, sValW, rH).fill(summaryVal);
+      doc.fontSize(9).fillColor(white).font("Helvetica-Bold")
+         .text(row.value, sValX, y + 8, { width: sValW - 6, align: "right", lineBreak: false });
       y += rH;
     }
 
@@ -217,36 +257,35 @@ function buildPdf(data: ReceiptData, signatureBuffer: Buffer | null): Promise<Bu
     // ══════════════════════════════════════════════════════════════════════
     // AUTHORIZED SIGNATURE
     // ══════════════════════════════════════════════════════════════════════
-    doc.fontSize(11).fillColor(darkText).font("Helvetica")
+    doc.moveTo(L, y).lineTo(R, y).lineWidth(0.5).strokeColor("#CCCCCC").stroke();
+    y += 10;
+    doc.fontSize(10).fillColor(darkText).font("Helvetica")
        .text("Authorized Signature", L, y, { lineBreak: false });
-    y += 16;
+    y += 14;
 
     if (signatureBuffer) {
       try {
-        // Render the full signature (stamp + handwriting) — height increased by 50% (78 → 117)
-        doc.image(signatureBuffer, L, y, { width: 220, height: 117 });
-        y += 130;
+        doc.image(signatureBuffer, L, y, { width: 200, height: 80 });
+        y += 90;
       } catch (e) {
-        console.warn("[Receipt] Could not embed signature image:", e);
+        console.warn("[Receipt] Could not embed signature:", e);
         y += 20;
       }
     }
 
+    doc.moveTo(L, y).lineTo(R, y).lineWidth(0.5).strokeColor("#CCCCCC").stroke();
+    y += 10;
+
     // ══════════════════════════════════════════════════════════════════════
-    // FOOTER — centered 2-line address text + horizontal line at very bottom
+    // FOOTER — centered
     // ══════════════════════════════════════════════════════════════════════
     const pageH = doc.page.height; // 841.89 for A4
-
-    // Footer text: 2 lines, centered, font size 8
-    const footerLine1 = "ELEVAY \u2014 Residency by Investment | Cairo, Egypt & Dubai, UAE";
-    const footerLine2 = "Tel: +20 016222280 | Building 3, 2nd Floor, Office 2D2, Beverly Hills, Al Sheikh Zayed, Giza";
+    doc.fontSize(9).fillColor(darkText).font("Helvetica-Bold")
+       .text("ELEVAY", L, pageH - 72, { width: W, align: "center", lineBreak: false });
     doc.fontSize(8).fillColor(midGrey).font("Helvetica")
-       .text(footerLine1, L, pageH - 62, { width: W, align: "center", lineBreak: false });
+       .text("Citizenship &Residency by Investment | Cairo, Egypt & Dubai, UAE", L, pageH - 58, { width: W, align: "center", lineBreak: false });
     doc.fontSize(8).fillColor(midGrey).font("Helvetica")
-       .text(footerLine2, L, pageH - 52, { width: W, align: "center", lineBreak: false });
-
-    // Bottom horizontal line
-    doc.moveTo(L, pageH - 40).lineTo(R, pageH - 40).lineWidth(1.5).strokeColor(headerGrey).stroke();
+       .text("Tel: +20 016222280 | Building 3, 2nd Floor, Office 2D2, Beverly Hills, Al Sheikh Zayed, Giza", L, pageH - 46, { width: W, align: "center", lineBreak: false });
 
     doc.end();
   });
