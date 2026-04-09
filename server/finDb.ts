@@ -190,13 +190,13 @@ export async function getFinancialSummary(year: number) {
     lte(finTransactions.transactionDate, endOfMonth),
   ));
 
-  // Total EGP balance (only main EGP bank/cash accounts — excludes credit, imprest, rent)
-  const egpMainAccounts = ['Cash EGP', 'ARAB African EGP', 'CIB EGP', 'AIB EGP'];
+  // Total EGP balance (all EGP accounts EXCEPT Imprest and Rent Credit)
+  const egpExcludedAccounts = ['Imprest Account', 'Rent Credit'];
   const [egpBalance] = await db.select({
     total: sql<string>`COALESCE(SUM(${finAccounts.balance}), 0)`,
   }).from(finAccounts).where(and(
     eq(finAccounts.currency, "EGP"),
-    sql`${finAccounts.name} IN (${sql.join(egpMainAccounts.map(n => sql`${n}`), sql`, `)})`
+    sql`${finAccounts.name} NOT IN (${sql.join(egpExcludedAccounts.map(n => sql`${n}`), sql`, `)})`
   ));
 
   // Expense by category (yearly)
@@ -231,15 +231,11 @@ export async function getFinancialSummary(year: number) {
   )).groupBy(finTransactions.employeeId);
 
   // Monthly profit breakdown (yearly)
-  const monthlyProfit = await db.select({
-    month: sql<string>`MONTH(${finTransactions.transactionDate})`,
-    type: finTransactions.type,
-    total: sql<string>`SUM(${finTransactions.amount})`,
-  }).from(finTransactions).where(and(
-    sql`${finTransactions.type} IN ('income', 'expense')`,
-    gte(finTransactions.transactionDate, startOfYear),
-    lte(finTransactions.transactionDate, endOfYear),
-  )).groupBy(sql`MONTH(${finTransactions.transactionDate})`, finTransactions.type);
+  // Use raw SQL to avoid TiDB only_full_group_by issues with MONTH() function
+  const [monthlyProfitRows] = await db.execute(
+    sql`SELECT MONTH(${finTransactions.transactionDate}) AS month, ${finTransactions.type} AS type, SUM(${finTransactions.amount}) AS total FROM ${finTransactions} WHERE ${finTransactions.type} IN ('income', 'expense') AND ${finTransactions.transactionDate} >= ${startOfYear} AND ${finTransactions.transactionDate} <= ${endOfYear} GROUP BY 1, 2`
+  );
+  const monthlyProfit = (monthlyProfitRows as unknown as any[]).map(r => ({ month: String(r.month), type: r.type as string, total: String(r.total) }));
 
   return {
     yearlyIncome: Number(yearlyIncome.total),

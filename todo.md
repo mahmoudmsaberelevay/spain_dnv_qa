@@ -176,3 +176,7 @@
 - [x] Add salary column to employees table and replace all employees from CSV (28 employees with salaries)
 - [x] Fix EGP total balance: only sum Cash EGP + Arab African EGP + CIB EGP + AIB EGP (exclude Rent Credit, Imprest, etc.)
 - [x] Fix Ziad Credit currency from EGP to EUR
+
+## Change Requests (Round 13)
+- [x] Fix EGP total to include ALL EGP accounts except Imprest Account and Rent Credit (was only summing 4 accounts, now sums 10)
+- [x] Fix TiDB MONTH() GROUP BY compatibility issue that was crashing the Financial Dashboard
