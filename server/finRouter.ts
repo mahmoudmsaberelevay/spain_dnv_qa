@@ -10,6 +10,7 @@ import {
   listTransactions, createTransaction, getAccountStatement,
   getFinancialSummary,
 } from "./finDb";
+import { notifyFinancialTransaction } from "./emailService";
 
 // ─── Access Control ──────────────────────────────────────────────────────────
 const ADMIN_EMAILS = [
@@ -182,7 +183,7 @@ const transactionsRouter = router({
       const balanceBefore = Number(account.balance);
       const balanceAfter = balanceBefore + input.amount;
       await updateAccountBalance(input.accountId, input.amount);
-      return createTransaction({
+      const result = await createTransaction({
         type: "income",
         description: input.description,
         accountId: input.accountId,
@@ -195,6 +196,9 @@ const transactionsRouter = router({
         balanceAfter: balanceAfter.toString(),
         createdBy: ctx.user?.email ?? null,
       });
+      // Fire-and-forget email notification
+      notifyFinancialTransaction("income", input.description, input.amount, account.currency, account.name).catch(() => {});
+      return result;
     }),
 
   createExpense: finWriteProcedure
@@ -214,7 +218,7 @@ const transactionsRouter = router({
       const balanceBefore = Number(account.balance);
       const balanceAfter = balanceBefore - input.amount;
       await updateAccountBalance(input.accountId, -input.amount);
-      return createTransaction({
+      const result = await createTransaction({
         type: "expense",
         description: input.description,
         accountId: input.accountId,
@@ -228,6 +232,9 @@ const transactionsRouter = router({
         balanceAfter: balanceAfter.toString(),
         createdBy: ctx.user?.email ?? null,
       });
+      // Fire-and-forget email notification
+      notifyFinancialTransaction("expense", input.description, input.amount, account.currency, account.name).catch(() => {});
+      return result;
     }),
 
   createTransfer: finWriteProcedure
@@ -253,7 +260,7 @@ const transactionsRouter = router({
       await updateAccountBalance(input.fromAccountId, -input.amount);
       await updateAccountBalance(input.toAccountId, receivedAmount);
 
-      return createTransaction({
+      const result = await createTransaction({
         type: "transfer",
         description: input.description || `Transfer: ${fromAcc.name} → ${toAcc.name}`,
         fromAccountId: input.fromAccountId,
@@ -268,6 +275,9 @@ const transactionsRouter = router({
         balanceAfter2: balanceAfter2.toString(),
         createdBy: ctx.user?.email ?? null,
       });
+      // Fire-and-forget email notification
+      notifyFinancialTransaction("transfer", input.description || `Transfer: ${fromAcc.name} → ${toAcc.name}`, input.amount, fromAcc.currency, fromAcc.name, undefined, toAcc.name).catch(() => {});
+      return result;
     }),
 });
 

@@ -41,6 +41,7 @@ import {
   TrendingUp,
   UserCheck,
   Layers,
+  Upload,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -93,6 +94,7 @@ const modules = [
       { icon: UserCheck, label: "Employees", path: "/finance/employees" },
       { icon: Layers, label: "Categories", path: "/finance/categories" },
       { icon: Layers, label: "Commissions", path: "/finance/commissions" },
+      { icon: Upload, label: "Bulk Upload", path: "/finance/bulk-upload" },
     ],
   },
 ];

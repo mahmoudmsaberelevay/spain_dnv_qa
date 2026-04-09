@@ -242,3 +242,103 @@ export async function sendDocReminderToAssignedTeam(
     console.log(`[EmailService] (no SMTP) Doc reminder fallback for: ${clientName}`);
   }
 }
+
+// ─── Financial Transaction Notifications ────────────────────────────────────
+
+const FIN_NOTIFICATION_RECIPIENTS = [
+  "Mahmoud.saber@elevay.com",
+  "ziad.elshurafa@elevay.com",
+];
+
+/**
+ * Send a financial transaction notification to Mahmoud & Ziad.
+ */
+export async function notifyFinancialTransaction(
+  type: "income" | "expense" | "transfer",
+  description: string,
+  amount: number,
+  currency: string,
+  accountName: string,
+  categoryName?: string,
+  toAccountName?: string,
+): Promise<void> {
+  try {
+    const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+    const plain = `New ${typeLabel} Transaction\n\nDescription: ${description}\nAmount: ${currency} ${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}\nAccount: ${accountName}${categoryName ? `\nCategory: ${categoryName}` : ""}${toAccountName ? `\nTo Account: ${toAccountName}` : ""}`;
+    const html = `
+      <table style="width:100%; border-collapse:collapse; font-size:14px;">
+        <tr><td style="padding:6px 0; color:#8A9499;">Type</td><td style="padding:6px 0; color:#2C3A40; font-weight:bold;">${typeLabel}</td></tr>
+        <tr><td style="padding:6px 0; color:#8A9499;">Description</td><td style="padding:6px 0; color:#2C3A40;">${description}</td></tr>
+        <tr><td style="padding:6px 0; color:#8A9499;">Amount</td><td style="padding:6px 0; color:${type === "income" ? "#27AE60" : "#C0392B"}; font-weight:bold;">${currency} ${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td></tr>
+        <tr><td style="padding:6px 0; color:#8A9499;">Account</td><td style="padding:6px 0; color:#2C3A40;">${accountName}</td></tr>
+        ${categoryName ? `<tr><td style="padding:6px 0; color:#8A9499;">Category</td><td style="padding:6px 0; color:#2C3A40;">${categoryName}</td></tr>` : ""}
+        ${toAccountName ? `<tr><td style="padding:6px 0; color:#8A9499;">To Account</td><td style="padding:6px 0; color:#2C3A40;">${toAccountName}</td></tr>` : ""}
+      </table>`;
+
+    const transporter = createTransporter();
+    if (transporter) {
+      const gmailUser = process.env.GMAIL_USER!;
+      await transporter.sendMail({
+        from: `"ELEVAY Finance" <${gmailUser}>`,
+        to: FIN_NOTIFICATION_RECIPIENTS.join(", "),
+        subject: `[ELEVAY Finance] ${typeLabel}: ${description}`,
+        html: wrapInEmailTemplate(`${typeLabel} Transaction`, html),
+        text: plain,
+      });
+      console.log(`[EmailService] Financial notification sent: ${typeLabel} - ${description}`);
+    } else {
+      await notifyOwner({ title: `${typeLabel}: ${description}`, content: plain }).catch(() => {});
+      console.log(`[EmailService] (no SMTP) Financial notification fallback: ${description}`);
+    }
+  } catch (error) {
+    console.error("[EmailService] Failed to send financial notification:", error);
+  }
+}
+
+/**
+ * Send monthly financial summary email to Mahmoud & Ziad.
+ */
+export async function sendMonthlyFinancialSummary(
+  month: string,
+  year: number,
+  totalIncome: number,
+  totalExpense: number,
+  profit: number,
+  topExpenses: { category: string; amount: number }[],
+): Promise<void> {
+  try {
+    const plain = `Monthly Financial Summary - ${month} ${year}\n\nTotal Income: EGP ${totalIncome.toLocaleString("en-US", { minimumFractionDigits: 2 })}\nTotal Expense: EGP ${totalExpense.toLocaleString("en-US", { minimumFractionDigits: 2 })}\nProfit: EGP ${profit.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+    const topExpenseRows = topExpenses.map(e =>
+      `<tr><td style="padding:4px 8px; border-bottom:1px solid #eee;">${e.category}</td><td style="padding:4px 8px; border-bottom:1px solid #eee; text-align:right; color:#C0392B;">EGP ${e.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td></tr>`
+    ).join("");
+    const html = `
+      <table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:16px;">
+        <tr><td style="padding:8px 0; color:#8A9499;">Total Income</td><td style="padding:8px 0; color:#27AE60; font-weight:bold; font-size:16px;">EGP ${totalIncome.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td></tr>
+        <tr><td style="padding:8px 0; color:#8A9499;">Total Expense</td><td style="padding:8px 0; color:#C0392B; font-weight:bold; font-size:16px;">EGP ${totalExpense.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td></tr>
+        <tr><td style="padding:8px 0; color:#8A9499;">Profit</td><td style="padding:8px 0; color:${profit >= 0 ? "#27AE60" : "#C0392B"}; font-weight:bold; font-size:16px;">EGP ${profit.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td></tr>
+      </table>
+      ${topExpenses.length > 0 ? `
+        <h3 style="color:#2C3A40; font-size:14px; margin:16px 0 8px;">Top Expense Categories</h3>
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+          <tr style="background:#f5f5f5;"><th style="padding:6px 8px; text-align:left;">Category</th><th style="padding:6px 8px; text-align:right;">Amount</th></tr>
+          ${topExpenseRows}
+        </table>` : ""}`;
+
+    const transporter = createTransporter();
+    if (transporter) {
+      const gmailUser = process.env.GMAIL_USER!;
+      await transporter.sendMail({
+        from: `"ELEVAY Finance" <${gmailUser}>`,
+        to: FIN_NOTIFICATION_RECIPIENTS.join(", "),
+        subject: `[ELEVAY Finance] Monthly Summary - ${month} ${year}`,
+        html: wrapInEmailTemplate(`Monthly Financial Summary - ${month} ${year}`, html),
+        text: plain,
+      });
+      console.log(`[EmailService] Monthly summary sent for ${month} ${year}`);
+    } else {
+      await notifyOwner({ title: `Monthly Summary - ${month} ${year}`, content: plain }).catch(() => {});
+    }
+  } catch (error) {
+    console.error("[EmailService] Failed to send monthly summary:", error);
+  }
+}

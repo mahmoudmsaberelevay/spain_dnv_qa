@@ -34,6 +34,7 @@ import FinReports from "./pages/FinReports";
 import FinEmployees from "./pages/FinEmployees";
 import FinCategories from "./pages/FinCategories";
 import FinCommissions from "./pages/FinCommissions";
+import FinBulkUpload from "./pages/FinBulkUpload";
 
 function Router() {
   return (
@@ -150,6 +151,11 @@ function Router() {
       <Route path="/finance/commissions">
         <DashboardLayout>
           <FinCommissions />
+        </DashboardLayout>
+      </Route>
+      <Route path="/finance/bulk-upload">
+        <DashboardLayout>
+          <FinBulkUpload />
         </DashboardLayout>
       </Route>
 
