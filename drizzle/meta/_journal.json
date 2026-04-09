@@ -50,6 +50,13 @@
       "when": 1775727613729,
       "tag": "0006_pink_prism",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1775745394202,
+      "tag": "0007_spotty_grandmaster",
+      "breakpoints": true
     }
   ]
 }

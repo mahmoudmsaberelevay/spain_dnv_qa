@@ -215,3 +215,92 @@ export const clientDocuments = mysqlTable("clientDocuments", {
 });
 export type ClientDocument = typeof clientDocuments.$inferSelect;
 export type InsertClientDocument = typeof clientDocuments.$inferInsert;
+
+// ─── Financial Module ────────────────────────────────────────────────────────
+
+export const finAccounts = mysqlTable("finAccounts", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  currency: varchar("currency", { length: 10 }).default("EGP").notNull(),
+  balance: decimal("balance", { precision: 14, scale: 2 }).default("0").notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type FinAccount = typeof finAccounts.$inferSelect;
+export type InsertFinAccount = typeof finAccounts.$inferInsert;
+
+export const finCategories = mysqlTable("finCategories", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: mysqlEnum("type", ["income", "expense"]).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type FinCategory = typeof finCategories.$inferSelect;
+export type InsertFinCategory = typeof finCategories.$inferInsert;
+
+export const finEmployees = mysqlTable("finEmployees", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  role: varchar("role", { length: 128 }),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type FinEmployee = typeof finEmployees.$inferSelect;
+export type InsertFinEmployee = typeof finEmployees.$inferInsert;
+
+export const finClients = mysqlTable("finClients", {
+  id: int("id").autoincrement().primaryKey(),
+  contractId: int("contractId"),
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 64 }),
+  contractValue: decimal("contractValue", { precision: 12, scale: 2 }),
+  familyMembers: int("familyMembers"),
+  consultant: varchar("consultant", { length: 128 }),
+  stage: mysqlEnum("stage", ["not_yet", "started"]).default("not_yet").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type FinClient = typeof finClients.$inferSelect;
+export type InsertFinClient = typeof finClients.$inferInsert;
+
+export const finCommissions = mysqlTable("finCommissions", {
+  id: int("id").autoincrement().primaryKey(),
+  finClientId: int("finClientId").notNull(),
+  clientName: varchar("clientName", { length: 255 }).notNull(),
+  consultant: varchar("consultant", { length: 128 }),
+  contractValue: decimal("contractValue", { precision: 12, scale: 2 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type FinCommission = typeof finCommissions.$inferSelect;
+export type InsertFinCommission = typeof finCommissions.$inferInsert;
+
+export const finTransactions = mysqlTable("finTransactions", {
+  id: int("id").autoincrement().primaryKey(),
+  type: mysqlEnum("type", ["income", "expense", "transfer"]).notNull(),
+  description: varchar("description", { length: 500 }).notNull(),
+  // For income/expense
+  accountId: int("accountId"),
+  categoryId: int("categoryId"),
+  // For transfer
+  fromAccountId: int("fromAccountId"),
+  toAccountId: int("toAccountId"),
+  exchangeRate: decimal("exchangeRate", { precision: 10, scale: 4 }),
+  // Common
+  amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+  convertedAmount: decimal("convertedAmount", { precision: 14, scale: 2 }),
+  note: text("note"),
+  employeeId: int("employeeId"),
+  finClientId: int("finClientId"),
+  transactionDate: timestamp("transactionDate").notNull(),
+  balanceBefore: decimal("balanceBefore", { precision: 14, scale: 2 }),
+  balanceAfter: decimal("balanceAfter", { precision: 14, scale: 2 }),
+  // For transfer: second account balance tracking
+  balanceBefore2: decimal("balanceBefore2", { precision: 14, scale: 2 }),
+  balanceAfter2: decimal("balanceAfter2", { precision: 14, scale: 2 }),
+  createdBy: varchar("createdBy", { length: 320 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type FinTransaction = typeof finTransactions.$inferSelect;
+export type InsertFinTransaction = typeof finTransactions.$inferInsert;

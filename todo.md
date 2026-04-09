@@ -149,3 +149,24 @@
 - [x] Client: Approved stage — approvalDate picker, settlementFeeAmount + settlementFeeDate, biometricsDate, on-time badge
 - [x] Client: Client Documentation dashboard — stage filter tabs + approval stats card
 - [x] Client: new clients default to "preparation" stage automatically
+
+## Financial Management Module (Round 11)
+- [ ] DB: accounts, categories, employees, transactions, commissions tables + seed data
+- [ ] Server: role-based access (admin/read-only/limited) for financial module
+- [ ] Server: CRUD routers for accounts, categories, employees
+- [ ] Server: transaction routers (income/expense/transfer) with balance logic
+- [ ] Server: commission auto-entry on contract signed
+- [ ] Server: client database auto-sync from contracts
+- [ ] Server: reports queries (all expenses, all income, account statements)
+- [ ] Server: dashboard analytics (monthly/yearly income, expenses by category, profit, etc.)
+- [ ] Frontend: Financial Dashboard main page with analytics
+- [ ] Frontend: Accounts page with balances and transaction history
+- [ ] Frontend: Categories database page (expense + income)
+- [ ] Frontend: Employees database page
+- [ ] Frontend: Client database page (auto from contracts)
+- [ ] Frontend: Commission database page
+- [ ] Frontend: Transaction entry (Income/Expense/Transfer) with quick actions
+- [ ] Frontend: Reports pages (All Expenses, All Income, Account Statement)
+- [ ] Automated monthly email with PDF reports on last day of month
+- [ ] Bulk Excel upload for transactions
+- [ ] Sidebar navigation for Financial Module

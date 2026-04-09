@@ -1,0 +1,253 @@
+import { eq, desc, and, gte, lte, sql, asc } from "drizzle-orm";
+import { getDb } from "./db";
+import {
+  finAccounts, finCategories, finEmployees, finClients, finCommissions, finTransactions,
+  InsertFinAccount, InsertFinCategory, InsertFinEmployee, InsertFinClient, InsertFinCommission, InsertFinTransaction,
+} from "../drizzle/schema";
+
+// ─── Accounts ────────────────────────────────────────────────────────────────
+export async function listAccounts() {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(finAccounts).orderBy(asc(finAccounts.name));
+}
+export async function getAccountById(id: number) {
+  const db = await getDb(); if (!db) return null;
+  const rows = await db.select().from(finAccounts).where(eq(finAccounts.id, id));
+  return rows[0] ?? null;
+}
+export async function createAccount(data: { name: string; currency: string }) {
+  const db = await getDb(); if (!db) return null;
+  const [result] = await db.insert(finAccounts).values(data);
+  return { id: result.insertId, ...data };
+}
+export async function updateAccount(id: number, data: { name?: string; currency?: string; isActive?: boolean }) {
+  const db = await getDb(); if (!db) return;
+  await db.update(finAccounts).set(data).where(eq(finAccounts.id, id));
+}
+export async function updateAccountBalance(id: number, amount: number) {
+  const db = await getDb(); if (!db) return;
+  await db.update(finAccounts).set({ balance: sql`${finAccounts.balance} + ${amount}` }).where(eq(finAccounts.id, id));
+}
+
+// ─── Categories ──────────────────────────────────────────────────────────────
+export async function listCategories(type?: "income" | "expense") {
+  const db = await getDb(); if (!db) return [];
+  if (type) return db.select().from(finCategories).where(eq(finCategories.type, type)).orderBy(asc(finCategories.name));
+  return db.select().from(finCategories).orderBy(asc(finCategories.type), asc(finCategories.name));
+}
+export async function createCategory(data: { name: string; type: "income" | "expense" }) {
+  const db = await getDb(); if (!db) return null;
+  const [result] = await db.insert(finCategories).values(data);
+  return { id: result.insertId, ...data };
+}
+export async function updateCategory(id: number, data: { name?: string; isActive?: boolean }) {
+  const db = await getDb(); if (!db) return;
+  await db.update(finCategories).set(data).where(eq(finCategories.id, id));
+}
+export async function deleteCategory(id: number) {
+  const db = await getDb(); if (!db) return;
+  await db.delete(finCategories).where(eq(finCategories.id, id));
+}
+
+// ─── Employees ───────────────────────────────────────────────────────────────
+export async function listEmployees() {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(finEmployees).orderBy(asc(finEmployees.name));
+}
+export async function createEmployee(data: { name: string; role?: string }) {
+  const db = await getDb(); if (!db) return null;
+  const [result] = await db.insert(finEmployees).values(data);
+  return { id: result.insertId, ...data };
+}
+export async function updateEmployee(id: number, data: { name?: string; role?: string; isActive?: boolean }) {
+  const db = await getDb(); if (!db) return;
+  await db.update(finEmployees).set(data).where(eq(finEmployees.id, id));
+}
+export async function deleteEmployee(id: number) {
+  const db = await getDb(); if (!db) return;
+  await db.delete(finEmployees).where(eq(finEmployees.id, id));
+}
+
+// ─── Fin Clients ─────────────────────────────────────────────────────────────
+export async function listFinClients() {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(finClients).orderBy(desc(finClients.createdAt));
+}
+export async function createFinClient(data: InsertFinClient) {
+  const db = await getDb(); if (!db) return null;
+  const [result] = await db.insert(finClients).values(data);
+  return { id: result.insertId, ...data };
+}
+export async function updateFinClient(id: number, data: Partial<InsertFinClient>) {
+  const db = await getDb(); if (!db) return;
+  await db.update(finClients).set(data).where(eq(finClients.id, id));
+}
+export async function getFinClientByContractId(contractId: number) {
+  const db = await getDb(); if (!db) return null;
+  const rows = await db.select().from(finClients).where(eq(finClients.contractId, contractId));
+  return rows[0] ?? null;
+}
+
+// ─── Commissions ─────────────────────────────────────────────────────────────
+export async function listCommissions() {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(finCommissions).orderBy(desc(finCommissions.createdAt));
+}
+export async function createCommission(data: InsertFinCommission) {
+  const db = await getDb(); if (!db) return null;
+  const [result] = await db.insert(finCommissions).values(data);
+  return { id: result.insertId, ...data };
+}
+
+// ─── Transactions ────────────────────────────────────────────────────────────
+export async function listTransactions(filters?: {
+  type?: "income" | "expense" | "transfer";
+  accountId?: number;
+  from?: Date; to?: Date;
+  limit?: number;
+}) {
+  const db = await getDb(); if (!db) return [];
+  const conditions = [];
+  if (filters?.type) conditions.push(eq(finTransactions.type, filters.type));
+  if (filters?.accountId) {
+    conditions.push(
+      sql`(${finTransactions.accountId} = ${filters.accountId} OR ${finTransactions.fromAccountId} = ${filters.accountId} OR ${finTransactions.toAccountId} = ${filters.accountId})`
+    );
+  }
+  if (filters?.from) conditions.push(gte(finTransactions.transactionDate, filters.from));
+  if (filters?.to) conditions.push(lte(finTransactions.transactionDate, filters.to));
+
+  const query = db.select().from(finTransactions)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(finTransactions.transactionDate), desc(finTransactions.id));
+
+  if (filters?.limit) return query.limit(filters.limit);
+  return query;
+}
+
+export async function createTransaction(data: InsertFinTransaction) {
+  const db = await getDb(); if (!db) return null;
+  const [result] = await db.insert(finTransactions).values(data);
+  return { id: result.insertId, ...data };
+}
+
+// ─── Account Statement ───────────────────────────────────────────────────────
+export async function getAccountStatement(accountId: number, from?: Date, to?: Date) {
+  const db = await getDb(); if (!db) return [];
+  const conditions = [
+    sql`(${finTransactions.accountId} = ${accountId} OR ${finTransactions.fromAccountId} = ${accountId} OR ${finTransactions.toAccountId} = ${accountId})`
+  ];
+  if (from) conditions.push(gte(finTransactions.transactionDate, from));
+  if (to) conditions.push(lte(finTransactions.transactionDate, to));
+
+  return db.select().from(finTransactions)
+    .where(and(...conditions))
+    .orderBy(asc(finTransactions.transactionDate), asc(finTransactions.id));
+}
+
+// ─── Dashboard Analytics ─────────────────────────────────────────────────────
+export async function getFinancialSummary(year: number) {
+  const db = await getDb(); if (!db) return null;
+  const startOfYear = new Date(year, 0, 1);
+  const endOfYear = new Date(year + 1, 0, 1);
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  // Yearly income (exclude transfers)
+  const [yearlyIncome] = await db.select({
+    total: sql<string>`COALESCE(SUM(${finTransactions.amount}), 0)`,
+  }).from(finTransactions).where(and(
+    eq(finTransactions.type, "income"),
+    gte(finTransactions.transactionDate, startOfYear),
+    lte(finTransactions.transactionDate, endOfYear),
+  ));
+
+  // Monthly income
+  const [monthlyIncome] = await db.select({
+    total: sql<string>`COALESCE(SUM(${finTransactions.amount}), 0)`,
+  }).from(finTransactions).where(and(
+    eq(finTransactions.type, "income"),
+    gte(finTransactions.transactionDate, startOfMonth),
+    lte(finTransactions.transactionDate, endOfMonth),
+  ));
+
+  // Yearly expense
+  const [yearlyExpense] = await db.select({
+    total: sql<string>`COALESCE(SUM(${finTransactions.amount}), 0)`,
+  }).from(finTransactions).where(and(
+    eq(finTransactions.type, "expense"),
+    gte(finTransactions.transactionDate, startOfYear),
+    lte(finTransactions.transactionDate, endOfYear),
+  ));
+
+  // Monthly expense
+  const [monthlyExpense] = await db.select({
+    total: sql<string>`COALESCE(SUM(${finTransactions.amount}), 0)`,
+  }).from(finTransactions).where(and(
+    eq(finTransactions.type, "expense"),
+    gte(finTransactions.transactionDate, startOfMonth),
+    lte(finTransactions.transactionDate, endOfMonth),
+  ));
+
+  // Total EGP balance (only EGP accounts)
+  const [egpBalance] = await db.select({
+    total: sql<string>`COALESCE(SUM(${finAccounts.balance}), 0)`,
+  }).from(finAccounts).where(eq(finAccounts.currency, "EGP"));
+
+  // Expense by category (yearly)
+  const expenseByCategory = await db.select({
+    categoryId: finTransactions.categoryId,
+    total: sql<string>`SUM(${finTransactions.amount})`,
+  }).from(finTransactions).where(and(
+    eq(finTransactions.type, "expense"),
+    gte(finTransactions.transactionDate, startOfYear),
+    lte(finTransactions.transactionDate, endOfYear),
+  )).groupBy(finTransactions.categoryId);
+
+  // Income by category (yearly)
+  const incomeByCategory = await db.select({
+    categoryId: finTransactions.categoryId,
+    total: sql<string>`SUM(${finTransactions.amount})`,
+  }).from(finTransactions).where(and(
+    eq(finTransactions.type, "income"),
+    gte(finTransactions.transactionDate, startOfYear),
+    lte(finTransactions.transactionDate, endOfYear),
+  )).groupBy(finTransactions.categoryId);
+
+  // Employee expenses (yearly)
+  const employeeExpenses = await db.select({
+    employeeId: finTransactions.employeeId,
+    total: sql<string>`SUM(${finTransactions.amount})`,
+  }).from(finTransactions).where(and(
+    eq(finTransactions.type, "expense"),
+    gte(finTransactions.transactionDate, startOfYear),
+    lte(finTransactions.transactionDate, endOfYear),
+    sql`${finTransactions.employeeId} IS NOT NULL`,
+  )).groupBy(finTransactions.employeeId);
+
+  // Monthly profit breakdown (yearly)
+  const monthlyProfit = await db.select({
+    month: sql<string>`MONTH(${finTransactions.transactionDate})`,
+    type: finTransactions.type,
+    total: sql<string>`SUM(${finTransactions.amount})`,
+  }).from(finTransactions).where(and(
+    sql`${finTransactions.type} IN ('income', 'expense')`,
+    gte(finTransactions.transactionDate, startOfYear),
+    lte(finTransactions.transactionDate, endOfYear),
+  )).groupBy(sql`MONTH(${finTransactions.transactionDate})`, finTransactions.type);
+
+  return {
+    yearlyIncome: Number(yearlyIncome.total),
+    monthlyIncome: Number(monthlyIncome.total),
+    yearlyExpense: Number(yearlyExpense.total),
+    monthlyExpense: Number(monthlyExpense.total),
+    yearlyProfit: Number(yearlyIncome.total) - Number(yearlyExpense.total),
+    monthlyProfit: Number(monthlyIncome.total) - Number(monthlyExpense.total),
+    totalEgpBalance: Number(egpBalance.total),
+    expenseByCategory,
+    incomeByCategory,
+    employeeExpenses,
+    monthlyProfitBreakdown: monthlyProfit,
+  };
+}

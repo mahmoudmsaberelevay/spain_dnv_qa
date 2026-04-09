@@ -35,6 +35,12 @@ import {
   ChevronRight,
   Stamp,
   Users,
+  Wallet,
+  ArrowLeftRight,
+  PiggyBank,
+  TrendingUp,
+  UserCheck,
+  Layers,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -71,6 +77,22 @@ const modules = [
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "/docs/dashboard" },
       { icon: Users, label: "Clients", path: "/docs" },
+    ],
+  },
+  {
+    id: "financial",
+    label: "Financial",
+    icon: Wallet,
+    items: [
+      { icon: LayoutDashboard, label: "Dashboard", path: "/finance" },
+      { icon: PiggyBank, label: "Accounts", path: "/finance/accounts" },
+      { icon: TrendingUp, label: "Income", path: "/finance/income" },
+      { icon: ArrowLeftRight, label: "Expenses", path: "/finance/expenses" },
+      { icon: Layers, label: "Transfers", path: "/finance/transfers" },
+      { icon: BarChart3, label: "Reports", path: "/finance/reports" },
+      { icon: UserCheck, label: "Employees", path: "/finance/employees" },
+      { icon: Layers, label: "Categories", path: "/finance/categories" },
+      { icon: Layers, label: "Commissions", path: "/finance/commissions" },
     ],
   },
 ];
@@ -143,7 +165,7 @@ function DashboardLayoutContent({
   const isMobile = useIsMobile();
 
   // Determine active module from current path
-  const activeModuleId = location.startsWith("/analysis") ? "analysis" : "contracting";
+  const activeModuleId = location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : "contracting";
   const [expandedModule, setExpandedModule] = useState<string>(activeModuleId);
 
   // Sync expanded module with navigation

@@ -24,6 +24,17 @@ import Contracts from "./pages/Contracts";
 import Invoices from "./pages/Invoices";
 import Analytics from "./pages/Analytics";
 
+// ─── Financial Module ─────────────────────────────────────────────
+import FinancialDashboard from "./pages/FinancialDashboard";
+import FinAccounts from "./pages/FinAccounts";
+import FinIncome from "./pages/FinIncome";
+import FinExpenses from "./pages/FinExpenses";
+import FinTransfers from "./pages/FinTransfers";
+import FinReports from "./pages/FinReports";
+import FinEmployees from "./pages/FinEmployees";
+import FinCategories from "./pages/FinCategories";
+import FinCommissions from "./pages/FinCommissions";
+
 function Router() {
   return (
     <Switch>
@@ -93,6 +104,53 @@ function Router() {
       </Route>
       <Route path="/cases/:id/report">
         {(params) => <Redirect to={`/analysis/cases/${params.id}/report`} />}
+      </Route>
+
+      {/* ── Financial Module ── */}
+      <Route path="/finance">
+        <DashboardLayout>
+          <FinancialDashboard />
+        </DashboardLayout>
+      </Route>
+      <Route path="/finance/accounts">
+        <DashboardLayout>
+          <FinAccounts />
+        </DashboardLayout>
+      </Route>
+      <Route path="/finance/income">
+        <DashboardLayout>
+          <FinIncome />
+        </DashboardLayout>
+      </Route>
+      <Route path="/finance/expenses">
+        <DashboardLayout>
+          <FinExpenses />
+        </DashboardLayout>
+      </Route>
+      <Route path="/finance/transfers">
+        <DashboardLayout>
+          <FinTransfers />
+        </DashboardLayout>
+      </Route>
+      <Route path="/finance/reports">
+        <DashboardLayout>
+          <FinReports />
+        </DashboardLayout>
+      </Route>
+      <Route path="/finance/employees">
+        <DashboardLayout>
+          <FinEmployees />
+        </DashboardLayout>
+      </Route>
+      <Route path="/finance/categories">
+        <DashboardLayout>
+          <FinCategories />
+        </DashboardLayout>
+      </Route>
+      <Route path="/finance/commissions">
+        <DashboardLayout>
+          <FinCommissions />
+        </DashboardLayout>
       </Route>
 
       {/* ── Client Documentation Module ── */}
