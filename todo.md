@@ -173,3 +173,4 @@
 
 ## Change Requests (Round 12)
 - [x] Update all account initial balances from CSV file
+- [x] Add salary column to employees table and replace all employees from CSV (28 employees with salaries)

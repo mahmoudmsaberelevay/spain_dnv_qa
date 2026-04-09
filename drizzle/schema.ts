@@ -244,6 +244,7 @@ export const finEmployees = mysqlTable("finEmployees", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   role: varchar("role", { length: 128 }),
+  salary: decimal("salary", { precision: 14, scale: 2 }).default("0"),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
