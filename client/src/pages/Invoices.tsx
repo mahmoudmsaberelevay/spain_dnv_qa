@@ -279,18 +279,7 @@ export default function Invoices() {
                               PDF
                             </Button>
                           )}
-                          {(invoice as any).driveLink && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 gap-1 text-xs text-green-600 hover:text-green-800 hover:bg-green-50"
-                              onClick={() => window.open((invoice as any).driveLink!, "_blank")}
-                              title="View in Google Drive"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                              Drive
-                            </Button>
-                          )}
+
                           {invoice.pdfUrl && (
                             <Button
                               variant="ghost"

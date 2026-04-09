@@ -22,7 +22,6 @@ import { generateContractDoc, uploadContractToStorage, calculateContractValue } 
 import { getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
 import { generateAndUploadInvoicePdf } from "./invoiceGenerator";
 import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient } from "./emailService";
-import { uploadContractToDrive, uploadInvoiceToDrive, getDriveStatus, isDriveConfigured } from "./googleDrive";
 import { generateInvoicePdfBuffer } from "./invoiceGenerator";
 import {
   createClientCase, listClientCases, getClientCase, updateClientCase,
@@ -802,11 +801,6 @@ const contractingRouter = router({
           contractValue: contractValue.toString(), currency: "EUR", status: "pending",
           docUrl, consultantName: input.consultantName ?? null,
         });
-        if (isDriveConfigured() && contract) {
-          uploadContractToDrive(buffer, filename, contractCode)
-            .then(({ fileId, webViewLink }) => updateContractDocUrl(contract.id, docUrl, fileId, webViewLink))
-            .catch((err) => console.error("[Drive] Failed to backup contract:", err));
-        }
         await notifyNewContract(contractCode, input.clientName, input.familyMembers, contractValue);
         return { contract, docUrl, filename };
       }),
@@ -881,18 +875,6 @@ const contractingRouter = router({
           amountEgp: amountEgp.toString(), exchangeRate: rateInfo.rate.toString(),
           status: "unpaid", pdfUrl, notes: input.notes,
         });
-        // Upload invoice PDF to Google Drive asynchronously
-        if (isDriveConfigured() && invoice) {
-          generateInvoicePdfBuffer({
-            invoiceCode, contractCode: contract.contractCode, clientName: billingName, clientMobile,
-            amountEur: input.amountEur, amountEgp, exchangeRate: rateInfo.rate,
-            contractValue, totalPaid: totalPaid + input.amountEur, remainingBalance,
-            createdAt: new Date(), notes: input.notes,
-          })
-            .then((buf) => uploadInvoiceToDrive(buf, `${invoiceCode}_${billingName.replace(/\s+/g, "_")}.pdf`, invoiceCode))
-            .then(({ fileId, webViewLink }) => updateInvoicePdfUrl(invoice.id, pdfUrl, fileId, webViewLink))
-            .catch((err) => console.error("[Drive] Failed to backup invoice:", err));
-        }
         return invoice;
       }),
     markPaid: protectedProcedure
@@ -943,9 +925,6 @@ const contractingRouter = router({
         await updateInvoicePdfUrl(input.id, pdfUrl);
         return { pdfUrl };
       }),
-  }),
-  drive: router({
-    status: protectedProcedure.query(async () => getDriveStatus()),
   }),
   exchangeRate: router({
     current: publicProcedure.query(async () => getEurToEgpRate()),

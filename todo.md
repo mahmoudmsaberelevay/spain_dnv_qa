@@ -137,15 +137,15 @@
 
 ## Change Requests (Round 10) — 3-Stage Client Workflow
 
-- [ ] DB: add `stage` enum column (preparation|submission|approved) to cases table, default preparation
-- [ ] DB: add `submissionDate`, `expectedApprovalDate`, `translationDate` columns to cases table
-- [ ] DB: add `approvalDate`, `settlementFeeAmount`, `settlementFeeDate`, `biometricsDate` columns to cases table
-- [ ] DB: generate migration SQL and apply to database
-- [ ] Server: tRPC procedure `clientDocs.updateStage` — update stage and stage-specific fields, auto-calc expectedApprovalDate
-- [ ] Server: auto-calculate expectedApprovalDate = submissionDate + 25 working days (skip weekends)
-- [ ] Server: dashboard stats — % approved within expected date range
-- [ ] Client: stage dropdown on client detail page (Preparation / Submission / Approved)
-- [ ] Client: Submission stage — submissionDate picker, expectedApprovalDate (auto-calc read-only), translationDate picker
-- [ ] Client: Approved stage — approvalDate picker, settlementFeeAmount + settlementFeeDate, biometricsDate, on-time badge
-- [ ] Client: Client Documentation dashboard — stage filter tabs + approval stats card
-- [ ] Client: new clients default to "preparation" stage automatically
+- [x] DB: add `stage` enum column (preparation|submission|approved) to cases table, default preparation
+- [x] DB: add `submissionDate`, `expectedApprovalDate`, `translationDate` columns to cases table
+- [x] DB: add `approvalDate`, `settlementFeeAmount`, `settlementFeeDate`, `biometricsDate` columns to cases table
+- [x] DB: generate migration SQL and apply to database
+- [x] Server: tRPC procedure `clientDocs.updateStage` — update stage and stage-specific fields, auto-calc expectedApprovalDate
+- [x] Server: auto-calculate expectedApprovalDate = submissionDate + 25 working days (skip weekends)
+- [x] Server: dashboard stats — % approved within expected date range
+- [x] Client: stage dropdown on client detail page (Preparation / Submission / Approved)
+- [x] Client: Submission stage — submissionDate picker, expectedApprovalDate (auto-calc read-only), translationDate picker
+- [x] Client: Approved stage — approvalDate picker, settlementFeeAmount + settlementFeeDate, biometricsDate, on-time badge
+- [x] Client: Client Documentation dashboard — stage filter tabs + approval stats card
+- [x] Client: new clients default to "preparation" stage automatically
