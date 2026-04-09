@@ -119,29 +119,13 @@ function buildPdf(
     // ══════════════════════════════════════════════════════════════════════
     const logoBoxSize = 90;
 
-    // Bird logo — no grey box, just the bird image directly
-    if (logoBuffer) {
-      try {
-        // Bird is taller than wide (100x179 px). Scale to fit in logoBoxSize height.
-        const birdH = logoBoxSize;
-        const birdW = Math.round(birdH * (100 / 179));
-        doc.image(logoBuffer, L, y, { width: birdW, height: birdH });
-      } catch (e) {
-        console.warn("[Receipt] Could not embed logo:", e);
-      }
-    }
-
-    // "ELEVAY" bold large text — vertically centered with the logo box
-    // Bird width at logoBoxSize height = round(90 * 100/179) ≈ 50px
-    const birdW = Math.round(logoBoxSize * (100 / 179));
-    const textX = L + birdW + 16;
-    const elevayTextY = y + Math.round((logoBoxSize - 54) / 2);
+    // No bird logo — just ELEVAY text and subtitle
     doc.fontSize(36).fillColor(greyBg).font("Helvetica-Bold")
-       .text("ELEVAY", textX, elevayTextY, { lineBreak: false });
+       .text("ELEVAY", L, y + 8, { lineBreak: false });
 
     // "EXPANDING YOUR FREEDOM" subtitle
     doc.fontSize(10).fillColor(midGrey).font("Helvetica")
-       .text("EXPANDING YOUR FREEDOM", textX, elevayTextY + 44, { lineBreak: false });
+       .text("EXPANDING YOUR FREEDOM", L, y + 52, { lineBreak: false });
 
     // "Reciept" title on the right (italic-style, light grey)
     doc.fontSize(32).fillColor(lightGrey).font("Helvetica")
