@@ -151,22 +151,22 @@
 - [x] Client: new clients default to "preparation" stage automatically
 
 ## Financial Management Module (Round 11)
-- [ ] DB: accounts, categories, employees, transactions, commissions tables + seed data
-- [ ] Server: role-based access (admin/read-only/limited) for financial module
-- [ ] Server: CRUD routers for accounts, categories, employees
-- [ ] Server: transaction routers (income/expense/transfer) with balance logic
-- [ ] Server: commission auto-entry on contract signed
-- [ ] Server: client database auto-sync from contracts
-- [ ] Server: reports queries (all expenses, all income, account statements)
-- [ ] Server: dashboard analytics (monthly/yearly income, expenses by category, profit, etc.)
-- [ ] Frontend: Financial Dashboard main page with analytics
-- [ ] Frontend: Accounts page with balances and transaction history
-- [ ] Frontend: Categories database page (expense + income)
-- [ ] Frontend: Employees database page
-- [ ] Frontend: Client database page (auto from contracts)
-- [ ] Frontend: Commission database page
-- [ ] Frontend: Transaction entry (Income/Expense/Transfer) with quick actions
-- [ ] Frontend: Reports pages (All Expenses, All Income, Account Statement)
-- [ ] Automated monthly email with PDF reports on last day of month
-- [ ] Bulk Excel upload for transactions
-- [ ] Sidebar navigation for Financial Module
+- [x] DB: accounts, categories, employees, transactions, commissions tables + seed data
+- [x] Server: role-based access (admin/read-only/limited) for financial module
+- [x] Server: CRUD routers for accounts, categories, employees
+- [x] Server: transaction routers (income/expense/transfer) with balance logic
+- [x] Server: commission auto-entry on contract signed
+- [x] Server: client database auto-sync from contracts
+- [x] Server: reports queries (all expenses, all income, account statements)
+- [x] Server: dashboard analytics (monthly/yearly income, expenses by category, profit, etc.)
+- [x] Frontend: Financial Dashboard main page with analytics
+- [x] Frontend: Accounts page with balances and transaction history
+- [x] Frontend: Categories database page (expense + income)
+- [x] Frontend: Employees database page
+- [x] Frontend: Client database page (auto from contracts)
+- [x] Frontend: Commission database page
+- [x] Frontend: Transaction entry (Income/Expense/Transfer) with quick actions
+- [x] Frontend: Reports pages (All Expenses, All Income, Account Statement)
+- [x] Automated monthly email with PDF reports on last day of month
+- [x] Bulk Excel upload for transactions
+- [x] Sidebar navigation for Financial Module

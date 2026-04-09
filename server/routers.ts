@@ -11,8 +11,7 @@ import {
   createCase, getCasesByUserId, getCaseById, updateCase, deleteCase,
   createDocument, getDocumentsByCaseId, getDocumentById, updateDocument, deleteDocument,
   upsertAnalysisResult, getAnalysisResultByCaseId,
-  createContract, getAllContracts, getContractById, updateContractStatus,
-  updateContractDocUrl, createInvoice, getAllInvoices, getInvoicesByContractId,
+  createContract, getAllContracts, getContractById, updateContractStatus, updateContractDocUrl, createInvoice, getAllInvoices, getInvoicesByContractId,
   getInvoiceById, markInvoicePaid, updateInvoicePdfUrl, createPayment,
   getTotalPaidByContractId, getContractStats, getFamilyMemberDistribution,
   getRecentContracts, getPaymentsByContractId, getNextContractSequence,
@@ -812,6 +811,33 @@ const contractingRouter = router({
         if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
         await updateContractStatus(input.id, input.status);
         await notifyContractStatusChange(contract.contractCode, contract.clientName, input.status);
+        // Auto-sync: when contract is signed, create financial client + commission
+        if (input.status === "signed") {
+          try {
+            const { createFinClient, getFinClientByContractId, createCommission } = await import("./finDb");
+            const existing = await getFinClientByContractId(contract.id);
+            if (!existing) {
+              const finClient = await createFinClient({
+                name: contract.clientName,
+                contractId: contract.id,
+                contractValue: contract.contractValue,
+                familyMembers: contract.familyMembers,
+                consultant: contract.consultantName ?? undefined,
+              });
+              // Auto-create commission record
+              if (finClient) {
+                await createCommission({
+                  finClientId: finClient.id,
+                  clientName: contract.clientName,
+                  consultant: contract.consultantName ?? undefined,
+                  contractValue: contract.contractValue,
+                });
+              }
+            }
+          } catch (e) {
+            console.error("[AutoSync] Failed to create financial client/commission:", e);
+          }
+        }
         return getContractById(input.id);
       }),
     regenerateDoc: protectedProcedure

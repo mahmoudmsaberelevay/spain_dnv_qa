@@ -8,6 +8,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { startReminderScheduler } from "../reminderScheduler";
+import { startMonthlyReportScheduler } from "../monthlyReportScheduler";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -67,3 +68,4 @@ startServer().catch(console.error);
 
 // Start the daily document reminder scheduler
 startReminderScheduler();
+startMonthlyReportScheduler();
