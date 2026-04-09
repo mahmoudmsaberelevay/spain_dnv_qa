@@ -122,22 +122,26 @@ function buildPdf(
     // Grey square logo box
     doc.rect(L, y, logoBoxSize, logoBoxSize).fill(greyBg);
 
-    // Logo image inside the box
+    // Logo image inside the box — add 4px padding on all sides so bird fits fully
     if (logoBuffer) {
       try {
-        doc.image(logoBuffer, L, y, { width: logoBoxSize, height: logoBoxSize });
+        const pad = 4;
+        doc.image(logoBuffer, L + pad, y + pad, { width: logoBoxSize - pad * 2, height: logoBoxSize - pad * 2 });
       } catch (e) {
         console.warn("[Receipt] Could not embed logo:", e);
       }
     }
 
-    // "ELEVAY" bold large text next to logo
+    // "ELEVAY" bold large text — vertically centered with the logo box
+    // Box top = y, box bottom = y + logoBoxSize (90). Text height ~36pt ≈ 36px.
+    // Subtitle height ~10pt. Total block ≈ 36 + 8 + 10 = 54. Center offset = (90-54)/2 = 18
+    const elevayTextY = y + Math.round((logoBoxSize - 54) / 2);
     doc.fontSize(36).fillColor(greyBg).font("Helvetica-Bold")
-       .text("ELEVAY", L + logoBoxSize + 14, y + 10, { lineBreak: false });
+       .text("ELEVAY", L + logoBoxSize + 14, elevayTextY, { lineBreak: false });
 
     // "EXPANDING YOUR FREEDOM" subtitle
     doc.fontSize(10).fillColor(midGrey).font("Helvetica")
-       .text("EXPANDING YOUR FREEDOM", L + logoBoxSize + 14, y + 54, { lineBreak: false });
+       .text("EXPANDING YOUR FREEDOM", L + logoBoxSize + 14, elevayTextY + 44, { lineBreak: false });
 
     // "Reciept" title on the right (italic-style, light grey)
     doc.fontSize(32).fillColor(lightGrey).font("Helvetica")
@@ -247,8 +251,10 @@ function buildPdf(
          .text(row.label, L + 6, y + 8, { width: sLabelW - 12, lineBreak: false });
       // Right cell (medium grey bg, white text)
       doc.rect(sValX, y, sValW, rH).fill(summaryVal);
+      // Add a non-breaking space between € and the number for visual breathing room
+      const spacedValue = row.value.replace(/^(€|EUR\s*)/, "€ ");
       doc.fontSize(9).fillColor(white).font("Helvetica-Bold")
-         .text(row.value, sValX, y + 8, { width: sValW - 6, align: "right", lineBreak: false });
+         .text(spacedValue, sValX, y + 8, { width: sValW - 6, align: "right", lineBreak: false });
       y += rH;
     }
 
