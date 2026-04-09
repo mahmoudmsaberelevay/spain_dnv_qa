@@ -54,12 +54,12 @@ export async function listEmployees() {
   const db = await getDb(); if (!db) return [];
   return db.select().from(finEmployees).orderBy(asc(finEmployees.name));
 }
-export async function createEmployee(data: { name: string; role?: string }) {
+export async function createEmployee(data: { name: string; role?: string; salary?: string }) {
   const db = await getDb(); if (!db) return null;
   const [result] = await db.insert(finEmployees).values(data);
   return { id: result.insertId, ...data };
 }
-export async function updateEmployee(id: number, data: { name?: string; role?: string; isActive?: boolean }) {
+export async function updateEmployee(id: number, data: { name?: string; role?: string; salary?: string; isActive?: boolean }) {
   const db = await getDb(); if (!db) return;
   await db.update(finEmployees).set(data).where(eq(finEmployees.id, id));
 }

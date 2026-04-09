@@ -23,22 +23,36 @@ export default function FinEmployees() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState("");
+  const [newSalary, setNewSalary] = useState("");
   const [editEmp, setEditEmp] = useState<any>(null);
   const [editName, setEditName] = useState("");
   const [editRole, setEditRole] = useState("");
+  const [editSalary, setEditSalary] = useState("");
+
+  const fmt = (v: string | number | null | undefined) => {
+    const n = Number(v ?? 0);
+    return n > 0 ? `EGP ${n.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—";
+  };
+
+  const totalSalary = employees?.reduce((sum, e) => sum + Number(e.salary ?? 0), 0) ?? 0;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Employees</h1>
-        <Button onClick={() => { setNewName(""); setNewRole(""); setShowCreate(true); }}>
+        <div>
+          <h1 className="text-2xl font-bold">Employees</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {employees?.length ?? 0} team members · Total monthly payroll: EGP {totalSalary.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+          </p>
+        </div>
+        <Button onClick={() => { setNewName(""); setNewRole(""); setNewSalary(""); setShowCreate(true); }}>
           <Plus className="h-4 w-4 mr-1" /> Add Employee
         </Button>
       </div>
 
       <Card className="border-0 shadow-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Team Members ({employees?.length ?? 0})</CardTitle>
+          <CardTitle className="text-base">Team Members</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -50,24 +64,33 @@ export default function FinEmployees() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b">
+                    <th className="text-left py-2 font-medium">#</th>
                     <th className="text-left py-2 font-medium">Name</th>
                     <th className="text-left py-2 font-medium">Role</th>
+                    <th className="text-right py-2 font-medium">Fixed Salary</th>
                     <th className="text-center py-2 font-medium">Status</th>
                     <th className="text-right py-2 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {employees.map((emp) => (
+                  {employees.map((emp, idx) => (
                     <tr key={emp.id} className="border-b border-muted/50 hover:bg-muted/30">
+                      <td className="py-2.5 text-muted-foreground">{idx + 1}</td>
                       <td className="py-2.5 font-medium">{emp.name}</td>
                       <td className="py-2.5 text-muted-foreground">{emp.role ?? "—"}</td>
+                      <td className="py-2.5 text-right font-mono">{fmt(emp.salary)}</td>
                       <td className="py-2.5 text-center">
                         <Badge variant={emp.isActive ? "default" : "secondary"} className="text-xs">
                           {emp.isActive ? "Active" : "Inactive"}
                         </Badge>
                       </td>
                       <td className="py-2.5 text-right">
-                        <Button variant="ghost" size="sm" onClick={() => { setEditEmp(emp); setEditName(emp.name); setEditRole(emp.role ?? ""); }}>
+                        <Button variant="ghost" size="sm" onClick={() => {
+                          setEditEmp(emp);
+                          setEditName(emp.name);
+                          setEditRole(emp.role ?? "");
+                          setEditSalary(String(Number(emp.salary ?? 0)));
+                        }}>
                           <Edit2 className="h-3.5 w-3.5" />
                         </Button>
                       </td>
@@ -93,10 +116,14 @@ export default function FinEmployees() {
               <label className="text-sm font-medium">Role</label>
               <Input value={newRole} onChange={e => setNewRole(e.target.value)} placeholder="e.g. Consultant, Paralegal" />
             </div>
+            <div>
+              <label className="text-sm font-medium">Fixed Salary (EGP)</label>
+              <Input type="number" value={newSalary} onChange={e => setNewSalary(e.target.value)} placeholder="0.00" />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button onClick={() => createMut.mutate({ name: newName, role: newRole || undefined })} disabled={!newName.trim() || createMut.isPending}>
+            <Button onClick={() => createMut.mutate({ name: newName, role: newRole || undefined, salary: newSalary ? Number(newSalary) : undefined })} disabled={!newName.trim() || createMut.isPending}>
               {createMut.isPending ? "Adding..." : "Add"}
             </Button>
           </DialogFooter>
@@ -116,10 +143,14 @@ export default function FinEmployees() {
               <label className="text-sm font-medium">Role</label>
               <Input value={editRole} onChange={e => setEditRole(e.target.value)} />
             </div>
+            <div>
+              <label className="text-sm font-medium">Fixed Salary (EGP)</label>
+              <Input type="number" value={editSalary} onChange={e => setEditSalary(e.target.value)} placeholder="0.00" />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditEmp(null)}>Cancel</Button>
-            <Button onClick={() => updateMut.mutate({ id: editEmp.id, name: editName, role: editRole || undefined })} disabled={!editName.trim() || updateMut.isPending}>
+            <Button onClick={() => updateMut.mutate({ id: editEmp.id, name: editName, role: editRole || undefined, salary: editSalary ? Number(editSalary) : undefined })} disabled={!editName.trim() || updateMut.isPending}>
               {updateMut.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>

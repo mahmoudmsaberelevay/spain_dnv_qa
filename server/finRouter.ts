@@ -118,13 +118,16 @@ const categoriesRouter = router({
 const employeesRouter = router({
   list: finReadProcedure.query(async () => listEmployees()),
   create: finAdminProcedure
-    .input(z.object({ name: z.string().min(1), role: z.string().optional() }))
-    .mutation(async ({ input }) => createEmployee(input)),
-  update: finAdminProcedure
-    .input(z.object({ id: z.number(), name: z.string().optional(), role: z.string().optional(), isActive: z.boolean().optional() }))
+    .input(z.object({ name: z.string().min(1), role: z.string().optional(), salary: z.number().optional() }))
     .mutation(async ({ input }) => {
-      const { id, ...data } = input;
-      await updateEmployee(id, data);
+      const { salary, ...rest } = input;
+      return createEmployee({ ...rest, salary: salary?.toString() });
+    }),
+  update: finAdminProcedure
+    .input(z.object({ id: z.number(), name: z.string().optional(), role: z.string().optional(), salary: z.number().optional(), isActive: z.boolean().optional() }))
+    .mutation(async ({ input }) => {
+      const { id, salary, ...data } = input;
+      await updateEmployee(id, { ...data, salary: salary !== undefined ? salary.toString() : undefined });
     }),
   delete: finAdminProcedure
     .input(z.object({ id: z.number() }))
