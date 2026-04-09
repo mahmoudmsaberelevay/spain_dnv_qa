@@ -2,14 +2,30 @@ import { useState, useMemo } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
-import { Users, AlertTriangle, CheckCircle2, Clock, FileText, Stamp, Building2, Search, X } from "lucide-react";
+import { Users, AlertTriangle, CheckCircle2, Clock, FileText, Stamp, Building2, Search, X, TrendingUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
+
+type Stage = "preparation" | "submission" | "approved";
 
 function getProgressColor(pct: number) {
   if (pct >= 80) return "bg-emerald-500";
   if (pct >= 50) return "bg-blue-500";
   if (pct >= 25) return "bg-amber-500";
   return "bg-red-500";
+}
+
+function StageBadge({ stage }: { stage: Stage }) {
+  const map: Record<Stage, { label: string; cls: string }> = {
+    preparation: { label: "Preparation", cls: "bg-blue-50 text-blue-700 border-blue-200" },
+    submission: { label: "Submission", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+    approved: { label: "Approved", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  };
+  const s = map[stage] ?? map.preparation;
+  return (
+    <span className={`inline-flex items-center text-[10px] px-1.5 py-0.5 rounded border font-medium ${s.cls}`}>
+      {s.label}
+    </span>
+  );
 }
 
 function DeadlineBadge({ days, label }: { days: number | null; label: string }) {
@@ -28,6 +44,12 @@ function DeadlineBadge({ days, label }: { days: number | null; label: string }) 
 
 const PARALEGALS = ["All", "Madonna", "Monica", "Marina"];
 const CONSULTANTS = ["All", "Mahmoud", "Ziad", "Fouad", "Kirolos"];
+const STAGE_OPTIONS = [
+  { value: "all", label: "All Stages" },
+  { value: "preparation", label: "Preparation" },
+  { value: "submission", label: "Submission" },
+  { value: "approved", label: "Approved" },
+];
 const STATUS_OPTIONS = [
   { value: "all", label: "All Statuses" },
   { value: "complete", label: "Complete (100%)" },
@@ -38,23 +60,26 @@ const STATUS_OPTIONS = [
 
 export default function ClientDocsDashboard() {
   const [, setLocation] = useLocation();
-  const { data: clients, isLoading } = trpc.clientDocs.dashboard.useQuery();
+  const { data, isLoading } = trpc.clientDocs.dashboard.useQuery();
+
+  const clients = data?.clients ?? [];
+  const stats = data?.stats;
 
   const [search, setSearch] = useState("");
   const [paralegalFilter, setParalegalFilter] = useState("All");
   const [consultantFilter, setConsultantFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [stageFilter, setStageFilter] = useState("all");
 
-  const totalClients = clients?.length ?? 0;
-  const fullyComplete = clients?.filter(c => c.overallPercent === 100).length ?? 0;
-  const inProgress = clients?.filter(c => c.overallPercent > 0 && c.overallPercent < 100).length ?? 0;
-  const urgentDeadlines = clients?.filter(c =>
+  const totalClients = clients.length;
+  const fullyComplete = clients.filter(c => c.overallPercent === 100).length;
+  const inProgress = clients.filter(c => c.overallPercent > 0 && c.overallPercent < 100).length;
+  const urgentDeadlines = clients.filter(c =>
     (c.daysToSchengen !== null && c.daysToSchengen <= 30) ||
     (c.daysToSubmission !== null && c.daysToSubmission <= 12)
-  ).length ?? 0;
+  ).length;
 
   const filtered = useMemo(() => {
-    if (!clients) return [];
     return clients.filter(c => {
       const q = search.toLowerCase();
       const matchSearch = !q ||
@@ -64,6 +89,7 @@ export default function ClientDocsDashboard() {
         (c.consultant ?? "").toLowerCase().includes(q);
       const matchParalegal = paralegalFilter === "All" || c.paralegal === paralegalFilter;
       const matchConsultant = consultantFilter === "All" || c.consultant === consultantFilter;
+      const matchStage = stageFilter === "all" || c.stage === stageFilter;
       const matchStatus = statusFilter === "all" ? true
         : statusFilter === "complete" ? c.overallPercent === 100
         : statusFilter === "in_progress" ? c.overallPercent > 0 && c.overallPercent < 100
@@ -72,11 +98,11 @@ export default function ClientDocsDashboard() {
             (c.daysToSchengen !== null && c.daysToSchengen <= 30) ||
             (c.daysToSubmission !== null && c.daysToSubmission <= 12)
           ) : true;
-      return matchSearch && matchParalegal && matchConsultant && matchStatus;
+      return matchSearch && matchParalegal && matchConsultant && matchStage && matchStatus;
     });
-  }, [clients, search, paralegalFilter, consultantFilter, statusFilter]);
+  }, [clients, search, paralegalFilter, consultantFilter, statusFilter, stageFilter]);
 
-  const hasFilters = search || paralegalFilter !== "All" || consultantFilter !== "All" || statusFilter !== "all";
+  const hasFilters = search || paralegalFilter !== "All" || consultantFilter !== "All" || statusFilter !== "all" || stageFilter !== "all";
 
   return (
     <DashboardLayout>
@@ -85,14 +111,14 @@ export default function ClientDocsDashboard() {
           {/* Page Header */}
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900">Client Documentation Dashboard</h1>
-            <p className="text-gray-500 mt-1">Track document collection progress for all clients</p>
+            <p className="text-gray-500 mt-1">Track document collection progress and case stages for all clients</p>
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             {[
               { label: "Total Clients", value: totalClients, icon: Users, bg: "bg-blue-50", color: "text-blue-600" },
-              { label: "Complete", value: fullyComplete, icon: CheckCircle2, bg: "bg-emerald-50", color: "text-emerald-600" },
+              { label: "Complete Docs", value: fullyComplete, icon: CheckCircle2, bg: "bg-emerald-50", color: "text-emerald-600" },
               { label: "In Progress", value: inProgress, icon: Clock, bg: "bg-amber-50", color: "text-amber-600" },
               { label: "Urgent Deadlines", value: urgentDeadlines, icon: AlertTriangle, bg: "bg-red-50", color: "text-red-600" },
             ].map(({ label, value, icon: Icon, bg, color }) => (
@@ -110,6 +136,31 @@ export default function ClientDocsDashboard() {
             ))}
           </div>
 
+          {/* Stage Stats Row */}
+          {stats && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              {[
+                { label: "Preparation", value: stats.preparation, cls: "border-blue-200 bg-blue-50 text-blue-700" },
+                { label: "Submission", value: stats.submission, cls: "border-amber-200 bg-amber-50 text-amber-700" },
+                { label: "Approved", value: stats.approved, cls: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+                {
+                  label: "Approved On Time",
+                  value: stats.onTimePercent !== null ? `${stats.onTimePercent}%` : "—",
+                  cls: "border-purple-200 bg-purple-50 text-purple-700",
+                  icon: TrendingUp,
+                },
+              ].map(({ label, value, cls, icon: Icon }) => (
+                <div key={label} className={`rounded-xl border px-4 py-3 flex items-center gap-3 ${cls}`}>
+                  {Icon && <Icon className="h-4 w-4 shrink-0 opacity-70" />}
+                  <div>
+                    <p className="text-xl font-bold">{value}</p>
+                    <p className="text-xs opacity-70">{label}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Search & Filters */}
           <div className="flex flex-wrap gap-3 mb-5">
             <div className="relative flex-1 min-w-[200px]">
@@ -121,6 +172,13 @@ export default function ClientDocsDashboard() {
                 className="pl-9 h-9 text-sm border-gray-200"
               />
             </div>
+            <select
+              value={stageFilter}
+              onChange={e => setStageFilter(e.target.value)}
+              className="h-9 px-3 text-sm border border-gray-200 rounded-md bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+            >
+              {STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
@@ -144,7 +202,7 @@ export default function ClientDocsDashboard() {
             </select>
             {hasFilters && (
               <button
-                onClick={() => { setSearch(""); setParalegalFilter("All"); setConsultantFilter("All"); setStatusFilter("all"); }}
+                onClick={() => { setSearch(""); setParalegalFilter("All"); setConsultantFilter("All"); setStatusFilter("all"); setStageFilter("all"); }}
                 className="h-9 px-3 text-sm text-gray-500 hover:text-gray-800 border border-gray-200 rounded-md flex items-center gap-1.5 bg-white"
               >
                 <X className="h-3.5 w-3.5" /> Clear
@@ -153,7 +211,7 @@ export default function ClientDocsDashboard() {
           </div>
 
           {/* Results count */}
-          {hasFilters && clients && (
+          {hasFilters && (
             <p className="text-sm text-gray-500 mb-3">
               Showing <strong>{filtered.length}</strong> of {totalClients} clients
             </p>
@@ -164,7 +222,7 @@ export default function ClientDocsDashboard() {
             <div className="space-y-3">
               {[1, 2, 3, 4].map(i => <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />)}
             </div>
-          ) : !clients || clients.length === 0 ? (
+          ) : clients.length === 0 ? (
             <div className="text-center py-20 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
               <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500 font-medium">No clients yet</p>
@@ -177,7 +235,7 @@ export default function ClientDocsDashboard() {
             <div className="text-center py-16 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
               <Search className="h-10 w-10 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500 font-medium">No clients match your filters</p>
-              <button onClick={() => { setSearch(""); setParalegalFilter("All"); setConsultantFilter("All"); setStatusFilter("all"); }} className="mt-3 text-sm text-[#1e3a5f] hover:underline">
+              <button onClick={() => { setSearch(""); setParalegalFilter("All"); setConsultantFilter("All"); setStatusFilter("all"); setStageFilter("all"); }} className="mt-3 text-sm text-[#1e3a5f] hover:underline">
                 Clear filters
               </button>
             </div>
@@ -186,8 +244,9 @@ export default function ClientDocsDashboard() {
               <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 <div className="col-span-3">Client</div>
                 <div className="col-span-2">Team</div>
+                <div className="col-span-1 text-center">Stage</div>
                 <div className="col-span-2 text-center">Documents</div>
-                <div className="col-span-3">Progress</div>
+                <div className="col-span-2">Progress</div>
                 <div className="col-span-2 text-right">Deadlines</div>
               </div>
               <div className="divide-y divide-gray-50">
@@ -211,9 +270,6 @@ export default function ClientDocsDashboard() {
                             <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
                               {client.applicationType === "freelancer" ? "Freelancer" : "Business Owner"}
                             </span>
-                            {client.maritalStatus === "family" && (
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-purple-50 text-purple-600">Family</span>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -221,11 +277,14 @@ export default function ClientDocsDashboard() {
                         {client.paralegal && <p className="text-xs text-gray-600 truncate"><span className="text-gray-400">Para:</span> {client.paralegal}</p>}
                         {client.consultant && <p className="text-xs text-gray-600 truncate"><span className="text-gray-400">Con:</span> {client.consultant}</p>}
                       </div>
+                      <div className="col-span-1 flex items-center justify-center">
+                        <StageBadge stage={(client.stage ?? "preparation") as Stage} />
+                      </div>
                       <div className="col-span-2 flex items-center justify-center gap-1">
                         <FileText className="h-4 w-4 text-gray-400" />
                         <span className="text-sm font-medium text-gray-700">{client.receivedDocs}/{client.totalDocs}</span>
                       </div>
-                      <div className="col-span-3 flex flex-col justify-center gap-1.5">
+                      <div className="col-span-2 flex flex-col justify-center gap-1.5">
                         <div className="flex items-center gap-2">
                           <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                             <div className={`h-full rounded-full transition-all ${getProgressColor(client.overallPercent)}`} style={{ width: `${client.overallPercent}%` }} />
@@ -253,6 +312,11 @@ export default function ClientDocsDashboard() {
                       <div className="col-span-2 flex flex-col items-end justify-center gap-1">
                         <DeadlineBadge days={client.daysToSchengen} label="Schengen" />
                         <DeadlineBadge days={client.daysToSubmission} label="Submit" />
+                        {client.stage === "approved" && client.approvedOnTime !== null && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${client.approvedOnTime ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                            {client.approvedOnTime ? "✓ On Time" : "✗ Delayed"}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -261,7 +325,7 @@ export default function ClientDocsDashboard() {
             </div>
           )}
 
-          {clients && clients.length > 0 && (
+          {clients.length > 0 && (
             <div className="mt-4 flex items-center gap-6 text-xs text-gray-400">
               <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-full bg-emerald-500 inline-block" /> ≥80%</span>
               <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-full bg-blue-500 inline-block" /> 50–79%</span>

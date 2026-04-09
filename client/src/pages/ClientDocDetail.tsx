@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 type ActionType = "receive" | "mofa" | "embassy" | "schengen" | "appointment" | "submission" | null;
+type Stage = "preparation" | "submission" | "approved";
 
 export default function ClientDocDetail() {
   const { id } = useParams<{ id: string }>();
@@ -32,6 +33,9 @@ export default function ClientDocDetail() {
     embassyAppointmentDate: "",
     expectedSubmissionDate: "",
   });
+  // Stage workflow state
+  const [stageInputs, setStageInputs] = useState<Record<string, string>>({});
+  const [showStageDialog, setShowStageDialog] = useState<Stage | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -84,6 +88,18 @@ export default function ClientDocDetail() {
       setActiveAction(null);
       utils.clientDocs.get.invalidate({ id: clientId });
       utils.clientDocs.report.invalidate({ id: clientId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const stageMutation = trpc.clientDocs.updateStage.useMutation({
+    onSuccess: () => {
+      toast.success("Stage updated");
+      setShowStageDialog(null);
+      setStageInputs({});
+      utils.clientDocs.get.invalidate({ id: clientId });
+      utils.clientDocs.report.invalidate({ id: clientId });
+      utils.clientDocs.dashboard.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -189,12 +205,92 @@ export default function ClientDocDetail() {
             {data.clientCode} · {data.applicationType === "freelancer" ? "Freelancer" : "Business Owner"} · {data.maritalStatus === "family" ? "Family" : "Single"}
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-2 text-xs text-gray-400">
-          <span>Paralegal: <span className="text-gray-600 font-medium">{data.paralegal}</span></span>
-          <span className="text-gray-200">|</span>
-          <span>Consultant: <span className="text-gray-600 font-medium">{data.consultant}</span></span>
+        <div className="ml-auto flex items-center gap-3">
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <span>Paralegal: <span className="text-gray-600 font-medium">{data.paralegal}</span></span>
+            <span className="text-gray-200">|</span>
+            <span>Consultant: <span className="text-gray-600 font-medium">{data.consultant}</span></span>
+          </div>
+          {/* Stage Selector */}
+          <select
+            value={(data as any).stage ?? "preparation"}
+            onChange={e => {
+              const newStage = e.target.value as Stage;
+              if (newStage === "preparation") {
+                stageMutation.mutate({ id: clientId, stage: "preparation" });
+              } else {
+                setStageInputs({});
+                setShowStageDialog(newStage);
+              }
+            }}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border cursor-pointer focus:outline-none ${
+              ((data as any).stage ?? "preparation") === "preparation"
+                ? "bg-blue-50 text-blue-700 border-blue-200"
+                : ((data as any).stage ?? "preparation") === "submission"
+                ? "bg-amber-50 text-amber-700 border-amber-200"
+                : "bg-emerald-50 text-emerald-700 border-emerald-200"
+            }`}
+          >
+            <option value="preparation">📋 Preparation</option>
+            <option value="submission">📤 Submission</option>
+            <option value="approved">✅ Approved</option>
+          </select>
         </div>
       </div>
+
+      {/* Stage Info Panel */}
+      {((data as any).stage === "submission" || (data as any).stage === "approved") && (
+        <div className={`rounded-xl border p-4 ${
+          (data as any).stage === "submission" ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"
+        }`}>
+          <h3 className={`text-sm font-semibold mb-3 ${
+            (data as any).stage === "submission" ? "text-amber-800" : "text-emerald-800"
+          }`}>
+            {(data as any).stage === "submission" ? "📤 Submission Details" : "✅ Approval Details"}
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {(data as any).stage === "submission" && [
+              { label: "Submission Date", value: (data as any).submissionDate },
+              { label: "Expected Approval", value: (data as any).expectedApprovalDate },
+              { label: "Translation Done", value: (data as any).translationDate },
+            ].map(f => f.value ? (
+              <div key={f.label} className="bg-white rounded-lg px-3 py-2 border border-amber-100">
+                <p className="text-xs text-amber-600 opacity-70">{f.label}</p>
+                <p className="text-sm font-medium text-amber-900 mt-0.5">{new Date(f.value).toLocaleDateString()}</p>
+              </div>
+            ) : null)}
+            {(data as any).stage === "approved" && [
+              { label: "Approval Date", value: (data as any).approvalDate },
+              { label: "Expected Approval", value: (data as any).expectedApprovalDate },
+              { label: "Settlement Fee Date", value: (data as any).settlementFeeDate },
+              { label: "Biometrics Date", value: (data as any).biometricsDate },
+            ].map(f => f.value ? (
+              <div key={f.label} className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
+                <p className="text-xs text-emerald-600 opacity-70">{f.label}</p>
+                <p className="text-sm font-medium text-emerald-900 mt-0.5">{new Date(f.value).toLocaleDateString()}</p>
+              </div>
+            ) : null)}
+            {(data as any).stage === "approved" && (data as any).settlementFeeAmount && (
+              <div className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
+                <p className="text-xs text-emerald-600 opacity-70">Settlement Fee</p>
+                <p className="text-sm font-medium text-emerald-900 mt-0.5">€ {(data as any).settlementFeeAmount}</p>
+              </div>
+            )}
+            {(data as any).stage === "approved" && (data as any).approvalDate && (data as any).expectedApprovalDate && (
+              <div className={`rounded-lg px-3 py-2 border ${
+                new Date((data as any).approvalDate) <= new Date((data as any).expectedApprovalDate)
+                  ? "bg-emerald-100 border-emerald-200"
+                  : "bg-red-50 border-red-200"
+              }`}>
+                <p className="text-xs opacity-70">On-Time Status</p>
+                <p className="text-sm font-semibold mt-0.5">
+                  {new Date((data as any).approvalDate) <= new Date((data as any).expectedApprovalDate) ? "✓ On Time" : "✗ Delayed"}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
@@ -591,6 +687,125 @@ export default function ClientDocDetail() {
           >
             {datesMutation.isPending ? "Saving..." : "Save Date"}
           </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Stage Change Dialog ── */}
+      <Dialog open={showStageDialog !== null} onOpenChange={o => !o && setShowStageDialog(null)}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">
+              {showStageDialog === "submission" ? "Move to Submission Stage" : "Mark as Approved"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {showStageDialog === "submission" && (
+            <div className="space-y-4 mt-2">
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Submission Date <span className="text-red-500">*</span></label>
+                <input
+                  type="date"
+                  value={stageInputs.submissionDate ?? ""}
+                  onChange={e => setStageInputs(p => ({ ...p, submissionDate: e.target.value }))}
+                  className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm"
+                />
+                {stageInputs.submissionDate && (() => {
+                  const start = new Date(stageInputs.submissionDate);
+                  let wd = 0; const cur = new Date(start);
+                  while (wd < 25) { cur.setDate(cur.getDate() + 1); const d = cur.getDay(); if (d !== 0 && d !== 6) wd++; }
+                  return <p className="text-xs text-emerald-700 mt-1">Expected Approval Date: <strong>{cur.toLocaleDateString()}</strong> (25 working days)</p>;
+                })()}
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Translation Done Date <span className="text-gray-400">(optional)</span></label>
+                <input
+                  type="date"
+                  value={stageInputs.translationDate ?? ""}
+                  onChange={e => setStageInputs(p => ({ ...p, translationDate: e.target.value }))}
+                  className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-1">Date when all document translations were completed</p>
+              </div>
+              <Button
+                className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                disabled={!stageInputs.submissionDate || stageMutation.isPending}
+                onClick={() => stageMutation.mutate({
+                  id: clientId,
+                  stage: "submission",
+                  submissionDate: stageInputs.submissionDate || null,
+                  translationDate: stageInputs.translationDate || null,
+                })}
+              >
+                {stageMutation.isPending ? "Saving..." : "Confirm Submission Stage"}
+              </Button>
+            </div>
+          )}
+
+          {showStageDialog === "approved" && (
+            <div className="space-y-4 mt-2">
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Approval Date <span className="text-red-500">*</span></label>
+                <input
+                  type="date"
+                  value={stageInputs.approvalDate ?? ""}
+                  onChange={e => setStageInputs(p => ({ ...p, approvalDate: e.target.value }))}
+                  className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm"
+                />
+                {stageInputs.approvalDate && data.expectedApprovalDate && (() => {
+                  const actual = new Date(stageInputs.approvalDate);
+                  const expected = new Date(data.expectedApprovalDate);
+                  const onTime = actual <= expected;
+                  return (
+                    <p className={`text-xs mt-1 font-medium ${onTime ? "text-emerald-700" : "text-red-600"}`}>
+                      {onTime ? "✓ Within expected date" : "✗ After expected date"} (Expected: {expected.toLocaleDateString()})
+                    </p>
+                  );
+                })()}
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">After-Settlement Fee Amount (€) <span className="text-gray-400">(optional)</span></label>
+                <input
+                  type="number"
+                  placeholder="e.g. 500"
+                  value={stageInputs.settlementFeeAmount ?? ""}
+                  onChange={e => setStageInputs(p => ({ ...p, settlementFeeAmount: e.target.value }))}
+                  className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Settlement Fee Payment Date <span className="text-gray-400">(optional)</span></label>
+                <input
+                  type="date"
+                  value={stageInputs.settlementFeeDate ?? ""}
+                  onChange={e => setStageInputs(p => ({ ...p, settlementFeeDate: e.target.value }))}
+                  className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Biometrics Date <span className="text-gray-400">(optional)</span></label>
+                <input
+                  type="date"
+                  value={stageInputs.biometricsDate ?? ""}
+                  onChange={e => setStageInputs(p => ({ ...p, biometricsDate: e.target.value }))}
+                  className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm"
+                />
+              </div>
+              <Button
+                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white"
+                disabled={!stageInputs.approvalDate || stageMutation.isPending}
+                onClick={() => stageMutation.mutate({
+                  id: clientId,
+                  stage: "approved",
+                  approvalDate: stageInputs.approvalDate || null,
+                  settlementFeeAmount: stageInputs.settlementFeeAmount || null,
+                  settlementFeeDate: stageInputs.settlementFeeDate || null,
+                  biometricsDate: stageInputs.biometricsDate || null,
+                })}
+              >
+                {stageMutation.isPending ? "Saving..." : "Confirm Approval"}
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

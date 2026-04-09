@@ -134,3 +134,18 @@
 - [x] Client: "Download PDF Report" button on AnalysisReport page
 - [x] PDF includes: client name, case ID, date, per-document results, flagged issues, recommendations
 - [x] PDF uses Elevay branding (logo, navy color scheme)
+
+## Change Requests (Round 10) — 3-Stage Client Workflow
+
+- [ ] DB: add `stage` enum column (preparation|submission|approved) to cases table, default preparation
+- [ ] DB: add `submissionDate`, `expectedApprovalDate`, `translationDate` columns to cases table
+- [ ] DB: add `approvalDate`, `settlementFeeAmount`, `settlementFeeDate`, `biometricsDate` columns to cases table
+- [ ] DB: generate migration SQL and apply to database
+- [ ] Server: tRPC procedure `clientDocs.updateStage` — update stage and stage-specific fields, auto-calc expectedApprovalDate
+- [ ] Server: auto-calculate expectedApprovalDate = submissionDate + 25 working days (skip weekends)
+- [ ] Server: dashboard stats — % approved within expected date range
+- [ ] Client: stage dropdown on client detail page (Preparation / Submission / Approved)
+- [ ] Client: Submission stage — submissionDate picker, expectedApprovalDate (auto-calc read-only), translationDate picker
+- [ ] Client: Approved stage — approvalDate picker, settlementFeeAmount + settlementFeeDate, biometricsDate, on-time badge
+- [ ] Client: Client Documentation dashboard — stage filter tabs + approval stats card
+- [ ] Client: new clients default to "preparation" stage automatically

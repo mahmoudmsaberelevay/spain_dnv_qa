@@ -43,6 +43,13 @@
       "when": 1775654499875,
       "tag": "0005_yummy_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1775727613729,
+      "tag": "0006_pink_prism",
+      "breakpoints": true
     }
   ]
 }

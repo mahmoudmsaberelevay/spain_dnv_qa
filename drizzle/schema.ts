@@ -177,6 +177,17 @@ export const clientCases = mysqlTable("clientCases", {
   schengenDate: timestamp("schengenDate"),
   embassyAppointmentDate: timestamp("embassyAppointmentDate"),
   expectedSubmissionDate: timestamp("expectedSubmissionDate"),
+  // 3-stage workflow
+  stage: mysqlEnum("stage", ["preparation", "submission", "approved"]).default("preparation").notNull(),
+  // Submission stage fields
+  submissionDate: timestamp("submissionDate"),
+  expectedApprovalDate: timestamp("expectedApprovalDate"),
+  translationDate: timestamp("translationDate"),
+  // Approved stage fields
+  approvalDate: timestamp("approvalDate"),
+  settlementFeeAmount: decimal("settlementFeeAmount", { precision: 12, scale: 2 }),
+  settlementFeeDate: timestamp("settlementFeeDate"),
+  biometricsDate: timestamp("biometricsDate"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

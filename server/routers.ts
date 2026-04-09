@@ -1117,6 +1117,60 @@ const clientDocsRouter = router({
       };
     }),
 
+  // Update client stage and stage-specific fields
+  updateStage: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      stage: z.enum(["preparation", "submission", "approved"]),
+      // Submission stage fields
+      submissionDate: z.string().nullable().optional(),
+      translationDate: z.string().nullable().optional(),
+      // Approved stage fields
+      approvalDate: z.string().nullable().optional(),
+      settlementFeeAmount: z.string().nullable().optional(),
+      settlementFeeDate: z.string().nullable().optional(),
+      biometricsDate: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await getClientCase(input.id);
+      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const update: Record<string, any> = { stage: input.stage };
+
+      if (input.stage === "submission") {
+        if (input.submissionDate !== undefined)
+          update.submissionDate = input.submissionDate ? new Date(input.submissionDate) : null;
+        if (input.translationDate !== undefined)
+          update.translationDate = input.translationDate ? new Date(input.translationDate) : null;
+        // Auto-calculate expectedApprovalDate = submissionDate + 25 working days
+        if (input.submissionDate) {
+          const start = new Date(input.submissionDate);
+          let workingDays = 0;
+          const cursor = new Date(start);
+          while (workingDays < 25) {
+            cursor.setDate(cursor.getDate() + 1);
+            const dow = cursor.getDay();
+            if (dow !== 0 && dow !== 6) workingDays++; // skip Sat/Sun
+          }
+          update.expectedApprovalDate = cursor;
+        }
+      }
+
+      if (input.stage === "approved") {
+        if (input.approvalDate !== undefined)
+          update.approvalDate = input.approvalDate ? new Date(input.approvalDate) : null;
+        if (input.settlementFeeAmount !== undefined)
+          update.settlementFeeAmount = input.settlementFeeAmount ?? null;
+        if (input.settlementFeeDate !== undefined)
+          update.settlementFeeDate = input.settlementFeeDate ? new Date(input.settlementFeeDate) : null;
+        if (input.biometricsDate !== undefined)
+          update.biometricsDate = input.biometricsDate ? new Date(input.biometricsDate) : null;
+      }
+
+      await updateClientCase(input.id, update as any);
+      return { success: true };
+    }),
+
   // Dashboard: per-client completion overview
   dashboard: protectedProcedure.query(async ({ ctx }) => {
     const cases = await listClientCases(ctx.user.id);
@@ -1135,6 +1189,11 @@ const clientDocsRouter = router({
         // Upcoming deadlines
         const today = new Date();
         const daysUntil = (d: Date | null) => d ? Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
+        // On-time approval check
+        let approvedOnTime: boolean | null = null;
+        if (c.stage === "approved" && c.approvalDate && c.expectedApprovalDate) {
+          approvedOnTime = new Date(c.approvalDate) <= new Date(c.expectedApprovalDate);
+        }
         return {
           id: c.id,
           clientName: c.clientName,
@@ -1143,6 +1202,7 @@ const clientDocsRouter = router({
           maritalStatus: c.maritalStatus,
           paralegal: c.paralegal,
           consultant: c.consultant,
+          stage: c.stage,
           totalDocs: total,
           receivedDocs: received,
           receivePercent: receiveP,
@@ -1152,12 +1212,29 @@ const clientDocsRouter = router({
           schengenDate: c.schengenDate,
           embassyAppointmentDate: c.embassyAppointmentDate,
           expectedSubmissionDate: c.expectedSubmissionDate,
+          submissionDate: c.submissionDate,
+          expectedApprovalDate: c.expectedApprovalDate,
+          approvalDate: c.approvalDate,
           daysToSchengen: daysUntil(c.schengenDate),
           daysToSubmission: daysUntil(c.expectedSubmissionDate),
+          approvedOnTime,
         };
       })
     );
-    return results;
+    // Approval stats
+    const approvedCases = results.filter(r => r.stage === "approved");
+    const onTimeCount = approvedCases.filter(r => r.approvedOnTime === true).length;
+    const onTimePercent = approvedCases.length > 0 ? Math.round((onTimeCount / approvedCases.length) * 100) : null;
+    return {
+      clients: results,
+      stats: {
+        total: results.length,
+        preparation: results.filter(r => r.stage === "preparation").length,
+        submission: results.filter(r => r.stage === "submission").length,
+        approved: approvedCases.length,
+        onTimePercent,
+      },
+    };
   }),
 });
 // ─── App Routerr ─────────────────────────────────────────────────────────────
