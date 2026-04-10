@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Trash2, Pencil } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
+import FinFilterBar, { FinFilters } from "@/components/FinFilterBar";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -16,7 +17,17 @@ function fmt(n: number) {
 
 export default function FinExpenses() {
   const utils = trpc.useUtils();
-  const { data: transactions, isLoading } = trpc.financial.transactions.list.useQuery({ type: "expense" });
+  const [filters, setFilters] = useState<FinFilters>({ sortField: "transactionDate", sortDir: "desc" });
+  const { data: transactions, isLoading } = trpc.financial.transactions.list.useQuery({
+    type: "expense",
+    from: filters.from,
+    to: filters.to,
+    categoryId: filters.categoryId,
+    employeeId: filters.employeeId,
+    finClientId: filters.finClientId,
+    sortField: filters.sortField,
+    sortDir: filters.sortDir,
+  });
   const { data: accounts } = trpc.financial.accounts.list.useQuery();
   const { data: categories } = trpc.financial.categories.list.useQuery({ type: "expense" });
   const { data: employees } = trpc.financial.employees.list.useQuery();
@@ -135,8 +146,13 @@ export default function FinExpenses() {
       </div>
 
       <Card className="border-0 shadow-sm">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Expense Transactions</CardTitle>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base mb-3">Expense Transactions</CardTitle>
+          <FinFilterBar
+            filters={filters}
+            onChange={setFilters}
+            show={{ dateRange: true, category: true, employee: true, client: true, sort: true }}
+          />
         </CardHeader>
         <CardContent>
           {isLoading ? (

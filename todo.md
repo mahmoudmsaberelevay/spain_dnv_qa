@@ -250,3 +250,16 @@
 
 ## Change Requests (Round 29)
 - [x] Update opening balances for 11 accounts (31-Dec-2025 closing balances) and recalculate current balances
+
+## Change Requests (Round 30) — Advanced Filtering, Sorting & Reports
+
+- [ ] Backend: extend listTransactions to accept filters (dateFrom, dateTo, categoryId, employeeId, finClientId, accountId) and sorting (sortField, sortDir)
+- [ ] Backend: add getDetailedReport procedure returning filtered transactions with totals for PDF/Excel export
+- [ ] Shared FilterBar component: date range calendar picker, category dropdown, employee dropdown, client dropdown, sort column + direction
+- [ ] Wire FilterBar into Income page (FinIncome.tsx) — sort + filter across all records
+- [ ] Wire FilterBar into Expense page (FinExpenses.tsx) — sort + filter across all records
+- [ ] Wire FilterBar into Transfer page (FinTransfers.tsx) — sort + filter across all records
+- [ ] Report page: select entity type (client / category / employee), select specific entity, show filtered transactions with totals
+- [ ] Report page: Export to PDF (branded PDF with Elevay header)
+- [ ] Report page: Export to Excel (xlsx with SheetJS)
+- [ ] Register Report page in Financial sidebar navigation

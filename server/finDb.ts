@@ -155,6 +155,11 @@ export async function listTransactions(filters?: {
   accountId?: number;
   from?: Date; to?: Date;
   limit?: number;
+  categoryId?: number;
+  employeeId?: number;
+  finClientId?: number;
+  sortField?: "transactionDate" | "amount" | "description" | "type";
+  sortDir?: "asc" | "desc";
 }) {
   const db = await getDb(); if (!db) return [];
   const conditions = [];
@@ -166,10 +171,23 @@ export async function listTransactions(filters?: {
   }
   if (filters?.from) conditions.push(gte(finTransactions.transactionDate, filters.from));
   if (filters?.to) conditions.push(lte(finTransactions.transactionDate, filters.to));
+  if (filters?.categoryId) conditions.push(eq(finTransactions.categoryId, filters.categoryId));
+  if (filters?.employeeId) conditions.push(eq(finTransactions.employeeId, filters.employeeId));
+  if (filters?.finClientId) conditions.push(eq(finTransactions.finClientId, filters.finClientId));
+
+  // Sorting
+  const sf = filters?.sortField ?? "transactionDate";
+  const sd = filters?.sortDir ?? "desc";
+  const col = sf === "amount" ? finTransactions.amount
+    : sf === "description" ? finTransactions.description
+    : sf === "type" ? finTransactions.type
+    : finTransactions.transactionDate;
+  const orderExpr = sd === "asc" ? asc(col) : desc(col);
+  const tieBreak = sd === "asc" ? asc(finTransactions.id) : desc(finTransactions.id);
 
   const query = db.select().from(finTransactions)
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(finTransactions.transactionDate), desc(finTransactions.id));
+    .orderBy(orderExpr, tieBreak);
 
   if (filters?.limit) return query.limit(filters.limit);
   return query;

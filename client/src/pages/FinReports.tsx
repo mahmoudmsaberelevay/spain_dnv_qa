@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, FileText } from "lucide-react";
 import { useState, useMemo } from "react";
+import FinReport from "./FinReport";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -45,6 +46,7 @@ export default function FinReports() {
           <TabsTrigger value="expenses">All Expenses</TabsTrigger>
           <TabsTrigger value="income">All Income</TabsTrigger>
           <TabsTrigger value="statement">Account Statement</TabsTrigger>
+          <TabsTrigger value="detailed">Detailed Report</TabsTrigger>
         </TabsList>
 
         <TabsContent value="expenses">
@@ -55,6 +57,9 @@ export default function FinReports() {
         </TabsContent>
         <TabsContent value="statement">
           <AccountStatement accounts={accounts ?? []} accountId={accountId} setAccountId={setAccountId} dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} accountMap={accountMap} categoryMap={categoryMap} />
+        </TabsContent>
+        <TabsContent value="detailed">
+          <FinReport />
         </TabsContent>
       </Tabs>
     </div>

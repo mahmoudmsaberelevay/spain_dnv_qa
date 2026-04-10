@@ -271,6 +271,11 @@ const transactionsRouter = router({
       from: z.date().optional(),
       to: z.date().optional(),
       limit: z.number().optional(),
+      categoryId: z.number().optional(),
+      employeeId: z.number().optional(),
+      finClientId: z.number().optional(),
+      sortField: z.enum(["transactionDate", "amount", "description", "type"]).optional(),
+      sortDir: z.enum(["asc", "desc"]).optional(),
     }).optional())
     .query(async ({ input }) => listTransactions(input ?? undefined)),
 
