@@ -140,12 +140,30 @@ export async function applyClientPayment(clientId: number, amountEgp: number, ac
   if (!client) return;
   // Convert payment to EUR using fixed rate 55.5
   const paymentEur = accountCurrency === 'EUR' ? amountEgp : amountEgp / 55.5;
+  const egpAmount = accountCurrency === 'EUR' ? amountEgp * 55.5 : amountEgp;
   const newPaid = Number(client.paidAmountEur ?? 0) + paymentEur;
+  const newPaidEgp = Number(client.paidAmountEgp ?? 0) + egpAmount;
   const newRemaining = Number(client.remainingAmountEur ?? 0) - paymentEur;
   await db.update(finClients).set({
     paidAmountEur: newPaid.toFixed(2),
+    paidAmountEgp: newPaidEgp.toFixed(2),
     remainingAmountEur: newRemaining.toFixed(2),
   }).where(eq(finClients.id, clientId));
+}
+export async function recordClientManualPayment(clientId: number, amountEgp: number) {
+  const db = await getDb(); if (!db) return null;
+  const client = await getFinClientById(clientId);
+  if (!client) return null;
+  const paymentEur = amountEgp / 55.5;
+  const newPaidEgp = Number(client.paidAmountEgp ?? 0) + amountEgp;
+  const newPaidEur = Number(client.paidAmountEur ?? 0) + paymentEur;
+  const newRemaining = Number(client.remainingAmountEur ?? 0) - paymentEur;
+  await db.update(finClients).set({
+    paidAmountEgp: newPaidEgp.toFixed(2),
+    paidAmountEur: newPaidEur.toFixed(2),
+    remainingAmountEur: newRemaining.toFixed(2),
+  }).where(eq(finClients.id, clientId));
+  return { newPaidEgp, newPaidEur, newRemaining };
 }
 export async function createFinClient(data: InsertFinClient) {
   const db = await getDb(); if (!db) return null;

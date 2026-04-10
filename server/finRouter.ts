@@ -8,7 +8,7 @@ import {
   listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance,
   listCategories, createCategory, updateCategory, deleteCategory,
   listEmployees, createEmployee, updateEmployee, deleteEmployee,
-  listFinClients, countFinClients, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment,
+  listFinClients, countFinClients, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment,
   bulkDeleteTransactions,
   listCommissions, createCommission,
   listTransactions, createTransaction, getAccountStatement,
@@ -233,6 +233,21 @@ const finClientsRouter = router({
         contractValueEur: contractValueEur !== undefined ? contractValueEur.toString() : undefined,
         remainingAmountEur: remainingAmountEur !== undefined ? remainingAmountEur.toString() : undefined,
       });
+    }),
+  recordPayment: finWriteProcedure
+    .input(z.object({
+      clientId: z.number(),
+      amountEgp: z.number().positive(),
+    }))
+    .mutation(async ({ input }) => {
+      const result = await recordClientManualPayment(input.clientId, input.amountEgp);
+      if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found' });
+      return {
+        newPaidEgp: result.newPaidEgp,
+        newPaidEur: result.newPaidEur,
+        newRemaining: result.newRemaining,
+        eurConverted: input.amountEgp / 55.5,
+      };
     }),
 });
 

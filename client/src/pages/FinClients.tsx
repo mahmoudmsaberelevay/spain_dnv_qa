@@ -14,7 +14,7 @@ import {
 import { Label } from "@/components/ui/label";
 import {
   Search, Plus, Phone, MapPin, User, TrendingDown, TrendingUp,
-  ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, FileDown,
+  ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, FileDown, PlusCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -48,6 +48,8 @@ export default function FinClients() {
   const [page, setPage] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [paymentClient, setPaymentClient] = useState<{ id: number; name: string; remaining: number } | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState("");
 
   // Debounce search
   const handleSearch = (v: string) => {
@@ -105,6 +107,17 @@ export default function FinClients() {
   const utils = trpc.useUtils();
 
   const totalPages = Math.ceil((total ?? 0) / PAGE_SIZE);
+
+  const recordPaymentMutation = trpc.financial.clients.recordPayment.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Payment recorded! EUR converted: €${data.eurConverted.toFixed(2)} | New remaining: €${data.newRemaining.toFixed(2)}`);
+      utils.financial.clients.list.invalidate();
+      utils.financial.clients.count.invalidate();
+      setPaymentClient(null);
+      setPaymentAmount("");
+    },
+    onError: (err) => toast.error(err.message),
+  });
 
   // Use server-sorted data directly (no client-side sort)
   const sortedClients = clients ?? [];
@@ -362,6 +375,7 @@ export default function FinClients() {
                     <th className="text-right py-3 px-4 font-semibold text-muted-foreground">Direct Cost</th>
                     <th className="text-right py-3 px-4 font-semibold text-muted-foreground">Profit</th>
                     <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Contact</th>
+                    <th className="text-center py-3 px-4 font-semibold text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -448,6 +462,16 @@ export default function FinClients() {
                               </span>
                             )}
                           </div>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs gap-1 text-green-700 border-green-300 hover:bg-green-50"
+                            onClick={() => setPaymentClient({ id: c.id, name: c.name, remaining: Number(c.remainingAmountEur ?? 0) })}
+                          >
+                            <PlusCircle className="h-3 w-3" /> Pay
+                          </Button>
                         </td>
                       </tr>
                     );
@@ -573,6 +597,61 @@ export default function FinClients() {
             <Button variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
             <Button onClick={handleAdd} disabled={createMutation.isPending}>
               {createMutation.isPending ? "Adding..." : "Add Client"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Record Payment Dialog */}
+      <Dialog open={!!paymentClient} onOpenChange={(open) => { if (!open) { setPaymentClient(null); setPaymentAmount(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <PlusCircle className="h-5 w-5 text-green-600" />
+              Record Payment
+            </DialogTitle>
+          </DialogHeader>
+          {paymentClient && (
+            <div className="space-y-4 py-2">
+              <div className="bg-muted/50 rounded-lg p-3 text-sm">
+                <p className="font-medium text-foreground">{paymentClient.name}</p>
+                <p className="text-muted-foreground mt-1">
+                  Current remaining: <span className="font-semibold text-red-600">€ {fmtEur(paymentClient.remaining)}</span>
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label>Payment Amount (EGP) <span className="text-red-500">*</span></Label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 55500"
+                  value={paymentAmount}
+                  onChange={e => setPaymentAmount(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              {paymentAmount && Number(paymentAmount) > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm space-y-1">
+                  <p className="text-green-800">
+                    <span className="font-medium">EUR equivalent:</span> € {fmtEur(Number(paymentAmount) / 55.5)}
+                  </p>
+                  <p className="text-green-800">
+                    <span className="font-medium">New remaining:</span> € {fmtEur(paymentClient.remaining - Number(paymentAmount) / 55.5)}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setPaymentClient(null); setPaymentAmount(""); }}>Cancel</Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              disabled={!paymentAmount || Number(paymentAmount) <= 0 || recordPaymentMutation.isPending}
+              onClick={() => {
+                if (!paymentClient || !paymentAmount) return;
+                recordPaymentMutation.mutate({ clientId: paymentClient.id, amountEgp: Number(paymentAmount) });
+              }}
+            >
+              {recordPaymentMutation.isPending ? "Recording..." : "Record Payment"}
             </Button>
           </DialogFooter>
         </DialogContent>
