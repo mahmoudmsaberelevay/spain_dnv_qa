@@ -98,6 +98,7 @@ export async function listFinClients(opts?: { search?: string; consultant?: stri
     salesPerson: finClients.salesPerson,
     contractValueEur: finClients.contractValueEur,
     paidAmountEur: finClients.paidAmountEur,
+    paidAmountEgp: finClients.paidAmountEgp,
     remainingAmountEur: finClients.remainingAmountEur,
     isLegacy: finClients.isLegacy,
     totalDirectCostEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'expense'), 0)`,

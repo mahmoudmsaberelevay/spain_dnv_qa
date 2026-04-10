@@ -353,8 +353,9 @@ export default function FinClients() {
                       <span className="flex items-center justify-end">Contract Value <SortIcon field="contractValueEur" sortField={sortField} sortDir={sortDir} /></span>
                     </th>
                     <th className={`${thClass} text-right`} onClick={() => handleSort("paidAmountEur")}>
-                      <span className="flex items-center justify-end">Paid <SortIcon field="paidAmountEur" sortField={sortField} sortDir={sortDir} /></span>
+                      <span className="flex items-center justify-end">Paid (€) <SortIcon field="paidAmountEur" sortField={sortField} sortDir={sortDir} /></span>
                     </th>
+                    <th className="text-right py-3 px-4 font-semibold text-muted-foreground">Paid (EGP)</th>
                     <th className={`${thClass} text-right`} onClick={() => handleSort("remainingAmountEur")}>
                       <span className="flex items-center justify-end">Remaining Due <SortIcon field="remainingAmountEur" sortField={sortField} sortDir={sortDir} /></span>
                     </th>
@@ -395,6 +396,11 @@ export default function FinClients() {
                         </td>
                         <td className="py-3 px-4 text-right text-green-700 font-medium">
                           {paid > 0 ? `€ ${fmtEur(paid)}` : "—"}
+                        </td>
+                        <td className="py-3 px-4 text-right text-blue-700 font-medium">
+                          {Number(c.paidAmountEgp ?? 0) > 0
+                            ? `EGP ${Number(c.paidAmountEgp ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : "—"}
                         </td>
                         <td className="py-3 px-4 text-right font-semibold">
                           <span className={isNegative ? "text-green-600" : remaining === 0 ? "text-muted-foreground" : "text-red-600"}>

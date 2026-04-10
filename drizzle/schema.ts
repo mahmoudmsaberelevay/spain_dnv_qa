@@ -271,6 +271,7 @@ export const finClients = mysqlTable("finClients", {
   // EUR-based financials (primary)
   contractValueEur: decimal("contractValueEur", { precision: 12, scale: 2 }),
   paidAmountEur: decimal("paidAmountEur", { precision: 12, scale: 2 }).default("0").notNull(),
+  paidAmountEgp: decimal("paidAmountEgp", { precision: 14, scale: 2 }),
   remainingAmountEur: decimal("remainingAmountEur", { precision: 12, scale: 2 }),
   // Legacy flag: true = imported from old DB, remainingAmountEur is the starting balance
   isLegacy: boolean("isLegacy").default(false).notNull(),
