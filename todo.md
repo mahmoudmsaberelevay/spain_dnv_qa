@@ -201,3 +201,6 @@
 
 ## Change Requests (Round 17)
 - [x] Move client sorting to backend (DB-level ORDER BY) so it applies across all pages, not just current page
+
+## Change Requests (Round 18)
+- [x] Add PDF export button to Bank Statement page (exports selected account + date range transactions as branded PDF)

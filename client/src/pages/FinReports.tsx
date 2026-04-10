@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download } from "lucide-react";
+import { Download, FileText } from "lucide-react";
 import { useState, useMemo } from "react";
 
 function fmt(n: number) {
@@ -253,22 +253,101 @@ function AccountStatement({ accounts, accountId, setAccountId, dateFrom, dateTo,
   );
 
   const acc = accountId ? accountMap.get(Number(accountId)) : null;
+  const [exporting, setExporting] = useState(false);
+
+  function handleExportPdf() {
+    if (!statement || !acc) return;
+    setExporting(true);
+    const dateRange = [dateFrom, dateTo].filter(Boolean).join(" → ") || "All Dates";
+    const rows = (statement.transactions ?? []).map((tx: any) => {
+      const isIn = (tx.type === "income" && tx.accountId === Number(accountId)) ||
+        (tx.type === "transfer" && tx.toAccountId === Number(accountId));
+      const isOut = (tx.type === "expense" && tx.accountId === Number(accountId)) ||
+        (tx.type === "transfer" && tx.fromAccountId === Number(accountId));
+      const amount = Number(tx.amount);
+      const converted = tx.convertedAmount ? Number(tx.convertedAmount) : null;
+      const inAmt = isIn ? (tx.type === "transfer" && tx.toAccountId === Number(accountId) && converted ? converted : amount) : 0;
+      const outAmt = isOut ? amount : 0;
+      const bal = tx.balanceAfter ? Number(tx.balanceAfter) : null;
+      return `<tr>
+        <td>${new Date(tx.transactionDate).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}</td>
+        <td>${tx.description ?? ""}</td>
+        <td style="text-transform:capitalize">${tx.type}</td>
+        <td style="text-align:right;color:#16a34a">${inAmt > 0 ? fmt(inAmt) : ""}</td>
+        <td style="text-align:right;color:#dc2626">${outAmt > 0 ? fmt(outAmt) : ""}</td>
+        <td style="text-align:right;font-weight:600">${bal !== null ? fmt(bal) : "—"}</td>
+      </tr>`;
+    }).join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Account Statement — ${acc.name}</title>
+<style>
+  body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 32px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #8b0000; padding-bottom: 16px; margin-bottom: 24px; }
+  .brand { font-size: 26px; font-weight: 800; color: #8b0000; letter-spacing: 1px; }
+  .meta { font-size: 12px; color: #555; text-align: right; }
+  .summary { display: flex; gap: 24px; margin-bottom: 24px; }
+  .summary-box { flex: 1; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; }
+  .summary-box .label { font-size: 11px; color: #6b7280; margin-bottom: 4px; }
+  .summary-box .value { font-size: 18px; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #8b0000; color: #fff; padding: 8px 10px; text-align: left; }
+  th:nth-child(4), th:nth-child(5), th:nth-child(6) { text-align: right; }
+  td { padding: 7px 10px; border-bottom: 1px solid #f0f0f0; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .footer { margin-top: 32px; font-size: 11px; color: #9ca3af; text-align: center; }
+</style></head><body>
+<div class="header">
+  <div><div class="brand">ELEVAY</div><div style="font-size:13px;color:#555;margin-top:4px">Account Statement</div></div>
+  <div class="meta">
+    <div><strong>Account:</strong> ${acc.name} (${acc.currency})</div>
+    <div><strong>Period:</strong> ${dateRange}</div>
+    <div><strong>Generated:</strong> ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</div>
+  </div>
+</div>
+<div class="summary">
+  <div class="summary-box"><div class="label">Current Balance</div><div class="value">${acc.currency} ${fmt(Number(statement.currentBalance ?? 0))}</div></div>
+  <div class="summary-box"><div class="label">Total In</div><div class="value" style="color:#16a34a">${fmt(Number(statement.totalIn ?? 0))}</div></div>
+  <div class="summary-box"><div class="label">Total Out</div><div class="value" style="color:#dc2626">${fmt(Number(statement.totalOut ?? 0))}</div></div>
+  <div class="summary-box"><div class="label">Transactions</div><div class="value">${statement.transactions?.length ?? 0}</div></div>
+</div>
+<table><thead><tr><th>Date</th><th>Description</th><th>Type</th><th style="text-align:right">In</th><th style="text-align:right">Out</th><th style="text-align:right">Balance</th></tr></thead><tbody>${rows}</tbody></table>
+<div class="footer">Elevay — Confidential &nbsp;|&nbsp; Generated on ${new Date().toISOString()}</div>
+</body></html>`;
+
+    const win = window.open("", "_blank");
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(() => { win.print(); setExporting(false); }, 500);
+    } else {
+      setExporting(false);
+    }
+  }
 
   return (
     <div className="space-y-4 mt-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Account</label>
-          <Select value={accountId} onValueChange={setAccountId}>
-            <SelectTrigger className="w-[250px]"><SelectValue placeholder="Select account" /></SelectTrigger>
-            <SelectContent>
-              {accounts.map((a: any) => (
-                <SelectItem key={a.id} value={String(a.id)}>{a.name} ({a.currency})</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="flex items-center gap-3 flex-wrap justify-between">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Account</label>
+            <Select value={accountId} onValueChange={setAccountId}>
+              <SelectTrigger className="w-[250px]"><SelectValue placeholder="Select account" /></SelectTrigger>
+              <SelectContent>
+                {accounts.map((a: any) => (
+                  <SelectItem key={a.id} value={String(a.id)}>{a.name} ({a.currency})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DateFilters dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} />
         </div>
-        <DateFilters dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} />
+        {accountId && statement && (
+          <Button onClick={handleExportPdf} disabled={exporting} className="bg-[#8b0000] hover:bg-[#6b0000] text-white gap-2">
+            <FileText className="w-4 h-4" />
+            {exporting ? "Generating..." : "Export PDF"}
+          </Button>
+        )}
       </div>
 
       {!accountId ? (
