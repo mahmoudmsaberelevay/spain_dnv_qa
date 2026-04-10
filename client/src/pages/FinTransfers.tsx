@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, ArrowRight, Trash2 } from "lucide-react";
+import { Plus, ArrowRight, Trash2, Pencil } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 
@@ -41,9 +41,20 @@ export default function FinTransfers() {
     onError: (e) => toast.error(e.message),
   });
 
+  const updateMut = trpc.financial.transactions.updateTransaction.useMutation({
+    onSuccess: () => {
+      utils.financial.transactions.list.invalidate();
+      toast.success("Transfer updated");
+      setEditTx(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editTx, setEditTx] = useState<any>(null);
+  const [editForm, setEditForm] = useState({ description: "", note: "", transactionDate: "" });
   const [form, setForm] = useState({
     description: "", fromAccountId: "", toAccountId: "", amount: "", exchangeRate: "", note: "",
     transactionDate: new Date().toISOString().split("T")[0],
@@ -164,6 +175,18 @@ export default function FinTransfers() {
                         <td className="py-2 text-right font-semibold">{from?.currency ?? ""} {fmt(Number(tx.amount))}</td>
                         <td className="py-2 text-right text-muted-foreground">{tx.exchangeRate ? Number(tx.exchangeRate).toFixed(4) : "—"}</td>
                         <td className="py-2 text-right">{tx.convertedAmount ? `${to?.currency ?? ""} ${fmt(Number(tx.convertedAmount))}` : "—"}</td>
+                        <td className="py-2 text-right">
+                          <Button variant="ghost" size="sm" onClick={() => {
+                            setEditTx(tx);
+                            setEditForm({
+                              description: tx.description,
+                              note: tx.note ?? "",
+                              transactionDate: new Date(tx.transactionDate).toISOString().split("T")[0],
+                            });
+                          }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -183,6 +206,38 @@ export default function FinTransfers() {
             <Button variant="outline" onClick={() => setConfirmDelete(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleteMut.isPending}>
               {bulkDeleteMut.isPending ? "Deleting..." : `Delete ${selected.size}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Transfer Dialog */}
+      <Dialog open={!!editTx} onOpenChange={() => setEditTx(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Edit Transfer</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-sm font-medium">Description</label>
+              <Input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Date</label>
+              <Input type="date" value={editForm.transactionDate} onChange={e => setEditForm(f => ({ ...f, transactionDate: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Note</label>
+              <Textarea value={editForm.note} onChange={e => setEditForm(f => ({ ...f, note: e.target.value }))} rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTx(null)}>Cancel</Button>
+            <Button onClick={() => updateMut.mutate({
+              id: editTx.id,
+              description: editForm.description || undefined,
+              note: editForm.note || undefined,
+              transactionDate: editForm.transactionDate ? new Date(editForm.transactionDate) : undefined,
+            })} disabled={updateMut.isPending}>
+              {updateMut.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>

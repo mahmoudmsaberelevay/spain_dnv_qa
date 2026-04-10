@@ -218,3 +218,10 @@
 
 ## Change Requests (Round 21)
 - [x] Import all income transactions from Income2_Cleaned.xlsx into Cash EGP account (28 transactions, EGP 2,552,394 total)
+
+## Change Requests (Round 22)
+- [x] Fix unmatched client codes: normalize 260018→26018 pattern and re-link transactions to correct clients (6 fixed)
+- [x] Add transaction edit (pencil icon per row) to Income page
+- [x] Add transaction edit (pencil icon per row) to Expenses page
+- [x] Add transaction edit (pencil icon per row) to Transfers page
+- [x] Add updateTransaction backend procedure

@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
-import { finAccounts } from "../drizzle/schema";
+import { finAccounts, finTransactions } from "../drizzle/schema";
 import {
   listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance,
   listCategories, createCategory, updateCategory, deleteCategory,
@@ -333,6 +333,33 @@ const transactionsRouter = router({
       // Fire-and-forget email notification
       notifyFinancialTransaction("expense", input.description, input.amount, account.currency, account.name).catch(() => {});
       return result;
+    }),
+
+  updateTransaction: finWriteProcedure
+    .input(z.object({
+      id: z.number(),
+      description: z.string().min(1).optional(),
+      note: z.string().optional(),
+      transactionDate: z.date().optional(),
+      categoryId: z.number().optional(),
+      finClientId: z.number().nullable().optional(),
+      employeeId: z.number().nullable().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { id, ...fields } = input;
+      const updateData: Record<string, unknown> = {};
+      if (fields.description !== undefined) updateData.description = fields.description;
+      if (fields.note !== undefined) updateData.note = fields.note;
+      if (fields.transactionDate !== undefined) updateData.transactionDate = fields.transactionDate;
+      if (fields.categoryId !== undefined) updateData.categoryId = fields.categoryId;
+      if (fields.finClientId !== undefined) updateData.finClientId = fields.finClientId;
+      if (fields.employeeId !== undefined) updateData.employeeId = fields.employeeId;
+      if (Object.keys(updateData).length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "No fields to update" });
+      await db.update(finTransactions).set(updateData).where(eq(finTransactions.id, id));
+      const [updated] = await db.select().from(finTransactions).where(eq(finTransactions.id, id));
+      return updated;
     }),
 
   createTransfer: finWriteProcedure
