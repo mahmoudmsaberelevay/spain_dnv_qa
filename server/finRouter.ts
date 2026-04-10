@@ -8,7 +8,7 @@ import {
   listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance,
   listCategories, createCategory, updateCategory, deleteCategory,
   listEmployees, createEmployee, updateEmployee, deleteEmployee,
-  listFinClients, countFinClients, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment,
+  listFinClients, countFinClients, getFinClientTotals, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment,
   bulkDeleteTransactions,
   listCommissions, createCommission,
   listTransactions, createTransaction, getAccountStatement,
@@ -177,6 +177,12 @@ const finClientsRouter = router({
       consultant: z.string().optional(),
     }).optional())
     .query(async ({ input }) => countFinClients(input ?? undefined)),
+  totals: finReadProcedure
+    .input(z.object({
+      search: z.string().optional(),
+      consultant: z.string().optional(),
+    }).optional())
+    .query(async ({ input }) => getFinClientTotals(input ?? undefined)),
   get: finReadProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => getFinClientById(input.id)),

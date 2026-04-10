@@ -19,7 +19,7 @@ import {
 import { toast } from "sonner";
 
 const CONSULTANTS = ["Mahmoud", "Ziad", "Kirolos", "Fouad"];
-const PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 250];
 
 type SortField = "clientCode" | "name" | "program" | "consultant" | "contractValueEur" | "paidAmountEur" | "remainingAmountEur" | "signingDate";
 type SortDir = "asc" | "desc";
@@ -46,6 +46,7 @@ export default function FinClients() {
   const [sortField, setSortField] = useState<SortField>("clientCode");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
   const [showAdd, setShowAdd] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [paymentClient, setPaymentClient] = useState<{ id: number; name: string; remaining: number } | null>(null);
@@ -85,11 +86,11 @@ export default function FinClients() {
   const queryParams = useMemo(() => ({
     search: combinedSearch,
     consultant: consultant !== "all" ? consultant : undefined,
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
+    limit: pageSize,
+    offset: page * pageSize,
     sortField: sortField,
     sortDir: sortDir,
-  }), [combinedSearch, consultant, page, sortField, sortDir]);
+  }), [combinedSearch, consultant, page, pageSize, sortField, sortDir]);
 
   const countParams = useMemo(() => ({
     search: combinedSearch,
@@ -104,15 +105,17 @@ export default function FinClients() {
 
   const { data: clients, isLoading } = trpc.financial.clients.list.useQuery(queryParams);
   const { data: total } = trpc.financial.clients.count.useQuery(countParams);
+  const { data: grandTotals } = trpc.financial.clients.totals.useQuery(countParams);
   const utils = trpc.useUtils();
 
-  const totalPages = Math.ceil((total ?? 0) / PAGE_SIZE);
+  const totalPages = Math.ceil((total ?? 0) / pageSize);
 
   const recordPaymentMutation = trpc.financial.clients.recordPayment.useMutation({
     onSuccess: (data) => {
       toast.success(`Payment recorded! EUR converted: €${data.eurConverted.toFixed(2)} | New remaining: €${data.newRemaining.toFixed(2)}`);
       utils.financial.clients.list.invalidate();
       utils.financial.clients.count.invalidate();
+      utils.financial.clients.totals.invalidate();
       setPaymentClient(null);
       setPaymentAmount("");
     },
@@ -477,35 +480,30 @@ export default function FinClients() {
                     );
                   })}
                 </tbody>
-                {/* Summary totals row */}
-                {sortedClients.length > 0 && (() => {
-                  const allData = sortedClients;
-                  const totalContractEur = allData.reduce((s, c) => s + Number(c.contractValueEur ?? 0), 0);
-                  const totalPaidEur = allData.reduce((s, c) => s + Number(c.paidAmountEur ?? 0), 0);
-                  const totalPaidEgp = allData.reduce((s, c) => s + Number(c.paidAmountEgp ?? 0), 0);
-                  const totalRemainingEur = allData.reduce((s, c) => s + Number(c.remainingAmountEur ?? 0), 0);
-                  const totalCost = allData.reduce((s, c) => s + (Number(c.totalDirectCostEgp) || 0), 0);
-                  const totalIncome = allData.reduce((s, c) => s + (Number(c.totalDirectIncomeEgp) || 0), 0);
-                  const totalProfit = totalIncome - totalCost;
-                  return (
-                    <tfoot>
-                      <tr className="border-t-2 border-primary/30 bg-muted/40 font-semibold">
-                        <td className="py-3 px-4 text-xs text-muted-foreground" colSpan={4}>TOTALS ({(total ?? sortedClients.length).toLocaleString()} clients)</td>
-                        <td className="py-3 px-4 text-right">{totalContractEur > 0 ? `€ ${fmtEur(totalContractEur)}` : "—"}</td>
-                        <td className="py-3 px-4 text-right text-green-700">{totalPaidEur > 0 ? `€ ${fmtEur(totalPaidEur)}` : "—"}</td>
-                        <td className="py-3 px-4 text-right text-blue-700">{totalPaidEgp > 0 ? `EGP ${totalPaidEgp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</td>
-                        <td className="py-3 px-4 text-right text-red-600">{`€ ${fmtEur(totalRemainingEur)}`}</td>
-                        <td className="py-3 px-4 text-right text-red-600">{totalCost > 0 ? `EGP ${totalCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : "—"}</td>
-                        <td className="py-3 px-4 text-right">
-                          <span className={totalProfit >= 0 ? "text-green-600" : "text-red-600"}>
-                            {totalIncome === 0 && totalCost === 0 ? "—" : `${totalProfit >= 0 ? "+" : "-"}EGP ${Math.abs(totalProfit).toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4"></td>
-                      </tr>
-                    </tfoot>
-                  );
-                })()}
+                {/* Grand Totals row — all pages */}
+                {grandTotals && (
+                  <tfoot>
+                    <tr className="border-t-2 border-primary/30 bg-primary/5 font-semibold text-sm">
+                      <td className="py-3 px-4 text-xs font-bold text-primary" colSpan={4}>GRAND TOTAL — ALL {(total ?? 0).toLocaleString()} CLIENTS</td>
+                      <td className="py-3 px-4 text-right">{Number(grandTotals.totalContractValueEur) > 0 ? `€ ${fmtEur(grandTotals.totalContractValueEur)}` : "—"}</td>
+                      <td className="py-3 px-4 text-right text-green-700">{Number(grandTotals.totalPaidEur) > 0 ? `€ ${fmtEur(grandTotals.totalPaidEur)}` : "—"}</td>
+                      <td className="py-3 px-4 text-right text-blue-700">{Number(grandTotals.totalPaidEgp) > 0 ? `EGP ${Number(grandTotals.totalPaidEgp).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</td>
+                      <td className="py-3 px-4 text-right text-red-600">{`€ ${fmtEur(grandTotals.totalRemainingEur)}`}</td>
+                      <td className="py-3 px-4 text-right text-red-600">{Number(grandTotals.totalDirectCostEgp) > 0 ? `EGP ${Number(grandTotals.totalDirectCostEgp).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : "—"}</td>
+                      <td className="py-3 px-4 text-right">
+                        {(() => {
+                          const income = Number(grandTotals.totalDirectIncomeEgp) || 0;
+                          const cost = Number(grandTotals.totalDirectCostEgp) || 0;
+                          const profit = income - cost;
+                          if (income === 0 && cost === 0) return <span className="text-muted-foreground">—</span>;
+                          return <span className={profit >= 0 ? "text-green-600" : "text-red-600"}>{profit >= 0 ? "+" : "-"}EGP {Math.abs(profit).toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>;
+                        })()}
+                      </td>
+                      <td className="py-3 px-4"></td>
+                      <td className="py-3 px-4"></td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           )}
@@ -513,21 +511,37 @@ export default function FinClients() {
       </Card>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
           <p className="text-sm text-muted-foreground">
-            Page {page + 1} of {totalPages} ({total} total)
+            {total ? `Showing ${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)} of ${total} clients` : ""}
           </p>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Rows per page:</span>
+            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(0); }}>
+              <SelectTrigger className="h-7 w-16 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map(n => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {totalPages > 1 && (
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>
               <ChevronLeft className="h-4 w-4" /> Previous
             </Button>
+            <span className="flex items-center text-sm text-muted-foreground px-2">{page + 1} / {totalPages}</span>
             <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}>
               Next <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Add Client Dialog */}
       <Dialog open={showAdd} onOpenChange={setShowAdd}>

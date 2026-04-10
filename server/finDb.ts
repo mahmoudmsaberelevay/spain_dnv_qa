@@ -114,6 +114,25 @@ export async function listFinClients(opts?: { search?: string; consultant?: stri
   if (opts?.offset) query.offset(opts.offset);
   return query;
 }
+export async function getFinClientTotals(opts?: { search?: string; consultant?: string }) {
+  const db = await getDb(); if (!db) return null;
+  const conditions = [];
+  if (opts?.search) {
+    const like = `%${opts.search}%`;
+    conditions.push(sql`(${finClients.name} LIKE ${like} OR ${finClients.clientCode} LIKE ${like})`);
+  }
+  if (opts?.consultant) conditions.push(eq(finClients.consultant, opts.consultant));
+  const [row] = await db.select({
+    totalContractValueEur: sql<number>`COALESCE(SUM(CAST(${finClients.contractValueEur} AS DECIMAL(15,2))), 0)`,
+    totalPaidEur: sql<number>`COALESCE(SUM(CAST(${finClients.paidAmountEur} AS DECIMAL(15,2))), 0)`,
+    totalPaidEgp: sql<number>`COALESCE(SUM(CAST(${finClients.paidAmountEgp} AS DECIMAL(15,2))), 0)`,
+    totalRemainingEur: sql<number>`COALESCE(SUM(CAST(${finClients.remainingAmountEur} AS DECIMAL(15,2))), 0)`,
+    totalDirectCostEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId IN (SELECT id FROM finClients) AND ft.type = 'expense'), 0)`,
+    totalDirectIncomeEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId IN (SELECT id FROM finClients) AND ft.type = 'income'), 0)`,
+  }).from(finClients)
+    .where(conditions.length === 0 ? undefined : conditions.length === 1 ? conditions[0] : and(...conditions));
+  return row ?? null;
+}
 export async function countFinClients(opts?: { search?: string; consultant?: string }) {
   const db = await getDb(); if (!db) return 0;
   const conditions = [];
