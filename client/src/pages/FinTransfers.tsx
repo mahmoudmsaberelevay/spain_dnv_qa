@@ -56,7 +56,7 @@ export default function FinTransfers() {
   const [editTx, setEditTx] = useState<any>(null);
   const [editForm, setEditForm] = useState({ description: "", note: "", transactionDate: "" });
   const [form, setForm] = useState({
-    description: "", fromAccountId: "", toAccountId: "", amount: "", exchangeRate: "", note: "",
+    description: "", fromAccountId: "", toAccountId: "", amount: "", exchangeRate: "1", note: "",
     transactionDate: new Date().toISOString().split("T")[0],
   });
 
@@ -68,7 +68,10 @@ export default function FinTransfers() {
 
   const fromAcc = form.fromAccountId ? accountMap.get(Number(form.fromAccountId)) : null;
   const toAcc = form.toAccountId ? accountMap.get(Number(form.toAccountId)) : null;
-  const needsExchange = fromAcc && toAcc && fromAcc.currency !== toAcc.currency;
+  const isSameCurrency = fromAcc && toAcc && fromAcc.currency === toAcc.currency;
+  const creditedAmount = form.amount && form.exchangeRate
+    ? Number(form.amount) * Number(form.exchangeRate)
+    : null;
 
   const handleCreate = () => {
     if (!form.description || !form.fromAccountId || !form.toAccountId || !form.amount) {
@@ -79,8 +82,8 @@ export default function FinTransfers() {
       toast.error("From and To accounts must be different");
       return;
     }
-    if (needsExchange && !form.exchangeRate) {
-      toast.error("Exchange rate is required for cross-currency transfers");
+    if (!form.exchangeRate) {
+      toast.error("Rate is required");
       return;
     }
     createMut.mutate({
@@ -88,7 +91,7 @@ export default function FinTransfers() {
       fromAccountId: Number(form.fromAccountId),
       toAccountId: Number(form.toAccountId),
       amount: Number(form.amount),
-      exchangeRate: form.exchangeRate ? Number(form.exchangeRate) : undefined,
+      exchangeRate: Number(form.exchangeRate),
       transactionDate: new Date(form.transactionDate),
     });
   };
@@ -125,7 +128,7 @@ export default function FinTransfers() {
               Delete Selected ({selected.size})
             </Button>
           )}
-          <Button onClick={() => { setForm({ description: "", fromAccountId: "", toAccountId: "", amount: "", exchangeRate: "", note: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}>
+          <Button onClick={() => { setForm({ description: "", fromAccountId: "", toAccountId: "", amount: "", exchangeRate: "1", note: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}>
             <Plus className="h-4 w-4 mr-1" /> New Transfer
           </Button>
         </div>
@@ -286,17 +289,30 @@ export default function FinTransfers() {
                 <Input type="date" value={form.transactionDate} onChange={e => setForm(f => ({ ...f, transactionDate: e.target.value }))} />
               </div>
             </div>
-            {needsExchange && (
-              <div>
-                <label className="text-sm font-medium">Exchange Rate * ({fromAcc?.currency} → {toAcc?.currency})</label>
-                <Input type="number" step="0.0001" value={form.exchangeRate} onChange={e => setForm(f => ({ ...f, exchangeRate: e.target.value }))} placeholder="e.g. 62.14" />
-                {form.amount && form.exchangeRate && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {fromAcc?.currency} {fmt(Number(form.amount))} × {form.exchangeRate} = {toAcc?.currency} {fmt(Number(form.amount) * Number(form.exchangeRate))}
-                  </p>
+            <div>
+              <label className="text-sm font-medium">
+                Rate *
+                {fromAcc && toAcc && !isSameCurrency && (
+                  <span className="text-muted-foreground font-normal ml-1">({fromAcc.currency} → {toAcc.currency})</span>
                 )}
-              </div>
-            )}
+                {isSameCurrency && (
+                  <span className="text-muted-foreground font-normal ml-1">(same currency — use 1)</span>
+                )}
+              </label>
+              <Input
+                type="number"
+                step="0.0001"
+                min="0.0001"
+                value={form.exchangeRate}
+                onChange={e => setForm(f => ({ ...f, exchangeRate: e.target.value }))}
+                placeholder="1"
+              />
+              {creditedAmount !== null && fromAcc && toAcc && (
+                <p className="text-xs text-emerald-600 font-medium mt-1">
+                  Deduct: {fromAcc.currency} {fmt(Number(form.amount))} → Credit: {toAcc.currency} {fmt(creditedAmount)}
+                </p>
+              )}
+            </div>
             <div>
               <label className="text-sm font-medium">Note</label>
               <Textarea value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="Optional note" rows={2} />

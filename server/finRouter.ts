@@ -380,7 +380,7 @@ const transactionsRouter = router({
       fromAccountId: z.number(),
       toAccountId: z.number(),
       amount: z.number().positive(),
-      exchangeRate: z.number().positive().optional(),
+      exchangeRate: z.number().positive().default(1),
       transactionDate: z.date(),
       description: z.string().optional(),
     }))
@@ -391,7 +391,8 @@ const transactionsRouter = router({
 
       const balanceBefore1 = Number(fromAcc.balance);
       const balanceAfter1 = balanceBefore1 - input.amount;
-      const receivedAmount = input.exchangeRate ? input.amount * input.exchangeRate : input.amount;
+      // receivedAmount = deducted amount × rate (rate=1 for same currency)
+      const receivedAmount = input.amount * input.exchangeRate;
       const balanceBefore2 = Number(toAcc.balance);
       const balanceAfter2 = balanceBefore2 + receivedAmount;
 
@@ -405,7 +406,7 @@ const transactionsRouter = router({
         toAccountId: input.toAccountId,
         amount: input.amount.toString(),
         convertedAmount: receivedAmount.toString(),
-        exchangeRate: input.exchangeRate?.toString() ?? null,
+        exchangeRate: input.exchangeRate.toString(),
         transactionDate: input.transactionDate,
         balanceBefore: balanceBefore1.toString(),
         balanceAfter: balanceAfter1.toString(),
