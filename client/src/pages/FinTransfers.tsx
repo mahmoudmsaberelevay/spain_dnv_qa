@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import AccountSelect from "@/components/AccountSelect";
 import * as XLSX from "xlsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -390,25 +391,11 @@ export default function FinTransfers() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium">From Account *</label>
-                <Select value={form.fromAccountId} onValueChange={v => setForm(f => ({ ...f, fromAccountId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
-                  <SelectContent>
-                    {accounts?.filter(a => a.isActive).map(a => (
-                      <SelectItem key={a.id} value={String(a.id)}>{a.name} ({a.currency})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <AccountSelect accounts={accounts} value={form.fromAccountId} onValueChange={v => setForm(f => ({ ...f, fromAccountId: v }))} activeOnly />
               </div>
               <div>
                 <label className="text-sm font-medium">To Account *</label>
-                <Select value={form.toAccountId} onValueChange={v => setForm(f => ({ ...f, toAccountId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
-                  <SelectContent>
-                    {accounts?.filter(a => a.isActive).map(a => (
-                      <SelectItem key={a.id} value={String(a.id)}>{a.name} ({a.currency})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <AccountSelect accounts={accounts} value={form.toAccountId} onValueChange={v => setForm(f => ({ ...f, toAccountId: v }))} activeOnly />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

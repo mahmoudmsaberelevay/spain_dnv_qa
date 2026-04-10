@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import AccountSelect from "@/components/AccountSelect";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -422,10 +423,7 @@ export default function FinIncome() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium">Account *</label>
-                <Select value={form.accountId} onValueChange={v => setForm(f => ({ ...f, accountId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
-                  <SelectContent>{accounts?.filter(a => a.isActive).map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name} ({a.currency})</SelectItem>)}</SelectContent>
-                </Select>
+                <AccountSelect accounts={accounts} value={form.accountId} onValueChange={v => setForm(f => ({ ...f, accountId: v }))} activeOnly />
               </div>
               <div>
                 <label className="text-sm font-medium">Category *</label>

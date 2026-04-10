@@ -312,3 +312,9 @@
 - [x] Fix Expense edit dialog: add Amount field so full entry can be edited (with balance adjustment)
 - [x] Fix Income edit dialog: add Amount field so full entry can be edited (with balance adjustment)
 - [x] Fix Transfer edit dialog: add Amount field so full entry can be edited (with balance adjustment)
+
+## Change Requests (Round 37) — Account Logo Thumbnails in Dropdowns
+- [x] Create shared AccountSelect component showing bank logo thumbnail + account name in all dropdowns
+- [x] Use AccountSelect in Income create dialog (Account field)
+- [x] Use AccountSelect in Expense create dialog (Account field)
+- [x] Use AccountSelect in Transfer create dialog (From Account + To Account fields)
