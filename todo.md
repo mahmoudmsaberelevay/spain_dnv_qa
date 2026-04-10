@@ -356,3 +356,9 @@
 - [x] Frontend: PermissionsContext — global context that loads current user's permissions
 - [x] Frontend: enforce page-level access — wrap each protected page with permission check, show 403 if no access
 - [x] App.tsx: add /settings route (owner only)
+
+## Bug Fixes (Round 40) — Notification Center, Settings, Team Chat
+
+- [ ] Fix Settings page not loading (investigate permissions.getMyPermissions and listUsers procedures)
+- [ ] Fix Team Chat page not working (investigate chat procedures and UI rendering)
+- [ ] Fix Notification Center not working (investigate what the notification center is and where it lives)
