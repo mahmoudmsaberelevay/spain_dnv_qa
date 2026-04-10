@@ -215,3 +215,6 @@
 - [x] Fix bulk delete: reverse account balances when transactions are deleted (income reversal, expense reversal, transfer reversal)
 - [x] Add edit opening/initial balance to Accounts page (edit button per account row)
 - [x] Add setBalance backend procedure (directly sets account balance without creating a transaction)
+
+## Change Requests (Round 21)
+- [x] Import all income transactions from Income2_Cleaned.xlsx into Cash EGP account (28 transactions, EGP 2,552,394 total)
