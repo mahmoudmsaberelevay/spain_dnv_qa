@@ -264,6 +264,7 @@ function AccountStatement({ accounts, accountId, setAccountId, dateFrom, dateTo,
     if (!statement || !acc) return;
     setExporting(true);
     const dateRange = [dateFrom, dateTo].filter(Boolean).join(" → ") || "All Dates";
+    let pdfRunBal = Number(statement.openingBalance ?? 0);
     const rows = (statement.transactions ?? []).map((tx: any) => {
       const isIn = (tx.type === "income" && tx.accountId === Number(accountId)) ||
         (tx.type === "transfer" && tx.toAccountId === Number(accountId));
@@ -273,14 +274,14 @@ function AccountStatement({ accounts, accountId, setAccountId, dateFrom, dateTo,
       const converted = tx.convertedAmount ? Number(tx.convertedAmount) : null;
       const inAmt = isIn ? (tx.type === "transfer" && tx.toAccountId === Number(accountId) && converted ? converted : amount) : 0;
       const outAmt = isOut ? amount : 0;
-      const bal = tx.balanceAfter ? Number(tx.balanceAfter) : null;
+      pdfRunBal = pdfRunBal + inAmt - outAmt;
       return `<tr>
         <td>${new Date(tx.transactionDate).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}</td>
         <td>${tx.description ?? ""}</td>
         <td style="text-transform:capitalize">${tx.type}</td>
         <td style="text-align:right;color:#16a34a">${inAmt > 0 ? fmt(inAmt) : ""}</td>
         <td style="text-align:right;color:#dc2626">${outAmt > 0 ? fmt(outAmt) : ""}</td>
-        <td style="text-align:right;font-weight:600">${bal !== null ? fmt(bal) : "—"}</td>
+        <td style="text-align:right;font-weight:600">${fmt(pdfRunBal)}</td>
       </tr>`;
     }).join("");
 
@@ -408,27 +409,30 @@ function AccountStatement({ accounts, accountId, setAccountId, dateFrom, dateTo,
                     </tr>
                   </thead>
                   <tbody>
-                    {statement?.transactions?.map((tx: any) => {
-                      const isIn = (tx.type === "income" && tx.accountId === Number(accountId)) ||
-                        (tx.type === "transfer" && tx.toAccountId === Number(accountId));
-                      const isOut = (tx.type === "expense" && tx.accountId === Number(accountId)) ||
-                        (tx.type === "transfer" && tx.fromAccountId === Number(accountId));
-                      const amount = Number(tx.amount);
-                      const converted = tx.convertedAmount ? Number(tx.convertedAmount) : null;
-                      const inAmt = isIn ? (tx.type === "transfer" && tx.toAccountId === Number(accountId) && converted ? converted : amount) : 0;
-                      const outAmt = isOut ? amount : 0;
-                      const bal = isIn ? tx.balanceAfter : (tx.type === "transfer" && tx.fromAccountId === Number(accountId) ? tx.balanceAfter : tx.balanceAfter);
-                      return (
-                        <tr key={tx.id} className="border-b border-muted/50">
-                          <td className="py-2">{dateStr(tx.transactionDate)}</td>
-                          <td className="py-2 font-medium">{tx.description}</td>
-                          <td className="py-2 capitalize text-muted-foreground">{tx.type}</td>
-                          <td className="py-2 text-right text-green-600">{inAmt > 0 ? fmt(inAmt) : ""}</td>
-                          <td className="py-2 text-right text-red-600">{outAmt > 0 ? fmt(outAmt) : ""}</td>
-                          <td className="py-2 text-right font-medium">{bal ? fmt(Number(bal)) : "—"}</td>
-                        </tr>
-                      );
-                    })}
+                    {(() => {
+                      let runBal = Number(statement?.openingBalance ?? 0);
+                      return (statement?.transactions ?? []).map((tx: any) => {
+                        const isIn = (tx.type === "income" && tx.accountId === Number(accountId)) ||
+                          (tx.type === "transfer" && tx.toAccountId === Number(accountId));
+                        const isOut = (tx.type === "expense" && tx.accountId === Number(accountId)) ||
+                          (tx.type === "transfer" && tx.fromAccountId === Number(accountId));
+                        const amount = Number(tx.amount);
+                        const converted = tx.convertedAmount ? Number(tx.convertedAmount) : null;
+                        const inAmt = isIn ? (tx.type === "transfer" && tx.toAccountId === Number(accountId) && converted ? converted : amount) : 0;
+                        const outAmt = isOut ? amount : 0;
+                        runBal = runBal + inAmt - outAmt;
+                        return (
+                          <tr key={tx.id} className="border-b border-muted/50">
+                            <td className="py-2">{dateStr(tx.transactionDate)}</td>
+                            <td className="py-2 font-medium">{tx.description}</td>
+                            <td className="py-2 capitalize text-muted-foreground">{tx.type}</td>
+                            <td className="py-2 text-right text-green-600">{inAmt > 0 ? fmt(inAmt) : ""}</td>
+                            <td className="py-2 text-right text-red-600">{outAmt > 0 ? fmt(outAmt) : ""}</td>
+                            <td className="py-2 text-right font-medium">{fmt(runBal)}</td>
+                          </tr>
+                        );
+                      });
+                    })()}
                   </tbody>
                 </table>
               </div>

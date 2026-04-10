@@ -225,14 +225,14 @@ function DashboardLayoutContent({
                 <img
                   src="https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/elevay-logo_9749d369.png"
                   alt="Elevay"
-                  className="h-8 w-auto object-contain"
+                  className="h-16 w-auto object-contain"
                 />
               )}
               {isCollapsed && (
                 <img
                   src="https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/elevay-logo_9749d369.png"
                   alt="Elevay"
-                  className="h-6 w-6 object-contain"
+                  className="h-12 w-12 object-contain"
                 />
               )}
             </div>

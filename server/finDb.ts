@@ -75,8 +75,9 @@ export async function listFinClients(opts?: { search?: string; consultant?: stri
   const db = await getDb(); if (!db) return [];
   const conditions = [];
   if (opts?.search) {
-    const like = `%${opts.search}%`;
-    conditions.push(sql`(${finClients.name} LIKE ${like} OR ${finClients.clientCode} LIKE ${like})`);
+    const nameLike = `%${opts.search}%`;
+    const codeLike = /^\d/.test(opts.search) ? `${opts.search}%` : `%${opts.search}%`;
+    conditions.push(sql`(${finClients.name} LIKE ${nameLike} OR ${finClients.clientCode} LIKE ${codeLike})`);
   }
   if (opts?.consultant) conditions.push(eq(finClients.consultant, opts.consultant));
   const query = db.select({
@@ -118,8 +119,9 @@ export async function getFinClientTotals(opts?: { search?: string; consultant?: 
   const db = await getDb(); if (!db) return null;
   const conditions = [];
   if (opts?.search) {
-    const like = `%${opts.search}%`;
-    conditions.push(sql`(${finClients.name} LIKE ${like} OR ${finClients.clientCode} LIKE ${like})`);
+    const nameLike = `%${opts.search}%`;
+    const codeLike = /^\d/.test(opts.search) ? `${opts.search}%` : `%${opts.search}%`;
+    conditions.push(sql`(${finClients.name} LIKE ${nameLike} OR ${finClients.clientCode} LIKE ${codeLike})`);
   }
   if (opts?.consultant) conditions.push(eq(finClients.consultant, opts.consultant));
   const [row] = await db.select({
@@ -137,8 +139,9 @@ export async function countFinClients(opts?: { search?: string; consultant?: str
   const db = await getDb(); if (!db) return 0;
   const conditions = [];
   if (opts?.search) {
-    const like = `%${opts.search}%`;
-    conditions.push(sql`(${finClients.name} LIKE ${like} OR ${finClients.clientCode} LIKE ${like})`);
+    const nameLike = `%${opts.search}%`;
+    const codeLike = /^\d/.test(opts.search) ? `${opts.search}%` : `%${opts.search}%`;
+    conditions.push(sql`(${finClients.name} LIKE ${nameLike} OR ${finClients.clientCode} LIKE ${codeLike})`);
   }
   if (opts?.consultant) conditions.push(eq(finClients.consultant, opts.consultant));
   const [row] = await db.select({ count: sql<number>`COUNT(*)` }).from(finClients)
@@ -230,6 +233,7 @@ export async function listTransactions(filters?: {
   accountId?: number;
   from?: Date; to?: Date;
   limit?: number;
+  offset?: number;
   categoryId?: number;
   employeeId?: number;
   finClientId?: number;
@@ -264,8 +268,37 @@ export async function listTransactions(filters?: {
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(orderExpr, tieBreak);
 
-  if (filters?.limit) return query.limit(filters.limit);
+  if (filters?.limit) {
+    query.limit(filters.limit);
+    if (filters?.offset) query.offset(filters.offset);
+    return query;
+  }
   return query;
+}
+export async function countTransactions(filters?: {
+  type?: "income" | "expense" | "transfer";
+  accountId?: number;
+  from?: Date; to?: Date;
+  categoryId?: number;
+  employeeId?: number;
+  finClientId?: number;
+}) {
+  const db = await getDb(); if (!db) return 0;
+  const conditions = [];
+  if (filters?.type) conditions.push(eq(finTransactions.type, filters.type));
+  if (filters?.accountId) {
+    conditions.push(
+      sql`(${finTransactions.accountId} = ${filters.accountId} OR ${finTransactions.fromAccountId} = ${filters.accountId} OR ${finTransactions.toAccountId} = ${filters.accountId})`
+    );
+  }
+  if (filters?.from) conditions.push(gte(finTransactions.transactionDate, filters.from));
+  if (filters?.to) conditions.push(lte(finTransactions.transactionDate, filters.to));
+  if (filters?.categoryId) conditions.push(eq(finTransactions.categoryId, filters.categoryId));
+  if (filters?.employeeId) conditions.push(eq(finTransactions.employeeId, filters.employeeId));
+  if (filters?.finClientId) conditions.push(eq(finTransactions.finClientId, filters.finClientId));
+  const [row] = await db.select({ count: sql<number>`COUNT(*)` }).from(finTransactions)
+    .where(conditions.length ? and(...conditions) : undefined);
+  return Number(row?.count ?? 0);
 }
 
 export async function createTransaction(data: InsertFinTransaction) {

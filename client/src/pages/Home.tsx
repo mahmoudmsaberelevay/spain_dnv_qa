@@ -55,10 +55,11 @@ export default function Home() {
       <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Shield className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <span className="font-semibold text-foreground tracking-tight">Spain DNV QA</span>
+            <img
+              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/elevay-logo_9749d369.png"
+              alt="Elevay"
+              className="h-16 w-auto object-contain"
+            />
           </div>
           <div className="flex items-center gap-3">
             {isAuthenticated ? (

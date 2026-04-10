@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import * as XLSX from "xlsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, ArrowRight, Trash2, Pencil } from "lucide-react";
+import { Plus, ArrowRight, Trash2, Pencil, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import FinFilterBar, { FinFilters } from "@/components/FinFilterBar";
@@ -15,16 +16,26 @@ function fmt(n: number) {
   return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
 
+const PAGE_SIZE_OPTIONS = [60, 120, 240, 0]; // 0 = All
+
 export default function FinTransfers() {
   const utils = trpc.useUtils();
   const [filters, setFilters] = useState<FinFilters>({ sortField: "transactionDate", sortDir: "desc" });
-  const { data: transactions, isLoading } = trpc.financial.transactions.list.useQuery({
-    type: "transfer",
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(60);
+
+  const queryParams = useMemo(() => ({
+    type: "transfer" as const,
     from: filters.from,
     to: filters.to,
     sortField: filters.sortField,
     sortDir: filters.sortDir,
-  });
+    limit: pageSize > 0 ? pageSize : undefined,
+    offset: pageSize > 0 ? page * pageSize : undefined,
+  }), [filters, page, pageSize]);
+
+  const { data: transactions, isLoading } = trpc.financial.transactions.list.useQuery(queryParams);
+  const { data: totalCount } = trpc.financial.transactions.count.useQuery({ type: "transfer", from: filters.from, to: filters.to });
   const { data: accounts } = trpc.financial.accounts.list.useQuery();
 
   const createMut = trpc.financial.transactions.createTransfer.useMutation({
@@ -106,6 +117,7 @@ export default function FinTransfers() {
 
   const allIds = transactions?.map(t => t.id) ?? [];
   const allSelected = allIds.length > 0 && allIds.every(id => selected.has(id));
+  const totalPages = pageSize > 0 ? Math.ceil((totalCount ?? 0) / pageSize) : 1;
 
   const toggleAll = () => {
     if (allSelected) setSelected(new Set());
@@ -125,11 +137,61 @@ export default function FinTransfers() {
     setConfirmDelete(false);
   };
 
+  const getExportData = async () => utils.financial.transactions.list.fetch({
+    type: "transfer", from: filters.from, to: filters.to, sortField: filters.sortField, sortDir: filters.sortDir,
+  });
+
+  const handleExportExcel = async () => {
+    try {
+      const data = await getExportData();
+      const rows = (data ?? []).map(tx => ({
+        Date: new Date(tx.transactionDate).toLocaleDateString(),
+        Description: tx.description,
+        From: tx.fromAccountId ? (accountMap.get(tx.fromAccountId)?.name ?? "") : "",
+        To: tx.toAccountId ? (accountMap.get(tx.toAccountId)?.name ?? "") : "",
+        Amount: Number(tx.amount),
+        Rate: tx.exchangeRate ? Number(tx.exchangeRate) : 1,
+        Converted: tx.convertedAmount ? Number(tx.convertedAmount) : Number(tx.amount),
+        Note: tx.note ?? "",
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Transfers");
+      XLSX.writeFile(wb, `transfers_${new Date().toISOString().split("T")[0]}.xlsx`);
+    } catch (e: any) { toast.error("Export failed: " + e.message); }
+  };
+
+  const handleExportPdf = async () => {
+    try {
+      const data = await getExportData();
+      const rows = (data ?? []).map(tx => `<tr>
+        <td>${new Date(tx.transactionDate).toLocaleDateString()}</td>
+        <td>${tx.description}</td>
+        <td>${tx.fromAccountId ? (accountMap.get(tx.fromAccountId)?.name ?? "") : ""}</td>
+        <td>${tx.toAccountId ? (accountMap.get(tx.toAccountId)?.name ?? "") : ""}</td>
+        <td style="text-align:right">${fmt(Number(tx.amount))}</td>
+        <td style="text-align:right">${tx.exchangeRate ? Number(tx.exchangeRate).toFixed(4) : "1"}</td>
+        <td style="text-align:right">${tx.convertedAmount ? fmt(Number(tx.convertedAmount)) : fmt(Number(tx.amount))}</td>
+      </tr>`).join("");
+      const html = `<html><head><title>Transfers Report</title><style>
+        body{font-family:Arial,sans-serif;font-size:11px;padding:20px}h2{margin-bottom:4px}p{margin:2px 0 12px;color:#666}
+        table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:5px 8px;text-align:left}
+        th{background:#f5f5f5;font-weight:600}@media print{body{padding:0}}</style></head><body>
+        <h2>Transfers Report</h2><p>Generated: ${new Date().toLocaleString()}</p>
+        <table><thead><tr><th>Date</th><th>Description</th><th>From</th><th>To</th><th>Amount</th><th>Rate</th><th>Converted</th></tr></thead>
+        <tbody>${rows}</tbody></table></body></html>`;
+      const w = window.open("", "_blank");
+      if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500); }
+    } catch (e: any) { toast.error("Export failed: " + e.message); }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Transfers</h1>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleExportExcel} className="gap-1.5"><FileSpreadsheet className="h-4 w-4" /> Excel</Button>
+          <Button variant="outline" size="sm" onClick={handleExportPdf} className="gap-1.5"><FileDown className="h-4 w-4" /> PDF</Button>
           {selected.size > 0 && (
             <Button variant="destructive" onClick={() => setConfirmDelete(true)} className="gap-2">
               <Trash2 className="h-4 w-4" />
@@ -147,7 +209,7 @@ export default function FinTransfers() {
           <CardTitle className="text-base mb-3">Transfer History</CardTitle>
           <FinFilterBar
             filters={filters}
-            onChange={setFilters}
+            onChange={(f) => { setFilters(f); setPage(0); }}
             show={{ dateRange: true, sort: true }}
           />
         </CardHeader>
@@ -172,6 +234,7 @@ export default function FinTransfers() {
                     <th className="text-right py-2 font-medium">Amount</th>
                     <th className="text-right py-2 font-medium">Rate</th>
                     <th className="text-right py-2 font-medium">Converted</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -210,6 +273,25 @@ export default function FinTransfers() {
               </table>
             </div>
           )}
+
+          {/* Pagination + Page Size */}
+          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span>Rows per page:</span>
+              <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(0); }}>
+                <SelectTrigger className="w-24 h-8"><SelectValue /></SelectTrigger>
+                <SelectContent>{PAGE_SIZE_OPTIONS.map(n => <SelectItem key={n} value={String(n)}>{n === 0 ? "All" : n}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <span>{pageSize > 0 ? `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, totalCount ?? 0)} of ${totalCount ?? 0}` : `${totalCount ?? 0} records`}</span>
+            {pageSize > 0 && (
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}><ChevronLeft className="h-4 w-4" /></Button>
+                <span className="px-2">Page {page + 1} of {totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}><ChevronRight className="h-4 w-4" /></Button>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 

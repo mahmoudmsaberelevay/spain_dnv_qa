@@ -11,7 +11,7 @@ import {
   listFinClients, countFinClients, getFinClientTotals, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment, setClientPaidAmount,
   bulkDeleteTransactions,
   listCommissions, createCommission,
-  listTransactions, createTransaction, getAccountStatement,
+  listTransactions, countTransactions, createTransaction, getAccountStatement,
   getFinancialSummary,
 } from "./finDb";
 import { notifyFinancialTransaction } from "./emailService";
@@ -291,6 +291,7 @@ const transactionsRouter = router({
       from: z.date().optional(),
       to: z.date().optional(),
       limit: z.number().optional(),
+      offset: z.number().optional(),
       categoryId: z.number().optional(),
       employeeId: z.number().optional(),
       finClientId: z.number().optional(),
@@ -298,6 +299,17 @@ const transactionsRouter = router({
       sortDir: z.enum(["asc", "desc"]).optional(),
     }).optional())
     .query(async ({ input }) => listTransactions(input ?? undefined)),
+  count: finReadProcedure
+    .input(z.object({
+      type: z.enum(["income", "expense", "transfer"]).optional(),
+      accountId: z.number().optional(),
+      from: z.date().optional(),
+      to: z.date().optional(),
+      categoryId: z.number().optional(),
+      employeeId: z.number().optional(),
+      finClientId: z.number().optional(),
+    }).optional())
+    .query(async ({ input }) => countTransactions(input ?? undefined)),
 
   createIncome: finWriteProcedure
     .input(z.object({
@@ -485,16 +497,19 @@ const reportsRouter = router({
         (tx.type === "expense" && tx.accountId === input.accountId) ||
         (tx.type === "transfer" && tx.fromAccountId === input.accountId)
       ).reduce((s, tx) => s + Number(tx.amount), 0);
+      // Compute opening balance = currentBalance - (totalIn - totalOut) for the period
+      // This gives us the balance BEFORE the first transaction in the period
+      const openingBalance = Number(account.balance) - totalIn + totalOut;
       return {
         currentBalance: account.balance,
+        openingBalance,
         totalIn,
         totalOut,
         transactions: statement,
       };
     }),
 });
-
-// ─── Bulk Upload Router ──────────────────────────────────────────────────────
+// ─── Bulk Upload Routerr ──────────────────────────────────────────────────────
 const bulkRouter = router({
   upload: finWriteProcedure
     .input(z.object({
