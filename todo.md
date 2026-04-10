@@ -244,3 +244,6 @@
 
 ## Change Requests (Round 27)
 - [x] Import all transfer transactions from Notion Transfers database (71 transfers imported, 0 skipped, all accounts updated correctly)
+
+## Change Requests (Round 28)
+- [x] Import all 2026 expense transactions from Notion Expenses database into correct accounts with category/employee links (675 imported, 128 duplicates skipped, 142 defaulted to Misc category)
