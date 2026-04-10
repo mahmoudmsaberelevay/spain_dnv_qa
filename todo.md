@@ -193,3 +193,8 @@
 - [x] For old clients: remainingAmount from CSV is the contract value; deduct new payments in EUR (payment EGP / 55.5)
 - [x] For new clients: remainingAmount = contractValueEur - (totalPaidEgp / 55.5)
 - [x] Build Clients page in Financial module with search, filter by consultant, and remaining balance display
+
+## Change Requests (Round 16)
+- [x] Add filter by client code (text input) to Clients page
+- [x] Add sort by all columns (Code, Name, Program, Consultant, Contract Value, Paid, Remaining) to Clients page
+- [x] Add Export as PDF button to Clients page (exports current filtered/sorted list)
