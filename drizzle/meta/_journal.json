@@ -92,6 +92,13 @@
       "when": 1775854968095,
       "tag": "0012_natural_wolfsbane",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1775861700966,
+      "tag": "0013_charming_madame_masque",
+      "breakpoints": true
     }
   ]
 }

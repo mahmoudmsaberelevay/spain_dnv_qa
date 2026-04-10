@@ -8,6 +8,8 @@ import DashboardLayout from "./components/DashboardLayout";
 import ElevayHome from "./pages/ElevayHome";
 import TeamChat from "./pages/TeamChat";
 import BroadcastCenter from "./pages/BroadcastCenter";
+import Settings from "./pages/Settings";
+import PageGuard from "./components/PageGuard";
 
 // ─── Application Analysis Module ─────────────────────────────────────────────
 import AnalysisDashboard from "./pages/AnalysisDashboard";
@@ -50,51 +52,33 @@ function Router() {
 
       {/* ── Contracting Module ── */}
       <Route path="/contracting">
-        <DashboardLayout>
-          <ContractingDashboard />
-        </DashboardLayout>
+        <PageGuard pageKey="contracting"><DashboardLayout><ContractingDashboard /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/contracting/contracts">
-        <DashboardLayout>
-          <Contracts />
-        </DashboardLayout>
+        <PageGuard pageKey="contracting"><DashboardLayout><Contracts /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/contracting/invoices">
-        <DashboardLayout>
-          <Invoices />
-        </DashboardLayout>
+        <PageGuard pageKey="contracting"><DashboardLayout><Invoices /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/contracting/analytics">
-        <DashboardLayout>
-          <Analytics />
-        </DashboardLayout>
+        <PageGuard pageKey="contracting"><DashboardLayout><Analytics /></DashboardLayout></PageGuard>
       </Route>
 
       {/* ── Application Analysis Module ── */}
       <Route path="/analysis/dashboard">
-        <DashboardLayout>
-          <AnalysisDashboard />
-        </DashboardLayout>
+        <PageGuard pageKey="analysis"><DashboardLayout><AnalysisDashboard /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/analysis">
-        <DashboardLayout>
-          <Cases />
-        </DashboardLayout>
+        <PageGuard pageKey="analysis"><DashboardLayout><Cases /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/analysis/cases/:id">
-        <DashboardLayout>
-          <CaseDetail />
-        </DashboardLayout>
+        <PageGuard pageKey="analysis"><DashboardLayout><CaseDetail /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/analysis/cases/:id/upload">
-        <DashboardLayout>
-          <UploadWizard />
-        </DashboardLayout>
+        <PageGuard pageKey="analysis"><DashboardLayout><UploadWizard /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/analysis/cases/:id/report">
-        <DashboardLayout>
-          <AnalysisReport />
-        </DashboardLayout>
+        <PageGuard pageKey="analysis"><DashboardLayout><AnalysisReport /></DashboardLayout></PageGuard>
       </Route>
 
       {/* Legacy redirects for old /cases routes */}
@@ -113,88 +97,63 @@ function Router() {
 
       {/* ── Financial Module ── */}
       <Route path="/finance">
-        <DashboardLayout>
-          <FinancialDashboard />
-        </DashboardLayout>
+        <PageGuard pageKey="finance"><DashboardLayout><FinancialDashboard /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/finance/accounts">
-        <DashboardLayout>
-          <FinAccounts />
-        </DashboardLayout>
+        <PageGuard pageKey="finance"><DashboardLayout><FinAccounts /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/finance/income">
-        <DashboardLayout>
-          <FinIncome />
-        </DashboardLayout>
+        <PageGuard pageKey="finance"><DashboardLayout><FinIncome /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/finance/expenses">
-        <DashboardLayout>
-          <FinExpenses />
-        </DashboardLayout>
+        <PageGuard pageKey="finance"><DashboardLayout><FinExpenses /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/finance/transfers">
-        <DashboardLayout>
-          <FinTransfers />
-        </DashboardLayout>
+        <PageGuard pageKey="finance"><DashboardLayout><FinTransfers /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/finance/reports">
-        <DashboardLayout>
-          <FinReports />
-        </DashboardLayout>
+        <PageGuard pageKey="finance"><DashboardLayout><FinReports /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/finance/employees">
-        <DashboardLayout>
-          <FinEmployees />
-        </DashboardLayout>
+        <PageGuard pageKey="finance"><DashboardLayout><FinEmployees /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/finance/categories">
-        <DashboardLayout>
-          <FinCategories />
-        </DashboardLayout>
+        <PageGuard pageKey="finance"><DashboardLayout><FinCategories /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/finance/commissions">
-        <DashboardLayout>
-          <FinCommissions />
-        </DashboardLayout>
+        <PageGuard pageKey="finance"><DashboardLayout><FinCommissions /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/finance/bulk-upload">
-        <DashboardLayout>
-          <FinBulkUpload />
-        </DashboardLayout>
+        <PageGuard pageKey="finance"><DashboardLayout><FinBulkUpload /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/finance/clients">
-        <DashboardLayout>
-          <FinClients />
-        </DashboardLayout>
+        <PageGuard pageKey="finance"><DashboardLayout><FinClients /></DashboardLayout></PageGuard>
       </Route>
 
       {/* ── Client Documentation Module ── */}
       <Route path="/docs/dashboard">
-        <ClientDocsDashboard />
+        <PageGuard pageKey="docs"><ClientDocsDashboard /></PageGuard>
       </Route>
       <Route path="/docs">
-        <DashboardLayout>
-          <ClientDocs />
-        </DashboardLayout>
+        <PageGuard pageKey="docs"><DashboardLayout><ClientDocs /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/docs/clients/:id">
-        <DashboardLayout>
-          <ClientDocDetail />
-        </DashboardLayout>
+        <PageGuard pageKey="docs"><DashboardLayout><ClientDocDetail /></DashboardLayout></PageGuard>
       </Route>
 
-      {/* ── Broadcast Center (admin only) ── */}
+      {/* ── Broadcast Center ── */}
       <Route path="/broadcast">
-        <DashboardLayout>
-          <BroadcastCenter />
-        </DashboardLayout>
+        <PageGuard pageKey="broadcast"><DashboardLayout><BroadcastCenter /></DashboardLayout></PageGuard>
       </Route>
 
       {/* ── Team Chat ── */}
       <Route path="/chat">
-        <DashboardLayout>
-          <TeamChat />
-        </DashboardLayout>
+        <PageGuard pageKey="chat"><DashboardLayout><TeamChat /></DashboardLayout></PageGuard>
+      </Route>
+
+      {/* ── Settings (owner only) ── */}
+      <Route path="/settings">
+        <Settings />
       </Route>
 
       <Route path="/404" component={NotFound} />

@@ -411,3 +411,31 @@ export const appSettings = mysqlTable("appSettings", {
 });
 export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = typeof appSettings.$inferInsert;
+
+// ─── User Permissions ─────────────────────────────────────────────────────────
+// One row per user per page key. If a row doesn't exist, access is denied by default.
+// The owner (OWNER_OPEN_ID) always has full access regardless of this table.
+export const userPermissions = mysqlTable("userPermissions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  pageKey: varchar("pageKey", { length: 100 }).notNull(), // e.g. "contracting", "finance", "docs", "analysis", "chat"
+  canAccess: boolean("canAccess").default(false).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type UserPermission = typeof userPermissions.$inferSelect;
+export type InsertUserPermission = typeof userPermissions.$inferInsert;
+
+// ─── Pending Invites ──────────────────────────────────────────────────────────
+// Owner can generate invite links. When a new user signs up via the link,
+// their permissions are pre-populated from the invitePermissions JSON.
+export const pendingInvites = mysqlTable("pendingInvites", {
+  id: int("id").autoincrement().primaryKey(),
+  email: varchar("email", { length: 320 }).notNull(),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  invitePermissions: json("invitePermissions").notNull(), // Record<string, boolean>
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  usedAt: timestamp("usedAt"),
+  usedByUserId: int("usedByUserId"),
+});
+export type PendingInvite = typeof pendingInvites.$inferSelect;
+export type InsertPendingInvite = typeof pendingInvites.$inferInsert;

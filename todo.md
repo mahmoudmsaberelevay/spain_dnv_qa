@@ -338,3 +338,21 @@
 - [x] Frontend: MessagingContext — global React Context for unread message count + active broadcast count
 - [x] Frontend: DashboardLayout — show unread message badge on Team Chat sidebar link
 - [x] App.tsx: add /chat and /broadcast routes
+
+## Change Requests (Round 39) — Owner Settings & Granular Permissions
+
+- [x] DB: userPermissions table (userId, pageKey, canAccess) — one row per user per page
+- [x] DB: pendingInvites table (email, token, permissions JSON, createdAt, usedAt) for invite links
+- [x] Apply migration SQL for new tables
+- [x] Backend: permissionsRouter (owner-only) — listUsers, getUserPermissions, setUserPermissions, addUserManually, sendInvite, listInvites, revokeInvite
+- [x] Backend: getMyPermissions procedure (any authenticated user) — returns their own permission map
+- [x] Backend: owner check middleware — only OWNER_OPEN_ID can access permissionsRouter
+- [x] Frontend: Settings page (/settings) — owner-only, shows all users with permission toggle grid
+- [x] Frontend: Settings — per-user permission matrix: toggle each page on/off per user
+- [x] Frontend: Settings — "Add User Manually" dialog (name + email, set permissions immediately)
+- [x] Frontend: Settings — "Invite User" dialog (email input, generates invite link, copy to clipboard)
+- [x] Frontend: Settings — pending invites list with revoke button
+- [x] Frontend: DashboardLayout — add Settings link in sidebar footer (owner only)
+- [x] Frontend: PermissionsContext — global context that loads current user's permissions
+- [x] Frontend: enforce page-level access — wrap each protected page with permission check, show 403 if no access
+- [x] App.tsx: add /settings route (owner only)

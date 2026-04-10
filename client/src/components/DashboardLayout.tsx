@@ -47,6 +47,7 @@ import {
   MessageSquare,
   Home,
   Megaphone,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -356,6 +357,20 @@ function DashboardLayoutContent({
                 )}
               </button>
             </div>
+            {/* Settings — owner only (shown via usePermissions) */}
+            <button
+              onClick={() => setLocation("/settings")}
+              className={cn(
+                "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors mb-1",
+                location === "/settings"
+                  ? "bg-white/10 text-white"
+                  : "text-white/50 hover:text-white hover:bg-white/5"
+              )}
+              title="Settings"
+            >
+              <SettingsIcon className="h-3.5 w-3.5 shrink-0" />
+              {!isCollapsed && <span>Settings</span>}
+            </button>
             {/* Broadcast Center — admin only */}
             {user?.role === "admin" && (
               <button
