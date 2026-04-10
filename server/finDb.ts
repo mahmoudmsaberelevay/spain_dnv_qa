@@ -1,4 +1,4 @@
-import { eq, desc, and, gte, lte, sql, asc } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, asc, inArray } from "drizzle-orm";
 import { getDb } from "./db";
 import {
   finAccounts, finCategories, finEmployees, finClients, finCommissions, finTransactions,
@@ -193,6 +193,12 @@ export async function getAccountStatement(accountId: number, from?: Date, to?: D
   return db.select().from(finTransactions)
     .where(and(...conditions))
     .orderBy(asc(finTransactions.transactionDate), asc(finTransactions.id));
+}
+
+export async function bulkDeleteTransactions(ids: number[]) {
+  if (!ids.length) return;
+  const db = await getDb(); if (!db) return;
+  await db.delete(finTransactions).where(inArray(finTransactions.id, ids));
 }
 
 // ─── Dashboard Analytics ─────────────────────────────────────────────────────

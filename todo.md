@@ -204,3 +204,9 @@
 
 ## Change Requests (Round 18)
 - [x] Add PDF export button to Bank Statement page (exports selected account + date range transactions as branded PDF)
+
+## Change Requests (Round 19)
+- [x] Add bulk delete (checkboxes + Delete Selected button) to Income page
+- [x] Add bulk delete (checkboxes + Delete Selected button) to Expenses page
+- [x] Add bulk delete (checkboxes + Delete Selected button) to Transfers page
+- [x] Add bulkDeleteTransactions backend procedure accepting array of IDs

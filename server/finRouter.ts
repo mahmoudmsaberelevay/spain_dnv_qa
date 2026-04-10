@@ -6,6 +6,7 @@ import {
   listCategories, createCategory, updateCategory, deleteCategory,
   listEmployees, createEmployee, updateEmployee, deleteEmployee,
   listFinClients, countFinClients, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment,
+  bulkDeleteTransactions,
   listCommissions, createCommission,
   listTransactions, createTransaction, getAccountStatement,
   getFinancialSummary,
@@ -232,6 +233,13 @@ const commissionsRouter = router({
 
 // ─── Transactions Router ─────────────────────────────────────────────────────
 const transactionsRouter = router({
+  bulkDelete: finAdminProcedure
+    .input(z.object({ ids: z.array(z.number()).min(1) }))
+    .mutation(async ({ input }) => {
+      await bulkDeleteTransactions(input.ids);
+      return { deleted: input.ids.length };
+    }),
+
   list: finReadProcedure
     .input(z.object({
       type: z.enum(["income", "expense", "transfer"]).optional(),

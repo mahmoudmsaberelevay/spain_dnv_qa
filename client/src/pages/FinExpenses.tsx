@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Plus, Trash2 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 
@@ -31,7 +32,20 @@ export default function FinExpenses() {
     onError: (e) => toast.error(e.message),
   });
 
+  const bulkDeleteMut = trpc.financial.transactions.bulkDelete.useMutation({
+    onSuccess: (res) => {
+      utils.financial.transactions.list.invalidate();
+      utils.financial.accounts.list.invalidate();
+      utils.financial.dashboard.summary.invalidate();
+      toast.success(`${res.deleted} transaction${res.deleted !== 1 ? "s" : ""} deleted`);
+      setSelected(new Set());
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const [showCreate, setShowCreate] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [form, setForm] = useState({
     description: "", accountId: "", categoryId: "", amount: "", note: "", employeeId: "",
     transactionDate: new Date().toISOString().split("T")[0],
@@ -66,18 +80,47 @@ export default function FinExpenses() {
       categoryId: Number(form.categoryId),
       amount: Number(form.amount),
       note: form.note || undefined,
-      employeeId: form.employeeId ? Number(form.employeeId) : undefined,
+      employeeId: form.employeeId && form.employeeId !== "none" ? Number(form.employeeId) : undefined,
       transactionDate: new Date(form.transactionDate),
     });
+  };
+
+  const allIds = transactions?.map(t => t.id) ?? [];
+  const allSelected = allIds.length > 0 && allIds.every(id => selected.has(id));
+
+  const toggleAll = () => {
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(allIds));
+  };
+
+  const toggleOne = (id: number) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = () => {
+    bulkDeleteMut.mutate({ ids: Array.from(selected) });
+    setConfirmDelete(false);
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Expenses</h1>
-        <Button onClick={() => { setForm({ description: "", accountId: "", categoryId: "", amount: "", note: "", employeeId: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}>
-          <Plus className="h-4 w-4 mr-1" /> Record Expense
-        </Button>
+        <div className="flex items-center gap-2">
+          {selected.size > 0 && (
+            <Button variant="destructive" onClick={() => setConfirmDelete(true)} className="gap-2">
+              <Trash2 className="h-4 w-4" />
+              Delete Selected ({selected.size})
+            </Button>
+          )}
+          <Button onClick={() => { setForm({ description: "", accountId: "", categoryId: "", amount: "", note: "", employeeId: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}>
+            <Plus className="h-4 w-4 mr-1" /> Record Expense
+          </Button>
+        </div>
       </div>
 
       <Card className="border-0 shadow-sm">
@@ -94,6 +137,9 @@ export default function FinExpenses() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b">
+                    <th className="py-2 w-10">
+                      <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" />
+                    </th>
                     <th className="text-left py-2 font-medium">Date</th>
                     <th className="text-left py-2 font-medium">Description</th>
                     <th className="text-left py-2 font-medium">Category</th>
@@ -105,7 +151,10 @@ export default function FinExpenses() {
                 </thead>
                 <tbody>
                   {transactions.map((tx) => (
-                    <tr key={tx.id} className="border-b border-muted/50 hover:bg-muted/30">
+                    <tr key={tx.id} className={`border-b border-muted/50 hover:bg-muted/30 ${selected.has(tx.id) ? "bg-red-50/30" : ""}`}>
+                      <td className="py-2 pl-1">
+                        <Checkbox checked={selected.has(tx.id)} onCheckedChange={() => toggleOne(tx.id)} aria-label={`Select ${tx.description}`} />
+                      </td>
                       <td className="py-2">{new Date(tx.transactionDate).toLocaleDateString()}</td>
                       <td className="py-2 font-medium">{tx.description}</td>
                       <td className="py-2 text-muted-foreground">{categoryMap.get(tx.categoryId!) ?? "—"}</td>
@@ -121,6 +170,20 @@ export default function FinExpenses() {
           )}
         </CardContent>
       </Card>
+
+      {/* Confirm Delete Dialog */}
+      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Delete {selected.size} Transaction{selected.size !== 1 ? "s" : ""}?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">This action cannot be undone. The selected expense transactions will be permanently deleted.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDelete(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleteMut.isPending}>
+              {bulkDeleteMut.isPending ? "Deleting..." : `Delete ${selected.size}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create Expense Dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
