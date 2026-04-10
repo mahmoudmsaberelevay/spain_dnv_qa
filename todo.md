@@ -247,3 +247,6 @@
 
 ## Change Requests (Round 28)
 - [x] Import all 2026 expense transactions from Notion Expenses database into correct accounts with category/employee links (675 imported, 128 duplicates skipped, 142 defaulted to Misc category)
+
+## Change Requests (Round 29)
+- [x] Update opening balances for 11 accounts (31-Dec-2025 closing balances) and recalculate current balances
