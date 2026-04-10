@@ -51,6 +51,14 @@ import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
 
+// ─── Module colour map ───────────────────────────────────────────────────────
+const MODULE_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
+  contracting:  { bg: "bg-blue-500/20",   text: "text-blue-300",   dot: "bg-blue-400" },
+  analysis:     { bg: "bg-purple-500/20", text: "text-purple-300", dot: "bg-purple-400" },
+  docs:         { bg: "bg-emerald-500/20",text: "text-emerald-300",dot: "bg-emerald-400" },
+  financial:    { bg: "bg-amber-500/20",  text: "text-amber-300",  dot: "bg-amber-400" },
+};
+
 // ─── Module Definitions ────────────────────────────────────────────────────────
 const modules = [
   {
@@ -308,18 +316,37 @@ function DashboardLayoutContent({
 
           {/* Footer — user profile */}
           <SidebarFooter className="p-3 border-t border-border/40">
+            {/* Active module badge (collapsed: dot only; expanded: full label) */}
+            {(() => {
+              const colors = MODULE_COLORS[activeModuleId] ?? MODULE_COLORS.contracting;
+              const activeModule = modules.find(m => m.id === activeModuleId);
+              return isCollapsed ? (
+                <div className="flex justify-center mb-2">
+                  <div className={cn("h-2 w-2 rounded-full", colors.dot)} title={activeModule?.label} />
+                </div>
+              ) : (
+                <div className={cn("flex items-center gap-2 rounded-md px-2 py-1.5 mb-2", colors.bg)}>
+                  {activeModule && <activeModule.icon className={cn("h-3.5 w-3.5 shrink-0", colors.text)} />}
+                  <span className={cn("text-xs font-semibold truncate", colors.text)}>{activeModule?.label}</span>
+                </div>
+              );
+            })()}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-accent/50 transition-colors w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <Avatar className="h-8 w-8 border shrink-0">
-                    <AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">
-                      {user?.name?.charAt(0).toUpperCase() ?? "U"}
-                    </AvatarFallback>
-                  </Avatar>
+                  <div className="relative shrink-0">
+                    <Avatar className="h-8 w-8 border">
+                      <AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">
+                        {user?.name?.charAt(0).toUpperCase() ?? "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                    {/* Online indicator dot */}
+                    <span className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar", MODULE_COLORS[activeModuleId]?.dot ?? "bg-green-400")} />
+                  </div>
                   {!isCollapsed && (
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate leading-none">{user?.name || "—"}</p>
-                      <p className="text-xs text-muted-foreground truncate mt-1">{user?.email || "—"}</p>
+                      <p className="text-sm font-medium truncate leading-none text-white">{user?.name || "—"}</p>
+                      <p className="text-xs text-white/50 truncate mt-0.5">{user?.email || "—"}</p>
                     </div>
                   )}
                 </button>

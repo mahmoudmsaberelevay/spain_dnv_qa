@@ -367,3 +367,14 @@ export const finTransactions = mysqlTable("finTransactions", {
 });
 export type FinTransaction = typeof finTransactions.$inferSelect;
 export type InsertFinTransaction = typeof finTransactions.$inferInsert;
+
+// ─── App Settings (global key-value store) ───────────────────────────────────
+export const appSettings = mysqlTable("appSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  key: varchar("key", { length: 100 }).notNull().unique(),
+  value: varchar("value", { length: 500 }).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedBy: varchar("updatedBy", { length: 320 }),
+});
+export type AppSetting = typeof appSettings.$inferSelect;
+export type InsertAppSetting = typeof appSettings.$inferInsert;

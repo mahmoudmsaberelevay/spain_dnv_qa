@@ -69,9 +69,21 @@ export default function FinTransfers() {
     onError: (e) => toast.error(e.message),
   });
 
+  const deleteOneMut = trpc.financial.transactions.deleteOne.useMutation({
+    onSuccess: () => {
+      utils.financial.transactions.list.invalidate();
+      utils.financial.transactions.count.invalidate();
+      utils.financial.accounts.list.invalidate();
+      utils.financial.dashboard.summary.invalidate();
+      toast.success("Transfer deleted");
+      setConfirmDeleteOne(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeleteOne, setConfirmDeleteOne] = useState<number | null>(null);
   const [editTx, setEditTx] = useState<any>(null);
   const [editForm, setEditForm] = useState({ description: "", note: "", transactionDate: "" });
   const [form, setForm] = useState({
@@ -265,6 +277,9 @@ export default function FinTransfers() {
                           }}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
+                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => setConfirmDeleteOne(tx.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                         </td>
                       </tr>
                     );
@@ -294,6 +309,20 @@ export default function FinTransfers() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Confirm Delete One */}
+      <Dialog open={confirmDeleteOne !== null} onOpenChange={(open) => { if (!open) setConfirmDeleteOne(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Delete Transfer?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">This will permanently delete this transfer and reverse its effect on both account balances. This action cannot be undone.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDeleteOne(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => confirmDeleteOne !== null && deleteOneMut.mutate({ id: confirmDeleteOne })} disabled={deleteOneMut.isPending}>
+              {deleteOneMut.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirm Delete Dialog */}
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>

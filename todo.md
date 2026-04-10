@@ -290,3 +290,17 @@
 - [x] Auto-create commission entry when receipt is marked as paid (clientName, status, contractValue, signingDate, consultantName)
 - [x] Auto-populate commission entry from contract data (clientCode, name, phone, familyMembers, contractValue, signingDate)
 - [x] Employee income/expense totals: when income/expense linked to employee, reflect in employee totals
+
+## Change Requests (Round 34) — Exchange Rate & Edit/Delete
+
+- [x] EUR/EGP exchange rate button on Client Database page: dedicated "Set Exchange Rate" button, rate stored in DB settings table, affects paid amount EGP column calculation
+- [x] Edit entries in Expense Database: pencil icon per row opens edit dialog with all fields
+- [x] Delete entries in Expense Database: trash icon per row with confirmation dialog
+- [x] Edit entries in Income Database: pencil icon per row opens edit dialog with all fields
+- [x] Delete entries in Income Database: trash icon per row with confirmation dialog
+- [x] Edit entries in Transfer Database: pencil icon per row opens edit dialog with all fields
+- [x] Delete entries in Transfer Database: trash icon per row with confirmation dialog
+
+## Change Requests (Round 35) — Active User Indicator in Sidebar
+
+- [x] Show active/logged-in user avatar and name as a small icon at the bottom of the left sidebar ribbon, visible in all modules (Contracting, Finance, Client Documentation, Application Analysis)

@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
-import { finAccounts, finTransactions } from "../drizzle/schema";
+import { finAccounts, finTransactions, appSettings } from "../drizzle/schema";
 import {
   listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance,
   listCategories, createCategory, updateCategory, deleteCategory,
@@ -375,6 +375,12 @@ const transactionsRouter = router({
       await bulkDeleteTransactions(input.ids);
       return { deleted: input.ids.length };
     }),
+  deleteOne: finAdminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await bulkDeleteTransactions([input.id]);
+      return { success: true };
+    }),
 
   list: finReadProcedure
     .input(z.object({
@@ -681,7 +687,29 @@ const bulkRouter = router({
     }),
 });
 
-// ─── Export Financial Router ─────────────────────────────────────────────────
+// ─── Settings Router ──────────────────────────────────────────────────────────
+const settingsRouter = router({
+  getEurEgpRate: finReadProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+    const rows = await db.select().from(appSettings).where(eq(appSettings.key, 'eurEgpRate'));
+    return { rate: rows.length > 0 ? parseFloat(rows[0].value) : 55.5, updatedAt: rows[0]?.updatedAt ?? null, updatedBy: rows[0]?.updatedBy ?? null };
+  }),
+
+  setEurEgpRate: finAdminProcedure
+    .input(z.object({ rate: z.number().positive().min(1).max(1000) }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+      await db
+        .insert(appSettings)
+        .values({ key: 'eurEgpRate', value: input.rate.toString(), updatedBy: ctx.user?.email ?? null })
+        .onDuplicateKeyUpdate({ set: { value: input.rate.toString(), updatedBy: ctx.user?.email ?? null } });
+      return { success: true, rate: input.rate };
+    }),
+});
+
+// ─── Export Financial Router ─────────────────────────────────────────────
 export const financialRouter = router({
   accounts: accountsRouter,
   categories: categoriesRouter,
@@ -692,4 +720,5 @@ export const financialRouter = router({
   dashboard: dashboardRouter,
   reports: reportsRouter,
   bulk: bulkRouter,
+  settings: settingsRouter,
 });

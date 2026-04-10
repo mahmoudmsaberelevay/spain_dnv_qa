@@ -14,7 +14,7 @@ import {
 import { Label } from "@/components/ui/label";
 import {
   Search, Plus, Phone, MapPin, User, TrendingDown, TrendingUp,
-  ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, FileDown, PlusCircle,
+  ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, FileDown, PlusCircle, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -51,6 +51,8 @@ export default function FinClients() {
   const [exporting, setExporting] = useState(false);
   const [paymentClient, setPaymentClient] = useState<{ id: number; name: string; remaining: number } | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
+  const [showRateDialog, setShowRateDialog] = useState(false);
+  const [rateInput, setRateInput] = useState("");
 
   // Debounce search
   const handleSearch = (v: string) => {
@@ -107,6 +109,16 @@ export default function FinClients() {
   const { data: total } = trpc.financial.clients.count.useQuery(countParams);
   const { data: grandTotals } = trpc.financial.clients.totals.useQuery(countParams);
   const utils = trpc.useUtils();
+  const { data: rateData } = trpc.financial.settings.getEurEgpRate.useQuery();
+  const eurEgpRate = rateData?.rate ?? 55.5;
+  const setRateMutation = trpc.financial.settings.setEurEgpRate.useMutation({
+    onSuccess: (data) => {
+      toast.success(`EUR/EGP rate updated to ${data.rate}`);
+      utils.financial.settings.getEurEgpRate.invalidate();
+      setShowRateDialog(false);
+    },
+    onError: (e) => toast.error("Failed to update rate: " + e.message),
+  });
 
   const totalPages = Math.ceil((total ?? 0) / pageSize);
 
@@ -270,7 +282,15 @@ export default function FinClients() {
             {total !== undefined ? `${total} clients` : "Loading..."}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            onClick={() => { setRateInput(String(eurEgpRate)); setShowRateDialog(true); }}
+            className="text-amber-600 border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 font-mono"
+          >
+            <RefreshCw className="h-4 w-4 mr-1.5" />
+            EUR/EGP: {eurEgpRate.toFixed(2)}
+          </Button>
           <Button variant="outline" onClick={handleExport} disabled={exporting}>
             <FileDown className="h-4 w-4 mr-1.5" />
             {exporting ? "Preparing..." : "Export PDF"}
@@ -614,6 +634,59 @@ export default function FinClients() {
             <Button variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
             <Button onClick={handleAdd} disabled={createMutation.isPending}>
               {createMutation.isPending ? "Adding..." : "Add Client"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* EUR/EGP Exchange Rate Dialog */}
+      <Dialog open={showRateDialog} onOpenChange={setShowRateDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-amber-600" />
+              Set EUR / EGP Exchange Rate
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 text-sm text-amber-800 dark:text-amber-200">
+              This rate is used to convert EGP payments to EUR across the entire Client Database.
+              Current rate: <strong>1 EUR = {eurEgpRate.toFixed(2)} EGP</strong>
+              {rateData?.updatedBy && (
+                <p className="mt-1 text-xs opacity-70">Last updated by {rateData.updatedBy}</p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label>New Exchange Rate (EGP per 1 EUR) <span className="text-red-500">*</span></Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="1"
+                max="1000"
+                placeholder="e.g. 55.50"
+                value={rateInput}
+                onChange={e => setRateInput(e.target.value)}
+                autoFocus
+              />
+            </div>
+            {rateInput && Number(rateInput) > 0 && (
+              <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
+                <p className="text-muted-foreground">Example: EGP 100,000 &rarr; <strong className="text-foreground">€ {(100000 / Number(rateInput)).toFixed(2)}</strong></p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRateDialog(false)}>Cancel</Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={!rateInput || Number(rateInput) <= 0 || setRateMutation.isPending}
+              onClick={() => {
+                const r = parseFloat(rateInput);
+                if (!r || r <= 0) return toast.error("Please enter a valid rate");
+                setRateMutation.mutate({ rate: r });
+              }}
+            >
+              {setRateMutation.isPending ? "Saving..." : "Update Rate"}
             </Button>
           </DialogFooter>
         </DialogContent>
