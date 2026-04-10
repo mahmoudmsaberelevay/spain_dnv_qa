@@ -359,6 +359,30 @@
 
 ## Bug Fixes (Round 40) — Notification Center, Settings, Team Chat
 
-- [ ] Fix Settings page not loading (investigate permissions.getMyPermissions and listUsers procedures)
-- [ ] Fix Team Chat page not working (investigate chat procedures and UI rendering)
-- [ ] Fix Notification Center not working (investigate what the notification center is and where it lives)
+- [x] Fix Settings page not loading (investigate permissions.getMyPermissions and listUsers procedures)
+- [x] Fix Team Chat page not working (investigate chat procedures and UI rendering)
+- [x] Fix Notification Center not working (investigate what the notification center is and where it lives)
+
+## Change Requests (Round 41) — User Groups & Predefined Permission Levels
+
+- [x] DB: userGroups table (id, name, description, color, createdAt) — named groups with a color label
+- [x] DB: groupPermissions table (groupId, pageKey, canAccess) — permission set per group
+- [x] DB: add groupId FK column to users table — assign each user to a group (nullable)
+- [x] Apply migration SQL for new tables and column
+- [x] Backend: permissionsRouter — createGroup, listGroups, updateGroup, deleteGroup, setGroupPermissions, assignUserToGroup, removeUserFromGroup
+- [x] Backend: when a user is assigned to a group, their individual permissions are overridden by the group's permissions
+- [x] Backend: getMyPermissions — if user has a groupId, return the group's permissions instead of individual ones
+- [x] Frontend: Settings page — add "Groups" tab alongside "Users" tab
+- [x] Frontend: Groups tab — list all groups with their color, name, description, and member count
+- [x] Frontend: Groups tab — "Create Group" button with name, description, color picker, and permission matrix
+- [x] Frontend: Groups tab — click a group to expand: edit permissions, see members, remove members
+- [x] Frontend: Users tab — show group badge next to each user's name (if assigned to a group)
+- [x] Frontend: Users tab — in user row expanded view, add "Assign to Group" dropdown (replaces individual permission toggles when a group is selected)
+- [x] Frontend: Users tab — if user is in a group, show group permissions as read-only with a note "Permissions managed by group: [GroupName]"
+
+## Change Requests (Round 42) — Email-Based Owner Lock for Settings
+
+- [x] Backend: update ownerProcedure to verify caller email is mahmoud.saberelevay@gmail.com (in addition to OWNER_OPEN_ID check)
+- [x] Backend: update getMyPermissions to identify owner by email match
+- [x] Frontend: Settings page — show "Access Denied" if user email is not mahmoud.saberelevay@gmail.com
+- [x] Frontend: DashboardLayout — only show Settings sidebar link if user email is mahmoud.saberelevay@gmail.com

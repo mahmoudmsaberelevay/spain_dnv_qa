@@ -17,6 +17,7 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  groupId: int("groupId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -439,3 +440,29 @@ export const pendingInvites = mysqlTable("pendingInvites", {
 });
 export type PendingInvite = typeof pendingInvites.$inferSelect;
 export type InsertPendingInvite = typeof pendingInvites.$inferInsert;
+
+// ─── User Groups ──────────────────────────────────────────────────────────────
+// Named groups with a predefined set of permissions. Users assigned to a group
+// inherit the group's permissions instead of their individual ones.
+export const userGroups = mysqlTable("userGroups", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  color: varchar("color", { length: 20 }).default("#6366f1").notNull(), // hex color for the badge
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type UserGroup = typeof userGroups.$inferSelect;
+export type InsertUserGroup = typeof userGroups.$inferInsert;
+
+// ─── Group Permissions ────────────────────────────────────────────────────────
+// One row per group per page key. Defines the permission set for the group.
+export const groupPermissions = mysqlTable("groupPermissions", {
+  id: int("id").autoincrement().primaryKey(),
+  groupId: int("groupId").notNull(),
+  pageKey: varchar("pageKey", { length: 100 }).notNull(),
+  canAccess: boolean("canAccess").default(false).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type GroupPermission = typeof groupPermissions.$inferSelect;
+export type InsertGroupPermission = typeof groupPermissions.$inferInsert;
