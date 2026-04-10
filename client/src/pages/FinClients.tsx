@@ -453,6 +453,35 @@ export default function FinClients() {
                     );
                   })}
                 </tbody>
+                {/* Summary totals row */}
+                {sortedClients.length > 0 && (() => {
+                  const allData = sortedClients;
+                  const totalContractEur = allData.reduce((s, c) => s + Number(c.contractValueEur ?? 0), 0);
+                  const totalPaidEur = allData.reduce((s, c) => s + Number(c.paidAmountEur ?? 0), 0);
+                  const totalPaidEgp = allData.reduce((s, c) => s + Number(c.paidAmountEgp ?? 0), 0);
+                  const totalRemainingEur = allData.reduce((s, c) => s + Number(c.remainingAmountEur ?? 0), 0);
+                  const totalCost = allData.reduce((s, c) => s + (Number(c.totalDirectCostEgp) || 0), 0);
+                  const totalIncome = allData.reduce((s, c) => s + (Number(c.totalDirectIncomeEgp) || 0), 0);
+                  const totalProfit = totalIncome - totalCost;
+                  return (
+                    <tfoot>
+                      <tr className="border-t-2 border-primary/30 bg-muted/40 font-semibold">
+                        <td className="py-3 px-4 text-xs text-muted-foreground" colSpan={4}>TOTALS ({(total ?? sortedClients.length).toLocaleString()} clients)</td>
+                        <td className="py-3 px-4 text-right">{totalContractEur > 0 ? `€ ${fmtEur(totalContractEur)}` : "—"}</td>
+                        <td className="py-3 px-4 text-right text-green-700">{totalPaidEur > 0 ? `€ ${fmtEur(totalPaidEur)}` : "—"}</td>
+                        <td className="py-3 px-4 text-right text-blue-700">{totalPaidEgp > 0 ? `EGP ${totalPaidEgp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</td>
+                        <td className="py-3 px-4 text-right text-red-600">{`€ ${fmtEur(totalRemainingEur)}`}</td>
+                        <td className="py-3 px-4 text-right text-red-600">{totalCost > 0 ? `EGP ${totalCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : "—"}</td>
+                        <td className="py-3 px-4 text-right">
+                          <span className={totalProfit >= 0 ? "text-green-600" : "text-red-600"}>
+                            {totalIncome === 0 && totalCost === 0 ? "—" : `${totalProfit >= 0 ? "+" : "-"}EGP ${Math.abs(totalProfit).toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4"></td>
+                      </tr>
+                    </tfoot>
+                  );
+                })()}
               </table>
             </div>
           )}
