@@ -839,11 +839,17 @@ const contractingRouter = router({
               });
               // Auto-create commission record
               if (finClient) {
+                const { countCommissions } = await import("./finDb");
+                const existingCount = await countCommissions();
                 await createCommission({
                   finClientId: finClient.id,
                   clientName: contract.clientName,
-                  consultant: contract.consultantName ?? undefined,
+                  consultant: contract.consultantName ?? null,
                   contractValue: contract.contractValue,
+                  seqNumber: existingCount + 1,
+                  status: "Pending",
+                  signingDate: new Date(),
+                  leaderName: "Mahmoud Saber",
                 });
               }
             }

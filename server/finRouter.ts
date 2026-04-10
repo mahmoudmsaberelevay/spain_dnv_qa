@@ -10,7 +10,7 @@ import {
   listEmployees, createEmployee, updateEmployee, deleteEmployee,
   listFinClients, countFinClients, getFinClientTotals, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment, setClientPaidAmount,
   bulkDeleteTransactions,
-  listCommissions, createCommission,
+  listCommissions, countCommissions, createCommission, updateCommission, deleteCommission,
   listTransactions, countTransactions, createTransaction, getAccountStatement,
   getFinancialSummary,
 } from "./finDb";
@@ -255,23 +255,115 @@ const finClientsRouter = router({
       return { newPaidEgp: result.newPaidEgp, newPaidEur: result.newPaidEur, newRemaining: result.newRemaining };
     }),
 });
-
-// ─── Commissions Router ──────────────────────────────────────────────────────
+// Commission field schema (shared between create and update)
+const commissionFieldsSchema = z.object({
+  finClientId: z.number().optional(),
+  clientName: z.string(),
+  seqNumber: z.number().optional(),
+  status: z.enum(["Pending", "Started", "Cancelled"]).optional(),
+  signingDate: z.date().optional(),
+  contractValue: z.number().optional(),
+  leadSource: z.enum(["Sales Mining", "Referal", "Marketing"]).optional(),
+  qualifierName: z.string().optional(),
+  qualifierCommissionAmount: z.number().optional(),
+  qualifierCommissionDate: z.date().optional(),
+  qualifierLeader: z.string().optional(),
+  qualifierLeaderCommissionAmount: z.number().optional(),
+  qualifierLeaderCommissionDate: z.date().optional(),
+  paralegalTlCommissionAmount: z.number().optional(),
+  paralegalTlCommissionDate: z.date().optional(),
+  operationManagerCommissionAmount: z.number().optional(),
+  operationManagerCommissionDate: z.date().optional(),
+  paralegal: z.string().optional(),
+  paralegalFirstPaymentAmount: z.number().optional(),
+  paralegalFirstPaymentDate: z.date().optional(),
+  paralegalSecondPaymentAmount: z.number().optional(),
+  paralegalSecondPaymentDate: z.date().optional(),
+  paralegalThirdPaymentAmount: z.number().optional(),
+  paralegalThirdPaymentDate: z.date().optional(),
+  consultant: z.string().optional(),
+  consultantTotalPayment: z.number().optional(),
+  consultantFirstPayment: z.number().optional(),
+  consultantFirstPaymentDate: z.date().optional(),
+  consultantSecondPayment: z.number().optional(),
+  consultantSecondPaymentDate: z.date().optional(),
+  consultantThirdPayment: z.number().optional(),
+  consultantThirdPaymentDate: z.date().optional(),
+  leaderName: z.string().optional(),
+  leaderCommissionAmount: z.number().optional(),
+  leaderCommissionDate: z.date().optional(),
+});
+function toCommissionDbData(input: z.infer<typeof commissionFieldsSchema>) {
+  return {
+    finClientId: input.finClientId ?? null,
+    clientName: input.clientName,
+    seqNumber: input.seqNumber ?? null,
+    status: input.status ?? "Pending",
+    signingDate: input.signingDate ?? null,
+    contractValue: input.contractValue?.toString() ?? null,
+    leadSource: input.leadSource ?? null,
+    qualifierName: input.qualifierName ?? null,
+    qualifierCommissionAmount: input.qualifierCommissionAmount?.toString() ?? null,
+    qualifierCommissionDate: input.qualifierCommissionDate ?? null,
+    qualifierLeader: input.qualifierLeader ?? null,
+    qualifierLeaderCommissionAmount: input.qualifierLeaderCommissionAmount?.toString() ?? null,
+    qualifierLeaderCommissionDate: input.qualifierLeaderCommissionDate ?? null,
+    paralegalTlCommissionAmount: input.paralegalTlCommissionAmount?.toString() ?? null,
+    paralegalTlCommissionDate: input.paralegalTlCommissionDate ?? null,
+    operationManagerCommissionAmount: input.operationManagerCommissionAmount?.toString() ?? null,
+    operationManagerCommissionDate: input.operationManagerCommissionDate ?? null,
+    paralegal: input.paralegal ?? null,
+    paralegalFirstPaymentAmount: input.paralegalFirstPaymentAmount?.toString() ?? null,
+    paralegalFirstPaymentDate: input.paralegalFirstPaymentDate ?? null,
+    paralegalSecondPaymentAmount: input.paralegalSecondPaymentAmount?.toString() ?? null,
+    paralegalSecondPaymentDate: input.paralegalSecondPaymentDate ?? null,
+    paralegalThirdPaymentAmount: input.paralegalThirdPaymentAmount?.toString() ?? null,
+    paralegalThirdPaymentDate: input.paralegalThirdPaymentDate ?? null,
+    consultant: input.consultant ?? null,
+    consultantTotalPayment: input.consultantTotalPayment?.toString() ?? null,
+    consultantFirstPayment: input.consultantFirstPayment?.toString() ?? null,
+    consultantFirstPaymentDate: input.consultantFirstPaymentDate ?? null,
+    consultantSecondPayment: input.consultantSecondPayment?.toString() ?? null,
+    consultantSecondPaymentDate: input.consultantSecondPaymentDate ?? null,
+    consultantThirdPayment: input.consultantThirdPayment?.toString() ?? null,
+    consultantThirdPaymentDate: input.consultantThirdPaymentDate ?? null,
+    leaderName: input.leaderName ?? "Mahmoud Saber",
+    leaderCommissionAmount: input.leaderCommissionAmount?.toString() ?? null,
+    leaderCommissionDate: input.leaderCommissionDate ?? null,
+  };
+}
+// ─── Commissions Router ────────────────────────────────────────────────────────
 const commissionsRouter = router({
-  list: finReadProcedure.query(async () => listCommissions()),
-  create: finWriteProcedure
+  list: finReadProcedure
     .input(z.object({
-      clientName: z.string(),
-      consultant: z.string().optional(),
-      contractValue: z.number().optional(),
-    }))
+      status: z.string().optional(),
+      leadSource: z.string().optional(),
+      search: z.string().optional(),
+      limit: z.number().optional(),
+      offset: z.number().optional(),
+    }).optional())
+    .query(async ({ input }) => listCommissions(input ?? undefined)),
+  count: finReadProcedure
+    .input(z.object({
+      status: z.string().optional(),
+      leadSource: z.string().optional(),
+      search: z.string().optional(),
+    }).optional())
+    .query(async ({ input }) => countCommissions(input ?? undefined)),
+  create: finWriteProcedure
+    .input(commissionFieldsSchema)
+    .mutation(async ({ input }) => createCommission(toCommissionDbData(input))),
+  update: finWriteProcedure
+    .input(commissionFieldsSchema.extend({ id: z.number() }))
     .mutation(async ({ input }) => {
-      return createCommission({
-        finClientId: 0,
-        clientName: input.clientName,
-        consultant: input.consultant ?? null,
-        contractValue: input.contractValue?.toString() ?? null,
-      });
+      const { id, ...rest } = input;
+      return updateCommission(id, toCommissionDbData(rest));
+    }),
+  delete: finAdminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await deleteCommission(input.id);
+      return { success: true };
     }),
 });
 

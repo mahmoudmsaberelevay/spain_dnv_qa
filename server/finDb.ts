@@ -217,14 +217,49 @@ export async function getFinClientByContractId(contractId: number) {
 }
 
 // ─── Commissions ─────────────────────────────────────────────────────────────
-export async function listCommissions() {
+export async function listCommissions(filters?: {
+  status?: string;
+  leadSource?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}) {
   const db = await getDb(); if (!db) return [];
-  return db.select().from(finCommissions).orderBy(desc(finCommissions.createdAt));
+  const conditions: ReturnType<typeof eq>[] = [];
+  if (filters?.status) conditions.push(eq(finCommissions.status, filters.status as "Pending" | "Started" | "Cancelled"));
+  if (filters?.leadSource) conditions.push(eq(finCommissions.leadSource, filters.leadSource as "Sales Mining" | "Referal" | "Marketing"));
+  if (filters?.search) conditions.push(sql`${finCommissions.clientName} LIKE ${`%${filters.search}%`}`);
+  const q = db.select().from(finCommissions)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(asc(finCommissions.seqNumber), asc(finCommissions.id));
+  if (filters?.limit) q.limit(filters.limit);
+  if (filters?.offset) q.offset(filters.offset);
+  return q;
+}
+export async function countCommissions(filters?: { status?: string; leadSource?: string; search?: string }) {
+  const db = await getDb(); if (!db) return 0;
+  const conditions: ReturnType<typeof eq>[] = [];
+  if (filters?.status) conditions.push(eq(finCommissions.status, filters.status as "Pending" | "Started" | "Cancelled"));
+  if (filters?.leadSource) conditions.push(eq(finCommissions.leadSource, filters.leadSource as "Sales Mining" | "Referal" | "Marketing"));
+  if (filters?.search) conditions.push(sql`${finCommissions.clientName} LIKE ${`%${filters.search}%`}`);
+  const [row] = await db.select({ count: sql<number>`COUNT(*)` }).from(finCommissions)
+    .where(conditions.length ? and(...conditions) : undefined);
+  return Number(row?.count ?? 0);
 }
 export async function createCommission(data: InsertFinCommission) {
   const db = await getDb(); if (!db) return null;
   const [result] = await db.insert(finCommissions).values(data);
   return { id: result.insertId, ...data };
+}
+export async function updateCommission(id: number, data: Partial<InsertFinCommission>) {
+  const db = await getDb(); if (!db) return null;
+  await db.update(finCommissions).set(data).where(eq(finCommissions.id, id));
+  const rows = await db.select().from(finCommissions).where(eq(finCommissions.id, id));
+  return rows[0] ?? null;
+}
+export async function deleteCommission(id: number) {
+  const db = await getDb(); if (!db) return;
+  await db.delete(finCommissions).where(eq(finCommissions.id, id));
 }
 
 // ─── Transactions ────────────────────────────────────────────────────────────

@@ -284,11 +284,57 @@ export type InsertFinClient = typeof finClients.$inferInsert;
 
 export const finCommissions = mysqlTable("finCommissions", {
   id: int("id").autoincrement().primaryKey(),
-  finClientId: int("finClientId").notNull(),
+  // Sequence number (1, 2, 3...)
+  seqNumber: int("seqNumber"),
+  // Client link
+  finClientId: int("finClientId"),
   clientName: varchar("clientName", { length: 255 }).notNull(),
-  consultant: varchar("consultant", { length: 128 }),
+  // Status
+  status: mysqlEnum("status", ["Pending", "Started", "Cancelled"]).default("Pending"),
+  // Contract info
+  signingDate: timestamp("signingDate"),
   contractValue: decimal("contractValue", { precision: 12, scale: 2 }),
+  // Lead source
+  leadSource: mysqlEnum("leadSource", ["Sales Mining", "Referal", "Marketing"]),
+  // Qualifier (CS or CS TL)
+  qualifierName: varchar("qualifierName", { length: 128 }),
+  qualifierCommissionAmount: decimal("qualifierCommissionAmount", { precision: 12, scale: 2 }),
+  qualifierCommissionDate: timestamp("qualifierCommissionDate"),
+  // Qualifier Leader (CS TL)
+  qualifierLeader: varchar("qualifierLeader", { length: 128 }),
+  qualifierLeaderCommissionAmount: decimal("qualifierLeaderCommissionAmount", { precision: 12, scale: 2 }),
+  qualifierLeaderCommissionDate: timestamp("qualifierLeaderCommissionDate"),
+  // Paralegal TL
+  paralegalTlCommissionAmount: decimal("paralegalTlCommissionAmount", { precision: 12, scale: 2 }),
+  paralegalTlCommissionDate: timestamp("paralegalTlCommissionDate"),
+  // Operation Manager
+  operationManagerCommissionAmount: decimal("operationManagerCommissionAmount", { precision: 12, scale: 2 }),
+  operationManagerCommissionDate: timestamp("operationManagerCommissionDate"),
+  // Paralegal
+  paralegal: varchar("paralegal", { length: 128 }),
+  paralegalFirstPaymentAmount: decimal("paralegalFirstPaymentAmount", { precision: 12, scale: 2 }),
+  paralegalFirstPaymentDate: timestamp("paralegalFirstPaymentDate"),
+  paralegalSecondPaymentAmount: decimal("paralegalSecondPaymentAmount", { precision: 12, scale: 2 }),
+  paralegalSecondPaymentDate: timestamp("paralegalSecondPaymentDate"),
+  paralegalThirdPaymentAmount: decimal("paralegalThirdPaymentAmount", { precision: 12, scale: 2 }),
+  paralegalThirdPaymentDate: timestamp("paralegalThirdPaymentDate"),
+  // Consultant (CS/Senior Consultant/Country Manager/CEO)
+  consultant: varchar("consultant", { length: 128 }),
+  consultantTotalPayment: decimal("consultantTotalPayment", { precision: 12, scale: 2 }),
+  consultantFirstPayment: decimal("consultantFirstPayment", { precision: 12, scale: 2 }),
+  consultantFirstPaymentDate: timestamp("consultantFirstPaymentDate"),
+  consultantSecondPayment: decimal("consultantSecondPayment", { precision: 12, scale: 2 }),
+  consultantSecondPaymentDate: timestamp("consultantSecondPaymentDate"),
+  consultantThirdPayment: decimal("consultantThirdPayment", { precision: 12, scale: 2 }),
+  consultantThirdPaymentDate: timestamp("consultantThirdPaymentDate"),
+  // Leader (Mahmoud Saber)
+  leaderName: varchar("leaderName", { length: 128 }).default("Mahmoud Saber"),
+  leaderCommissionAmount: decimal("leaderCommissionAmount", { precision: 12, scale: 2 }),
+  leaderCommissionDate: timestamp("leaderCommissionDate"),
+  // Notion sync
+  notionPageId: varchar("notionPageId", { length: 64 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type FinCommission = typeof finCommissions.$inferSelect;
 export type InsertFinCommission = typeof finCommissions.$inferInsert;

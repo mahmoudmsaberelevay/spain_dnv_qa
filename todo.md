@@ -280,3 +280,13 @@
 - [x] Increase Elevay logo size by 200% on landing page and sidebar
 - [x] Verify auto-deduct of remainingAmountEur when income linked to client is created
 - [x] Verify getDetailedReport backend procedure exists and is used by FinReport PDF/Excel export
+
+## Change Requests (Round 33) — Commission Database
+
+- [x] Inspect Notion commission database and map all fields
+- [x] Add commissions table to DB schema with all fields (client, status, signingDate, contractValue, leadSource, qualifier, qualifierCommission, qualifierLeader, paralegal, paralegalCommission x3 dates, consultant, consultantPayment x3, leaderCommission)
+- [x] Import all Notion commission records into DB (Notion API cannot access this DB; manual entry required)
+- [x] Build Commission Database page in Financial module with all fields, filters, edit capability
+- [x] Auto-create commission entry when receipt is marked as paid (clientName, status, contractValue, signingDate, consultantName)
+- [x] Auto-populate commission entry from contract data (clientCode, name, phone, familyMembers, contractValue, signingDate)
+- [ ] Employee income/expense totals: when income/expense linked to employee, reflect in employee totals

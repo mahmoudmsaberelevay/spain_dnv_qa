@@ -1,0 +1,46 @@
+Commission Tracking Database - Field Structure (from Notion browser inspection)
+
+COLUMNS (in order):
+1. Client Code - number/text (sequence number starting from 1)
+2. Client Name - relation/text (linked to clients)
+3. Status - select (Pending, Started, Cancelled)
+4. Signing Date - date
+5. Contract Value - number/currency (EUR)
+6. Lead Source - select (Sales Mining, Referal, Marketing)
+7. Qualifier Name - text/person (CS or CS TL from employees)
+8. Payment Amount 1 (Qualifier Commission Payment) - number
+9. cPayment Date (Qualifier Commission Date) - date
+10. Qualifier Leader (Nouran) - text (CS TL name)
+11. Amount 4 (Qualifier Leader Commission Amount) - number
+12. Payment Date 1 (Qualifier Leader Commission Date) - date
+13. (Monic)Operation TL Commission - number (Paralegal TL Commission Amount)
+14. Date (Paralegal TL Commission Date) - date
+15. (Madon)Operation Manager Commission - number
+16. Date (Operation Manager Commission Date) - date
+17. Paralegal - text/person (Paralegal or Paralegal TL or Operation Manager from employees)
+18. First Payment Amount (Paralegal 1st Payment) - number
+19. F. Payment Date (Paralegal 1st Payment Date) - date
+20. Paralegal 2nd Payment - number
+21. S. Payment Date (Paralegal 2nd Payment Date) - date
+22. Paralegal 3rd Payment - number
+23. 3rd Payment Date (Paralegal 3rd Payment Date) - date
+24. CS (Consultant) - text/person (Consultant/Senior Consultant/Country Manager/CEO)
+25. Payment Amounts For this Client - number (total)
+26. First Payment 50% - number
+27. Date of Payment (1st Payment Date) - date
+28. Second Payment 25% - number
+29. Date of Second (2nd Payment Date) - date
+30. Third Payment 25% - number
+31. Date of Third (3rd Payment Date) - date
+32. Payment Date - date (Leader commission date)
+33. Leader - text (Mahmoud Saber)
+34. Amount 5 (Leader Commission Amount) - number
+35. Total Expenses - formula/rollup
+36. Expected Profit - formula/rollup
+
+SAMPLE DATA (from browser):
+- 243 total records
+- Contract values range: €8,000 to €15,000
+- Lead sources: Sales Mining, Referal, Marketing
+- Qualifier names: Nouran, Monicka, Basmala, Madonna
+- Total contract value: €2,323,500.00

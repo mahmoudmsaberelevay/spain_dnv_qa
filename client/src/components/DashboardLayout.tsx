@@ -43,6 +43,7 @@ import {
   Layers,
   Upload,
   Database,
+  DollarSign,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -94,7 +95,7 @@ const modules = [
       { icon: BarChart3, label: "Reports", path: "/finance/reports" },
       { icon: UserCheck, label: "Employees", path: "/finance/employees" },
       { icon: Layers, label: "Categories", path: "/finance/categories" },
-      { icon: Layers, label: "Commissions", path: "/finance/commissions" },
+      { icon: DollarSign, label: "Commission DB", path: "/finance/commissions" },
       { icon: Database, label: "Clients", path: "/finance/clients" },
       { icon: Upload, label: "Bulk Upload", path: "/finance/bulk-upload" },
     ],
