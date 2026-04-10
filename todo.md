@@ -231,3 +231,7 @@
 - [x] Update setBalance procedure to set openingBalance only (not current balance)
 - [x] Recalculate displayed balance as openingBalance + sum of all transactions
 - [x] Show opening balance in Accounts page edit dialog
+
+## Change Requests (Round 24)
+- [x] Import CIBEGP_Cleaned.xlsx transactions as income into CIB EGP account (48 transactions, final balance EGP 14,268,942)
+- [x] Import ArabAfricanEGP_Cleaned.xlsx transactions as income into Arab African EGP account (14 transactions, final balance EGP 3,549,818.39)
