@@ -241,3 +241,6 @@
 
 ## Change Requests (Round 26)
 - [x] Import all income transactions from Notion database (from 2026-01-01) into correct accounts with client/employee/category links (137 transactions, 88 client balances updated, 0 defaulted to wrong account)
+
+## Change Requests (Round 27)
+- [x] Import all transfer transactions from Notion Transfers database (71 transfers imported, 0 skipped, all accounts updated correctly)
