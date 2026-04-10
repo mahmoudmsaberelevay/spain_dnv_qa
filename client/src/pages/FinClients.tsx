@@ -149,6 +149,8 @@ export default function FinClients() {
           <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px">${contractVal > 0 ? `€ ${fmtEur(contractVal)}` : "—"}</td>
           <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;color:#15803d">${paid > 0 ? `€ ${fmtEur(paid)}` : "—"}</td>
           <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;font-weight:600;color:${remainingColor}">${remainingStr}</td>
+          <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;color:#dc2626">${Number(c.totalDirectCostEgp) > 0 ? 'EGP ' + Number(c.totalDirectCostEgp).toLocaleString('en-US',{maximumFractionDigits:0}) : '\u2014'}</td>
+          <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;font-weight:600;color:${(Number(c.totalDirectIncomeEgp)||0)-(Number(c.totalDirectCostEgp)||0)>=0?'#16a34a':'#dc2626'}">${(() => { const inc=Number(c.totalDirectIncomeEgp)||0; const cst=Number(c.totalDirectCostEgp)||0; if(!inc&&!cst) return '\u2014'; const p=inc-cst; return (p>=0?'+':'-')+'EGP '+Math.abs(p).toLocaleString('en-US',{maximumFractionDigits:0}); })()}</td>
           <td style="border:1px solid #e5e7eb;padding:6px 8px;font-size:10px;color:#6b7280">${c.phone || ""}</td>
         </tr>`;
       }).join("");
@@ -183,6 +185,8 @@ export default function FinClients() {
         <th style="text-align:right">Contract Value</th>
         <th style="text-align:right">Paid</th>
         <th style="text-align:right">Remaining Due</th>
+        <th style="text-align:right">Direct Cost</th>
+        <th style="text-align:right">Profit</th>
         <th>Phone</th>
       </tr>
     </thead>
@@ -354,6 +358,8 @@ export default function FinClients() {
                     <th className={`${thClass} text-right`} onClick={() => handleSort("remainingAmountEur")}>
                       <span className="flex items-center justify-end">Remaining Due <SortIcon field="remainingAmountEur" sortField={sortField} sortDir={sortDir} /></span>
                     </th>
+                    <th className="text-right py-3 px-4 font-semibold text-muted-foreground">Direct Cost</th>
+                    <th className="text-right py-3 px-4 font-semibold text-muted-foreground">Profit</th>
                     <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Contact</th>
                   </tr>
                 </thead>
@@ -404,6 +410,24 @@ export default function FinClients() {
                               </span>
                             )}
                           </span>
+                        </td>
+                        <td className="py-3 px-4 text-right text-red-600 font-medium">
+                          {Number(c.totalDirectCostEgp) > 0
+                            ? `EGP ${Number(c.totalDirectCostEgp).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                            : "\u2014"}
+                        </td>
+                        <td className="py-3 px-4 text-right font-semibold">
+                          {(() => {
+                            const income = Number(c.totalDirectIncomeEgp) || 0;
+                            const cost = Number(c.totalDirectCostEgp) || 0;
+                            if (income === 0 && cost === 0) return <span className="text-muted-foreground">\u2014</span>;
+                            const profit = income - cost;
+                            return (
+                              <span className={profit >= 0 ? "text-green-600" : "text-red-600"}>
+                                {profit >= 0 ? "+" : "-"}EGP {Math.abs(profit).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex flex-col gap-0.5">

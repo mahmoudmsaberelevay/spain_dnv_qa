@@ -817,12 +817,25 @@ const contractingRouter = router({
             const { createFinClient, getFinClientByContractId, createCommission } = await import("./finDb");
             const existing = await getFinClientByContractId(contract.id);
             if (!existing) {
+              // Extract client code from contractCode (e.g. "26027" from "26027-001")
+              const codeMatch = contract.contractCode?.match(/^(\d+)/);
+              const extractedCode = codeMatch ? codeMatch[1] : undefined;
+              // Contract value is in EUR; new clients start with 0 paid
+              const cvEur = Number(contract.contractValue ?? 0);
               const finClient = await createFinClient({
                 name: contract.clientName,
                 contractId: contract.id,
                 contractValue: contract.contractValue,
                 familyMembers: contract.familyMembers,
                 consultant: contract.consultantName ?? undefined,
+                clientCode: extractedCode,
+                phone: contract.clientMobile ?? undefined,
+                program: "Spain Nomad",
+                signingDate: new Date(),
+                contractValueEur: cvEur.toFixed(2),
+                paidAmountEur: "0.00",
+                remainingAmountEur: cvEur.toFixed(2),
+                isLegacy: false,
               });
               // Auto-create commission record
               if (finClient) {

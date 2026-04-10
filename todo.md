@@ -263,3 +263,10 @@
 - [ ] Report page: Export to PDF (branded PDF with Elevay header)
 - [ ] Report page: Export to Excel (xlsx with SheetJS)
 - [ ] Register Report page in Financial sidebar navigation
+
+## Change Requests (Round 31) — Client Database Enhancements
+
+- [ ] Import contractValue, paidAmount, remainingAmount from Notion client database for all existing clients
+- [ ] Show totalDirectCost (sum of linked expenses) and profit (income - cost) per client in Clients page
+- [ ] Auto-create finClient entry when a contract is marked as signed (clientCode, name, phone, familyMembers, contractValueEur)
+- [ ] New income payments linked to a client auto-deduct from remainingAmountEur (EGP / 55.5)

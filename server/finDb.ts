@@ -79,7 +79,30 @@ export async function listFinClients(opts?: { search?: string; consultant?: stri
     conditions.push(sql`(${finClients.name} LIKE ${like} OR ${finClients.clientCode} LIKE ${like})`);
   }
   if (opts?.consultant) conditions.push(eq(finClients.consultant, opts.consultant));
-  const query = db.select().from(finClients);
+  const query = db.select({
+    id: finClients.id,
+    contractId: finClients.contractId,
+    name: finClients.name,
+    phone: finClients.phone,
+    contractValue: finClients.contractValue,
+    familyMembers: finClients.familyMembers,
+    consultant: finClients.consultant,
+    stage: finClients.stage,
+    createdAt: finClients.createdAt,
+    updatedAt: finClients.updatedAt,
+    clientCode: finClients.clientCode,
+    email: finClients.email,
+    address: finClients.address,
+    program: finClients.program,
+    signingDate: finClients.signingDate,
+    salesPerson: finClients.salesPerson,
+    contractValueEur: finClients.contractValueEur,
+    paidAmountEur: finClients.paidAmountEur,
+    remainingAmountEur: finClients.remainingAmountEur,
+    isLegacy: finClients.isLegacy,
+    totalDirectCostEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'expense'), 0)`,
+    totalDirectIncomeEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'income'), 0)`,
+  }).from(finClients);
   if (conditions.length > 0) query.where(conditions.length === 1 ? conditions[0] : and(...conditions));
   // DB-level sort
   const sf = opts?.sortField ?? "clientCode";
