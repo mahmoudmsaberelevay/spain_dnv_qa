@@ -254,11 +254,25 @@ export type InsertFinEmployee = typeof finEmployees.$inferInsert;
 export const finClients = mysqlTable("finClients", {
   id: int("id").autoincrement().primaryKey(),
   contractId: int("contractId"),
+  // Identification
+  clientCode: varchar("clientCode", { length: 32 }),
   name: varchar("name", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 64 }),
+  email: varchar("email", { length: 320 }),
+  address: varchar("address", { length: 500 }),
+  // Contract info
+  program: varchar("program", { length: 128 }),
+  signingDate: timestamp("signingDate"),
+  salesPerson: varchar("salesPerson", { length: 128 }),
+  consultant: varchar("consultant", { length: 128 }),
   contractValue: decimal("contractValue", { precision: 12, scale: 2 }),
   familyMembers: int("familyMembers"),
-  consultant: varchar("consultant", { length: 128 }),
+  // EUR-based financials (primary)
+  contractValueEur: decimal("contractValueEur", { precision: 12, scale: 2 }),
+  paidAmountEur: decimal("paidAmountEur", { precision: 12, scale: 2 }).default("0").notNull(),
+  remainingAmountEur: decimal("remainingAmountEur", { precision: 12, scale: 2 }),
+  // Legacy flag: true = imported from old DB, remainingAmountEur is the starting balance
+  isLegacy: boolean("isLegacy").default(false).notNull(),
   stage: mysqlEnum("stage", ["not_yet", "started"]).default("not_yet").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

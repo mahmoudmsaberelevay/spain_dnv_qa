@@ -5,7 +5,7 @@ import {
   listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance,
   listCategories, createCategory, updateCategory, deleteCategory,
   listEmployees, createEmployee, updateEmployee, deleteEmployee,
-  listFinClients, createFinClient, updateFinClient, getFinClientByContractId,
+  listFinClients, countFinClients, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment,
   listCommissions, createCommission,
   listTransactions, createTransaction, getAccountStatement,
   getFinancialSummary,
@@ -136,7 +136,77 @@ const employeesRouter = router({
 
 // ─── Fin Clients Router ──────────────────────────────────────────────────────
 const finClientsRouter = router({
-  list: finReadProcedure.query(async () => listFinClients()),
+  list: finReadProcedure
+    .input(z.object({
+      search: z.string().optional(),
+      consultant: z.string().optional(),
+      limit: z.number().optional(),
+      offset: z.number().optional(),
+    }).optional())
+    .query(async ({ input }) => listFinClients(input ?? undefined)),
+  count: finReadProcedure
+    .input(z.object({
+      search: z.string().optional(),
+      consultant: z.string().optional(),
+    }).optional())
+    .query(async ({ input }) => countFinClients(input ?? undefined)),
+  get: finReadProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => getFinClientById(input.id)),
+  create: finWriteProcedure
+    .input(z.object({
+      clientCode: z.string().optional(),
+      name: z.string().min(1),
+      phone: z.string().optional(),
+      email: z.string().optional(),
+      address: z.string().optional(),
+      program: z.string().optional(),
+      signingDate: z.date().optional(),
+      salesPerson: z.string().optional(),
+      consultant: z.string().optional(),
+      contractValueEur: z.number().optional(),
+      paidAmountEur: z.number().optional(),
+      remainingAmountEur: z.number().optional(),
+      isLegacy: z.boolean().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { contractValueEur, paidAmountEur, remainingAmountEur, ...rest } = input;
+      // For new clients: remaining = contractValue - paid (at 55.5 rate)
+      const cvEur = contractValueEur ?? 0;
+      const paidEur = paidAmountEur ?? 0;
+      const remEur = remainingAmountEur ?? (cvEur - paidEur);
+      return createFinClient({
+        ...rest,
+        contractValueEur: cvEur.toString(),
+        paidAmountEur: paidEur.toString(),
+        remainingAmountEur: remEur.toString(),
+        stage: 'started',
+        isLegacy: input.isLegacy ?? false,
+      });
+    }),
+  update: finWriteProcedure
+    .input(z.object({
+      id: z.number(),
+      clientCode: z.string().optional(),
+      name: z.string().optional(),
+      phone: z.string().optional(),
+      email: z.string().optional(),
+      address: z.string().optional(),
+      program: z.string().optional(),
+      signingDate: z.date().optional(),
+      salesPerson: z.string().optional(),
+      consultant: z.string().optional(),
+      contractValueEur: z.number().optional(),
+      remainingAmountEur: z.number().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, contractValueEur, remainingAmountEur, ...rest } = input;
+      await updateFinClient(id, {
+        ...rest,
+        contractValueEur: contractValueEur !== undefined ? contractValueEur.toString() : undefined,
+        remainingAmountEur: remainingAmountEur !== undefined ? remainingAmountEur.toString() : undefined,
+      });
+    }),
 });
 
 // ─── Commissions Router ──────────────────────────────────────────────────────
@@ -199,6 +269,10 @@ const transactionsRouter = router({
         balanceAfter: balanceAfter.toString(),
         createdBy: ctx.user?.email ?? null,
       });
+      // Update client remaining balance if linked to a client
+      if (input.finClientId) {
+        applyClientPayment(input.finClientId, input.amount, account.currency).catch(() => {});
+      }
       // Fire-and-forget email notification
       notifyFinancialTransaction("income", input.description, input.amount, account.currency, account.name).catch(() => {});
       return result;

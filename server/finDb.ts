@@ -70,9 +70,53 @@ export async function deleteEmployee(id: number) {
 }
 
 // ─── Fin Clients ─────────────────────────────────────────────────────────────
-export async function listFinClients() {
+export async function listFinClients(opts?: { search?: string; consultant?: string; limit?: number; offset?: number }) {
   const db = await getDb(); if (!db) return [];
-  return db.select().from(finClients).orderBy(desc(finClients.createdAt));
+  const conditions = [];
+  if (opts?.search) {
+    const like = `%${opts.search}%`;
+    conditions.push(sql`(${finClients.name} LIKE ${like} OR ${finClients.clientCode} LIKE ${like})`);
+  }
+  if (opts?.consultant) conditions.push(eq(finClients.consultant, opts.consultant));
+  const query = db.select().from(finClients);
+  if (conditions.length > 0) query.where(conditions.length === 1 ? conditions[0] : and(...conditions));
+  query.orderBy(desc(finClients.createdAt));
+  if (opts?.limit) query.limit(opts.limit);
+  if (opts?.offset) query.offset(opts.offset);
+  return query;
+}
+export async function countFinClients(opts?: { search?: string; consultant?: string }) {
+  const db = await getDb(); if (!db) return 0;
+  const conditions = [];
+  if (opts?.search) {
+    const like = `%${opts.search}%`;
+    conditions.push(sql`(${finClients.name} LIKE ${like} OR ${finClients.clientCode} LIKE ${like})`);
+  }
+  if (opts?.consultant) conditions.push(eq(finClients.consultant, opts.consultant));
+  const [row] = await db.select({ count: sql<number>`COUNT(*)` }).from(finClients)
+    .where(conditions.length === 0 ? undefined : conditions.length === 1 ? conditions[0] : and(...conditions));
+  return Number(row?.count ?? 0);
+}
+export async function getFinClientById(id: number) {
+  const db = await getDb(); if (!db) return null;
+  const rows = await db.select().from(finClients).where(eq(finClients.id, id));
+  return rows[0] ?? null;
+}
+// Update client remaining balance when an income payment is received
+// For legacy clients: deduct payment (in EUR = amountEgp / 55.5) from remainingAmountEur
+// For new clients: remainingAmountEur = contractValueEur - (totalPaidEgp / 55.5)
+export async function applyClientPayment(clientId: number, amountEgp: number, accountCurrency: string) {
+  const db = await getDb(); if (!db) return;
+  const client = await getFinClientById(clientId);
+  if (!client) return;
+  // Convert payment to EUR using fixed rate 55.5
+  const paymentEur = accountCurrency === 'EUR' ? amountEgp : amountEgp / 55.5;
+  const newPaid = Number(client.paidAmountEur ?? 0) + paymentEur;
+  const newRemaining = Number(client.remainingAmountEur ?? 0) - paymentEur;
+  await db.update(finClients).set({
+    paidAmountEur: newPaid.toFixed(2),
+    remainingAmountEur: newRemaining.toFixed(2),
+  }).where(eq(finClients.id, clientId));
 }
 export async function createFinClient(data: InsertFinClient) {
   const db = await getDb(); if (!db) return null;

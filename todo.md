@@ -185,3 +185,11 @@
 ## Change Requests (Round 14)
 - [x] Add Consultant Yearly Signing section to Financial Dashboard (Mahmoud, Ziad, Kirolos, Fouad)
 - [x] Add 3 Quick Transaction buttons (Income, Expense, Transfer) to Financial Dashboard
+
+## Change Requests (Round 15)
+- [x] Update finClients schema: add clientCode (separate from name), program, signingDate, status, phone, address, salesPerson, contractValueEur, paidAmountEur, remainingAmountEur, isLegacy flag
+- [x] Import 256 old clients from CLientDataBase.csv into finClients table
+- [x] Auto-update client remainingAmount when a new income transaction is linked to that client
+- [x] For old clients: remainingAmount from CSV is the contract value; deduct new payments in EUR (payment EGP / 55.5)
+- [x] For new clients: remainingAmount = contractValueEur - (totalPaidEgp / 55.5)
+- [x] Build Clients page in Financial module with search, filter by consultant, and remaining balance display
