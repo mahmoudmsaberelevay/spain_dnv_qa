@@ -210,3 +210,8 @@
 - [x] Add bulk delete (checkboxes + Delete Selected button) to Expenses page
 - [x] Add bulk delete (checkboxes + Delete Selected button) to Transfers page
 - [x] Add bulkDeleteTransactions backend procedure accepting array of IDs
+
+## Change Requests (Round 20)
+- [x] Fix bulk delete: reverse account balances when transactions are deleted (income reversal, expense reversal, transfer reversal)
+- [x] Add edit opening/initial balance to Accounts page (edit button per account row)
+- [x] Add setBalance backend procedure (directly sets account balance without creating a transaction)

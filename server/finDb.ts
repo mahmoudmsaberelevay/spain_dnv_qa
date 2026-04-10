@@ -198,6 +198,42 @@ export async function getAccountStatement(accountId: number, from?: Date, to?: D
 export async function bulkDeleteTransactions(ids: number[]) {
   if (!ids.length) return;
   const db = await getDb(); if (!db) return;
+
+  // Fetch all transactions to be deleted so we can reverse their balance effects
+  const txs = await db.select().from(finTransactions).where(inArray(finTransactions.id, ids));
+
+  // Reverse each transaction's effect on account balances
+  const balanceDeltas = new Map<number, number>();
+  for (const tx of txs) {
+    const amount = Number(tx.amount);
+    if (tx.type === "income" && tx.accountId) {
+      // Income added to account → subtract it back
+      balanceDeltas.set(tx.accountId, (balanceDeltas.get(tx.accountId) ?? 0) - amount);
+    } else if (tx.type === "expense" && tx.accountId) {
+      // Expense subtracted from account → add it back
+      balanceDeltas.set(tx.accountId, (balanceDeltas.get(tx.accountId) ?? 0) + amount);
+    } else if (tx.type === "transfer") {
+      // Transfer deducted from source, added to destination → reverse both
+      if (tx.fromAccountId) {
+        balanceDeltas.set(tx.fromAccountId, (balanceDeltas.get(tx.fromAccountId) ?? 0) + amount);
+      }
+      if (tx.toAccountId) {
+        const converted = Number(tx.convertedAmount ?? amount);
+        balanceDeltas.set(tx.toAccountId, (balanceDeltas.get(tx.toAccountId) ?? 0) - converted);
+      }
+    }
+  }
+
+  // Apply balance reversals
+  for (const [accountId, delta] of Array.from(balanceDeltas.entries())) {
+    if (delta !== 0) {
+      await db.update(finAccounts)
+        .set({ balance: sql`${finAccounts.balance} + ${delta}` })
+        .where(eq(finAccounts.id, accountId));
+    }
+  }
+
+  // Delete the transactions
   await db.delete(finTransactions).where(inArray(finTransactions.id, ids));
 }
 

@@ -24,12 +24,23 @@ export default function FinAccounts() {
     onSuccess: () => { utils.financial.accounts.list.invalidate(); toast.success("Account updated"); setEditAccount(null); },
     onError: (e) => toast.error(e.message),
   });
+  const setBalanceMut = trpc.financial.accounts.setBalance.useMutation({
+    onSuccess: () => {
+      utils.financial.accounts.list.invalidate();
+      utils.financial.dashboard.summary.invalidate();
+      toast.success("Balance updated");
+      setBalanceAccount(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newCurrency, setNewCurrency] = useState("EGP");
   const [editAccount, setEditAccount] = useState<any>(null);
   const [editName, setEditName] = useState("");
+  const [balanceAccount, setBalanceAccount] = useState<any>(null);
+  const [editBalance, setEditBalance] = useState("");
   const [filterCurrency, setFilterCurrency] = useState("all");
 
   const filtered = accounts?.filter(a => filterCurrency === "all" || a.currency === filterCurrency) ?? [];
@@ -118,12 +129,23 @@ export default function FinAccounts() {
                           </Badge>
                         </td>
                         <td className="py-2.5 text-right">
-                          <Button
-                            variant="ghost" size="sm"
-                            onClick={() => { setEditAccount(acc); setEditName(acc.name); }}
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost" size="sm"
+                              title="Edit name"
+                              onClick={() => { setEditAccount(acc); setEditName(acc.name); }}
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost" size="sm"
+                              title="Set opening / current balance"
+                              onClick={() => { setBalanceAccount(acc); setEditBalance(String(Number(acc.balance))); }}
+                              className="text-blue-600 hover:text-blue-700"
+                            >
+                              <span className="text-xs font-bold">₯</span>
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -166,7 +188,7 @@ export default function FinAccounts() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit dialog */}
+      {/* Edit name dialog */}
       <Dialog open={!!editAccount} onOpenChange={() => setEditAccount(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Edit Account</DialogTitle></DialogHeader>
@@ -180,6 +202,45 @@ export default function FinAccounts() {
             <Button variant="outline" onClick={() => setEditAccount(null)}>Cancel</Button>
             <Button onClick={() => updateMut.mutate({ id: editAccount.id, name: editName })} disabled={!editName.trim() || updateMut.isPending}>
               {updateMut.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit balance dialog */}
+      <Dialog open={!!balanceAccount} onOpenChange={() => setBalanceAccount(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Set Balance — {balanceAccount?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              This directly sets the account balance. Use this to correct the opening balance or fix a discrepancy. It does <strong>not</strong> create a transaction.
+            </p>
+            <div>
+              <label className="text-sm font-medium">New Balance ({balanceAccount?.currency})</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={editBalance}
+                onChange={e => setEditBalance(e.target.value)}
+                placeholder="e.g. 50000.00"
+                className="mt-1"
+              />
+            </div>
+            {balanceAccount && editBalance !== "" && (
+              <p className="text-xs text-muted-foreground">
+                Current: {balanceAccount.currency} {fmt(Number(balanceAccount.balance))} → New: {balanceAccount.currency} {fmt(Number(editBalance))}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBalanceAccount(null)}>Cancel</Button>
+            <Button
+              onClick={() => setBalanceMut.mutate({ id: balanceAccount.id, balance: Number(editBalance) })}
+              disabled={editBalance === "" || setBalanceMut.isPending}
+            >
+              {setBalanceMut.isPending ? "Saving..." : "Set Balance"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { eq } from "drizzle-orm";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { getDb } from "./db";
+import { finAccounts } from "../drizzle/schema";
 import {
   listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance,
   listCategories, createCategory, updateCategory, deleteCategory,
@@ -81,6 +84,14 @@ const accountsRouter = router({
       const { id, ...data } = input;
       await updateAccount(id, data);
       return getAccountById(id);
+    }),
+  setBalance: finAdminProcedure
+    .input(z.object({ id: z.number(), balance: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      await db.update(finAccounts).set({ balance: String(input.balance) }).where(eq(finAccounts.id, input.id));
+      return getAccountById(input.id);
     }),
   statement: finReadProcedure
     .input(z.object({
