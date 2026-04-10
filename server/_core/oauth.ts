@@ -9,6 +9,39 @@ function getQueryParam(req: Request, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+/**
+ * Parse the state parameter which may be:
+ * 1. New format: base64-encoded JSON { redirectUri, origin, returnPath }
+ * 2. Legacy format: base64-encoded plain redirectUri string
+ */
+function parseState(state: string): { redirectUri: string; origin: string; returnPath: string } {
+  try {
+    const decoded = atob(state);
+    // Try JSON first (new format)
+    try {
+      const parsed = JSON.parse(decoded);
+      if (parsed && typeof parsed.redirectUri === "string") {
+        return {
+          redirectUri: parsed.redirectUri,
+          origin: parsed.origin ?? "",
+          returnPath: parsed.returnPath ?? "/",
+        };
+      }
+    } catch {
+      // Not JSON — legacy format: decoded string IS the redirectUri
+    }
+    // Legacy: the decoded string is the redirectUri itself
+    const url = new URL(decoded);
+    return {
+      redirectUri: decoded,
+      origin: url.origin,
+      returnPath: "/",
+    };
+  } catch {
+    return { redirectUri: "", origin: "", returnPath: "/" };
+  }
+}
+
 export function registerOAuthRoutes(app: Express) {
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
@@ -20,7 +53,12 @@ export function registerOAuthRoutes(app: Express) {
     }
 
     try {
-      const tokenResponse = await sdk.exchangeCodeForToken(code, state);
+      const { redirectUri, origin, returnPath } = parseState(state);
+
+      // Re-encode state as legacy format (just the redirectUri) for the SDK
+      // because the SDK's decodeState() expects btoa(redirectUri)
+      const sdkState = btoa(redirectUri);
+      const tokenResponse = await sdk.exchangeCodeForToken(code, sdkState);
       const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
 
       if (!userInfo.openId) {
@@ -44,7 +82,12 @@ export function registerOAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      res.redirect(302, "/");
+      // Redirect to the frontend origin + returnPath so the app loads correctly
+      // regardless of which domain (elevay.vip, manus.space, localhost) was used
+      const safeReturnPath = returnPath && returnPath.startsWith("/") ? returnPath : "/";
+      const redirectTarget = origin ? `${origin}${safeReturnPath}` : safeReturnPath;
+      console.log(`[OAuth] Login success for ${userInfo.openId}, redirecting to ${redirectTarget}`);
+      res.redirect(302, redirectTarget);
     } catch (error) {
       console.error("[OAuth] Callback failed", error);
       res.status(500).json({ error: "OAuth callback failed" });
