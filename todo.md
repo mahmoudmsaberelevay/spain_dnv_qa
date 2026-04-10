@@ -253,20 +253,30 @@
 
 ## Change Requests (Round 30) — Advanced Filtering, Sorting & Reports
 
-- [ ] Backend: extend listTransactions to accept filters (dateFrom, dateTo, categoryId, employeeId, finClientId, accountId) and sorting (sortField, sortDir)
-- [ ] Backend: add getDetailedReport procedure returning filtered transactions with totals for PDF/Excel export
-- [ ] Shared FilterBar component: date range calendar picker, category dropdown, employee dropdown, client dropdown, sort column + direction
-- [ ] Wire FilterBar into Income page (FinIncome.tsx) — sort + filter across all records
-- [ ] Wire FilterBar into Expense page (FinExpenses.tsx) — sort + filter across all records
-- [ ] Wire FilterBar into Transfer page (FinTransfers.tsx) — sort + filter across all records
-- [ ] Report page: select entity type (client / category / employee), select specific entity, show filtered transactions with totals
-- [ ] Report page: Export to PDF (branded PDF with Elevay header)
-- [ ] Report page: Export to Excel (xlsx with SheetJS)
-- [ ] Register Report page in Financial sidebar navigation
+- [x] Backend: extend listTransactions to accept filters (dateFrom, dateTo, categoryId, employeeId, finClientId, accountId) and sorting (sortField, sortDir)
+- [x] Backend: add getDetailedReport procedure returning filtered transactions with totals for PDF/Excel export
+- [x] Shared FilterBar component: date range calendar picker, category dropdown, employee dropdown, client dropdown, sort column + direction
+- [x] Wire FilterBar into Income page (FinIncome.tsx) — sort + filter across all records
+- [x] Wire FilterBar into Expense page (FinExpenses.tsx) — sort + filter across all records
+- [x] Wire FilterBar into Transfer page (FinTransfers.tsx) — sort + filter across all records
+- [x] Report page: select entity type (client / category / employee), select specific entity, show filtered transactions with totals
+- [x] Report page: Export to PDF (branded PDF with Elevay header)
+- [x] Report page: Export to Excel (xlsx with SheetJS)
+- [x] Register Report page in Financial sidebar navigation
 
 ## Change Requests (Round 31) — Client Database Enhancements
 
-- [ ] Import contractValue, paidAmount, remainingAmount from Notion client database for all existing clients
-- [ ] Show totalDirectCost (sum of linked expenses) and profit (income - cost) per client in Clients page
-- [ ] Auto-create finClient entry when a contract is marked as signed (clientCode, name, phone, familyMembers, contractValueEur)
-- [ ] New income payments linked to a client auto-deduct from remainingAmountEur (EGP / 55.5)
+- [x] Import contractValue, paidAmount, remainingAmount from Notion client database for all existing clients
+- [x] Show totalDirectCost (sum of linked expenses) and profit (income - cost) per client in Clients page
+- [x] Auto-create finClient entry when a contract is marked as signed (clientCode, name, phone, familyMembers, contractValueEur)
+- [x] New income payments linked to a client auto-deduct from remainingAmountEur (EGP / 55.5)
+
+## Change Requests (Round 32) — System Enhancements
+
+- [x] Fix Account Statement: include transfers in statement and fix running balance calculation
+- [x] Smart prefix search for client codes (typing 26 shows all 26xxx clients)
+- [x] Page size selector (60/120/240/All) on FinIncome, FinExpenses, FinTransfers pages
+- [x] PDF and Excel export on FinIncome, FinExpenses, FinTransfers pages
+- [x] Increase Elevay logo size by 200% on landing page and sidebar
+- [x] Verify auto-deduct of remainingAmountEur when income linked to client is created
+- [x] Verify getDetailedReport backend procedure exists and is used by FinReport PDF/Excel export
