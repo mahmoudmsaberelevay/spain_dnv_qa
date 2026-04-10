@@ -369,6 +369,38 @@ export const finTransactions = mysqlTable("finTransactions", {
 export type FinTransaction = typeof finTransactions.$inferSelect;
 export type InsertFinTransaction = typeof finTransactions.$inferInsert;
 
+// ─── Chat Messages ──────────────────────────────────────────────────────────
+export const chatMessages = mysqlTable("chatMessages", {
+  id: int("id").autoincrement().primaryKey(),
+  senderId: int("senderId").notNull(),
+  receiverId: int("receiverId").notNull(),
+  content: text("content").notNull(),
+  readAt: timestamp("readAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = typeof chatMessages.$inferInsert;
+
+// ─── Broadcasts ───────────────────────────────────────────────────────────────
+export const broadcasts = mysqlTable("broadcasts", {
+  id: int("id").autoincrement().primaryKey(),
+  authorId: int("authorId").notNull(),
+  content: text("content").notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type Broadcast = typeof broadcasts.$inferSelect;
+export type InsertBroadcast = typeof broadcasts.$inferInsert;
+
+export const broadcastDismissals = mysqlTable("broadcastDismissals", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  broadcastId: int("broadcastId").notNull(),
+  dismissedAt: timestamp("dismissedAt").defaultNow().notNull(),
+});
+export type BroadcastDismissal = typeof broadcastDismissals.$inferSelect;
+export type InsertBroadcastDismissal = typeof broadcastDismissals.$inferInsert;
+
 // ─── App Settings (global key-value store) ───────────────────────────────────
 export const appSettings = mysqlTable("appSettings", {
   id: int("id").autoincrement().primaryKey(),

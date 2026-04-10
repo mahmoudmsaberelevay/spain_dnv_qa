@@ -318,3 +318,23 @@
 - [x] Use AccountSelect in Income create dialog (Account field)
 - [x] Use AccountSelect in Expense create dialog (Account field)
 - [x] Use AccountSelect in Transfer create dialog (From Account + To Account fields)
+
+## Change Requests (Round 38) — CRM Dual-State UI, Chat & Broadcasts
+
+- [x] DB: chatMessages table (senderId, receiverId, content, readAt, createdAt)
+- [x] DB: broadcasts table (authorId, content, isActive, createdAt)
+- [x] DB: broadcastDismissals table (userId, broadcastId, dismissedAt)
+- [x] Apply migration SQL for 3 new tables
+- [x] Backend: chatRouter — sendMessage, getMessages, listConversations, markRead, getUnreadCount, listTeamMembers
+- [x] Backend: broadcastRouter — create (admin only), listActive, listAll (admin only), dismiss, deactivate
+- [x] Register chatRouter and broadcastRouter in appRouter
+- [x] Frontend: ElevayHome page — dual-state home with greeting header ("Hello, [Name]"), 2×2 module card grid, "Losing Information" alert widget
+- [x] Frontend: ElevayHome — alert widget shows urgent client alerts (Schengen/submission within 14 days) with red/amber levels
+- [x] Frontend: TeamChat page — conversation list, chat window, real-time polling (3s), unread badge
+- [x] Frontend: TeamChat — search team members, start new conversation, message bubbles (sent right / received left)
+- [x] Frontend: BroadcastCenter page (admin only) — compose broadcast, send to all, history table, deactivate button
+- [x] Frontend: BroadcastBanner component — pinned amber banner for active broadcasts, dismissible per user
+- [x] Frontend: DashboardLayout — add Home + Team Chat links to sidebar footer; Broadcast Center link for admins
+- [x] Frontend: MessagingContext — global React Context for unread message count + active broadcast count
+- [x] Frontend: DashboardLayout — show unread message badge on Team Chat sidebar link
+- [x] App.tsx: add /chat and /broadcast routes

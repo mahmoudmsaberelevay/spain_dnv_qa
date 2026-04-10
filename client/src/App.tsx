@@ -5,6 +5,9 @@ import { Route, Switch, Redirect } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import DashboardLayout from "./components/DashboardLayout";
+import ElevayHome from "./pages/ElevayHome";
+import TeamChat from "./pages/TeamChat";
+import BroadcastCenter from "./pages/BroadcastCenter";
 
 // ─── Application Analysis Module ─────────────────────────────────────────────
 import AnalysisDashboard from "./pages/AnalysisDashboard";
@@ -40,9 +43,9 @@ import FinClients from "./pages/FinClients";
 function Router() {
   return (
     <Switch>
-      {/* Root redirect → Contracting Dashboard */}
+      {/* Root — Elevay Home (dual-state landing page) */}
       <Route path="/">
-        <Redirect to="/contracting" />
+        <ElevayHome />
       </Route>
 
       {/* ── Contracting Module ── */}
@@ -177,6 +180,20 @@ function Router() {
       <Route path="/docs/clients/:id">
         <DashboardLayout>
           <ClientDocDetail />
+        </DashboardLayout>
+      </Route>
+
+      {/* ── Broadcast Center (admin only) ── */}
+      <Route path="/broadcast">
+        <DashboardLayout>
+          <BroadcastCenter />
+        </DashboardLayout>
+      </Route>
+
+      {/* ── Team Chat ── */}
+      <Route path="/chat">
+        <DashboardLayout>
+          <TeamChat />
         </DashboardLayout>
       </Route>
 

@@ -44,10 +44,15 @@ import {
   Upload,
   Database,
   DollarSign,
+  MessageSquare,
+  Home,
+  Megaphone,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
+import { useMessaging } from "@/contexts/MessagingContext";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
+import BroadcastBanner from "./BroadcastBanner";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
 
@@ -172,6 +177,7 @@ function DashboardLayoutContent({
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
   const { state, toggleSidebar } = useSidebar();
+  const { unreadMessages, activeBroadcasts } = useMessaging();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -316,6 +322,56 @@ function DashboardLayoutContent({
 
           {/* Footer — user profile */}
           <SidebarFooter className="p-3 border-t border-border/40">
+            {/* Quick links: Home + Team Chat */}
+            <div className="flex gap-1 mb-2">
+              <button
+                onClick={() => setLocation("/")}
+                className={cn(
+                  "flex items-center gap-2 flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  location === "/"
+                    ? "bg-white/10 text-white"
+                    : "text-white/50 hover:text-white hover:bg-white/5"
+                )}
+                title="Home"
+              >
+                <Home className="h-3.5 w-3.5 shrink-0" />
+                {!isCollapsed && <span>Home</span>}
+              </button>
+              <button
+                onClick={() => setLocation("/chat")}
+                className={cn(
+                  "flex items-center gap-2 flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  location === "/chat"
+                    ? "bg-white/10 text-white"
+                    : "text-white/50 hover:text-white hover:bg-white/5"
+                )}
+                title="Team Chat"
+              >
+                <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                {!isCollapsed && <span>Team Chat</span>}
+                {unreadMessages > 0 && (
+                  <span className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-white text-[10px] font-bold shrink-0">
+                    {unreadMessages > 9 ? "9+" : unreadMessages}
+                  </span>
+                )}
+              </button>
+            </div>
+            {/* Broadcast Center — admin only */}
+            {user?.role === "admin" && (
+              <button
+                onClick={() => setLocation("/broadcast")}
+                className={cn(
+                  "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors mb-2",
+                  location === "/broadcast"
+                    ? "bg-amber-500/20 text-amber-300"
+                    : "text-white/50 hover:text-amber-300 hover:bg-amber-500/10"
+                )}
+                title="Broadcast Center"
+              >
+                <Megaphone className="h-3.5 w-3.5 shrink-0" />
+                {!isCollapsed && <span>Broadcast Center</span>}
+              </button>
+            )}
             {/* Active module badge (collapsed: dot only; expanded: full label) */}
             {(() => {
               const colors = MODULE_COLORS[activeModuleId] ?? MODULE_COLORS.contracting;
@@ -386,7 +442,10 @@ function DashboardLayoutContent({
             <span className="font-bold text-base font-serif text-primary">Elevay</span>
           </div>
         )}
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        <main className="flex-1 p-4 md:p-6">
+          <BroadcastBanner />
+          {children}
+        </main>
       </SidebarInset>
     </>
   );
