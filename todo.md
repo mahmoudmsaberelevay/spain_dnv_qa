@@ -198,3 +198,6 @@
 - [x] Add filter by client code (text input) to Clients page
 - [x] Add sort by all columns (Code, Name, Program, Consultant, Contract Value, Paid, Remaining) to Clients page
 - [x] Add Export as PDF button to Clients page (exports current filtered/sorted list)
+
+## Change Requests (Round 17)
+- [x] Move client sorting to backend (DB-level ORDER BY) so it applies across all pages, not just current page

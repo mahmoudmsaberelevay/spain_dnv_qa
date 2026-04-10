@@ -142,6 +142,8 @@ const finClientsRouter = router({
       consultant: z.string().optional(),
       limit: z.number().optional(),
       offset: z.number().optional(),
+      sortField: z.enum(["clientCode", "name", "program", "consultant", "contractValueEur", "paidAmountEur", "remainingAmountEur", "signingDate"]).optional(),
+      sortDir: z.enum(["asc", "desc"]).optional(),
     }).optional())
     .query(async ({ input }) => listFinClients(input ?? undefined)),
   count: finReadProcedure

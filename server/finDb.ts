@@ -70,7 +70,8 @@ export async function deleteEmployee(id: number) {
 }
 
 // ─── Fin Clients ─────────────────────────────────────────────────────────────
-export async function listFinClients(opts?: { search?: string; consultant?: string; limit?: number; offset?: number }) {
+type FinClientSortField = "clientCode" | "name" | "program" | "consultant" | "contractValueEur" | "paidAmountEur" | "remainingAmountEur" | "signingDate";
+export async function listFinClients(opts?: { search?: string; consultant?: string; limit?: number; offset?: number; sortField?: FinClientSortField; sortDir?: "asc" | "desc" }) {
   const db = await getDb(); if (!db) return [];
   const conditions = [];
   if (opts?.search) {
@@ -80,7 +81,11 @@ export async function listFinClients(opts?: { search?: string; consultant?: stri
   if (opts?.consultant) conditions.push(eq(finClients.consultant, opts.consultant));
   const query = db.select().from(finClients);
   if (conditions.length > 0) query.where(conditions.length === 1 ? conditions[0] : and(...conditions));
-  query.orderBy(desc(finClients.createdAt));
+  // DB-level sort
+  const sf = opts?.sortField ?? "clientCode";
+  const sd = opts?.sortDir ?? "asc";
+  const col = finClients[sf as keyof typeof finClients] as any;
+  query.orderBy(sd === "asc" ? asc(col) : desc(col));
   if (opts?.limit) query.limit(opts.limit);
   if (opts?.offset) query.offset(opts.offset);
   return query;

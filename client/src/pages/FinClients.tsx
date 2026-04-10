@@ -85,7 +85,9 @@ export default function FinClients() {
     consultant: consultant !== "all" ? consultant : undefined,
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
-  }), [combinedSearch, consultant, page]);
+    sortField: sortField,
+    sortDir: sortDir,
+  }), [combinedSearch, consultant, page, sortField, sortDir]);
 
   const countParams = useMemo(() => ({
     search: combinedSearch,
@@ -104,32 +106,8 @@ export default function FinClients() {
 
   const totalPages = Math.ceil((total ?? 0) / PAGE_SIZE);
 
-  // Client-side sort on the current page
-  const sortedClients = useMemo(() => {
-    if (!clients) return [];
-    return [...clients].sort((a, b) => {
-      let av: any = a[sortField];
-      let bv: any = b[sortField];
-      // Numeric fields
-      if (["contractValueEur", "paidAmountEur", "remainingAmountEur"].includes(sortField)) {
-        av = Number(av ?? 0);
-        bv = Number(bv ?? 0);
-        return sortDir === "asc" ? av - bv : bv - av;
-      }
-      // Date
-      if (sortField === "signingDate") {
-        av = av ? new Date(av).getTime() : 0;
-        bv = bv ? new Date(bv).getTime() : 0;
-        return sortDir === "asc" ? av - bv : bv - av;
-      }
-      // String
-      av = (av ?? "").toString().toLowerCase();
-      bv = (bv ?? "").toString().toLowerCase();
-      if (av < bv) return sortDir === "asc" ? -1 : 1;
-      if (av > bv) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [clients, sortField, sortDir]);
+  // Use server-sorted data directly (no client-side sort)
+  const sortedClients = clients ?? [];
 
   // PDF Export
   const handleExport = async () => {
@@ -141,25 +119,12 @@ export default function FinClients() {
         consultant: consultant !== "all" ? consultant : undefined,
         limit: 10000,
         offset: 0,
+        sortField: sortField,
+        sortDir: sortDir,
       });
 
-      // Sort them
-      const sorted = [...allData].sort((a, b) => {
-        let av: any = a[sortField];
-        let bv: any = b[sortField];
-        if (["contractValueEur", "paidAmountEur", "remainingAmountEur"].includes(sortField)) {
-          av = Number(av ?? 0); bv = Number(bv ?? 0);
-          return sortDir === "asc" ? av - bv : bv - av;
-        }
-        if (sortField === "signingDate") {
-          av = av ? new Date(av).getTime() : 0;
-          bv = bv ? new Date(bv).getTime() : 0;
-          return sortDir === "asc" ? av - bv : bv - av;
-        }
-        av = (av ?? "").toString().toLowerCase();
-        bv = (bv ?? "").toString().toLowerCase();
-        return sortDir === "asc" ? av < bv ? -1 : av > bv ? 1 : 0 : av > bv ? -1 : av < bv ? 1 : 0;
-      });
+      // Already sorted by server
+      const sorted = allData;
 
       // Build HTML for print
       const filterDesc = [
