@@ -304,3 +304,11 @@
 ## Change Requests (Round 35) — Active User Indicator in Sidebar
 
 - [x] Show active/logged-in user avatar and name as a small icon at the bottom of the left sidebar ribbon, visible in all modules (Contracting, Finance, Client Documentation, Application Analysis)
+
+## Change Requests (Round 36) — Bank Logos & Full Edit Dialogs
+- [x] Extract bank logos from Word doc and upload to CDN
+- [x] Add logoUrl column to finAccounts table and seed logos for all 13 accounts
+- [x] Display bank logo next to account name on Accounts page and anywhere accounts are listed
+- [x] Fix Expense edit dialog: add Amount field so full entry can be edited (with balance adjustment)
+- [x] Fix Income edit dialog: add Amount field so full entry can be edited (with balance adjustment)
+- [x] Fix Transfer edit dialog: add Amount field so full entry can be edited (with balance adjustment)

@@ -119,7 +119,18 @@ export default function FinAccounts() {
                   <tbody>
                     {accs.map((acc) => (
                       <tr key={acc.id} className="border-b border-muted/50 hover:bg-muted/30">
-                        <td className="py-2.5 font-medium">{acc.name}</td>
+                        <td className="py-2.5 font-medium">
+                          <div className="flex items-center gap-2.5">
+                            {acc.logoUrl ? (
+                              <img src={acc.logoUrl} alt={acc.name} className="h-8 w-8 rounded-full object-cover flex-shrink-0 border border-muted shadow-sm" />
+                            ) : (
+                              <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0 text-xs font-bold text-muted-foreground">
+                                {acc.name.charAt(0)}
+                              </div>
+                            )}
+                            <span>{acc.name}</span>
+                          </div>
+                        </td>
                         <td className={`py-2.5 text-right font-semibold ${Number(acc.balance) < 0 ? "text-red-600" : ""}`}>
                           {currency} {fmt(Number(acc.balance))}
                         </td>

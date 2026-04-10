@@ -1,0 +1,1 @@
+ALTER TABLE `finAccounts` ADD `logoUrl` varchar(500);

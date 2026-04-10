@@ -108,7 +108,7 @@ export default function FinIncome() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDeleteOne, setConfirmDeleteOne] = useState<number | null>(null);
   const [editTx, setEditTx] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ description: "", note: "", transactionDate: "", categoryId: "", finClientId: "" });
+  const [editForm, setEditForm] = useState({ description: "", note: "", transactionDate: "", categoryId: "", finClientId: "", amount: "" });
   const [form, setForm] = useState({
     description: "", accountId: "", categoryId: "", amount: "", note: "", finClientId: "",
     transactionDate: new Date().toISOString().split("T")[0],
@@ -288,7 +288,7 @@ export default function FinIncome() {
                       <td className="py-2 text-right text-green-600 font-semibold">{fmt(Number(tx.amount))}</td>
                       <td className="py-2 text-right">{tx.balanceAfter ? fmt(Number(tx.balanceAfter)) : "—"}</td>
                       <td className="py-2 text-right">
-                        <Button variant="ghost" size="sm" onClick={() => { setEditTx(tx); setEditForm({ description: tx.description, note: tx.note ?? "", transactionDate: new Date(tx.transactionDate).toISOString().split("T")[0], categoryId: tx.categoryId ? String(tx.categoryId) : "", finClientId: tx.finClientId ? String(tx.finClientId) : "none" }); }}>
+                        <Button variant="ghost" size="sm" onClick={() => { setEditTx(tx); setEditForm({ description: tx.description, note: tx.note ?? "", transactionDate: new Date(tx.transactionDate).toISOString().split("T")[0], categoryId: tx.categoryId ? String(tx.categoryId) : "", finClientId: tx.finClientId ? String(tx.finClientId) : "none", amount: String(Number(tx.amount)) }); }}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => setConfirmDeleteOne(tx.id)}>
@@ -363,9 +363,15 @@ export default function FinIncome() {
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Edit Income Transaction</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            <div>
-              <label className="text-sm font-medium">Description</label>
-              <Input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Description</label>
+                <Input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Amount</label>
+                <Input type="number" step="0.01" min="0.01" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -397,7 +403,7 @@ export default function FinIncome() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditTx(null)}>Cancel</Button>
-            <Button onClick={() => updateMut.mutate({ id: editTx.id, description: editForm.description || undefined, note: editForm.note || undefined, transactionDate: editForm.transactionDate ? new Date(editForm.transactionDate) : undefined, categoryId: editForm.categoryId ? Number(editForm.categoryId) : undefined, finClientId: editForm.finClientId && editForm.finClientId !== "none" ? Number(editForm.finClientId) : null })} disabled={updateMut.isPending}>
+            <Button onClick={() => updateMut.mutate({ id: editTx.id, description: editForm.description || undefined, note: editForm.note || undefined, transactionDate: editForm.transactionDate ? new Date(editForm.transactionDate) : undefined, categoryId: editForm.categoryId ? Number(editForm.categoryId) : undefined, finClientId: editForm.finClientId && editForm.finClientId !== "none" ? Number(editForm.finClientId) : null, amount: editForm.amount ? Number(editForm.amount) : undefined })} disabled={updateMut.isPending}>
               {updateMut.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>

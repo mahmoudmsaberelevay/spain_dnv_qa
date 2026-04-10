@@ -492,11 +492,15 @@ const transactionsRouter = router({
       categoryId: z.number().optional(),
       finClientId: z.number().nullable().optional(),
       employeeId: z.number().nullable().optional(),
+      amount: z.number().positive().optional(),
     }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-      const { id, ...fields } = input;
+      const { id, amount: newAmount, ...fields } = input;
+      // Fetch current transaction for balance adjustment
+      const [current] = await db.select().from(finTransactions).where(eq(finTransactions.id, id));
+      if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "Transaction not found" });
       const updateData: Record<string, unknown> = {};
       if (fields.description !== undefined) updateData.description = fields.description;
       if (fields.note !== undefined) updateData.note = fields.note;
@@ -504,6 +508,24 @@ const transactionsRouter = router({
       if (fields.categoryId !== undefined) updateData.categoryId = fields.categoryId;
       if (fields.finClientId !== undefined) updateData.finClientId = fields.finClientId;
       if (fields.employeeId !== undefined) updateData.employeeId = fields.employeeId;
+      // Handle amount change: reverse old effect, apply new effect on account balance
+      if (newAmount !== undefined && newAmount !== Number(current.amount)) {
+        const oldAmount = Number(current.amount);
+        const diff = newAmount - oldAmount;
+        updateData.amount = String(newAmount);
+        if (current.type === 'income' && current.accountId) {
+          await updateAccountBalance(current.accountId, diff);
+        } else if (current.type === 'expense' && current.accountId) {
+          await updateAccountBalance(current.accountId, -diff);
+        }
+        // Update balanceAfter for audit trail
+        if (current.balanceBefore !== null) {
+          const newBalanceAfter = current.type === 'income'
+            ? Number(current.balanceBefore) + newAmount
+            : Number(current.balanceBefore) - newAmount;
+          updateData.balanceAfter = String(newBalanceAfter);
+        }
+      }
       if (Object.keys(updateData).length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "No fields to update" });
       await db.update(finTransactions).set(updateData).where(eq(finTransactions.id, id));
       const [updated] = await db.select().from(finTransactions).where(eq(finTransactions.id, id));

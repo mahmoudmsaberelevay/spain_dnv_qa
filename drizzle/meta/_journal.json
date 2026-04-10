@@ -85,6 +85,13 @@
       "when": 1775853591299,
       "tag": "0011_wet_zombie",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1775854968095,
+      "tag": "0012_natural_wolfsbane",
+      "breakpoints": true
     }
   ]
 }

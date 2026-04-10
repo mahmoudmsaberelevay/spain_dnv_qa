@@ -225,6 +225,7 @@ export const finAccounts = mysqlTable("finAccounts", {
   openingBalance: decimal("openingBalance", { precision: 14, scale: 2 }).default("0").notNull(),
   balance: decimal("balance", { precision: 14, scale: 2 }).default("0").notNull(),
   isActive: boolean("isActive").default(true).notNull(),
+  logoUrl: varchar("logoUrl", { length: 500 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

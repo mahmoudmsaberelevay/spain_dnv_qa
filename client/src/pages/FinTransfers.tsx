@@ -85,7 +85,7 @@ export default function FinTransfers() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDeleteOne, setConfirmDeleteOne] = useState<number | null>(null);
   const [editTx, setEditTx] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ description: "", note: "", transactionDate: "" });
+  const [editForm, setEditForm] = useState({ description: "", note: "", transactionDate: "", amount: "" });
   const [form, setForm] = useState({
     description: "", fromAccountId: "", toAccountId: "", amount: "", exchangeRate: "1", note: "",
     transactionDate: new Date().toISOString().split("T")[0],
@@ -273,6 +273,7 @@ export default function FinTransfers() {
                               description: tx.description,
                               note: tx.note ?? "",
                               transactionDate: new Date(tx.transactionDate).toISOString().split("T")[0],
+                              amount: String(Number(tx.amount)),
                             });
                           }}>
                             <Pencil className="h-3.5 w-3.5" />
@@ -343,9 +344,15 @@ export default function FinTransfers() {
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Edit Transfer</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            <div>
-              <label className="text-sm font-medium">Description</label>
-              <Input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Description</label>
+                <Input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Amount</label>
+                <Input type="number" step="0.01" min="0.01" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
+              </div>
             </div>
             <div>
               <label className="text-sm font-medium">Date</label>
@@ -363,6 +370,7 @@ export default function FinTransfers() {
               description: editForm.description || undefined,
               note: editForm.note || undefined,
               transactionDate: editForm.transactionDate ? new Date(editForm.transactionDate) : undefined,
+              amount: editForm.amount ? Number(editForm.amount) : undefined,
             })} disabled={updateMut.isPending}>
               {updateMut.isPending ? "Saving..." : "Save Changes"}
             </Button>
