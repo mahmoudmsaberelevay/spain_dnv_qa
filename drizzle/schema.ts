@@ -222,6 +222,7 @@ export const finAccounts = mysqlTable("finAccounts", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   currency: varchar("currency", { length: 10 }).default("EGP").notNull(),
+  openingBalance: decimal("openingBalance", { precision: 14, scale: 2 }).default("0").notNull(),
   balance: decimal("balance", { precision: 14, scale: 2 }).default("0").notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

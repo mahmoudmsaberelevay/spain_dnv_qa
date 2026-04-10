@@ -86,11 +86,24 @@ const accountsRouter = router({
       return getAccountById(id);
     }),
   setBalance: finAdminProcedure
-    .input(z.object({ id: z.number(), balance: z.number() }))
+    .input(z.object({ id: z.number(), openingBalance: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-      await db.update(finAccounts).set({ balance: String(input.balance) }).where(eq(finAccounts.id, input.id));
+      // Set the opening balance
+      await db.update(finAccounts).set({ openingBalance: String(input.openingBalance) }).where(eq(finAccounts.id, input.id));
+      // Recalculate the running balance = openingBalance + net transactions
+      const txRows = await db.select().from(finTransactions);
+      const accTx = txRows.filter(t => t.accountId === input.id || t.fromAccountId === input.id || t.toAccountId === input.id);
+      let net = 0;
+      for (const t of accTx) {
+        if (t.type === "income" && t.accountId === input.id) net += Number(t.amount);
+        else if (t.type === "expense" && t.accountId === input.id) net -= Number(t.amount);
+        else if (t.type === "transfer" && t.fromAccountId === input.id) net -= Number(t.amount);
+        else if (t.type === "transfer" && t.toAccountId === input.id) net += Number(t.convertedAmount ?? t.amount);
+      }
+      const newBalance = input.openingBalance + net;
+      await db.update(finAccounts).set({ balance: String(newBalance) }).where(eq(finAccounts.id, input.id));
       return getAccountById(input.id);
     }),
   statement: finReadProcedure

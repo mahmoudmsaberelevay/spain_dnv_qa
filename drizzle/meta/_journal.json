@@ -64,6 +64,13 @@
       "when": 1775795630114,
       "tag": "0008_fair_earthquake",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1775801247289,
+      "tag": "0009_third_star_brand",
+      "breakpoints": true
     }
   ]
 }

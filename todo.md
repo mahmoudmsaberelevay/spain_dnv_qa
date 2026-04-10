@@ -225,3 +225,9 @@
 - [x] Add transaction edit (pencil icon per row) to Expenses page
 - [x] Add transaction edit (pencil icon per row) to Transfers page
 - [x] Add updateTransaction backend procedure
+
+## Change Requests (Round 23)
+- [x] Add openingBalance column to finAccounts table (separate from running balance)
+- [x] Update setBalance procedure to set openingBalance only (not current balance)
+- [x] Recalculate displayed balance as openingBalance + sum of all transactions
+- [x] Show opening balance in Accounts page edit dialog

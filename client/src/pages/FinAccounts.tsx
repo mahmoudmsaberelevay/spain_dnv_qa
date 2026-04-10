@@ -140,7 +140,7 @@ export default function FinAccounts() {
                             <Button
                               variant="ghost" size="sm"
                               title="Set opening / current balance"
-                              onClick={() => { setBalanceAccount(acc); setEditBalance(String(Number(acc.balance))); }}
+                              onClick={() => { setBalanceAccount(acc); setEditBalance(String(Number(acc.openingBalance ?? 0))); }}
                               className="text-blue-600 hover:text-blue-700"
                             >
                               <span className="text-xs font-bold">₯</span>
@@ -207,18 +207,29 @@ export default function FinAccounts() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit balance dialog */}
+      {/* Edit opening balance dialog */}
       <Dialog open={!!balanceAccount} onOpenChange={() => setBalanceAccount(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Set Balance — {balanceAccount?.name}</DialogTitle>
+            <DialogTitle>Edit Opening Balance — {balanceAccount?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              This directly sets the account balance. Use this to correct the opening balance or fix a discrepancy. It does <strong>not</strong> create a transaction.
+              Set the <strong>opening balance</strong> for this account. The current balance will be automatically recalculated as:
+              <br /><code className="text-xs bg-muted px-1 py-0.5 rounded mt-1 block">Opening Balance + Income − Expenses ± Transfers</code>
             </p>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="bg-muted/50 rounded p-2">
+                <div className="text-muted-foreground text-xs">Current Opening Balance</div>
+                <div className="font-semibold">{balanceAccount?.currency} {fmt(Number(balanceAccount?.openingBalance ?? 0))}</div>
+              </div>
+              <div className="bg-muted/50 rounded p-2">
+                <div className="text-muted-foreground text-xs">Current Balance</div>
+                <div className="font-semibold">{balanceAccount?.currency} {fmt(Number(balanceAccount?.balance ?? 0))}</div>
+              </div>
+            </div>
             <div>
-              <label className="text-sm font-medium">New Balance ({balanceAccount?.currency})</label>
+              <label className="text-sm font-medium">New Opening Balance ({balanceAccount?.currency})</label>
               <Input
                 type="number"
                 step="0.01"
@@ -230,17 +241,17 @@ export default function FinAccounts() {
             </div>
             {balanceAccount && editBalance !== "" && (
               <p className="text-xs text-muted-foreground">
-                Current: {balanceAccount.currency} {fmt(Number(balanceAccount.balance))} → New: {balanceAccount.currency} {fmt(Number(editBalance))}
+                Opening: {balanceAccount.currency} {fmt(Number(balanceAccount.openingBalance ?? 0))} → {balanceAccount.currency} {fmt(Number(editBalance))}
               </p>
             )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBalanceAccount(null)}>Cancel</Button>
             <Button
-              onClick={() => setBalanceMut.mutate({ id: balanceAccount.id, balance: Number(editBalance) })}
+              onClick={() => setBalanceMut.mutate({ id: balanceAccount.id, openingBalance: Number(editBalance) })}
               disabled={editBalance === "" || setBalanceMut.isPending}
             >
-              {setBalanceMut.isPending ? "Saving..." : "Set Balance"}
+              {setBalanceMut.isPending ? "Saving..." : "Update Opening Balance"}
             </Button>
           </DialogFooter>
         </DialogContent>

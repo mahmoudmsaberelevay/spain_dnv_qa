@@ -1,0 +1,1 @@
+ALTER TABLE `finAccounts` ADD `openingBalance` decimal(14,2) DEFAULT '0' NOT NULL;
