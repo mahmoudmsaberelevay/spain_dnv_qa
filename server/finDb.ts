@@ -169,6 +169,20 @@ export async function applyClientPayment(clientId: number, amountEgp: number, ac
     remainingAmountEur: newRemaining.toFixed(2),
   }).where(eq(finClients.id, clientId));
 }
+export async function setClientPaidAmount(clientId: number, paidAmountEgp: number) {
+  const db = await getDb(); if (!db) return null;
+  const client = await getFinClientById(clientId);
+  if (!client) return null;
+  const newPaidEur = paidAmountEgp / 55.5;
+  const contractVal = Number(client.contractValueEur ?? 0);
+  const newRemaining = contractVal - newPaidEur;
+  await db.update(finClients).set({
+    paidAmountEgp: paidAmountEgp.toFixed(2),
+    paidAmountEur: newPaidEur.toFixed(2),
+    remainingAmountEur: newRemaining.toFixed(2),
+  }).where(eq(finClients.id, clientId));
+  return { newPaidEgp: paidAmountEgp, newPaidEur, newRemaining };
+}
 export async function recordClientManualPayment(clientId: number, amountEgp: number) {
   const db = await getDb(); if (!db) return null;
   const client = await getFinClientById(clientId);

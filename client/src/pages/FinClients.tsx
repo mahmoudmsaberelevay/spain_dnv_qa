@@ -110,9 +110,9 @@ export default function FinClients() {
 
   const totalPages = Math.ceil((total ?? 0) / pageSize);
 
-  const recordPaymentMutation = trpc.financial.clients.recordPayment.useMutation({
+  const setPaidAmountMutation = trpc.financial.clients.setPaidAmount.useMutation({
     onSuccess: (data) => {
-      toast.success(`Payment recorded! EUR converted: €${data.eurConverted.toFixed(2)} | New remaining: €${data.newRemaining.toFixed(2)}`);
+      toast.success(`Paid amount updated! Paid EGP: ${Number(data.newPaidEgp).toLocaleString()} | Paid EUR: €${Number(data.newPaidEur).toFixed(2)} | Remaining: €${Number(data.newRemaining).toFixed(2)}`);
       utils.financial.clients.list.invalidate();
       utils.financial.clients.count.invalidate();
       utils.financial.clients.totals.invalidate();
@@ -470,10 +470,13 @@ export default function FinClients() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 px-2 text-xs gap-1 text-green-700 border-green-300 hover:bg-green-50"
-                            onClick={() => setPaymentClient({ id: c.id, name: c.name, remaining: Number(c.remainingAmountEur ?? 0) })}
+                            className="h-7 px-2 text-xs gap-1 text-blue-700 border-blue-300 hover:bg-blue-50"
+                            onClick={() => {
+                              setPaymentClient({ id: c.id, name: c.name, remaining: Number(c.remainingAmountEur ?? 0) });
+                              setPaymentAmount(String(Number(c.paidAmountEgp ?? 0)));
+                            }}
                           >
-                            <PlusCircle className="h-3 w-3" /> Pay
+                            <PlusCircle className="h-3 w-3" /> Edit Paid
                           </Button>
                         </td>
                       </tr>
@@ -616,40 +619,38 @@ export default function FinClients() {
         </DialogContent>
       </Dialog>
 
-      {/* Record Payment Dialog */}
+      {/* Edit Paid Amount Dialog */}
       <Dialog open={!!paymentClient} onOpenChange={(open) => { if (!open) { setPaymentClient(null); setPaymentAmount(""); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <PlusCircle className="h-5 w-5 text-green-600" />
-              Record Payment
+              <PlusCircle className="h-5 w-5 text-blue-600" />
+              Edit Paid Amount
             </DialogTitle>
           </DialogHeader>
           {paymentClient && (
             <div className="space-y-4 py-2">
               <div className="bg-muted/50 rounded-lg p-3 text-sm">
                 <p className="font-medium text-foreground">{paymentClient.name}</p>
-                <p className="text-muted-foreground mt-1">
-                  Current remaining: <span className="font-semibold text-red-600">€ {fmtEur(paymentClient.remaining)}</span>
-                </p>
+                <p className="text-muted-foreground mt-1 text-xs">Enter the total paid amount in EGP. This will <strong>replace</strong> the current value and recalculate EUR and remaining balance.</p>
               </div>
               <div className="space-y-1">
-                <Label>Payment Amount (EGP) <span className="text-red-500">*</span></Label>
+                <Label>Total Paid Amount (EGP) <span className="text-red-500">*</span></Label>
                 <Input
                   type="number"
-                  placeholder="e.g. 55500"
+                  placeholder="e.g. 555000"
                   value={paymentAmount}
                   onChange={e => setPaymentAmount(e.target.value)}
                   autoFocus
                 />
               </div>
-              {paymentAmount && Number(paymentAmount) > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm space-y-1">
-                  <p className="text-green-800">
-                    <span className="font-medium">EUR equivalent:</span> € {fmtEur(Number(paymentAmount) / 55.5)}
+              {paymentAmount !== "" && Number(paymentAmount) >= 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm space-y-1">
+                  <p className="text-blue-800">
+                    <span className="font-medium">Paid EUR (new):</span> € {fmtEur(Number(paymentAmount) / 55.5)}
                   </p>
-                  <p className="text-green-800">
-                    <span className="font-medium">New remaining:</span> € {fmtEur(paymentClient.remaining - Number(paymentAmount) / 55.5)}
+                  <p className="text-blue-800">
+                    <span className="font-medium">Remaining (new):</span> € {fmtEur(paymentClient.remaining + (Number(paymentAmount === "" ? 0 : paymentAmount) / 55.5) - (Number(paymentAmount) / 55.5))}
                   </p>
                 </div>
               )}
@@ -658,14 +659,14 @@ export default function FinClients() {
           <DialogFooter>
             <Button variant="outline" onClick={() => { setPaymentClient(null); setPaymentAmount(""); }}>Cancel</Button>
             <Button
-              className="bg-green-600 hover:bg-green-700 text-white"
-              disabled={!paymentAmount || Number(paymentAmount) <= 0 || recordPaymentMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              disabled={paymentAmount === "" || Number(paymentAmount) < 0 || setPaidAmountMutation.isPending}
               onClick={() => {
-                if (!paymentClient || !paymentAmount) return;
-                recordPaymentMutation.mutate({ clientId: paymentClient.id, amountEgp: Number(paymentAmount) });
+                if (!paymentClient || paymentAmount === "") return;
+                setPaidAmountMutation.mutate({ clientId: paymentClient.id, paidAmountEgp: Number(paymentAmount) });
               }}
             >
-              {recordPaymentMutation.isPending ? "Recording..." : "Record Payment"}
+              {setPaidAmountMutation.isPending ? "Saving..." : "Save Paid Amount"}
             </Button>
           </DialogFooter>
         </DialogContent>

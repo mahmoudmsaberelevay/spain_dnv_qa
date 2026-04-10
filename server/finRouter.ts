@@ -8,7 +8,7 @@ import {
   listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance,
   listCategories, createCategory, updateCategory, deleteCategory,
   listEmployees, createEmployee, updateEmployee, deleteEmployee,
-  listFinClients, countFinClients, getFinClientTotals, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment,
+  listFinClients, countFinClients, getFinClientTotals, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment, setClientPaidAmount,
   bulkDeleteTransactions,
   listCommissions, createCommission,
   listTransactions, createTransaction, getAccountStatement,
@@ -241,19 +241,18 @@ const finClientsRouter = router({
       });
     }),
   recordPayment: finWriteProcedure
-    .input(z.object({
-      clientId: z.number(),
-      amountEgp: z.number().positive(),
-    }))
+    .input(z.object({ clientId: z.number(), amountEgp: z.number().positive() }))
     .mutation(async ({ input }) => {
       const result = await recordClientManualPayment(input.clientId, input.amountEgp);
       if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found' });
-      return {
-        newPaidEgp: result.newPaidEgp,
-        newPaidEur: result.newPaidEur,
-        newRemaining: result.newRemaining,
-        eurConverted: input.amountEgp / 55.5,
-      };
+      return { eurConverted: result.newPaidEur, newRemaining: result.newRemaining };
+    }),
+  setPaidAmount: finWriteProcedure
+    .input(z.object({ clientId: z.number(), paidAmountEgp: z.number().min(0) }))
+    .mutation(async ({ input }) => {
+      const result = await setClientPaidAmount(input.clientId, input.paidAmountEgp);
+      if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found' });
+      return { newPaidEgp: result.newPaidEgp, newPaidEur: result.newPaidEur, newRemaining: result.newRemaining };
     }),
 });
 
