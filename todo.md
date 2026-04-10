@@ -289,4 +289,4 @@
 - [x] Build Commission Database page in Financial module with all fields, filters, edit capability
 - [x] Auto-create commission entry when receipt is marked as paid (clientName, status, contractValue, signingDate, consultantName)
 - [x] Auto-populate commission entry from contract data (clientCode, name, phone, familyMembers, contractValue, signingDate)
-- [ ] Employee income/expense totals: when income/expense linked to employee, reflect in employee totals
+- [x] Employee income/expense totals: when income/expense linked to employee, reflect in employee totals

@@ -29,9 +29,9 @@ export default function FinEmployees() {
   const [editRole, setEditRole] = useState("");
   const [editSalary, setEditSalary] = useState("");
 
-  const fmt = (v: string | number | null | undefined) => {
+  const fmt = (v: string | number | null | undefined, currency = "EGP") => {
     const n = Number(v ?? 0);
-    return n > 0 ? `EGP ${n.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—";
+    return n > 0 ? `${currency} ${n.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—";
   };
 
   const totalSalary = employees?.reduce((sum, e) => sum + Number(e.salary ?? 0), 0) ?? 0;
@@ -68,6 +68,8 @@ export default function FinEmployees() {
                     <th className="text-left py-2 font-medium">Name</th>
                     <th className="text-left py-2 font-medium">Role</th>
                     <th className="text-right py-2 font-medium">Fixed Salary</th>
+                    <th className="text-right py-2 font-medium text-green-700">Total Income</th>
+                    <th className="text-right py-2 font-medium text-red-700">Total Expense</th>
                     <th className="text-center py-2 font-medium">Status</th>
                     <th className="text-right py-2 font-medium">Actions</th>
                   </tr>
@@ -79,6 +81,8 @@ export default function FinEmployees() {
                       <td className="py-2.5 font-medium">{emp.name}</td>
                       <td className="py-2.5 text-muted-foreground">{emp.role ?? "—"}</td>
                       <td className="py-2.5 text-right font-mono">{fmt(emp.salary)}</td>
+                      <td className="py-2.5 text-right font-mono text-green-700">{fmt((emp as any).totalIncome)}</td>
+                      <td className="py-2.5 text-right font-mono text-red-700">{fmt((emp as any).totalExpense)}</td>
                       <td className="py-2.5 text-center">
                         <Badge variant={emp.isActive ? "default" : "secondary"} className="text-xs">
                           {emp.isActive ? "Active" : "Inactive"}

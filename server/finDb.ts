@@ -53,7 +53,27 @@ export async function deleteCategory(id: number) {
 // ─── Employees ───────────────────────────────────────────────────────────────
 export async function listEmployees() {
   const db = await getDb(); if (!db) return [];
-  return db.select().from(finEmployees).orderBy(asc(finEmployees.name));
+  const employees = await db.select().from(finEmployees).orderBy(asc(finEmployees.name));
+  // Attach total income and expense per employee from transactions
+  const totals = await db.select({
+    employeeId: finTransactions.employeeId,
+    type: finTransactions.type,
+    total: sql<string>`COALESCE(SUM(CAST(${finTransactions.amount} AS DECIMAL(15,2))), 0)`,
+  }).from(finTransactions)
+    .where(sql`${finTransactions.employeeId} IS NOT NULL`)
+    .groupBy(finTransactions.employeeId, finTransactions.type);
+  const totalsMap: Record<number, { totalIncome: number; totalExpense: number }> = {};
+  for (const t of totals) {
+    if (!t.employeeId) continue;
+    if (!totalsMap[t.employeeId]) totalsMap[t.employeeId] = { totalIncome: 0, totalExpense: 0 };
+    if (t.type === 'income') totalsMap[t.employeeId].totalIncome = Number(t.total);
+    if (t.type === 'expense') totalsMap[t.employeeId].totalExpense = Number(t.total);
+  }
+  return employees.map(e => ({
+    ...e,
+    totalIncome: totalsMap[e.id]?.totalIncome ?? 0,
+    totalExpense: totalsMap[e.id]?.totalExpense ?? 0,
+  }));
 }
 export async function createEmployee(data: { name: string; role?: string; salary?: string }) {
   const db = await getDb(); if (!db) return null;
