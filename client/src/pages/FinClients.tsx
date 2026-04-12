@@ -49,6 +49,7 @@ export default function FinClients() {
   const [pageSize, setPageSize] = useState(50);
   const [showAdd, setShowAdd] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
   const [paymentClient, setPaymentClient] = useState<{ id: number; name: string; remaining: number } | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [showRateDialog, setShowRateDialog] = useState(false);
@@ -236,6 +237,32 @@ export default function FinClients() {
     }
   };
 
+  // CSV Export
+  const handleExportCsv = async () => {
+    setExportingCsv(true);
+    try {
+      const result = await utils.financial.clients.exportCsv.fetch({
+        search: combinedSearch,
+        consultant: consultant !== "all" ? consultant : undefined,
+      });
+      const blob = new Blob([result.csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const dateStr = new Date().toISOString().slice(0, 10);
+      a.download = `elevay-clients-${dateStr}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("CSV exported successfully");
+    } catch (e: any) {
+      toast.error("CSV export failed: " + e.message);
+    } finally {
+      setExportingCsv(false);
+    }
+  };
+
   // Add client form state
   const [form, setForm] = useState({
     clientCode: "", name: "", phone: "", address: "", program: "Spain Nomad",
@@ -294,6 +321,10 @@ export default function FinClients() {
           <Button variant="outline" onClick={handleExport} disabled={exporting}>
             <FileDown className="h-4 w-4 mr-1.5" />
             {exporting ? "Preparing..." : "Export PDF"}
+          </Button>
+          <Button variant="outline" onClick={handleExportCsv} disabled={exportingCsv}>
+            <FileDown className="h-4 w-4 mr-1.5" />
+            {exportingCsv ? "Exporting..." : "Export CSV"}
           </Button>
           <Button onClick={() => setShowAdd(true)} className="bg-primary">
             <Plus className="h-4 w-4 mr-1.5" /> Add Client

@@ -200,6 +200,59 @@ export async function notifyReceiptPaid(
 export const notifyInvoicePaid = notifyReceiptPaid;
 
 /**
+ * Notify Mahmoud when a new invoice/receipt is created.
+ */
+export async function notifyNewInvoice(
+  invoiceCode: string,
+  contractCode: string,
+  clientName: string,
+  amountEur: number,
+  remainingBalance: number
+): Promise<void> {
+  try {
+    const plain = `New invoice created.\n\nClient: ${clientName}\nInvoice Code: ${invoiceCode}\nContract Code: ${contractCode}\nAmount: €${amountEur.toLocaleString("en-US")}\nRemaining Balance: €${remainingBalance.toLocaleString("en-US")}`;
+    const html = `
+      <table style="width:100%; border-collapse:collapse; font-size:14px;">
+        <tr><td style="padding:6px 0; color:#8A9499;">Client</td><td style="padding:6px 0; color:#2C3A40; font-weight:bold;">${clientName}</td></tr>
+        <tr><td style="padding:6px 0; color:#8A9499;">Invoice Code</td><td style="padding:6px 0; color:#2C3A40;">${invoiceCode}</td></tr>
+        <tr><td style="padding:6px 0; color:#8A9499;">Contract Code</td><td style="padding:6px 0; color:#2C3A40;">${contractCode}</td></tr>
+        <tr><td style="padding:6px 0; color:#8A9499;">Amount</td><td style="padding:6px 0; color:#27AE60; font-weight:bold;">€${amountEur.toLocaleString("en-US")}</td></tr>
+        <tr><td style="padding:6px 0; color:#8A9499;">Remaining Balance</td><td style="padding:6px 0; color:#C0392B; font-weight:bold;">€${remainingBalance.toLocaleString("en-US")}</td></tr>
+      </table>`;
+    await notifyTeam(`New Invoice Created: ${invoiceCode}`, html, plain);
+  } catch (error) {
+    console.error("[EmailService] Failed to send new invoice notification:", error);
+  }
+}
+
+/**
+ * Notify Mahmoud when a new Finance client record is added (auto-create or manual).
+ */
+export async function notifyFinClientAdded(
+  clientName: string,
+  clientCode: string | undefined,
+  consultant: string | undefined,
+  contractValueEur: number,
+  source: "auto" | "manual"
+): Promise<void> {
+  try {
+    const sourceLabel = source === "auto" ? "Auto-created from paid receipt" : "Manually added";
+    const plain = `New Finance client added.\n\nClient: ${clientName}\nClient Code: ${clientCode ?? "—"}\nConsultant: ${consultant ?? "—"}\nContract Value: €${contractValueEur.toLocaleString("en-US")}\nSource: ${sourceLabel}`;
+    const html = `
+      <table style="width:100%; border-collapse:collapse; font-size:14px;">
+        <tr><td style="padding:6px 0; color:#8A9499;">Client</td><td style="padding:6px 0; color:#2C3A40; font-weight:bold;">${clientName}</td></tr>
+        <tr><td style="padding:6px 0; color:#8A9499;">Client Code</td><td style="padding:6px 0; color:#2C3A40;">${clientCode ?? "—"}</td></tr>
+        <tr><td style="padding:6px 0; color:#8A9499;">Consultant</td><td style="padding:6px 0; color:#2C3A40;">${consultant ?? "—"}</td></tr>
+        <tr><td style="padding:6px 0; color:#8A9499;">Contract Value</td><td style="padding:6px 0; color:#27AE60; font-weight:bold;">€${contractValueEur.toLocaleString("en-US")}</td></tr>
+        <tr><td style="padding:6px 0; color:#8A9499;">Source</td><td style="padding:6px 0; color:#5E6A71;">${sourceLabel}</td></tr>
+      </table>`;
+    await notifyTeam(`New Finance Client Added: ${clientName}`, html, plain);
+  } catch (error) {
+    console.error("[EmailService] Failed to send finance client notification:", error);
+  }
+}
+
+/**
  * Send a document reminder to the paralegal AND consultant assigned to a client case.
  * Falls back to notifyTeam (all team) if specific emails are not found.
  */

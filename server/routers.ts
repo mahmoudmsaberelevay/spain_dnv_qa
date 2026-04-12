@@ -20,7 +20,7 @@ import {
 import { generateContractDoc, uploadContractToStorage, calculateContractValue } from "./contractGenerator";
 import { getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
 import { generateAndUploadInvoicePdf } from "./invoiceGenerator";
-import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient } from "./emailService";
+import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient, notifyNewInvoice, notifyFinClientAdded } from "./emailService";
 import { generateInvoicePdfBuffer } from "./invoiceGenerator";
 import {
   createClientCase, listClientCases, getClientCase, updateClientCase,
@@ -924,6 +924,14 @@ const contractingRouter = router({
           amountEgp: amountEgp.toString(), exchangeRate: rateInfo.rate.toString(),
           status: "unpaid", pdfUrl, notes: input.notes,
         });
+        // Notify team that a new invoice was created
+        notifyNewInvoice(
+          invoiceCode,
+          contract.contractCode,
+          billingName,
+          input.amountEur,
+          remainingBalance
+        ).catch(() => {});
         return invoice;
       }),
     markPaid: protectedProcedure
@@ -962,6 +970,14 @@ const contractingRouter = router({
               familyMembers: contract.familyMembers ?? 0,
               isLegacy: false,
             });
+            // Notify team that a Finance client was auto-created from paid receipt
+            notifyFinClientAdded(
+              invoice.clientName,
+              invoice.contractCode ?? undefined,
+              contract.consultantName ?? undefined,
+              contractValueEur,
+              "auto"
+            ).catch(() => {});
           }
         }
         await notifyReceiptPaid(invoice.invoiceCode, invoice.contractCode, invoice.clientName, Number(invoice.amountEur), remainingBalance);

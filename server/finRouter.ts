@@ -14,7 +14,7 @@ import {
   listTransactions, countTransactions, createTransaction, getAccountStatement,
   getFinancialSummary,
 } from "./finDb";
-import { notifyFinancialTransaction } from "./emailService";
+import { notifyFinancialTransaction, notifyFinClientAdded } from "./emailService";
 
 // ─── Access Control ──────────────────────────────────────────────────────────
 const ADMIN_EMAILS = [
@@ -208,7 +208,7 @@ const finClientsRouter = router({
       const cvEur = contractValueEur ?? 0;
       const paidEur = paidAmountEur ?? 0;
       const remEur = remainingAmountEur ?? (cvEur - paidEur);
-      return createFinClient({
+      const newClient = await createFinClient({
         ...rest,
         contractValueEur: cvEur.toString(),
         paidAmountEur: paidEur.toString(),
@@ -216,6 +216,15 @@ const finClientsRouter = router({
         stage: 'started',
         isLegacy: input.isLegacy ?? false,
       });
+      // Notify team that a Finance client was manually added
+      notifyFinClientAdded(
+        input.name,
+        input.clientCode,
+        input.consultant,
+        cvEur,
+        "manual"
+      ).catch(() => {});
+      return newClient;
     }),
   update: finWriteProcedure
     .input(z.object({
@@ -253,6 +262,53 @@ const finClientsRouter = router({
       const result = await setClientPaidAmount(input.clientId, input.paidAmountEgp);
       if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found' });
       return { newPaidEgp: result.newPaidEgp, newPaidEur: result.newPaidEur, newRemaining: result.newRemaining };
+    }),
+  exportCsv: finReadProcedure
+    .input(z.object({
+      search: z.string().optional(),
+      consultant: z.string().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      // Fetch all clients (no pagination) for export
+      const clients = await listFinClients({
+        search: input?.search,
+        consultant: input?.consultant,
+        limit: 10000,
+        offset: 0,
+        sortField: "clientCode",
+        sortDir: "asc",
+      });
+      // Build CSV string
+      const headers = [
+        "Client Code", "Name", "Phone", "Email", "Program",
+        "Signing Date", "Consultant", "Sales Person",
+        "Contract Value (EUR)", "Paid Amount (EUR)", "Remaining Amount (EUR)",
+        "Family Members", "Stage", "Is Legacy",
+      ];
+      const escape = (v: unknown) => {
+        const s = v == null ? "" : String(v);
+        return s.includes(",") || s.includes('"') || s.includes("\n")
+          ? `"${s.replace(/"/g, '""')}"`
+          : s;
+      };
+      const rows = clients.map((c) => [
+        escape(c.clientCode),
+        escape(c.name),
+        escape(c.phone),
+        escape(c.email),
+        escape(c.program),
+        escape(c.signingDate ? new Date(c.signingDate).toISOString().slice(0, 10) : ""),
+        escape(c.consultant),
+        escape(c.salesPerson),
+        escape(c.contractValueEur),
+        escape(c.paidAmountEur),
+        escape(c.remainingAmountEur),
+        escape(c.familyMembers),
+        escape(c.stage),
+        escape(c.isLegacy ? "Yes" : "No"),
+      ].join(","));
+      const csv = [headers.join(","), ...rows].join("\n");
+      return { csv };
     }),
 });
 // Commission field schema (shared between create and update)

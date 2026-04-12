@@ -399,3 +399,9 @@
 - [x] Fix contract code generation: year prefix (26xxx for 2026, 27xxx for 2027), sequential per year
 - [ ] Fix markPaid: auto-create Finance client record with name, phone, signing date, consultant, client code, contract value, family members
 - [ ] Client selector in Income/Expense forms: replace Select dropdown with live-search combobox showing client code + name, filtering as you type
+
+## Change Requests (Round 45)
+- [x] Email: invoice created → send notification to Mahmoud.saber@elevay.com
+- [x] Email: EUR/EGP rate scheduler wired at 9am, 1pm, 3pm Cairo time
+- [x] Email: Finance client manually added → email summary to Mahmoud.saber@elevay.com
+- [x] CSV export button in Finance Clients page (alongside existing PDF export)
