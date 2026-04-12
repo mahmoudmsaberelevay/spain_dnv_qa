@@ -407,8 +407,8 @@
 - [x] CSV export button in Finance Clients page (alongside existing PDF export)
 
 ## Change Requests (Round 46) — Legacy Receipt Mode
-- [ ] DB: add `isLegacyReceipt` (boolean, default false) and `legacyFinClientId` (int, nullable) columns to invoices table; make `contractId` and `contractCode` nullable
-- [ ] Server: add `invoices.createLegacy` tRPC procedure — picks Finance client by id, free-form EUR+EGP, generates PDF receipt, no contract link
-- [ ] Server: update `markPaid` — when `isLegacyReceipt=true`, skip auto-create Finance client and skip remaining balance update
-- [ ] UI: add Contract / Legacy Receipt tab switcher to Create Receipt dialog
-- [ ] UI: Legacy tab — live-search combobox for Finance clients (code + name), EUR amount, EGP amount (auto from rate, editable), notes
+- [x] DB: add `isLegacyReceipt` (boolean, default false) and `legacyFinClientId` (int, nullable) columns to invoices table; make `contractId` and `contractCode` nullable
+- [x] Server: add `invoices.createLegacy` tRPC procedure — picks Finance client by id, free-form EUR+EGP, generates PDF receipt, no contract link
+- [x] Server: update `markPaid` — when `isLegacyReceipt=true`, skip auto-create Finance client and skip remaining balance update
+- [x] UI: add Contract / Legacy Receipt tab switcher to Create Receipt dialog
+- [x] UI: Legacy tab — live-search combobox for Finance clients (code + name), EUR amount, EGP amount (auto from rate, editable), notes
