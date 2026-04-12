@@ -20,6 +20,7 @@ import {
   Plus, Download, Search, Receipt, Calendar, CheckCircle, Loader2, TrendingDown, Mail, ExternalLink,
 } from "lucide-react";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
+import { ClientSearchCombobox } from "@/components/ClientSearchCombobox";
 
 export default function Invoices() {
   const [search, setSearch] = useState("");
@@ -39,10 +40,19 @@ export default function Invoices() {
     "kirlos.nabil@elevay.com",
   ];
 
-  // Form state
+  // Dialog mode: 'contract' | 'legacy'
+  const [receiptMode, setReceiptMode] = useState<"contract" | "legacy">("contract");
+
+  // Form state — contract mode
   const [selectedContractId, setSelectedContractId] = useState<string>("");
   const [amountEur, setAmountEur] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
+
+  // Form state — legacy mode
+  const [legacyClientId, setLegacyClientId] = useState<string>("none");
+  const [legacyAmountEur, setLegacyAmountEur] = useState<string>("");
+  const [legacyAmountEgp, setLegacyAmountEgp] = useState<string>("");
+  const [legacyNotes, setLegacyNotes] = useState<string>("");
 
   const { data: invoices, isLoading } = trpc.contracting.invoices.list.useQuery();
   const { data: contracts } = trpc.contracting.contracts.list.useQuery();
@@ -85,6 +95,30 @@ export default function Invoices() {
     },
   });
 
+  const createLegacyMutation = trpc.contracting.invoices.createLegacy.useMutation({
+    onSuccess: () => {
+      utils.contracting.invoices.list.invalidate();
+      toast.success("Legacy receipt created successfully!");
+      setShowCreateDialog(false);
+      setLegacyClientId("none");
+      setLegacyAmountEur("");
+      setLegacyAmountEgp("");
+      setLegacyNotes("");
+    },
+    onError: (err) => toast.error(`Failed to create legacy receipt: ${err.message}`),
+  });
+
+  const handleLegacySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!legacyClientId || legacyClientId === "none" || !legacyAmountEur) return;
+    createLegacyMutation.mutate({
+      legacyFinClientId: Number(legacyClientId),
+      amountEur: Number(legacyAmountEur),
+      amountEgp: legacyAmountEgp ? Number(legacyAmountEgp) : undefined,
+      notes: legacyNotes.trim() || undefined,
+    });
+  };
+
   const markPaidMutation = trpc.contracting.invoices.markPaid.useMutation({
     onSuccess: () => {
       utils.contracting.invoices.list.invalidate();
@@ -113,7 +147,7 @@ export default function Invoices() {
     const matchesSearch =
       inv.clientName.toLowerCase().includes(search.toLowerCase()) ||
       inv.invoiceCode.toLowerCase().includes(search.toLowerCase()) ||
-      inv.contractCode.toLowerCase().includes(search.toLowerCase());
+      (inv.contractCode ?? "").toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -318,110 +352,225 @@ export default function Invoices() {
       </Card>
 
       {/* Create Receipt Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <Dialog open={showCreateDialog} onOpenChange={(open) => {
+        setShowCreateDialog(open);
+        if (!open) { setReceiptMode("contract"); }
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5 text-primary" />
               Create Receipt
             </DialogTitle>
-            <DialogDescription>
-              Create a payment receipt for a signed contract.
-            </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleCreateSubmit} className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Contract</Label>
-              <Select value={selectedContractId} onValueChange={setSelectedContractId} required>
-                <SelectTrigger className="h-10">
-                  <SelectValue placeholder="Select a signed contract..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {signedContracts.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      <span className="font-mono text-xs mr-2">{c.contractCode}</span>
-                      {c.clientName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Mode tab switcher */}
+          <div className="flex rounded-lg border overflow-hidden text-sm font-medium">
+            <button
+              type="button"
+              onClick={() => setReceiptMode("contract")}
+              className={`flex-1 py-2 transition-colors ${
+                receiptMode === "contract"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/70"
+              }`}
+            >
+              Contract Receipt
+            </button>
+            <button
+              type="button"
+              onClick={() => setReceiptMode("legacy")}
+              className={`flex-1 py-2 transition-colors ${
+                receiptMode === "legacy"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/70"
+              }`}
+            >
+              Legacy Receipt
+            </button>
+          </div>
 
-            {selectedContract && paymentSummary && (
-              <div className="bg-muted/30 rounded-lg p-3 text-sm space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Contract Value</span>
-                  <span className="font-medium">{formatCurrency(paymentSummary.contractValue, "EUR")}</span>
+          {/* ── CONTRACT MODE ── */}
+          {receiptMode === "contract" && (
+            <form onSubmit={handleCreateSubmit} className="space-y-4 py-2">
+              <p className="text-xs text-muted-foreground">Create a payment receipt for a signed contract.</p>
+              <div className="space-y-2">
+                <Label>Contract</Label>
+                <Select value={selectedContractId} onValueChange={setSelectedContractId} required>
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Select a signed contract..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {signedContracts.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        <span className="font-mono text-xs mr-2">{c.contractCode}</span>
+                        {c.clientName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedContract && paymentSummary && (
+                <div className="bg-muted/30 rounded-lg p-3 text-sm space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Contract Value</span>
+                    <span className="font-medium">{formatCurrency(paymentSummary.contractValue, "EUR")}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total Paid</span>
+                    <span className="font-medium text-green-700">{formatCurrency(paymentSummary.totalPaid, "EUR")}</span>
+                  </div>
+                  <div className="flex justify-between border-t pt-2">
+                    <span className="font-semibold">Remaining Balance</span>
+                    <span className="font-bold text-primary">{formatCurrency(paymentSummary.remainingBalance, "EUR")}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Total Paid</span>
-                  <span className="font-medium text-green-700">{formatCurrency(paymentSummary.totalPaid, "EUR")}</span>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="amountEur">Payment Amount (EUR)</Label>
+                <Input
+                  id="amountEur"
+                  type="number"
+                  min={1}
+                  step="0.01"
+                  placeholder="e.g. 5000"
+                  value={amountEur}
+                  onChange={(e) => setAmountEur(e.target.value)}
+                  required
+                  className="h-10"
+                />
+              </div>
+
+              {previewEgp !== null && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingDown className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm text-blue-800">Equivalent in EGP</span>
+                  </div>
+                  <span className="font-bold text-blue-900">{formatCurrency(previewEgp, "EGP")}</span>
                 </div>
-                <div className="flex justify-between border-t pt-2">
-                  <span className="font-semibold">Remaining Balance</span>
-                  <span className="font-bold text-primary">{formatCurrency(paymentSummary.remainingBalance, "EUR")}</span>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes <span className="text-red-500">*</span></Label>
+                <Input
+                  id="notes"
+                  placeholder="e.g. First installment, Second payment..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  required
+                  className="h-10"
+                />
+                <p className="text-xs text-muted-foreground">Required — describe the payment context (e.g. "1st installment")</p>
+              </div>
+
+              <DialogFooter className="pt-2">
+                <Button type="button" variant="outline" onClick={() => setShowCreateDialog(false)} disabled={createMutation.isPending}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={createMutation.isPending || !selectedContractId || !amountEur || !notes.trim()}
+                  className="gap-2"
+                >
+                  {createMutation.isPending ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Creating...</>
+                  ) : (
+                    <><Receipt className="h-4 w-4" /> Create Receipt</>
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+
+          {/* ── LEGACY MODE ── */}
+          {receiptMode === "legacy" && (
+            <form onSubmit={handleLegacySubmit} className="space-y-4 py-2">
+              <p className="text-xs text-muted-foreground">
+                Create a receipt for an existing Finance client. Does not affect contract balance or create duplicate records.
+              </p>
+
+              <div className="space-y-2">
+                <Label>Client <span className="text-red-500">*</span></Label>
+                <ClientSearchCombobox
+                  value={legacyClientId}
+                  onChange={setLegacyClientId}
+                  placeholder="Search by name or client code..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="legacyAmountEur">Amount (EUR) <span className="text-red-500">*</span></Label>
+                  <Input
+                    id="legacyAmountEur"
+                    type="number"
+                    min={1}
+                    step="0.01"
+                    placeholder="e.g. 3000"
+                    value={legacyAmountEur}
+                    onChange={(e) => {
+                      setLegacyAmountEur(e.target.value);
+                      if (rateInfo && e.target.value) {
+                        setLegacyAmountEgp(String(Math.round(Number(e.target.value) * rateInfo.rate)));
+                      }
+                    }}
+                    required
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="legacyAmountEgp">Amount (EGP)</Label>
+                  <Input
+                    id="legacyAmountEgp"
+                    type="number"
+                    min={1}
+                    step="1"
+                    placeholder="Auto-calculated"
+                    value={legacyAmountEgp}
+                    onChange={(e) => setLegacyAmountEgp(e.target.value)}
+                    className="h-10"
+                  />
                 </div>
               </div>
-            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="amountEur">Payment Amount (EUR)</Label>
-              <Input
-                id="amountEur"
-                type="number"
-                min={1}
-                step="0.01"
-                placeholder="e.g. 5000"
-                value={amountEur}
-                onChange={(e) => setAmountEur(e.target.value)}
-                required
-                className="h-10"
-              />
-            </div>
-
-            {previewEgp !== null && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <TrendingDown className="h-4 w-4 text-blue-600" />
-                  <span className="text-sm text-blue-800">Equivalent in EGP</span>
+              {rateInfo && legacyAmountEur && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-blue-800">
+                  Live rate: 1 EUR = {rateInfo.rate.toFixed(4)} EGP
                 </div>
-                <span className="font-bold text-blue-900">{formatCurrency(previewEgp, "EGP")}</span>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="legacyNotes">Notes</Label>
+                <Input
+                  id="legacyNotes"
+                  placeholder="e.g. 2nd installment, balance payment..."
+                  value={legacyNotes}
+                  onChange={(e) => setLegacyNotes(e.target.value)}
+                  className="h-10"
+                />
               </div>
-            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="notes">
-                Notes <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="notes"
-                placeholder="e.g. First installment, Second payment..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                required
-                className="h-10"
-              />
-              <p className="text-xs text-muted-foreground">Required — describe the payment context (e.g. "1st installment")</p>
-            </div>
-
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowCreateDialog(false)} disabled={createMutation.isPending}>
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={createMutation.isPending || !selectedContractId || !amountEur || !notes.trim()}
-                className="gap-2"
-              >
-                {createMutation.isPending ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> Creating...</>
-                ) : (
-                  <><Receipt className="h-4 w-4" /> Create Receipt</>
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
+              <DialogFooter className="pt-2">
+                <Button type="button" variant="outline" onClick={() => setShowCreateDialog(false)} disabled={createLegacyMutation.isPending}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={createLegacyMutation.isPending || !legacyClientId || legacyClientId === "none" || !legacyAmountEur}
+                  className="gap-2"
+                >
+                  {createLegacyMutation.isPending ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Creating...</>
+                  ) : (
+                    <><Receipt className="h-4 w-4" /> Create Legacy Receipt</>
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
 

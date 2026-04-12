@@ -11,7 +11,7 @@ const SIGNATURE_CDN_URL =
 
 export interface ReceiptData {
   invoiceCode: string;
-  contractCode: string;
+  contractCode?: string;
   clientName: string;
   clientMobile?: string;
   amountEur: number;

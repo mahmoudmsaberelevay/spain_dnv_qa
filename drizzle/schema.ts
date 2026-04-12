@@ -133,9 +133,11 @@ export type InsertContract = typeof contracts.$inferInsert;
 export const invoices = mysqlTable("invoices", {
   id: int("id").autoincrement().primaryKey(),
   invoiceCode: varchar("invoiceCode", { length: 32 }).notNull().unique(),
-  contractId: int("contractId").notNull(),
-  contractCode: varchar("contractCode", { length: 32 }).notNull(),
+  contractId: int("contractId"),
+  contractCode: varchar("contractCode", { length: 32 }),
   clientName: varchar("clientName", { length: 255 }).notNull(),
+  isLegacyReceipt: boolean("isLegacyReceipt").default(false).notNull(),
+  legacyFinClientId: int("legacyFinClientId"),
   amountEur: decimal("amountEur", { precision: 10, scale: 2 }).notNull(),
   amountEgp: decimal("amountEgp", { precision: 12, scale: 2 }),
   exchangeRate: decimal("exchangeRate", { precision: 10, scale: 4 }),

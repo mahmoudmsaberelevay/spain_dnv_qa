@@ -941,16 +941,19 @@ const contractingRouter = router({
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
         if (invoice.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Invoice already paid" });
         await markInvoicePaid(input.id);
-        await createPayment({
-          contractId: invoice.contractId, invoiceId: invoice.id,
-          amountEur: invoice.amountEur, amountEgp: invoice.amountEgp ?? undefined,
-          exchangeRate: invoice.exchangeRate ?? undefined, paidAt: new Date(),
-        });
-        const totalPaid = await getTotalPaidByContractId(invoice.contractId);
-        const contract = await getContractById(invoice.contractId);
+        // For legacy receipts: skip contract-based logic
+        if (!invoice.isLegacyReceipt && invoice.contractId != null) {
+          await createPayment({
+            contractId: invoice.contractId, invoiceId: invoice.id,
+            amountEur: invoice.amountEur, amountEgp: invoice.amountEgp ?? undefined,
+            exchangeRate: invoice.exchangeRate ?? undefined, paidAt: new Date(),
+          });
+        }
+        const totalPaid = invoice.contractId != null ? await getTotalPaidByContractId(invoice.contractId) : 0;
+        const contract = invoice.contractId != null ? await getContractById(invoice.contractId) : null;
         const remainingBalance = Number(contract?.contractValue ?? 0) - totalPaid;
-        // Auto-create Finance client if not already present for this contract
-        if (contract) {
+        // Auto-create Finance client if not already present for this contract (skip for legacy receipts)
+        if (!invoice.isLegacyReceipt && contract) {
           const { createFinClient, getFinClientByContractId } = await import("./finDb");
           const existing = await getFinClientByContractId(contract.id);
           if (!existing) {
@@ -980,8 +983,64 @@ const contractingRouter = router({
             ).catch(() => {});
           }
         }
-        await notifyReceiptPaid(invoice.invoiceCode, invoice.contractCode, invoice.clientName, Number(invoice.amountEur), remainingBalance);
+        await notifyReceiptPaid(invoice.invoiceCode, invoice.contractCode ?? "—", invoice.clientName, Number(invoice.amountEur), remainingBalance);
         return getInvoiceById(input.id);
+      }),
+    createLegacy: protectedProcedure
+      .input(z.object({
+        legacyFinClientId: z.number(),
+        amountEur: z.number().positive(),
+        amountEgp: z.number().positive().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { listFinClients } = await import("./finDb");
+        const clients = await listFinClients({ limit: 1, offset: 0 });
+        // Fetch the specific client
+        const { getDb } = await import("./db");
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { finClients } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const [client] = await db.select().from(finClients).where(eq(finClients.id, input.legacyFinClientId)).limit(1);
+        if (!client) throw new TRPCError({ code: "NOT_FOUND", message: "Finance client not found" });
+        const rateInfo = await getEurToEgpRate();
+        const amountEgp = input.amountEgp ?? convertEurToEgp(input.amountEur, rateInfo.rate);
+        const invoiceCode = generateInvoiceCode();
+        const pdfUrl = await generateAndUploadInvoicePdf({
+          invoiceCode,
+          clientName: client.name,
+          amountEur: input.amountEur,
+          amountEgp,
+          exchangeRate: rateInfo.rate,
+          contractValue: 0,
+          totalPaid: 0,
+          remainingBalance: 0,
+          createdAt: new Date(),
+          notes: input.notes,
+        });
+        const invoice = await createInvoice({
+          invoiceCode,
+          contractId: undefined,
+          contractCode: undefined,
+          clientName: client.name,
+          amountEur: input.amountEur.toString(),
+          amountEgp: amountEgp.toString(),
+          exchangeRate: rateInfo.rate.toString(),
+          status: "unpaid",
+          pdfUrl,
+          notes: input.notes,
+          isLegacyReceipt: true,
+          legacyFinClientId: input.legacyFinClientId,
+        });
+        notifyNewInvoice(
+          invoiceCode,
+          `Legacy — ${client.clientCode ?? client.name}`,
+          client.name,
+          input.amountEur,
+          0
+        ).catch(() => {});
+        return invoice;
       }),
     sendReceiptByEmail: protectedProcedure
       .input(z.object({ invoiceId: z.number(), clientEmail: z.string().email() }))
@@ -998,13 +1057,13 @@ const contractingRouter = router({
       .mutation(async ({ input }) => {
         const invoice = await getInvoiceById(input.id);
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
-        const contract = await getContractById(invoice.contractId);
-        const totalPaid = await getTotalPaidByContractId(invoice.contractId);
+        const contract = invoice.contractId != null ? await getContractById(invoice.contractId) : null;
+        const totalPaid = invoice.contractId != null ? await getTotalPaidByContractId(invoice.contractId) : 0;
         const contractValue = Number(contract?.contractValue ?? 0);
         const rateInfo = await getEurToEgpRate();
         const amountEgp = convertEurToEgp(Number(invoice.amountEur), rateInfo.rate);
         const pdfUrl = await generateAndUploadInvoicePdf({
-          invoiceCode: invoice.invoiceCode, contractCode: invoice.contractCode,
+          invoiceCode: invoice.invoiceCode, contractCode: invoice.contractCode ?? undefined,
           clientName: invoice.clientName, amountEur: Number(invoice.amountEur),
           amountEgp, exchangeRate: rateInfo.rate, contractValue, totalPaid,
           remainingBalance: contractValue - totalPaid, createdAt: new Date(invoice.createdAt),

@@ -388,20 +388,27 @@
 - [x] Frontend: DashboardLayout — only show Settings sidebar link if user email is mahmoud.saberelevay@gmail.com
 
 ## Bug Fixes (Round 43)
-- [ ] Fix contract code generation: use current year's last 2 digits as prefix (26xxx for 2026, 27xxx for 2027), sequential per year
-- [ ] Fix markPaid: auto-create Finance client record with name, phone, signing date, consultant, client code, contract value, family members
+- [x] Fix contract code generation: use current year's last 2 digits as prefix (26xxx for 2026, 27xxx for 2027), sequential per year
+- [x] Fix markPaid: auto-create Finance client record with name, phone, signing date, consultant, client code, contract value, family members
 
 ## Bug Fixes (Round 43)
-- [ ] Fix contract code generation: use current year last 2 digits as prefix (26xxx for 2026, 27xxx for 2027), sequential per year
-- [ ] Fix markPaid: auto-create Finance client record with name, phone, signing date, consultant, client code, contract value, family members
+- [x] Fix contract code generation: use current year last 2 digits as prefix (26xxx for 2026, 27xxx for 2027), sequential per year
+- [x] Fix markPaid: auto-create Finance client record with name, phone, signing date, consultant, client code, contract value, family members
 
 ## Change Requests (Round 44)
 - [x] Fix contract code generation: year prefix (26xxx for 2026, 27xxx for 2027), sequential per year
-- [ ] Fix markPaid: auto-create Finance client record with name, phone, signing date, consultant, client code, contract value, family members
-- [ ] Client selector in Income/Expense forms: replace Select dropdown with live-search combobox showing client code + name, filtering as you type
+- [x] Fix markPaid: auto-create Finance client record with name, phone, signing date, consultant, client code, contract value, family members
+- [x] Client selector in Income/Expense forms: replace Select dropdown with live-search combobox showing client code + name, filtering as you type
 
 ## Change Requests (Round 45)
 - [x] Email: invoice created → send notification to Mahmoud.saber@elevay.com
 - [x] Email: EUR/EGP rate scheduler wired at 9am, 1pm, 3pm Cairo time
 - [x] Email: Finance client manually added → email summary to Mahmoud.saber@elevay.com
 - [x] CSV export button in Finance Clients page (alongside existing PDF export)
+
+## Change Requests (Round 46) — Legacy Receipt Mode
+- [ ] DB: add `isLegacyReceipt` (boolean, default false) and `legacyFinClientId` (int, nullable) columns to invoices table; make `contractId` and `contractCode` nullable
+- [ ] Server: add `invoices.createLegacy` tRPC procedure — picks Finance client by id, free-form EUR+EGP, generates PDF receipt, no contract link
+- [ ] Server: update `markPaid` — when `isLegacyReceipt=true`, skip auto-create Finance client and skip remaining balance update
+- [ ] UI: add Contract / Legacy Receipt tab switcher to Create Receipt dialog
+- [ ] UI: Legacy tab — live-search combobox for Finance clients (code + name), EUR amount, EGP amount (auto from rate, editable), notes
