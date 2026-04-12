@@ -11,6 +11,7 @@ import { Plus, Trash2, Pencil, FileDown, FileSpreadsheet, ChevronLeft, ChevronRi
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import FinFilterBar, { FinFilters } from "@/components/FinFilterBar";
+import { ClientSearchCombobox } from "@/components/ClientSearchCombobox";
 import * as XLSX from "xlsx";
 
 function fmt(n: number) {
@@ -104,7 +105,7 @@ export default function FinExpenses() {
   const [editTx, setEditTx] = useState<any>(null);
   const [editForm, setEditForm] = useState({ description: "", note: "", transactionDate: "", categoryId: "", employeeId: "", amount: "" });
   const [form, setForm] = useState({
-    description: "", accountId: "", categoryId: "", amount: "", note: "", employeeId: "",
+    description: "", accountId: "", categoryId: "", amount: "", note: "", employeeId: "", finClientId: "",
     transactionDate: new Date().toISOString().split("T")[0],
   });
 
@@ -119,6 +120,7 @@ export default function FinExpenses() {
       description: form.description, accountId: Number(form.accountId), categoryId: Number(form.categoryId),
       amount: Number(form.amount), note: form.note || undefined,
       employeeId: form.employeeId && form.employeeId !== "none" ? Number(form.employeeId) : undefined,
+      finClientId: form.finClientId && form.finClientId !== "none" ? Number(form.finClientId) : undefined,
       transactionDate: new Date(form.transactionDate),
     });
   };
@@ -191,7 +193,7 @@ export default function FinExpenses() {
           {selected.size > 0 && (
             <Button variant="destructive" onClick={() => setConfirmDelete(true)} className="gap-2"><Trash2 className="h-4 w-4" />Delete ({selected.size})</Button>
           )}
-          <Button onClick={() => { setForm({ description: "", accountId: "", categoryId: "", amount: "", note: "", employeeId: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}>
+          <Button onClick={() => { setForm({ description: "", accountId: "", categoryId: "", amount: "", note: "", employeeId: "", finClientId: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}>
             <Plus className="h-4 w-4 mr-1" /> Record Expense
           </Button>
         </div>
@@ -364,6 +366,13 @@ export default function FinExpenses() {
                 <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
                 <SelectContent><SelectItem value="none">None</SelectItem>{employees?.filter(e => e.isActive).map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}</SelectContent>
               </Select>
+            </div>
+            <div><label className="text-sm font-medium">Client (optional)</label>
+              <ClientSearchCombobox
+                value={form.finClientId || "none"}
+                onChange={v => setForm(f => ({ ...f, finClientId: v }))}
+                placeholder="Search by name or code..."
+              />
             </div>
             <div><label className="text-sm font-medium">Note</label><Textarea value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="Optional note" rows={2} /></div>
           </div>

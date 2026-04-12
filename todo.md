@@ -386,3 +386,16 @@
 - [x] Backend: update getMyPermissions to identify owner by email match
 - [x] Frontend: Settings page — show "Access Denied" if user email is not mahmoud.saberelevay@gmail.com
 - [x] Frontend: DashboardLayout — only show Settings sidebar link if user email is mahmoud.saberelevay@gmail.com
+
+## Bug Fixes (Round 43)
+- [ ] Fix contract code generation: use current year's last 2 digits as prefix (26xxx for 2026, 27xxx for 2027), sequential per year
+- [ ] Fix markPaid: auto-create Finance client record with name, phone, signing date, consultant, client code, contract value, family members
+
+## Bug Fixes (Round 43)
+- [ ] Fix contract code generation: use current year last 2 digits as prefix (26xxx for 2026, 27xxx for 2027), sequential per year
+- [ ] Fix markPaid: auto-create Finance client record with name, phone, signing date, consultant, client code, contract value, family members
+
+## Change Requests (Round 44)
+- [x] Fix contract code generation: year prefix (26xxx for 2026, 27xxx for 2027), sequential per year
+- [ ] Fix markPaid: auto-create Finance client record with name, phone, signing date, consultant, client code, contract value, family members
+- [ ] Client selector in Income/Expense forms: replace Select dropdown with live-search combobox showing client code + name, filtering as you type

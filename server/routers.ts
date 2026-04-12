@@ -14,7 +14,7 @@ import {
   createContract, getAllContracts, getContractById, updateContractStatus, updateContractDocUrl, createInvoice, getAllInvoices, getInvoicesByContractId,
   getInvoiceById, markInvoicePaid, updateInvoicePdfUrl, createPayment,
   getTotalPaidByContractId, getContractStats, getFamilyMemberDistribution,
-  getRecentContracts, getPaymentsByContractId, getNextContractSequence,
+  getRecentContracts, getPaymentsByContractId, getNextContractSequence, getNextContractSequenceForYear,
   getConsultantStats,
 } from "./db";
 import { generateContractDoc, uploadContractToStorage, calculateContractValue } from "./contractGenerator";
@@ -761,9 +761,10 @@ Return a comprehensive JSON analysis.`;
 
 // ─── Contracting Helpers ─────────────────────────────────────────────────────
 async function generateContractCode(): Promise<string> {
-  const seq = await getNextContractSequence();
-  const code = 26026 + seq;
-  return String(code);
+  const yearPrefix = new Date().getFullYear() % 100; // 26 for 2026, 27 for 2027, etc.
+  const seq = await getNextContractSequenceForYear(yearPrefix);
+  // Format: YY + 4-digit sequence (e.g. 260001, 260002, ... 269999)
+  return `${yearPrefix}${String(seq).padStart(4, '0')}`;
 }
 function generateInvoiceCode(): string {
   const now = new Date();
@@ -940,6 +941,29 @@ const contractingRouter = router({
         const totalPaid = await getTotalPaidByContractId(invoice.contractId);
         const contract = await getContractById(invoice.contractId);
         const remainingBalance = Number(contract?.contractValue ?? 0) - totalPaid;
+        // Auto-create Finance client if not already present for this contract
+        if (contract) {
+          const { createFinClient, getFinClientByContractId } = await import("./finDb");
+          const existing = await getFinClientByContractId(contract.id);
+          if (!existing) {
+            const contractValueEur = Number(contract.contractValue ?? 0);
+            const paidEur = Number(invoice.amountEur ?? 0);
+            await createFinClient({
+              contractId: contract.id,
+              clientCode: invoice.contractCode ?? undefined,
+              name: invoice.clientName,
+              phone: contract.clientMobile ?? undefined,
+              signingDate: contract.createdAt ? new Date(contract.createdAt) : undefined,
+              consultant: contract.consultantName ?? undefined,
+              salesPerson: contract.consultantName ?? undefined,
+              contractValueEur: contractValueEur.toFixed(2),
+              paidAmountEur: paidEur.toFixed(2),
+              remainingAmountEur: (contractValueEur - paidEur).toFixed(2),
+              familyMembers: contract.familyMembers ?? 0,
+              isLegacy: false,
+            });
+          }
+        }
         await notifyReceiptPaid(invoice.invoiceCode, invoice.contractCode, invoice.clientName, Number(invoice.amountEur), remainingBalance);
         return getInvoiceById(input.id);
       }),

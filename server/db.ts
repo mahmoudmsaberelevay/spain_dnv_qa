@@ -188,6 +188,18 @@ export async function getNextContractSequence(): Promise<number> {
   return (result[0]?.count ?? 0) + 1;
 }
 
+export async function getNextContractSequenceForYear(yearPrefix: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 1;
+  // Count contracts whose clientCode starts with this year prefix (e.g. '26' for 2026)
+  const prefixStr = String(yearPrefix);
+  const result = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(contracts)
+    .where(sql`LEFT(client_code, ${prefixStr.length}) = ${prefixStr}`);
+  return (result[0]?.count ?? 0) + 1;
+}
+
 export async function createInvoice(data: InsertInvoice) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

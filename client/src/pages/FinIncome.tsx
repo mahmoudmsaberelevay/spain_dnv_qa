@@ -11,6 +11,7 @@ import { Plus, Trash2, Pencil, FileDown, FileSpreadsheet, ChevronLeft, ChevronRi
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import FinFilterBar, { FinFilters } from "@/components/FinFilterBar";
+import { ClientSearchCombobox } from "@/components/ClientSearchCombobox";
 import * as XLSX from "xlsx";
 
 function fmt(n: number) {
@@ -389,13 +390,11 @@ export default function FinIncome() {
             </div>
             <div>
               <label className="text-sm font-medium">Client</label>
-              <Select value={editForm.finClientId} onValueChange={v => setEditForm(f => ({ ...f, finClientId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {finClients?.map((c: any) => <SelectItem key={c.id} value={String(c.id)}>{c.clientCode ? `${c.clientCode} — ` : ""}{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <ClientSearchCombobox
+                value={editForm.finClientId || "none"}
+                onChange={v => setEditForm(f => ({ ...f, finClientId: v }))}
+                placeholder="Search by name or code..."
+              />
             </div>
             <div>
               <label className="text-sm font-medium">Note</label>
@@ -445,13 +444,11 @@ export default function FinIncome() {
             </div>
             <div>
               <label className="text-sm font-medium">Client (optional)</label>
-              <Select value={form.finClientId} onValueChange={v => setForm(f => ({ ...f, finClientId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {finClients?.map((c: any) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <ClientSearchCombobox
+                value={form.finClientId || "none"}
+                onChange={v => setForm(f => ({ ...f, finClientId: v }))}
+                placeholder="Search by name or code..."
+              />
             </div>
             <div>
               <label className="text-sm font-medium">Note</label>
