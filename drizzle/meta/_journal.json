@@ -127,6 +127,13 @@
       "when": 1776158732894,
       "tag": "0017_tiny_luke_cage",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1776161628760,
+      "tag": "0018_equal_black_queen",
+      "breakpoints": true
     }
   ]
 }

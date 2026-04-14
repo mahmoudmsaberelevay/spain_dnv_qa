@@ -50,6 +50,7 @@ export const ALL_PAGE_KEYS = [
   "fin_commissions",
   "fin_clients",
   "fin_bulk_upload",
+  "fin_settlement",
   // System
   "settings",
   "chat",

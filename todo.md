@@ -416,3 +416,8 @@
 ## Change Requests (Round 49)
 - [x] Move New Income / New Expense / New Transfer buttons to top center of their pages
 - [x] Complete granular permissions Settings UI (View/Edit matrix per user per page)
+
+## Change Requests (Round 51)
+- [ ] New Financial page: After Settlement Payment (Client Name, Amount AED, Amount EUR=AED/4, Date)
+- [ ] Import existing records from Notion page into settlementPayments table
+- [ ] Add "After Settlement" nav item to Financial module sidebar

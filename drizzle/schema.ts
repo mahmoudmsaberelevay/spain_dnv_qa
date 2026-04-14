@@ -8,6 +8,7 @@ import {
   json,
   boolean,
   decimal,
+  date,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -472,3 +473,19 @@ export const groupPermissions = mysqlTable("groupPermissions", {
 });
 export type GroupPermission = typeof groupPermissions.$inferSelect;
 export type InsertGroupPermission = typeof groupPermissions.$inferInsert;
+
+// ─── Settlement Payments (After Settlement / Dubai Afterlanding Services) ─────
+// Tracks post-settlement payments in AED. EUR = AED / 4.
+export const settlementPayments = mysqlTable("settlementPayments", {
+  id: int("id").autoincrement().primaryKey(),
+  clientName: varchar("clientName", { length: 255 }), // free-text or from finClients
+  finClientId: int("finClientId"),                     // optional link to finClients
+  amountAed: decimal("amountAed", { precision: 12, scale: 2 }).notNull(),
+  amountEur: decimal("amountEur", { precision: 12, scale: 2 }).notNull(), // = amountAed / 4
+  serviceDate: date("serviceDate").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type SettlementPayment = typeof settlementPayments.$inferSelect;
+export type InsertSettlementPayment = typeof settlementPayments.$inferInsert;

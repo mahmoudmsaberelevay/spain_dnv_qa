@@ -28,6 +28,7 @@ import {
 } from "./db";
 import { getDocChecklist } from "../shared/clientDocDefs";
 import { financialRouter } from "./finRouter";
+import { settlementRouter } from "./settlementRouter";
 import { chatRouter, broadcastRouter } from "./chatRouter";
 import { permissionsRouter } from "./permissionsRouter";
 
@@ -1380,6 +1381,7 @@ export const appRouter = router({
   contracting: contractingRouter,
   clientDocs: clientDocsRouter,
   financial: financialRouter,
+  settlement: settlementRouter,
   chat: chatRouter,
   broadcast: broadcastRouter,
   permissions: permissionsRouter,

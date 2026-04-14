@@ -48,6 +48,7 @@ import {
   Home,
   Megaphone,
   Settings as SettingsIcon,
+  Landmark,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -112,6 +113,7 @@ const modules = [
       { icon: DollarSign, label: "Commission DB", path: "/finance/commissions" },
       { icon: Database, label: "Clients", path: "/finance/clients" },
       { icon: Upload, label: "Bulk Upload", path: "/finance/bulk-upload" },
+      { icon: Landmark, label: "After Settlement", path: "/finance/settlement" },
     ],
   },
 ];
