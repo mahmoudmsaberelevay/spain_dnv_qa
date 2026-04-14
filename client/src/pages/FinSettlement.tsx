@@ -10,6 +10,7 @@ import { usePermissions } from "@/contexts/PermissionsContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -137,9 +138,9 @@ export default function FinSettlement() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold text-white">After Settlement Payment</h1>
-        <p className="text-white/50 text-sm">Dubai Afterlanding Services — AED payments (EUR = AED ÷ 4)</p>
+      <div>
+        <h1 className="text-2xl font-bold">After Settlement Payment</h1>
+        <p className="text-muted-foreground text-sm mt-1">Dubai Afterlanding Services — AED payments (EUR = AED ÷ 4)</p>
       </div>
 
       {/* Action bar */}
@@ -149,7 +150,7 @@ export default function FinSettlement() {
           {canWrite && (
             <Button
               onClick={() => setShowAdd(true)}
-              className="bg-amber-600 hover:bg-amber-500 text-white gap-2 px-6"
+              className="gap-2 px-6"
             >
               <Plus className="h-4 w-4" />
               Add Payment
@@ -163,9 +164,9 @@ export default function FinSettlement() {
             placeholder="Search client..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-52 bg-white/5 border-white/10 text-white placeholder:text-white/30"
+            className="w-52"
           />
-          <Button variant="outline" size="sm" onClick={handleExportCsv} className="gap-1 border-white/20 text-white/70 hover:text-white">
+          <Button variant="outline" size="sm" onClick={handleExportCsv} className="gap-1">
             <Download className="h-4 w-4" />
             CSV
           </Button>
@@ -175,7 +176,7 @@ export default function FinSettlement() {
               size="sm"
               onClick={() => bulkImportMut.mutate(NOTION_SEED)}
               disabled={bulkImportMut.isPending}
-              className="gap-1 border-amber-500/40 text-amber-400 hover:text-amber-300"
+              className="gap-1"
             >
               <Upload className="h-4 w-4" />
               Import Notion
@@ -185,97 +186,96 @@ export default function FinSettlement() {
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-white/10 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-white/10 bg-white/5">
-              <th className="text-left px-4 py-3 text-white/50 font-medium">#</th>
-              <th className="text-left px-4 py-3 text-white/50 font-medium">Client Name</th>
-              <th className="text-right px-4 py-3 text-white/50 font-medium">Amount AED</th>
-              <th className="text-right px-4 py-3 text-white/50 font-medium">Amount EUR</th>
-              <th className="text-left px-4 py-3 text-white/50 font-medium">Service Date</th>
-              <th className="text-left px-4 py-3 text-white/50 font-medium">Notes</th>
-              {canWrite && <th className="px-4 py-3" />}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={canWrite ? 7 : 6} className="text-center py-12 text-white/30">Loading...</td></tr>
-            ) : rows.length === 0 ? (
-              <tr><td colSpan={canWrite ? 7 : 6} className="text-center py-12 text-white/30">
-                No records yet.{canWrite ? " Click \"Add Payment\" to get started." : ""}
-              </td></tr>
-            ) : rows.map((row, idx) => {
-              const dateStr = row.serviceDate instanceof Date
-                ? format(row.serviceDate, "dd MMM yyyy")
-                : String(row.serviceDate);
-              return (
-                <tr key={row.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                  <td className="px-4 py-3 text-white/40">{idx + 1}</td>
-                  <td className="px-4 py-3 text-white font-medium">
-                    {row.clientName ?? <span className="text-white/30 italic">—</span>}
-                  </td>
-                  <td className="px-4 py-3 text-right text-amber-300 font-mono">
-                    AED {Number(row.amountAed).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-4 py-3 text-right text-emerald-400 font-mono">
-                    €{Number(row.amountEur).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-4 py-3 text-white/70">{dateStr}</td>
-                  <td className="px-4 py-3 text-white/50 max-w-xs truncate">{row.notes ?? "—"}</td>
-                  {canWrite && (
-                    <td className="px-4 py-3">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          if (confirm("Delete this payment?")) deleteMut.mutate({ id: row.id });
-                        }}
-                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 w-7 p-0"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </td>
-                  )}
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Settlement Payments</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Loading...</div>
+          ) : rows.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No records yet.{canWrite ? ' Click "Add Payment" to get started.' : ""}
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">#</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Client Name</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Amount AED</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Amount EUR</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Service Date</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Notes</th>
+                  {canWrite && <th className="px-4 py-3" />}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Totals summary */}
-      {rows.length > 0 && (
-        <div className="flex gap-6 justify-end text-sm">
-          <div className="flex items-center gap-2">
-            <span className="text-white/40">Total AED:</span>
-            <span className="text-amber-300 font-mono font-semibold">
-              AED {totalAed.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-white/40">Total EUR:</span>
-            <span className="text-emerald-400 font-mono font-semibold">
-              €{totalEur.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-white/40">Records:</span>
-            <span className="text-white/70">{data?.count ?? rows.length}</span>
-          </div>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {rows.map((row, idx) => {
+                  const dateStr = row.serviceDate instanceof Date
+                    ? format(row.serviceDate, "dd MMM yyyy")
+                    : String(row.serviceDate);
+                  return (
+                    <tr key={row.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground">{idx + 1}</td>
+                      <td className="px-4 py-3 font-medium">
+                        {row.clientName ?? <span className="text-muted-foreground italic">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-amber-600 dark:text-amber-400">
+                        AED {Number(row.amountAed).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                        €{Number(row.amountEur).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{dateStr}</td>
+                      <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">{row.notes ?? "—"}</td>
+                      {canWrite && (
+                        <td className="px-4 py-3">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              if (confirm("Delete this payment?")) deleteMut.mutate({ id: row.id });
+                            }}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 w-7 p-0"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t bg-muted/30">
+                  <td colSpan={2} className="px-4 py-3 text-right text-sm font-medium text-muted-foreground">Totals</td>
+                  <td className="px-4 py-3 text-right font-mono font-semibold text-amber-600 dark:text-amber-400">
+                    AED {totalAed.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                    €{totalEur.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  </td>
+                  <td colSpan={canWrite ? 3 : 2} className="px-4 py-3 text-muted-foreground text-sm">
+                    {data?.count ?? rows.length} records
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Add Payment Dialog */}
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
-        <DialogContent className="bg-[#1a1a2e] border-white/10 text-white max-w-md">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Add Settlement Payment</DialogTitle>
+            <DialogTitle>Add Settlement Payment</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             {/* Client */}
             <div className="space-y-1.5">
-              <Label className="text-white/70">Client Name</Label>
+              <Label>Client Name</Label>
               <ClientSearchCombobox
                 value={selectedClientId}
                 onChange={(val) => {
@@ -289,14 +289,14 @@ export default function FinSettlement() {
                   placeholder="Or type name manually..."
                   value={manualClientName}
                   onChange={e => setManualClientName(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1"
+                  className="mt-1"
                 />
               )}
             </div>
 
             {/* Amount AED */}
             <div className="space-y-1.5">
-              <Label className="text-white/70">Amount AED <span className="text-red-400">*</span></Label>
+              <Label>Amount AED <span className="text-destructive">*</span></Label>
               <Input
                 type="number"
                 min="0"
@@ -304,38 +304,37 @@ export default function FinSettlement() {
                 placeholder="e.g. 5190.00"
                 value={amountAed}
                 onChange={e => setAmountAed(e.target.value)}
-                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
               />
             </div>
 
             {/* Amount EUR (auto) */}
             <div className="space-y-1.5">
-              <Label className="text-white/70">Amount EUR <span className="text-white/30 text-xs">(AED ÷ 4, auto)</span></Label>
+              <Label>Amount EUR <span className="text-muted-foreground text-xs">(AED ÷ 4, auto)</span></Label>
               <Input
                 readOnly
                 value={amountEur ? `€${amountEur}` : ""}
                 placeholder="Auto-calculated"
-                className="bg-white/5 border-white/10 text-emerald-400 placeholder:text-white/20 cursor-not-allowed"
+                className="cursor-not-allowed text-emerald-600 dark:text-emerald-400"
               />
             </div>
 
             {/* Service Date */}
             <div className="space-y-1.5">
-              <Label className="text-white/70">Service Date <span className="text-red-400">*</span></Label>
+              <Label>Service Date <span className="text-destructive">*</span></Label>
               <Popover open={calOpen} onOpenChange={setCalOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     className={cn(
-                      "w-full justify-start text-left font-normal bg-white/5 border-white/10 text-white hover:bg-white/10",
-                      !serviceDate && "text-white/30"
+                      "w-full justify-start text-left font-normal",
+                      !serviceDate && "text-muted-foreground"
                     )}
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4 text-white/40" />
+                    <CalendarIcon className="mr-2 h-4 w-4" />
                     {serviceDate ? format(serviceDate, "dd MMM yyyy") : "Pick a date"}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-[#1a1a2e] border-white/10">
+                <PopoverContent className="w-auto p-0">
                   <Calendar
                     mode="single"
                     selected={serviceDate}
@@ -348,22 +347,21 @@ export default function FinSettlement() {
 
             {/* Notes */}
             <div className="space-y-1.5">
-              <Label className="text-white/70">Notes</Label>
+              <Label>Notes</Label>
               <Input
                 placeholder="Optional notes..."
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
-                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
               />
             </div>
 
             {/* Actions */}
             <div className="flex gap-2 pt-2">
-              <Button variant="outline" className="flex-1 border-white/20 text-white/70" onClick={() => setShowAdd(false)}>
+              <Button variant="outline" className="flex-1" onClick={() => setShowAdd(false)}>
                 Cancel
               </Button>
               <Button
-                className="flex-1 bg-amber-600 hover:bg-amber-500 text-white"
+                className="flex-1"
                 onClick={handleSubmit}
                 disabled={createMut.isPending}
               >

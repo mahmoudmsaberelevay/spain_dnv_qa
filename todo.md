@@ -418,6 +418,6 @@
 - [x] Complete granular permissions Settings UI (View/Edit matrix per user per page)
 
 ## Change Requests (Round 51)
-- [ ] New Financial page: After Settlement Payment (Client Name, Amount AED, Amount EUR=AED/4, Date)
-- [ ] Import existing records from Notion page into settlementPayments table
-- [ ] Add "After Settlement" nav item to Financial module sidebar
+- [x] New Financial page: After Settlement Payment (Client Name, Amount AED, Amount EUR=AED/4, Date)
+- [x] Import existing records from Notion page into settlementPayments table
+- [x] Add "After Settlement" nav item to Financial module sidebar
