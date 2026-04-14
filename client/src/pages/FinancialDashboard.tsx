@@ -52,18 +52,14 @@ export default function FinancialDashboard() {
 
   if (!summary) return <div className="p-8 text-center text-muted-foreground">No data available</div>;
 
-  // EUR total: only AIB Euro + AAIB Euro + CIB Euro + Cash Euro (excludes Lawyer Credit, Ziad Credit)
-  const EUR_EXCLUDED_DASH = ['Lawyer Credit', 'Ziad Credit'];
-  const totalEurBalance = accounts
-    ?.filter(a => a.currency === "EUR" && !EUR_EXCLUDED_DASH.includes(a.name))
-    .reduce((sum, a) => sum + Number(a.balance), 0) ?? 0;
-
+  // All balance totals now come from server (only AIB + AAIB + CIB + Cash per currency)
   const kpis = [
     { label: "Yearly Income", value: summary.yearlyIncome, icon: TrendingUp, color: "text-green-600", bg: "bg-green-50", prefix: "EGP " },
     { label: "Yearly Expense", value: summary.yearlyExpense, icon: TrendingDown, color: "text-red-600", bg: "bg-red-50", prefix: "EGP " },
     { label: "Yearly Profit", value: summary.yearlyProfit, icon: DollarSign, color: summary.yearlyProfit >= 0 ? "text-green-600" : "text-red-600", bg: summary.yearlyProfit >= 0 ? "bg-green-50" : "bg-red-50", prefix: "EGP " },
     { label: "Total EGP Balance", value: summary.totalEgpBalance, icon: Wallet, color: "text-blue-600", bg: "bg-blue-50", prefix: "EGP " },
-    { label: "Total EUR Balance", value: totalEurBalance, icon: Wallet, color: "text-amber-600", bg: "bg-amber-50", prefix: "EUR " },
+    { label: "Total USD Balance", value: summary.totalUsdBalance, icon: Wallet, color: "text-green-700", bg: "bg-green-50", prefix: "USD " },
+    { label: "Total EUR Balance", value: summary.totalEurBalance, icon: Wallet, color: "text-amber-600", bg: "bg-amber-50", prefix: "EUR " },
   ];
 
   const monthlyKpis = [

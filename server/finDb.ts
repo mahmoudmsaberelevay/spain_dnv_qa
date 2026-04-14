@@ -509,14 +509,21 @@ export async function getFinancialSummary(year: number) {
     lte(finTransactions.transactionDate, endOfMonth),
   ));
 
-  // Total EGP balance (all EGP accounts EXCEPT Imprest and Rent Credit)
-  const egpExcludedAccounts = ['Imprest Account', 'Rent Credit'];
+  // Total balances — only AIB + AAIB + CIB + Cash per currency
+  const CORE_ACCOUNT_KEYWORDS = ['AIB', 'AAIB', 'Arab African', 'CIB', 'Cash'];
+  const coreFilter = (currency: string) => and(
+    eq(finAccounts.currency, currency),
+    sql`(${finAccounts.name} LIKE '%AIB%' OR ${finAccounts.name} LIKE '%AAIB%' OR ${finAccounts.name} LIKE '%Arab African%' OR ${finAccounts.name} LIKE '%CIB%' OR ${finAccounts.name} LIKE '%Cash%')`
+  );
   const [egpBalance] = await db.select({
     total: sql<string>`COALESCE(SUM(${finAccounts.balance}), 0)`,
-  }).from(finAccounts).where(and(
-    eq(finAccounts.currency, "EGP"),
-    sql`${finAccounts.name} NOT IN (${sql.join(egpExcludedAccounts.map(n => sql`${n}`), sql`, `)})`
-  ));
+  }).from(finAccounts).where(coreFilter("EGP"));
+  const [usdBalance] = await db.select({
+    total: sql<string>`COALESCE(SUM(${finAccounts.balance}), 0)`,
+  }).from(finAccounts).where(coreFilter("USD"));
+  const [eurBalance] = await db.select({
+    total: sql<string>`COALESCE(SUM(${finAccounts.balance}), 0)`,
+  }).from(finAccounts).where(coreFilter("EUR"));
 
   // Expense by category (yearly)
   const expenseByCategory = await db.select({
@@ -573,6 +580,8 @@ export async function getFinancialSummary(year: number) {
     yearlyProfit: Number(yearlyIncome.total) - Number(yearlyExpense.total),
     monthlyProfit: Number(monthlyIncome.total) - Number(monthlyExpense.total),
     totalEgpBalance: Number(egpBalance.total),
+    totalUsdBalance: Number(usdBalance.total),
+    totalEurBalance: Number(eurBalance.total),
     expenseByCategory,
     incomeByCategory,
     employeeExpenses,

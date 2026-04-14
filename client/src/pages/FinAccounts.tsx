@@ -62,13 +62,12 @@ export default function FinAccounts() {
     grouped.set(a.currency, arr);
   });
 
-  // Currency totals (EGP excludes Imprest Account and Rent Credit; EUR excludes Lawyer Credit and Ziad Credit)
-  const EGP_EXCLUDED = ['Imprest Account', 'Rent Credit'];
-  const EUR_EXCLUDED = ['Lawyer Credit', 'Ziad Credit'];
+  // Currency totals — only AIB + AAIB + CIB + Cash accounts per currency
+  const isCoreAccount = (name: string) =>
+    /AIB|AAIB|Arab African|CIB|Cash/i.test(name);
   const totals = new Map<string, number>();
   accounts?.forEach(a => {
-    if (a.currency === 'EGP' && EGP_EXCLUDED.includes(a.name)) return;
-    if (a.currency === 'EUR' && EUR_EXCLUDED.includes(a.name)) return;
+    if (!isCoreAccount(a.name)) return;
     totals.set(a.currency, (totals.get(a.currency) ?? 0) + Number(a.balance));
   });
 
