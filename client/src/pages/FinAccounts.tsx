@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Edit2 } from "lucide-react";
+import { Plus, Edit2, Scale } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -53,11 +53,13 @@ export default function FinAccounts() {
     grouped.set(a.currency, arr);
   });
 
-  // Currency totals (EGP excludes Imprest Account and Rent Credit)
+  // Currency totals (EGP excludes Imprest Account and Rent Credit; EUR excludes Lawyer Credit and Ziad Credit)
   const EGP_EXCLUDED = ['Imprest Account', 'Rent Credit'];
+  const EUR_EXCLUDED = ['Lawyer Credit', 'Ziad Credit'];
   const totals = new Map<string, number>();
   accounts?.forEach(a => {
     if (a.currency === 'EGP' && EGP_EXCLUDED.includes(a.name)) return;
+    if (a.currency === 'EUR' && EUR_EXCLUDED.includes(a.name)) return;
     totals.set(a.currency, (totals.get(a.currency) ?? 0) + Number(a.balance));
   });
 
@@ -111,7 +113,8 @@ export default function FinAccounts() {
                   <thead>
                     <tr className="border-b">
                       <th className="text-left py-2 font-medium">Account Name</th>
-                      <th className="text-right py-2 font-medium">Balance</th>
+                      <th className="text-right py-2 font-medium text-muted-foreground">Opening Balance (1/1/2026)</th>
+                      <th className="text-right py-2 font-medium">Current Balance</th>
                       <th className="text-center py-2 font-medium">Status</th>
                       <th className="text-right py-2 font-medium">Actions</th>
                     </tr>
@@ -130,6 +133,9 @@ export default function FinAccounts() {
                             )}
                             <span>{acc.name}</span>
                           </div>
+                        </td>
+                        <td className="py-2.5 text-right text-muted-foreground">
+                          {currency} {fmt(Number(acc.openingBalance ?? 0))}
                         </td>
                         <td className={`py-2.5 text-right font-semibold ${Number(acc.balance) < 0 ? "text-red-600" : ""}`}>
                           {currency} {fmt(Number(acc.balance))}
@@ -150,11 +156,12 @@ export default function FinAccounts() {
                             </Button>
                             <Button
                               variant="ghost" size="sm"
-                              title="Set opening / current balance"
+                              title="Edit Opening Balance (1/1/2026)"
                               onClick={() => { setBalanceAccount(acc); setEditBalance(String(Number(acc.openingBalance ?? 0))); }}
-                              className="text-blue-600 hover:text-blue-700"
+                              className="text-blue-600 hover:text-blue-700 gap-1"
                             >
-                              <span className="text-xs font-bold">₯</span>
+                              <Scale className="h-3.5 w-3.5" />
+                              <span className="text-xs">Opening</span>
                             </Button>
                           </div>
                         </td>

@@ -5,7 +5,7 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
 import { finAccounts, finTransactions, appSettings } from "../drizzle/schema";
 import {
-  listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance,
+  listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance, recalcAccountBalance,
   listCategories, createCategory, updateCategory, deleteCategory,
   listEmployees, createEmployee, updateEmployee, deleteEmployee,
   listFinClients, countFinClients, getFinClientTotals, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment, setClientPaidAmount,
@@ -428,13 +428,35 @@ const transactionsRouter = router({
   bulkDelete: finAdminProcedure
     .input(z.object({ ids: z.array(z.number()).min(1) }))
     .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      // Collect affected account IDs before deletion
+      const { inArray } = await import("drizzle-orm");
+      const txs = await db.select().from(finTransactions).where(inArray(finTransactions.id, input.ids));
+      const affectedIds = new Set<number>();
+      for (const t of txs) {
+        if (t.accountId) affectedIds.add(t.accountId);
+        if (t.fromAccountId) affectedIds.add(t.fromAccountId);
+        if (t.toAccountId) affectedIds.add(t.toAccountId);
+      }
       await bulkDeleteTransactions(input.ids);
+      // Recalc all affected accounts from scratch
+      for (const id of Array.from(affectedIds)) recalcAccountBalance(id).catch(() => {});
       return { deleted: input.ids.length };
     }),
   deleteOne: finAdminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { eq: eqOp } = await import("drizzle-orm");
+      const [tx] = await db.select().from(finTransactions).where(eqOp(finTransactions.id, input.id));
+      const affectedIds = new Set<number>();
+      if (tx?.accountId) affectedIds.add(tx.accountId);
+      if (tx?.fromAccountId) affectedIds.add(tx.fromAccountId);
+      if (tx?.toAccountId) affectedIds.add(tx.toAccountId);
       await bulkDeleteTransactions([input.id]);
+      for (const id of Array.from(affectedIds)) recalcAccountBalance(id).catch(() => {});
       return { success: true };
     }),
 
@@ -500,6 +522,8 @@ const transactionsRouter = router({
       }
       // Fire-and-forget email notification
       // income transaction email notification disabled
+      // Recalc from scratch to stay in sync
+      recalcAccountBalance(input.accountId).catch(() => {});
       return result;
     }),
 
@@ -536,6 +560,8 @@ const transactionsRouter = router({
       });
       // Fire-and-forget email notification
       // expense transaction email notification disabled
+      // Recalc from scratch to stay in sync
+      recalcAccountBalance(input.accountId).catch(() => {});
       return result;
     }),
 
@@ -584,6 +610,8 @@ const transactionsRouter = router({
       }
       if (Object.keys(updateData).length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "No fields to update" });
       await db.update(finTransactions).set(updateData).where(eq(finTransactions.id, id));
+      // Recalc affected account(s) from scratch
+      if (current.accountId) recalcAccountBalance(current.accountId).catch(() => {});
       const [updated] = await db.select().from(finTransactions).where(eq(finTransactions.id, id));
       return updated;
     }),
@@ -646,6 +674,9 @@ const transactionsRouter = router({
 
       const [updated] = await db.select().from(finTransactions).where(eq(finTransactions.id, input.id));
       // transfer transaction email notification disabled
+      // Recalc both accounts from scratch
+      recalcAccountBalance(input.fromAccountId).catch(() => {});
+      recalcAccountBalance(input.toAccountId).catch(() => {});
       return updated;
     }),
 
@@ -689,6 +720,9 @@ const transactionsRouter = router({
         createdBy: ctx.user?.email ?? null,
       });
       // transfer transaction email notification disabled
+      // Recalc both accounts from scratch
+      recalcAccountBalance(input.fromAccountId).catch(() => {});
+      recalcAccountBalance(input.toAccountId).catch(() => {});
       return result;
     }),
 });

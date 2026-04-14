@@ -30,6 +30,28 @@ export async function updateAccountBalance(id: number, amount: number) {
   await db.update(finAccounts).set({ balance: sql`${finAccounts.balance} + ${amount}` }).where(eq(finAccounts.id, id));
 }
 
+/**
+ * Fully recalculate an account's balance from scratch:
+ *   balance = openingBalance + Σ(income) − Σ(expenses) + Σ(transfers-in) − Σ(transfers-out)
+ * Call this after any income/expense/transfer create, update, or delete.
+ */
+export async function recalcAccountBalance(id: number) {
+  const db = await getDb(); if (!db) return;
+  const [account] = await db.select().from(finAccounts).where(eq(finAccounts.id, id));
+  if (!account) return;
+  const txRows = await db.select().from(finTransactions);
+  const accTx = txRows.filter(t => t.accountId === id || t.fromAccountId === id || t.toAccountId === id);
+  let net = 0;
+  for (const t of accTx) {
+    if (t.type === 'income' && t.accountId === id) net += Number(t.amount);
+    else if (t.type === 'expense' && t.accountId === id) net -= Number(t.amount);
+    else if (t.type === 'transfer' && t.fromAccountId === id) net -= Number(t.amount);
+    else if (t.type === 'transfer' && t.toAccountId === id) net += Number(t.convertedAmount ?? t.amount);
+  }
+  const newBalance = Number(account.openingBalance) + net;
+  await db.update(finAccounts).set({ balance: String(newBalance) }).where(eq(finAccounts.id, id));
+}
+
 // ─── Categories ──────────────────────────────────────────────────────────────
 export async function listCategories(type?: "income" | "expense") {
   const db = await getDb(); if (!db) return [];
