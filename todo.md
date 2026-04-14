@@ -414,5 +414,5 @@
 - [x] UI: Legacy tab — live-search combobox for Finance clients (code + name), EUR amount, EGP amount (auto from rate, editable), notes
 
 ## Change Requests (Round 49)
-- [ ] Move New Income / New Expense / New Transfer buttons to top center of their pages
-- [ ] Complete granular permissions Settings UI (View/Edit matrix per user per page)
+- [x] Move New Income / New Expense / New Transfer buttons to top center of their pages
+- [x] Complete granular permissions Settings UI (View/Edit matrix per user per page)

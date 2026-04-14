@@ -67,7 +67,7 @@ const finWriteProcedure = finProcedure.use(({ ctx, next }) => {
 
 // ─── Accounts Router ─────────────────────────────────────────────────────────
 const accountsRouter = router({
-  list: finReadProcedure.query(async () => listAccounts()),
+  list: finProcedure.query(async () => listAccounts()),
   getById: finReadProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
@@ -122,7 +122,7 @@ const accountsRouter = router({
 
 // ─── Categories Router ───────────────────────────────────────────────────────
 const categoriesRouter = router({
-  list: finReadProcedure
+  list: finProcedure
     .input(z.object({ type: z.enum(["income", "expense"]).optional() }).optional())
     .query(async ({ input }) => listCategories(input?.type)),
   create: finAdminProcedure
@@ -141,7 +141,7 @@ const categoriesRouter = router({
 
 // ─── Employees Router ────────────────────────────────────────────────────────
 const employeesRouter = router({
-  list: finReadProcedure.query(async () => listEmployees()),
+  list: finProcedure.query(async () => listEmployees()),
   create: finAdminProcedure
     .input(z.object({ name: z.string().min(1), role: z.string().optional(), salary: z.number().optional() }))
     .mutation(async ({ input }) => {
@@ -161,7 +161,7 @@ const employeesRouter = router({
 
 // ─── Fin Clients Router ──────────────────────────────────────────────────────
 const finClientsRouter = router({
-  list: finReadProcedure
+  list: finProcedure
     .input(z.object({
       search: z.string().optional(),
       consultant: z.string().optional(),
