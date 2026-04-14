@@ -54,6 +54,8 @@ export default function FinClients() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [showRateDialog, setShowRateDialog] = useState(false);
   const [rateInput, setRateInput] = useState("");
+  const [showUsdRateDialog, setShowUsdRateDialog] = useState(false);
+  const [usdRateInput, setUsdRateInput] = useState("");
 
   // Debounce search
   const handleSearch = (v: string) => {
@@ -116,7 +118,19 @@ export default function FinClients() {
     onSuccess: (data) => {
       toast.success(`EUR/EGP rate updated to ${data.rate}`);
       utils.financial.settings.getEurEgpRate.invalidate();
+      utils.financial.dashboard.summary.invalidate();
       setShowRateDialog(false);
+    },
+    onError: (e) => toast.error("Failed to update rate: " + e.message),
+  });
+  const { data: usdRateData } = trpc.financial.settings.getUsdEgpRate.useQuery();
+  const usdEgpRate = usdRateData?.rate ?? 50.0;
+  const setUsdRateMutation = trpc.financial.settings.setUsdEgpRate.useMutation({
+    onSuccess: (data) => {
+      toast.success(`USD/EGP rate updated to ${data.rate}`);
+      utils.financial.settings.getUsdEgpRate.invalidate();
+      utils.financial.dashboard.summary.invalidate();
+      setShowUsdRateDialog(false);
     },
     onError: (e) => toast.error("Failed to update rate: " + e.message),
   });
@@ -317,6 +331,14 @@ export default function FinClients() {
           >
             <RefreshCw className="h-4 w-4 mr-1.5" />
             EUR/EGP: {eurEgpRate.toFixed(2)}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => { setUsdRateInput(String(usdEgpRate)); setShowUsdRateDialog(true); }}
+            className="text-green-700 border-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 font-mono"
+          >
+            <RefreshCw className="h-4 w-4 mr-1.5" />
+            USD/EGP: {usdEgpRate.toFixed(2)}
           </Button>
           <Button variant="outline" onClick={handleExport} disabled={exporting}>
             <FileDown className="h-4 w-4 mr-1.5" />
@@ -718,6 +740,59 @@ export default function FinClients() {
               }}
             >
               {setRateMutation.isPending ? "Saving..." : "Update Rate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* USD/EGP Rate Dialog */}
+      <Dialog open={showUsdRateDialog} onOpenChange={setShowUsdRateDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-green-700" />
+              Set USD / EGP Exchange Rate
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-3 text-sm text-green-800 dark:text-green-200">
+              This rate is used to convert USD balances to EGP in the Net Worth calculation.
+              Current rate: <strong>1 USD = {usdEgpRate.toFixed(2)} EGP</strong>
+              {usdRateData?.updatedBy && (
+                <p className="mt-1 text-xs opacity-70">Last updated by {usdRateData.updatedBy}</p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label>New Exchange Rate (EGP per 1 USD) <span className="text-red-500">*</span></Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="1"
+                max="1000"
+                placeholder="e.g. 50.00"
+                value={usdRateInput}
+                onChange={e => setUsdRateInput(e.target.value)}
+                autoFocus
+              />
+            </div>
+            {usdRateInput && Number(usdRateInput) > 0 && (
+              <div className="bg-muted/50 rounded-lg p-3 text-sm">
+                <p className="text-muted-foreground">Example: USD 1,000 &rarr; <strong className="text-foreground">EGP {(1000 * Number(usdRateInput)).toLocaleString()}</strong></p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUsdRateDialog(false)}>Cancel</Button>
+            <Button
+              className="bg-green-700 hover:bg-green-800 text-white"
+              disabled={!usdRateInput || Number(usdRateInput) <= 0 || setUsdRateMutation.isPending}
+              onClick={() => {
+                const r = parseFloat(usdRateInput);
+                if (!r || r <= 0) return toast.error("Please enter a valid rate");
+                setUsdRateMutation.mutate({ rate: r });
+              }}
+            >
+              {setUsdRateMutation.isPending ? "Saving..." : "Update Rate"}
             </Button>
           </DialogFooter>
         </DialogContent>

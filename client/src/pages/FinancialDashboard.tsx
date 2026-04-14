@@ -2,7 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, TrendingDown, DollarSign, Wallet, ArrowUpRight, ArrowDownRight, Plus, Minus, ArrowLeftRight, Users } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Wallet, ArrowUpRight, ArrowDownRight, Plus, Minus, ArrowLeftRight, Users, Globe } from "lucide-react";
 import { useMemo } from "react";
 import { useLocation } from "wouter";
 
@@ -159,6 +159,40 @@ export default function FinancialDashboard() {
           </Card>
         ))}
       </div>
+
+      {/* Net Worth Card */}
+      <Card className="border-0 shadow-sm bg-gradient-to-r from-indigo-50 to-purple-50">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Net Worth (EGP Equivalent)</p>
+              <p className={`text-2xl font-bold mt-1 ${summary.netWorthEgp >= 0 ? 'text-indigo-700' : 'text-red-600'}`}>
+                EGP {fmt(summary.netWorthEgp)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Rates used: 1 USD = {summary.usdEgpRate.toFixed(2)} EGP &nbsp;|&nbsp; 1 EUR = {summary.eurEgpRate.toFixed(2)} EGP
+              </p>
+            </div>
+            <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-blue-500"></span>
+                EGP {fmt(summary.totalEgpBalance)} (direct)
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-500"></span>
+                USD {fmt(summary.totalUsdBalance)} &rarr; EGP {fmt(summary.totalUsdBalance * summary.usdEgpRate)}
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+                EUR {fmt(summary.totalEurBalance)} &rarr; EGP {fmt(summary.totalEurBalance * summary.eurEgpRate)}
+              </span>
+            </div>
+            <div className="h-12 w-12 rounded-xl bg-indigo-100 flex items-center justify-center">
+              <Globe className="h-6 w-6 text-indigo-700" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Consultant Yearly Signing */}
       <Card className="border-0 shadow-sm">

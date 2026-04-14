@@ -887,6 +887,25 @@ const settingsRouter = router({
         .onDuplicateKeyUpdate({ set: { value: input.rate.toString(), updatedBy: ctx.user?.email ?? null } });
       return { success: true, rate: input.rate };
     }),
+
+  getUsdEgpRate: finReadProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+    const rows = await db.select().from(appSettings).where(eq(appSettings.key, 'usdEgpRate'));
+    return { rate: rows.length > 0 ? parseFloat(rows[0].value) : 50.0, updatedAt: rows[0]?.updatedAt ?? null, updatedBy: rows[0]?.updatedBy ?? null };
+  }),
+
+  setUsdEgpRate: finAdminProcedure
+    .input(z.object({ rate: z.number().positive().min(1).max(1000) }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+      await db
+        .insert(appSettings)
+        .values({ key: 'usdEgpRate', value: input.rate.toString(), updatedBy: ctx.user?.email ?? null })
+        .onDuplicateKeyUpdate({ set: { value: input.rate.toString(), updatedBy: ctx.user?.email ?? null } });
+      return { success: true, rate: input.rate };
+    }),
 });
 
 // ─── Export Financial Router ─────────────────────────────────────────────

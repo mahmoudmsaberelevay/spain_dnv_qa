@@ -3,7 +3,7 @@ import { getDb } from "./db";
 import {
   finAccounts, finCategories, finEmployees, finClients, finCommissions, finTransactions,
   InsertFinAccount, InsertFinCategory, InsertFinEmployee, InsertFinClient, InsertFinCommission, InsertFinTransaction,
-  clientCases,
+  clientCases, appSettings,
 } from "../drizzle/schema";
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
@@ -572,6 +572,17 @@ export async function getFinancialSummary(year: number) {
     count: Number(r.count),
   }));
 
+  // Exchange rates for Net Worth calculation
+  const eurRateRows = await db.select().from(appSettings).where(eq(appSettings.key, 'eurEgpRate'));
+  const usdRateRows = await db.select().from(appSettings).where(eq(appSettings.key, 'usdEgpRate'));
+  const eurEgpRate = eurRateRows.length > 0 ? parseFloat(eurRateRows[0].value) : 55.5;
+  const usdEgpRate = usdRateRows.length > 0 ? parseFloat(usdRateRows[0].value) : 50.0;
+
+  const egpTotal = Number(egpBalance.total);
+  const usdTotal = Number(usdBalance.total);
+  const eurTotal = Number(eurBalance.total);
+  const netWorthEgp = egpTotal + (usdTotal * usdEgpRate) + (eurTotal * eurEgpRate);
+
   return {
     yearlyIncome: Number(yearlyIncome.total),
     monthlyIncome: Number(monthlyIncome.total),
@@ -579,9 +590,12 @@ export async function getFinancialSummary(year: number) {
     monthlyExpense: Number(monthlyExpense.total),
     yearlyProfit: Number(yearlyIncome.total) - Number(yearlyExpense.total),
     monthlyProfit: Number(monthlyIncome.total) - Number(monthlyExpense.total),
-    totalEgpBalance: Number(egpBalance.total),
-    totalUsdBalance: Number(usdBalance.total),
-    totalEurBalance: Number(eurBalance.total),
+    totalEgpBalance: egpTotal,
+    totalUsdBalance: usdTotal,
+    totalEurBalance: eurTotal,
+    eurEgpRate,
+    usdEgpRate,
+    netWorthEgp,
     expenseByCategory,
     incomeByCategory,
     employeeExpenses,
