@@ -588,6 +588,67 @@ const transactionsRouter = router({
       return updated;
     }),
 
+  updateTransfer: finWriteProcedure
+    .input(z.object({
+      id: z.number(),
+      fromAccountId: z.number(),
+      toAccountId: z.number(),
+      amount: z.number().positive(),
+      exchangeRate: z.number().positive().default(1),
+      transactionDate: z.date(),
+      description: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+      // 1. Fetch the original transfer record
+      const [original] = await db.select().from(finTransactions).where(eq(finTransactions.id, input.id));
+      if (!original) throw new TRPCError({ code: "NOT_FOUND", message: "Transfer not found" });
+      if (original.type !== "transfer") throw new TRPCError({ code: "BAD_REQUEST", message: "Not a transfer" });
+
+      // 2. Reverse the original transfer's effect on both accounts
+      const oldAmount = Number(original.amount);
+      const oldReceived = Number(original.convertedAmount ?? original.amount);
+      if (original.fromAccountId) await updateAccountBalance(original.fromAccountId, oldAmount);   // restore deducted
+      if (original.toAccountId)   await updateAccountBalance(original.toAccountId,   -oldReceived); // restore credited
+
+      // 3. Fetch new account details
+      const fromAcc = await getAccountById(input.fromAccountId);
+      const toAcc   = await getAccountById(input.toAccountId);
+      if (!fromAcc || !toAcc) throw new TRPCError({ code: "NOT_FOUND", message: "Account not found" });
+
+      // 4. Apply new transfer effect
+      const receivedAmount = input.amount * input.exchangeRate;
+      const balanceBefore1 = Number(fromAcc.balance);
+      const balanceAfter1  = balanceBefore1 - input.amount;
+      const balanceBefore2 = Number(toAcc.balance);
+      const balanceAfter2  = balanceBefore2 + receivedAmount;
+
+      await updateAccountBalance(input.fromAccountId, -input.amount);
+      await updateAccountBalance(input.toAccountId,    receivedAmount);
+
+      // 5. Update the transaction record
+      const newDescription = input.description || `Transfer: ${fromAcc.name} → ${toAcc.name}`;
+      await db.update(finTransactions).set({
+        fromAccountId:   input.fromAccountId,
+        toAccountId:     input.toAccountId,
+        amount:          input.amount.toString(),
+        convertedAmount: receivedAmount.toString(),
+        exchangeRate:    input.exchangeRate.toString(),
+        transactionDate: input.transactionDate,
+        description:     newDescription,
+        balanceBefore:   balanceBefore1.toString(),
+        balanceAfter:    balanceAfter1.toString(),
+        balanceBefore2:  balanceBefore2.toString(),
+        balanceAfter2:   balanceAfter2.toString(),
+      }).where(eq(finTransactions.id, input.id));
+
+      const [updated] = await db.select().from(finTransactions).where(eq(finTransactions.id, input.id));
+      notifyFinancialTransaction("transfer", newDescription, input.amount, fromAcc.currency, fromAcc.name, undefined, toAcc.name).catch(() => {});
+      return updated;
+    }),
+
   createTransfer: finWriteProcedure
     .input(z.object({
       fromAccountId: z.number(),

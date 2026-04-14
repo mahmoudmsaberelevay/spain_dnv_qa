@@ -8,7 +8,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "./_core/trpc";
 import { getDb } from "./db";
-import { settlementPayments } from "../drizzle/schema";
+import { settlementPayments, finClients } from "../drizzle/schema";
 import { eq, desc, like, and, gte, lte, sql } from "drizzle-orm";
 import { ENV } from "./_core/env";
 
@@ -87,7 +87,7 @@ export const settlementRouter = router({
   // ── Create a single settlement payment ───────────────────────────────────
   create: protectedProcedure
     .input(z.object({
-      clientName: z.string().optional(),
+      clientName: z.string().optional().nullable(),
       finClientId: z.number().optional(),
       amountAed: z.number().positive(),
       serviceDate: z.string(), // ISO date string YYYY-MM-DD
@@ -100,8 +100,14 @@ export const settlementRouter = router({
       }
       const db = await requireDb();
       const amountEur = Math.round((input.amountAed / 4) * 100) / 100;
+      // Auto-populate clientName from finClients if finClientId is provided
+      let resolvedClientName = (input.clientName && input.clientName.trim()) ? input.clientName.trim() : null;
+      if (input.finClientId && !resolvedClientName) {
+        const [fc] = await db.select({ name: finClients.name }).from(finClients).where(eq(finClients.id, input.finClientId));
+        if (fc) resolvedClientName = fc.name;
+      }
       await db.insert(settlementPayments).values({
-        clientName: input.clientName ?? null,
+        clientName: resolvedClientName,
         finClientId: input.finClientId ?? null,
         amountAed: String(input.amountAed),
         amountEur: String(amountEur),
@@ -127,12 +133,20 @@ export const settlementRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Read-only access" });
       }
       const db = await requireDb();
-      const { id, amountAed, ...rest } = input;
+      const { id, amountAed, finClientId, clientName, ...rest } = input;
       const updates: Record<string, unknown> = { ...rest };
       if (amountAed !== undefined) {
         updates.amountAed = String(amountAed);
         updates.amountEur = String(Math.round((amountAed / 4) * 100) / 100);
       }
+      // Auto-populate clientName from finClients if finClientId is provided
+      let resolvedClientName = (clientName && clientName.trim()) ? clientName.trim() : null;
+      if (finClientId && !resolvedClientName) {
+        const [fc] = await db.select({ name: finClients.name }).from(finClients).where(eq(finClients.id, finClientId));
+        if (fc) resolvedClientName = fc.name;
+      }
+      if (resolvedClientName !== undefined) updates.clientName = resolvedClientName;
+      if (finClientId !== undefined) updates.finClientId = finClientId;
       await db.update(settlementPayments).set(updates).where(eq(settlementPayments.id, id));
       return { success: true };
     }),

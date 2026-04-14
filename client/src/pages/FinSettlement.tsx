@@ -283,6 +283,75 @@ export default function FinSettlement() {
     });
   }
 
+  function handleExportPdf() {
+    const rows2 = rows;
+    const filterDesc = search ? `Filter: "${search}"` : "All Records";
+    const tableRows = rows2.map((r, i) => {
+      const dateStr = r.serviceDate instanceof Date
+        ? format(r.serviceDate, "dd MMM yyyy")
+        : String(r.serviceDate);
+      return `<tr>
+        <td style="border:1px solid #e5e7eb;padding:6px 8px">${i + 1}</td>
+        <td style="border:1px solid #e5e7eb;padding:6px 8px;font-weight:500">${r.clientName ?? "—"}</td>
+        <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;color:#d97706">${Number(r.amountAed).toLocaleString("en-US", { minimumFractionDigits: 2 })} AED</td>
+        <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;color:#16a34a">€${Number(r.amountEur).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+        <td style="border:1px solid #e5e7eb;padding:6px 8px">${dateStr}</td>
+        <td style="border:1px solid #e5e7eb;padding:6px 8px;color:#6b7280">${r.notes ?? ""}</td>
+      </tr>`;
+    }).join("");
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Elevay — After Settlement Payments</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; color: #111; }
+    h1 { color: #1e293b; font-size: 20px; margin-bottom: 4px; }
+    .meta { color: #6b7280; font-size: 12px; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    thead tr { background: #1e293b; color: white; }
+    thead th { padding: 8px; font-size: 11px; text-align: left; border: 1px solid #334155; }
+    thead th:nth-child(3), thead th:nth-child(4) { text-align: right; }
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tfoot td { border-top: 2px solid #1e293b; font-weight: bold; padding: 8px; font-size: 12px; }
+    @media print { body { margin: 10px; } }
+  </style>
+</head>
+<body>
+  <h1>Elevay — After Settlement Payments</h1>
+  <div class="meta">
+    Generated: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })} &nbsp;|&nbsp;
+    ${filterDesc} &nbsp;|&nbsp; ${rows2.length} records
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Client Name</th>
+        <th style="text-align:right">Amount AED</th>
+        <th style="text-align:right">Amount EUR</th>
+        <th>Service Date</th><th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>${tableRows}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="2">Total (${rows2.length} records)</td>
+        <td style="text-align:right">${totalAed.toLocaleString("en-US", { minimumFractionDigits: 2 })} AED</td>
+        <td style="text-align:right">€${totalEur.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+        <td colspan="2"></td>
+      </tr>
+    </tfoot>
+  </table>
+</body>
+</html>`;
+    const win = window.open("", "_blank");
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => { win.print(); }, 500);
+    }
+  }
+
   function handleExportCsv() {
     const header = ["#", "Client Name", "Amount AED", "Amount EUR", "Service Date", "Notes"];
     const csvRows = rows.map((r, i) => [
@@ -332,6 +401,10 @@ export default function FinSettlement() {
             onChange={e => setSearch(e.target.value)}
             className="w-52"
           />
+          <Button variant="outline" size="sm" onClick={handleExportPdf} className="gap-1">
+            <Download className="h-4 w-4" />
+            PDF
+          </Button>
           <Button variant="outline" size="sm" onClick={handleExportCsv} className="gap-1">
             <Download className="h-4 w-4" />
             CSV

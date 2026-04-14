@@ -61,9 +61,11 @@ export default function FinTransfers() {
     onError: (e) => toast.error(e.message),
   });
 
-  const updateMut = trpc.financial.transactions.updateTransaction.useMutation({
+  const updateMut = trpc.financial.transactions.updateTransfer.useMutation({
     onSuccess: () => {
       utils.financial.transactions.list.invalidate();
+      utils.financial.accounts.list.invalidate();
+      utils.financial.dashboard.summary.invalidate();
       toast.success("Transfer updated");
       setEditTx(null);
     },
@@ -86,7 +88,7 @@ export default function FinTransfers() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDeleteOne, setConfirmDeleteOne] = useState<number | null>(null);
   const [editTx, setEditTx] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ description: "", note: "", transactionDate: "", amount: "" });
+  const [editForm, setEditForm] = useState({ description: "", note: "", transactionDate: "", amount: "", exchangeRate: "1", fromAccountId: "", toAccountId: "" });
   const [form, setForm] = useState({
     description: "", fromAccountId: "", toAccountId: "", amount: "", exchangeRate: "1", note: "",
     transactionDate: new Date().toISOString().split("T")[0],
@@ -284,6 +286,9 @@ export default function FinTransfers() {
                               note: tx.note ?? "",
                               transactionDate: new Date(tx.transactionDate).toISOString().split("T")[0],
                               amount: String(Number(tx.amount)),
+                              exchangeRate: tx.exchangeRate ? String(Number(tx.exchangeRate)) : "1",
+                              fromAccountId: tx.fromAccountId ? String(tx.fromAccountId) : "",
+                              toAccountId: tx.toAccountId ? String(tx.toAccountId) : "",
                             });
                           }}>
                             <Pencil className="h-3.5 w-3.5" />
@@ -354,34 +359,51 @@ export default function FinTransfers() {
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Edit Transfer</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
+            <div>
+              <label className="text-sm font-medium">Description</label>
+              <Input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} placeholder="e.g. Transfer to USD account" />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-sm font-medium">Description</label>
-                <Input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
+                <label className="text-sm font-medium">From Account (Deducted) *</label>
+                <AccountSelect accounts={accounts} value={editForm.fromAccountId} onValueChange={v => setEditForm(f => ({ ...f, fromAccountId: v }))} activeOnly />
               </div>
               <div>
-                <label className="text-sm font-medium">Amount</label>
+                <label className="text-sm font-medium">To Account (Credited) *</label>
+                <AccountSelect accounts={accounts} value={editForm.toAccountId} onValueChange={v => setEditForm(f => ({ ...f, toAccountId: v }))} activeOnly />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Amount *</label>
                 <Input type="number" step="0.01" min="0.01" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Exchange Rate</label>
+                <Input type="number" step="0.0001" min="0.0001" value={editForm.exchangeRate} onChange={e => setEditForm(f => ({ ...f, exchangeRate: e.target.value }))} placeholder="1.0000" />
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium">Date</label>
+              <label className="text-sm font-medium">Date *</label>
               <Input type="date" value={editForm.transactionDate} onChange={e => setEditForm(f => ({ ...f, transactionDate: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Note</label>
-              <Textarea value={editForm.note} onChange={e => setEditForm(f => ({ ...f, note: e.target.value }))} rows={2} />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditTx(null)}>Cancel</Button>
-            <Button onClick={() => updateMut.mutate({
-              id: editTx.id,
-              description: editForm.description || undefined,
-              note: editForm.note || undefined,
-              transactionDate: editForm.transactionDate ? new Date(editForm.transactionDate) : undefined,
-              amount: editForm.amount ? Number(editForm.amount) : undefined,
-            })} disabled={updateMut.isPending}>
+            <Button onClick={() => {
+              if (!editForm.fromAccountId || !editForm.toAccountId) { toast.error("Select both accounts"); return; }
+              if (!editForm.amount || Number(editForm.amount) <= 0) { toast.error("Enter a valid amount"); return; }
+              if (!editForm.transactionDate) { toast.error("Select a date"); return; }
+              updateMut.mutate({
+                id: editTx.id,
+                fromAccountId: Number(editForm.fromAccountId),
+                toAccountId: Number(editForm.toAccountId),
+                amount: Number(editForm.amount),
+                exchangeRate: editForm.exchangeRate ? Number(editForm.exchangeRate) : 1,
+                transactionDate: new Date(editForm.transactionDate),
+                description: editForm.description || undefined,
+              });
+            }} disabled={updateMut.isPending}>
               {updateMut.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
