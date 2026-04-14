@@ -14,7 +14,7 @@ import {
   listTransactions, countTransactions, createTransaction, getAccountStatement,
   getFinancialSummary,
 } from "./finDb";
-import { notifyFinancialTransaction, notifyFinClientAdded } from "./emailService";
+import { notifyFinClientAdded } from "./emailService";
 
 // ─── Access Control ──────────────────────────────────────────────────────────
 const ADMIN_EMAILS = [
@@ -499,7 +499,7 @@ const transactionsRouter = router({
         applyClientPayment(input.finClientId, input.amount, account.currency).catch(() => {});
       }
       // Fire-and-forget email notification
-      notifyFinancialTransaction("income", input.description, input.amount, account.currency, account.name).catch(() => {});
+      // income transaction email notification disabled
       return result;
     }),
 
@@ -535,7 +535,7 @@ const transactionsRouter = router({
         createdBy: ctx.user?.email ?? null,
       });
       // Fire-and-forget email notification
-      notifyFinancialTransaction("expense", input.description, input.amount, account.currency, account.name).catch(() => {});
+      // expense transaction email notification disabled
       return result;
     }),
 
@@ -645,7 +645,7 @@ const transactionsRouter = router({
       }).where(eq(finTransactions.id, input.id));
 
       const [updated] = await db.select().from(finTransactions).where(eq(finTransactions.id, input.id));
-      notifyFinancialTransaction("transfer", newDescription, input.amount, fromAcc.currency, fromAcc.name, undefined, toAcc.name).catch(() => {});
+      // transfer transaction email notification disabled
       return updated;
     }),
 
@@ -688,8 +688,7 @@ const transactionsRouter = router({
         balanceAfter2: balanceAfter2.toString(),
         createdBy: ctx.user?.email ?? null,
       });
-      // Fire-and-forget email notification
-      notifyFinancialTransaction("transfer", input.description || `Transfer: ${fromAcc.name} → ${toAcc.name}`, input.amount, fromAcc.currency, fromAcc.name, undefined, toAcc.name).catch(() => {});
+      // transfer transaction email notification disabled
       return result;
     }),
 });

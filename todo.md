@@ -426,11 +426,17 @@
 - [x] Add Edit button per row in After Settlement Payment table (edit client, AED amount, date, notes)
 
 ## Change Requests (Round 53)
-- [ ] Fix Edit Transfer: reverse old account balances and apply new ones (both credited and deducted accounts editable)
+- [x] Fix Edit Transfer: reverse old account balances and apply new ones (both credited and deducted accounts editable)
 
 ## Change Requests (Round 54)
-- [ ] Fix client name not showing in After Settlement Payment table
+- [x] Fix client name not showing in After Settlement Payment table
 
 ## Change Requests (Round 55)
-- [ ] Add Download PDF button to After Settlement Payment sheet
-- [ ] Fix client name not showing when selected from Finance DB combobox in Settlement sheet
+- [x] Add Download PDF button to After Settlement Payment sheet
+- [x] Fix client name not showing when selected from Finance DB combobox in Settlement sheet
+
+## Change Requests (Round 56)
+- [x] Disable email notifications for Income, Expense, and Transfer transaction creation
+
+## Change Requests (Round 56)
+- [x] Disable email notifications for Income, Expense, and Transfer transaction creation
