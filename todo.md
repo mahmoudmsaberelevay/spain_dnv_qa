@@ -421,3 +421,6 @@
 - [x] New Financial page: After Settlement Payment (Client Name, Amount AED, Amount EUR=AED/4, Date)
 - [x] Import existing records from Notion page into settlementPayments table
 - [x] Add "After Settlement" nav item to Financial module sidebar
+
+## Change Requests (Round 52)
+- [x] Add Edit button per row in After Settlement Payment table (edit client, AED amount, date, notes)

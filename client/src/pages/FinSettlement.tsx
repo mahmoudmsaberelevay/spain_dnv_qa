@@ -15,8 +15,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ClientSearchCombobox } from "@/components/ClientSearchCombobox";
-import { format } from "date-fns";
-import { CalendarIcon, Plus, Trash2, Download, Upload } from "lucide-react";
+import { format, parseISO } from "date-fns";
+import { CalendarIcon, Plus, Trash2, Download, Upload, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -38,22 +38,165 @@ const NOTION_SEED = [
   { amountAed: 5005.00,  serviceDate: "2026-04-09" },
 ];
 
+// ─── Row type (minimal) ───────────────────────────────────────────────────────
+type SettlementRow = {
+  id: number;
+  clientName: string | null;
+  finClientId: number | null;
+  amountAed: string;
+  amountEur: string;
+  serviceDate: Date | string;
+  notes: string | null;
+};
+
+// ─── Shared form state type ───────────────────────────────────────────────────
+type FormState = {
+  selectedClientId: string;
+  manualClientName: string;
+  amountAed: string;
+  serviceDate: Date | undefined;
+  notes: string;
+  calOpen: boolean;
+};
+
+const emptyForm = (): FormState => ({
+  selectedClientId: "",
+  manualClientName: "",
+  amountAed: "",
+  serviceDate: new Date(),
+  notes: "",
+  calOpen: false,
+});
+
+// ─── Sub-component: Payment Form (shared by Add and Edit dialogs) ─────────────
+function PaymentForm({
+  form,
+  setForm,
+  amountEur,
+  onSubmit,
+  onCancel,
+  isPending,
+  submitLabel,
+}: {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  amountEur: string;
+  onSubmit: () => void;
+  onCancel: () => void;
+  isPending: boolean;
+  submitLabel: string;
+}) {
+  return (
+    <div className="space-y-4 pt-2">
+      {/* Client */}
+      <div className="space-y-1.5">
+        <Label>Client Name</Label>
+        <ClientSearchCombobox
+          value={form.selectedClientId}
+          onChange={(val) => {
+            setForm(f => ({ ...f, selectedClientId: val, manualClientName: val ? "" : f.manualClientName }));
+          }}
+          placeholder="Search Finance client DB..."
+        />
+        {!form.selectedClientId && (
+          <Input
+            placeholder="Or type name manually..."
+            value={form.manualClientName}
+            onChange={e => setForm(f => ({ ...f, manualClientName: e.target.value }))}
+            className="mt-1"
+          />
+        )}
+      </div>
+
+      {/* Amount AED */}
+      <div className="space-y-1.5">
+        <Label>Amount AED <span className="text-destructive">*</span></Label>
+        <Input
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="e.g. 5190.00"
+          value={form.amountAed}
+          onChange={e => setForm(f => ({ ...f, amountAed: e.target.value }))}
+        />
+      </div>
+
+      {/* Amount EUR (auto) */}
+      <div className="space-y-1.5">
+        <Label>Amount EUR <span className="text-muted-foreground text-xs">(AED ÷ 4, auto)</span></Label>
+        <Input
+          readOnly
+          value={amountEur ? `€${amountEur}` : ""}
+          placeholder="Auto-calculated"
+          className="cursor-not-allowed text-emerald-600 dark:text-emerald-400"
+        />
+      </div>
+
+      {/* Service Date */}
+      <div className="space-y-1.5">
+        <Label>Service Date <span className="text-destructive">*</span></Label>
+        <Popover open={form.calOpen} onOpenChange={open => setForm(f => ({ ...f, calOpen: open }))}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className={cn(
+                "w-full justify-start text-left font-normal",
+                !form.serviceDate && "text-muted-foreground"
+              )}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {form.serviceDate ? format(form.serviceDate, "dd MMM yyyy") : "Pick a date"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0">
+            <Calendar
+              mode="single"
+              selected={form.serviceDate}
+              onSelect={d => setForm(f => ({ ...f, serviceDate: d, calOpen: false }))}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      {/* Notes */}
+      <div className="space-y-1.5">
+        <Label>Notes</Label>
+        <Input
+          placeholder="Optional notes..."
+          value={form.notes}
+          onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+        />
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2 pt-2">
+        <Button variant="outline" className="flex-1" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button className="flex-1" onClick={onSubmit} disabled={isPending}>
+          {isPending ? "Saving..." : submitLabel}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function FinSettlement() {
   const { canEdit } = usePermissions();
   const canWrite = canEdit("fin_settlement");
 
-  // ── State ────────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
-  const [showAdd, setShowAdd] = useState(false);
   const [importDone, setImportDone] = useState(false);
 
-  // Add form state
-  const [selectedClientId, setSelectedClientId] = useState<string>("");
-  const [manualClientName, setManualClientName] = useState("");
-  const [amountAed, setAmountAed] = useState("");
-  const [serviceDate, setServiceDate] = useState<Date | undefined>(new Date());
-  const [notes, setNotes] = useState("");
-  const [calOpen, setCalOpen] = useState(false);
+  // Add dialog
+  const [showAdd, setShowAdd] = useState(false);
+  const [addForm, setAddForm] = useState<FormState>(emptyForm());
+
+  // Edit dialog
+  const [editRow, setEditRow] = useState<SettlementRow | null>(null);
+  const [editForm, setEditForm] = useState<FormState>(emptyForm());
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const { data, refetch, isLoading } = trpc.settlement.list.useQuery({
@@ -62,13 +205,18 @@ export default function FinSettlement() {
     offset: 0,
   });
 
-  const rows = data?.rows ?? [];
+  const rows: SettlementRow[] = data?.rows ?? [];
   const totalAed = data?.totalAed ?? 0;
   const totalEur = data?.totalEur ?? 0;
 
   // ── Mutations ────────────────────────────────────────────────────────────
   const createMut = trpc.settlement.create.useMutation({
-    onSuccess: () => { refetch(); setShowAdd(false); resetForm(); toast.success("Payment added"); },
+    onSuccess: () => { refetch(); setShowAdd(false); setAddForm(emptyForm()); toast.success("Payment added"); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const updateMut = trpc.settlement.update.useMutation({
+    onSuccess: () => { refetch(); setEditRow(null); toast.success("Payment updated"); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -78,39 +226,60 @@ export default function FinSettlement() {
   });
 
   const bulkImportMut = trpc.settlement.bulkImport.useMutation({
-    onSuccess: (res) => {
-      refetch();
-      setImportDone(true);
-      toast.success(`Imported ${res.imported} records from Notion`);
-    },
+    onSuccess: (res) => { refetch(); setImportDone(true); toast.success(`Imported ${res.imported} records from Notion`); },
     onError: (e) => toast.error(e.message),
   });
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
-  function resetForm() {
-    setSelectedClientId("");
-    setManualClientName("");
-    setAmountAed("");
-    setServiceDate(new Date());
-    setNotes("");
+  // ── Computed EUR values ──────────────────────────────────────────────────
+  const addAmountEur = useMemo(() => {
+    const n = parseFloat(addForm.amountAed);
+    return isNaN(n) || n <= 0 ? "" : (Math.round((n / 4) * 100) / 100).toFixed(2);
+  }, [addForm.amountAed]);
+
+  const editAmountEur = useMemo(() => {
+    const n = parseFloat(editForm.amountAed);
+    return isNaN(n) || n <= 0 ? "" : (Math.round((n / 4) * 100) / 100).toFixed(2);
+  }, [editForm.amountAed]);
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+  function handleAddSubmit() {
+    const n = parseFloat(addForm.amountAed);
+    if (isNaN(n) || n <= 0) { toast.error("Enter a valid AED amount"); return; }
+    if (!addForm.serviceDate) { toast.error("Select a date"); return; }
+    createMut.mutate({
+      clientName: addForm.manualClientName.trim() || undefined,
+      finClientId: addForm.selectedClientId ? parseInt(addForm.selectedClientId) : undefined,
+      amountAed: n,
+      serviceDate: format(addForm.serviceDate, "yyyy-MM-dd"),
+      notes: addForm.notes.trim() || undefined,
+    });
   }
 
-  const amountEur = useMemo(() => {
-    const n = parseFloat(amountAed);
-    if (isNaN(n) || n <= 0) return "";
-    return (Math.round((n / 4) * 100) / 100).toFixed(2);
-  }, [amountAed]);
+  function openEdit(row: SettlementRow) {
+    const rawDate = row.serviceDate instanceof Date ? row.serviceDate : new Date(String(row.serviceDate));
+    setEditForm({
+      selectedClientId: row.finClientId ? String(row.finClientId) : "",
+      manualClientName: row.clientName ?? "",
+      amountAed: Number(row.amountAed).toString(),
+      serviceDate: rawDate,
+      notes: row.notes ?? "",
+      calOpen: false,
+    });
+    setEditRow(row);
+  }
 
-  function handleSubmit() {
-    const n = parseFloat(amountAed);
+  function handleEditSubmit() {
+    if (!editRow) return;
+    const n = parseFloat(editForm.amountAed);
     if (isNaN(n) || n <= 0) { toast.error("Enter a valid AED amount"); return; }
-    if (!serviceDate) { toast.error("Select a date"); return; }
-    createMut.mutate({
-      clientName: manualClientName.trim() || undefined,
-      finClientId: selectedClientId ? parseInt(selectedClientId) : undefined,
+    if (!editForm.serviceDate) { toast.error("Select a date"); return; }
+    updateMut.mutate({
+      id: editRow.id,
+      clientName: editForm.manualClientName.trim() || undefined,
+      finClientId: editForm.selectedClientId ? parseInt(editForm.selectedClientId) : null,
       amountAed: n,
-      serviceDate: format(serviceDate, "yyyy-MM-dd"),
-      notes: notes.trim() || undefined,
+      serviceDate: format(editForm.serviceDate, "yyyy-MM-dd"),
+      notes: editForm.notes.trim() || undefined,
     });
   }
 
@@ -148,10 +317,7 @@ export default function FinSettlement() {
         {/* Center: Add button */}
         <div className="flex-1 flex justify-center">
           {canWrite && (
-            <Button
-              onClick={() => setShowAdd(true)}
-              className="gap-2 px-6"
-            >
+            <Button onClick={() => setShowAdd(true)} className="gap-2 px-6">
               <Plus className="h-4 w-4" />
               Add Payment
             </Button>
@@ -207,7 +373,7 @@ export default function FinSettlement() {
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">Amount EUR</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Service Date</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Notes</th>
-                  {canWrite && <th className="px-4 py-3" />}
+                  {canWrite && <th className="px-4 py-3 text-center font-medium text-muted-foreground">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -231,16 +397,28 @@ export default function FinSettlement() {
                       <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">{row.notes ?? "—"}</td>
                       {canWrite && (
                         <td className="px-4 py-3">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              if (confirm("Delete this payment?")) deleteMut.mutate({ id: row.id });
-                            }}
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 w-7 p-0"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          <div className="flex items-center justify-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEdit(row)}
+                              className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                              title="Edit"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                if (confirm("Delete this payment?")) deleteMut.mutate({ id: row.id });
+                              }}
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 w-7 p-0"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -266,109 +444,39 @@ export default function FinSettlement() {
         </CardContent>
       </Card>
 
-      {/* Add Payment Dialog */}
+      {/* ── Add Payment Dialog ─────────────────────────────────────────────── */}
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Settlement Payment</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
-            {/* Client */}
-            <div className="space-y-1.5">
-              <Label>Client Name</Label>
-              <ClientSearchCombobox
-                value={selectedClientId}
-                onChange={(val) => {
-                  setSelectedClientId(val);
-                  if (val) setManualClientName("");
-                }}
-                placeholder="Search Finance client DB..."
-              />
-              {!selectedClientId && (
-                <Input
-                  placeholder="Or type name manually..."
-                  value={manualClientName}
-                  onChange={e => setManualClientName(e.target.value)}
-                  className="mt-1"
-                />
-              )}
-            </div>
+          <PaymentForm
+            form={addForm}
+            setForm={setAddForm}
+            amountEur={addAmountEur}
+            onSubmit={handleAddSubmit}
+            onCancel={() => setShowAdd(false)}
+            isPending={createMut.isPending}
+            submitLabel="Add Payment"
+          />
+        </DialogContent>
+      </Dialog>
 
-            {/* Amount AED */}
-            <div className="space-y-1.5">
-              <Label>Amount AED <span className="text-destructive">*</span></Label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="e.g. 5190.00"
-                value={amountAed}
-                onChange={e => setAmountAed(e.target.value)}
-              />
-            </div>
-
-            {/* Amount EUR (auto) */}
-            <div className="space-y-1.5">
-              <Label>Amount EUR <span className="text-muted-foreground text-xs">(AED ÷ 4, auto)</span></Label>
-              <Input
-                readOnly
-                value={amountEur ? `€${amountEur}` : ""}
-                placeholder="Auto-calculated"
-                className="cursor-not-allowed text-emerald-600 dark:text-emerald-400"
-              />
-            </div>
-
-            {/* Service Date */}
-            <div className="space-y-1.5">
-              <Label>Service Date <span className="text-destructive">*</span></Label>
-              <Popover open={calOpen} onOpenChange={setCalOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !serviceDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {serviceDate ? format(serviceDate, "dd MMM yyyy") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={serviceDate}
-                    onSelect={d => { setServiceDate(d); setCalOpen(false); }}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* Notes */}
-            <div className="space-y-1.5">
-              <Label>Notes</Label>
-              <Input
-                placeholder="Optional notes..."
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-              />
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setShowAdd(false)}>
-                Cancel
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={handleSubmit}
-                disabled={createMut.isPending}
-              >
-                {createMut.isPending ? "Saving..." : "Add Payment"}
-              </Button>
-            </div>
-          </div>
+      {/* ── Edit Payment Dialog ────────────────────────────────────────────── */}
+      <Dialog open={!!editRow} onOpenChange={open => { if (!open) setEditRow(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Settlement Payment</DialogTitle>
+          </DialogHeader>
+          <PaymentForm
+            form={editForm}
+            setForm={setEditForm}
+            amountEur={editAmountEur}
+            onSubmit={handleEditSubmit}
+            onCancel={() => setEditRow(null)}
+            isPending={updateMut.isPending}
+            submitLabel="Save Changes"
+          />
         </DialogContent>
       </Dialog>
     </div>
