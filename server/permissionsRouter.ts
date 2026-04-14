@@ -28,23 +28,44 @@ async function requireDb(): Promise<NonNullable<Awaited<ReturnType<typeof getDb>
   return db;
 }
 
-// All pages that can be toggled per user / group
+// All pages that can be toggled per user / group (granular — one key per page)
 export const ALL_PAGE_KEYS = [
-  "contracting",
-  "finance",
-  "docs",
-  "analysis",
+  // Contracting module
+  "contracts",
+  "receipts",
+  // Application Analysis module
+  "analysis_dashboard",
+  "cases",
+  // Client Documentation module
+  "client_docs",
+  // Financial module
+  "fin_dashboard",
+  "fin_accounts",
+  "fin_income",
+  "fin_expenses",
+  "fin_transfers",
+  "fin_reports",
+  "fin_employees",
+  "fin_categories",
+  "fin_commissions",
+  "fin_clients",
+  "fin_bulk_upload",
+  // System
+  "settings",
   "chat",
   "broadcast",
 ] as const;
 export type PageKey = (typeof ALL_PAGE_KEYS)[number];
 
-// The owner's email — hardcoded for security
-const OWNER_EMAIL = "mahmoud.saberelevay@gmail.com";
+// Super-admin emails — full edit access to everything
+const SUPER_ADMIN_EMAILS = [
+  "mahmoud.saberelevay@gmail.com",
+  "mahmoud.saber@elevay.com",
+];
 
-// Helper: check if a user is the owner
+// Helper: check if a user is the owner or super-admin
 function isOwner(user: { openId: string; email?: string | null }): boolean {
-  return user.openId === ENV.ownerOpenId || user.email === OWNER_EMAIL;
+  return user.openId === ENV.ownerOpenId || SUPER_ADMIN_EMAILS.includes((user.email ?? "").toLowerCase());
 }
 
 // Middleware: only the owner can call this
@@ -61,11 +82,20 @@ const ownerProcedure = protectedProcedure.use(({ ctx, next }) => {
 export const permissionsRouter = router({
   // ── Any authenticated user: get their own permission map ──────────────────
   getMyPermissions: protectedProcedure.query(async ({ ctx }) => {
-    // Owner always has full access
+    // Super-admin always has full access + full edit
     if (isOwner(ctx.user)) {
       const full: Record<string, boolean> = {};
-      for (const k of ALL_PAGE_KEYS) full[k] = true;
-      return { permissions: full, isOwner: true, groupId: null as number | null, groupName: null as string | null };
+      const fullEdit: Record<string, boolean> = {};
+      const fullCreate: Record<string, boolean> = {};
+      for (const k of ALL_PAGE_KEYS) { full[k] = true; fullEdit[k] = true; fullCreate[k] = true; }
+      return {
+        permissions: full,
+        editPermissions: fullEdit,
+        createPermissions: fullCreate,
+        isOwner: true,
+        groupId: null as number | null,
+        groupName: null as string | null,
+      };
     }
 
     const db = await requireDb();
@@ -79,7 +109,9 @@ export const permissionsRouter = router({
     const groupId = userRow[0]?.groupId ?? null;
 
     const permissions: Record<string, boolean> = {};
-    for (const k of ALL_PAGE_KEYS) permissions[k] = false;
+    const editPermissions: Record<string, boolean> = {};
+    const createPermissions: Record<string, boolean> = {};
+    for (const k of ALL_PAGE_KEYS) { permissions[k] = false; editPermissions[k] = false; createPermissions[k] = false; }
 
     if (groupId) {
       // Use group permissions
@@ -89,6 +121,8 @@ export const permissionsRouter = router({
         .where(eq(groupPermissions.groupId, groupId));
       for (const row of rows) {
         permissions[row.pageKey] = row.canAccess;
+        editPermissions[row.pageKey] = row.canEdit;
+        createPermissions[row.pageKey] = row.canCreate;
       }
       const groupRow = await db
         .select({ name: userGroups.name })
@@ -96,6 +130,8 @@ export const permissionsRouter = router({
         .where(eq(userGroups.id, groupId));
       return {
         permissions,
+        editPermissions,
+        createPermissions,
         isOwner: false,
         groupId,
         groupName: groupRow[0]?.name ?? null,
@@ -108,8 +144,10 @@ export const permissionsRouter = router({
         .where(eq(userPermissions.userId, ctx.user.id));
       for (const row of rows) {
         permissions[row.pageKey] = row.canAccess;
+        editPermissions[row.pageKey] = row.canEdit;
+        createPermissions[row.pageKey] = row.canCreate;
       }
-      return { permissions, isOwner: false, groupId: null, groupName: null };
+      return { permissions, editPermissions, createPermissions, isOwner: false, groupId: null, groupName: null };
     }
   }),
 
@@ -142,12 +180,45 @@ export const permissionsRouter = router({
         .from(userPermissions)
         .where(eq(userPermissions.userId, input.userId));
 
-      const permissions: Record<string, boolean> = {};
-      for (const k of ALL_PAGE_KEYS) permissions[k] = false;
+      const permissions: Record<string, { canAccess: boolean; canEdit: boolean }> = {};
+      for (const k of ALL_PAGE_KEYS) permissions[k] = { canAccess: false, canEdit: false };
       for (const row of rows) {
-        permissions[row.pageKey] = row.canAccess;
+        permissions[row.pageKey] = { canAccess: row.canAccess, canEdit: row.canEdit };
       }
       return permissions;
+    }),
+
+  // ── Owner: set a single page permission (canAccess + canEdit) for a user ──
+  setPagePermission: ownerProcedure
+    .input(
+      z.object({
+        userId: z.number(),
+        pageKey: z.string(),
+        canAccess: z.boolean(),
+        canEdit: z.boolean(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      const existing = await db
+        .select()
+        .from(userPermissions)
+        .where(and(eq(userPermissions.userId, input.userId), eq(userPermissions.pageKey, input.pageKey)));
+
+      if (existing.length > 0) {
+        await db
+          .update(userPermissions)
+          .set({ canAccess: input.canAccess, canEdit: input.canEdit })
+          .where(and(eq(userPermissions.userId, input.userId), eq(userPermissions.pageKey, input.pageKey)));
+      } else {
+        await db.insert(userPermissions).values({
+          userId: input.userId,
+          pageKey: input.pageKey,
+          canAccess: input.canAccess,
+          canEdit: input.canEdit,
+        });
+      }
+      return { success: true };
     }),
 
   // ── Owner: set all permissions for a user at once ────────────────────────

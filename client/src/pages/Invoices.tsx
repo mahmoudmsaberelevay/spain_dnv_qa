@@ -21,8 +21,10 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 import { ClientSearchCombobox } from "@/components/ClientSearchCombobox";
+import { usePermissions } from "@/contexts/PermissionsContext";
 
 export default function Invoices() {
+  const { canEdit } = usePermissions();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -184,15 +186,17 @@ export default function Invoices() {
             Create and manage payment receipts for signed contracts
           </p>
         </div>
-        <Button
-          onClick={() => setShowCreateDialog(true)}
-          className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
-          size="lg"
-          disabled={signedContracts.length === 0}
-        >
-          <Plus className="h-4 w-4" />
-          Create Receipt
-        </Button>
+        {canEdit("contracting") && (
+          <Button
+            onClick={() => setShowCreateDialog(true)}
+            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+            size="lg"
+            disabled={signedContracts.length === 0}
+          >
+            <Plus className="h-4 w-4" />
+            Create Receipt
+          </Button>
+        )}
       </div>
 
       {signedContracts.length === 0 && (

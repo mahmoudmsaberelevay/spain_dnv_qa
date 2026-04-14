@@ -185,6 +185,7 @@ export default function FinExpenses() {
 
   return (
     <div className="space-y-6">
+      {/* Page header — title left, exports right */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Expenses</h1>
         <div className="flex items-center gap-2">
@@ -193,10 +194,18 @@ export default function FinExpenses() {
           {selected.size > 0 && (
             <Button variant="destructive" onClick={() => setConfirmDelete(true)} className="gap-2"><Trash2 className="h-4 w-4" />Delete ({selected.size})</Button>
           )}
-          <Button onClick={() => { setForm({ description: "", accountId: "", categoryId: "", amount: "", note: "", employeeId: "", finClientId: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}>
-            <Plus className="h-4 w-4 mr-1" /> Record Expense
-          </Button>
         </div>
+      </div>
+
+      {/* Record Expense button — centered */}
+      <div className="flex justify-center">
+        <Button
+          size="lg"
+          className="gap-2 px-8"
+          onClick={() => { setForm({ description: "", accountId: "", categoryId: "", amount: "", note: "", employeeId: "", finClientId: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}
+        >
+          <Plus className="h-5 w-5" /> Record Expense
+        </Button>
       </div>
 
       <Card className="border-0 shadow-sm">

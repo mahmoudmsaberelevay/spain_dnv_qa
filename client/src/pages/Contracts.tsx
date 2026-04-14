@@ -18,8 +18,10 @@ import {
 import NewContractDialog from "@/components/NewContractDialog";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
+import { usePermissions } from "@/contexts/PermissionsContext";
 
 export default function Contracts() {
+  const { canEdit } = usePermissions();
   const [showNewContract, setShowNewContract] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -90,14 +92,16 @@ export default function Contracts() {
             Manage all generated contracts and their statuses
           </p>
         </div>
-        <Button
-          onClick={() => setShowNewContract(true)}
-          className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
-          size="lg"
-        >
-          <Plus className="h-4 w-4" />
-          Issue New Contract
-        </Button>
+        {canEdit("contracting") && (
+          <Button
+            onClick={() => setShowNewContract(true)}
+            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+            size="lg"
+          >
+            <Plus className="h-4 w-4" />
+            Issue New Contract
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
@@ -203,6 +207,7 @@ export default function Contracts() {
                       <td className="px-4 py-4 text-center">
                         <Select
                           value={contract.status}
+                          disabled={!canEdit("contracting")}
                           onValueChange={(val) => {
                             setConfirmStatus({
                               contractId: contract.id,
@@ -242,6 +247,7 @@ export default function Contracts() {
                             </Button>
                           )}
 
+                          {canEdit("contracting") && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -260,6 +266,7 @@ export default function Contracts() {
                             )}
                             Re-download
                           </Button>
+                          )}
                         </div>
                       </td>
                     </tr>

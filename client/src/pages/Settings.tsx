@@ -51,30 +51,74 @@ import DashboardLayout from "@/components/DashboardLayout";
 
 const OWNER_EMAIL = "mahmoud.saberelevay@gmail.com";
 
-// ─── Page definitions ─────────────────────────────────────────────────────────
-const PAGES = [
-  { key: "contracting", label: "Contracting",  color: "bg-blue-500",    light: "bg-blue-100 text-blue-700" },
-  { key: "finance",     label: "Financial",    color: "bg-amber-500",   light: "bg-amber-100 text-amber-700" },
-  { key: "docs",        label: "Client Docs",  color: "bg-emerald-500", light: "bg-emerald-100 text-emerald-700" },
-  { key: "analysis",    label: "Analysis",     color: "bg-violet-500",  light: "bg-violet-100 text-violet-700" },
-  { key: "chat",        label: "Team Chat",    color: "bg-sky-500",     light: "bg-sky-100 text-sky-700" },
-  { key: "broadcast",   label: "Broadcast",    color: "bg-rose-500",    light: "bg-rose-100 text-rose-700" },
-] as const;
+// ─── Page definitions (granular — one per page) ───────────────────────────────
+const PAGE_SECTIONS = [
+  {
+    section: "Contracting",
+    color: "bg-blue-500",
+    pages: [
+      { key: "contracts",   label: "Contracts" },
+      { key: "receipts",    label: "Receipts" },
+    ],
+  },
+  {
+    section: "Application Analysis",
+    color: "bg-violet-500",
+    pages: [
+      { key: "analysis_dashboard", label: "Analysis Dashboard" },
+      { key: "cases",              label: "Cases" },
+    ],
+  },
+  {
+    section: "Client Documentation",
+    color: "bg-emerald-500",
+    pages: [
+      { key: "client_docs", label: "Client Documentation" },
+    ],
+  },
+  {
+    section: "Financial",
+    color: "bg-amber-500",
+    pages: [
+      { key: "fin_dashboard",   label: "Financial Dashboard" },
+      { key: "fin_accounts",    label: "Accounts" },
+      { key: "fin_income",      label: "Income" },
+      { key: "fin_expenses",    label: "Expenses" },
+      { key: "fin_transfers",   label: "Transfers" },
+      { key: "fin_reports",     label: "Reports" },
+      { key: "fin_employees",   label: "Employees" },
+      { key: "fin_categories",  label: "Categories" },
+      { key: "fin_commissions", label: "Commission DB" },
+      { key: "fin_clients",     label: "Client DB" },
+      { key: "fin_bulk_upload", label: "Bulk Upload" },
+    ],
+  },
+  {
+    section: "System",
+    color: "bg-sky-500",
+    pages: [
+      { key: "settings",  label: "Settings" },
+      { key: "chat",      label: "Team Chat" },
+      { key: "broadcast", label: "Broadcast Center" },
+    ],
+  },
+];
 
-type PageKey = (typeof PAGES)[number]["key"];
+// Flat list for iteration
+const PAGES = PAGE_SECTIONS.flatMap((s) => s.pages.map((p) => ({ ...p, color: s.color, section: s.section })));
+type PageKey = string;
 
-function emptyPerms(): Record<PageKey, boolean> {
+function emptyPerms(): Record<string, boolean> {
   const p: Record<string, boolean> = {};
   for (const pg of PAGES) p[pg.key] = false;
-  return p as Record<PageKey, boolean>;
+  return p;
 }
 
 // Predefined group templates
 const GROUP_TEMPLATES = [
-  { label: "Full Access",      perms: { contracting: true,  finance: true,  docs: true,  analysis: true,  chat: true,  broadcast: true  } },
-  { label: "Finance Only",     perms: { contracting: false, finance: true,  docs: false, analysis: false, chat: true,  broadcast: false } },
-  { label: "Operations",       perms: { contracting: true,  finance: false, docs: true,  analysis: true,  chat: true,  broadcast: false } },
-  { label: "Read-Only Viewer", perms: { contracting: false, finance: false, docs: true,  analysis: true,  chat: false, broadcast: false } },
+  { label: "Full Access",      perms: Object.fromEntries(PAGES.map((p) => [p.key, true])) },
+  { label: "View Only",        perms: Object.fromEntries(PAGES.map((p) => [p.key, true])) },
+  { label: "Finance Only",     perms: Object.fromEntries(PAGES.map((p) => [p.key, ["fin_dashboard","fin_accounts","fin_income","fin_expenses","fin_transfers","fin_reports","fin_employees","fin_categories","fin_commissions","fin_clients","fin_bulk_upload","chat"].includes(p.key)])) },
   { label: "Custom",           perms: null },
 ];
 
@@ -103,7 +147,7 @@ function UserRow({
     { enabled: expanded && !user.groupId }
   );
 
-  const toggleMutation = trpc.permissions.togglePermission.useMutation({
+  const setPagePermMutation = trpc.permissions.setPagePermission.useMutation({
     onSuccess: () => utils.permissions.getUserPermissions.invalidate({ userId: user.id }),
     onError: () => toast.error("Failed to update permission"),
   });
@@ -162,13 +206,18 @@ function UserRow({
         {/* Permission dots (individual only) */}
         {!isOwnerRow && !user.groupId && permsData && (
           <div className="hidden md:flex items-center gap-1 flex-wrap max-w-xs">
-            {PAGES.map((pg) => (
-              <span
-                key={pg.key}
-                className={cn("h-2.5 w-2.5 rounded-full", permsData[pg.key] ? pg.color : "bg-gray-200")}
-                title={`${pg.label}: ${permsData[pg.key] ? "Allowed" : "Denied"}`}
-              />
-            ))}
+            {PAGES.map((pg) => {
+              const perm = permsData[pg.key] as { canAccess: boolean; canEdit: boolean } | undefined;
+              const hasView = perm?.canAccess ?? false;
+              const hasEdit = perm?.canEdit ?? false;
+              return (
+                <span
+                  key={pg.key}
+                  className={cn("h-2.5 w-2.5 rounded-full", hasEdit ? pg.color : hasView ? "bg-gray-400" : "bg-gray-200")}
+                  title={`${pg.label}: ${hasEdit ? "View + Edit" : hasView ? "View only" : "No access"}`}
+                />
+              );
+            })}
           </div>
         )}
 
@@ -239,8 +288,8 @@ function UserRow({
               {/* Individual permissions (only when not in a group) */}
               {!user.groupId && (
                 <div>
-                  <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">
-                    Individual Page Access
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 block">
+                    Page Access Matrix
                   </Label>
                   {permsLoading ? (
                     <div className="flex items-center gap-2 text-muted-foreground text-sm">
@@ -248,29 +297,68 @@ function UserRow({
                       Loading…
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {PAGES.map((pg) => {
-                        const allowed = permsData?.[pg.key] ?? false;
-                        return (
-                          <div
-                            key={pg.key}
-                            className={cn(
-                              "flex items-center justify-between px-4 py-3 rounded-xl border transition-all",
-                              allowed ? "bg-white border-border shadow-sm" : "bg-muted/30 border-border/50"
-                            )}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className={cn("h-2.5 w-2.5 rounded-full", pg.color)} />
-                              <span className="text-sm text-foreground font-medium">{pg.label}</span>
-                            </div>
-                            <Switch
-                              checked={allowed}
-                              onCheckedChange={() => toggleMutation.mutate({ userId: user.id, pageKey: pg.key, canAccess: !allowed })}
-                              disabled={toggleMutation.isPending}
-                            />
+                    <div className="space-y-4">
+                      {PAGE_SECTIONS.map((section) => (
+                        <div key={section.section}>
+                          {/* Section header */}
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={cn("h-2 w-2 rounded-full", section.color)} />
+                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{section.section}</span>
                           </div>
-                        );
-                      })}
+                          {/* Table */}
+                          <div className="rounded-lg border border-border overflow-hidden">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="bg-muted/40 border-b border-border">
+                                  <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground w-full">Page</th>
+                                  <th className="px-4 py-2 text-xs font-semibold text-muted-foreground text-center whitespace-nowrap">View</th>
+                                  <th className="px-4 py-2 text-xs font-semibold text-muted-foreground text-center whitespace-nowrap">Edit</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {section.pages.map((pg, idx) => {
+                                  const perm = permsData?.[pg.key] as { canAccess: boolean; canEdit: boolean } | undefined;
+                                  const canView = perm?.canAccess ?? false;
+                                  const canEdit = perm?.canEdit ?? false;
+                                  return (
+                                    <tr key={pg.key} className={cn("border-b border-border last:border-0", idx % 2 === 0 ? "bg-background" : "bg-muted/20")}>
+                                      <td className="px-4 py-2.5 font-medium text-foreground">{pg.label}</td>
+                                      <td className="px-4 py-2.5 text-center">
+                                        <Switch
+                                          checked={canView}
+                                          onCheckedChange={(checked) =>
+                                            setPagePermMutation.mutate({
+                                              userId: user.id,
+                                              pageKey: pg.key,
+                                              canAccess: checked,
+                                              canEdit: checked ? canEdit : false,
+                                            })
+                                          }
+                                          disabled={setPagePermMutation.isPending}
+                                        />
+                                      </td>
+                                      <td className="px-4 py-2.5 text-center">
+                                        <Switch
+                                          checked={canEdit}
+                                          onCheckedChange={(checked) =>
+                                            setPagePermMutation.mutate({
+                                              userId: user.id,
+                                              pageKey: pg.key,
+                                              canAccess: checked ? true : canView,
+                                              canEdit: checked,
+                                            })
+                                          }
+                                          disabled={setPagePermMutation.isPending || !canView}
+                                        />
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

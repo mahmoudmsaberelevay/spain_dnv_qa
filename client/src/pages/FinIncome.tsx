@@ -227,6 +227,7 @@ export default function FinIncome() {
 
   return (
     <div className="space-y-6">
+      {/* Page header — title left, exports right */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Income</h1>
         <div className="flex items-center gap-2">
@@ -242,10 +243,18 @@ export default function FinIncome() {
               Delete ({selected.size})
             </Button>
           )}
-          <Button onClick={() => { setForm({ description: "", accountId: "", categoryId: "", amount: "", note: "", finClientId: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}>
-            <Plus className="h-4 w-4 mr-1" /> Record Income
-          </Button>
         </div>
+      </div>
+
+      {/* Record Income button — centered */}
+      <div className="flex justify-center">
+        <Button
+          size="lg"
+          className="gap-2 px-8"
+          onClick={() => { setForm({ description: "", accountId: "", categoryId: "", amount: "", note: "", finClientId: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}
+        >
+          <Plus className="h-5 w-5" /> Record Income
+        </Button>
       </div>
 
       <Card className="border-0 shadow-sm">

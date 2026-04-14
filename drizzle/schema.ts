@@ -423,6 +423,8 @@ export const userPermissions = mysqlTable("userPermissions", {
   userId: int("userId").notNull(),
   pageKey: varchar("pageKey", { length: 100 }).notNull(), // e.g. "contracting", "finance", "docs", "analysis", "chat"
   canAccess: boolean("canAccess").default(false).notNull(),
+  canEdit: boolean("canEdit").default(false).notNull(),     // can create/edit/delete within this page
+  canCreate: boolean("canCreate").default(false).notNull(), // can create records (used for finance-creator role)
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type UserPermission = typeof userPermissions.$inferSelect;
@@ -464,6 +466,8 @@ export const groupPermissions = mysqlTable("groupPermissions", {
   groupId: int("groupId").notNull(),
   pageKey: varchar("pageKey", { length: 100 }).notNull(),
   canAccess: boolean("canAccess").default(false).notNull(),
+  canEdit: boolean("canEdit").default(false).notNull(),     // can create/edit/delete within this page
+  canCreate: boolean("canCreate").default(false).notNull(), // can create records (used for finance-creator role)
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type GroupPermission = typeof groupPermissions.$inferSelect;

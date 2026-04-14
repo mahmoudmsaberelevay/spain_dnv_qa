@@ -412,3 +412,7 @@
 - [x] Server: update `markPaid` — when `isLegacyReceipt=true`, skip auto-create Finance client and skip remaining balance update
 - [x] UI: add Contract / Legacy Receipt tab switcher to Create Receipt dialog
 - [x] UI: Legacy tab — live-search combobox for Finance clients (code + name), EUR amount, EGP amount (auto from rate, editable), notes
+
+## Change Requests (Round 49)
+- [ ] Move New Income / New Expense / New Transfer buttons to top center of their pages
+- [ ] Complete granular permissions Settings UI (View/Edit matrix per user per page)

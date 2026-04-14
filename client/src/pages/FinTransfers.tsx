@@ -200,6 +200,7 @@ export default function FinTransfers() {
 
   return (
     <div className="space-y-6">
+      {/* Page header — title left, exports right */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Transfers</h1>
         <div className="flex items-center gap-2">
@@ -211,10 +212,18 @@ export default function FinTransfers() {
               Delete Selected ({selected.size})
             </Button>
           )}
-          <Button onClick={() => { setForm({ description: "", fromAccountId: "", toAccountId: "", amount: "", exchangeRate: "1", note: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}>
-            <Plus className="h-4 w-4 mr-1" /> New Transfer
-          </Button>
         </div>
+      </div>
+
+      {/* New Transfer button — centered */}
+      <div className="flex justify-center">
+        <Button
+          size="lg"
+          className="gap-2 px-8"
+          onClick={() => { setForm({ description: "", fromAccountId: "", toAccountId: "", amount: "", exchangeRate: "1", note: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}
+        >
+          <Plus className="h-5 w-5" /> New Transfer
+        </Button>
       </div>
 
       <Card className="border-0 shadow-sm">
