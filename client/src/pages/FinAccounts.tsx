@@ -131,7 +131,6 @@ export default function FinAccounts() {
                   <thead>
                     <tr className="border-b">
                       <th className="text-left py-2 font-medium">Account Name</th>
-                      <th className="text-right py-2 font-medium text-muted-foreground">Opening Balance (1/1/2026)</th>
                       <th className="text-right py-2 font-medium">Current Balance</th>
                       <th className="text-center py-2 font-medium">Status</th>
                       <th className="text-right py-2 font-medium">Actions</th>
@@ -151,9 +150,6 @@ export default function FinAccounts() {
                             )}
                             <span>{acc.name}</span>
                           </div>
-                        </td>
-                        <td className="py-2.5 text-right text-muted-foreground">
-                          {currency} {fmt(Number(acc.openingBalance ?? 0))}
                         </td>
                         <td className={`py-2.5 text-right font-semibold ${Number(acc.balance) < 0 ? "text-red-600" : ""}`}>
                           {currency} {fmt(Number(acc.balance))}
