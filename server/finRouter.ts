@@ -5,7 +5,7 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
 import { finAccounts, finTransactions, appSettings } from "../drizzle/schema";
 import {
-  listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance, recalcAccountBalance,
+  listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance, recalcAccountBalance, recalcAllAccountBalances,
   listCategories, createCategory, updateCategory, deleteCategory,
   listEmployees, createEmployee, updateEmployee, deleteEmployee,
   listFinClients, countFinClients, getFinClientTotals, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment, setClientPaidAmount,
@@ -105,6 +105,11 @@ const accountsRouter = router({
       const newBalance = input.openingBalance + net;
       await db.update(finAccounts).set({ balance: String(newBalance) }).where(eq(finAccounts.id, input.id));
       return getAccountById(input.id);
+    }),
+  recalcAll: finAdminProcedure
+    .mutation(async () => {
+      await recalcAllAccountBalances();
+      return { success: true };
     }),
   statement: finReadProcedure
     .input(z.object({
@@ -801,6 +806,7 @@ const bulkRouter = router({
     .mutation(async ({ ctx, input }) => {
       let created = 0;
       let errors: string[] = [];
+      const affectedAccountIds = new Set<number>();
       for (let i = 0; i < input.transactions.length; i++) {
         const tx = input.transactions[i];
         try {
@@ -808,7 +814,6 @@ const bulkRouter = router({
             const account = await getAccountById(tx.accountId!);
             if (!account) { errors.push(`Row ${i + 1}: Account not found`); continue; }
             const bb = Number(account.balance);
-            await updateAccountBalance(tx.accountId!, tx.amount);
             await createTransaction({
               type: "income", description: tx.description, accountId: tx.accountId!,
               categoryId: tx.categoryId ?? null, note: tx.note ?? null,
@@ -817,11 +822,11 @@ const bulkRouter = router({
               balanceBefore: bb.toString(), balanceAfter: (bb + tx.amount).toString(),
               createdBy: ctx.user?.email ?? null,
             });
+            affectedAccountIds.add(tx.accountId!);
           } else if (tx.type === "expense") {
             const account = await getAccountById(tx.accountId!);
             if (!account) { errors.push(`Row ${i + 1}: Account not found`); continue; }
             const bb = Number(account.balance);
-            await updateAccountBalance(tx.accountId!, -tx.amount);
             await createTransaction({
               type: "expense", description: tx.description, accountId: tx.accountId!,
               categoryId: tx.categoryId ?? null, note: tx.note ?? null,
@@ -830,6 +835,7 @@ const bulkRouter = router({
               balanceBefore: bb.toString(), balanceAfter: (bb - tx.amount).toString(),
               createdBy: ctx.user?.email ?? null,
             });
+            affectedAccountIds.add(tx.accountId!);
           } else if (tx.type === "transfer") {
             const fromAcc = await getAccountById(tx.fromAccountId!);
             const toAcc = await getAccountById(tx.toAccountId!);
@@ -837,8 +843,6 @@ const bulkRouter = router({
             const bb1 = Number(fromAcc.balance);
             const received = tx.exchangeRate ? tx.amount * tx.exchangeRate : tx.amount;
             const bb2 = Number(toAcc.balance);
-            await updateAccountBalance(tx.fromAccountId!, -tx.amount);
-            await updateAccountBalance(tx.toAccountId!, received);
             await createTransaction({
               type: "transfer", description: tx.description,
               fromAccountId: tx.fromAccountId!, toAccountId: tx.toAccountId!,
@@ -849,12 +853,16 @@ const bulkRouter = router({
               balanceBefore2: bb2.toString(), balanceAfter2: (bb2 + received).toString(),
               createdBy: ctx.user?.email ?? null,
             });
+            affectedAccountIds.add(tx.fromAccountId!);
+            affectedAccountIds.add(tx.toAccountId!);
           }
           created++;
         } catch (e: any) {
           errors.push(`Row ${i + 1}: ${e.message}`);
         }
       }
+      // Recalculate all affected account balances from scratch after the bulk insert
+      await Promise.all(Array.from(affectedAccountIds).map(id => recalcAccountBalance(id)));
       return { created, errors };
     }),
 });

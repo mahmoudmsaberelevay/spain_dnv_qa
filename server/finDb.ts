@@ -31,25 +31,49 @@ export async function updateAccountBalance(id: number, amount: number) {
 }
 
 /**
- * Fully recalculate an account's balance from scratch:
- *   balance = openingBalance + Σ(income) − Σ(expenses) + Σ(transfers-in) − Σ(transfers-out)
+ * Fully recalculate a single account's balance using DB-level aggregation:
+ *   balance = openingBalance
+ *           + SUM(income where accountId=id)
+ *           - SUM(expense where accountId=id)
+ *           - SUM(transfer.amount where fromAccountId=id)
+ *           + SUM(transfer.convertedAmount where toAccountId=id)
  * Call this after any income/expense/transfer create, update, or delete.
  */
 export async function recalcAccountBalance(id: number) {
   const db = await getDb(); if (!db) return;
   const [account] = await db.select().from(finAccounts).where(eq(finAccounts.id, id));
   if (!account) return;
-  const txRows = await db.select().from(finTransactions);
-  const accTx = txRows.filter(t => t.accountId === id || t.fromAccountId === id || t.toAccountId === id);
-  let net = 0;
-  for (const t of accTx) {
-    if (t.type === 'income' && t.accountId === id) net += Number(t.amount);
-    else if (t.type === 'expense' && t.accountId === id) net -= Number(t.amount);
-    else if (t.type === 'transfer' && t.fromAccountId === id) net -= Number(t.amount);
-    else if (t.type === 'transfer' && t.toAccountId === id) net += Number(t.convertedAmount ?? t.amount);
-  }
+
+  const [incomeRow] = await db.select({
+    total: sql<string>`COALESCE(SUM(CAST(${finTransactions.amount} AS DECIMAL(20,4))), 0)`,
+  }).from(finTransactions).where(and(eq(finTransactions.type, 'income'), eq(finTransactions.accountId, id)));
+
+  const [expenseRow] = await db.select({
+    total: sql<string>`COALESCE(SUM(CAST(${finTransactions.amount} AS DECIMAL(20,4))), 0)`,
+  }).from(finTransactions).where(and(eq(finTransactions.type, 'expense'), eq(finTransactions.accountId, id)));
+
+  const [transferOutRow] = await db.select({
+    total: sql<string>`COALESCE(SUM(CAST(${finTransactions.amount} AS DECIMAL(20,4))), 0)`,
+  }).from(finTransactions).where(and(eq(finTransactions.type, 'transfer'), eq(finTransactions.fromAccountId, id)));
+
+  const [transferInRow] = await db.select({
+    total: sql<string>`COALESCE(SUM(CAST(COALESCE(${finTransactions.convertedAmount}, ${finTransactions.amount}) AS DECIMAL(20,4))), 0)`,
+  }).from(finTransactions).where(and(eq(finTransactions.type, 'transfer'), eq(finTransactions.toAccountId, id)));
+
+  const net = Number(incomeRow.total) - Number(expenseRow.total)
+            - Number(transferOutRow.total) + Number(transferInRow.total);
   const newBalance = Number(account.openingBalance) + net;
   await db.update(finAccounts).set({ balance: String(newBalance) }).where(eq(finAccounts.id, id));
+}
+
+/**
+ * Recalculate ALL account balances from scratch.
+ * Use this as a one-time repair or after bulk imports.
+ */
+export async function recalcAllAccountBalances() {
+  const db = await getDb(); if (!db) return;
+  const accounts = await db.select().from(finAccounts);
+  await Promise.all(accounts.map(a => recalcAccountBalance(a.id)));
 }
 
 // ─── Categories ──────────────────────────────────────────────────────────────

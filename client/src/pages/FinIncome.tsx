@@ -88,6 +88,9 @@ export default function FinIncome() {
   const updateMut = trpc.financial.transactions.updateTransaction.useMutation({
     onSuccess: () => {
       utils.financial.transactions.list.invalidate();
+      utils.financial.transactions.count.invalidate();
+      utils.financial.accounts.list.invalidate();
+      utils.financial.dashboard.summary.invalidate();
       toast.success("Transaction updated");
       setEditTx(null);
     },

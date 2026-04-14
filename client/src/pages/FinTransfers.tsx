@@ -42,6 +42,7 @@ export default function FinTransfers() {
   const createMut = trpc.financial.transactions.createTransfer.useMutation({
     onSuccess: () => {
       utils.financial.transactions.list.invalidate();
+      utils.financial.transactions.count.invalidate();
       utils.financial.accounts.list.invalidate();
       utils.financial.dashboard.summary.invalidate();
       toast.success("Transfer completed");
@@ -53,6 +54,7 @@ export default function FinTransfers() {
   const bulkDeleteMut = trpc.financial.transactions.bulkDelete.useMutation({
     onSuccess: (res) => {
       utils.financial.transactions.list.invalidate();
+      utils.financial.transactions.count.invalidate();
       utils.financial.accounts.list.invalidate();
       utils.financial.dashboard.summary.invalidate();
       toast.success(`${res.deleted} transfer${res.deleted !== 1 ? "s" : ""} deleted`);
@@ -64,6 +66,7 @@ export default function FinTransfers() {
   const updateMut = trpc.financial.transactions.updateTransfer.useMutation({
     onSuccess: () => {
       utils.financial.transactions.list.invalidate();
+      utils.financial.transactions.count.invalidate();
       utils.financial.accounts.list.invalidate();
       utils.financial.dashboard.summary.invalidate();
       toast.success("Transfer updated");

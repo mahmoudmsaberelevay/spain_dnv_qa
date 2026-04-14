@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Edit2, Scale } from "lucide-react";
+import { Plus, Edit2, Scale, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -24,6 +24,15 @@ export default function FinAccounts() {
     onSuccess: () => { utils.financial.accounts.list.invalidate(); toast.success("Account updated"); setEditAccount(null); },
     onError: (e) => toast.error(e.message),
   });
+  const recalcAllMut = trpc.financial.accounts.recalcAll.useMutation({
+    onSuccess: () => {
+      utils.financial.accounts.list.invalidate();
+      utils.financial.dashboard.summary.invalidate();
+      toast.success("All account balances recalculated");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const setBalanceMut = trpc.financial.accounts.setBalance.useMutation({
     onSuccess: () => {
       utils.financial.accounts.list.invalidate();
@@ -78,6 +87,16 @@ export default function FinAccounts() {
               <SelectItem value="AED">AED</SelectItem>
             </SelectContent>
           </Select>
+          <Button
+            variant="outline"
+            onClick={() => recalcAllMut.mutate()}
+            disabled={recalcAllMut.isPending}
+            title="Recalculate all account balances from scratch"
+            className="gap-1.5"
+          >
+            <RefreshCw className={`h-4 w-4 ${recalcAllMut.isPending ? 'animate-spin' : ''}`} />
+            Recalc All
+          </Button>
           <Button onClick={() => { setNewName(""); setNewCurrency("EGP"); setShowCreate(true); }}>
             <Plus className="h-4 w-4 mr-1" /> New Account
           </Button>
