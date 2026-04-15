@@ -97,6 +97,15 @@ export default function ProformaInvoices() {
     },
   });
 
+  const convertToReceiptMutation = trpc.contracting.proformaInvoices.convertToReceipt.useMutation({
+    onSuccess: (data) => {
+      utils.contracting.invoices.list.invalidate();
+      utils.contracting.proformaInvoices.list.invalidate();
+      toast.success(`Receipt ${data.invoiceCode} created successfully!`);
+    },
+    onError: (err) => toast.error(`Failed to convert: ${err.message}`),
+  });
+
   const createLegacyMutation = trpc.contracting.proformaInvoices.create.useMutation({
     onSuccess: () => {
       utils.contracting.proformaInvoices.list.invalidate();
@@ -159,11 +168,11 @@ export default function ProformaInvoices() {
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedContractId || !amountEur || !notes.trim()) return;
+    if (!selectedContractId || !amountEur) return;
     createMutation.mutate({
       contractId: Number(selectedContractId),
       amountEur: Number(amountEur),
-      notes: notes.trim(), // required field
+      notes: notes.trim() || undefined,
     });
   };
 
@@ -331,6 +340,19 @@ export default function ProformaInvoices() {
                             >
                               <Mail className="h-3.5 w-3.5" />
                               Email
+                            </Button>
+                          )}
+                          {proforma.contractId && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 gap-1 text-xs text-purple-700 hover:text-purple-800 hover:bg-purple-50"
+                              onClick={() => convertToReceiptMutation.mutate({ id: proforma.id })}
+                              disabled={convertToReceiptMutation.isPending}
+                              title="Convert to Receipt"
+                            >
+                              {convertToReceiptMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Receipt className="h-3.5 w-3.5" />}
+                              Receipt
                             </Button>
                           )}
                           {proforma.status === "pending" && (

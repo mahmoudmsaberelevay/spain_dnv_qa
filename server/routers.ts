@@ -1089,7 +1089,7 @@ const contractingRouter = router({
       .input(z.object({
         contractId: z.number().optional(),
         amountEur: z.number().positive(),
-        notes: z.string().min(1),
+        notes: z.string().optional(),
         legacyFinClientId: z.number().optional(),
         isLegacy: z.boolean().optional(),
         legacyAmountEgp: z.number().optional(),
@@ -1116,7 +1116,7 @@ const contractingRouter = router({
           amountEur: String(input.amountEur),
           amountEgp: String(input.legacyAmountEgp ?? amountEgp),
           exchangeRate: String(rateInfo.rate),
-          notes: input.notes,
+          notes: input.notes ?? "",
         });
         const pdfUrl = await generateAndUploadProformaPdf({
           proformaCode,
@@ -1165,6 +1165,40 @@ const contractingRouter = router({
         await updateProformaInvoicePdfUrl(input.id, pdfUrl);
         return { pdfUrl };
       }),
+    convertToReceipt: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const inv = await getProformaInvoiceById(input.id);
+        if (!inv) throw new TRPCError({ code: "NOT_FOUND", message: "Proforma invoice not found" });
+        if (!inv.contractId) throw new TRPCError({ code: "BAD_REQUEST", message: "Legacy proforma invoices cannot be converted. Please create a receipt manually." });
+        const contract = await getContractById(inv.contractId);
+        if (!contract) throw new TRPCError({ code: "NOT_FOUND", message: "Contract not found" });
+        if (contract.status !== "signed") throw new TRPCError({ code: "BAD_REQUEST", message: "Can only create receipts for signed contracts" });
+        const rateInfo = await getEurToEgpRate();
+        const amountEur = Number(inv.amountEur);
+        const amountEgp = convertEurToEgp(amountEur, rateInfo.rate);
+        const invoiceCode = generateInvoiceCode();
+        const totalPaid = await getTotalPaidByContractId(inv.contractId);
+        const contractValue = Number(contract.contractValue);
+        const remainingBalance = contractValue - totalPaid - amountEur;
+        const billingName = contract.invoicingName || contract.clientName;
+        const clientMobile = contract.clientMobile || "";
+        const notes = inv.notes ?? `Converted from Proforma Invoice ${inv.proformaCode}`;
+        const pdfUrl = await generateAndUploadInvoicePdf({
+          invoiceCode, contractCode: contract.contractCode, clientName: billingName, clientMobile,
+          amountEur, amountEgp, exchangeRate: rateInfo.rate,
+          contractValue, totalPaid: totalPaid + amountEur, remainingBalance,
+          createdAt: new Date(), notes,
+        });
+        const invoice = await createInvoice({
+          invoiceCode, contractId: inv.contractId, contractCode: contract.contractCode,
+          clientName: billingName, amountEur: amountEur.toString(),
+          amountEgp: amountEgp.toString(), exchangeRate: rateInfo.rate.toString(),
+          status: "unpaid", pdfUrl, notes,
+        });
+        notifyNewInvoice(invoiceCode, contract.contractCode, billingName, amountEur, remainingBalance).catch(() => {});
+        return { invoiceCode, invoiceId: invoice.id, pdfUrl };
+      }),
   }),
   exchangeRate: router({
     current: publicProcedure.query(async () => getEurToEgpRate()),
@@ -1177,6 +1211,47 @@ const contractingRouter = router({
       .query(async ({ input }) => getRecentContracts(input.limit ?? 10)),
     consultantStats: protectedProcedure.query(async () => getConsultantStats()),
   }),
+  // Client search for invoice/proforma creation — accessible to all logged-in users
+  searchClients: protectedProcedure
+    .input(z.object({ search: z.string().optional() }))
+    .query(async ({ input }) => {
+      const contracts = await getAllContracts();
+      const search = (input.search ?? "").toLowerCase();
+      const seen = new Set<string>();
+      const results: { id: number; name: string; contractCode: string; mobile: string }[] = [];
+      for (const c of contracts) {
+        const key = `${c.clientName}-${c.contractCode}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (!search || c.clientName.toLowerCase().includes(search) || c.contractCode.toLowerCase().includes(search)) {
+          results.push({ id: c.id, name: c.clientName, contractCode: c.contractCode, mobile: c.clientMobile || "" });
+        }
+      }
+      return results.slice(0, 50);
+    }),
+  // Financial client search — accessible to all logged-in users (so Fouad can pick legacy clients)
+  searchFinClients: protectedProcedure
+    .input(z.object({ search: z.string().optional() }))
+    .query(async ({ input }) => {
+      const { getDb } = await import("./db");
+      const db = await getDb();
+      if (!db) return [];
+      const { finClients } = await import("../drizzle/schema");
+      const search = (input.search ?? "").toLowerCase();
+      let rows;
+      if (search) {
+        const { like, or } = await import("drizzle-orm");
+        rows = await db.select({ id: finClients.id, name: finClients.name, clientCode: finClients.clientCode })
+          .from(finClients)
+          .where(or(like(finClients.name, `%${search}%`), like(finClients.clientCode, `%${search}%`)))
+          .limit(50);
+      } else {
+        rows = await db.select({ id: finClients.id, name: finClients.name, clientCode: finClients.clientCode })
+          .from(finClients)
+          .limit(100);
+      }
+      return rows;
+    }),
 });
 
 /// ─── Client Documentation Router ───────────────────────────────────────────

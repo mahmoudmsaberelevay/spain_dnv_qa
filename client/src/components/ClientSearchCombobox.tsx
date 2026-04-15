@@ -15,11 +15,29 @@ export function ClientSearchCombobox({ value, onChange, placeholder = "Search by
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { data: allClients } = trpc.financial.clients.list.useQuery();
+  // Primary: financial clients list (requires financial role)
+  const { data: finClients, error: finClientsError } = trpc.financial.clients.list.useQuery(
+    undefined,
+    {
+      retry: false, // don't retry on permission errors
+    }
+  );
+
+  // Fallback: contracting-side financial client search (accessible to all logged-in users)
+  const { data: contractingFinClients } = trpc.contracting.searchFinClients.useQuery(
+    { search: query.trim() || undefined },
+    {
+      enabled: !!finClientsError, // only activate when financial list fails
+      staleTime: 30000,
+    }
+  );
+
+  // Use whichever source is available
+  const allClients = finClients ?? contractingFinClients ?? [];
 
   // Find the currently selected client label
   const selectedLabel = useMemo(() => {
-    if (!value || value === "none" || !allClients) return "";
+    if (!value || value === "none" || !allClients.length) return "";
     const c = allClients.find((c: any) => String(c.id) === value);
     if (!c) return "";
     return c.clientCode ? `[${c.clientCode}] ${c.name}` : c.name;
@@ -27,7 +45,7 @@ export function ClientSearchCombobox({ value, onChange, placeholder = "Search by
 
   // Filter clients by query (matches name or clientCode)
   const filtered = useMemo(() => {
-    if (!allClients) return [];
+    if (!allClients.length) return [];
     const q = query.trim().toLowerCase();
     if (!q) return allClients.slice(0, 50); // show first 50 when no query
     return allClients.filter((c: any) => {
