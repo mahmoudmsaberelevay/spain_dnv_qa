@@ -496,6 +496,22 @@ export const groupPermissions = mysqlTable("groupPermissions", {
 export type GroupPermission = typeof groupPermissions.$inferSelect;
 export type InsertGroupPermission = typeof groupPermissions.$inferInsert;
 
+// ─── Module Permissions (simplified 4-module access control) ────────────────────
+// One row per user per module. accessLevel: 'none' | 'viewer' | 'full'
+// Modules: contracting, clientDocs, appAnalysis, financial
+// 'full' = can view + create + edit + delete
+// 'viewer' = can only view (no create/edit/delete)
+// 'none' = blocked (PageGuard shows 403)
+export const modulePermissions = mysqlTable("modulePermissions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  module: varchar("module", { length: 50 }).notNull(), // 'contracting' | 'clientDocs' | 'appAnalysis' | 'financial'
+  accessLevel: mysqlEnum("accessLevel", ["none", "viewer", "full"]).default("none").notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ModulePermission = typeof modulePermissions.$inferSelect;
+export type InsertModulePermission = typeof modulePermissions.$inferInsert;
+
 // ─── Settlement Payments (After Settlement / Dubai Afterlanding Services) ─────
 // Tracks post-settlement payments in AED. EUR = AED / 4.
 export const settlementPayments = mysqlTable("settlementPayments", {

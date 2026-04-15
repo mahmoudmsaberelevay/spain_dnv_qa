@@ -1,11 +1,26 @@
 /**
- * permissionsRouter — owner-only procedures for managing user access.
+ * permissionsRouter — manages user access via 4 top-level modules.
  *
- * All write procedures require the caller to be the platform owner (OWNER_OPEN_ID).
- * Regular users can call getMyPermissions to read their own access map.
+ * MODULE ACCESS LEVELS:
+ *   full   → can view + create + edit + delete everything in the module
+ *   viewer → can only view (read-only), no create/edit/delete
+ *   none   → blocked (PageGuard shows 403)
  *
- * PAGE KEYS (must match frontend route guards):
- *   contracting, finance, docs, analysis, chat, broadcast
+ * MODULES:
+ *   contracting  → Contracts, Receipts, Proforma Invoices, Analytics
+ *   clientDocs   → Client Documentation
+ *   appAnalysis  → Application Analysis
+ *   financial    → All Financial sub-pages
+ *
+ * DEFAULT (new users): contracting=full, clientDocs=full, appAnalysis=none, financial=none
+ *
+ * PAGE KEY MAPPING (used by PageGuard):
+ *   contracting  → contracts, receipts (proforma uses receipts key)
+ *   clientDocs   → client_docs
+ *   appAnalysis  → analysis_dashboard, cases
+ *   financial    → fin_dashboard, fin_accounts, fin_income, fin_expenses,
+ *                  fin_transfers, fin_reports, fin_employees, fin_categories,
+ *                  fin_commissions, fin_clients, fin_bulk_upload, fin_settlement
  */
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -13,276 +28,317 @@ import { router, protectedProcedure } from "./_core/trpc";
 import { ENV } from "./_core/env";
 import { getDb } from "./db";
 import {
+  modulePermissions,
   userPermissions,
   pendingInvites,
   users,
-  userGroups,
-  groupPermissions,
 } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
 
-async function requireDb(): Promise<NonNullable<Awaited<ReturnType<typeof getDb>>>> {
-  const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
-  return db;
-}
+// ── Types ─────────────────────────────────────────────────────────────────────
+export type ModuleName = "contracting" | "clientDocs" | "appAnalysis" | "financial";
+export type AccessLevel = "none" | "viewer" | "full";
 
-// All pages that can be toggled per user / group (granular — one key per page)
+export const ALL_MODULES: ModuleName[] = ["contracting", "clientDocs", "appAnalysis", "financial"];
+
+// Default access for new / existing users
+export const DEFAULT_MODULE_ACCESS: Record<ModuleName, AccessLevel> = {
+  contracting: "full",
+  clientDocs: "full",
+  appAnalysis: "none",
+  financial: "none",
+};
+
+// Maps module → page keys used by PageGuard
+export const MODULE_PAGE_KEYS: Record<ModuleName, string[]> = {
+  contracting: ["contracts", "receipts"],
+  clientDocs: ["client_docs"],
+  appAnalysis: ["analysis_dashboard", "cases"],
+  financial: [
+    "fin_dashboard", "fin_accounts", "fin_income", "fin_expenses",
+    "fin_transfers", "fin_reports", "fin_employees", "fin_categories",
+    "fin_commissions", "fin_clients", "fin_bulk_upload", "fin_settlement",
+  ],
+};
+
+// All page keys (for backward compat)
 export const ALL_PAGE_KEYS = [
-  // Contracting module
-  "contracts",
-  "receipts",
-  // Application Analysis module
-  "analysis_dashboard",
-  "cases",
-  // Client Documentation module
+  "contracts", "receipts",
+  "analysis_dashboard", "cases",
   "client_docs",
-  // Financial module
-  "fin_dashboard",
-  "fin_accounts",
-  "fin_income",
-  "fin_expenses",
-  "fin_transfers",
-  "fin_reports",
-  "fin_employees",
-  "fin_categories",
-  "fin_commissions",
-  "fin_clients",
-  "fin_bulk_upload",
-  "fin_settlement",
-  // System
-  "settings",
-  "chat",
-  "broadcast",
+  "fin_dashboard", "fin_accounts", "fin_income", "fin_expenses",
+  "fin_transfers", "fin_reports", "fin_employees", "fin_categories",
+  "fin_commissions", "fin_clients", "fin_bulk_upload", "fin_settlement",
+  "settings", "chat", "broadcast",
 ] as const;
 export type PageKey = (typeof ALL_PAGE_KEYS)[number];
 
-// Super-admin emails — full edit access to everything
+// Super-admin emails — full access to everything
 const SUPER_ADMIN_EMAILS = [
   "mahmoud.saberelevay@gmail.com",
   "mahmoud.saber@elevay.com",
 ];
 
-// Helper: check if a user is the owner or super-admin
 function isOwner(user: { openId: string; email?: string | null }): boolean {
   return user.openId === ENV.ownerOpenId || SUPER_ADMIN_EMAILS.includes((user.email ?? "").toLowerCase());
 }
 
-// Middleware: only the owner can call this
+// Helper: resolve page-level booleans from module access level
+function moduleToPageFlags(level: AccessLevel): { canAccess: boolean; canEdit: boolean; canCreate: boolean } {
+  return {
+    canAccess: level !== "none",
+    canEdit: level === "full",
+    canCreate: level === "full",
+  };
+}
+
+async function requireDb() {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+  return db;
+}
+
+// Fetch module access map for a user (falls back to defaults if no rows)
+async function getUserModuleAccess(userId: number): Promise<Record<ModuleName, AccessLevel>> {
+  const db = await requireDb();
+  const rows = await db
+    .select({ module: modulePermissions.module, accessLevel: modulePermissions.accessLevel })
+    .from(modulePermissions)
+    .where(eq(modulePermissions.userId, userId));
+
+  const result = { ...DEFAULT_MODULE_ACCESS };
+  for (const row of rows) {
+    if (ALL_MODULES.includes(row.module as ModuleName)) {
+      result[row.module as ModuleName] = row.accessLevel as AccessLevel;
+    }
+  }
+  return result;
+}
+
+// Ensure a user has module permission rows (seed defaults if missing)
+async function ensureUserModuleDefaults(userId: number) {
+  const db = await requireDb();
+  for (const mod of ALL_MODULES) {
+    const existing = await db
+      .select({ id: modulePermissions.id })
+      .from(modulePermissions)
+      .where(and(eq(modulePermissions.userId, userId), eq(modulePermissions.module, mod)))
+      .limit(1);
+    if (existing.length === 0) {
+      await db.insert(modulePermissions).values({
+        userId,
+        module: mod,
+        accessLevel: DEFAULT_MODULE_ACCESS[mod],
+      });
+    }
+  }
+}
+
+// ── Router ────────────────────────────────────────────────────────────────────
 const ownerProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (!isOwner(ctx.user)) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "Only the platform owner can access this.",
-    });
+    throw new TRPCError({ code: "FORBIDDEN", message: "Only the platform owner can access this." });
   }
   return next({ ctx });
 });
 
 export const permissionsRouter = router({
+
   // ── Any authenticated user: get their own permission map ──────────────────
   getMyPermissions: protectedProcedure.query(async ({ ctx }) => {
-    // Super-admin always has full access + full edit
     if (isOwner(ctx.user)) {
       const full: Record<string, boolean> = {};
-      const fullEdit: Record<string, boolean> = {};
-      const fullCreate: Record<string, boolean> = {};
-      for (const k of ALL_PAGE_KEYS) { full[k] = true; fullEdit[k] = true; fullCreate[k] = true; }
+      for (const k of ALL_PAGE_KEYS) { full[k] = true; }
+      const moduleAccess: Record<string, AccessLevel> = {};
+      for (const m of ALL_MODULES) moduleAccess[m] = "full";
       return {
         permissions: full,
-        editPermissions: fullEdit,
-        createPermissions: fullCreate,
+        editPermissions: { ...full },
+        createPermissions: { ...full },
+        moduleAccess,
         isOwner: true,
-        groupId: null as number | null,
-        groupName: null as string | null,
       };
     }
 
-    const db = await requireDb();
+    // Ensure defaults exist
+    await ensureUserModuleDefaults(ctx.user.id);
+    const moduleAccess = await getUserModuleAccess(ctx.user.id);
 
-    // Check if user belongs to a group
-    const userRow = await db
-      .select({ groupId: users.groupId })
-      .from(users)
-      .where(eq(users.id, ctx.user.id));
-
-    const groupId = userRow[0]?.groupId ?? null;
-
+    // Build page-level flags from module access
     const permissions: Record<string, boolean> = {};
     const editPermissions: Record<string, boolean> = {};
     const createPermissions: Record<string, boolean> = {};
-    for (const k of ALL_PAGE_KEYS) { permissions[k] = false; editPermissions[k] = false; createPermissions[k] = false; }
 
-    if (groupId) {
-      // Use group permissions
-      const rows = await db
-        .select()
-        .from(groupPermissions)
-        .where(eq(groupPermissions.groupId, groupId));
-      for (const row of rows) {
-        permissions[row.pageKey] = row.canAccess;
-        editPermissions[row.pageKey] = row.canEdit;
-        createPermissions[row.pageKey] = row.canCreate;
-      }
-      const groupRow = await db
-        .select({ name: userGroups.name })
-        .from(userGroups)
-        .where(eq(userGroups.id, groupId));
-      return {
-        permissions,
-        editPermissions,
-        createPermissions,
-        isOwner: false,
-        groupId,
-        groupName: groupRow[0]?.name ?? null,
-      };
-    } else {
-      // Use individual permissions
-      const rows = await db
-        .select()
-        .from(userPermissions)
-        .where(eq(userPermissions.userId, ctx.user.id));
-      for (const row of rows) {
-        permissions[row.pageKey] = row.canAccess;
-        editPermissions[row.pageKey] = row.canEdit;
-        createPermissions[row.pageKey] = row.canCreate;
-      }
-      return { permissions, editPermissions, createPermissions, isOwner: false, groupId: null, groupName: null };
+    for (const k of ALL_PAGE_KEYS) {
+      permissions[k] = false;
+      editPermissions[k] = false;
+      createPermissions[k] = false;
     }
+
+    // settings is always accessible to logged-in users
+    permissions["settings"] = true;
+    permissions["chat"] = true;
+    permissions["broadcast"] = true;
+
+    for (const [mod, level] of Object.entries(moduleAccess) as [ModuleName, AccessLevel][]) {
+      const flags = moduleToPageFlags(level);
+      for (const pageKey of MODULE_PAGE_KEYS[mod]) {
+        permissions[pageKey] = flags.canAccess;
+        editPermissions[pageKey] = flags.canEdit;
+        createPermissions[pageKey] = flags.canCreate;
+      }
+    }
+
+    return {
+      permissions,
+      editPermissions,
+      createPermissions,
+      moduleAccess,
+      isOwner: false,
+    };
   }),
 
-  // ── Owner: list all users (with groupId) ─────────────────────────────────
+  // ── Owner: list all users ─────────────────────────────────────────────────
   listUsers: ownerProcedure.query(async () => {
     const db = await requireDb();
-    const allUsers = await db
-      .select({
-        id: users.id,
-        openId: users.openId,
-        name: users.name,
-        email: users.email,
-        role: users.role,
-        groupId: users.groupId,
-        createdAt: users.createdAt,
-        lastSignedIn: users.lastSignedIn,
-      })
-      .from(users)
-      .orderBy(users.createdAt);
-    return allUsers;
+    return db.select({
+      id: users.id,
+      openId: users.openId,
+      name: users.name,
+      email: users.email,
+      role: users.role,
+      createdAt: users.createdAt,
+      lastSignedIn: users.lastSignedIn,
+    }).from(users).orderBy(users.createdAt);
   }),
 
-  // ── Owner: get permissions for a specific user ────────────────────────────
-  getUserPermissions: ownerProcedure
+  // ── Owner: get module access for a specific user ──────────────────────────
+  getUserModuleAccess: ownerProcedure
     .input(z.object({ userId: z.number() }))
     .query(async ({ input }) => {
-      const db = await requireDb();
-      const rows = await db
-        .select()
-        .from(userPermissions)
-        .where(eq(userPermissions.userId, input.userId));
-
-      const permissions: Record<string, { canAccess: boolean; canEdit: boolean }> = {};
-      for (const k of ALL_PAGE_KEYS) permissions[k] = { canAccess: false, canEdit: false };
-      for (const row of rows) {
-        permissions[row.pageKey] = { canAccess: row.canAccess, canEdit: row.canEdit };
-      }
-      return permissions;
+      await ensureUserModuleDefaults(input.userId);
+      return getUserModuleAccess(input.userId);
     }),
 
-  // ── Owner: set a single page permission (canAccess + canEdit) for a user ──
-  setPagePermission: ownerProcedure
-    .input(
-      z.object({
-        userId: z.number(),
-        pageKey: z.string(),
-        canAccess: z.boolean(),
-        canEdit: z.boolean(),
-      })
-    )
+  // ── Owner: set module access level for a user ─────────────────────────────
+  setModuleAccess: ownerProcedure
+    .input(z.object({
+      userId: z.number(),
+      module: z.enum(["contracting", "clientDocs", "appAnalysis", "financial"]),
+      accessLevel: z.enum(["none", "viewer", "full"]),
+    }))
     .mutation(async ({ input }) => {
       const db = await requireDb();
       const existing = await db
-        .select()
-        .from(userPermissions)
-        .where(and(eq(userPermissions.userId, input.userId), eq(userPermissions.pageKey, input.pageKey)));
+        .select({ id: modulePermissions.id })
+        .from(modulePermissions)
+        .where(and(eq(modulePermissions.userId, input.userId), eq(modulePermissions.module, input.module)))
+        .limit(1);
 
       if (existing.length > 0) {
         await db
-          .update(userPermissions)
-          .set({ canAccess: input.canAccess, canEdit: input.canEdit })
-          .where(and(eq(userPermissions.userId, input.userId), eq(userPermissions.pageKey, input.pageKey)));
+          .update(modulePermissions)
+          .set({ accessLevel: input.accessLevel })
+          .where(and(eq(modulePermissions.userId, input.userId), eq(modulePermissions.module, input.module)));
       } else {
-        await db.insert(userPermissions).values({
+        await db.insert(modulePermissions).values({
           userId: input.userId,
-          pageKey: input.pageKey,
-          canAccess: input.canAccess,
-          canEdit: input.canEdit,
+          module: input.module,
+          accessLevel: input.accessLevel,
         });
       }
+
+      // Also sync legacy userPermissions rows for backward compat
+      const pageKeys = MODULE_PAGE_KEYS[input.module];
+      const flags = moduleToPageFlags(input.accessLevel);
+      for (const pageKey of pageKeys) {
+        const legacyExisting = await db
+          .select({ id: userPermissions.id })
+          .from(userPermissions)
+          .where(and(eq(userPermissions.userId, input.userId), eq(userPermissions.pageKey, pageKey)))
+          .limit(1);
+        if (legacyExisting.length > 0) {
+          await db.update(userPermissions)
+            .set({ canAccess: flags.canAccess, canEdit: flags.canEdit, canCreate: flags.canCreate })
+            .where(and(eq(userPermissions.userId, input.userId), eq(userPermissions.pageKey, pageKey)));
+        } else {
+          await db.insert(userPermissions).values({
+            userId: input.userId,
+            pageKey,
+            canAccess: flags.canAccess,
+            canEdit: flags.canEdit,
+            canCreate: flags.canCreate,
+          });
+        }
+      }
+
       return { success: true };
     }),
 
-  // ── Owner: set all permissions for a user at once ────────────────────────
-  setUserPermissions: ownerProcedure
-    .input(
-      z.object({
-        userId: z.number(),
-        permissions: z.record(z.string(), z.boolean()),
-      })
-    )
+  // ── Owner: set ALL module access levels for a user at once ───────────────
+  setAllModuleAccess: ownerProcedure
+    .input(z.object({
+      userId: z.number(),
+      access: z.object({
+        contracting: z.enum(["none", "viewer", "full"]),
+        clientDocs: z.enum(["none", "viewer", "full"]),
+        appAnalysis: z.enum(["none", "viewer", "full"]),
+        financial: z.enum(["none", "viewer", "full"]),
+      }),
+    }))
     .mutation(async ({ input }) => {
       const db = await requireDb();
-      await db.delete(userPermissions).where(eq(userPermissions.userId, input.userId));
-      const rows = ALL_PAGE_KEYS.map((key) => ({
-        userId: input.userId,
-        pageKey: key,
-        canAccess: input.permissions[key] ?? false,
-      }));
-      await db.insert(userPermissions).values(rows);
-      return { success: true };
-    }),
+      for (const [mod, level] of Object.entries(input.access) as [ModuleName, AccessLevel][]) {
+        const existing = await db
+          .select({ id: modulePermissions.id })
+          .from(modulePermissions)
+          .where(and(eq(modulePermissions.userId, input.userId), eq(modulePermissions.module, mod)))
+          .limit(1);
 
-  // ── Owner: toggle a single page permission for a user ────────────────────
-  togglePermission: ownerProcedure
-    .input(
-      z.object({
-        userId: z.number(),
-        pageKey: z.string(),
-        canAccess: z.boolean(),
-      })
-    )
-    .mutation(async ({ input }) => {
-      const db = await requireDb();
-      const existing = await db
-        .select()
-        .from(userPermissions)
-        .where(and(eq(userPermissions.userId, input.userId), eq(userPermissions.pageKey, input.pageKey)));
+        if (existing.length > 0) {
+          await db.update(modulePermissions)
+            .set({ accessLevel: level })
+            .where(and(eq(modulePermissions.userId, input.userId), eq(modulePermissions.module, mod)));
+        } else {
+          await db.insert(modulePermissions).values({ userId: input.userId, module: mod, accessLevel: level });
+        }
 
-      if (existing.length > 0) {
-        await db
-          .update(userPermissions)
-          .set({ canAccess: input.canAccess })
-          .where(and(eq(userPermissions.userId, input.userId), eq(userPermissions.pageKey, input.pageKey)));
-      } else {
-        await db.insert(userPermissions).values({
-          userId: input.userId,
-          pageKey: input.pageKey,
-          canAccess: input.canAccess,
-        });
+        // Sync legacy
+        const flags = moduleToPageFlags(level);
+        for (const pageKey of MODULE_PAGE_KEYS[mod]) {
+          const legacyExisting = await db
+            .select({ id: userPermissions.id })
+            .from(userPermissions)
+            .where(and(eq(userPermissions.userId, input.userId), eq(userPermissions.pageKey, pageKey)))
+            .limit(1);
+          if (legacyExisting.length > 0) {
+            await db.update(userPermissions)
+              .set({ canAccess: flags.canAccess, canEdit: flags.canEdit, canCreate: flags.canCreate })
+              .where(and(eq(userPermissions.userId, input.userId), eq(userPermissions.pageKey, pageKey)));
+          } else {
+            await db.insert(userPermissions).values({
+              userId: input.userId, pageKey,
+              canAccess: flags.canAccess, canEdit: flags.canEdit, canCreate: flags.canCreate,
+            });
+          }
+        }
       }
       return { success: true };
     }),
 
   // ── Owner: add a user manually ────────────────────────────────────────────
   addUserManually: ownerProcedure
-    .input(
-      z.object({
-        name: z.string().min(1),
-        email: z.string().email(),
-        permissions: z.record(z.string(), z.boolean()).optional(),
-        groupId: z.number().optional(),
-      })
-    )
+    .input(z.object({
+      name: z.string().min(1),
+      email: z.string().email(),
+      access: z.object({
+        contracting: z.enum(["none", "viewer", "full"]).default("full"),
+        clientDocs: z.enum(["none", "viewer", "full"]).default("full"),
+        appAnalysis: z.enum(["none", "viewer", "full"]).default("none"),
+        financial: z.enum(["none", "viewer", "full"]).default("none"),
+      }).optional(),
+    }))
     .mutation(async ({ input }) => {
       const db = await requireDb();
       const existing = await db.select().from(users).where(eq(users.email, input.email));
@@ -294,27 +350,23 @@ export const permissionsRouter = router({
       } else {
         const openId = `manual_${crypto.randomBytes(16).toString("hex")}`;
         await db.insert(users).values({
-          openId,
-          name: input.name,
-          email: input.email,
-          loginMethod: "manual",
-          groupId: input.groupId ?? null,
-          lastSignedIn: new Date(),
+          openId, name: input.name, email: input.email,
+          loginMethod: "manual", lastSignedIn: new Date(),
         });
         const created = await db.select().from(users).where(eq(users.openId, openId));
         userId = created[0].id;
       }
 
-      if (input.groupId) {
-        await db.update(users).set({ groupId: input.groupId }).where(eq(users.id, userId));
-      } else if (input.permissions) {
-        await db.delete(userPermissions).where(eq(userPermissions.userId, userId));
-        const rows = ALL_PAGE_KEYS.map((key) => ({
-          userId,
-          pageKey: key,
-          canAccess: input.permissions![key] ?? false,
-        }));
-        await db.insert(userPermissions).values(rows);
+      const access = input.access ?? DEFAULT_MODULE_ACCESS;
+      for (const [mod, level] of Object.entries(access) as [ModuleName, AccessLevel][]) {
+        const ex = await db.select({ id: modulePermissions.id }).from(modulePermissions)
+          .where(and(eq(modulePermissions.userId, userId), eq(modulePermissions.module, mod))).limit(1);
+        if (ex.length > 0) {
+          await db.update(modulePermissions).set({ accessLevel: level })
+            .where(and(eq(modulePermissions.userId, userId), eq(modulePermissions.module, mod)));
+        } else {
+          await db.insert(modulePermissions).values({ userId, module: mod, accessLevel: level });
+        }
       }
 
       return { success: true, userId };
@@ -322,23 +374,29 @@ export const permissionsRouter = router({
 
   // ── Owner: generate an invite link ───────────────────────────────────────
   createInvite: ownerProcedure
-    .input(
-      z.object({
-        email: z.string().email(),
-        permissions: z.record(z.string(), z.boolean()),
-        origin: z.string(),
-      })
-    )
+    .input(z.object({
+      email: z.string().email(),
+      access: z.object({
+        contracting: z.enum(["none", "viewer", "full"]).default("full"),
+        clientDocs: z.enum(["none", "viewer", "full"]).default("full"),
+        appAnalysis: z.enum(["none", "viewer", "full"]).default("none"),
+        financial: z.enum(["none", "viewer", "full"]).default("none"),
+      }).optional(),
+      origin: z.string(),
+    }))
     .mutation(async ({ input }) => {
       const db = await requireDb();
       const token = crypto.randomBytes(32).toString("hex");
-      await db.insert(pendingInvites).values({
-        email: input.email,
-        token,
-        invitePermissions: input.permissions,
-      });
-      const inviteUrl = `${input.origin}/join?token=${token}`;
-      return { inviteUrl, token };
+      // Store access as permissions map for backward compat
+      const access = input.access ?? DEFAULT_MODULE_ACCESS;
+      const permissions: Record<string, boolean> = {};
+      for (const [mod, level] of Object.entries(access) as [ModuleName, AccessLevel][]) {
+        for (const pageKey of MODULE_PAGE_KEYS[mod]) {
+          permissions[pageKey] = level !== "none";
+        }
+      }
+      await db.insert(pendingInvites).values({ email: input.email, token, invitePermissions: permissions });
+      return { inviteUrl: `${input.origin}/join?token=${token}`, token };
     }),
 
   // ── Owner: list pending invites ───────────────────────────────────────────
@@ -364,185 +422,86 @@ export const permissionsRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "You cannot delete your own account." });
       }
       const db = await requireDb();
+      await db.delete(modulePermissions).where(eq(modulePermissions.userId, input.userId));
       await db.delete(userPermissions).where(eq(userPermissions.userId, input.userId));
       await db.delete(users).where(eq(users.id, input.userId));
       return { success: true };
     }),
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // GROUP MANAGEMENT
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  // ── Owner: list all groups (with member count) ────────────────────────────
-  listGroups: ownerProcedure.query(async () => {
-    const db = await requireDb();
-    const groups = await db.select().from(userGroups).orderBy(userGroups.createdAt);
-    const allUsers = await db.select({ id: users.id, groupId: users.groupId }).from(users);
-
-    return groups.map((g) => ({
-      ...g,
-      memberCount: allUsers.filter((u) => u.groupId === g.id).length,
-    }));
-  }),
-
-  // ── Owner: create a new group ─────────────────────────────────────────────
-  createGroup: ownerProcedure
-    .input(
-      z.object({
-        name: z.string().min(1).max(100),
-        description: z.string().optional(),
-        color: z.string().default("#6366f1"),
-        permissions: z.record(z.string(), z.boolean()).optional(),
-      })
-    )
-    .mutation(async ({ input }) => {
-      const db = await requireDb();
-      await db.insert(userGroups).values({
-        name: input.name,
-        description: input.description ?? null,
-        color: input.color,
-      });
-      const created = await db
-        .select()
-        .from(userGroups)
-        .where(eq(userGroups.name, input.name))
-        .orderBy(userGroups.createdAt);
-      const group = created[created.length - 1];
-
-      // Set permissions for the group
-      if (input.permissions) {
-        const rows = ALL_PAGE_KEYS.map((key) => ({
-          groupId: group.id,
-          pageKey: key,
-          canAccess: input.permissions![key] ?? false,
-        }));
-        await db.insert(groupPermissions).values(rows);
-      }
-
-      return { success: true, groupId: group.id };
-    }),
-
-  // ── Owner: update a group's name/description/color ───────────────────────
-  updateGroup: ownerProcedure
-    .input(
-      z.object({
-        groupId: z.number(),
-        name: z.string().min(1).max(100).optional(),
-        description: z.string().optional(),
-        color: z.string().optional(),
-      })
-    )
-    .mutation(async ({ input }) => {
-      const db = await requireDb();
-      const updates: Record<string, unknown> = {};
-      if (input.name !== undefined) updates.name = input.name;
-      if (input.description !== undefined) updates.description = input.description;
-      if (input.color !== undefined) updates.color = input.color;
-      await db.update(userGroups).set(updates).where(eq(userGroups.id, input.groupId));
-      return { success: true };
-    }),
-
-  // ── Owner: delete a group (unassigns all members) ────────────────────────
-  deleteGroup: ownerProcedure
-    .input(z.object({ groupId: z.number() }))
-    .mutation(async ({ input }) => {
-      const db = await requireDb();
-      // Unassign all users from this group
-      await db
-        .update(users)
-        .set({ groupId: null })
-        .where(eq(users.groupId, input.groupId));
-      // Delete group permissions
-      await db.delete(groupPermissions).where(eq(groupPermissions.groupId, input.groupId));
-      // Delete the group
-      await db.delete(userGroups).where(eq(userGroups.id, input.groupId));
-      return { success: true };
-    }),
-
-  // ── Owner: get permissions for a group ───────────────────────────────────
-  getGroupPermissions: ownerProcedure
-    .input(z.object({ groupId: z.number() }))
+  // ── Backward compat: getUserPermissions (still used by old code) ──────────
+  getUserPermissions: ownerProcedure
+    .input(z.object({ userId: z.number() }))
     .query(async ({ input }) => {
-      const db = await requireDb();
-      const rows = await db
-        .select()
-        .from(groupPermissions)
-        .where(eq(groupPermissions.groupId, input.groupId));
-
-      const permissions: Record<string, boolean> = {};
-      for (const k of ALL_PAGE_KEYS) permissions[k] = false;
-      for (const row of rows) {
-        permissions[row.pageKey] = row.canAccess;
+      await ensureUserModuleDefaults(input.userId);
+      const moduleAccess = await getUserModuleAccess(input.userId);
+      const permissions: Record<string, { canAccess: boolean; canEdit: boolean }> = {};
+      for (const k of ALL_PAGE_KEYS) permissions[k] = { canAccess: false, canEdit: false };
+      for (const [mod, level] of Object.entries(moduleAccess) as [ModuleName, AccessLevel][]) {
+        const flags = moduleToPageFlags(level);
+        for (const pageKey of MODULE_PAGE_KEYS[mod]) {
+          permissions[pageKey] = { canAccess: flags.canAccess, canEdit: flags.canEdit };
+        }
       }
+      permissions["settings"] = { canAccess: true, canEdit: false };
       return permissions;
     }),
 
-  // ── Owner: set all permissions for a group ────────────────────────────────
-  setGroupPermissions: ownerProcedure
-    .input(
-      z.object({
-        groupId: z.number(),
-        permissions: z.record(z.string(), z.boolean()),
-      })
-    )
+  // ── Backward compat stubs (kept so old Settings UI doesn't crash) ─────────
+  setPagePermission: ownerProcedure
+    .input(z.object({ userId: z.number(), pageKey: z.string(), canAccess: z.boolean(), canEdit: z.boolean() }))
     .mutation(async ({ input }) => {
+      // Find which module this page key belongs to and update the whole module
       const db = await requireDb();
-      await db.delete(groupPermissions).where(eq(groupPermissions.groupId, input.groupId));
-      const rows = ALL_PAGE_KEYS.map((key) => ({
-        groupId: input.groupId,
-        pageKey: key,
-        canAccess: input.permissions[key] ?? false,
-      }));
-      await db.insert(groupPermissions).values(rows);
-      return { success: true };
-    }),
-
-  // ── Owner: toggle a single page permission for a group ───────────────────
-  toggleGroupPermission: ownerProcedure
-    .input(
-      z.object({
-        groupId: z.number(),
-        pageKey: z.string(),
-        canAccess: z.boolean(),
-      })
-    )
-    .mutation(async ({ input }) => {
-      const db = await requireDb();
-      const existing = await db
-        .select()
-        .from(groupPermissions)
-        .where(and(eq(groupPermissions.groupId, input.groupId), eq(groupPermissions.pageKey, input.pageKey)));
-
-      if (existing.length > 0) {
-        await db
-          .update(groupPermissions)
-          .set({ canAccess: input.canAccess })
-          .where(and(eq(groupPermissions.groupId, input.groupId), eq(groupPermissions.pageKey, input.pageKey)));
-      } else {
-        await db.insert(groupPermissions).values({
-          groupId: input.groupId,
-          pageKey: input.pageKey,
-          canAccess: input.canAccess,
-        });
+      for (const [mod, keys] of Object.entries(MODULE_PAGE_KEYS) as [ModuleName, string[]][]) {
+        if (keys.includes(input.pageKey)) {
+          const level: AccessLevel = input.canEdit ? "full" : input.canAccess ? "viewer" : "none";
+          const ex = await db.select({ id: modulePermissions.id }).from(modulePermissions)
+            .where(and(eq(modulePermissions.userId, input.userId), eq(modulePermissions.module, mod))).limit(1);
+          if (ex.length > 0) {
+            await db.update(modulePermissions).set({ accessLevel: level })
+              .where(and(eq(modulePermissions.userId, input.userId), eq(modulePermissions.module, mod)));
+          } else {
+            await db.insert(modulePermissions).values({ userId: input.userId, module: mod, accessLevel: level });
+          }
+          break;
+        }
       }
       return { success: true };
     }),
 
-  // ── Owner: assign a user to a group ──────────────────────────────────────
-  assignUserToGroup: ownerProcedure
-    .input(z.object({ userId: z.number(), groupId: z.number() }))
+  togglePermission: ownerProcedure
+    .input(z.object({ userId: z.number(), pageKey: z.string(), canAccess: z.boolean() }))
     .mutation(async ({ input }) => {
       const db = await requireDb();
-      await db.update(users).set({ groupId: input.groupId }).where(eq(users.id, input.userId));
+      for (const [mod, keys] of Object.entries(MODULE_PAGE_KEYS) as [ModuleName, string[]][]) {
+        if (keys.includes(input.pageKey)) {
+          const level: AccessLevel = input.canAccess ? "full" : "none";
+          const ex = await db.select({ id: modulePermissions.id }).from(modulePermissions)
+            .where(and(eq(modulePermissions.userId, input.userId), eq(modulePermissions.module, mod))).limit(1);
+          if (ex.length > 0) {
+            await db.update(modulePermissions).set({ accessLevel: level })
+              .where(and(eq(modulePermissions.userId, input.userId), eq(modulePermissions.module, mod)));
+          } else {
+            await db.insert(modulePermissions).values({ userId: input.userId, module: mod, accessLevel: level });
+          }
+          break;
+        }
+      }
       return { success: true };
     }),
 
-  // ── Owner: remove a user from their group ────────────────────────────────
-  removeUserFromGroup: ownerProcedure
-    .input(z.object({ userId: z.number() }))
-    .mutation(async ({ input }) => {
-      const db = await requireDb();
-      await db.update(users).set({ groupId: null }).where(eq(users.id, input.userId));
-      return { success: true };
-    }),
+  setUserPermissions: ownerProcedure
+    .input(z.object({ userId: z.number(), permissions: z.record(z.string(), z.boolean()) }))
+    .mutation(() => ({ success: true })), // no-op, use setModuleAccess instead
+
+  // Stub group procedures (kept for backward compat)
+  listGroups: ownerProcedure.query(async () => []),
+  createGroup: ownerProcedure.input(z.object({ name: z.string(), description: z.string().optional(), color: z.string().optional(), permissions: z.record(z.string(), z.boolean()).optional() })).mutation(async () => ({ success: true, groupId: 0 })),
+  updateGroup: ownerProcedure.input(z.object({ groupId: z.number(), name: z.string().optional(), description: z.string().optional(), color: z.string().optional() })).mutation(async () => ({ success: true })),
+  deleteGroup: ownerProcedure.input(z.object({ groupId: z.number() })).mutation(async () => ({ success: true })),
+  getGroupPermissions: ownerProcedure.input(z.object({ groupId: z.number() })).query(async () => ({})),
+  setGroupPermissions: ownerProcedure.input(z.object({ groupId: z.number(), permissions: z.record(z.string(), z.boolean()) })).mutation(async () => ({ success: true })),
+  toggleGroupPermission: ownerProcedure.input(z.object({ groupId: z.number(), pageKey: z.string(), canAccess: z.boolean() })).mutation(async () => ({ success: true })),
+  assignUserToGroup: ownerProcedure.input(z.object({ userId: z.number(), groupId: z.number() })).mutation(async () => ({ success: true })),
+  removeUserFromGroup: ownerProcedure.input(z.object({ userId: z.number() })).mutation(async () => ({ success: true })),
 });

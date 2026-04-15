@@ -141,6 +141,13 @@
       "when": 1776247900363,
       "tag": "0019_spotty_slapstick",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1776253459772,
+      "tag": "0020_pretty_christian_walker",
+      "breakpoints": true
     }
   ]
 }
