@@ -27,6 +27,7 @@ import ClientDocDetail from "./pages/ClientDocDetail";
 import ContractingDashboard from "./pages/ContractingDashboard";
 import Contracts from "./pages/Contracts";
 import Invoices from "./pages/Invoices";
+import ProformaInvoices from "./pages/ProformaInvoices";
 import Analytics from "./pages/Analytics";
 
 // ─── Financial Module ─────────────────────────────────────────────
@@ -60,6 +61,9 @@ function Router() {
       </Route>
       <Route path="/contracting/invoices">
         <PageGuard pageKey="receipts"><DashboardLayout><Invoices /></DashboardLayout></PageGuard>
+      </Route>
+      <Route path="/contracting/proforma">
+        <PageGuard pageKey="receipts"><DashboardLayout><ProformaInvoices /></DashboardLayout></PageGuard>
       </Route>
       <Route path="/contracting/analytics">
         <PageGuard pageKey="contracts"><DashboardLayout><Analytics /></DashboardLayout></PageGuard>

@@ -145,7 +145,7 @@ export async function getAnalysisResultByCaseId(caseId: number) {
 }
 
 // ─── Contracting Module ───────────────────────────────────────────────────────
-import { contracts, invoices, payments, InsertContract, InsertInvoice, InsertPayment } from "../drizzle/schema";
+import { contracts, invoices, payments, InsertContract, InsertInvoice, InsertPayment, proformaInvoices, InsertProformaInvoice } from "../drizzle/schema";
 import { sql } from "drizzle-orm";
 
 export async function createContract(data: InsertContract) {
@@ -239,6 +239,41 @@ export async function updateInvoicePdfUrl(id: number, pdfUrl: string, driveFileI
   await db.update(invoices).set({ pdfUrl, driveFileId: driveFileId ?? null, driveLink: driveLink ?? null }).where(eq(invoices.id, id));
 }
 
+// ─── Proforma Invoices ───────────────────────────────────────────────────────
+export async function createProformaInvoice(data: InsertProformaInvoice) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(proformaInvoices).values(data);
+  const result = await db.select().from(proformaInvoices).where(eq(proformaInvoices.proformaCode, data.proformaCode)).limit(1);
+  return result[0];
+}
+
+export async function getAllProformaInvoices() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(proformaInvoices).orderBy(desc(proformaInvoices.createdAt));
+}
+
+export async function getProformaInvoiceById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(proformaInvoices).where(eq(proformaInvoices.id, id)).limit(1);
+  return result[0];
+}
+
+export async function markProformaInvoicePaid(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(proformaInvoices).set({ status: "paid", paidAt: new Date() }).where(eq(proformaInvoices.id, id));
+}
+
+export async function updateProformaInvoicePdfUrl(id: number, pdfUrl: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(proformaInvoices).set({ pdfUrl }).where(eq(proformaInvoices.id, id));
+}
+
+// ─── Payments ────────────────────────────────────────────────────────────────
 export async function createPayment(data: InsertPayment) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

@@ -134,6 +134,13 @@
       "when": 1776161628760,
       "tag": "0018_equal_black_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1776247900363,
+      "tag": "0019_spotty_slapstick",
+      "breakpoints": true
     }
   ]
 }

@@ -16,10 +16,12 @@ import {
   getTotalPaidByContractId, getContractStats, getFamilyMemberDistribution,
   getRecentContracts, getPaymentsByContractId, getNextContractSequence, getNextContractSequenceForYear,
   getConsultantStats,
+  createProformaInvoice, getAllProformaInvoices, getProformaInvoiceById, markProformaInvoicePaid, updateProformaInvoicePdfUrl,
 } from "./db";
 import { generateContractDoc, uploadContractToStorage, calculateContractValue } from "./contractGenerator";
 import { getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
 import { generateAndUploadInvoicePdf } from "./invoiceGenerator";
+import { generateAndUploadProformaPdf } from "./proformaGenerator";
 import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient, notifyNewInvoice, notifyFinClientAdded } from "./emailService";
 import { generateInvoicePdfBuffer } from "./invoiceGenerator";
 import {
@@ -1071,6 +1073,96 @@ const contractingRouter = router({
           notes: invoice.notes ?? undefined,
         });
         await updateInvoicePdfUrl(input.id, pdfUrl);
+        return { pdfUrl };
+      }),
+  }),
+  proformaInvoices: router({
+    list: protectedProcedure.query(async () => getAllProformaInvoices()),
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const inv = await getProformaInvoiceById(input.id);
+        if (!inv) throw new TRPCError({ code: "NOT_FOUND" });
+        return inv;
+      }),
+    create: protectedProcedure
+      .input(z.object({
+        contractId: z.number().optional(),
+        amountEur: z.number().positive(),
+        notes: z.string().min(1),
+        legacyFinClientId: z.number().optional(),
+        isLegacy: z.boolean().optional(),
+        legacyAmountEgp: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const rateInfo = await getEurToEgpRate();
+        let clientName = "Unknown";
+        let contractCode: string | undefined;
+        if (input.contractId) {
+          const contract = await getContractById(input.contractId);
+          if (!contract) throw new TRPCError({ code: "NOT_FOUND", message: "Contract not found" });
+          clientName = contract.clientName;
+          contractCode = contract.contractCode;
+        }
+        const proformaCode = `PF-${Date.now().toString(36).toUpperCase()}`;
+        const amountEgp = convertEurToEgp(input.amountEur, rateInfo.rate);
+        const inv = await createProformaInvoice({
+          proformaCode,
+          contractId: input.contractId ?? null,
+          contractCode: contractCode ?? null,
+          clientName,
+          isLegacy: input.isLegacy ?? false,
+          legacyFinClientId: input.legacyFinClientId ?? null,
+          amountEur: String(input.amountEur),
+          amountEgp: String(input.legacyAmountEgp ?? amountEgp),
+          exchangeRate: String(rateInfo.rate),
+          notes: input.notes,
+        });
+        const pdfUrl = await generateAndUploadProformaPdf({
+          proformaCode,
+          contractCode,
+          clientName,
+          amountEur: input.amountEur,
+          amountEgp: input.legacyAmountEgp ?? amountEgp,
+          exchangeRate: rateInfo.rate,
+          notes: input.notes,
+          createdAt: new Date(),
+        });
+        await updateProformaInvoicePdfUrl(inv.id, pdfUrl);
+        return { ...inv, pdfUrl };
+      }),
+    markPaid: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await markProformaInvoicePaid(input.id);
+        return { success: true };
+      }),
+    sendByEmail: protectedProcedure
+      .input(z.object({ id: z.number(), clientEmail: z.string().email() }))
+      .mutation(async ({ input }) => {
+        const inv = await getProformaInvoiceById(input.id);
+        if (!inv) throw new TRPCError({ code: "NOT_FOUND" });
+        if (!inv.pdfUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "No PDF available" });
+        const result = await sendReceiptToClient(input.clientEmail, inv.clientName, inv.proformaCode, inv.pdfUrl);
+        return result;
+      }),
+    regeneratePdf: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const inv = await getProformaInvoiceById(input.id);
+        if (!inv) throw new TRPCError({ code: "NOT_FOUND" });
+        const rateInfo = await getEurToEgpRate();
+        const pdfUrl = await generateAndUploadProformaPdf({
+          proformaCode: inv.proformaCode,
+          contractCode: inv.contractCode ?? undefined,
+          clientName: inv.clientName,
+          amountEur: Number(inv.amountEur),
+          amountEgp: Number(inv.amountEgp ?? 0),
+          exchangeRate: Number(inv.exchangeRate ?? rateInfo.rate),
+          notes: inv.notes ?? undefined,
+          createdAt: new Date(inv.createdAt),
+        });
+        await updateProformaInvoicePdfUrl(input.id, pdfUrl);
         return { pdfUrl };
       }),
   }),

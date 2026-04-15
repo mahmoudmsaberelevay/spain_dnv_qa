@@ -1,0 +1,20 @@
+CREATE TABLE `proformaInvoices` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`proformaCode` varchar(32) NOT NULL,
+	`contractId` int,
+	`contractCode` varchar(32),
+	`clientName` varchar(255) NOT NULL,
+	`isLegacy` boolean NOT NULL DEFAULT false,
+	`legacyFinClientId` int,
+	`amountEur` decimal(10,2) NOT NULL,
+	`amountEgp` decimal(12,2),
+	`exchangeRate` decimal(10,4),
+	`status` enum('pending','paid') NOT NULL DEFAULT 'pending',
+	`pdfUrl` text,
+	`notes` text,
+	`paidAt` timestamp,
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `proformaInvoices_id` PRIMARY KEY(`id`),
+	CONSTRAINT `proformaInvoices_proformaCode_unique` UNIQUE(`proformaCode`)
+);

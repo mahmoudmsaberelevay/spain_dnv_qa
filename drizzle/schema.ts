@@ -168,6 +168,28 @@ export const payments = mysqlTable("payments", {
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = typeof payments.$inferInsert;
 
+// ─── Proforma Invoices ───────────────────────────────────────────────────────
+export const proformaInvoices = mysqlTable("proformaInvoices", {
+  id: int("id").autoincrement().primaryKey(),
+  proformaCode: varchar("proformaCode", { length: 32 }).notNull().unique(),
+  contractId: int("contractId"),
+  contractCode: varchar("contractCode", { length: 32 }),
+  clientName: varchar("clientName", { length: 255 }).notNull(),
+  isLegacy: boolean("isLegacy").default(false).notNull(),
+  legacyFinClientId: int("legacyFinClientId"),
+  amountEur: decimal("amountEur", { precision: 10, scale: 2 }).notNull(),
+  amountEgp: decimal("amountEgp", { precision: 12, scale: 2 }),
+  exchangeRate: decimal("exchangeRate", { precision: 10, scale: 4 }),
+  status: mysqlEnum("status", ["pending", "paid"]).default("pending").notNull(),
+  pdfUrl: text("pdfUrl"),
+  notes: text("notes"),
+  paidAt: timestamp("paidAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ProformaInvoice = typeof proformaInvoices.$inferSelect;
+export type InsertProformaInvoice = typeof proformaInvoices.$inferInsert;
+
 // ─── Client Documentation Module ─────────────────────────────────────────────
 export const clientCases = mysqlTable("clientCases", {
   id: int("id").autoincrement().primaryKey(),

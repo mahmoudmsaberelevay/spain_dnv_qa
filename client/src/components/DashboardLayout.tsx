@@ -76,6 +76,7 @@ const modules = [
       { icon: LayoutDashboard, label: "Dashboard", path: "/contracting" },
       { icon: FileText, label: "Contracts", path: "/contracting/contracts" },
       { icon: Receipt, label: "Receipts", path: "/contracting/invoices" },
+      { icon: Receipt, label: "Proforma Invoice", path: "/contracting/proforma" },
       { icon: BarChart3, label: "Analytics", path: "/contracting/analytics" },
     ],
   },
