@@ -59,6 +59,7 @@ export const MODULE_PAGE_KEYS: Record<ModuleName, string[]> = {
     "fin_dashboard", "fin_accounts", "fin_income", "fin_expenses",
     "fin_transfers", "fin_reports", "fin_employees", "fin_categories",
     "fin_commissions", "fin_clients", "fin_bulk_upload", "fin_settlement",
+    "fin_upcoming",
   ],
 };
 
@@ -69,7 +70,7 @@ export const ALL_PAGE_KEYS = [
   "client_docs",
   "fin_dashboard", "fin_accounts", "fin_income", "fin_expenses",
   "fin_transfers", "fin_reports", "fin_employees", "fin_categories",
-  "fin_commissions", "fin_clients", "fin_bulk_upload", "fin_settlement",
+  "fin_commissions", "fin_clients", "fin_bulk_upload", "fin_settlement", "fin_upcoming",
   "settings", "chat", "broadcast",
 ] as const;
 export type PageKey = (typeof ALL_PAGE_KEYS)[number];
