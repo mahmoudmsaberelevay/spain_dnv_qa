@@ -186,7 +186,7 @@ export default function Invoices() {
             Create and manage payment receipts for signed contracts
           </p>
         </div>
-        {canEdit("contracting") && (
+        {canEdit("receipts") && (
           <Button
             onClick={() => setShowCreateDialog(true)}
             className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
