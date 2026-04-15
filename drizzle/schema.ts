@@ -527,3 +527,22 @@ export const settlementPayments = mysqlTable("settlementPayments", {
 });
 export type SettlementPayment = typeof settlementPayments.$inferSelect;
 export type InsertSettlementPayment = typeof settlementPayments.$inferInsert;
+
+// ─── Upcoming Payments ────────────────────────────────────────────────────────
+// Tracks scheduled future payments per client (EUR amounts).
+export const upcomingPayments = mysqlTable("upcomingPayments", {
+  id: int("id").autoincrement().primaryKey(),
+  clientName: varchar("clientName", { length: 255 }).notNull(),
+  finClientId: int("finClientId"),                     // optional link to finClients
+  consultant: mysqlEnum("consultant", ["Mahmoud", "Fouad", "Kirolos", "Ziad"]).notNull(),
+  paymentFor: mysqlEnum("paymentFor", ["First", "Second", "Third"]).notNull(),
+  dueDate: date("dueDate").notNull(),
+  dueAmount: decimal("dueAmount", { precision: 12, scale: 2 }).notNull(),   // EUR
+  paidAmount: decimal("paidAmount", { precision: 12, scale: 2 }).default("0").notNull(), // EUR
+  status: mysqlEnum("status", ["Pending", "Done"]).default("Pending").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type UpcomingPayment = typeof upcomingPayments.$inferSelect;
+export type InsertUpcomingPayment = typeof upcomingPayments.$inferInsert;

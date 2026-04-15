@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
-import { finAccounts, finTransactions, appSettings } from "../drizzle/schema";
+import { finAccounts, finTransactions, appSettings, upcomingPayments, finClients } from "../drizzle/schema";
 import {
   listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance, recalcAccountBalance, recalcAllAccountBalances,
   listCategories, createCategory, updateCategory, deleteCategory,
@@ -908,6 +908,115 @@ const settingsRouter = router({
     }),
 });
 
+// ─── Upcoming Payments Router ──────────────────────────────────────────────
+const upcomingPaymentsRouter = router({
+  list: protectedProcedure
+    .input(z.object({
+      showDone: z.boolean().optional().default(false),
+      consultant: z.enum(["Mahmoud", "Fouad", "Kirolos", "Ziad"]).optional(),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { and, or, eq: eqOp, ne } = await import("drizzle-orm");
+      const conditions: any[] = [];
+      if (!input.showDone) conditions.push(ne(upcomingPayments.status, "Done"));
+      if (input.consultant) conditions.push(eqOp(upcomingPayments.consultant, input.consultant));
+      const rows = conditions.length > 0
+        ? await db.select().from(upcomingPayments).where(and(...conditions)).orderBy(upcomingPayments.dueDate)
+        : await db.select().from(upcomingPayments).orderBy(upcomingPayments.dueDate);
+      return rows;
+    }),
+
+  create: protectedProcedure
+    .input(z.object({
+      clientName: z.string().min(1),
+      finClientId: z.number().optional(),
+      consultant: z.enum(["Mahmoud", "Fouad", "Kirolos", "Ziad"]),
+      paymentFor: z.enum(["First", "Second", "Third"]),
+      dueDate: z.string(), // YYYY-MM-DD
+      dueAmount: z.number().positive(),
+      paidAmount: z.number().min(0).default(0),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const [result] = await db.insert(upcomingPayments).values({
+        clientName: input.clientName,
+        finClientId: input.finClientId ?? null,
+        consultant: input.consultant,
+        paymentFor: input.paymentFor,
+        dueDate: new Date(input.dueDate),
+        dueAmount: String(input.dueAmount),
+        paidAmount: String(input.paidAmount),
+        status: "Pending",
+        notes: input.notes ?? null,
+      });
+      return { id: (result as any).insertId };
+    }),
+
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      clientName: z.string().min(1).optional(),
+      finClientId: z.number().optional().nullable(),
+      consultant: z.enum(["Mahmoud", "Fouad", "Kirolos", "Ziad"]).optional(),
+      paymentFor: z.enum(["First", "Second", "Third"]).optional(),
+      dueDate: z.string().optional(),
+      dueAmount: z.number().positive().optional(),
+      paidAmount: z.number().min(0).optional(),
+      status: z.enum(["Pending", "Done"]).optional(),
+      notes: z.string().optional().nullable(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { eq: eqOp } = await import("drizzle-orm");
+      const updateData: any = {};
+      if (input.clientName !== undefined) updateData.clientName = input.clientName;
+      if (input.finClientId !== undefined) updateData.finClientId = input.finClientId;
+      if (input.consultant !== undefined) updateData.consultant = input.consultant;
+      if (input.paymentFor !== undefined) updateData.paymentFor = input.paymentFor;
+      if (input.dueDate !== undefined) updateData.dueDate = new Date(input.dueDate);
+      if (input.dueAmount !== undefined) updateData.dueAmount = String(input.dueAmount);
+      if (input.paidAmount !== undefined) updateData.paidAmount = String(input.paidAmount);
+      if (input.status !== undefined) updateData.status = input.status;
+      if (input.notes !== undefined) updateData.notes = input.notes;
+      await db.update(upcomingPayments).set(updateData).where(eqOp(upcomingPayments.id, input.id));
+      return { success: true };
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { eq: eqOp } = await import("drizzle-orm");
+      await db.delete(upcomingPayments).where(eqOp(upcomingPayments.id, input.id));
+      return { success: true };
+    }),
+
+  searchClients: protectedProcedure
+    .input(z.object({ q: z.string() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return [];
+      const { like, or } = await import("drizzle-orm");
+      if (!input.q.trim()) {
+        return await db.select({ id: finClients.id, name: finClients.name, clientCode: finClients.clientCode })
+          .from(finClients).limit(20);
+      }
+      return await db.select({ id: finClients.id, name: finClients.name, clientCode: finClients.clientCode })
+        .from(finClients)
+        .where(or(
+          like(finClients.name, `%${input.q}%`),
+          like(finClients.clientCode, `%${input.q}%`)
+        ))
+        .limit(20);
+    }),
+});
+
 // ─── Export Financial Router ─────────────────────────────────────────────
 export const financialRouter = router({
   accounts: accountsRouter,
@@ -920,4 +1029,5 @@ export const financialRouter = router({
   reports: reportsRouter,
   bulk: bulkRouter,
   settings: settingsRouter,
+  upcomingPayments: upcomingPaymentsRouter,
 });

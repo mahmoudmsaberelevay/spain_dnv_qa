@@ -49,6 +49,7 @@ import {
   Megaphone,
   Settings as SettingsIcon,
   Landmark,
+  CalendarClock,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -115,6 +116,7 @@ const modules = [
       { icon: Database, label: "Clients", path: "/finance/clients" },
       { icon: Upload, label: "Bulk Upload", path: "/finance/bulk-upload" },
       { icon: Landmark, label: "After Settlement", path: "/finance/settlement" },
+      { icon: CalendarClock, label: "Upcoming Payments", path: "/finance/upcoming" },
     ],
   },
 ];

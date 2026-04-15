@@ -148,6 +148,13 @@
       "when": 1776253459772,
       "tag": "0020_pretty_christian_walker",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1776260480058,
+      "tag": "0021_sudden_korvac",
+      "breakpoints": true
     }
   ]
 }

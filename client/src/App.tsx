@@ -43,6 +43,7 @@ import FinCommissions from "./pages/FinCommissions";
 import FinBulkUpload from "./pages/FinBulkUpload";
 import FinClients from "./pages/FinClients";
 import FinSettlement from "./pages/FinSettlement";
+import UpcomingPayments from "./pages/UpcomingPayments";
 
 function Router() {
   return (
@@ -136,6 +137,9 @@ function Router() {
       </Route>
       <Route path="/finance/settlement">
         <PageGuard pageKey="fin_settlement"><DashboardLayout><FinSettlement /></DashboardLayout></PageGuard>
+      </Route>
+      <Route path="/finance/upcoming">
+        <PageGuard pageKey="fin_upcoming"><DashboardLayout><UpcomingPayments /></DashboardLayout></PageGuard>
       </Route>
 
       {/* ── Client Documentation Module ── */}
