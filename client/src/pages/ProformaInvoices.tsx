@@ -17,7 +17,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Download, Search, Receipt, Calendar, CheckCircle, Loader2, TrendingDown, Mail, ExternalLink,
+  Plus, Download, Search, Receipt, FileText, Calendar, CheckCircle, Loader2, TrendingDown, Mail, ExternalLink,
 } from "lucide-react";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 import { ClientSearchCombobox } from "@/components/ClientSearchCombobox";
@@ -116,8 +116,8 @@ export default function ProformaInvoices() {
     createLegacyMutation.mutate({
       legacyFinClientId: Number(legacyClientId),
       amountEur: Number(legacyAmountEur),
-      amountEgp: legacyAmountEgp ? Number(legacyAmountEgp) : undefined,
-      notes: legacyNotes.trim() || undefined,
+      legacyAmountEgp: legacyAmountEgp ? Number(legacyAmountEgp) : undefined,
+      notes: legacyNotes.trim() || "",
     });
   };
 
@@ -233,7 +233,7 @@ export default function ProformaInvoices() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All</SelectItem>
-            <SelectItem value="unpaid">Unpaid</SelectItem>
+            <SelectItem value="pending">Unpaid</SelectItem>
             <SelectItem value="paid">Paid</SelectItem>
           </SelectContent>
         </Select>
@@ -273,7 +273,7 @@ export default function ProformaInvoices() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((invoice) => (
+                  {filtered.map((proforma) => (
                     <tr key={proforma.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
                       <td className="px-6 py-4">
                         <span className="font-mono text-sm font-medium text-primary">{proforma.proformaCode}</span>
@@ -333,7 +333,7 @@ export default function ProformaInvoices() {
                               Email
                             </Button>
                           )}
-                          {proforma.status === "unpaid" && (
+                          {proforma.status === "pending" && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -363,7 +363,7 @@ export default function ProformaInvoices() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Proforma Invoice className="h-5 w-5 text-primary" />
+              <FileText className="h-5 w-5 text-primary" />
               Create Proforma Invoice
             </DialogTitle>
           </DialogHeader>
@@ -482,7 +482,7 @@ export default function ProformaInvoices() {
                   {createMutation.isPending ? (
                     <><Loader2 className="h-4 w-4 animate-spin" /> Creating...</>
                   ) : (
-                    <><Proforma Invoice className="h-4 w-4" /> Create Proforma Invoice</>
+                    <><FileText className="h-4 w-4" /> Create Proforma Invoice</>
                   )}
                 </Button>
               </DialogFooter>
