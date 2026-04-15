@@ -88,7 +88,7 @@ function ClientCombobox({
             {q && (
               <button
                 className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors text-muted-foreground italic"
-                onClick={() => { onChange({ name: q }); setOpen(false); setQ(""); }}
+                onMouseDown={e => { e.preventDefault(); onChange({ name: q }); setOpen(false); setQ(""); }}
               >
                 Use "{q}" as custom name
               </button>
@@ -97,7 +97,7 @@ function ClientCombobox({
               <button
                 key={c.id}
                 className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors flex items-center gap-2"
-                onClick={() => { onChange({ id: c.id, name: c.name }); setOpen(false); setQ(""); }}
+                onMouseDown={e => { e.preventDefault(); onChange({ id: c.id, name: c.name }); setOpen(false); setQ(""); }}
               >
                 <span className="font-medium text-foreground">{c.name}</span>
                 {c.clientCode && <span className="text-xs text-muted-foreground">{c.clientCode}</span>}
@@ -134,9 +134,23 @@ function AddPaymentDialog({ open, onClose }: { open: boolean; onClose: () => voi
     onError: (e) => toast.error(e.message),
   });
 
+  // Normalize any date format to YYYY-MM-DD
+  const normalizeDate = (d: string): string => {
+    if (!d) return "";
+    // Already ISO format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+    // DD/MM/YYYY
+    const dmy = d.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$/);
+    if (dmy) return `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
+    // MM/DD/YYYY
+    const mdy = d.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$/);
+    if (mdy) return `${mdy[3]}-${mdy[1].padStart(2,'0')}-${mdy[2].padStart(2,'0')}`;
+    return d;
+  };
   const handleSubmit = () => {
-    if (!client.name || !dueDate || !dueAmount) {
-      toast.error("Please fill in Client Name, Due Date, and Due Amount");
+    const normalizedDate = normalizeDate(dueDate);
+    if (!client.name || !normalizedDate || !dueAmount) {
+      toast.error(`Please fill in: ${!client.name ? 'Client Name ' : ''}${!normalizedDate ? 'Due Date ' : ''}${!dueAmount ? 'Due Amount' : ''}`.trim());
       return;
     }
     createMutation.mutate({
@@ -144,7 +158,7 @@ function AddPaymentDialog({ open, onClose }: { open: boolean; onClose: () => voi
       finClientId: client.id,
       consultant,
       paymentFor,
-      dueDate,
+      dueDate: normalizedDate,
       dueAmount: parseFloat(dueAmount),
       paidAmount: parseFloat(paidAmount) || 0,
       notes: notes || undefined,
