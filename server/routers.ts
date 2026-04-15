@@ -1103,6 +1103,19 @@ const contractingRouter = router({
           if (!contract) throw new TRPCError({ code: "NOT_FOUND", message: "Contract not found" });
           clientName = contract.clientName;
           contractCode = contract.contractCode;
+        } else if (input.legacyFinClientId) {
+          // Look up the financial client name so the PDF shows the real name
+          const { getDb } = await import("./db");
+          const db = await getDb();
+          if (db) {
+            const { finClients } = await import("../drizzle/schema");
+            const { eq } = await import("drizzle-orm");
+            const [fc] = await db.select({ name: finClients.name })
+              .from(finClients)
+              .where(eq(finClients.id, input.legacyFinClientId))
+              .limit(1);
+            if (fc) clientName = fc.name;
+          }
         }
         const proformaCode = `PF-${Date.now().toString(36).toUpperCase()}`;
         const amountEgp = convertEurToEgp(input.amountEur, rateInfo.rate);
