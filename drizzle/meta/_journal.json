@@ -155,6 +155,13 @@
       "when": 1776260480058,
       "tag": "0021_sudden_korvac",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1776351379286,
+      "tag": "0022_slow_obadiah_stane",
+      "breakpoints": true
     }
   ]
 }

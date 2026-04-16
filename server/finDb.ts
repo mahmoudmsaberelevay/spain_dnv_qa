@@ -248,11 +248,19 @@ export async function recalcClientPaidAmount(clientId: number) {
   const client = await getFinClientById(clientId);
   if (!client) return;
 
-  // Sum all income transactions linked to this client (join with accounts for currency)
+  // Formula: paidAmountEur = basePaidAmountEur (manually-set pre-April 14) + income transactions from April 14 onwards
+  const baseEur = Number(client.basePaidAmountEur ?? 0);
+  const cutoffDate = new Date('2026-04-14T00:00:00.000Z');
+
+  // Sum income transactions from April 14 onwards linked to this client
   const rows = await db
-    .select({ amount: finTransactions.amount, accountId: finTransactions.accountId })
+    .select({ amount: finTransactions.amount, accountId: finTransactions.accountId, transactionDate: finTransactions.transactionDate })
     .from(finTransactions)
-    .where(and(eq(finTransactions.finClientId, clientId), eq(finTransactions.type, 'income')));
+    .where(and(
+      eq(finTransactions.finClientId, clientId),
+      eq(finTransactions.type, 'income'),
+      gte(finTransactions.transactionDate, cutoffDate)
+    ));
 
   // Fetch account currencies
   const accountIds = Array.from(new Set(rows.map(r => r.accountId).filter((id): id is number => id !== null && id !== undefined)));
@@ -262,13 +270,16 @@ export async function recalcClientPaidAmount(clientId: number) {
     for (const a of accs) currencyMap[a.id] = a.currency;
   }
 
-  let totalEgp = 0, totalEur = 0;
+  let newTxEgp = 0, newTxEur = 0;
   for (const r of rows) {
     const currency = r.accountId ? (currencyMap[r.accountId] ?? 'EGP') : 'EGP';
     const amt = Number(r.amount);
-    if (currency === 'EUR') { totalEur += amt; totalEgp += amt * 55.5; }
-    else { totalEgp += amt; totalEur += amt / 55.5; }
+    if (currency === 'EUR') { newTxEur += amt; newTxEgp += amt * 55.5; }
+    else { newTxEgp += amt; newTxEur += amt / 55.5; }
   }
+
+  const totalEur = baseEur + newTxEur;
+  const totalEgp = newTxEgp; // EGP is only from new transactions (base is EUR-denominated)
 
   const contractVal = Number(client.contractValueEur ?? 0);
   const newRemaining = contractVal > 0 ? contractVal - totalEur : Number(client.remainingAmountEur ?? 0);

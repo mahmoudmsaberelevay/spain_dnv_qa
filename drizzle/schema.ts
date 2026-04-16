@@ -300,6 +300,8 @@ export const finClients = mysqlTable("finClients", {
   paidAmountEur: decimal("paidAmountEur", { precision: 12, scale: 2 }).default("0").notNull(),
   paidAmountEgp: decimal("paidAmountEgp", { precision: 14, scale: 2 }),
   remainingAmountEur: decimal("remainingAmountEur", { precision: 12, scale: 2 }),
+  // Base paid amount set manually (pre-April 14 2026) — new transactions are added on top
+  basePaidAmountEur: decimal("basePaidAmountEur", { precision: 12, scale: 2 }).default("0").notNull(),
   // Legacy flag: true = imported from old DB, remainingAmountEur is the starting balance
   isLegacy: boolean("isLegacy").default(false).notNull(),
   stage: mysqlEnum("stage", ["not_yet", "started"]).default("not_yet").notNull(),

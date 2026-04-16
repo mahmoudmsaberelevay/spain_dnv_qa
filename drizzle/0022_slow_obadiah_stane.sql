@@ -1,0 +1,1 @@
+ALTER TABLE `finClients` ADD `basePaidAmountEur` decimal(12,2) DEFAULT '0' NOT NULL;
