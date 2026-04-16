@@ -240,7 +240,7 @@ export async function applyClientPayment(clientId: number, amountEgp: number, ac
 }
 /**
  * Full recalculation of a client's paid/remaining amounts from scratch.
- * Sums all income transactions linked to this finClientId.
+ * Formula: paidAmountEur = basePaidAmountEur + ALL income transactions linked to this client (no date cutoff).
  * Call this after any income create, update, or delete.
  */
 export async function recalcClientPaidAmount(clientId: number) {
@@ -248,18 +248,16 @@ export async function recalcClientPaidAmount(clientId: number) {
   const client = await getFinClientById(clientId);
   if (!client) return;
 
-  // Formula: paidAmountEur = basePaidAmountEur (manually-set pre-April 14) + income transactions from April 14 onwards
+  // Base amount set from CSV (pre-existing payments before system tracking)
   const baseEur = Number(client.basePaidAmountEur ?? 0);
-  const cutoffDate = new Date('2026-04-14T00:00:00.000Z');
 
-  // Sum income transactions from April 14 onwards linked to this client
+  // Sum ALL income transactions linked to this client (no date cutoff)
   const rows = await db
-    .select({ amount: finTransactions.amount, accountId: finTransactions.accountId, transactionDate: finTransactions.transactionDate })
+    .select({ amount: finTransactions.amount, accountId: finTransactions.accountId })
     .from(finTransactions)
     .where(and(
       eq(finTransactions.finClientId, clientId),
-      eq(finTransactions.type, 'income'),
-      gte(finTransactions.transactionDate, cutoffDate)
+      eq(finTransactions.type, 'income')
     ));
 
   // Fetch account currencies
@@ -279,7 +277,9 @@ export async function recalcClientPaidAmount(clientId: number) {
   }
 
   const totalEur = baseEur + newTxEur;
-  const totalEgp = newTxEgp; // EGP is only from new transactions (base is EUR-denominated)
+  // EGP total = base EUR converted to EGP + transaction EGP amounts
+  const baseEgp = baseEur * 55.5;
+  const totalEgp = baseEgp + newTxEgp;
 
   const contractVal = Number(client.contractValueEur ?? 0);
   const newRemaining = contractVal > 0 ? contractVal - totalEur : Number(client.remainingAmountEur ?? 0);
