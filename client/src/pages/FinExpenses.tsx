@@ -33,6 +33,7 @@ export default function FinExpenses() {
     categoryId: filters.categoryId,
     employeeId: filters.employeeId,
     finClientId: filters.finClientId,
+    descriptionSearch: filters.descriptionSearch,
     sortField: filters.sortField,
     sortDir: filters.sortDir,
     limit: pageSize > 0 ? pageSize : undefined,
@@ -47,6 +48,7 @@ export default function FinExpenses() {
     categoryId: filters.categoryId,
     employeeId: filters.employeeId,
     finClientId: filters.finClientId,
+    descriptionSearch: filters.descriptionSearch,
   });
 
   const { data: accounts } = trpc.financial.accounts.list.useQuery();
@@ -139,7 +141,7 @@ export default function FinExpenses() {
 
   const getExportData = async () => utils.financial.transactions.list.fetch({
     type: "expense", from: filters.from, to: filters.to, categoryId: filters.categoryId,
-    employeeId: filters.employeeId, finClientId: filters.finClientId, sortField: filters.sortField, sortDir: filters.sortDir,
+    employeeId: filters.employeeId, finClientId: filters.finClientId, descriptionSearch: filters.descriptionSearch, sortField: filters.sortField, sortDir: filters.sortDir,
   });
 
   const handleExportExcel = async () => {

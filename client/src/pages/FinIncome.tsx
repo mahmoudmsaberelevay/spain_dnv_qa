@@ -32,6 +32,7 @@ export default function FinIncome() {
     to: filters.to,
     categoryId: filters.categoryId,
     finClientId: filters.finClientId,
+    descriptionSearch: filters.descriptionSearch,
     sortField: filters.sortField,
     sortDir: filters.sortDir,
     limit: pageSize > 0 ? pageSize : undefined,
@@ -45,6 +46,7 @@ export default function FinIncome() {
     to: filters.to,
     categoryId: filters.categoryId,
     finClientId: filters.finClientId,
+    descriptionSearch: filters.descriptionSearch,
   });
   // For export: fetch all without pagination
   const { data: allTransactions } = trpc.financial.transactions.list.useQuery({
@@ -53,6 +55,7 @@ export default function FinIncome() {
     to: filters.to,
     categoryId: filters.categoryId,
     finClientId: filters.finClientId,
+    descriptionSearch: filters.descriptionSearch,
     sortField: filters.sortField,
     sortDir: filters.sortDir,
   }, { enabled: false, staleTime: Infinity });
@@ -170,6 +173,7 @@ export default function FinIncome() {
       to: filters.to,
       categoryId: filters.categoryId,
       finClientId: filters.finClientId,
+      descriptionSearch: filters.descriptionSearch,
       sortField: filters.sortField,
       sortDir: filters.sortDir,
     });

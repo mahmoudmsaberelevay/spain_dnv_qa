@@ -18,6 +18,7 @@ export interface FinFilters {
   categoryId?: number;
   employeeId?: number;
   finClientId?: number;
+  descriptionSearch?: string;
   sortField?: SortField;
   sortDir?: SortDir;
 }
@@ -32,6 +33,7 @@ interface Props {
     employee?: boolean;
     client?: boolean;
     sort?: boolean;
+    descriptionSearch?: boolean;
   };
   /** Which sort columns to offer */
   sortColumns?: { label: string; value: SortField }[];
@@ -51,6 +53,7 @@ export default function FinFilterBar({ filters, onChange, show = {}, sortColumns
     employee: show.employee ?? showAll,
     client: show.client ?? showAll,
     sort: show.sort ?? showAll,
+    descriptionSearch: show.descriptionSearch ?? showAll,
   };
 
   const { data: categories } = trpc.financial.categories.list.useQuery(undefined, { enabled: s.category });
@@ -61,7 +64,7 @@ export default function FinFilterBar({ filters, onChange, show = {}, sortColumns
 
   const cols = sortColumns ?? DEFAULT_SORT_COLS;
 
-  const hasFilters = !!(filters.from || filters.to || filters.categoryId || filters.employeeId || filters.finClientId);
+  const hasFilters = !!(filters.from || filters.to || filters.categoryId || filters.employeeId || filters.finClientId || filters.descriptionSearch);
 
   const clearAll = () => onChange({ sortField: filters.sortField, sortDir: filters.sortDir });
 
@@ -199,6 +202,27 @@ export default function FinFilterBar({ filters, onChange, show = {}, sortColumns
               </div>
             </PopoverContent>
           </Popover>
+        )}
+
+        {/* Description Search */}
+        {s.descriptionSearch && (
+          <div className="relative">
+            <Input
+              placeholder="Search description..."
+              value={filters.descriptionSearch ?? ""}
+              onChange={e => onChange({ ...filters, descriptionSearch: e.target.value || undefined })}
+              className={cn("h-8 text-xs w-52 pl-7", filters.descriptionSearch && "border-primary")}
+            />
+            <svg className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            {filters.descriptionSearch && (
+              <button
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => onChange({ ...filters, descriptionSearch: undefined })}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
         )}
 
         {/* Clear filters */}

@@ -338,6 +338,7 @@ export async function listTransactions(filters?: {
   categoryId?: number;
   employeeId?: number;
   finClientId?: number;
+  descriptionSearch?: string;
   sortField?: "transactionDate" | "amount" | "description" | "type";
   sortDir?: "asc" | "desc";
 }) {
@@ -354,6 +355,10 @@ export async function listTransactions(filters?: {
   if (filters?.categoryId) conditions.push(eq(finTransactions.categoryId, filters.categoryId));
   if (filters?.employeeId) conditions.push(eq(finTransactions.employeeId, filters.employeeId));
   if (filters?.finClientId) conditions.push(eq(finTransactions.finClientId, filters.finClientId));
+  if (filters?.descriptionSearch) {
+    const like = `%${filters.descriptionSearch}%`;
+    conditions.push(sql`(${finTransactions.description} LIKE ${like} OR ${finTransactions.note} LIKE ${like})`);
+  }
 
   // Sorting
   const sf = filters?.sortField ?? "transactionDate";
@@ -383,6 +388,7 @@ export async function countTransactions(filters?: {
   categoryId?: number;
   employeeId?: number;
   finClientId?: number;
+  descriptionSearch?: string;
 }) {
   const db = await getDb(); if (!db) return 0;
   const conditions = [];
@@ -397,6 +403,10 @@ export async function countTransactions(filters?: {
   if (filters?.categoryId) conditions.push(eq(finTransactions.categoryId, filters.categoryId));
   if (filters?.employeeId) conditions.push(eq(finTransactions.employeeId, filters.employeeId));
   if (filters?.finClientId) conditions.push(eq(finTransactions.finClientId, filters.finClientId));
+  if (filters?.descriptionSearch) {
+    const like = `%${filters.descriptionSearch}%`;
+    conditions.push(sql`(${finTransactions.description} LIKE ${like} OR ${finTransactions.note} LIKE ${like})`);
+  }
   const [row] = await db.select({ count: sql<number>`COUNT(*)` }).from(finTransactions)
     .where(conditions.length ? and(...conditions) : undefined);
   return Number(row?.count ?? 0);
