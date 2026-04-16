@@ -238,6 +238,48 @@ export async function applyClientPayment(clientId: number, amountEgp: number, ac
     remainingAmountEur: newRemaining.toFixed(2),
   }).where(eq(finClients.id, clientId));
 }
+/**
+ * Full recalculation of a client's paid/remaining amounts from scratch.
+ * Sums all income transactions linked to this finClientId.
+ * Call this after any income create, update, or delete.
+ */
+export async function recalcClientPaidAmount(clientId: number) {
+  const db = await getDb(); if (!db) return;
+  const client = await getFinClientById(clientId);
+  if (!client) return;
+
+  // Sum all income transactions linked to this client (join with accounts for currency)
+  const rows = await db
+    .select({ amount: finTransactions.amount, accountId: finTransactions.accountId })
+    .from(finTransactions)
+    .where(and(eq(finTransactions.finClientId, clientId), eq(finTransactions.type, 'income')));
+
+  // Fetch account currencies
+  const accountIds = Array.from(new Set(rows.map(r => r.accountId).filter((id): id is number => id !== null && id !== undefined)));
+  let currencyMap: Record<number, string> = {};
+  if (accountIds.length > 0) {
+    const accs = await db.select({ id: finAccounts.id, currency: finAccounts.currency }).from(finAccounts).where(inArray(finAccounts.id, accountIds));
+    for (const a of accs) currencyMap[a.id] = a.currency;
+  }
+
+  let totalEgp = 0, totalEur = 0;
+  for (const r of rows) {
+    const currency = r.accountId ? (currencyMap[r.accountId] ?? 'EGP') : 'EGP';
+    const amt = Number(r.amount);
+    if (currency === 'EUR') { totalEur += amt; totalEgp += amt * 55.5; }
+    else { totalEgp += amt; totalEur += amt / 55.5; }
+  }
+
+  const contractVal = Number(client.contractValueEur ?? 0);
+  const newRemaining = contractVal > 0 ? contractVal - totalEur : Number(client.remainingAmountEur ?? 0);
+
+  await db.update(finClients).set({
+    paidAmountEur: totalEur.toFixed(2),
+    paidAmountEgp: totalEgp.toFixed(2),
+    remainingAmountEur: newRemaining.toFixed(2),
+  }).where(eq(finClients.id, clientId));
+}
+
 export async function setClientPaidAmount(clientId: number, paidAmountEgp: number) {
   const db = await getDb(); if (!db) return null;
   const client = await getFinClientById(clientId);

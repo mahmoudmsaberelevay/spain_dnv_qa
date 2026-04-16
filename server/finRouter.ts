@@ -8,7 +8,7 @@ import {
   listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance, recalcAccountBalance, recalcAllAccountBalances,
   listCategories, createCategory, updateCategory, deleteCategory,
   listEmployees, createEmployee, updateEmployee, deleteEmployee,
-  listFinClients, countFinClients, getFinClientTotals, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment, setClientPaidAmount,
+  listFinClients, countFinClients, getFinClientTotals, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment, setClientPaidAmount, recalcClientPaidAmount,
   bulkDeleteTransactions,
   listCommissions, countCommissions, createCommission, updateCommission, deleteCommission,
   listTransactions, countTransactions, createTransaction, getAccountStatement,
@@ -444,9 +444,14 @@ const transactionsRouter = router({
         if (t.fromAccountId) affectedIds.add(t.fromAccountId);
         if (t.toAccountId) affectedIds.add(t.toAccountId);
       }
+      // Collect affected client IDs before deletion
+      const affectedClientIds = new Set<number>();
+      for (const t of txs) { if (t.finClientId) affectedClientIds.add(t.finClientId); }
       await bulkDeleteTransactions(input.ids);
       // Recalc all affected accounts from scratch
       for (const id of Array.from(affectedIds)) recalcAccountBalance(id).catch(() => {});
+      // Recalc all affected clients from scratch
+      for (const cid of Array.from(affectedClientIds)) recalcClientPaidAmount(cid).catch(() => {});
       return { deleted: input.ids.length };
     }),
   deleteOne: finAdminProcedure
@@ -460,8 +465,11 @@ const transactionsRouter = router({
       if (tx?.accountId) affectedIds.add(tx.accountId);
       if (tx?.fromAccountId) affectedIds.add(tx.fromAccountId);
       if (tx?.toAccountId) affectedIds.add(tx.toAccountId);
+      const affectedClientId = tx?.finClientId ?? null;
       await bulkDeleteTransactions([input.id]);
       for (const id of Array.from(affectedIds)) recalcAccountBalance(id).catch(() => {});
+      // Recalc client paid/remaining after deletion
+      if (affectedClientId) recalcClientPaidAmount(affectedClientId).catch(() => {});
       return { success: true };
     }),
 
@@ -523,13 +531,11 @@ const transactionsRouter = router({
         balanceAfter: balanceAfter.toString(),
         createdBy: ctx.user?.email ?? null,
       });
-      // Update client remaining balance if linked to a client
+      // Recalc client paid/remaining from scratch
       if (input.finClientId) {
-        applyClientPayment(input.finClientId, input.amount, account.currency).catch(() => {});
+        recalcClientPaidAmount(input.finClientId).catch(() => {});
       }
-      // Fire-and-forget email notification
-      // income transaction email notification disabled
-      // Recalc from scratch to stay in sync
+      // Recalc account balance from scratch
       recalcAccountBalance(input.accountId).catch(() => {});
       return result;
     }),
@@ -565,10 +571,10 @@ const transactionsRouter = router({
         balanceAfter: balanceAfter.toString(),
         createdBy: ctx.user?.email ?? null,
       });
-      // Fire-and-forget email notification
-      // expense transaction email notification disabled
-      // Recalc from scratch to stay in sync
+      // Recalc account balance from scratch
       recalcAccountBalance(input.accountId).catch(() => {});
+      // Recalc client paid/remaining if linked
+      if (input.finClientId) recalcClientPaidAmount(input.finClientId).catch(() => {});
       return result;
     }),
 
@@ -617,8 +623,15 @@ const transactionsRouter = router({
       }
       if (Object.keys(updateData).length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "No fields to update" });
       await db.update(finTransactions).set(updateData).where(eq(finTransactions.id, id));
-      // Recalc affected account(s) from scratch
+      // Recalc affected account from scratch
       if (current.accountId) recalcAccountBalance(current.accountId).catch(() => {});
+      // Recalc client paid/remaining — use new finClientId if changed, else old one
+      const clientIdToRecalc = (fields.finClientId !== undefined ? fields.finClientId : current.finClientId);
+      if (clientIdToRecalc) recalcClientPaidAmount(clientIdToRecalc).catch(() => {});
+      // If finClientId was changed, also recalc the old client
+      if (fields.finClientId !== undefined && fields.finClientId !== current.finClientId && current.finClientId) {
+        recalcClientPaidAmount(current.finClientId).catch(() => {});
+      }
       const [updated] = await db.select().from(finTransactions).where(eq(finTransactions.id, id));
       return updated;
     }),
