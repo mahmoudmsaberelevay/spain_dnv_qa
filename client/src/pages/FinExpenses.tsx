@@ -216,7 +216,7 @@ export default function FinExpenses() {
       <Card className="border-0 shadow-sm">
         <CardHeader className="pb-4">
           <CardTitle className="text-base mb-3">Expense Transactions</CardTitle>
-          <FinFilterBar filters={filters} onChange={(f) => { setFilters(f); setPage(0); }} show={{ dateRange: true, category: true, employee: true, client: true, sort: true }} />
+          <FinFilterBar filters={filters} onChange={(f) => { setFilters(f); setPage(0); }} show={{ dateRange: true, category: true, employee: true, client: true, sort: true, descriptionSearch: true }} />
         </CardHeader>
         <CardContent>
           {isLoading ? (

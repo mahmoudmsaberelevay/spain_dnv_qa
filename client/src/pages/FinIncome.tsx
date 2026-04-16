@@ -270,7 +270,7 @@ export default function FinIncome() {
           <FinFilterBar
             filters={filters}
             onChange={(f) => { setFilters(f); setPage(0); }}
-            show={{ dateRange: true, category: true, client: true, sort: true }}
+            show={{ dateRange: true, category: true, client: true, sort: true, descriptionSearch: true }}
           />
         </CardHeader>
         <CardContent>
