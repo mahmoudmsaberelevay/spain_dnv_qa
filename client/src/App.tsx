@@ -45,6 +45,7 @@ import FinClients from "./pages/FinClients";
 import FinSettlement from "./pages/FinSettlement";
 import UpcomingPayments from "./pages/UpcomingPayments";
 import PermissionsManager from "./pages/PermissionsManager";
+import AccessDenied from "./pages/AccessDenied";
 
 function Router() {
   return (
@@ -176,6 +177,9 @@ function Router() {
         <DashboardLayout><PermissionsManager /></DashboardLayout>
       </Route>
 
+      <Route path="/access-denied">
+        <AccessDenied />
+      </Route>
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

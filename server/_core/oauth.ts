@@ -66,6 +66,19 @@ export function registerOAuthRoutes(app: Express) {
         return;
       }
 
+      // ── Domain restriction: only @elevay.com + the owner gmail are allowed ──
+      const userEmail = userInfo.email ?? "";
+      const ALLOWED_EMAILS = ["mahmoud.saberelevay@gmail.com"];
+      const isElevayDomain = userEmail.endsWith("@elevay.com");
+      const isExempted = ALLOWED_EMAILS.includes(userEmail);
+      if (!isElevayDomain && !isExempted) {
+        const deniedOrigin = origin || redirectUri;
+        const deniedUrl = `${deniedOrigin}/access-denied?reason=domain`;
+        console.warn(`[OAuth] Login blocked for non-elevay email: ${userEmail}`);
+        res.redirect(302, deniedUrl);
+        return;
+      }
+
       await db.upsertUser({
         openId: userInfo.openId,
         name: userInfo.name || null,
