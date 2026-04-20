@@ -166,6 +166,7 @@ export default function Contracts() {
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Client Name</th>
                     <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Family</th>
                     <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Value</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Discount</th>
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Consultant</th>
                     <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Date</th>
                     <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Status</th>
@@ -194,6 +195,15 @@ export default function Contracts() {
                       </td>
                       <td className="px-4 py-4 text-right">
                         <span className="text-sm font-semibold">{formatCurrency(Number(contract.contractValue), "EUR")}</span>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        {Number((contract as any).discountValue ?? 0) > 0 ? (
+                          <span className="inline-flex items-center text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                            -{formatCurrency(Number((contract as any).discountValue), "EUR")}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-4">
                         <span className="text-xs text-muted-foreground">{(contract as any).consultantName ?? "—"}</span>
