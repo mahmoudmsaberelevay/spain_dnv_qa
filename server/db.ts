@@ -169,6 +169,23 @@ export async function getContractById(id: number) {
   return result[0];
 }
 
+export async function applyContractDiscount(id: number, discountValue: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const contract = await getContractById(id);
+  if (!contract) throw new Error("Contract not found");
+  // Only allow applying a discount once — if discountValue is already set, reject
+  if (Number(contract.discountValue ?? 0) > 0) {
+    throw new Error("A discount has already been applied to this contract and cannot be changed.");
+  }
+  const originalValue = Number(contract.contractValue);
+  const newValue = Math.max(0, originalValue - discountValue);
+  await db.update(contracts).set({
+    contractValue: newValue.toFixed(2),
+    discountValue: discountValue.toFixed(2),
+  }).where(eq(contracts.id, id));
+}
+
 export async function updateContractStatus(id: number, status: "pending" | "signed" | "cancelled") {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -196,7 +213,7 @@ export async function getNextContractSequenceForYear(yearPrefix: number): Promis
   const result = await db
     .select({ count: sql<number>`COUNT(*)` })
     .from(contracts)
-    .where(sql`LEFT(client_code, ${prefixStr.length}) = ${prefixStr}`);
+    .where(sql`LEFT(contractCode, ${prefixStr.length}) = ${prefixStr}`);
   return (result[0]?.count ?? 0) + 1;
 }
 

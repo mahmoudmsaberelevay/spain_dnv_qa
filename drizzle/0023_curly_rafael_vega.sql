@@ -1,0 +1,1 @@
+ALTER TABLE `contracts` ADD `discountValue` decimal(10,2) DEFAULT '0';

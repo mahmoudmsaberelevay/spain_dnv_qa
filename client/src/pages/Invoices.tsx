@@ -49,6 +49,7 @@ export default function Invoices() {
   const [selectedContractId, setSelectedContractId] = useState<string>("");
   const [amountEur, setAmountEur] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
+  const [discountValue, setDiscountValue] = useState<string>("");
 
   // Form state — legacy mode
   const [legacyClientId, setLegacyClientId] = useState<string>("none");
@@ -91,6 +92,7 @@ export default function Invoices() {
       setSelectedContractId("");
       setAmountEur("");
       setNotes("");
+      setDiscountValue("");
     },
     onError: (err) => {
       toast.error(`Failed to create receipt: ${err.message}`);
@@ -163,7 +165,8 @@ export default function Invoices() {
     createMutation.mutate({
       contractId: Number(selectedContractId),
       amountEur: Number(amountEur),
-      notes: notes.trim(), // required field
+      notes: notes.trim(),
+      discountValue: discountValue ? Number(discountValue) : undefined,
     });
   };
 
@@ -429,6 +432,39 @@ export default function Invoices() {
                     <span className="font-semibold">Remaining Balance</span>
                     <span className="font-bold text-primary">{formatCurrency(paymentSummary.remainingBalance, "EUR")}</span>
                   </div>
+                </div>
+              )}
+
+              {/* One-time discount field — only shown if no discount has been applied yet */}
+              {selectedContract && paymentSummary && Number(selectedContract.discountValue ?? 0) === 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="discountValue">
+                    Discount (EUR)
+                    <span className="ml-2 text-xs font-normal text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                      One-time only — permanently reduces contract value
+                    </span>
+                  </Label>
+                  <Input
+                    id="discountValue"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="e.g. 2000 (optional)"
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(e.target.value)}
+                    className="h-10"
+                  />
+                  {discountValue && Number(discountValue) > 0 && (
+                    <p className="text-xs text-amber-700">
+                      Contract value will be reduced from {formatCurrency(paymentSummary.contractValue, "EUR")} to {formatCurrency(paymentSummary.contractValue - Number(discountValue), "EUR")}. This cannot be undone.
+                    </p>
+                  )}
+                </div>
+              )}
+              {selectedContract && Number(selectedContract.discountValue ?? 0) > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm flex justify-between">
+                  <span className="text-amber-700">Discount already applied</span>
+                  <span className="font-semibold text-amber-800">{formatCurrency(Number(selectedContract.discountValue), "EUR")}</span>
                 </div>
               )}
 

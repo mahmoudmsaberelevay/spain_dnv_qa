@@ -162,6 +162,13 @@
       "when": 1776351379286,
       "tag": "0022_slow_obadiah_stane",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1776673874334,
+      "tag": "0023_curly_rafael_vega",
+      "breakpoints": true
     }
   ]
 }

@@ -11,7 +11,7 @@ import {
   createCase, getCasesByUserId, getCaseById, updateCase, deleteCase,
   createDocument, getDocumentsByCaseId, getDocumentById, updateDocument, deleteDocument,
   upsertAnalysisResult, getAnalysisResultByCaseId,
-  createContract, getAllContracts, getContractById, updateContractStatus, updateContractDocUrl, createInvoice, getAllInvoices, getInvoicesByContractId,
+  createContract, getAllContracts, getContractById, updateContractStatus, updateContractDocUrl, applyContractDiscount, createInvoice, getAllInvoices, getInvoicesByContractId,
   getInvoiceById, markInvoicePaid, updateInvoicePdfUrl, createPayment,
   getTotalPaidByContractId, getContractStats, getFamilyMemberDistribution,
   getRecentContracts, getPaymentsByContractId, getNextContractSequence, getNextContractSequenceForYear,
@@ -902,11 +902,22 @@ const contractingRouter = router({
         contractId: z.number(),
         amountEur: z.number().positive(),
         notes: z.string().min(1, "Payment notes are required"),
+        discountValue: z.number().min(0).optional(),
       }))
       .mutation(async ({ input }) => {
         const contract = await getContractById(input.contractId);
         if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
         if (contract.status !== "signed") throw new TRPCError({ code: "BAD_REQUEST", message: "Can only create invoices for signed contracts" });
+        // Apply one-time discount if provided (permanently reduces contract value)
+        if (input.discountValue && input.discountValue > 0) {
+          if (Number(contract.discountValue ?? 0) > 0) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "A discount has already been applied to this contract and cannot be changed." });
+          }
+          await applyContractDiscount(input.contractId, input.discountValue);
+          // Re-fetch contract to get updated value
+          const updated = await getContractById(input.contractId);
+          if (updated) Object.assign(contract, updated);
+        }
         const rateInfo = await getEurToEgpRate();
         const amountEgp = convertEurToEgp(input.amountEur, rateInfo.rate);
         const invoiceCode = generateInvoiceCode();
