@@ -50,6 +50,7 @@ import {
   Settings as SettingsIcon,
   Landmark,
   CalendarClock,
+  Shield,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -376,6 +377,22 @@ function DashboardLayoutContent({
               >
                 <SettingsIcon className="h-3.5 w-3.5 shrink-0" />
                 {!isCollapsed && <span>Settings</span>}
+              </button>
+            )}
+            {/* Permissions Manager — only for mahmoud.saberelevay@gmail.com */}
+            {user?.email === "mahmoud.saberelevay@gmail.com" && (
+              <button
+                onClick={() => setLocation("/admin/permissions")}
+                className={cn(
+                  "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors mb-1",
+                  location === "/admin/permissions"
+                    ? "bg-white/10 text-white"
+                    : "text-white/50 hover:text-white hover:bg-white/5"
+                )}
+                title="Permissions"
+              >
+                <Shield className="h-3.5 w-3.5 shrink-0" />
+                {!isCollapsed && <span>Permissions</span>}
               </button>
             )}
             {/* Broadcast Center — admin only */}

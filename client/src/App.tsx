@@ -44,6 +44,7 @@ import FinBulkUpload from "./pages/FinBulkUpload";
 import FinClients from "./pages/FinClients";
 import FinSettlement from "./pages/FinSettlement";
 import UpcomingPayments from "./pages/UpcomingPayments";
+import PermissionsManager from "./pages/PermissionsManager";
 
 function Router() {
   return (
@@ -168,6 +169,11 @@ function Router() {
       {/* ── Settings (owner only) ── */}
       <Route path="/settings">
         <Settings />
+      </Route>
+
+      {/* ── Permissions Manager (owner only) ── */}
+      <Route path="/admin/permissions">
+        <DashboardLayout><PermissionsManager /></DashboardLayout>
       </Route>
 
       <Route path="/404" component={NotFound} />
