@@ -766,8 +766,8 @@ Return a comprehensive JSON analysis.`;
 async function generateContractCode(): Promise<string> {
   const yearPrefix = new Date().getFullYear() % 100; // 26 for 2026, 27 for 2027, etc.
   const seq = await getNextContractSequenceForYear(yearPrefix);
-  // Format: YY + 4-digit sequence (e.g. 260001, 260002, ... 269999)
-  return `${yearPrefix}${String(seq).padStart(4, '0')}`;
+  // Format: YY + 3-digit sequence (e.g. 26001, 26002, ... 26999)
+  return `${yearPrefix}${String(seq).padStart(3, '0')}`;
 }
 function generateInvoiceCode(): string {
   const now = new Date();

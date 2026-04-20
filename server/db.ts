@@ -208,13 +208,18 @@ export async function getNextContractSequence(): Promise<number> {
 export async function getNextContractSequenceForYear(yearPrefix: number): Promise<number> {
   const db = await getDb();
   if (!db) return 1;
-  // Count contracts whose clientCode starts with this year prefix (e.g. '26' for 2026)
+  // Find the highest numeric suffix for contracts starting with this year prefix
+  // This handles mixed-format codes (e.g. '260005' and '26027') correctly
   const prefixStr = String(yearPrefix);
   const result = await db
-    .select({ count: sql<number>`COUNT(*)` })
+    .select({ maxCode: sql<string>`MAX(contractCode)` })
     .from(contracts)
-    .where(sql`LEFT(contractCode, ${prefixStr.length}) = ${prefixStr}`);
-  return (result[0]?.count ?? 0) + 1;
+    .where(sql`LEFT(contractCode, ${prefixStr.length}) = ${prefixStr} AND contractCode REGEXP '^[0-9]+$'`);
+  const maxCode = result[0]?.maxCode;
+  if (!maxCode) return 1;
+  // Extract the numeric suffix after the year prefix
+  const suffix = Number(maxCode.slice(prefixStr.length));
+  return suffix + 1;
 }
 
 export async function createInvoice(data: InsertInvoice) {
