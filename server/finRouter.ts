@@ -1104,7 +1104,6 @@ const salaryReceiptsRouter = router({
       const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const [cur] = await db.select().from(salaryReceipts).where(eq(salaryReceipts.id, input.id));
       if (!cur) throw new TRPCError({ code: "NOT_FOUND" });
-      if (cur.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot delete a paid receipt. Delete the linked expense entry first." });
       await db.delete(salaryReceipts).where(eq(salaryReceipts.id, input.id));
       return { ok: true };
     }),
@@ -1283,7 +1282,6 @@ const commissionReceiptsRouter = router({
       const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const [cur] = await db.select().from(commissionReceipts).where(eq(commissionReceipts.id, input.id));
       if (!cur) throw new TRPCError({ code: "NOT_FOUND" });
-      if (cur.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot delete a paid receipt. Delete the linked expense entries first." });
       await db.delete(commissionReceiptItems).where(eq(commissionReceiptItems.receiptId, input.id));
       await db.delete(commissionReceipts).where(eq(commissionReceipts.id, input.id));
       return { ok: true };
