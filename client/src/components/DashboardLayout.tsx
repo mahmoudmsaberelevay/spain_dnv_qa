@@ -119,6 +119,7 @@ const modules = [
       { icon: Landmark, label: "After Settlement", path: "/finance/settlement" },
       { icon: CalendarClock, label: "Upcoming Payments", path: "/finance/upcoming" },
       { icon: Receipt, label: "Salary Receipts", path: "/finance/salary-receipts" },
+      { icon: Receipt, label: "Commission Receipts", path: "/finance/commission-receipts" },
     ],
   },
 ];

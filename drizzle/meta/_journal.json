@@ -176,6 +176,13 @@
       "when": 1776760989796,
       "tag": "0024_volatile_blizzard",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1776764081942,
+      "tag": "0025_lame_terrax",
+      "breakpoints": true
     }
   ]
 }

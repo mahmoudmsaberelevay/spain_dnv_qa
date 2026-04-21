@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
-import { finAccounts, finTransactions, appSettings, upcomingPayments, finClients, salaryReceipts } from "../drizzle/schema";
+import { finAccounts, finTransactions, appSettings, upcomingPayments, finClients, salaryReceipts, commissionReceipts, commissionReceiptItems } from "../drizzle/schema";
 import {
   listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance, recalcAccountBalance, recalcAllAccountBalances,
   listCategories, createCategory, updateCategory, deleteCategory,
@@ -1146,6 +1146,196 @@ const salaryReceiptsRouter = router({
     }),
 });
 
+// ─── Commission Receipts Router ────────────────────────────────────────────
+const COMMISSION_FOR_OPTIONS = [
+  "Paralegal First", "Paralegal Second", "Paralegal Third",
+  "Consultant First", "Consultant Second", "Consultant Third",
+  "Qualifier", "Qualifier TL", "Operation Manager", "Operation TL", "Country Manager",
+] as const;
+
+const commissionItemSchema = z.object({
+  clientId: z.number(),
+  clientName: z.string().min(1),
+  commissionFor: z.string().min(1),
+  amountEur: z.number().min(0),
+});
+
+const commissionReceiptsRouter = router({
+  list: finProcedure.query(async () => {
+    const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+    const receipts = await db.select().from(commissionReceipts).orderBy(commissionReceipts.createdAt);
+    // Fetch items for each receipt
+    const allItems = await db.select().from(commissionReceiptItems);
+    return receipts.map(r => ({
+      ...r,
+      items: allItems.filter(i => i.receiptId === r.id),
+    })).reverse();
+  }),
+
+  create: finProcedure
+    .input(z.object({
+      employeeId: z.number(),
+      forMonth: z.string().min(1),
+      eurToEgpRate: z.number().min(0.01),
+      items: z.array(commissionItemSchema).min(1),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const [emp] = await db.select().from(finAccounts).limit(0); // just to use db
+      // Get employee name
+      const { listEmployees } = await import("./finDb");
+      const employees = await listEmployees();
+      const emp2 = employees.find(e => e.id === input.employeeId);
+      if (!emp2) throw new TRPCError({ code: "NOT_FOUND", message: "Employee not found" });
+
+      const rate = input.eurToEgpRate;
+      const itemsWithEgp = input.items.map(item => ({
+        ...item,
+        amountEgp: Math.round(item.amountEur * rate * 100) / 100,
+      }));
+      const totalEur = itemsWithEgp.reduce((s, i) => s + i.amountEur, 0);
+      const totalEgp = itemsWithEgp.reduce((s, i) => s + i.amountEgp, 0);
+
+      const [result] = await db.insert(commissionReceipts).values({
+        employeeId: input.employeeId,
+        employeeName: emp2.name,
+        forMonth: input.forMonth,
+        eurToEgpRate: rate.toString(),
+        totalAmountEur: totalEur.toString(),
+        totalAmountEgp: totalEgp.toString(),
+        receiptDate: new Date(),
+        status: "draft",
+        createdBy: ctx.user?.email ?? "",
+      });
+      const receiptId = (result as any).insertId as number;
+
+      for (const item of itemsWithEgp) {
+        await db.insert(commissionReceiptItems).values({
+          receiptId,
+          clientId: item.clientId,
+          clientName: item.clientName,
+          commissionFor: item.commissionFor,
+          amountEur: item.amountEur.toString(),
+          amountEgp: item.amountEgp.toString(),
+        });
+      }
+      return { id: receiptId };
+    }),
+
+  update: finProcedure
+    .input(z.object({
+      id: z.number(),
+      employeeId: z.number().optional(),
+      forMonth: z.string().optional(),
+      eurToEgpRate: z.number().optional(),
+      items: z.array(commissionItemSchema).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const [cur] = await db.select().from(commissionReceipts).where(eq(commissionReceipts.id, input.id));
+      if (!cur) throw new TRPCError({ code: "NOT_FOUND" });
+      if (cur.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot edit a paid receipt" });
+
+      const rate = input.eurToEgpRate ?? Number(cur.eurToEgpRate);
+      let updateData: Record<string, unknown> = {};
+      if (input.forMonth) updateData.forMonth = input.forMonth;
+      if (input.eurToEgpRate) updateData.eurToEgpRate = rate.toString();
+
+      if (input.employeeId) {
+        const { listEmployees } = await import("./finDb");
+        const employees = await listEmployees();
+        const emp = employees.find(e => e.id === input.employeeId);
+        if (!emp) throw new TRPCError({ code: "NOT_FOUND", message: "Employee not found" });
+        updateData.employeeId = input.employeeId;
+        updateData.employeeName = emp.name;
+      }
+
+      if (input.items) {
+        const itemsWithEgp = input.items.map(item => ({
+          ...item,
+          amountEgp: Math.round(item.amountEur * rate * 100) / 100,
+        }));
+        updateData.totalAmountEur = itemsWithEgp.reduce((s, i) => s + i.amountEur, 0).toString();
+        updateData.totalAmountEgp = itemsWithEgp.reduce((s, i) => s + i.amountEgp, 0).toString();
+        // Replace items
+        await db.delete(commissionReceiptItems).where(eq(commissionReceiptItems.receiptId, input.id));
+        for (const item of itemsWithEgp) {
+          await db.insert(commissionReceiptItems).values({
+            receiptId: input.id,
+            clientId: item.clientId,
+            clientName: item.clientName,
+            commissionFor: item.commissionFor,
+            amountEur: item.amountEur.toString(),
+            amountEgp: item.amountEgp.toString(),
+          });
+        }
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await db.update(commissionReceipts).set(updateData).where(eq(commissionReceipts.id, input.id));
+      }
+      return { ok: true };
+    }),
+
+  delete: finProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const [cur] = await db.select().from(commissionReceipts).where(eq(commissionReceipts.id, input.id));
+      if (!cur) throw new TRPCError({ code: "NOT_FOUND" });
+      if (cur.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot delete a paid receipt. Delete the linked expense entries first." });
+      await db.delete(commissionReceiptItems).where(eq(commissionReceiptItems.receiptId, input.id));
+      await db.delete(commissionReceipts).where(eq(commissionReceipts.id, input.id));
+      return { ok: true };
+    }),
+
+  markAsPaid: finProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const [cur] = await db.select().from(commissionReceipts).where(eq(commissionReceipts.id, input.id));
+      if (!cur) throw new TRPCError({ code: "NOT_FOUND" });
+      if (cur.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Already paid" });
+
+      const items = await db.select().from(commissionReceiptItems).where(eq(commissionReceiptItems.receiptId, input.id));
+      const cashEgpAccountId = 1;
+      const commissionCategoryId = 1; // Commissions category
+      const description = `Commission for ${cur.forMonth}`;
+
+      const txIds: number[] = [];
+      for (const item of items) {
+        const txResult = await createTransaction({
+          type: "expense",
+          accountId: cashEgpAccountId,
+          categoryId: commissionCategoryId,
+          employeeId: cur.employeeId,
+          amount: item.amountEgp,
+          convertedAmount: item.amountEgp,
+          description,
+          note: description,
+          transactionDate: new Date(),
+          createdBy: ctx.user?.email ?? "",
+        });
+        if (!txResult) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to create expense for ${item.clientName}` });
+        // Store the first transaction id on the item
+        await db.update(commissionReceiptItems)
+          .set({ linkedTransactionId: txResult.id })
+          .where(eq(commissionReceiptItems.id, item.id));
+        txIds.push(txResult.id);
+      }
+
+      await recalcAccountBalance(cashEgpAccountId);
+
+      await db.update(commissionReceipts)
+        .set({ status: "paid" })
+        .where(eq(commissionReceipts.id, input.id));
+
+      return { ok: true, transactionIds: txIds };
+    }),
+
+  getCommissionForOptions: finProcedure.query(() => COMMISSION_FOR_OPTIONS),
+});
+
 // ─── Export Financial Router ─────────────────────────────────────────────
 export const financialRouter = router({
   accounts: accountsRouter,
@@ -1160,4 +1350,5 @@ export const financialRouter = router({
   settings: settingsRouter,
   upcomingPayments: upcomingPaymentsRouter,
   salaryReceipts: salaryReceiptsRouter,
+  commissionReceipts: commissionReceiptsRouter,
 });

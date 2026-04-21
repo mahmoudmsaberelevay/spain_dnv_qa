@@ -568,3 +568,34 @@ export const salaryReceipts = mysqlTable("salaryReceipts", {
 });
 export type SalaryReceipt = typeof salaryReceipts.$inferSelect;
 export type InsertSalaryReceipt = typeof salaryReceipts.$inferInsert;
+
+// ─── Commission Receipts ──────────────────────────────────────────────────────
+export const commissionReceipts = mysqlTable("commissionReceipts", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employeeId").notNull(),
+  employeeName: varchar("employeeName", { length: 255 }).notNull(),
+  forMonth: varchar("forMonth", { length: 20 }).notNull(),
+  eurToEgpRate: decimal("eurToEgpRate", { precision: 10, scale: 4 }).notNull(),
+  totalAmountEur: decimal("totalAmountEur", { precision: 14, scale: 2 }).notNull(),
+  totalAmountEgp: decimal("totalAmountEgp", { precision: 14, scale: 2 }).notNull(),
+  receiptDate: timestamp("receiptDate").notNull(),
+  status: mysqlEnum("status", ["draft", "paid"]).default("draft").notNull(),
+  createdBy: varchar("createdBy", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type CommissionReceipt = typeof commissionReceipts.$inferSelect;
+export type InsertCommissionReceipt = typeof commissionReceipts.$inferInsert;
+
+export const commissionReceiptItems = mysqlTable("commissionReceiptItems", {
+  id: int("id").autoincrement().primaryKey(),
+  receiptId: int("receiptId").notNull(),
+  clientId: int("clientId").notNull(),
+  clientName: varchar("clientName", { length: 255 }).notNull(),
+  commissionFor: varchar("commissionFor", { length: 100 }).notNull(),
+  amountEur: decimal("amountEur", { precision: 14, scale: 2 }).notNull(),
+  amountEgp: decimal("amountEgp", { precision: 14, scale: 2 }).notNull(),
+  linkedTransactionId: int("linkedTransactionId"),
+});
+export type CommissionReceiptItem = typeof commissionReceiptItems.$inferSelect;
+export type InsertCommissionReceiptItem = typeof commissionReceiptItems.$inferInsert;
