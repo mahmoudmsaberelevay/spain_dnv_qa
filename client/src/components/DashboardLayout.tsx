@@ -118,6 +118,7 @@ const modules = [
       { icon: Upload, label: "Bulk Upload", path: "/finance/bulk-upload" },
       { icon: Landmark, label: "After Settlement", path: "/finance/settlement" },
       { icon: CalendarClock, label: "Upcoming Payments", path: "/finance/upcoming" },
+      { icon: Receipt, label: "Salary Receipts", path: "/finance/salary-receipts" },
     ],
   },
 ];

@@ -46,6 +46,7 @@ import FinSettlement from "./pages/FinSettlement";
 import UpcomingPayments from "./pages/UpcomingPayments";
 import PermissionsManager from "./pages/PermissionsManager";
 import AccessDenied from "./pages/AccessDenied";
+import SalaryReceipts from "./pages/SalaryReceipts";
 
 function Router() {
   return (
@@ -142,6 +143,9 @@ function Router() {
       </Route>
       <Route path="/finance/upcoming">
         <PageGuard pageKey="fin_upcoming"><DashboardLayout><UpcomingPayments /></DashboardLayout></PageGuard>
+      </Route>
+      <Route path="/finance/salary-receipts">
+        <PageGuard pageKey="fin_salary_receipts"><SalaryReceipts /></PageGuard>
       </Route>
 
       {/* ── Client Documentation Module ── */}

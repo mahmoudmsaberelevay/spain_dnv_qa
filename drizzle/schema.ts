@@ -549,3 +549,22 @@ export const upcomingPayments = mysqlTable("upcomingPayments", {
 });
 export type UpcomingPayment = typeof upcomingPayments.$inferSelect;
 export type InsertUpcomingPayment = typeof upcomingPayments.$inferInsert;
+
+// ─── Salary Receipts ─────────────────────────────────────────────────────────
+export const salaryReceipts = mysqlTable("salaryReceipts", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employeeId").notNull(),
+  employeeName: varchar("employeeName", { length: 255 }).notNull(),
+  salaryAmount: decimal("salaryAmount", { precision: 14, scale: 2 }).notNull(),
+  deductionAmount: decimal("deductionAmount", { precision: 14, scale: 2 }).default("0").notNull(),
+  netPaidSalary: decimal("netPaidSalary", { precision: 14, scale: 2 }).notNull(),
+  forMonth: varchar("forMonth", { length: 20 }).notNull(),
+  receiptDate: timestamp("receiptDate").notNull(),
+  status: mysqlEnum("status", ["draft", "paid"]).default("draft").notNull(),
+  linkedTransactionId: int("linkedTransactionId"),
+  createdBy: varchar("createdBy", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type SalaryReceipt = typeof salaryReceipts.$inferSelect;
+export type InsertSalaryReceipt = typeof salaryReceipts.$inferInsert;

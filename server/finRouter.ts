@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
-import { finAccounts, finTransactions, appSettings, upcomingPayments, finClients } from "../drizzle/schema";
+import { finAccounts, finTransactions, appSettings, upcomingPayments, finClients, salaryReceipts } from "../drizzle/schema";
 import {
   listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance, recalcAccountBalance, recalcAllAccountBalances,
   listCategories, createCategory, updateCategory, deleteCategory,
@@ -1032,6 +1032,120 @@ const upcomingPaymentsRouter = router({
     }),
 });
 
+// ─── Salary Receipts Router ───────────────────────────────────────────────────
+const salaryReceiptsRouter = router({
+  list: finProcedure
+    .input(z.object({ month: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      const db = await getDb(); if (!db) return [];
+      const rows = await db.select().from(salaryReceipts).orderBy(salaryReceipts.receiptDate);
+      if (input?.month) return rows.filter(r => r.forMonth === input.month);
+      return rows;
+    }),
+
+  create: finProcedure
+    .input(z.object({
+      employeeId: z.number(),
+      employeeName: z.string(),
+      salaryAmount: z.number(),
+      deductionAmount: z.number().default(0),
+      forMonth: z.string(),
+      receiptDate: z.number(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const net = input.salaryAmount - input.deductionAmount;
+      const [res] = await db.insert(salaryReceipts).values({
+        employeeId: input.employeeId,
+        employeeName: input.employeeName,
+        salaryAmount: input.salaryAmount.toString(),
+        deductionAmount: input.deductionAmount.toString(),
+        netPaidSalary: net.toString(),
+        forMonth: input.forMonth,
+        receiptDate: new Date(input.receiptDate),
+        status: "draft",
+        createdBy: ctx.user?.email ?? "",
+      });
+      return { id: res.insertId };
+    }),
+
+  update: finProcedure
+    .input(z.object({
+      id: z.number(),
+      employeeId: z.number().optional(),
+      employeeName: z.string().optional(),
+      salaryAmount: z.number().optional(),
+      deductionAmount: z.number().optional(),
+      forMonth: z.string().optional(),
+      receiptDate: z.number().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { id, salaryAmount, deductionAmount, receiptDate, ...rest } = input;
+      const [cur] = await db.select().from(salaryReceipts).where(eq(salaryReceipts.id, id));
+      if (!cur) throw new TRPCError({ code: "NOT_FOUND" });
+      if (cur.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot edit a paid receipt" });
+      const newSalary = salaryAmount ?? Number(cur.salaryAmount);
+      const newDeduction = deductionAmount ?? Number(cur.deductionAmount);
+      const net = newSalary - newDeduction;
+      await db.update(salaryReceipts).set({
+        ...rest,
+        salaryAmount: newSalary.toString(),
+        deductionAmount: newDeduction.toString(),
+        netPaidSalary: net.toString(),
+        ...(receiptDate ? { receiptDate: new Date(receiptDate) } : {}),
+      }).where(eq(salaryReceipts.id, id));
+      return { ok: true };
+    }),
+
+  delete: finProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const [cur] = await db.select().from(salaryReceipts).where(eq(salaryReceipts.id, input.id));
+      if (!cur) throw new TRPCError({ code: "NOT_FOUND" });
+      if (cur.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot delete a paid receipt. Delete the linked expense entry first." });
+      await db.delete(salaryReceipts).where(eq(salaryReceipts.id, input.id));
+      return { ok: true };
+    }),
+
+  markAsPaid: finProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const [cur] = await db.select().from(salaryReceipts).where(eq(salaryReceipts.id, input.id));
+      if (!cur) throw new TRPCError({ code: "NOT_FOUND" });
+      if (cur.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Already paid" });
+
+      const cashEgpAccountId = 1;
+      const salaryCategoryId = 2;
+      const description = `Salary for ${cur.forMonth}`;
+
+      const txResult = await createTransaction({
+        type: "expense",
+        accountId: cashEgpAccountId,
+        categoryId: salaryCategoryId,
+        employeeId: cur.employeeId,
+        amount: cur.netPaidSalary,
+        convertedAmount: cur.netPaidSalary,
+        description,
+        note: description,
+        transactionDate: new Date(),
+        createdBy: ctx.user?.email ?? "",
+      });
+      if (!txResult) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create expense entry" });
+
+      await recalcAccountBalance(cashEgpAccountId);
+
+      await db.update(salaryReceipts).set({
+        status: "paid",
+        linkedTransactionId: txResult.id,
+      }).where(eq(salaryReceipts.id, input.id));
+
+      return { ok: true, transactionId: txResult.id };
+    }),
+});
+
 // ─── Export Financial Router ─────────────────────────────────────────────
 export const financialRouter = router({
   accounts: accountsRouter,
@@ -1045,4 +1159,5 @@ export const financialRouter = router({
   bulk: bulkRouter,
   settings: settingsRouter,
   upcomingPayments: upcomingPaymentsRouter,
+  salaryReceipts: salaryReceiptsRouter,
 });
