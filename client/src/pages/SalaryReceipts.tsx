@@ -262,12 +262,10 @@ export default function SalaryReceipts() {
                         })}>
                         <Download className="w-4 h-4" />
                       </Button>
-                      {/* Edit (draft only) */}
-                      {r.status === "draft" && (
-                        <Button size="icon" variant="ghost" title="Edit" onClick={() => openEdit(r)}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                      )}
+                      {/* Edit (always visible) */}
+                      <Button size="icon" variant="ghost" title="Edit" onClick={() => openEdit(r)}>
+                        <Edit className="w-4 h-4" />
+                      </Button>
                       {/* Mark as Paid (draft only) */}
                       {r.status === "draft" && (
                         <Button size="icon" variant="ghost" title="Mark as Paid"
@@ -280,14 +278,12 @@ export default function SalaryReceipts() {
                           <CheckCircle className="w-4 h-4" />
                         </Button>
                       )}
-                      {/* Delete (draft only) */}
-                      {r.status === "draft" && (
-                        <Button size="icon" variant="ghost" title="Delete"
-                          className="text-red-500 hover:text-red-600"
-                          onClick={() => setDeleteId(r.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
+                      {/* Delete (always visible) */}
+                      <Button size="icon" variant="ghost" title="Delete"
+                        className="text-red-500 hover:text-red-600"
+                        onClick={() => setDeleteId(r.id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </td>
                 </tr>

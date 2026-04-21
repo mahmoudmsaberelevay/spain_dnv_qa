@@ -286,23 +286,23 @@ export default function CommissionReceipts() {
                     <Button size="sm" variant="ghost" onClick={() => generatePdf(r)} title="Download PDF">
                       <Download className="w-4 h-4" />
                     </Button>
-                    {r.status === "draft" && (
-                      <>
+                    <>
                         <Button size="sm" variant="ghost" onClick={() => openEdit(r)} title="Edit">
                           <Pencil className="w-4 h-4" />
                         </Button>
-                        <Button size="sm" variant="ghost" className="text-green-600 hover:text-green-700"
-                          onClick={() => { if (confirm("Mark as paid? This will create expense entries for each client.")) markPaidMutation.mutate({ id: r.id }); }}
-                          title="Mark as Paid">
-                          <CheckCircle className="w-4 h-4" />
-                        </Button>
+                        {r.status === "draft" && (
+                          <Button size="sm" variant="ghost" className="text-green-600 hover:text-green-700"
+                            onClick={() => { if (confirm("Mark as paid? This will create expense entries for each client.")) markPaidMutation.mutate({ id: r.id }); }}
+                            title="Mark as Paid">
+                            <CheckCircle className="w-4 h-4" />
+                          </Button>
+                        )}
                         <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600"
                           onClick={() => { if (confirm("Delete this receipt?")) deleteMutation.mutate({ id: r.id }); }}
                           title="Delete">
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </>
-                    )}
                   </div>
                 </td>
               </tr>

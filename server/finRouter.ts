@@ -1309,6 +1309,7 @@ const commissionReceiptsRouter = router({
           accountId: cashEgpAccountId,
           categoryId: commissionCategoryId,
           employeeId: cur.employeeId,
+          finClientId: item.clientId,
           amount: item.amountEgp,
           convertedAmount: item.amountEgp,
           description,
