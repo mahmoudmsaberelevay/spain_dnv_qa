@@ -23,6 +23,30 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   if (!db) return;
 
   try {
+    // ── Email-first deduplication ─────────────────────────────────────────────
+    // If a user with the same email already exists (e.g. manually pre-created
+    // with a placeholder openId), update that row's openId to the real OAuth
+    // openId instead of inserting a new row. This prevents duplicate accounts.
+    if (user.email) {
+      const existing = await db
+        .select({ id: users.id, openId: users.openId })
+        .from(users)
+        .where(eq(users.email, user.email))
+        .limit(1);
+      if (existing.length > 0 && existing[0].openId !== user.openId) {
+        // Existing account found with a different openId — update it in place
+        const updateFields: Record<string, unknown> = {
+          openId: user.openId,
+          lastSignedIn: user.lastSignedIn ?? new Date(),
+        };
+        if (user.name) updateFields.name = user.name;
+        if (user.loginMethod) updateFields.loginMethod = user.loginMethod;
+        await db.update(users).set(updateFields).where(eq(users.id, existing[0].id));
+        console.log(`[Database] Linked existing account (id=${existing[0].id}, email=${user.email}) to new openId`);
+        return;
+      }
+    }
+    // ── Standard openId upsert ────────────────────────────────────────────────
     const values: InsertUser = { openId: user.openId };
     const updateSet: Record<string, unknown> = {};
     const textFields = ["name", "email", "loginMethod"] as const;
