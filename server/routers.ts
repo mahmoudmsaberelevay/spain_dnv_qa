@@ -907,7 +907,7 @@ const contractingRouter = router({
       .mutation(async ({ input }) => {
         const contract = await getContractById(input.contractId);
         if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
-        if (contract.status !== "signed") throw new TRPCError({ code: "BAD_REQUEST", message: "Can only create invoices for signed contracts" });
+        // Invoices are allowed for contracts in any status to support legacy clients
         // Apply one-time discount if provided (permanently reduces contract value)
         if (input.discountValue && input.discountValue > 0) {
           if (Number(contract.discountValue ?? 0) > 0) {
@@ -1197,7 +1197,7 @@ const contractingRouter = router({
         if (!inv.contractId) throw new TRPCError({ code: "BAD_REQUEST", message: "Legacy proforma invoices cannot be converted. Please create a receipt manually." });
         const contract = await getContractById(inv.contractId);
         if (!contract) throw new TRPCError({ code: "NOT_FOUND", message: "Contract not found" });
-        if (contract.status !== "signed") throw new TRPCError({ code: "BAD_REQUEST", message: "Can only create receipts for signed contracts" });
+        // Receipts are allowed for contracts in any status to support legacy clients
         const rateInfo = await getEurToEgpRate();
         const amountEur = Number(inv.amountEur);
         const amountEgp = convertEurToEgp(amountEur, rateInfo.rate);
