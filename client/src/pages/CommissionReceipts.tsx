@@ -47,6 +47,7 @@ interface ReceiptWithItems {
     receiptId: number;
     clientId: number;
     clientName: string;
+    clientCode: string;
     commissionFor: string;
     amountEur: string;
     amountEgp: string;
@@ -136,7 +137,7 @@ export default function CommissionReceipts() {
       commissionFor: i.commissionFor,
       amountEur: Number(i.amountEur),
     })));
-    setClientSearch(r.items.map(i => i.clientName));
+    setClientSearch(r.items.map(i => `${i.clientCode ? i.clientCode + ' — ' : ''}${i.clientName}`));
   }
 
   function handleUpdate() {
@@ -158,7 +159,7 @@ export default function CommissionReceipts() {
     const rate = Number(r.eurToEgpRate);
     const rows = r.items.map(item => `
       <tr>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${item.clientName}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;"><span style="font-family:monospace;font-size:11px;color:#6b7280;margin-right:6px;">${(item as any).clientCode || ''}</span>${item.clientName}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${item.commissionFor}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">€${Number(item.amountEur).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">EGP ${Number(item.amountEgp).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
@@ -395,7 +396,7 @@ export default function CommissionReceipts() {
                               onClick={() => {
                                 updateItem(idx, "clientId", c.id);
                                 updateItem(idx, "clientName", c.name);
-                                setClientSearch(prev => prev.map((s, i) => i === idx ? c.name : s));
+                                setClientSearch(prev => prev.map((s, i) => i === idx ? `${c.clientCode ? c.clientCode + ' — ' : ''}${c.name}` : s));
                               }}
                             >
                               <span className="font-mono text-xs text-muted-foreground mr-2">{c.clientCode}</span>

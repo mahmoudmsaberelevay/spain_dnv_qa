@@ -1165,9 +1165,14 @@ const commissionReceiptsRouter = router({
     const receipts = await db.select().from(commissionReceipts).orderBy(commissionReceipts.createdAt);
     // Fetch items for each receipt
     const allItems = await db.select().from(commissionReceiptItems);
+    // Build a clientCode lookup map from finClients
+    const allClients = await db.select({ id: finClients.id, clientCode: finClients.clientCode }).from(finClients);
+    const clientCodeMap = new Map(allClients.map(c => [c.id, c.clientCode ?? ""]));
     return receipts.map(r => ({
       ...r,
-      items: allItems.filter(i => i.receiptId === r.id),
+      items: allItems
+        .filter(i => i.receiptId === r.id)
+        .map(i => ({ ...i, clientCode: clientCodeMap.get(i.clientId) ?? "" })),
     })).reverse();
   }),
 
