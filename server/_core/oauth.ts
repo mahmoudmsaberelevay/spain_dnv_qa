@@ -68,7 +68,7 @@ export function registerOAuthRoutes(app: Express) {
 
       // ── Domain restriction: only @elevay.com + the owner gmail are allowed ──
       const userEmail = userInfo.email ?? "";
-      const ALLOWED_EMAILS = ["mahmoud.saberelevay@gmail.com"];
+      const ALLOWED_EMAILS = ["mahmoud.saberelevay@gmail.com", "walid.mammdouh@gmail.com"];
       const isElevayDomain = userEmail.endsWith("@elevay.com");
       const isExempted = ALLOWED_EMAILS.includes(userEmail);
       if (!isElevayDomain && !isExempted) {
