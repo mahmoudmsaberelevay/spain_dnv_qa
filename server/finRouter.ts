@@ -20,10 +20,10 @@ import { notifyFinClientAdded } from "./emailService";
 const ADMIN_EMAILS = [
   "mahmoud.saber@elevay.com",
   "mahmoud.saberelevay@gmail.com",
+  "walid.mammdouh@gmail.com",
 ];
 const READONLY_EMAILS = [
   "ziad.elshurafa@elevay.com",
-  "walid.mammdouh@gmail.com",
 ];
 const LIMITED_EMAILS = [
   "mohamed.abdelfatah@elevay.com",
