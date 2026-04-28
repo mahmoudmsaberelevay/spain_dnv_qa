@@ -61,8 +61,8 @@ export default function ProformaInvoices() {
   const { data: rateInfo } = trpc.contracting.exchangeRate.current.useQuery();
   const utils = trpc.useUtils();
 
-  // Only signed contracts can have proforma invoices
-  const signedContracts = contracts?.filter((c) => c.status === "signed") ?? [];
+  // All contracts can have proforma invoices (including legacy/pending)
+  const signedContracts = contracts ?? [];
 
   // Fetch remaining balance for the selected contract and pre-fill the amount
   const { data: paymentSummary } = trpc.contracting.contracts.getPaymentSummary.useQuery(
@@ -192,7 +192,7 @@ export default function ProformaInvoices() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Proforma Invoices</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Create and manage payment proforma invoices for signed contracts
+            Create and manage payment proforma invoices for contracts
           </p>
         </div>
         {canEdit("receipts") && (
@@ -200,19 +200,12 @@ export default function ProformaInvoices() {
             onClick={() => setShowCreateDialog(true)}
             className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
             size="lg"
-            disabled={signedContracts.length === 0}
           >
             <Plus className="h-4 w-4" />
             Create Proforma Invoice
           </Button>
         )}
       </div>
-
-      {signedContracts.length === 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-          <strong>Note:</strong> Proforma Invoices can only be created for signed contracts. Mark a contract as "Signed" first.
-        </div>
-      )}
 
       {/* Exchange Rate */}
       {rateInfo && (
@@ -419,12 +412,12 @@ export default function ProformaInvoices() {
           {/* ── CONTRACT MODE ── */}
           {proformaMode === "contract" && (
             <form onSubmit={handleCreateSubmit} className="space-y-4 py-2">
-              <p className="text-xs text-muted-foreground">Create a payment proforma invoice for a signed contract.</p>
+              <p className="text-xs text-muted-foreground">Create a payment proforma invoice for any contract.</p>
               <div className="space-y-2">
                 <Label>Contract</Label>
                 <Select value={selectedContractId} onValueChange={setSelectedContractId} required>
                   <SelectTrigger className="h-10">
-                    <SelectValue placeholder="Select a signed contract..." />
+                    <SelectValue placeholder="Select a contract..." />
                   </SelectTrigger>
                   <SelectContent>
                     {signedContracts.map((c) => (
