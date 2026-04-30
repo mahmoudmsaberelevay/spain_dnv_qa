@@ -826,21 +826,23 @@ const contractingRouter = router({
               // Extract client code from contractCode (e.g. "26027" from "26027-001")
               const codeMatch = contract.contractCode?.match(/^(\d+)/);
               const extractedCode = codeMatch ? codeMatch[1] : undefined;
-              // Contract value is in EUR; new clients start with 0 paid
+              // Net contract value = contractValue - discountValue (discount already applied)
               const cvEur = Number(contract.contractValue ?? 0);
+              const discountEur = Number(contract.discountValue ?? 0);
+              const netCvEur = Math.max(0, cvEur - discountEur);
               const finClient = await createFinClient({
                 name: contract.invoicingName ?? contract.clientName,
                 contractId: contract.id,
-                contractValue: contract.contractValue,
+                contractValue: netCvEur.toFixed(2),
                 familyMembers: contract.familyMembers,
                 consultant: contract.consultantName ?? undefined,
                 clientCode: extractedCode,
                 phone: contract.clientMobile ?? undefined,
                 program: "Spain Nomad",
                 signingDate: new Date(),
-                contractValueEur: cvEur.toFixed(2),
+                contractValueEur: netCvEur.toFixed(2),
                 paidAmountEur: "0.00",
-                remainingAmountEur: cvEur.toFixed(2),
+                remainingAmountEur: netCvEur.toFixed(2),
                 isLegacy: false,
               });
               // Auto-create commission record
