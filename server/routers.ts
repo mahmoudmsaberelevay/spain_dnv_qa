@@ -829,7 +829,7 @@ const contractingRouter = router({
               // Contract value is in EUR; new clients start with 0 paid
               const cvEur = Number(contract.contractValue ?? 0);
               const finClient = await createFinClient({
-                name: contract.clientName,
+                name: contract.invoicingName ?? contract.clientName,
                 contractId: contract.id,
                 contractValue: contract.contractValue,
                 familyMembers: contract.familyMembers,
@@ -849,7 +849,7 @@ const contractingRouter = router({
                 const existingCount = await countCommissions();
                 await createCommission({
                   finClientId: finClient.id,
-                  clientName: contract.clientName,
+                  clientName: contract.invoicingName ?? contract.clientName,
                   consultant: contract.consultantName ?? null,
                   contractValue: contract.contractValue,
                   seqNumber: existingCount + 1,

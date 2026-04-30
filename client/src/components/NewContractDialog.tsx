@@ -100,11 +100,12 @@ export default function NewContractDialog({ open, onClose }: Props) {
             </DialogHeader>
 
             <form onSubmit={handleSubmit} className="space-y-4 py-2">
-              {/* Client Full Name (Arabic allowed — used in contract Word doc) */}
+              {/* Arabic Name — used ONLY in the contract Word document */}
               <div className="space-y-2">
                 <Label htmlFor="clientName" className="flex items-center gap-2">
                   <User className="h-3.5 w-3.5" />
-                  Client Full Name
+                  Arabic Name
+                  <span className="text-xs text-muted-foreground font-normal">(for contract document only)</span>
                 </Label>
                 <Input
                   id="clientName"
@@ -114,15 +115,16 @@ export default function NewContractDialog({ open, onClose }: Props) {
                   required
                   disabled={createMutation.isPending}
                   className="h-10"
+                  dir="rtl"
                 />
               </div>
 
-              {/* Invoicing Name (English only — used in receipt BILL TO) */}
+              {/* English Name — used in client DB, receipts, commission, income, all other records */}
               <div className="space-y-2">
                 <Label htmlFor="invoicingName" className="flex items-center gap-2">
                   <Receipt className="h-3.5 w-3.5" />
-                  Name for Invoicing
-                  <span className="text-xs text-muted-foreground font-normal">(English only — appears on receipts)</span>
+                  English Name
+                  <span className="text-xs text-muted-foreground font-normal">(for client DB, receipts &amp; all records)</span>
                 </Label>
                 <Input
                   id="invoicingName"
