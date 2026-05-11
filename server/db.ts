@@ -392,10 +392,11 @@ export async function createClientCase(data: InsertClientCase) {
   return result;
 }
 
-export async function listClientCases(userId: number) {
+export async function listClientCases(_userId?: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(clientCases).where(eq(clientCases.userId, userId)).orderBy(clientCases.createdAt);
+  // Return ALL client cases regardless of who created them
+  return db.select().from(clientCases).orderBy(clientCases.createdAt);
 }
 
 export async function getClientCase(id: number) {

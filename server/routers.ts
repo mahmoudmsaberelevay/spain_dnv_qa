@@ -1309,15 +1309,15 @@ const clientDocsRouter = router({
       return { id: insertId };
     }),
 
-  list: protectedProcedure.query(async ({ ctx }) => {
-    return listClientCases(ctx.user.id);
+  list: protectedProcedure.query(async () => {
+    return listClientCases();
   }),
 
   get: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .query(async ({ ctx, input }) => {
+    .query(async ({ input }) => {
       const c = await getClientCase(input.id);
-      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
       const docs = await getClientDocuments(input.id);
       return { ...c, documents: docs };
     }),
@@ -1331,9 +1331,9 @@ const clientDocsRouter = router({
         receivedDate: z.string(), // ISO date string
       })),
     }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ input }) => {
       const c = await getClientCase(input.clientCaseId);
-      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
       for (const item of input.items) {
         await updateClientDocument(item.docId, {
           received: true,
@@ -1349,9 +1349,9 @@ const clientDocsRouter = router({
       clientCaseId: z.number(),
       docIds: z.array(z.number()),
     }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ input }) => {
       const c = await getClientCase(input.clientCaseId);
-      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
       await updateClientDocumentsByIds(input.docIds, {
         mofaAttested: true,
         mofaAttestedDate: new Date(),
@@ -1365,9 +1365,9 @@ const clientDocsRouter = router({
       clientCaseId: z.number(),
       docIds: z.array(z.number()),
     }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ input }) => {
       const c = await getClientCase(input.clientCaseId);
-      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
       await updateClientDocumentsByIds(input.docIds, {
         embassyAttested: true,
         embassyAttestedDate: new Date(),
@@ -1385,7 +1385,7 @@ const clientDocsRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const c = await getClientCase(input.id);
-      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
       const update: Record<string, Date | null> = {};
       if (input.schengenDate !== undefined)
         update.schengenDate = input.schengenDate ? new Date(input.schengenDate) : null;
@@ -1400,9 +1400,9 @@ const clientDocsRouter = router({
   // Full client report: remaining docs + pending procedures
   report: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .query(async ({ ctx, input }) => {
+    .query(async ({ input }) => {
       const c = await getClientCase(input.id);
-      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
       const docs = await getClientDocuments(input.id);
 
       const notReceived = docs.filter(d => !d.received);
@@ -1453,7 +1453,7 @@ const clientDocsRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const c = await getClientCase(input.id);
-      if (!c || c.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
 
       const update: Record<string, any> = { stage: input.stage };
 
@@ -1492,8 +1492,8 @@ const clientDocsRouter = router({
     }),
 
   // Dashboard: per-client completion overview
-  dashboard: protectedProcedure.query(async ({ ctx }) => {
-    const cases = await listClientCases(ctx.user.id);
+  dashboard: protectedProcedure.query(async () => {
+    const cases = await listClientCases();
     const results = await Promise.all(
       cases.map(async (c) => {
         const docs = await getClientDocuments(c.id);
