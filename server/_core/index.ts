@@ -38,6 +38,23 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+  // WhatsApp webhook
+  app.get("/api/webhook/whatsapp", async (req, res) => {
+    const { "hub.mode": mode, "hub.verify_token": token, "hub.challenge": challenge } = req.query as Record<string, string>;
+    const { verifyWebhook } = await import("../whatsapp");
+    const result = await verifyWebhook(mode, token, challenge);
+    if (result !== null) return res.status(200).send(result);
+    return res.status(403).send("Forbidden");
+  });
+  app.post("/api/webhook/whatsapp", async (req, res) => {
+    res.status(200).send("EVENT_RECEIVED");
+    try {
+      const { processWebhookPayload } = await import("../whatsapp");
+      await processWebhookPayload(req.body);
+    } catch (err) {
+      console.error("[WA Webhook] Processing error:", err);
+    }
+  });
   // tRPC API
   app.use(
     "/api/trpc",

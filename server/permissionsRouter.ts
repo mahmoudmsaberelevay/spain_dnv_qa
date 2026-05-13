@@ -105,7 +105,7 @@ async function requireDb() {
 }
 
 // Fetch module access map for a user (falls back to defaults if no rows)
-async function getUserModuleAccess(userId: number): Promise<Record<ModuleName, AccessLevel>> {
+export async function getUserModuleAccess(userId: number): Promise<Record<ModuleName, AccessLevel>> {
   const db = await requireDb();
   const rows = await db
     .select({ module: modulePermissions.module, accessLevel: modulePermissions.accessLevel })

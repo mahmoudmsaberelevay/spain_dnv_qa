@@ -33,6 +33,7 @@ import { financialRouter } from "./finRouter";
 import { settlementRouter } from "./settlementRouter";
 import { chatRouter, broadcastRouter } from "./chatRouter";
 import { permissionsRouter } from "./permissionsRouter";
+import { waQcRouter } from "./waQcRouter";
 
 const MOFA_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/mofa_stamp_a1afffba.png";
 const SPAIN_EMBASSY_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/spain_embassy_stamp_cf83213b.png";
@@ -1578,5 +1579,6 @@ export const appRouter = router({
   chat: chatRouter,
   broadcast: broadcastRouter,
   permissions: permissionsRouter,
+  waQc: waQcRouter,
 });
 export type AppRouter = typeof appRouter;

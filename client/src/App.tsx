@@ -50,7 +50,13 @@ import SalaryReceipts from "./pages/SalaryReceipts";
 import CommissionReceipts from "./pages/CommissionReceipts";
 
 // ─── WhatsApp Quality Control Module ─────────────────────────────────────────
-import WhatsAppQC from "./pages/WhatsAppQC";
+import WaQcDashboard from "./pages/waQc/WaQcDashboard";
+import WaQcChats from "./pages/waQc/WaQcChats";
+import WaQcConversations from "./pages/waQc/WaQcConversations";
+import WaQcAIQuery from "./pages/waQc/WaQcAIQuery";
+import WaQcGroups from "./pages/waQc/WaQcGroups";
+import WaQcMedia from "./pages/waQc/WaQcMedia";
+import WaQcSettings from "./pages/waQc/WaQcSettings";
 
 function Router() {
   return (
@@ -190,7 +196,25 @@ function Router() {
 
       {/* ── WhatsApp Quality Control Module ── */}
       <Route path="/wa-qc">
-        <PageGuard pageKey="wa_qc"><DashboardLayout><WhatsAppQC /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcDashboard /></DashboardLayout></PageGuard>
+      </Route>
+      <Route path="/wa-qc/chats">
+        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcChats /></DashboardLayout></PageGuard>
+      </Route>
+      <Route path="/wa-qc/conversations">
+        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcConversations /></DashboardLayout></PageGuard>
+      </Route>
+      <Route path="/wa-qc/ai-query">
+        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcAIQuery /></DashboardLayout></PageGuard>
+      </Route>
+      <Route path="/wa-qc/groups">
+        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcGroups /></DashboardLayout></PageGuard>
+      </Route>
+      <Route path="/wa-qc/media">
+        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcMedia /></DashboardLayout></PageGuard>
+      </Route>
+      <Route path="/wa-qc/settings">
+        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcSettings /></DashboardLayout></PageGuard>
       </Route>
 
       <Route path="/access-denied">

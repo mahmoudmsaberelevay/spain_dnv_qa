@@ -1,5 +1,6 @@
 import {
   int,
+  bigint,
   mysqlEnum,
   mysqlTable,
   text,
@@ -599,3 +600,78 @@ export const commissionReceiptItems = mysqlTable("commissionReceiptItems", {
 });
 export type CommissionReceiptItem = typeof commissionReceiptItems.$inferSelect;
 export type InsertCommissionReceiptItem = typeof commissionReceiptItems.$inferInsert;
+
+// ─── WhatsApp Quality Control ─────────────────────────────────────────────────
+export const whatsappConfig = mysqlTable("whatsapp_config", {
+  id: int("id").autoincrement().primaryKey(),
+  phoneNumberId: varchar("phoneNumberId", { length: 64 }).notNull().unique(),
+  displayName: varchar("displayName", { length: 128 }),
+  accessToken: text("accessToken"),
+  webhookVerifyToken: varchar("webhookVerifyToken", { length: 128 }),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type WhatsappConfig = typeof whatsappConfig.$inferSelect;
+export type InsertWhatsappConfig = typeof whatsappConfig.$inferInsert;
+
+export const whatsappGroups = mysqlTable("whatsapp_groups", {
+  id: int("id").autoincrement().primaryKey(),
+  groupId: varchar("groupId", { length: 128 }).notNull().unique(),
+  name: varchar("name", { length: 256 }),
+  description: text("description"),
+  phoneNumberId: varchar("phoneNumberId", { length: 64 }),
+  isActive: boolean("isActive").default(true).notNull(),
+  messageCount: int("messageCount").default(0).notNull(),
+  lastMessageAt: timestamp("lastMessageAt"),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type WhatsappGroup = typeof whatsappGroups.$inferSelect;
+export type InsertWhatsappGroup = typeof whatsappGroups.$inferInsert;
+
+export const waMessages = mysqlTable("wa_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  messageId: varchar("messageId", { length: 256 }).notNull().unique(),
+  groupId: varchar("groupId", { length: 128 }).notNull(),
+  senderId: varchar("senderId", { length: 64 }).notNull(),
+  senderName: varchar("senderName", { length: 256 }),
+  senderPhone: varchar("senderPhone", { length: 32 }),
+  messageType: mysqlEnum("messageType", [
+    "text", "image", "video", "audio", "document",
+    "sticker", "location", "reaction", "contacts", "unknown",
+  ]).default("text").notNull(),
+  textContent: text("textContent"),
+  caption: text("caption"),
+  mediaId: varchar("mediaId", { length: 256 }),
+  mimeType: varchar("mimeType", { length: 128 }),
+  fileName: varchar("fileName", { length: 512 }),
+  latitude: varchar("latitude", { length: 32 }),
+  longitude: varchar("longitude", { length: 32 }),
+  locationName: varchar("locationName", { length: 256 }),
+  reactionEmoji: varchar("reactionEmoji", { length: 16 }),
+  reactedToMessageId: varchar("reactedToMessageId", { length: 256 }),
+  rawPayload: json("rawPayload"),
+  whatsappTimestamp: bigint("whatsappTimestamp", { mode: "number" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type WaMessage = typeof waMessages.$inferSelect;
+export type InsertWaMessage = typeof waMessages.$inferInsert;
+
+export const waMediaFiles = mysqlTable("wa_media_files", {
+  id: int("id").autoincrement().primaryKey(),
+  messageId: varchar("messageId", { length: 256 }).notNull(),
+  mediaId: varchar("mediaId", { length: 256 }),
+  storageKey: varchar("storageKey", { length: 512 }),
+  storageUrl: varchar("storageUrl", { length: 1024 }),
+  mimeType: varchar("mimeType", { length: 128 }),
+  fileName: varchar("fileName", { length: 512 }),
+  fileSize: int("fileSize"),
+  downloadStatus: mysqlEnum("downloadStatus", ["pending", "downloaded", "failed"]).default("pending").notNull(),
+  downloadError: text("downloadError"),
+  downloadedAt: timestamp("downloadedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type WaMediaFile = typeof waMediaFiles.$inferSelect;
+export type InsertWaMediaFile = typeof waMediaFiles.$inferInsert;

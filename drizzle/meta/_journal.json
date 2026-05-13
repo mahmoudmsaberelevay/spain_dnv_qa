@@ -183,6 +183,13 @@
       "when": 1776764081942,
       "tag": "0025_lame_terrax",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1778686847603,
+      "tag": "0026_spotty_khan",
+      "breakpoints": true
     }
   ]
 }

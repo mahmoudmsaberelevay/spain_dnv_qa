@@ -450,3 +450,167 @@ export async function getAllClientDocumentsForReminders() {
   if (!db) return [];
   return db.select().from(clientDocuments).where(eq(clientDocuments.received, true));
 }
+
+// ─── WhatsApp Quality Control DB Helpers ─────────────────────────────────────
+import {
+  whatsappConfig, whatsappGroups, waMessages, waMediaFiles,
+  InsertWhatsappConfig, InsertWhatsappGroup, InsertWaMessage, InsertWaMediaFile,
+} from "../drizzle/schema";
+import { and as _and, desc as _desc, eq as _eq, gte as _gte, like as _like, lte as _lte, or as _or, sql as _sql } from "drizzle-orm";
+
+export async function getActiveConfig() {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(whatsappConfig).where(_eq(whatsappConfig.isActive, true)).limit(1);
+  return rows[0] ?? null;
+}
+export async function getAllConfigs() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(whatsappConfig).orderBy(_desc(whatsappConfig.createdAt));
+}
+export async function upsertConfig(data: Omit<InsertWhatsappConfig, "id" | "createdAt" | "updatedAt">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db.select().from(whatsappConfig).where(_eq(whatsappConfig.phoneNumberId, data.phoneNumberId)).limit(1);
+  if (existing.length > 0) {
+    await db.update(whatsappConfig).set({ ...data, updatedAt: new Date() }).where(_eq(whatsappConfig.phoneNumberId, data.phoneNumberId));
+  } else {
+    await db.insert(whatsappConfig).values(data);
+  }
+}
+export async function deleteConfig(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(whatsappConfig).where(_eq(whatsappConfig.id, id));
+}
+export async function upsertGroup(data: Omit<InsertWhatsappGroup, "id" | "createdAt" | "updatedAt">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db.select().from(whatsappGroups).where(_eq(whatsappGroups.groupId, data.groupId)).limit(1);
+  if (existing.length > 0) {
+    await db.update(whatsappGroups).set({ ...data, updatedAt: new Date() }).where(_eq(whatsappGroups.groupId, data.groupId));
+  } else {
+    await db.insert(whatsappGroups).values(data);
+  }
+}
+export async function getGroupById(groupId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(whatsappGroups).where(_eq(whatsappGroups.groupId, groupId)).limit(1);
+  return rows[0] ?? null;
+}
+export async function getAllGroups() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(whatsappGroups).orderBy(_desc(whatsappGroups.messageCount));
+}
+export async function updateGroupStats(groupId: string) {
+  const db = await getDb();
+  if (!db) return;
+  const countResult = await db.select({ count: _sql<number>`count(*)` }).from(waMessages).where(_eq(waMessages.groupId, groupId));
+  const lastMsgResult = await db.select({ ts: waMessages.createdAt }).from(waMessages).where(_eq(waMessages.groupId, groupId)).orderBy(_desc(waMessages.createdAt)).limit(1);
+  await db.update(whatsappGroups).set({
+    messageCount: Number(countResult[0]?.count ?? 0),
+    lastMessageAt: lastMsgResult[0]?.ts ?? undefined,
+  }).where(_eq(whatsappGroups.groupId, groupId));
+}
+export async function insertWaMessage(data: InsertWaMessage) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db.select({ id: waMessages.id }).from(waMessages).where(_eq(waMessages.messageId, data.messageId)).limit(1);
+  if (existing.length > 0) return; // deduplicate
+  await db.insert(waMessages).values(data);
+}
+export async function getWaMessages(filter: { groupId?: string; limit?: number; offset?: number; search?: string } = {}) {
+  const db = await getDb();
+  if (!db) return { rows: [], total: 0 };
+  const conditions: any[] = [];
+  if (filter.groupId) conditions.push(_eq(waMessages.groupId, filter.groupId));
+  if (filter.search) conditions.push(_like(waMessages.textContent, `%${filter.search}%`));
+  const whereClause = conditions.length > 0 ? _and(...conditions) : undefined;
+  const limit = filter.limit ?? 50;
+  const offset = filter.offset ?? 0;
+  const [rows, countResult] = await Promise.all([
+    db.select().from(waMessages).where(whereClause).orderBy(_desc(waMessages.createdAt)).limit(limit).offset(offset),
+    db.select({ count: _sql<number>`count(*)` }).from(waMessages).where(whereClause),
+  ]);
+  return { rows, total: Number(countResult[0]?.count ?? 0) };
+}
+export async function getWaMessageStats() {
+  const db = await getDb();
+  if (!db) return { total: 0, today: 0, groups: 0, media: 0 };
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const [totalResult, todayResult, groupsResult, mediaResult] = await Promise.all([
+    db.select({ count: _sql<number>`count(*)` }).from(waMessages),
+    db.select({ count: _sql<number>`count(*)` }).from(waMessages).where(_gte(waMessages.createdAt, todayStart)),
+    db.select({ count: _sql<number>`count(*)` }).from(whatsappGroups),
+    db.select({ count: _sql<number>`count(*)` }).from(waMessages).where(_or(_eq(waMessages.messageType, "image"), _eq(waMessages.messageType, "video"), _eq(waMessages.messageType, "audio"), _eq(waMessages.messageType, "document"))),
+  ]);
+  return {
+    total: Number(totalResult[0]?.count ?? 0),
+    today: Number(todayResult[0]?.count ?? 0),
+    groups: Number(groupsResult[0]?.count ?? 0),
+    media: Number(mediaResult[0]?.count ?? 0),
+  };
+}
+export async function insertWaMediaFile(data: InsertWaMediaFile) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(waMediaFiles).values(data);
+}
+export async function updateWaMediaFile(id: number, data: Partial<InsertWaMediaFile>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(waMediaFiles).set(data).where(_eq(waMediaFiles.id, id));
+}
+export async function getWaMediaByMessageId(messageId: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(waMediaFiles).where(_eq(waMediaFiles.messageId, messageId));
+}
+export async function getWaMediaFiles(filter: { mimeTypePrefix?: string; dateFrom?: Date; dateTo?: Date; limit?: number; offset?: number } = {}) {
+  const db = await getDb();
+  if (!db) return { rows: [], total: 0 };
+  const conditions: any[] = [_eq(waMediaFiles.downloadStatus, "downloaded")];
+  if (filter.mimeTypePrefix) conditions.push(_like(waMediaFiles.mimeType, `${filter.mimeTypePrefix}%`));
+  if (filter.dateFrom) conditions.push(_gte(waMediaFiles.createdAt, filter.dateFrom));
+  if (filter.dateTo) conditions.push(_lte(waMediaFiles.createdAt, filter.dateTo));
+  const whereClause = _and(...conditions);
+  const limit = filter.limit ?? 50;
+  const offset = filter.offset ?? 0;
+  const [rows, countResult] = await Promise.all([
+    db.select().from(waMediaFiles).where(whereClause).orderBy(_desc(waMediaFiles.createdAt)).limit(limit).offset(offset),
+    db.select({ count: _sql<number>`count(*)` }).from(waMediaFiles).where(whereClause),
+  ]);
+  return { rows, total: Number(countResult[0]?.count ?? 0) };
+}
+export async function getWaConversations() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({
+    groupId: waMessages.groupId,
+    lastMessageAt: _sql<Date>`MAX(${waMessages.createdAt})`,
+    messageCount: _sql<number>`COUNT(*)`,
+    lastText: _sql<string>`SUBSTRING_INDEX(GROUP_CONCAT(${waMessages.textContent} ORDER BY ${waMessages.createdAt} DESC SEPARATOR '|||'), '|||', 1)`,
+    lastSender: _sql<string>`SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(${waMessages.senderName}, ${waMessages.senderPhone}) ORDER BY ${waMessages.createdAt} DESC SEPARATOR '|||'), '|||', 1)`,
+    lastType: _sql<string>`SUBSTRING_INDEX(GROUP_CONCAT(${waMessages.messageType} ORDER BY ${waMessages.createdAt} DESC SEPARATOR '|||'), '|||', 1)`,
+  }).from(waMessages).groupBy(waMessages.groupId).orderBy(_desc(_sql`MAX(${waMessages.createdAt})`));
+  const groups = await db.select().from(whatsappGroups);
+  const groupMap = new Map(groups.map((g) => [g.groupId, g]));
+  return rows.map((r) => {
+    const meta = groupMap.get(r.groupId);
+    const isGroup = r.groupId.includes("@g.us") || r.groupId.includes("-");
+    return {
+      id: r.groupId,
+      name: meta?.name || (isGroup ? r.groupId : r.lastSender || r.groupId),
+      isGroup,
+      lastMessage: r.lastText || `[${r.lastType}]`,
+      lastSender: r.lastSender,
+      lastMessageAt: r.lastMessageAt,
+      messageCount: Number(r.messageCount),
+      isActive: meta?.isActive ?? true,
+    };
+  });
+}
