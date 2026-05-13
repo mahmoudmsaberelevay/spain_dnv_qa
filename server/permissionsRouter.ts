@@ -1,5 +1,5 @@
 /**
- * permissionsRouter — manages user access via 4 top-level modules.
+ * permissionsRouter — manages user access via 5 top-level modules.
  *
  * MODULE ACCESS LEVELS:
  *   full   → can view + create + edit + delete everything in the module
@@ -11,8 +11,9 @@
  *   clientDocs   → Client Documentation
  *   appAnalysis  → Application Analysis
  *   financial    → All Financial sub-pages
+ *   waQc         → WhatsApp Quality Control
  *
- * DEFAULT (new users): contracting=full, clientDocs=full, appAnalysis=none, financial=none
+ * DEFAULT (new users): contracting=full, clientDocs=full, appAnalysis=none, financial=none, waQc=none
  *
  * PAGE KEY MAPPING (used by PageGuard):
  *   contracting  → contracts, receipts (proforma uses receipts key)
@@ -37,10 +38,10 @@ import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-export type ModuleName = "contracting" | "clientDocs" | "appAnalysis" | "financial";
+export type ModuleName = "contracting" | "clientDocs" | "appAnalysis" | "financial" | "waQc";
 export type AccessLevel = "none" | "viewer" | "full";
 
-export const ALL_MODULES: ModuleName[] = ["contracting", "clientDocs", "appAnalysis", "financial"];
+export const ALL_MODULES: ModuleName[] = ["contracting", "clientDocs", "appAnalysis", "financial", "waQc"];
 
 // Default access for new / existing users
 export const DEFAULT_MODULE_ACCESS: Record<ModuleName, AccessLevel> = {
@@ -48,6 +49,7 @@ export const DEFAULT_MODULE_ACCESS: Record<ModuleName, AccessLevel> = {
   clientDocs: "full",
   appAnalysis: "none",
   financial: "none",
+  waQc: "none",
 };
 
 // Maps module → page keys used by PageGuard
@@ -61,6 +63,7 @@ export const MODULE_PAGE_KEYS: Record<ModuleName, string[]> = {
     "fin_commissions", "fin_clients", "fin_bulk_upload", "fin_settlement",
     "fin_upcoming",
   ],
+  waQc: ["wa_qc"],
 };
 
 // All page keys (for backward compat)
@@ -71,6 +74,7 @@ export const ALL_PAGE_KEYS = [
   "fin_dashboard", "fin_accounts", "fin_income", "fin_expenses",
   "fin_transfers", "fin_reports", "fin_employees", "fin_categories",
   "fin_commissions", "fin_clients", "fin_bulk_upload", "fin_settlement", "fin_upcoming",
+  "wa_qc",
   "settings", "chat", "broadcast",
 ] as const;
 export type PageKey = (typeof ALL_PAGE_KEYS)[number];
@@ -226,7 +230,7 @@ export const permissionsRouter = router({
   setModuleAccess: ownerProcedure
     .input(z.object({
       userId: z.number(),
-      module: z.enum(["contracting", "clientDocs", "appAnalysis", "financial"]),
+      module: z.enum(["contracting", "clientDocs", "appAnalysis", "financial", "waQc"]),
       accessLevel: z.enum(["none", "viewer", "full"]),
     }))
     .mutation(async ({ input }) => {
@@ -286,6 +290,7 @@ export const permissionsRouter = router({
         clientDocs: z.enum(["none", "viewer", "full"]),
         appAnalysis: z.enum(["none", "viewer", "full"]),
         financial: z.enum(["none", "viewer", "full"]),
+        waQc: z.enum(["none", "viewer", "full"]).optional(),
       }),
     }))
     .mutation(async ({ input }) => {

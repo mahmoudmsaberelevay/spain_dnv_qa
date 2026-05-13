@@ -49,6 +49,9 @@ import AccessDenied from "./pages/AccessDenied";
 import SalaryReceipts from "./pages/SalaryReceipts";
 import CommissionReceipts from "./pages/CommissionReceipts";
 
+// ─── WhatsApp Quality Control Module ─────────────────────────────────────────
+import WhatsAppQC from "./pages/WhatsAppQC";
+
 function Router() {
   return (
     <Switch>
@@ -183,6 +186,11 @@ function Router() {
       {/* ── Permissions Manager (owner only) ── */}
       <Route path="/admin/permissions">
         <DashboardLayout><PermissionsManager /></DashboardLayout>
+      </Route>
+
+      {/* ── WhatsApp Quality Control Module ── */}
+      <Route path="/wa-qc">
+        <PageGuard pageKey="wa_qc"><DashboardLayout><WhatsAppQC /></DashboardLayout></PageGuard>
       </Route>
 
       <Route path="/access-denied">

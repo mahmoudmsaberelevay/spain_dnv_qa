@@ -66,6 +66,7 @@ const MODULE_COLORS: Record<string, { bg: string; text: string; dot: string }> =
   analysis:     { bg: "bg-purple-500/20", text: "text-purple-300", dot: "bg-purple-400" },
   docs:         { bg: "bg-emerald-500/20",text: "text-emerald-300",dot: "bg-emerald-400" },
   financial:    { bg: "bg-amber-500/20",  text: "text-amber-300",  dot: "bg-amber-400" },
+  waQc:         { bg: "bg-green-500/20",  text: "text-green-300",  dot: "bg-green-400" },
 };
 
 // ─── Module Definitions ────────────────────────────────────────────────────────
@@ -120,6 +121,14 @@ const modules = [
       { icon: CalendarClock, label: "Upcoming Payments", path: "/finance/upcoming" },
       { icon: Receipt, label: "Salary Receipts", path: "/finance/salary-receipts" },
       { icon: Receipt, label: "Commission Receipts", path: "/finance/commission-receipts" },
+    ],
+  },
+  {
+    id: "waQc",
+    label: "WhatsApp Quality Control",
+    icon: MessageSquare,
+    items: [
+      { icon: MessageSquare, label: "WA Monitor", path: "/wa-qc" },
     ],
   },
 ];
@@ -193,7 +202,7 @@ function DashboardLayoutContent({
   const isMobile = useIsMobile();
 
   // Determine active module from current path
-  const activeModuleId = location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : "contracting";
+  const activeModuleId = location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : location.startsWith("/wa-qc") ? "waQc" : "contracting";
   const [expandedModule, setExpandedModule] = useState<string>(activeModuleId);
 
   // Sync expanded module with navigation
