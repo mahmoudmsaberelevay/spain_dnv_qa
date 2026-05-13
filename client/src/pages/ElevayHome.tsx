@@ -1,7 +1,7 @@
 /**
  * ElevayHome — the dual-state landing page for the Elevay platform.
  *
- * HOME STATE  : No sidebar. Centered 2×2 card grid with 4 module cards.
+ * HOME STATE  : No sidebar. Centered card grid with module cards.
  *               Header shows "Hello, [User Name]" + "Losing Information" alert widget.
  *
  * APP STATE   : Clicking a card navigates to that module (DashboardLayout takes over).
@@ -19,6 +19,7 @@ import {
   Search,
   Wallet,
   ChevronRight,
+  MessageSquare,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -27,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 // ─── Module card definitions ──────────────────────────────────────────────────
-const MODULE_CARDS = [
+const BASE_MODULE_CARDS = [
   {
     id: "contracting",
     label: "Contracting",
@@ -35,9 +36,9 @@ const MODULE_CARDS = [
     path: "/contracting",
     icon: FileText,
     gradient: "from-blue-600 to-blue-800",
-    accent: "bg-blue-500/20 text-blue-200 border-blue-500/30",
     iconBg: "bg-blue-500/30",
     glow: "shadow-blue-500/20",
+    pageKey: null, // always visible
   },
   {
     id: "docs",
@@ -46,9 +47,9 @@ const MODULE_CARDS = [
     path: "/docs/dashboard",
     icon: FolderCheck,
     gradient: "from-emerald-600 to-emerald-800",
-    accent: "bg-emerald-500/20 text-emerald-200 border-emerald-500/30",
     iconBg: "bg-emerald-500/30",
     glow: "shadow-emerald-500/20",
+    pageKey: null,
   },
   {
     id: "analysis",
@@ -57,9 +58,9 @@ const MODULE_CARDS = [
     path: "/analysis/dashboard",
     icon: Search,
     gradient: "from-violet-600 to-violet-800",
-    accent: "bg-violet-500/20 text-violetald-200 border-violet-500/30",
     iconBg: "bg-violet-500/30",
     glow: "shadow-violet-500/20",
+    pageKey: null,
   },
   {
     id: "financial",
@@ -68,9 +69,20 @@ const MODULE_CARDS = [
     path: "/finance",
     icon: Wallet,
     gradient: "from-amber-600 to-amber-800",
-    accent: "bg-amber-500/20 text-amber-200 border-amber-500/30",
     iconBg: "bg-amber-500/30",
     glow: "shadow-amber-500/20",
+    pageKey: null,
+  },
+  {
+    id: "wa-qc",
+    label: "WhatsApp Quality Control",
+    description: "Monitor WhatsApp groups and AI conversation analysis",
+    path: "/wa-qc",
+    icon: MessageSquare,
+    gradient: "from-green-600 to-green-800",
+    iconBg: "bg-green-500/30",
+    glow: "shadow-green-500/20",
+    pageKey: "wa_qc", // only show if user has this permission
   },
 ];
 
@@ -190,6 +202,11 @@ export default function ElevayHome() {
   const [, setLocation] = useLocation();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
+  // Fetch permissions to conditionally show restricted modules (e.g. waQc)
+  const { data: permsData } = trpc.permissions.getMyPermissions.useQuery(undefined, {
+    enabled: !!user,
+  });
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-950">
@@ -224,6 +241,14 @@ export default function ElevayHome() {
   }
 
   const firstName = user.name?.split(" ")[0] ?? "there";
+
+  // Filter module cards based on permissions
+  const visibleCards = BASE_MODULE_CARDS.filter(card => {
+    if (!card.pageKey) return true; // always visible
+    return permsData?.permissions?.[card.pageKey] === true;
+  });
+
+  const moduleCount = visibleCards.length;
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
@@ -261,9 +286,9 @@ export default function ElevayHome() {
             <p className="text-white/40 text-base">Select a module to get started</p>
           </div>
 
-          {/* 2×2 Module Card Grid */}
+          {/* Module Card Grid — 2 columns, wraps naturally */}
           <div className="grid grid-cols-2 gap-5">
-            {MODULE_CARDS.map((card) => {
+            {visibleCards.map((card) => {
               const Icon = card.icon;
               const isHovered = hoveredCard === card.id;
               return (
@@ -319,7 +344,7 @@ export default function ElevayHome() {
           {/* Quick stats row */}
           <div className="mt-8 flex items-center justify-center gap-8 text-center">
             <div>
-              <p className="text-2xl font-bold text-white">4</p>
+              <p className="text-2xl font-bold text-white">{moduleCount}</p>
               <p className="text-xs text-white/40 uppercase tracking-wide">Modules</p>
             </div>
             <div className="h-8 w-px bg-white/10" />
