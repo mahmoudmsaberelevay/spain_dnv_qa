@@ -56,6 +56,8 @@ function getStampNote(arabicName: string): string | null {
   if (arabicName.includes("جواز سفر أفراد الأسرة") || arabicName.includes("جوازات سفر أفراد الأسرة")) return STAMP_NOTES["family_passport"] || null;
   if (arabicName.includes("جواز سفر")) return STAMP_NOTES["passport"];
   // Education enrollment certificate — Ministry of Higher Education stamp
+  // NOTE: must NOT match "شهادة التسجيل بالتأمين الاجتماعي" — check for التأمين first
+  if (arabicName.includes("التأمين الاجتماعي")) return null;
   if (arabicName.includes("قيد التعليم") || arabicName.includes("شهادة التسجيل")) return STAMP_NOTES["enrollment_cert"];
   // Police clearance
   if (arabicName.includes("شهادة حسن السيرة") || arabicName.includes("الفيش")) return STAMP_NOTES["police_clearance"];
