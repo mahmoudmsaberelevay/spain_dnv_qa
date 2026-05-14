@@ -26,11 +26,12 @@ const TEMPLATE_NOTE_DOCS = new Set([
 // ── Stamp notes for specific document keys ─────────────────────────────────────
 // These notes are appended beside the document name in the remaining docs section.
 const STAMP_NOTES: Record<string, string> = {
-  // Passport — even empty pages
+  // Passport — main applicant: all pages including blank
   "passport": "(صورة جميع صفحات الجواز بما فيها الصفحات الفارغة)",
-  // Education & enrollment certificates
-  "education_cert": "(مختومة من الجامعة وختم العميد وختم الأمين العام)",
-  "enrollment_cert": "(مختومة من الجامعة وختم العميد وختم الأمين العام)",
+  // Family member passports — scan all pages including blank
+  "family_passport": "(سكان حتى للصفحات الفارغة)",
+  // Education enrollment certificate — Ministry of Higher Education stamp only
+  "enrollment_cert": "(ختم وزارة التعليم العالي)",
   // Police clearance
   "police_clearance": "(عليه طابع شهيد)",
   // Birth certificates
@@ -39,16 +40,39 @@ const STAMP_NOTES: Record<string, string> = {
   "marriage_cert": "(مختومة من الأحوال المدنية على خلف الشهادة)",
   // Single record / عزوبية
   "single_record": "(مختومة من الأحوال المدنية على خلف الشهادة)",
+  // Company document — must be at least 3 years old
+  "company_doc": "(قد مر ٣ سنوات على إنشائها)",
+  // Annual tax report — tax authority + foreign affairs stamps
+  "annual_tax_report": "(ختم مصلحة الضرائب وختم خارجية)",
+  // Tax data certificate — tax authority + foreign affairs stamps
+  "tax_details": "(ختم مصلحة الضرائب وختم خارجية)",
+  // Social insurance — NO note (intentionally blank)
+  "social_insurance": "",
 };
 
 // Map Arabic document names to their stamp notes (for dynamic per-child docs)
 function getStampNote(arabicName: string): string | null {
+  // Passports: family member passports get the scan-all-pages note; main applicant passport gets the full-pages note
+  if (arabicName.includes("جواز سفر أفراد الأسرة") || arabicName.includes("جوازات سفر أفراد الأسرة")) return STAMP_NOTES["family_passport"] || null;
   if (arabicName.includes("جواز سفر")) return STAMP_NOTES["passport"];
-  if (arabicName.includes("قيد التعليم") || arabicName.includes("شهادة التعليم") || arabicName.includes("شهادة التسجيل")) return STAMP_NOTES["education_cert"];
+  // Education enrollment certificate — Ministry of Higher Education stamp
+  if (arabicName.includes("قيد التعليم") || arabicName.includes("شهادة التسجيل")) return STAMP_NOTES["enrollment_cert"];
+  // Police clearance
   if (arabicName.includes("شهادة حسن السيرة") || arabicName.includes("الفيش")) return STAMP_NOTES["police_clearance"];
+  // Birth certificates
   if (arabicName.includes("شهادة الميلاد")) return STAMP_NOTES["birth_cert"];
+  // Marriage certificates
   if (arabicName.includes("شهادات الزواج") || arabicName.includes("شهادة الزواج")) return STAMP_NOTES["marriage_cert"];
+  // Single record / عزوبية
   if (arabicName.includes("وثيقة العزوبية") || arabicName.includes("قيد العزوبية")) return STAMP_NOTES["single_record"];
+  // Company document — 3 years note
+  if (arabicName.includes("صورة سجل وثيقة شركة العميل") || arabicName.includes("صورة سجل الشركة المملوكة")) return STAMP_NOTES["company_doc"];
+  // Annual tax report
+  if (arabicName.includes("التقرير الضريبي السنوي")) return STAMP_NOTES["annual_tax_report"];
+  // Tax data certificate
+  if (arabicName.includes("شهادة البيانات الضريبة") || arabicName.includes("شهادة البيانات الضريبية")) return STAMP_NOTES["tax_details"];
+  // Social insurance — explicitly no note
+  if (arabicName.includes("شهادة التسجيل بالتأمين الاجتماعي") || arabicName.includes("التأمين الاجتماعي")) return null;
   return null;
 }
 
