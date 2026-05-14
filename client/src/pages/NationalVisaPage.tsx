@@ -274,7 +274,27 @@ export default function NationalVisaPage() {
                   {filteredClients.map((c) => (
                     <button
                       key={c.id}
-                      onClick={() => setClientCaseId(c.id)}
+                      onClick={() => {
+                        setClientCaseId(c.id);
+                        // Auto-populate children from client record's childrenData
+                        const raw = (c as any).childrenData;
+                        if (raw) {
+                          try {
+                            const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+                            if (Array.isArray(arr) && arr.length > 0) {
+                              setChildren(arr.map((ch: any) => ({
+                                name: "",
+                                // Convert ageRange to representative age: "0-17" → 10, "18-26" → 20
+                                age: ch.ageRange === "18-26" ? 20 : 10,
+                              })));
+                            } else {
+                              setChildren([]);
+                            }
+                          } catch { setChildren([]); }
+                        } else {
+                          setChildren([]);
+                        }
+                      }}
                       className={`w-full text-right px-4 py-3 hover:bg-muted transition-colors flex items-center justify-between ${
                         clientCaseId === c.id ? "bg-primary/10 border-r-4 border-primary" : ""
                       }`}
@@ -314,6 +334,11 @@ export default function NationalVisaPage() {
               </div>
 
               <div className="space-y-3">
+                {children.length > 0 && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-right">
+                    <p className="text-xs text-blue-700 font-medium">✓ تم استيراد بيانات {children.length} {children.length === 1 ? "طفل" : "أطفال"} من سجل العميل تلقائياً — يمكنك تعديل الأعمار والأسماء</p>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <Button variant="outline" size="sm" onClick={addChild} className="flex items-center gap-2">
                     <Plus className="h-4 w-4" />

@@ -270,6 +270,10 @@ export async function generateNationalVisaDocx(input: NationalVisaDocInput): Pro
 
       docChildren.push(subHeading(`${childLabel} — العمر : ${toArabicNumber(age)} سنة`));
 
+      // Universal docs for ALL children regardless of age
+      docChildren.push(bulletItem("عدد (٢) صورة شخصية حديثة"));
+      docChildren.push(bulletItem("جميع الموافقات المطلوبة وفقاً لنوع الطلب"));
+
       if (age < 16) {
         // Under 16
         docChildren.push(rtlPara("المستندات المطلوبة (أقل من ١٦ عاماً) :", { bold: true, size: 22, color: "374151", spacing: 60 }));
