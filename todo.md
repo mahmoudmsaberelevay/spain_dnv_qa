@@ -517,3 +517,6 @@
 - [x] Frontend: Contracts list page — add Export CSV button that downloads filtered contracts as a .csv file
 - [x] Frontend: Contracting Dashboard — add Export CSV button that downloads currently filtered contracts
 - [x] Frontend: Contracting Dashboard — add monthly revenue bar chart (recharts BarChart) below stat cards, showing contract value per month for the selected year
+
+## Change Requests (Round 72)
+- [x] Fix client assignment email notifications: ensure madona.adel@elevay.com and Mahmoud.saber@elevay.com receive emails when a client is assigned; removed Mahmoud.saberelevay@gmail.com from MAHMOUD_EMAILS; Mahmoud.saber@elevay.com now always in to: list (not just CC) for both new client and doc reminder notifications

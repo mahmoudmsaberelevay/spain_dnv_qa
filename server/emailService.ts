@@ -12,10 +12,9 @@ const TEAM_EMAILS = [
   "marina.kamel@elevay.com",
 ];
 
-// Mahmoud's two emails — receive contract/receipt/proforma notifications
+// Mahmoud's email — receives contract/receipt/proforma notifications
 export const MAHMOUD_EMAILS = [
   "Mahmoud.saber@elevay.com",
-  "Mahmoud.saberelevay@gmail.com",
 ];
 
 // CC address for all paralegal/reminder emails
@@ -300,16 +299,14 @@ export async function sendDocReminderToAssignedTeam(
   htmlBody: string,
   plainText: string
 ): Promise<void> {
-  const recipients: string[] = [];
+  // Always include Mahmoud as a guaranteed recipient for all reminders
+  const recipients: string[] = ["Mahmoud.saber@elevay.com"];
   if (paralegal && TEAM_EMAIL_MAP[paralegal]) recipients.push(TEAM_EMAIL_MAP[paralegal]);
-  if (consultant && TEAM_EMAIL_MAP[consultant]) recipients.push(TEAM_EMAIL_MAP[consultant]);
+  if (consultant && TEAM_EMAIL_MAP[consultant] && TEAM_EMAIL_MAP[consultant] !== "Mahmoud.saber@elevay.com") {
+    recipients.push(TEAM_EMAIL_MAP[consultant]);
+  }
   // Deduplicate
   const toList = Array.from(new Set(recipients));
-  if (toList.length === 0) {
-    // Fallback: notify all team
-    await notifyTeam(subject, htmlBody, plainText);
-    return;
-  }
   const transporter = createTransporter();
   if (transporter) {
     const gmailUser = process.env.GMAIL_USER!;
@@ -344,9 +341,13 @@ export async function notifyNewClientAssigned(
   paralegal: string | null,
   consultant: string | null,
 ): Promise<void> {
-  const recipients: string[] = [];
+  // Always include Mahmoud as the primary recipient so the email is guaranteed
+  // to be delivered even when no paralegal or consultant is assigned.
+  const recipients: string[] = ["Mahmoud.saber@elevay.com"];
   if (paralegal && TEAM_EMAIL_MAP[paralegal]) recipients.push(TEAM_EMAIL_MAP[paralegal]);
-  if (consultant && TEAM_EMAIL_MAP[consultant]) recipients.push(TEAM_EMAIL_MAP[consultant]);
+  if (consultant && TEAM_EMAIL_MAP[consultant] && TEAM_EMAIL_MAP[consultant] !== "Mahmoud.saber@elevay.com") {
+    recipients.push(TEAM_EMAIL_MAP[consultant]);
+  }
   const toList = Array.from(new Set(recipients));
   const appTypeLabel = applicationType === 'freelancer' ? 'Freelancer' : 'Business Owner';
   const maritalLabel = maritalStatus === 'family' ? 'Family' : 'Single';
@@ -369,7 +370,6 @@ export async function notifyNewClientAssigned(
       await transporter.sendMail({
         from: `"ELEVAY System" <${gmailUser}>`,
         to: toList.join(', '),
-        cc: MAHMOUD_CC,
         subject: `[ELEVAY] ${subject}`,
         html: wrapInEmailTemplate(subject, html),
         text: plain,
