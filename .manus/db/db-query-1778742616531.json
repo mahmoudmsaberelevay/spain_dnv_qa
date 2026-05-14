@@ -1,0 +1,18 @@
+{
+  "query": "SHOW COLUMNS FROM clientCases LIKE 'childrenData';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SHOW COLUMNS FROM clientCases LIKE 'childrenData';",
+  "rows": [
+    {
+      "Field": "childrenData",
+      "Type": "json",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nchildrenData\tjson\tYES\t\tNULL\t\n",
+  "stderr": "",
+  "execution_time_ms": 1726
+}

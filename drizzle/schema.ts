@@ -205,6 +205,8 @@ export const clientCases = mysqlTable("clientCases", {
   schengenDate: timestamp("schengenDate"),
   embassyAppointmentDate: timestamp("embassyAppointmentDate"),
   expectedSubmissionDate: timestamp("expectedSubmissionDate"),
+  // Children data: JSON array of { ageRange: "0-17" | "18-26" }
+  childrenData: json("childrenData"),
   // 3-stage workflow
   stage: mysqlEnum("stage", ["preparation", "submission", "approved"]).default("preparation").notNull(),
   // Submission stage fields

@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import {
   ArrowLeft, CheckCircle2, Circle, Clock, AlertTriangle,
   FileCheck, Stamp, Building2, CalendarDays, ClipboardList,
-  CalendarClock, Check
+  CalendarClock, Check, FileDown
 } from "lucide-react";
 
 type ActionType = "receive" | "mofa" | "embassy" | "schengen" | "appointment" | "submission" | null;
@@ -100,6 +100,21 @@ export default function ClientDocDetail() {
       utils.clientDocs.get.invalidate({ id: clientId });
       utils.clientDocs.report.invalidate({ id: clientId });
       utils.clientDocs.dashboard.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const exportMutation = trpc.clientDocs.exportChecklist.useMutation({
+    onSuccess: (result) => {
+      const bytes = Uint8Array.from(atob(result.base64), c => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${result.clientName} - قائمة المستندات.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("تم تحميل قائمة المستندات");
     },
     onError: (e) => toast.error(e.message),
   });
@@ -211,6 +226,17 @@ export default function ClientDocDetail() {
             <span className="text-gray-200">|</span>
             <span>Consultant: <span className="text-gray-600 font-medium">{data.consultant}</span></span>
           </div>
+          {/* Export Checklist Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs border-[#1e3a5f]/30 text-[#1e3a5f] hover:bg-[#1e3a5f]/5 gap-1.5"
+            onClick={() => exportMutation.mutate({ id: clientId })}
+            disabled={exportMutation.isPending}
+          >
+            <FileDown className="w-3.5 h-3.5" />
+            {exportMutation.isPending ? "جاري التحميل..." : "تصدير القائمة"}
+          </Button>
           {/* Stage Selector */}
           <select
             value={(data as any).stage ?? "preparation"}

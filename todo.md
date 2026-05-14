@@ -440,3 +440,13 @@
 
 ## Change Requests (Round 56)
 - [x] Disable email notifications for Income, Expense, and Transfer transaction creation
+
+## Change Requests (Round 57) — Children/Family Members + Arabic Word Export
+- [x] Add childrenData JSON column to clientCases schema and run migration
+- [x] Update clientDocDefs.ts to accept children array and generate per-child docs
+- [x] Update clientDocs.create tRPC procedure to accept and store children data
+- [x] Add clientDocs.updateChildren tRPC procedure
+- [x] Update ClientDocs.tsx new-client form with children fields
+- [x] Install docx npm package for Word document generation
+- [x] Add clientDocs.exportChecklist tRPC procedure (Arabic Word doc + Elevay logo)
+- [x] Add export button to ClientDocDetail.tsx

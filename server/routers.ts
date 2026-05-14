@@ -28,7 +28,8 @@ import {
   createClientCase, listClientCases, getClientCase, updateClientCase,
   createClientDocuments, getClientDocuments, updateClientDocument, updateClientDocumentsByIds,
 } from "./db";
-import { getDocChecklist } from "../shared/clientDocDefs";
+import { getDocChecklist, ChildEntry } from "../shared/clientDocDefs";
+import { generateChecklistDocx } from "./checklistDocxGenerator";
 import { financialRouter } from "./finRouter";
 import { settlementRouter } from "./settlementRouter";
 import { chatRouter, broadcastRouter } from "./chatRouter";
@@ -1292,11 +1293,22 @@ const clientDocsRouter = router({
       maritalStatus: z.enum(["single", "family"]),
       paralegal: z.enum(["Madonna", "Monica", "Marina"]),
       consultant: z.enum(["Mahmoud", "Ziad", "Fouad", "Kirolos"]),
+      children: z.array(z.object({ ageRange: z.enum(["0-17", "18-26"]) })).optional().default([]),
     }))
     .mutation(async ({ ctx, input }) => {
-      const result = await createClientCase({ ...input, userId: ctx.user.id });
+      const childrenData: ChildEntry[] = input.children;
+      const result = await createClientCase({
+        clientName: input.clientName,
+        clientCode: input.clientCode,
+        applicationType: input.applicationType,
+        maritalStatus: input.maritalStatus,
+        paralegal: input.paralegal,
+        consultant: input.consultant,
+        userId: ctx.user.id,
+        childrenData: childrenData as any,
+      });
       const insertId = (result as any).insertId as number;
-      const checklist = getDocChecklist(input.applicationType, input.maritalStatus);
+      const checklist = getDocChecklist(input.applicationType, input.maritalStatus, childrenData);
       const docs = checklist.map(d => ({
         clientCaseId: insertId,
         docKey: d.docKey,
@@ -1308,6 +1320,43 @@ const clientDocsRouter = router({
       }));
       await createClientDocuments(docs);
       return { id: insertId };
+    }),
+  // Update children data and re-generate per-child documents
+  updateChildren: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      children: z.array(z.object({ ageRange: z.enum(["0-17", "18-26"]) })),
+    }))
+    .mutation(async ({ input }) => {
+      const c = await getClientCase(input.id);
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
+      const childrenData: ChildEntry[] = input.children;
+      await updateClientCase(input.id, { childrenData: childrenData as any });
+      // Remove old per-child docs
+      const { getDb } = await import("./db");
+      const db = await getDb();
+      if (db) {
+        const { clientDocuments: cdTable } = await import("../drizzle/schema");
+        const { and, eq, like } = await import("drizzle-orm");
+        await db.delete(cdTable).where(
+          and(eq(cdTable.clientCaseId, input.id), like(cdTable.docKey, "child_%"))
+        );
+      }
+      // Re-generate child-specific docs
+      const checklist = getDocChecklist(c.applicationType, c.maritalStatus, childrenData);
+      const childDocs = checklist.filter(d => d.docKey.startsWith("child_"));
+      if (childDocs.length > 0) {
+        await createClientDocuments(childDocs.map(d => ({
+          clientCaseId: input.id,
+          docKey: d.docKey,
+          docName: d.docName,
+          category: d.category,
+          expirationMonths: d.expirationMonths,
+          requiresMofa: d.requiresMofa,
+          requiresEmbassy: d.requiresEmbassy,
+        })));
+      }
+      return { success: true };
     }),
 
   list: protectedProcedure.query(async () => {
@@ -1492,6 +1541,24 @@ const clientDocsRouter = router({
       return { success: true };
     }),
 
+  // Export pending document checklist as an Arabic Word document
+  exportChecklist: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const c = await getClientCase(input.id);
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
+      const docs = await getClientDocuments(input.id);
+      const docxBuffer = await generateChecklistDocx(
+        c.clientName,
+        docs.map(d => ({
+          docKey: d.docKey,
+          docName: d.docName,
+          category: d.category,
+          received: d.received,
+        }))
+      );
+      return { base64: docxBuffer.toString("base64"), clientName: c.clientName };
+    }),
   // Dashboard: per-client completion overview
   dashboard: protectedProcedure.query(async () => {
     const cases = await listClientCases();

@@ -10,6 +10,10 @@ export type DocDef = {
   requiresEmbassy: boolean;
 };
 
+export type ChildEntry = {
+  ageRange: "0-17" | "18-26";
+};
+
 // ─── Freelancer — Main Applicant ──────────────────────────────────────────────
 export const FREELANCER_MAIN_DOCS: DocDef[] = [
   { docKey: "passport_main",              docName: "Main Applicant Passport",             category: "main", expirationMonths: null, requiresMofa: false, requiresEmbassy: false },
@@ -44,22 +48,130 @@ export const BUSINESS_OWNER_MAIN_DOCS: DocDef[] = [
   { docKey: "tax_details",                docName: "Tax Details",                         category: "main", expirationMonths: 12,   requiresMofa: true,  requiresEmbassy: true  },
 ];
 
-// ─── Family Documents (added when maritalStatus = 'family') ──────────────────
-export const FAMILY_DOCS: DocDef[] = [
+// ─── Family Base Documents (always added when maritalStatus = 'family') ───────
+export const FAMILY_BASE_DOCS: DocDef[] = [
   { docKey: "family_passports",               docName: "Family Passports",                    category: "family", expirationMonths: null, requiresMofa: false, requiresEmbassy: false },
-  { docKey: "dependent_enrollment_cert",      docName: "Dependent Enrollment Certificate",    category: "family", expirationMonths: 6,    requiresMofa: true,  requiresEmbassy: true  },
-  { docKey: "police_certificates_family",     docName: "Police Certificates (Family)",        category: "family", expirationMonths: 3,    requiresMofa: true,  requiresEmbassy: true  },
-  { docKey: "single_record",                  docName: "Single Record",                       category: "family", expirationMonths: 6,    requiresMofa: true,  requiresEmbassy: true  },
-  { docKey: "birth_certificates",             docName: "Birth Certificates",                  category: "family", expirationMonths: 6,    requiresMofa: true,  requiresEmbassy: true  },
   { docKey: "marriage_certificates",          docName: "Marriage Certificates",               category: "family", expirationMonths: 6,    requiresMofa: true,  requiresEmbassy: true  },
   { docKey: "dependent_social_insurance",     docName: "Dependent Social Insurance",          category: "family", expirationMonths: 6,    requiresMofa: true,  requiresEmbassy: true  },
 ];
 
+// ─── Per-child documents ──────────────────────────────────────────────────────
+// For a child aged 0–17: Birth Certificate is required
+function childDocs_0_17(childIndex: number): DocDef[] {
+  const n = childIndex + 1;
+  return [
+    {
+      docKey: `child_${n}_birth_certificate`,
+      docName: `Child ${n} — Birth Certificate`,
+      category: "family",
+      expirationMonths: 6,
+      requiresMofa: true,
+      requiresEmbassy: true,
+    },
+  ];
+}
+
+// For a child aged 18–26: Police Certificate + Education Enrollment + Single Record
+function childDocs_18_26(childIndex: number): DocDef[] {
+  const n = childIndex + 1;
+  return [
+    {
+      docKey: `child_${n}_police_certificate`,
+      docName: `Child ${n} — Police Certificate`,
+      category: "family",
+      expirationMonths: 3,
+      requiresMofa: true,
+      requiresEmbassy: true,
+    },
+    {
+      docKey: `child_${n}_education_enrollment`,
+      docName: `Child ${n} — Education Enrollment`,
+      category: "family",
+      expirationMonths: 6,
+      requiresMofa: true,
+      requiresEmbassy: true,
+    },
+    {
+      docKey: `child_${n}_single_record`,
+      docName: `Child ${n} — Single Record`,
+      category: "family",
+      expirationMonths: 6,
+      requiresMofa: true,
+      requiresEmbassy: true,
+    },
+  ];
+}
+
+// ─── Main checklist generator ─────────────────────────────────────────────────
 export function getDocChecklist(
   applicationType: "freelancer" | "business_owner",
-  maritalStatus: "single" | "family"
+  maritalStatus: "single" | "family",
+  children: ChildEntry[] = []
 ): DocDef[] {
   const mainDocs = applicationType === "freelancer" ? FREELANCER_MAIN_DOCS : BUSINESS_OWNER_MAIN_DOCS;
-  const familyDocs = maritalStatus === "family" ? FAMILY_DOCS : [];
-  return [...mainDocs, ...familyDocs];
+
+  if (maritalStatus === "single") {
+    return [...mainDocs];
+  }
+
+  // Family: add base family docs + per-child docs
+  const perChildDocs: DocDef[] = [];
+  children.forEach((child, idx) => {
+    if (child.ageRange === "0-17") {
+      perChildDocs.push(...childDocs_0_17(idx));
+    } else {
+      perChildDocs.push(...childDocs_18_26(idx));
+    }
+  });
+
+  return [...mainDocs, ...FAMILY_BASE_DOCS, ...perChildDocs];
+}
+
+// ─── Arabic document name map ─────────────────────────────────────────────────
+// Used when generating the Arabic Word export
+export const ARABIC_DOC_NAMES: Record<string, string> = {
+  // Main applicant docs
+  passport_main:             "جواز سفر مقدم الطلب الرئيسي",
+  education_certificate:     "شهادة التعليم",
+  experience_letter:         "خطاب الخبرة",
+  social_insurance:          "التأمين الاجتماعي",
+  client_company_doc:        "وثيقة شركة العميل",
+  police_clearance:          "شهادة حسن السيرة والسلوك",
+  bank_statement:            "كشف حساب بنكي",
+  completion_agreement:      "إتمام الاتفاقية",
+  completion_invoices:       "إتمام الفواتير",
+  recommendation_letter:     "خطاب التوصية",
+  declaration_none_practice: "إقرار عدم الممارسة",
+  social_insurance_him:      "التأمين الاجتماعي — له",
+  social_insurance_emp:      "التأمين الاجتماعي — للموظفين",
+  owns_company_doc:          "وثيقة الشركة المملوكة",
+  annual_tax_report:         "التقرير الضريبي السنوي",
+  tax_card:                  "البطاقة الضريبية",
+  vat_cert:                  "شهادة ضريبة القيمة المضافة",
+  tax_details:               "تفاصيل الضريبة",
+  // Family base docs
+  family_passports:              "جوازات سفر أفراد الأسرة",
+  marriage_certificates:         "شهادات الزواج",
+  dependent_social_insurance:    "التأمين الاجتماعي للمعالين",
+};
+
+export function getArabicDocName(docKey: string, docName: string): string {
+  // Check static map first
+  if (ARABIC_DOC_NAMES[docKey]) return ARABIC_DOC_NAMES[docKey];
+
+  // Dynamic per-child keys
+  const childBirthMatch = docKey.match(/^child_(\d+)_birth_certificate$/);
+  if (childBirthMatch) return `الطفل ${childBirthMatch[1]} — شهادة الميلاد`;
+
+  const childPoliceMatch = docKey.match(/^child_(\d+)_police_certificate$/);
+  if (childPoliceMatch) return `الطفل ${childPoliceMatch[1]} — شهادة حسن السيرة والسلوك`;
+
+  const childEduMatch = docKey.match(/^child_(\d+)_education_enrollment$/);
+  if (childEduMatch) return `الطفل ${childEduMatch[1]} — قيد التعليم`;
+
+  const childSingleMatch = docKey.match(/^child_(\d+)_single_record$/);
+  if (childSingleMatch) return `الطفل ${childSingleMatch[1]} — وثيقة العزوبية`;
+
+  // Fallback: return original English name
+  return docName;
 }

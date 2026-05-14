@@ -10,7 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Plus, FolderOpen, User, Calendar, ChevronRight, FileText, Briefcase } from "lucide-react";
+import { Plus, FolderOpen, User, Calendar, ChevronRight, FileText, Briefcase, Baby, Users } from "lucide-react";
+
+type ChildEntry = { ageRange: "0-17" | "18-26" };
 
 type FormState = {
   clientName: string;
@@ -19,20 +21,26 @@ type FormState = {
   maritalStatus: "single" | "family" | "";
   paralegal: "Madonna" | "Monica" | "Marina" | "";
   consultant: "Mahmoud" | "Ziad" | "Fouad" | "Kirolos" | "";
+  numberOfKids: number;
+  children: ChildEntry[];
+};
+
+const EMPTY_FORM: FormState = {
+  clientName: "",
+  clientCode: "",
+  applicationType: "",
+  maritalStatus: "",
+  paralegal: "",
+  consultant: "",
+  numberOfKids: 0,
+  children: [],
 };
 
 export default function ClientDocs() {
-  const { user, loading, isAuthenticated } = useAuth();
+  const { loading, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<FormState>({
-    clientName: "",
-    clientCode: "",
-    applicationType: "",
-    maritalStatus: "",
-    paralegal: "",
-    consultant: "",
-  });
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
 
   const { data: clients, isLoading, refetch } = trpc.clientDocs.list.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -42,7 +50,7 @@ export default function ClientDocs() {
     onSuccess: (data) => {
       toast.success("Client case created successfully");
       setOpen(false);
-      setForm({ clientName: "", clientCode: "", applicationType: "", maritalStatus: "", paralegal: "", consultant: "" });
+      setForm(EMPTY_FORM);
       refetch();
       setLocation(`/docs/clients/${data.id}`);
     },
@@ -71,9 +79,41 @@ export default function ClientDocs() {
     );
   }
 
+  // When marital status changes to single, clear children
+  const handleMaritalChange = (v: string) => {
+    setForm(f => ({
+      ...f,
+      maritalStatus: v as any,
+      numberOfKids: v === "single" ? 0 : f.numberOfKids,
+      children: v === "single" ? [] : f.children,
+    }));
+  };
+
+  // When number of kids changes, resize children array
+  const handleKidsCountChange = (count: number) => {
+    const clamped = Math.max(0, Math.min(20, count));
+    setForm(f => {
+      const existing = f.children.slice(0, clamped);
+      const extra: ChildEntry[] = Array.from({ length: Math.max(0, clamped - existing.length) }, () => ({ ageRange: "0-17" as const }));
+      return { ...f, numberOfKids: clamped, children: [...existing, ...extra] };
+    });
+  };
+
+  const handleChildAgeRange = (idx: number, ageRange: "0-17" | "18-26") => {
+    setForm(f => {
+      const children = [...f.children];
+      children[idx] = { ageRange };
+      return { ...f, children };
+    });
+  };
+
   const handleCreate = () => {
     if (!form.clientName || !form.clientCode || !form.applicationType || !form.maritalStatus || !form.paralegal || !form.consultant) {
       toast.error("Please fill in all fields");
+      return;
+    }
+    if (form.maritalStatus === "family" && form.numberOfKids > 0 && form.children.some(c => !c.ageRange)) {
+      toast.error("Please select an age range for each child");
       return;
     }
     createMutation.mutate({
@@ -83,6 +123,7 @@ export default function ClientDocs() {
       maritalStatus: form.maritalStatus as "single" | "family",
       paralegal: form.paralegal as "Madonna" | "Monica" | "Marina",
       consultant: form.consultant as "Mahmoud" | "Ziad" | "Fouad" | "Kirolos",
+      children: form.maritalStatus === "family" ? form.children : [],
     });
   };
 
@@ -109,11 +150,12 @@ export default function ClientDocs() {
               New Client
             </Button>
           </DialogTrigger>
-          <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md">
+          <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-gray-900 text-lg font-semibold">Create Client Case</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-2">
+              {/* Client Name */}
               <div className="space-y-1.5">
                 <Label className="text-gray-700 text-sm font-medium">Client Name</Label>
                 <Input
@@ -123,6 +165,8 @@ export default function ClientDocs() {
                   className="border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-[#1e3a5f] focus:ring-[#1e3a5f]"
                 />
               </div>
+
+              {/* Client Code */}
               <div className="space-y-1.5">
                 <Label className="text-gray-700 text-sm font-medium">Client Code</Label>
                 <Input
@@ -132,6 +176,8 @@ export default function ClientDocs() {
                   className="border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-[#1e3a5f] focus:ring-[#1e3a5f]"
                 />
               </div>
+
+              {/* Application Type + Marital Status */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-gray-700 text-sm font-medium">Application Type</Label>
@@ -147,7 +193,7 @@ export default function ClientDocs() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-gray-700 text-sm font-medium">Marital Status</Label>
-                  <Select value={form.maritalStatus} onValueChange={v => setForm(f => ({ ...f, maritalStatus: v as any }))}>
+                  <Select value={form.maritalStatus} onValueChange={handleMaritalChange}>
                     <SelectTrigger className="border-gray-300 text-gray-900 bg-white">
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
@@ -158,6 +204,94 @@ export default function ClientDocs() {
                   </Select>
                 </div>
               </div>
+
+              {/* ── Children section (only for family) ── */}
+              {form.maritalStatus === "family" && (
+                <div className="border border-[#1e3a5f]/20 rounded-lg p-4 bg-[#1e3a5f]/5 space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Baby className="w-4 h-4 text-[#1e3a5f]" />
+                    <span className="text-sm font-medium text-[#1e3a5f]">Children</span>
+                  </div>
+
+                  {/* Number of kids */}
+                  <div className="space-y-1.5">
+                    <Label className="text-gray-700 text-sm">Number of Children</Label>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-8 h-8 p-0 border-gray-300 text-gray-700"
+                        onClick={() => handleKidsCountChange(form.numberOfKids - 1)}
+                        disabled={form.numberOfKids <= 0}
+                      >
+                        −
+                      </Button>
+                      <span className="w-8 text-center text-gray-900 font-medium">{form.numberOfKids}</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-8 h-8 p-0 border-gray-300 text-gray-700"
+                        onClick={() => handleKidsCountChange(form.numberOfKids + 1)}
+                      >
+                        +
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Per-child age range selectors */}
+                  {form.children.length > 0 && (
+                    <div className="space-y-2 pt-1">
+                      <p className="text-xs text-gray-500">Select age range for each child:</p>
+                      {form.children.map((child, idx) => (
+                        <div key={idx} className="flex items-center gap-3">
+                          <span className="text-sm text-gray-600 w-16 shrink-0">Child {idx + 1}</span>
+                          <Select
+                            value={child.ageRange}
+                            onValueChange={v => handleChildAgeRange(idx, v as "0-17" | "18-26")}
+                          >
+                            <SelectTrigger className="border-gray-300 text-gray-900 bg-white flex-1">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white border-gray-200">
+                              <SelectItem value="0-17" className="text-gray-900">
+                                <span className="flex items-center gap-2">
+                                  <Baby className="w-3.5 h-3.5 text-blue-500" />
+                                  0 – 17 years
+                                </span>
+                              </SelectItem>
+                              <SelectItem value="18-26" className="text-gray-900">
+                                <span className="flex items-center gap-2">
+                                  <Users className="w-3.5 h-3.5 text-purple-500" />
+                                  18 – 26 years
+                                </span>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Document hint */}
+                  {form.children.length > 0 && (
+                    <div className="text-xs text-gray-500 pt-1 space-y-0.5 border-t border-[#1e3a5f]/10 pt-2">
+                      <p className="font-medium text-gray-600">Documents that will be added:</p>
+                      {form.children.map((child, idx) => (
+                        <p key={idx}>
+                          Child {idx + 1} ({child.ageRange} yrs):{" "}
+                          {child.ageRange === "0-17"
+                            ? "Birth Certificate"
+                            : "Police Certificate + Education Enrollment + Single Record"}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Paralegal + Consultant */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-gray-700 text-sm font-medium">Paralegal</Label>
@@ -186,6 +320,7 @@ export default function ClientDocs() {
                   </Select>
                 </div>
               </div>
+
               <Button
                 className="w-full bg-[#1e3a5f] hover:bg-[#16304f] text-white mt-2"
                 onClick={handleCreate}
@@ -253,6 +388,12 @@ export default function ClientDocs() {
                 <Badge className="text-xs border px-2 py-0.5 bg-gray-100 text-gray-600 border-gray-200">
                   {client.maritalStatus === "family" ? "Family" : "Single"}
                 </Badge>
+                {client.maritalStatus === "family" && (client.childrenData as any)?.length > 0 && (
+                  <Badge className="text-xs border px-2 py-0.5 bg-purple-50 text-purple-700 border-purple-200 flex items-center gap-1">
+                    <Baby className="w-3 h-3" />
+                    {(client.childrenData as any).length} {(client.childrenData as any).length === 1 ? "child" : "children"}
+                  </Badge>
+                )}
                 <span className="text-gray-400 text-xs ml-auto">{client.consultant}</span>
               </div>
               {client.expectedSubmissionDate && (

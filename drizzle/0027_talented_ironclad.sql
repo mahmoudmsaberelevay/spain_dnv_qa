@@ -1,0 +1,1 @@
+ALTER TABLE `clientCases` ADD `childrenData` json;
