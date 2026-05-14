@@ -659,3 +659,42 @@ export async function deleteClientWorkflow(id: number) {
   if (!db) throw new Error("Database not available");
   await db.delete(clientWorkflows).where(eq(clientWorkflows.id, id));
 }
+
+// ─── National Visa Workflows ──────────────────────────────────────────────────
+import { nationalVisaWorkflows, InsertNationalVisaWorkflow } from "../drizzle/schema";
+
+export async function createNationalVisaWorkflow(data: InsertNationalVisaWorkflow) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(nationalVisaWorkflows).values(data);
+  const id = (result as any).insertId as number;
+  const rows = await db.select().from(nationalVisaWorkflows).where(eq(nationalVisaWorkflows.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function listNationalVisaWorkflows() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(nationalVisaWorkflows).orderBy(desc(nationalVisaWorkflows.createdAt));
+}
+
+export async function getNationalVisaWorkflowById(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(nationalVisaWorkflows).where(eq(nationalVisaWorkflows.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updateNationalVisaWorkflow(id: number, data: Partial<InsertNationalVisaWorkflow>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(nationalVisaWorkflows).set(data).where(eq(nationalVisaWorkflows.id, id));
+  const rows = await db.select().from(nationalVisaWorkflows).where(eq(nationalVisaWorkflows.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function deleteNationalVisaWorkflow(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(nationalVisaWorkflows).where(eq(nationalVisaWorkflows.id, id));
+}

@@ -23,6 +23,7 @@ import ClientDocs from "./pages/ClientDocs";
 import ClientDocsDashboard from "./pages/ClientDocsDashboard";
 import ClientDocDetail from "./pages/ClientDocDetail";
 import WorkflowPage from "./pages/WorkflowPage";
+import NationalVisaPage from "./pages/NationalVisaPage";
 
 // ─── Contracting Module ─────────────────────────────────────────────
 import ContractingDashboard from "./pages/ContractingDashboard";
@@ -174,6 +175,9 @@ function Router() {
       </Route>
       <Route path="/docs/workflow">
         <PageGuard pageKey="client_docs"><DashboardLayout><WorkflowPage /></DashboardLayout></PageGuard>
+      </Route>
+      <Route path="/docs/national-visa">
+        <PageGuard pageKey="client_docs"><DashboardLayout><NationalVisaPage /></DashboardLayout></PageGuard>
       </Route>
 
       {/* ── Broadcast Center ── */}

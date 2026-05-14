@@ -1846,6 +1846,86 @@ const workflowRouter = router({
     }),
 });
 
+
+// ─── National Visa Router ─────────────────────────────────────────────────────
+import {
+  createNationalVisaWorkflow,
+  listNationalVisaWorkflows,
+  getNationalVisaWorkflowById,
+  updateNationalVisaWorkflow,
+  deleteNationalVisaWorkflow,
+} from "./db";
+import { generateNationalVisaDocx } from "./nationalVisaDocxGenerator";
+
+const nationalVisaRouter = router({
+  list: protectedProcedure.query(async () => {
+    return listNationalVisaWorkflows();
+  }),
+
+  create: protectedProcedure
+    .input(z.object({
+      clientCaseId: z.number(),
+      wifeName: z.string().optional(),
+      children: z.array(z.object({ name: z.string(), age: z.number().int().min(0) })).optional(),
+      followUpEmail: z.string().optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const clientCase = await getClientCase(input.clientCaseId);
+      if (!clientCase) throw new TRPCError({ code: "NOT_FOUND", message: "Client not found" });
+      return createNationalVisaWorkflow({
+        clientCaseId: input.clientCaseId,
+        clientName: clientCase.clientName,
+        wifeName: input.wifeName ?? null,
+        childrenData: input.children ? JSON.stringify(input.children) : null,
+        followUpEmail: input.followUpEmail ?? null,
+        notes: input.notes ?? null,
+      });
+    }),
+
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      wifeName: z.string().optional(),
+      children: z.array(z.object({ name: z.string(), age: z.number().int().min(0) })).optional(),
+      followUpEmail: z.string().optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, children, ...rest } = input;
+      const updateData: Record<string, unknown> = { ...rest };
+      if (children !== undefined) updateData.childrenData = JSON.stringify(children);
+      const updated = await updateNationalVisaWorkflow(id, updateData as any);
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Workflow not found" });
+      return updated;
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await deleteNationalVisaWorkflow(input.id);
+      return { success: true };
+    }),
+
+  generateDoc: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const wf = await getNationalVisaWorkflowById(input.id);
+      if (!wf) throw new TRPCError({ code: "NOT_FOUND", message: "Workflow not found" });
+      const children: Array<{ name: string; age: number }> = wf.childrenData
+        ? JSON.parse(wf.childrenData as string)
+        : [];
+      const buf = await generateNationalVisaDocx({
+        clientName: wf.clientName,
+        wifeName: wf.wifeName ?? undefined,
+        children,
+        followUpEmail: wf.followUpEmail ?? undefined,
+        notes: wf.notes ?? undefined,
+      });
+      return { base64: buf.toString("base64"), clientName: wf.clientName };
+    }),
+});
+
 // ─── App Routerr ─────────────────────────────────────────────────────────────
 export const appRouter = router({
   system: systemRouter,
@@ -1869,5 +1949,6 @@ export const appRouter = router({
   permissions: permissionsRouter,
   waQc: waQcRouter,
   workflow: workflowRouter,
+  nationalVisa: nationalVisaRouter,
 });
 export type AppRouter = typeof appRouter;

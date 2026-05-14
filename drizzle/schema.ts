@@ -716,3 +716,21 @@ export const clientWorkflows = mysqlTable("clientWorkflows", {
 });
 export type ClientWorkflow = typeof clientWorkflows.$inferSelect;
 export type InsertClientWorkflow = typeof clientWorkflows.$inferInsert;
+
+// ─── National Visa Workflows ──────────────────────────────────────────────────
+export const nationalVisaWorkflows = mysqlTable("nationalVisaWorkflows", {
+  id: int("id").autoincrement().primaryKey(),
+  clientCaseId: int("clientCaseId").notNull(),
+  clientName: varchar("clientName", { length: 255 }).notNull(),
+  // Wife name
+  wifeName: varchar("wifeName", { length: 255 }),
+  // JSON array of children: [{name: string, age: number}]
+  childrenData: text("childrenData"),
+  // Email to CC on follow-up
+  followUpEmail: varchar("followUpEmail", { length: 255 }),
+  // Notes / additional info
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type NationalVisaWorkflow = typeof nationalVisaWorkflows.$inferSelect;
+export type InsertNationalVisaWorkflow = typeof nationalVisaWorkflows.$inferInsert;

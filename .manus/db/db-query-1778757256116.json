@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `nationalVisaWorkflows` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`clientCaseId` int NOT NULL,\n\t`clientName` varchar(255) NOT NULL,\n\t`wifeName` varchar(255),\n\t`childrenData` text,\n\t`followUpEmail` varchar(255),\n\t`notes` text,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\tCONSTRAINT `nationalVisaWorkflows_id` PRIMARY KEY(`id`)\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute CREATE TABLE `nationalVisaWorkflows` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`clientCaseId` int NOT NULL,\n\t`clientName` varchar(255) NOT NULL,\n\t`wifeName` varchar(255),\n\t`childrenData` text,\n\t`followUpEmail` varchar(255),\n\t`notes` text,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\tCONSTRAINT `nationalVisaWorkflows_id` PRIMARY KEY(`id`)\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1844
+}
