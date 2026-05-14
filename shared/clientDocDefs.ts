@@ -130,25 +130,26 @@ export function getDocChecklist(
 // ─── Arabic document name map ─────────────────────────────────────────────────
 // Used when generating the Arabic Word export
 export const ARABIC_DOC_NAMES: Record<string, string> = {
-  // Main applicant docs
+  // Main applicant docs — Freelancer
   passport_main:             "جواز سفر مقدم الطلب الرئيسي",
   education_certificate:     "شهادة التعليم",
-  experience_letter:         "خطاب الخبرة",
-  social_insurance:          "التأمين الاجتماعي",
-  client_company_doc:        "وثيقة شركة العميل",
-  police_clearance:          "شهادة حسن السيرة والسلوك",
+  experience_letter:         "شهادة التسجيل بالتأمين الاجتماعي — له",
+  social_insurance:          "شهادة التسجيل بالتأمين الاجتماعي — له",
+  client_company_doc:        "صورة سجل وثيقة شركة العميل",
+  police_clearance:          "شهادة حسن السيرة والسلوك ( الفيش والتشبية)",
   bank_statement:            "كشف حساب بنكي",
-  completion_agreement:      "إتمام الاتفاقية",
-  completion_invoices:       "إتمام الفواتير",
+  completion_agreement:      "عقد عمل الاستشارات",
+  completion_invoices:       "فواتير الدفعات المستقبلة",
   recommendation_letter:     "خطاب التوصية",
   declaration_none_practice: "إقرار عدم الممارسة",
-  social_insurance_him:      "التأمين الاجتماعي — له",
-  social_insurance_emp:      "التأمين الاجتماعي — للموظفين",
-  owns_company_doc:          "وثيقة الشركة المملوكة",
+  // Main applicant docs — Business Owner
+  social_insurance_him:      "شهادة التسجيل بالتأمين الاجتماعي — له",
+  social_insurance_emp:      "شهادة التأمين الاجتماعي — للموظفين",
+  owns_company_doc:          "صورة سجل الشركة المملوكة",
   annual_tax_report:         "التقرير الضريبي السنوي",
-  tax_card:                  "البطاقة الضريبية",
-  vat_cert:                  "شهادة ضريبة القيمة المضافة",
-  tax_details:               "تفاصيل الضريبة",
+  tax_card:                  "صورة البطاقة الضريبية",
+  vat_cert:                  "صورة شهادة ضريبة القيمة المضافة",
+  tax_details:               "شهادة البيانات الضريبة",
   // Family base docs
   family_passports:              "جوازات سفر أفراد الأسرة",
   marriage_certificates:         "شهادات الزواج",
@@ -164,7 +165,7 @@ export function getArabicDocName(docKey: string, docName: string): string {
   if (childBirthMatch) return `الطفل ${childBirthMatch[1]} — شهادة الميلاد`;
 
   const childPoliceMatch = docKey.match(/^child_(\d+)_police_certificate$/);
-  if (childPoliceMatch) return `الطفل ${childPoliceMatch[1]} — شهادة حسن السيرة والسلوك`;
+  if (childPoliceMatch) return `الطفل ${childPoliceMatch[1]} — شهادة حسن السيرة والسلوك ( الفيش والتشبية)`;
 
   const childEduMatch = docKey.match(/^child_(\d+)_education_enrollment$/);
   if (childEduMatch) return `الطفل ${childEduMatch[1]} — قيد التعليم`;
