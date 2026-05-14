@@ -12,33 +12,9 @@ import {
   Packer,
   Paragraph,
   TextRun,
-  ImageRun,
   AlignmentType,
-  Table,
-  TableRow,
-  TableCell,
-  WidthType,
-  BorderStyle,
 } from "docx";
-import https from "https";
-import http from "http";
 import { getArabicDocName } from "../shared/clientDocDefs";
-
-const LOGO_CDN_URL =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/bird_logo_trimmed_4fc28cf5.png";
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function downloadBuffer(url: string): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const client = url.startsWith("https") ? https : http;
-    client.get(url, (res) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (c: Buffer) => chunks.push(c));
-      res.on("end", () => resolve(Buffer.concat(chunks)));
-      res.on("error", reject);
-    }).on("error", reject);
-  });
-}
 
 // Arabic ordinal label for child index (1-based)
 function arabicChildLabel(n: number): string {
@@ -46,14 +22,6 @@ function arabicChildLabel(n: number): string {
     "السادس", "السابع", "الثامن", "التاسع", "العاشر"];
   return labels[n - 1] ?? `${n}`;
 }
-
-// No-border helper for table cells
-const noBorder = {
-  top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-  bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-  left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-  right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-};
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export type DocItem = {
@@ -67,69 +35,26 @@ export async function generateChecklistDocx(
   clientName: string,
   docs: DocItem[]
 ): Promise<Buffer> {
-  const logoBuffer = await downloadBuffer(LOGO_CDN_URL);
-
   // Separate pending docs by category
   const pending = docs.filter((d) => !d.received);
   const mainPending = pending.filter((d) => d.category === "main");
   const familyPending = pending.filter((d) => d.category === "family");
 
   // ── Document builder ───────────────────────────────────────────────────────
-  const children: (Paragraph | Table)[] = [];
+  const children: Paragraph[] = [];
 
-  // ── Header row: logo LEFT, company name CENTER ─────────────────────────────
-  // Use a 3-column table so logo stays left while company name is centered
+  // Company name centered at top
   children.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [
-        new TableRow({
-          children: [
-            // Left cell: logo (smaller, ~80×40)
-            new TableCell({
-              width: { size: 20, type: WidthType.PERCENTAGE },
-              borders: noBorder,
-              children: [
-                new Paragraph({
-                  alignment: AlignmentType.LEFT,
-                  spacing: { after: 0 },
-                  children: [
-                    new ImageRun({
-                      data: logoBuffer,
-                      transformation: { width: 80, height: 40 },
-                      type: "png",
-                    }),
-                  ],
-                }),
-              ],
-            }),
-            // Center cell: company name
-            new TableCell({
-              width: { size: 60, type: WidthType.PERCENTAGE },
-              borders: noBorder,
-              children: [
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  spacing: { after: 0 },
-                  children: [
-                    new TextRun({
-                      text: "إيليفاي للاستشارات",
-                      bold: true,
-                      size: 28,
-                      color: "1e3a5f",
-                      font: "Arial",
-                    }),
-                  ],
-                }),
-              ],
-            }),
-            // Right cell: empty spacer
-            new TableCell({
-              width: { size: 20, type: WidthType.PERCENTAGE },
-              borders: noBorder,
-              children: [new Paragraph({ children: [] })],
-            }),
-          ],
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 80 },
+      children: [
+        new TextRun({
+          text: "إيليفاي للاستشارات",
+          bold: true,
+          size: 28,
+          color: "1e3a5f",
+          font: "Arial",
         }),
       ],
     })
