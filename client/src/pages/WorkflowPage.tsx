@@ -5,6 +5,7 @@
  * and generates an Arabic Word document.
  */
 import { useState, useMemo } from "react";
+import NationalVisaPage from "./NationalVisaPage";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,7 +90,11 @@ const CHILD_ORDINALS = ["الأول", "الثاني", "الثالث", "الرا�
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function WorkflowPage() {
 
-  // ── Data ──────────────────────────────────────────────────────────────────
+  // ── Tab state ──────────────────────────────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<"workflow" | "national-visa">("workflow");
+
+
+  // ── Data ──────────────────────────────────────────────────────────────────────────────────────
   const { data: clients = [], isLoading: clientsLoading } = trpc.clientDocs.list.useQuery();
   const { data: workflows = [], refetch: refetchWorkflows } = trpc.workflow.list.useQuery();
 
@@ -294,6 +299,36 @@ export default function WorkflowPage() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="p-6 max-w-4xl mx-auto" dir="rtl">
+      {/* ── Tab Navigation ── */}
+      <div className="flex gap-1 mb-6 border-b border-gray-200" dir="rtl">
+        <button
+          onClick={() => setActiveTab("workflow")}
+          className={`px-5 py-2.5 text-sm font-semibold rounded-t-md transition-colors ${
+            activeTab === "workflow"
+              ? "bg-[#1e3a5f] text-white border-b-2 border-[#1e3a5f]"
+              : "text-gray-500 hover:text-[#1e3a5f] hover:bg-gray-50"
+          }`}
+        >
+          خطة العمل
+        </button>
+        <button
+          onClick={() => setActiveTab("national-visa")}
+          className={`px-5 py-2.5 text-sm font-semibold rounded-t-md transition-colors ${
+            activeTab === "national-visa"
+              ? "bg-[#1e3a5f] text-white border-b-2 border-[#1e3a5f]"
+              : "text-gray-500 hover:text-[#1e3a5f] hover:bg-gray-50"
+          }`}
+        >
+          التأشيرة الوطنية
+        </button>
+      </div>
+
+      {/* ── National Visa Tab ── */}
+      {activeTab === "national-visa" && <NationalVisaPage />}
+
+      {/* ── Workflow Tab ── */}
+      {activeTab === "workflow" && (
+      <>
       <h1 className="text-2xl font-bold text-right mb-6" style={{ color: "#1e3a5f" }}>
         خطة العمل — إعداد ملف الإقامة الإسبانية
       </h1>
@@ -744,6 +779,8 @@ export default function WorkflowPage() {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );
