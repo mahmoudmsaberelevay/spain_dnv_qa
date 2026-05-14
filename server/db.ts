@@ -411,7 +411,13 @@ export async function updateClientCase(id: number, data: Partial<InsertClientCas
   if (!db) throw new Error("Database not available");
   await db.update(clientCases).set(data).where(eq(clientCases.id, id));
 }
-
+export async function deleteClientCase(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Delete all checklist documents first, then the case itself
+  await db.delete(clientDocuments).where(eq(clientDocuments.clientCaseId, id));
+  await db.delete(clientCases).where(eq(clientCases.id, id));
+}
 export async function createClientDocuments(docs: InsertClientDocument[]) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

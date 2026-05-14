@@ -1,18 +1,23 @@
 /**
- * Generates an Arabic Word (.docx) document for the pending document checklist
- * of a client case. Layout fixes:
- *  - Logo: smaller (80×40), left-aligned
- *  - Client name: "اسم العميل :" label on the RIGHT before the actual name (RTL)
- *  - Numbering: number appears on the RIGHT of each document line (RTL)
- *  - All text is Arabic, right-to-left
+ * Generates an Arabic Word (.docx) document for the pending document checklist.
+ * Layout:
+ *  - Header: ELEVAY logo image (letterhead) centered at top
+ *  - All body text: fully right-aligned, RTL (Arabic)
+ *  - Client name label "اسم العميل :" on the right
+ *  - Numbering on the right side of each document line
  */
 
+import fs from "fs";
+import path from "path";
 import {
   Document,
   Packer,
   Paragraph,
   TextRun,
   AlignmentType,
+  ImageRun,
+  Header,
+  Footer,
 } from "docx";
 import { getArabicDocName } from "../shared/clientDocDefs";
 
@@ -31,6 +36,9 @@ export type DocItem = {
   received: boolean;
 };
 
+// Logo image path — read from local filesystem at generation time
+const LOGO_PATH = path.resolve("/home/ubuntu/webdev-static-assets/elevay_letterhead_logo.png");
+
 export async function generateChecklistDocx(
   clientName: string,
   docs: DocItem[]
@@ -40,46 +48,22 @@ export async function generateChecklistDocx(
   const mainPending = pending.filter((d) => d.category === "main");
   const familyPending = pending.filter((d) => d.category === "family");
 
-  // ── Document builder ───────────────────────────────────────────────────────
+  // Load logo image
+  let logoBuffer: Buffer | null = null;
+  try {
+    logoBuffer = fs.readFileSync(LOGO_PATH);
+  } catch {
+    logoBuffer = null;
+  }
+
+  // ── Document body ──────────────────────────────────────────────────────────
   const children: Paragraph[] = [];
 
-  // Company name centered at top
+  // Document title — centered, bold
   children.push(
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { after: 80 },
-      children: [
-        new TextRun({
-          text: "إيليفاي للاستشارات",
-          bold: true,
-          size: 28,
-          color: "1e3a5f",
-          font: "Arial",
-        }),
-      ],
-    })
-  );
-
-  // Divider line
-  children.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 160, after: 240 },
-      children: [
-        new TextRun({
-          text: "─────────────────────────────────────",
-          color: "1e3a5f",
-          size: 20,
-        }),
-      ],
-    })
-  );
-
-  // Document title
-  children.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 200 },
+      spacing: { before: 200, after: 200 },
       children: [
         new TextRun({
           text: "قائمة المستندات المطلوبة",
@@ -92,9 +76,22 @@ export async function generateChecklistDocx(
     })
   );
 
-  // ── Client name: RIGHT-aligned, label "اسم العميل :" first (RTL = appears on right) ──
-  // In RTL paragraphs, the first TextRun appears on the RIGHT side of the line.
-  // So we put the label first, then the actual name.
+  // Divider
+  children.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 },
+      children: [
+        new TextRun({
+          text: "─────────────────────────────────────",
+          color: "1e3a5f",
+          size: 20,
+        }),
+      ],
+    })
+  );
+
+  // Client name — RIGHT-aligned RTL: "اسم العميل :" then client name
   children.push(
     new Paragraph({
       alignment: AlignmentType.RIGHT,
@@ -114,13 +111,12 @@ export async function generateChecklistDocx(
           size: 24,
           font: "Arial",
           color: "111827",
-          rightToLeft: false,
         }),
       ],
     })
   );
 
-  // Date
+  // Date — RIGHT-aligned
   const today = new Date().toLocaleDateString("ar-EG", {
     year: "numeric",
     month: "long",
@@ -139,12 +135,10 @@ export async function generateChecklistDocx(
   );
 
   // ── Section builder helper ─────────────────────────────────────────────────
-  // In RTL: number goes at the END of the text run so it appears on the RIGHT visually.
-  // Format: "☐  {arabicName}  .{num}"  — the .num part renders on the far right in RTL.
+  // RTL layout per row: number on the RIGHT, document name in the middle, checkbox on LEFT
   function buildSection(title: string, items: DocItem[]) {
     if (items.length === 0) return;
 
-    // Section header
     children.push(
       new Paragraph({
         alignment: AlignmentType.RIGHT,
@@ -163,9 +157,6 @@ export async function generateChecklistDocx(
       })
     );
 
-    // Each document row
-    // RTL layout: [☐]  [document name]  [number.]
-    // We put number first (it will appear on the right), then the name, then the checkbox
     items.forEach((doc, idx) => {
       const arabicName = getArabicDocName(doc.docKey, doc.docName);
       const num = `${idx + 1}.`;
@@ -175,7 +166,7 @@ export async function generateChecklistDocx(
           bidirectional: true,
           spacing: { after: 120 },
           children: [
-            // Number — appears on the RIGHT in RTL
+            // Number on the RIGHT (first in RTL)
             new TextRun({
               text: `${num}  `,
               size: 22,
@@ -192,7 +183,7 @@ export async function generateChecklistDocx(
               color: "111827",
               rightToLeft: true,
             }),
-            // Checkbox on the LEFT
+            // Checkbox on the LEFT (last in RTL)
             new TextRun({
               text: "☐",
               size: 22,
@@ -316,6 +307,52 @@ export async function generateChecklistDocx(
     })
   );
 
+  // ── Build header with ELEVAY logo ──────────────────────────────────────────
+  // Logo dimensions from letterhead: cx=2066290, cy=737870 EMU
+  // 1 EMU = 1/914400 inch; at 96dpi: 1 inch = 96px
+  // cx EMU → inches: 2066290/914400 ≈ 2.26 in → ~217px wide
+  // cy EMU → inches: 737870/914400 ≈ 0.81 in → ~77px tall
+  // We'll use a slightly smaller size for the header: 180×64px equivalent in EMU
+  const logoWidthEmu = 1800000;  // ~1.97 inches
+  const logoHeightEmu = 640000;  // ~0.70 inches
+
+  const headerChildren: Paragraph[] = [];
+
+  if (logoBuffer) {
+    headerChildren.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 100 },
+        children: [
+          new ImageRun({
+            data: logoBuffer,
+            transformation: {
+              width: Math.round(logoWidthEmu / 9144),   // convert EMU to points (1pt = 12700 EMU)
+              height: Math.round(logoHeightEmu / 9144),
+            },
+            type: "png",
+          }),
+        ],
+      })
+    );
+  } else {
+    // Fallback: text-only header if logo file not found
+    headerChildren.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({
+            text: "ELEVAY",
+            bold: true,
+            size: 32,
+            color: "1e3a5f",
+            font: "Arial",
+          }),
+        ],
+      })
+    );
+  }
+
   const doc = new Document({
     sections: [
       {
@@ -323,6 +360,26 @@ export async function generateChecklistDocx(
           page: {
             margin: { top: 720, right: 720, bottom: 720, left: 720 },
           },
+        },
+        headers: {
+          default: new Header({ children: headerChildren }),
+        },
+        footers: {
+          default: new Footer({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new TextRun({
+                    text: "إيليفاي للاستشارات",
+                    size: 18,
+                    color: "9ca3af",
+                    font: "Arial",
+                  }),
+                ],
+              }),
+            ],
+          }),
         },
         children,
       },

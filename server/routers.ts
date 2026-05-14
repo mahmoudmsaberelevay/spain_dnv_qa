@@ -25,7 +25,7 @@ import { generateAndUploadProformaPdf } from "./proformaGenerator";
 import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient, notifyNewInvoice, notifyFinClientAdded } from "./emailService";
 import { generateInvoicePdfBuffer } from "./invoiceGenerator";
 import {
-  createClientCase, listClientCases, getClientCase, updateClientCase,
+  createClientCase, listClientCases, getClientCase, updateClientCase, deleteClientCase,
   createClientDocuments, getClientDocuments, updateClientDocument, updateClientDocumentsByIds,
 } from "./db";
 import { getDocChecklist, ChildEntry } from "../shared/clientDocDefs";
@@ -1624,6 +1624,15 @@ const clientDocsRouter = router({
       },
     };
   }),
+
+  deleteClient: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const existing = await getClientCase(input.id);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Client not found" });
+      await deleteClientCase(input.id);
+      return { success: true };
+    }),
 });
 // ─── App Routerr ─────────────────────────────────────────────────────────────
 export const appRouter = router({

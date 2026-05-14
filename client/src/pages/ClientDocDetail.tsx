@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import {
   ArrowLeft, CheckCircle2, Circle, Clock, AlertTriangle,
   FileCheck, Stamp, Building2, CalendarDays, ClipboardList,
-  CalendarClock, Check, FileDown
+  CalendarClock, Check, FileDown, Trash2
 } from "lucide-react";
 
 type ActionType = "receive" | "mofa" | "embassy" | "schengen" | "appointment" | "submission" | null;
@@ -104,6 +104,14 @@ export default function ClientDocDetail() {
     onError: (e) => toast.error(e.message),
   });
 
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const deleteMutation = trpc.clientDocs.deleteClient.useMutation({
+    onSuccess: () => {
+      toast.success("تم حذف العميل بنجاح");
+      setLocation("/docs");
+    },
+    onError: (e) => toast.error(e.message),
+  });
   const exportMutation = trpc.clientDocs.exportChecklist.useMutation({
     onSuccess: (result) => {
       const bytes = Uint8Array.from(atob(result.base64), c => c.charCodeAt(0));
@@ -236,6 +244,16 @@ export default function ClientDocDetail() {
           >
             <FileDown className="w-3.5 h-3.5" />
             {exportMutation.isPending ? "جاري التحميل..." : "تصدير القائمة"}
+          </Button>
+          {/* Delete Client Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs border-red-300 text-red-600 hover:bg-red-50 gap-1.5"
+            onClick={() => setShowDeleteConfirm(true)}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            حذف العميل
           </Button>
           {/* Stage Selector */}
           <select
@@ -832,6 +850,45 @@ export default function ClientDocDetail() {
               </Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Client Confirmation Dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-red-600 flex items-center gap-2">
+              <Trash2 className="w-5 h-5" />
+              حذف العميل
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-3 space-y-3">
+            <p className="text-sm text-gray-700">
+              هل أنت متأكد من حذف العميل <span className="font-semibold text-gray-900">{data.clientName}</span>؟
+            </p>
+            <p className="text-xs text-red-500">
+              سيتم حذف جميع بيانات العميل ومستنداته بشكل نهائي ولا يمكن التراجع.
+            </p>
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleteMutation.isPending}
+              >
+                إلغاء
+              </Button>
+              <Button
+                size="sm"
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => deleteMutation.mutate({ id: clientId })}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? "جاري الحذف..." : "حذف نهائياً"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
