@@ -1,0 +1,9 @@
+{
+  "query": "\n-- Update existing rows where contracting is not full\nUPDATE modulePermissions SET accessLevel = 'full' WHERE module = 'contracting' AND accessLevel != 'full';\n\n-- Insert full contracting access for users who have no contracting row at all\nINSERT INTO modulePermissions (userId, module, accessLevel)\nSELECT u.id, 'contracting', 'full'\nFROM users u\nWHERE u.id NOT IN (\n  SELECT userId FROM modulePermissions WHERE module = 'contracting'\n);\n\n-- Also grant clientDocs full access to all users\nUPDATE modulePermissions SET accessLevel = 'full' WHERE module = 'clientDocs' AND accessLevel != 'full';\n\nINSERT INTO modulePermissions (userId, module, accessLevel)\nSELECT u.id, 'clientDocs', 'full'\nFROM users u\nWHERE u.id NOT IN (\n  SELECT userId FROM modulePermissions WHERE module = 'clientDocs'\n);\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute \n-- Update existing rows where contracting is not full\nUPDATE modulePermissions SET accessLevel = 'full' WHERE module = 'contracting' AND accessLevel != 'full';\n\n-- Insert full contracting access for users who have no contracting row at all\nINSERT INTO modulePermissions (userId, module, accessLevel)\nSELECT u.id, 'contracting', 'full'\nFROM users u\nWHERE u.id NOT IN (\n  SELECT userId FROM modulePermissions WHERE module = 'contracting'\n);\n\n-- Also grant clientDocs full access to all users\nUPDATE modulePermissions SET accessLevel = 'full' WHERE module = 'clientDocs' AND accessLevel != 'full';\n\nINSERT INTO modulePermissions (userId, module, accessLevel)\nSELECT u.id, 'clientDocs', 'full'\nFROM users u\nWHERE u.id NOT IN (\n  SELECT userId FROM modulePermissions WHERE module = 'clientDocs'\n);\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 2449
+}

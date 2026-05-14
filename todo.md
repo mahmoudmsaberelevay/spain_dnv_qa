@@ -497,8 +497,8 @@
 - [x] routers.ts: add updateParalegal procedure
 
 ## Change Requests (Round 65)
-- [ ] Update ClientDocs form: capture exact child name + age (not just age range)
-- [ ] Add spouseName field to clientCases table and ClientDocs create/edit forms
-- [ ] Auto-populate spouse name in National Visa wizard from client record
-- [ ] Add status column to nationalVisaWorkflows (in_progress / completed / submitted)
-- [ ] Show status dropdown in National Visa list view with inline update
+- [x] Update ClientDocs form: capture exact child name + age (not just age range)
+- [x] Add spouseName field to clientCases table and ClientDocs create/edit forms
+- [x] Auto-populate spouse name in National Visa wizard from client record
+- [x] Add status column to nationalVisaWorkflows (in_progress / completed / submitted)
+- [x] Show status dropdown in National Visa list view with inline update

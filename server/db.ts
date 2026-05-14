@@ -1,4 +1,4 @@
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, cases, documents, analysisResults, InsertCase, InsertDocument, InsertAnalysisResult } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -697,4 +697,34 @@ export async function deleteNationalVisaWorkflow(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.delete(nationalVisaWorkflows).where(eq(nationalVisaWorkflows.id, id));
+}
+
+// ─── Unpaid Receipt Reminders ────────────────────────────────────────────────
+
+/**
+ * Get all invoices that are still unpaid and were created more than `days` days ago.
+ * Joins with contracts to get the consultant name.
+ */
+export async function getUnpaidReceiptsOlderThanDays(days: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const rows = await db
+    .select({
+      receiptCode: invoices.invoiceCode,
+      clientName: invoices.clientName,
+      amountEur: invoices.amountEur,
+      createdAt: invoices.createdAt,
+      contractCode: invoices.contractCode,
+      consultantName: contracts.consultantName,
+    })
+    .from(invoices)
+    .leftJoin(contracts, eq(invoices.contractCode, contracts.contractCode))
+    .where(
+      and(
+        eq(invoices.status, "unpaid"),
+        lt(invoices.createdAt, cutoff)
+      )
+    );
+  return rows;
 }

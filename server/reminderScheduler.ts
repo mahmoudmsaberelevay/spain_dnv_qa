@@ -10,8 +10,45 @@
  * 5. Submission deadline — 12 days before expectedSubmissionDate
  */
 
-import { getAllClientCasesForReminders, getAllClientDocumentsForReminders } from "./db";
-import { sendDocReminderToAssignedTeam } from "./emailService";
+import { getAllClientCasesForReminders, getAllClientDocumentsForReminders, getUnpaidReceiptsOlderThanDays } from "./db";
+import { sendDocReminderToAssignedTeam, MAHMOUD_EMAILS, TEAM_EMAIL_MAP } from "./emailService";
+import nodemailer from "nodemailer";
+
+const MAHMOUD_CC = "Mahmoud.saber@elevay.com";
+
+function createTransporter() {
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailPass = process.env.GMAIL_APP_PASSWORD;
+  if (!gmailUser || !gmailPass) return null;
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: gmailUser, pass: gmailPass },
+  });
+}
+
+function wrapEmail(title: string, body: string): string {
+  return `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e0e0e0;"><div style="background:#5E6A71;padding:20px 24px;"><h1 style="color:white;margin:0;font-size:20px;">ELEVAY</h1><p style="color:#ccc;margin:4px 0 0;font-size:11px;">RESIDENCY BY INVESTMENT</p></div><div style="padding:24px;"><h2 style="color:#2C3A40;margin-top:0;">${title}</h2>${body}</div><div style="background:#F0F2F3;padding:14px 24px;text-align:center;"><p style="color:#8A9499;font-size:11px;margin:0;">ELEVAY — Residency by Investment | Cairo, Egypt &amp; Dubai, UAE</p></div></div>`;
+}
+
+async function sendToMahmoud(subject: string, html: string, plain: string): Promise<void> {
+  const transporter = createTransporter();
+  if (transporter) {
+    try {
+      await transporter.sendMail({
+        from: `"ELEVAY System" <${process.env.GMAIL_USER}>`,
+        to: MAHMOUD_EMAILS.join(", "),
+        subject: `[ELEVAY] ${subject}`,
+        html: wrapEmail(subject, html),
+        text: plain,
+      });
+      console.log(`[ReminderScheduler] Sent to Mahmoud: ${subject}`);
+    } catch (err) {
+      console.error("[ReminderScheduler] Failed to send to Mahmoud:", err);
+    }
+  } else {
+    console.log(`[ReminderScheduler] (no SMTP) Would send to Mahmoud: ${subject}`);
+  }
+}
 
 function daysUntil(date: Date | string | null | undefined): number | null {
   if (!date) return null;
@@ -137,9 +174,104 @@ export async function runReminderCheck(): Promise<void> {
         }
       }
     }
+    // ── 6. Office rent reminder — 1st of odd months starting July 2026 ─────
+    // Send on: July, September, November 2026, January, March, May 2027, etc.
+    // i.e., every 2 months starting July 2026 (0-indexed month: 6, 8, 10, 0, 2, 4, ...)
+    await checkOfficeRentReminder();
+
+    // ── 7. Unpaid receipt 5-day reminder ─────────────────────────────────────
+    await checkUnpaidReceiptReminders();
+
     console.log("[ReminderScheduler] Daily check completed.");
   } catch (err) {
     console.error("[ReminderScheduler] Error during reminder check:", err);
+  }
+}
+
+/**
+ * Office rent reminder: send on the 1st of every other month starting July 2026.
+ * Months: July, September, November 2026, January, March, May 2027, ...
+ */
+async function checkOfficeRentReminder(): Promise<void> {
+  const now = new Date();
+  const dayOfMonth = now.getDate();
+  const month = now.getMonth(); // 0-indexed
+  const year = now.getFullYear();
+
+  // Only run on the 1st of the month
+  if (dayOfMonth !== 1) return;
+
+  // Calculate months since July 2026 (month=6, year=2026)
+  const startYear = 2026;
+  const startMonth = 6; // July
+  const monthsSinceStart = (year - startYear) * 12 + (month - startMonth);
+
+  // Only send on even intervals (0, 2, 4, ...) — i.e., July, Sept, Nov, Jan, ...
+  if (monthsSinceStart < 0 || monthsSinceStart % 2 !== 0) return;
+
+  const monthName = now.toLocaleString("en-US", { month: "long", year: "numeric" });
+  const subject = `🏢 Office Rent Reminder — Due in 15 Days`;
+  const html = `
+    <table style="width:100%; border-collapse:collapse; font-size:14px;">
+      <tr><td style="padding:6px 0; color:#8A9499;">Reminder</td><td style="padding:6px 0; color:#2C3A40; font-weight:bold;">Office Rent Payment</td></tr>
+      <tr><td style="padding:6px 0; color:#8A9499;">Due In</td><td style="padding:6px 0; color:#C0392B; font-weight:bold;">15 days</td></tr>
+      <tr><td style="padding:6px 0; color:#8A9499;">Month</td><td style="padding:6px 0; color:#2C3A40;">${monthName}</td></tr>
+    </table>
+    <p style="color:#E67E22; margin-top:16px; font-size:13px;">🏢 This is your bi-monthly office rent reminder. The rent payment will be due in approximately 15 days. Please ensure the payment is arranged.</p>`;
+  const plain = `Office Rent Reminder\n\nThe office rent is due in 15 days (${monthName}).\nPlease ensure the payment is arranged.`;
+  await sendToMahmoud(subject, html, plain);
+  console.log(`[ReminderScheduler] Office rent reminder sent for ${monthName}`);
+}
+
+/**
+ * Unpaid receipt 5-day reminder: for each receipt that was created 5 days ago
+ * and is still not marked as paid, send a reminder to the assigned consultant
+ * and CC Mahmoud.
+ */
+async function checkUnpaidReceiptReminders(): Promise<void> {
+  try {
+    const unpaidReceipts = await getUnpaidReceiptsOlderThanDays(5);
+    if (!unpaidReceipts || unpaidReceipts.length === 0) return;
+
+    const transporter = createTransporter();
+    for (const receipt of unpaidReceipts) {
+      const consultantEmail = receipt.consultantName && TEAM_EMAIL_MAP[receipt.consultantName]
+        ? TEAM_EMAIL_MAP[receipt.consultantName]
+        : null;
+
+      const subject = `⏰ Unpaid Receipt Reminder — ${receipt.receiptCode}`;
+      const html = `
+        <table style="width:100%; border-collapse:collapse; font-size:14px;">
+          <tr><td style="padding:6px 0; color:#8A9499;">Receipt Code</td><td style="padding:6px 0; color:#2C3A40; font-weight:bold;">${receipt.receiptCode}</td></tr>
+          <tr><td style="padding:6px 0; color:#8A9499;">Client</td><td style="padding:6px 0; color:#2C3A40;">${receipt.clientName ?? "—"}</td></tr>
+          <tr><td style="padding:6px 0; color:#8A9499;">Amount</td><td style="padding:6px 0; color:#C0392B; font-weight:bold;">€${(receipt.amountEur ?? 0).toLocaleString("en-US")}</td></tr>
+          <tr><td style="padding:6px 0; color:#8A9499;">Created</td><td style="padding:6px 0; color:#2C3A40;">${formatDate(receipt.createdAt)}</td></tr>
+          <tr><td style="padding:6px 0; color:#8A9499;">Consultant</td><td style="padding:6px 0; color:#2C3A40;">${receipt.consultantName ?? "—"}</td></tr>
+        </table>
+        <p style="color:#E67E22; margin-top:16px; font-size:13px;">⏰ This receipt has been outstanding for 5 days without being marked as paid. Please follow up with the client or update the payment status.</p>`;
+      const plain = `Unpaid Receipt Reminder\n\nReceipt: ${receipt.receiptCode}\nClient: ${receipt.clientName ?? "—"}\nAmount: €${(receipt.amountEur ?? 0).toLocaleString("en-US")}\nCreated: ${formatDate(receipt.createdAt)}\nConsultant: ${receipt.consultantName ?? "—"}`;
+
+      if (transporter && consultantEmail) {
+        try {
+          await transporter.sendMail({
+            from: `"ELEVAY System" <${process.env.GMAIL_USER}>`,
+            to: consultantEmail,
+            cc: MAHMOUD_CC,
+            subject: `[ELEVAY] ${subject}`,
+            html: wrapEmail(subject, html),
+            text: plain,
+          });
+          console.log(`[ReminderScheduler] Unpaid receipt reminder sent for ${receipt.receiptCode} to ${consultantEmail}`);
+        } catch (err) {
+          console.error(`[ReminderScheduler] Failed to send unpaid receipt reminder for ${receipt.receiptCode}:`, err);
+        }
+      } else {
+        // Fallback: send to Mahmoud only
+        await sendToMahmoud(subject, html, plain);
+      }
+    }
+  } catch (err) {
+    console.error("[ReminderScheduler] Error checking unpaid receipts:", err);
   }
 }
 

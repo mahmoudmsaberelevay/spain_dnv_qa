@@ -12,6 +12,15 @@ const TEAM_EMAILS = [
   "marina.kamel@elevay.com",
 ];
 
+// Mahmoud's two emails — receive contract/receipt/proforma notifications
+export const MAHMOUD_EMAILS = [
+  "Mahmoud.saber@elevay.com",
+  "Mahmoud.saberelevay@gmail.com",
+];
+
+// CC address for all paralegal/reminder emails
+export const MAHMOUD_CC = "Mahmoud.saber@elevay.com";
+
 // Map from display name → email for targeted per-case reminders
 export const TEAM_EMAIL_MAP: Record<string, string> = {
   // Paralegals
@@ -34,6 +43,33 @@ function createTransporter() {
     service: "gmail",
     auth: { user: gmailUser, pass: gmailPass },
   });
+}
+
+/**
+ * Send an HTML notification email to Mahmoud's two addresses only.
+ * Used for contract/receipt/proforma events.
+ */
+async function notifyMahmoud(title: string, htmlContent: string, plainText: string): Promise<void> {
+  const transporter = createTransporter();
+  if (transporter) {
+    const gmailUser = process.env.GMAIL_USER!;
+    try {
+      await transporter.sendMail({
+        from: `"ELEVAY System" <${gmailUser}>`,
+        to: MAHMOUD_EMAILS.join(", "),
+        subject: `[ELEVAY] ${title}`,
+        html: wrapInEmailTemplate(title, htmlContent),
+        text: plainText,
+      });
+      console.log(`[EmailService] Mahmoud notification sent: "${title}"`);
+    } catch (err) {
+      console.error("[EmailService] Failed to send Mahmoud notification via SMTP:", err);
+      await notifyOwner({ title, content: plainText }).catch(() => {});
+    }
+  } else {
+    await notifyOwner({ title, content: plainText }).catch(() => {});
+    console.log(`[EmailService] (no SMTP) Mahmoud notification fallback: "${title}"`);
+  }
 }
 
 /**
@@ -147,7 +183,7 @@ export async function notifyNewContract(
         <tr><td style="padding:6px 0; color:#8A9499;">Family Members</td><td style="padding:6px 0; color:#2C3A40;">${familyMembers}</td></tr>
         <tr><td style="padding:6px 0; color:#8A9499;">Contract Value</td><td style="padding:6px 0; color:#C0392B; font-weight:bold;">€${contractValue.toLocaleString("en-US")}</td></tr>
       </table>`;
-    await notifyTeam(`New Contract Issued: ${contractCode}`, html, plain);
+    await notifyMahmoud(`New Contract Issued: ${contractCode}`, html, plain);
   } catch (error) {
     console.error("[EmailService] Failed to send new contract notification:", error);
   }
@@ -167,7 +203,7 @@ export async function notifyContractStatusChange(
         <tr><td style="padding:6px 0; color:#8A9499;">Contract Code</td><td style="padding:6px 0; color:#2C3A40;">${contractCode}</td></tr>
         <tr><td style="padding:6px 0; color:#8A9499;">New Status</td><td style="padding:6px 0; color:#C0392B; font-weight:bold;">${statusLabel}</td></tr>
       </table>`;
-    await notifyTeam(`Contract ${statusLabel}: ${contractCode}`, html, plain);
+    await notifyMahmoud(`Contract ${statusLabel}: ${contractCode}`, html, plain);
   } catch (error) {
     console.error("[EmailService] Failed to send status change notification:", error);
   }
@@ -190,7 +226,7 @@ export async function notifyReceiptPaid(
         <tr><td style="padding:6px 0; color:#8A9499;">Amount Paid</td><td style="padding:6px 0; color:#C0392B; font-weight:bold;">€${amountEur.toLocaleString("en-US")}</td></tr>
         <tr><td style="padding:6px 0; color:#8A9499;">Remaining Balance</td><td style="padding:6px 0; color:#C0392B; font-weight:bold;">€${remainingBalance.toLocaleString("en-US")}</td></tr>
       </table>`;
-    await notifyTeam(`Receipt Paid: ${receiptCode}`, html, plain);
+    await notifyMahmoud(`Receipt Paid: ${receiptCode}`, html, plain);
   } catch (error) {
     console.error("[EmailService] Failed to send receipt paid notification:", error);
   }
@@ -219,7 +255,7 @@ export async function notifyNewInvoice(
         <tr><td style="padding:6px 0; color:#8A9499;">Amount</td><td style="padding:6px 0; color:#27AE60; font-weight:bold;">€${amountEur.toLocaleString("en-US")}</td></tr>
         <tr><td style="padding:6px 0; color:#8A9499;">Remaining Balance</td><td style="padding:6px 0; color:#C0392B; font-weight:bold;">€${remainingBalance.toLocaleString("en-US")}</td></tr>
       </table>`;
-    await notifyTeam(`New Invoice Created: ${invoiceCode}`, html, plain);
+    await notifyMahmoud(`New Invoice Created: ${invoiceCode}`, html, plain);
   } catch (error) {
     console.error("[EmailService] Failed to send new invoice notification:", error);
   }
@@ -281,11 +317,12 @@ export async function sendDocReminderToAssignedTeam(
       await transporter.sendMail({
         from: `"ELEVAY System" <${gmailUser}>`,
         to: toList.join(", "),
+        cc: MAHMOUD_CC,
         subject: `[ELEVAY] ${subject}`,
         html: wrapInEmailTemplate(subject, htmlBody),
         text: plainText,
       });
-      console.log(`[EmailService] Doc reminder sent to ${toList.join(", ")} for client: ${clientName}`);
+      console.log(`[EmailService] Doc reminder sent to ${toList.join(", ")} (CC: ${MAHMOUD_CC}) for client: ${clientName}`);
     } catch (err) {
       console.error("[EmailService] Failed to send doc reminder:", err);
       await notifyOwner({ title: subject, content: plainText }).catch(() => {});
@@ -332,11 +369,12 @@ export async function notifyNewClientAssigned(
       await transporter.sendMail({
         from: `"ELEVAY System" <${gmailUser}>`,
         to: toList.join(', '),
+        cc: MAHMOUD_CC,
         subject: `[ELEVAY] ${subject}`,
         html: wrapInEmailTemplate(subject, html),
         text: plain,
       });
-      console.log(`[EmailService] New client notification sent to ${toList.join(', ')} for: ${clientName}`);
+      console.log(`[EmailService] New client notification sent to ${toList.join(', ')} (CC: ${MAHMOUD_CC}) for: ${clientName}`);
     } catch (err) {
       console.error('[EmailService] Failed to send new client notification:', err);
       await notifyOwner({ title: subject, content: plain }).catch(() => {});
