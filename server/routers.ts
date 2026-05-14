@@ -1648,9 +1648,11 @@ const workflowRouter = router({
       submissionStage: z.enum(["one", "two"]),
       submissionDate: z.string(),
       schengenStatus: z.string().optional(),
+      schengenExpiry: z.string().optional(),
       yearlyIncome: z.number().int().min(0),
       incomeFrequency: z.enum(["monthly", "quarterly", "biannual", "yearly", "task"]),
       incomePayments: z.array(z.object({ date: z.string(), amount: z.number() })),
+      childrenNamesData: z.array(z.object({ name: z.string(), ageRange: z.enum(["0-17", "18-26"]) })).optional(),
     }))
     .mutation(async ({ input }) => {
       const clientCase = await getClientCase(input.clientCaseId);
@@ -1665,12 +1667,14 @@ const workflowRouter = router({
         submissionStage: input.submissionStage,
         submissionDate: input.submissionDate,
         schengenStatus: input.schengenStatus ?? null,
+        schengenExpiry: input.schengenExpiry ?? null,
         yearlyIncome: input.yearlyIncome,
         incomeFrequency: input.incomeFrequency,
         incomePayments: JSON.stringify(input.incomePayments),
         familyMembersCount,
         applicationType: clientCase.applicationType,
         childrenData: JSON.stringify(children),
+        childrenNamesData: input.childrenNamesData ? JSON.stringify(input.childrenNamesData) : null,
       });
       return wf;
     }),
@@ -1691,6 +1695,9 @@ const workflowRouter = router({
       const clientCase = await getClientCase(wf.clientCaseId);
       if (!clientCase) throw new TRPCError({ code: "NOT_FOUND", message: "Client case not found" });
       const children: ChildEntry[] = wf.childrenData ? JSON.parse(wf.childrenData as string) : [];
+      const childrenNames: Array<{ name: string; ageRange: string }> = wf.childrenNamesData
+        ? JSON.parse(wf.childrenNamesData as string)
+        : [];
       const checklist = getDocChecklist(clientCase.applicationType, clientCase.maritalStatus, children);
       const allDocs = await getClientDocuments(wf.clientCaseId);
       const receivedKeys = new Set(allDocs.filter(d => d.received).map(d => d.docKey));
@@ -1712,7 +1719,9 @@ const workflowRouter = router({
         applicationType: wf.applicationType as "freelancer" | "business_owner",
         familyMembersCount: wf.familyMembersCount,
         childrenData: children,
+        childrenNamesData: childrenNames,
         schengenStatus: wf.schengenStatus ?? undefined,
+        schengenExpiry: wf.schengenExpiry ?? undefined,
         submissionStage: wf.submissionStage as "one" | "two",
         submissionDate: wf.submissionDate,
         yearlyIncome: wf.yearlyIncome,

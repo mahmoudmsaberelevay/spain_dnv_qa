@@ -4,20 +4,45 @@
  * All content is RTL right-aligned. Uses the Elevay letterhead logo.
  */
 import fs from "fs";
-import path from "path";
 import {
   Document,
   Packer,
   Paragraph,
   TextRun,
   AlignmentType,
-  HeadingLevel,
   ImageRun,
   BorderStyle,
-  PageOrientation,
-  SectionType,
   convertInchesToTwip,
 } from "docx";
+
+// ── Stamp notes for specific document keys ─────────────────────────────────────
+// These notes are appended beside the document name in the remaining docs section.
+const STAMP_NOTES: Record<string, string> = {
+  // Passport — even empty pages
+  "passport": "(صورة جميع صفحات الجواز بما فيها الصفحات الفارغة)",
+  // Education & enrollment certificates
+  "education_cert": "(مختومة من الجامعة وختم العميد وختم الأمين العام)",
+  "enrollment_cert": "(مختومة من الجامعة وختم العميد وختم الأمين العام)",
+  // Police clearance
+  "police_clearance": "(عليه طابع شهيد)",
+  // Birth certificates
+  "birth_cert": "(مختومة من الأحوال المدنية على خلف الشهادة)",
+  // Marriage certificates
+  "marriage_cert": "(مختومة من الأحوال المدنية على خلف الشهادة)",
+  // Single record / عزوبية
+  "single_record": "(مختومة من الأحوال المدنية على خلف الشهادة)",
+};
+
+// Map Arabic document names to their stamp notes (for dynamic per-child docs)
+function getStampNote(arabicName: string): string | null {
+  if (arabicName.includes("جواز سفر")) return STAMP_NOTES["passport"];
+  if (arabicName.includes("قيد التعليم") || arabicName.includes("شهادة التعليم") || arabicName.includes("شهادة التسجيل")) return STAMP_NOTES["education_cert"];
+  if (arabicName.includes("شهادة حسن السيرة") || arabicName.includes("الفيش")) return STAMP_NOTES["police_clearance"];
+  if (arabicName.includes("شهادة الميلاد")) return STAMP_NOTES["birth_cert"];
+  if (arabicName.includes("شهادات الزواج") || arabicName.includes("شهادة الزواج")) return STAMP_NOTES["marriage_cert"];
+  if (arabicName.includes("وثيقة العزوبية") || arabicName.includes("قيد العزوبية")) return STAMP_NOTES["single_record"];
+  return null;
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -98,14 +123,20 @@ function dividerPara(): Paragraph {
   });
 }
 
-function numberedDocItem(index: number, text: string): Paragraph {
+/** Document item — checkbox + name + optional stamp note (no numbering) */
+function docItem(arabicName: string): Paragraph {
+  const stampNote = getStampNote(arabicName);
+  const runs: TextRun[] = [
+    new TextRun({ text: `☐  ${arabicName}`, size: 22, rightToLeft: true }),
+  ];
+  if (stampNote) {
+    runs.push(new TextRun({ text: `  ${stampNote}`, size: 20, color: "7f1d1d", rightToLeft: true }));
+  }
   return new Paragraph({
     bidirectional: true,
     alignment: AlignmentType.RIGHT,
     spacing: { after: 80 },
-    children: [
-      new TextRun({ text: `☐  ${text}  .${index}`, size: 22, rightToLeft: true }),
-    ],
+    children: runs,
   });
 }
 
@@ -126,6 +157,9 @@ function stageItem(label: string, dateStr: string, note?: string): Paragraph {
   });
 }
 
+// Ordinal labels for children in Arabic
+const CHILD_ORDINALS = ["الأول","الثاني","الثالث","الرابع","الخامس","السادس","السابع","الثامن","التاسع","العاشر"];
+
 // ── Main generator ─────────────────────────────────────────────────────────────
 
 export interface WorkflowDocInput {
@@ -133,7 +167,9 @@ export interface WorkflowDocInput {
   applicationType: "freelancer" | "business_owner";
   familyMembersCount: number;
   childrenData: Array<{ ageRange: "0-17" | "18-26" }>;
+  childrenNamesData?: Array<{ name: string; ageRange: string }>;
   schengenStatus?: string;
+  schengenExpiry?: string;
   submissionStage: "one" | "two";
   submissionDate: string; // YYYY-MM-DD
   yearlyIncome: number;
@@ -180,11 +216,11 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
   const familyNationalVisaDate = familyApprovalDate ? addDays(familyApprovalDate, 15) : null;
 
   // ── Build paragraphs ──────────────────────────────────────────────────────────
-  const children: Paragraph[] = [];
+  const docChildren: Paragraph[] = [];
 
   // Header: logo + company name
   if (logoRun) {
-    children.push(
+    docChildren.push(
       new Paragraph({
         alignment: AlignmentType.LEFT,
         spacing: { after: 80 },
@@ -192,7 +228,7 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
       })
     );
   }
-  children.push(
+  docChildren.push(
     new Paragraph({
       bidirectional: true,
       alignment: AlignmentType.CENTER,
@@ -200,10 +236,10 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
       children: [new TextRun({ text: "إيليفاي للاستشارات", bold: true, size: 32, color: "1e3a5f", rightToLeft: true })],
     })
   );
-  children.push(dividerPara());
+  docChildren.push(dividerPara());
 
   // Document title
-  children.push(
+  docChildren.push(
     new Paragraph({
       bidirectional: true,
       alignment: AlignmentType.CENTER,
@@ -211,7 +247,7 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
       children: [new TextRun({ text: "خطة العمل للمشروع الخاص بالاقامة الاسبانية", bold: true, size: 32, color: "1e3a5f", rightToLeft: true })],
     })
   );
-  children.push(
+  docChildren.push(
     new Paragraph({
       bidirectional: true,
       alignment: AlignmentType.CENTER,
@@ -221,24 +257,27 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
   );
 
   // Client info
-  children.push(rtlPara(`اسم العميل : ${input.clientName}`, { bold: true, size: 24 }));
-  children.push(rtlPara(`التاريخ : ${toArabicDate(today)}`, { size: 22 }));
-  children.push(rtlPara(`نوع الطلب : ${appTypeLabel}`, { size: 22 }));
-  children.push(rtlPara(`عدد أفراد الأسرة : ${toArabicNumber(input.familyMembersCount)} فرد`, { size: 22 }));
+  docChildren.push(rtlPara(`اسم العميل : ${input.clientName}`, { bold: true, size: 24 }));
+  docChildren.push(rtlPara(`التاريخ : ${toArabicDate(today)}`, { size: 22 }));
+  docChildren.push(rtlPara(`نوع الطلب : ${appTypeLabel}`, { size: 22 }));
+  docChildren.push(rtlPara(`عدد أفراد الأسرة : ${toArabicNumber(input.familyMembersCount)} فرد`, { size: 22 }));
   if (input.schengenStatus) {
-    children.push(rtlPara(`حالة تأشيرة شنغن : ${input.schengenStatus}`, { size: 22 }));
+    docChildren.push(rtlPara(`حالة تأشيرة شنغن : ${input.schengenStatus}`, { size: 22 }));
   }
-  children.push(dividerPara());
+  if (input.schengenExpiry) {
+    docChildren.push(rtlPara(`تاريخ انتهاء تأشيرة شنغن : ${toArabicDate(input.schengenExpiry)}`, { size: 22 }));
+  }
+  docChildren.push(dividerPara());
 
   // ── Section 1: Income proof schedule ─────────────────────────────────────────
-  children.push(sectionHeading("أولاً : الدخل السنوي المطلوب وجدول الإثبات"));
-  children.push(rtlPara(`الدخل السنوي المطلوب : ${formatEGP(input.yearlyIncome)}`, { bold: true, size: 24 }));
-  children.push(rtlPara(`طريقة الإثبات : ${freqLabel}`, { size: 22 }));
+  docChildren.push(sectionHeading("أولاً : الدخل السنوي المطلوب وجدول الإثبات"));
+  docChildren.push(rtlPara(`الدخل السنوي المطلوب : ${formatEGP(input.yearlyIncome)}`, { bold: true, size: 24 }));
+  docChildren.push(rtlPara(`طريقة الإثبات : ${freqLabel}`, { size: 22 }));
 
   if (input.incomePayments.length > 0) {
-    children.push(rtlPara("جدول المدفوعات :", { bold: true, size: 22, spacing: 80 }));
+    docChildren.push(rtlPara("جدول المدفوعات :", { bold: true, size: 22, spacing: 80 }));
     input.incomePayments.forEach((p, i) => {
-      children.push(
+      docChildren.push(
         new Paragraph({
           bidirectional: true,
           alignment: AlignmentType.RIGHT,
@@ -254,29 +293,27 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
       );
     });
   }
-  children.push(dividerPara());
+  docChildren.push(dividerPara());
 
   // ── Section 2: Processing timeline ───────────────────────────────────────────
-  children.push(sectionHeading("ثانياً : مراحل معالجة الطلب والجدول الزمني المتوقع"));
+  docChildren.push(sectionHeading("ثانياً : مراحل معالجة الطلب والجدول الزمني المتوقع"));
 
   if (input.submissionStage === "two") {
-    // Two-stage
-    children.push(stageItem("تاريخ تقديم الطلب الرئيسي (تقريبي)", input.submissionDate, "قد يتغير وفقاً للظروف"));
-    children.push(stageItem("تاريخ الحصول على الموافقة المتوقع", approvalDate));
-    children.push(stageItem("تاريخ استلام البطاقات المتوقع", cardCollectionDate));
-    children.push(stageItem("تاريخ تقديم طلب الأسرة المتوقع", familySubmissionDate!));
-    children.push(stageItem("تاريخ الحصول على موافقة الأسرة المتوقع", familyApprovalDate!));
-    children.push(stageItem("تاريخ التأشيرة الوطنية للأسرة المتوقع", familyNationalVisaDate!));
+    docChildren.push(stageItem("تاريخ تقديم الطلب الرئيسي (تقريبي)", input.submissionDate, "قد يتغير وفقاً للظروف"));
+    docChildren.push(stageItem("تاريخ الحصول على الموافقة المتوقع", approvalDate));
+    docChildren.push(stageItem("تاريخ استلام البطاقات المتوقع", cardCollectionDate));
+    docChildren.push(stageItem("تاريخ تقديم طلب الأسرة المتوقع", familySubmissionDate!));
+    docChildren.push(stageItem("تاريخ الحصول على موافقة الأسرة المتوقع", familyApprovalDate!));
+    docChildren.push(stageItem("تاريخ التأشيرة الوطنية للأسرة المتوقع", familyNationalVisaDate!));
   } else {
-    // One-stage
-    children.push(stageItem("تاريخ تقديم الطلب (كامل الأسرة) (تقريبي)", input.submissionDate, "قد يتغير وفقاً للظروف"));
-    children.push(stageItem("تاريخ الحصول على الموافقة المتوقع", approvalDate));
-    children.push(stageItem("تاريخ استلام البطاقات المتوقع", cardCollectionDate));
+    docChildren.push(stageItem("تاريخ تقديم الطلب (كامل الأسرة) (تقريبي)", input.submissionDate, "قد يتغير وفقاً للظروف"));
+    docChildren.push(stageItem("تاريخ الحصول على الموافقة المتوقع", approvalDate));
+    docChildren.push(stageItem("تاريخ استلام البطاقات المتوقع", cardCollectionDate));
   }
-  children.push(dividerPara());
+  docChildren.push(dividerPara());
 
   // ── Section 3: Process steps ──────────────────────────────────────────────────
-  children.push(sectionHeading("ثالثاً : خطوات سير العملية بالتفصيل"));
+  docChildren.push(sectionHeading("ثالثاً : خطوات سير العملية بالتفصيل"));
 
   const processSteps = [
     "بعد توقيع العقد، سنحتاج إلى شهرين لإعداد كامل ملف الطلب وإتمام التصديق من وزارة الخارجية والسفارة.",
@@ -300,7 +337,7 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
   }
 
   processSteps.forEach((step, i) => {
-    children.push(
+    docChildren.push(
       new Paragraph({
         bidirectional: true,
         alignment: AlignmentType.RIGHT,
@@ -315,49 +352,109 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
       })
     );
   });
-  children.push(dividerPara());
+  docChildren.push(dividerPara());
 
-  // ── Section 4: Remaining documents ───────────────────────────────────────────
-  children.push(sectionHeading("رابعاً : المستندات المتبقية المطلوبة"));
+  // ── Section 4: Remaining documents (no numbering, with stamp notes) ───────────
+  docChildren.push(sectionHeading("رابعاً : المستندات المتبقية المطلوبة"));
 
   if (input.mainApplicantDocs.length > 0) {
-    children.push(rtlPara("أ- مستندات مقدم الطلب الرئيسي :", { bold: true, size: 24, spacing: 80 }));
-    input.mainApplicantDocs.forEach((doc, i) => children.push(numberedDocItem(i + 1, doc)));
+    docChildren.push(rtlPara("أ- مستندات مقدم الطلب الرئيسي :", { bold: true, size: 24, spacing: 80 }));
+    input.mainApplicantDocs.forEach((doc) => docChildren.push(docItem(doc)));
   }
 
   if (input.familyDocs.length > 0) {
-    children.push(rtlPara("ب- مستندات أفراد الأسرة :", { bold: true, size: 24, spacing: 80 }));
-    input.familyDocs.forEach((doc, i) => children.push(numberedDocItem(i + 1, doc)));
+    docChildren.push(rtlPara("ب- مستندات أفراد الأسرة :", { bold: true, size: 24, spacing: 80 }));
+    // Group family docs by child — detect per-child sections using "الطفل X" prefix
+    // First emit non-child family docs, then per-child groups
+    const nonChildDocs = input.familyDocs.filter(d => !d.startsWith("الطفل"));
+    const childDocs = input.familyDocs.filter(d => d.startsWith("الطفل"));
+
+    nonChildDocs.forEach((doc) => docChildren.push(docItem(doc)));
+
+    // Group per-child docs
+    const childGroups: Record<string, string[]> = {};
+    childDocs.forEach((doc) => {
+      // Format: "الطفل X — Document Name"
+      const match = doc.match(/^(الطفل\s+\S+)\s+—\s+(.+)$/);
+      if (match) {
+        const childLabel = match[1];
+        const docName = match[2];
+        if (!childGroups[childLabel]) childGroups[childLabel] = [];
+        childGroups[childLabel].push(docName);
+      } else {
+        docChildren.push(docItem(doc));
+      }
+    });
+
+    // Emit per-child groups with child name from childrenNamesData if available
+    Object.entries(childGroups).forEach(([childLabel, docs], groupIdx) => {
+      // Try to find the child's actual name
+      const childEntry = input.childrenNamesData?.[groupIdx];
+      const displayLabel = childEntry?.name
+        ? `${childLabel} (${childEntry.name})`
+        : childLabel;
+
+      docChildren.push(rtlPara(`${displayLabel} :`, { bold: true, size: 22, spacing: 60 }));
+      docs.forEach((d) => docChildren.push(docItem(d)));
+    });
   }
 
   if (input.mainApplicantDocs.length === 0 && input.familyDocs.length === 0) {
-    children.push(rtlPara("✓ جميع المستندات مكتملة", { size: 22, color: "16a34a" }));
+    docChildren.push(rtlPara("✓ جميع المستندات مكتملة", { size: 22, color: "16a34a" }));
   }
-  children.push(dividerPara());
+  docChildren.push(dividerPara());
 
-  // ── Section 5: Important notes ────────────────────────────────────────────────
-  children.push(sectionHeading("ملاحظات هامة"));
-  const notes = [
+  // ── Section 5: Important notes (full text as provided) ───────────────────────
+  docChildren.push(sectionHeading("ملحوظة هامة :"));
+
+  const importantNotes = [
+    "تختلف المستندات المطلوبة لإجراءات الإقامة الإسبانية بحسب كل مرحلة من مراحل التقديم، حيث إن الأوراق المطلوبة لتقديم طلب رب الأسرة تختلف عن المستندات الخاصة بتقديم أفراد الأسرة، كما تختلف أيضًا عن الأوراق المطلوبة لاستخراج التأشيرة من السفارة الإسبانية لدخول أفراد الأسرة إلى إسبانيا لاستكمال باقي إجراءات الإقامة مثل البصمة.",
     "يجب استخراج كل الأوراق والمستندات المطلوبة حين طلبها من حضرتكم فقط وليس قبل ذلك، حيث إن كل مستند له تاريخ صلاحية وتوقيت محدد. بالإضافة إلى أن بعض الأوراق من الممكن استخراجها أكثر من مرة وذلك باختلاف المرحلة الخاصة بالملف ولنفس السبب السالف ذكره.",
     "كل المحادثات والمراسلات يجب أن تكون فقط على هذا الجروب حتى نتمكن من خدمتكم بالشكل والطريقة المثلى.",
-    "يجب إرسال صورة ممسوحة ضوئياً لكل المستندات قبل إرسال الأصول إلينا حتى نتمكن من مراجعتها ومعالجة أي خلل أو خطأ فيها.",
+    "يجب إرسال صورة ممسوحة ضوئياً لكل المستندات قبل إرسال الأصول إلينا حتى نتمكن من مراجعتها ومعالجة أي خلل أو خطأ فيها. ويُفضل استخراج المستندات بأطول فترة صلاحية ممكنة وتجنب الحاجة إلى إعادة استخراجها خلال نفس المرحلة.",
+    "تنقسم إجراءات التقديم إلى أربع مراحل رئيسية، وقد يتطلب الأمر إعادة إصدار بعض المستندات خلال أكثر من مرحلة، وتشمل هذه المراحل ما يلي:\nأ- التقديم لرب الأسرة والحصول على الموافقات الحكومية الخاصة بالإقامة.\nب- التقديم للحصول على تأشيرة شنغن جديدة لاستكمال إجراءات إقامة رب الأسرة (وذلك في حالة انتهاء التأشيرة الأولى فقط).\nج- التقديم لباقي أفراد الأسرة والحصول على الموافقات الحكومية الخاصة بهم.\nد- التقديم للحصول على تأشيرة سفر خاصة من السفارة الإسبانية في مصر، لتمكين أفراد الأسرة من السفر إلى إسبانيا واستكمال باقي إجراءات الإقامة مثل البصمة.",
   ];
-  notes.forEach((note, i) => {
-    children.push(
-      new Paragraph({
-        bidirectional: true,
-        alignment: AlignmentType.RIGHT,
-        spacing: { after: 120 },
-        children: [
-          new TextRun({
-            text: `${toArabicNumber(i + 1)}- ${note}`,
-            size: 22,
-            rightToLeft: true,
-          }),
-        ],
-      })
-    );
+
+  importantNotes.forEach((note, i) => {
+    // Handle multi-line notes (note 5 has sub-items)
+    const lines = note.split("\n");
+    lines.forEach((line, lineIdx) => {
+      const prefix = lineIdx === 0 ? `${toArabicNumber(i + 1)}- ` : "     ";
+      docChildren.push(
+        new Paragraph({
+          bidirectional: true,
+          alignment: AlignmentType.RIGHT,
+          spacing: { after: lineIdx === lines.length - 1 ? 140 : 60 },
+          children: [
+            new TextRun({
+              text: `${prefix}${line}`,
+              size: 22,
+              rightToLeft: true,
+            }),
+          ],
+        })
+      );
+    });
   });
+
+  // Final disclaimer
+  docChildren.push(dividerPara());
+  docChildren.push(
+    new Paragraph({
+      bidirectional: true,
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 120 },
+      children: [
+        new TextRun({
+          text: "جميع التوقيتات والمواعيد المثبتة في هذه الخطة هي تواريخ تقريبية بناءً على واقع سير العمل في ملف طلب الإقامة وقد تتغير بتغير مواعيد الفيزا الشنغن بالإضافة لمواعيد توثيق السفارة الإسبانية.",
+          size: 20,
+          color: "6b7280",
+          italics: true,
+          rightToLeft: true,
+        }),
+      ],
+    })
+  );
 
   // ── Build document ────────────────────────────────────────────────────────────
   const doc = new Document({
@@ -373,7 +470,7 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
             },
           },
         },
-        children,
+        children: docChildren,
       },
     ],
   });

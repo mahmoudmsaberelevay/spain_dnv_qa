@@ -26,12 +26,18 @@ interface PaymentEntry {
   amount: number;
 }
 
-type Step = "client" | "stage" | "income" | "review";
+interface ChildNameEntry {
+  name: string;
+  ageRange: "0-17" | "18-26";
+}
 
-const STEP_ORDER: Step[] = ["client", "stage", "income", "review"];
+type Step = "client" | "children" | "stage" | "income" | "review";
+
+const STEP_ORDER: Step[] = ["client", "children", "stage", "income", "review"];
 
 const STEP_LABELS: Record<Step, string> = {
   client: "اختيار العميل",
+  children: "بيانات الأطفال",
   stage: "مرحلة التقديم",
   income: "جدول الدخل",
   review: "المراجعة والحفظ",
@@ -77,6 +83,9 @@ function downloadBase64Docx(base64: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+// Ordinal labels for children in Arabic
+const CHILD_ORDINALS = ["الأول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس", "السابع", "الثامن", "التاسع", "العاشر"];
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function WorkflowPage() {
 
@@ -87,9 +96,11 @@ export default function WorkflowPage() {
   // ── Form state ────────────────────────────────────────────────────────────
   const [step, setStep] = useState<Step>("client");
   const [clientCaseId, setClientCaseId] = useState<number | null>(null);
+  const [childrenNames, setChildrenNames] = useState<ChildNameEntry[]>([]);
   const [submissionStage, setSubmissionStage] = useState<"one" | "two">("two");
   const [submissionDate, setSubmissionDate] = useState(todayStr());
   const [schengenStatus, setSchengenStatus] = useState("");
+  const [schengenExpiry, setSchengenExpiry] = useState("");
   const [yearlyIncome, setYearlyIncome] = useState<number>(0);
   const [incomeFrequency, setIncomeFrequency] = useState<"monthly" | "quarterly" | "biannual" | "yearly" | "task">("monthly");
   const [payments, setPayments] = useState<PaymentEntry[]>([{ date: todayStr(), amount: 0 }]);
@@ -115,11 +126,48 @@ export default function WorkflowPage() {
     },
     onError: (e) => toast.error(e.message),
   });
-  // ── Derivedd ───────────────────────────────────────────────────────────────
+
+  // ── Derived ───────────────────────────────────────────────────────────────
   const selectedClient = useMemo(
     () => clients.find((c) => c.id === clientCaseId),
     [clients, clientCaseId]
   );
+
+  // Derive children count from the selected client's childrenData
+  const clientChildrenCount = useMemo(() => {
+    if (!selectedClient) return 0;
+    const raw = (selectedClient as any).childrenData;
+    if (!raw) return 0;
+    try {
+      const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return Array.isArray(arr) ? arr.length : 0;
+    } catch { return 0; }
+  }, [selectedClient]);
+
+  // When client changes, sync childrenNames array length to match client's children count
+  function handleClientSelect(id: number) {
+    setClientCaseId(id);
+    const client = clients.find((c) => c.id === id);
+    if (!client) return;
+    const raw = (client as any).childrenData;
+    let count = 0;
+    let existingAgeRanges: Array<"0-17" | "18-26"> = [];
+    if (raw) {
+      try {
+        const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+        if (Array.isArray(arr)) {
+          count = arr.length;
+          existingAgeRanges = arr.map((c: any) => c.ageRange || "0-17");
+        }
+      } catch { /* ignore */ }
+    }
+    setChildrenNames(
+      Array.from({ length: count }, (_, i) => ({
+        name: "",
+        ageRange: existingAgeRanges[i] || "0-17",
+      }))
+    );
+  }
 
   const approvalDate = submissionDate ? addDays(submissionDate, 45) : "";
   const cardDate = approvalDate ? addDays(approvalDate, 20) : "";
@@ -128,9 +176,11 @@ export default function WorkflowPage() {
   function resetForm() {
     setStep("client");
     setClientCaseId(null);
+    setChildrenNames([]);
     setSubmissionStage("two");
     setSubmissionDate(todayStr());
     setSchengenStatus("");
+    setSchengenExpiry("");
     setYearlyIncome(0);
     setIncomeFrequency("monthly");
     setPayments([{ date: todayStr(), amount: 0 }]);
@@ -150,7 +200,21 @@ export default function WorkflowPage() {
     );
   }
 
+  function updateChildName(i: number, name: string) {
+    setChildrenNames((prev) => prev.map((c, idx) => idx === i ? { ...c, name } : c));
+  }
+
+  function updateChildAgeRange(i: number, ageRange: "0-17" | "18-26") {
+    setChildrenNames((prev) => prev.map((c, idx) => idx === i ? { ...c, ageRange } : c));
+  }
+
   const currentStepIdx = STEP_ORDER.indexOf(step);
+
+  // Determine effective steps — skip "children" step if no children
+  const effectiveSteps = useMemo(() => {
+    if (clientChildrenCount === 0) return STEP_ORDER.filter(s => s !== "children");
+    return STEP_ORDER;
+  }, [clientChildrenCount]);
 
   function goNext() {
     if (step === "client" && !clientCaseId) {
@@ -161,13 +225,15 @@ export default function WorkflowPage() {
       toast.error("يرجى إدخال تاريخ ومبلغ صحيح لكل دفعة");
       return;
     }
-    if (currentStepIdx < STEP_ORDER.length - 1) {
-      setStep(STEP_ORDER[currentStepIdx + 1]);
+    const idx = effectiveSteps.indexOf(step);
+    if (idx < effectiveSteps.length - 1) {
+      setStep(effectiveSteps[idx + 1]);
     }
   }
 
   function goBack() {
-    if (currentStepIdx > 0) setStep(STEP_ORDER[currentStepIdx - 1]);
+    const idx = effectiveSteps.indexOf(step);
+    if (idx > 0) setStep(effectiveSteps[idx - 1]);
   }
 
   function handleSave() {
@@ -177,11 +243,16 @@ export default function WorkflowPage() {
       submissionStage,
       submissionDate,
       schengenStatus: schengenStatus || undefined,
+      schengenExpiry: schengenExpiry || undefined,
       yearlyIncome,
       incomeFrequency,
       incomePayments: payments,
+      childrenNamesData: childrenNames.length > 0 ? childrenNames : undefined,
     });
   }
+
+  const isLastStep = step === effectiveSteps[effectiveSteps.length - 1];
+  const isFirstStep = step === effectiveSteps[0];
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -192,20 +263,20 @@ export default function WorkflowPage() {
 
       {/* ── Step indicator ── */}
       <div className="flex items-center gap-2 mb-8 justify-end flex-wrap">
-        {STEP_ORDER.map((s, i) => (
+        {effectiveSteps.map((s, i) => (
           <div key={s} className="flex items-center gap-2">
             <span
               className={`text-sm font-medium px-3 py-1 rounded-full ${
                 s === step
                   ? "bg-blue-900 text-white"
-                  : i < currentStepIdx
+                  : effectiveSteps.indexOf(step) > i
                   ? "bg-green-100 text-green-800"
                   : "bg-gray-100 text-gray-500"
               }`}
             >
               {STEP_LABELS[s]}
             </span>
-            {i < STEP_ORDER.length - 1 && <ChevronLeft className="w-4 h-4 text-gray-400" />}
+            {i < effectiveSteps.length - 1 && <ChevronLeft className="w-4 h-4 text-gray-400" />}
           </div>
         ))}
       </div>
@@ -224,7 +295,7 @@ export default function WorkflowPage() {
                 <Label className="block text-right mb-2">اسم العميل</Label>
                 <Select
                   value={clientCaseId ? String(clientCaseId) : ""}
-                  onValueChange={(v) => setClientCaseId(Number(v))}
+                  onValueChange={(v) => handleClientSelect(Number(v))}
                 >
                   <SelectTrigger className="text-right">
                     <SelectValue placeholder="اختر عميلاً..." />
@@ -244,13 +315,63 @@ export default function WorkflowPage() {
                 <p><strong>نوع الطلب:</strong> {selectedClient.applicationType === "freelancer" ? "فريلانسر" : "صاحب عمل"}</p>
                 <p><strong>الحالة الاجتماعية:</strong> {selectedClient.maritalStatus === "family" ? "أسرة" : "منفرد"}</p>
                 <p><strong>المرحلة الحالية:</strong> {selectedClient.stage}</p>
+                {clientChildrenCount > 0 && (
+                  <p><strong>عدد الأطفال:</strong> {clientChildrenCount}</p>
+                )}
               </div>
             )}
           </CardContent>
         </Card>
       )}
 
-      {/* ── Step 2: Submission stage & dates ── */}
+      {/* ── Step 2: Children names & ages ── */}
+      {step === "children" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-right">بيانات الأطفال</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-gray-500 text-right">
+              أدخل اسم كل طفل وتأكد من الفئة العمرية الصحيحة. ستظهر هذه البيانات في وثيقة خطة العمل.
+            </p>
+            {childrenNames.map((child, i) => (
+              <div key={i} className="bg-gray-50 rounded-lg p-4 space-y-3 border">
+                <p className="font-semibold text-right text-blue-900">
+                  الطفل {CHILD_ORDINALS[i] || `${i + 1}`}
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="block text-right mb-1 text-sm">الفئة العمرية</Label>
+                    <Select
+                      value={child.ageRange}
+                      onValueChange={(v) => updateChildAgeRange(i, v as "0-17" | "18-26")}
+                    >
+                      <SelectTrigger className="text-right">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0-17">من 0 إلى 17 سنة</SelectItem>
+                        <SelectItem value="18-26">من 18 إلى 26 سنة</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="block text-right mb-1 text-sm">الاسم</Label>
+                    <Input
+                      value={child.name}
+                      onChange={(e) => updateChildName(i, e.target.value)}
+                      placeholder={`اسم الطفل ${CHILD_ORDINALS[i] || i + 1}`}
+                      className="text-right"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Step 3: Submission stage & dates ── */}
       {step === "stage" && (
         <Card>
           <CardHeader>
@@ -287,6 +408,23 @@ export default function WorkflowPage() {
                 className="text-right"
               />
             </div>
+            {/* Schengen expiry date — shown only when schengenStatus is filled */}
+            {schengenStatus && (
+              <div>
+                <Label className="block text-right mb-2">تاريخ انتهاء تأشيرة شنغن</Label>
+                <Input
+                  type="date"
+                  value={schengenExpiry}
+                  onChange={(e) => setSchengenExpiry(e.target.value)}
+                  className="text-right"
+                />
+                {schengenExpiry && (
+                  <p className="text-xs text-gray-500 text-right mt-1">
+                    تنتهي في: {toArabicDate(schengenExpiry)}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Timeline preview */}
             {submissionDate && (
@@ -304,7 +442,7 @@ export default function WorkflowPage() {
         </Card>
       )}
 
-      {/* ── Step 3: Income schedule ── */}
+      {/* ── Step 4: Income schedule ── */}
       {step === "income" && (
         <Card>
           <CardHeader>
@@ -378,7 +516,7 @@ export default function WorkflowPage() {
         </Card>
       )}
 
-      {/* ── Step 4: Review & save ── */}
+      {/* ── Step 5: Review & save ── */}
       {step === "review" && (
         <Card>
           <CardHeader>
@@ -391,9 +529,22 @@ export default function WorkflowPage() {
               <p><strong>مرحلة التقديم :</strong> {submissionStage === "two" ? "مرحلتان" : "مرحلة واحدة"}</p>
               <p><strong>تاريخ التقديم :</strong> {toArabicDate(submissionDate)}</p>
               {schengenStatus && <p><strong>شنغن :</strong> {schengenStatus}</p>}
+              {schengenExpiry && <p><strong>انتهاء تأشيرة شنغن :</strong> {toArabicDate(schengenExpiry)}</p>}
               <p><strong>الدخل السنوي :</strong> {yearlyIncome.toLocaleString("ar-EG")} جنيه</p>
               <p><strong>طريقة الإثبات :</strong> {FREQ_LABELS[incomeFrequency]}</p>
               <p><strong>عدد الدفعات :</strong> {payments.length}</p>
+              {childrenNames.length > 0 && (
+                <div>
+                  <strong>الأطفال :</strong>
+                  <ul className="mt-1 space-y-1 pr-4">
+                    {childrenNames.map((c, i) => (
+                      <li key={i} className="text-xs">
+                        الطفل {CHILD_ORDINALS[i] || i + 1} : {c.name || "(بدون اسم)"} — {c.ageRange === "0-17" ? "0-17 سنة" : "18-26 سنة"}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
             <p className="text-gray-500 text-xs">
               بعد الحفظ، يمكنك توليد وثيقة خطة العمل بصيغة Word من قائمة خطط العمل أدناه.
@@ -404,10 +555,10 @@ export default function WorkflowPage() {
 
       {/* ── Navigation buttons ── */}
       <div className="flex justify-between mt-6">
-        <Button variant="outline" onClick={goBack} disabled={step === "client"} className="flex items-center gap-2">
+        <Button variant="outline" onClick={goBack} disabled={isFirstStep} className="flex items-center gap-2">
           <ChevronRight className="w-4 h-4" /> السابق
         </Button>
-        {step !== "review" ? (
+        {!isLastStep ? (
           <Button onClick={goNext} className="flex items-center gap-2" style={{ backgroundColor: "#1e3a5f" }}>
             التالي <ChevronLeft className="w-4 h-4" />
           </Button>

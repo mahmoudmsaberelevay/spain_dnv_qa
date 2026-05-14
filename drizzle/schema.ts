@@ -689,6 +689,8 @@ export const clientWorkflows = mysqlTable("clientWorkflows", {
   submissionDate: varchar("submissionDate", { length: 20 }).notNull(),
   // Schengen visa status
   schengenStatus: varchar("schengenStatus", { length: 100 }),
+  // Schengen visa expiry date (ISO date string YYYY-MM-DD)
+  schengenExpiry: varchar("schengenExpiry", { length: 20 }),
   // Yearly income in EGP
   yearlyIncome: int("yearlyIncome").notNull().default(0),
   // Income proof frequency: "monthly" | "quarterly" | "biannual" | "yearly" | "task"
@@ -701,6 +703,8 @@ export const clientWorkflows = mysqlTable("clientWorkflows", {
   applicationType: varchar("applicationType", { length: 30 }).notNull().default("freelancer"),
   // Children data JSON (copied from clientCase at creation time)
   childrenData: text("childrenData"),
+  // Children names/ages JSON: [{name: string, ageRange: string}]
+  childrenNamesData: text("childrenNamesData"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type ClientWorkflow = typeof clientWorkflows.$inferSelect;
