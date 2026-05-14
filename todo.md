@@ -502,3 +502,9 @@
 - [x] Auto-populate spouse name in National Visa wizard from client record
 - [x] Add status column to nationalVisaWorkflows (in_progress / completed / submitted)
 - [x] Show status dropdown in National Visa list view with inline update
+
+## Change Requests (Round 70)
+- [x] Fix "db is not defined" bug in notification helpers in db.ts
+- [x] Fix stamp note bug: social insurance certificate incorrectly showing Higher Education stamp note
+- [x] Date range filter for Contracting Dashboard: backend (db.ts + routers.ts) updated with dateFrom/dateTo params
+- [x] Date range filter for Contracting Dashboard: frontend ContractingDashboard.tsx updated with preset dropdown (All Time, This Month, Last Month, This Quarter, This Year), active filter badges, and memoized date computation

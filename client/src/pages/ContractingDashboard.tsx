@@ -3,25 +3,76 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Receipt, TrendingUp, Users, Plus, ArrowRight, Clock, UserCheck, Filter } from "lucide-react";
+import { FileText, Receipt, TrendingUp, Users, Plus, ArrowRight, Clock, UserCheck, Filter, Calendar } from "lucide-react";
 import { useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import NewContractDialog from "@/components/NewContractDialog";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 
 const CONSULTANTS = ["Fouad Abdo", "Kirlos Nabil"];
 
+type DateRangePreset = "all" | "this_month" | "last_month" | "this_quarter" | "this_year";
+
+const DATE_RANGE_LABELS: Record<DateRangePreset, string> = {
+  all: "All Time",
+  this_month: "This Month",
+  last_month: "Last Month",
+  this_quarter: "This Quarter",
+  this_year: "This Year",
+};
+
+function computeDateRange(preset: DateRangePreset): { dateFrom?: Date; dateTo?: Date } {
+  const now = new Date();
+  if (preset === "all") return {};
+
+  if (preset === "this_month") {
+    const from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    return { dateFrom: from, dateTo: to };
+  }
+
+  if (preset === "last_month") {
+    const from = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+    const to = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    return { dateFrom: from, dateTo: to };
+  }
+
+  if (preset === "this_quarter") {
+    const quarter = Math.floor(now.getMonth() / 3);
+    const from = new Date(now.getFullYear(), quarter * 3, 1, 0, 0, 0, 0);
+    const to = new Date(now.getFullYear(), quarter * 3 + 3, 0, 23, 59, 59, 999);
+    return { dateFrom: from, dateTo: to };
+  }
+
+  if (preset === "this_year") {
+    const from = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+    const to = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+    return { dateFrom: from, dateTo: to };
+  }
+
+  return {};
+}
+
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const [showNewContract, setShowNewContract] = useState(false);
   const [selectedConsultant, setSelectedConsultant] = useState<string | undefined>(undefined);
+  const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>("all");
 
-  const { data: stats, isLoading: statsLoading } = trpc.contracting.analytics.stats.useQuery(
-    { consultantName: selectedConsultant },
+  const { dateFrom, dateTo } = useMemo(() => computeDateRange(dateRangePreset), [dateRangePreset]);
+
+  const statsInput = useMemo(
+    () => ({ consultantName: selectedConsultant, dateFrom, dateTo }),
+    [selectedConsultant, dateFrom, dateTo]
   );
-  const { data: recentContracts, isLoading: contractsLoading } = trpc.contracting.analytics.recentContracts.useQuery(
-    { limit: 5, consultantName: selectedConsultant },
+
+  const recentInput = useMemo(
+    () => ({ limit: 5, consultantName: selectedConsultant, dateFrom, dateTo }),
+    [selectedConsultant, dateFrom, dateTo]
   );
+
+  const { data: stats, isLoading: statsLoading } = trpc.contracting.analytics.stats.useQuery(statsInput);
+  const { data: recentContracts, isLoading: contractsLoading } = trpc.contracting.analytics.recentContracts.useQuery(recentInput);
   const { data: rateInfo } = trpc.contracting.exchangeRate.current.useQuery();
   const { data: consultantStats } = trpc.contracting.analytics.consultantStats.useQuery();
 
@@ -56,6 +107,8 @@ export default function Dashboard() {
     },
   ];
 
+  const hasActiveFilters = selectedConsultant || dateRangePreset !== "all";
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -66,7 +119,27 @@ export default function Dashboard() {
             Elevay — Contracting
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Date Range Filter */}
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <Select
+              value={dateRangePreset}
+              onValueChange={(v) => setDateRangePreset(v as DateRangePreset)}
+            >
+              <SelectTrigger className="w-40 h-9 text-sm">
+                <SelectValue placeholder="All Time" />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(DATE_RANGE_LABELS) as DateRangePreset[]).map((preset) => (
+                  <SelectItem key={preset} value={preset}>
+                    {DATE_RANGE_LABELS[preset]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Consultant Filter */}
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
@@ -85,6 +158,7 @@ export default function Dashboard() {
               </SelectContent>
             </Select>
           </div>
+
           <Button
             onClick={() => setShowNewContract(true)}
             className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
@@ -96,20 +170,35 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Active filter badge */}
-      {selectedConsultant && (
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="gap-1 text-sm">
-            <UserCheck className="h-3.5 w-3.5" />
-            Showing: {selectedConsultant}
-            <button
-              onClick={() => setSelectedConsultant(undefined)}
-              className="ml-1 hover:text-destructive transition-colors"
-              aria-label="Clear filter"
-            >
-              ×
-            </button>
-          </Badge>
+      {/* Active filter badges */}
+      {hasActiveFilters && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {dateRangePreset !== "all" && (
+            <Badge variant="secondary" className="gap-1 text-sm">
+              <Calendar className="h-3.5 w-3.5" />
+              {DATE_RANGE_LABELS[dateRangePreset]}
+              <button
+                onClick={() => setDateRangePreset("all")}
+                className="ml-1 hover:text-destructive transition-colors"
+                aria-label="Clear date filter"
+              >
+                ×
+              </button>
+            </Badge>
+          )}
+          {selectedConsultant && (
+            <Badge variant="secondary" className="gap-1 text-sm">
+              <UserCheck className="h-3.5 w-3.5" />
+              {selectedConsultant}
+              <button
+                onClick={() => setSelectedConsultant(undefined)}
+                className="ml-1 hover:text-destructive transition-colors"
+                aria-label="Clear consultant filter"
+              >
+                ×
+              </button>
+            </Badge>
+          )}
         </div>
       )}
 
@@ -176,8 +265,12 @@ export default function Dashboard() {
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <CardTitle className="text-base font-semibold">
             Recent Contracts
-            {selectedConsultant && (
-              <span className="ml-2 text-xs font-normal text-muted-foreground">— {selectedConsultant}</span>
+            {(selectedConsultant || dateRangePreset !== "all") && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                {[selectedConsultant, dateRangePreset !== "all" ? DATE_RANGE_LABELS[dateRangePreset] : null]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
             )}
           </CardTitle>
           <Button
@@ -196,8 +289,8 @@ export default function Dashboard() {
             <div className="p-6 text-center">
               <Clock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
               <p className="text-muted-foreground text-sm">
-                {selectedConsultant
-                  ? `No contracts found for ${selectedConsultant}.`
+                {hasActiveFilters
+                  ? "No contracts found for the selected filters."
                   : "No contracts yet. Issue your first contract!"}
               </p>
             </div>

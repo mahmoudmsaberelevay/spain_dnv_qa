@@ -1248,12 +1248,12 @@ const contractingRouter = router({
   }),
   analytics: router({
     stats: protectedProcedure
-      .input(z.object({ consultantName: z.string().optional() }))
-      .query(async ({ input }) => getContractStats(input.consultantName)),
+      .input(z.object({ consultantName: z.string().optional(), dateFrom: z.date().optional(), dateTo: z.date().optional() }))
+      .query(async ({ input }) => getContractStats(input.consultantName, input.dateFrom, input.dateTo)),
     familyDistribution: protectedProcedure.query(async () => getFamilyMemberDistribution()),
     recentContracts: protectedProcedure
-      .input(z.object({ limit: z.number().optional(), consultantName: z.string().optional() }))
-      .query(async ({ input }) => getRecentContracts(input.limit ?? 10, input.consultantName)),
+      .input(z.object({ limit: z.number().optional(), consultantName: z.string().optional(), dateFrom: z.date().optional(), dateTo: z.date().optional() }))
+      .query(async ({ input }) => getRecentContracts(input.limit ?? 10, input.consultantName, input.dateFrom, input.dateTo)),
     consultantStats: protectedProcedure.query(async () => getConsultantStats()),
   }),
   // Client search for invoice/proforma creation — accessible to all logged-in users

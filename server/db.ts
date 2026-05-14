@@ -339,11 +339,13 @@ export async function getPaymentsByContractId(contractId: number) {
   return db.select().from(payments).where(eq(payments.contractId, contractId)).orderBy(desc(payments.paidAt));
 }
 
-export async function getContractStats(consultantName?: string) {
+export async function getContractStats(consultantName?: string, dateFrom?: Date, dateTo?: Date) {
   const db = await getDb();
   if (!db) return { total: 0, pending: 0, signed: 0, cancelled: 0, totalValue: 0 };
   let all = await db.select().from(contracts);
   if (consultantName) all = all.filter(c => c.consultantName === consultantName);
+  if (dateFrom) all = all.filter(c => c.createdAt && new Date(c.createdAt) >= dateFrom);
+  if (dateTo) all = all.filter(c => c.createdAt && new Date(c.createdAt) <= dateTo);
   const total = all.length;
   const pending = all.filter(c => c.status === "pending").length;
   const signed = all.filter(c => c.status === "signed").length;
@@ -363,14 +365,14 @@ export async function getFamilyMemberDistribution() {
   return Object.entries(dist).map(([members, count]) => ({ members: Number(members), count }));
 }
 
-export async function getRecentContracts(limit = 5, consultantName?: string) {
+export async function getRecentContracts(limit = 5, consultantName?: string, dateFrom?: Date, dateTo?: Date) {
   const db = await getDb();
   if (!db) return [];
-  if (consultantName) {
-    const all = await db.select().from(contracts).orderBy(desc(contracts.createdAt));
-    return all.filter(c => c.consultantName === consultantName).slice(0, limit);
-  }
-  return db.select().from(contracts).orderBy(desc(contracts.createdAt)).limit(limit);
+  let all = await db.select().from(contracts).orderBy(desc(contracts.createdAt));
+  if (consultantName) all = all.filter(c => c.consultantName === consultantName);
+  if (dateFrom) all = all.filter(c => c.createdAt && new Date(c.createdAt) >= dateFrom);
+  if (dateTo) all = all.filter(c => c.createdAt && new Date(c.createdAt) <= dateTo);
+  return all.slice(0, limit);
 }
 
 export async function getConsultantStats() {
@@ -667,6 +669,7 @@ export async function deleteClientWorkflow(id: number) {
 
 // ─── National Visa Workflows ──────────────────────────────────────────────────
 import { nationalVisaWorkflows, InsertNationalVisaWorkflow } from "../drizzle/schema";
+import { systemNotifications } from "../drizzle/schema";
 
 export async function createNationalVisaWorkflow(data: InsertNationalVisaWorkflow) {
   const db = await getDb();
@@ -742,7 +745,9 @@ export async function createNotification(data: {
   entityId?: number;
   entityType?: string;
 }) {
-  await db.insert(schema.systemNotifications).values({
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(systemNotifications).values({
     type: data.type,
     title: data.title,
     body: data.body,
@@ -754,23 +759,29 @@ export async function createNotification(data: {
 }
 
 export async function getRecentNotifications(limit = 30) {
+  const db = await getDb();
+  if (!db) return [];
   return db
     .select()
-    .from(schema.systemNotifications)
-    .orderBy(schema.systemNotifications.createdAt)
+    .from(systemNotifications)
+    .orderBy(desc(systemNotifications.createdAt))
     .limit(limit);
 }
 
 export async function markNotificationRead(id: number) {
+  const db = await getDb();
+  if (!db) return;
   await db
-    .update(schema.systemNotifications)
+    .update(systemNotifications)
     .set({ isRead: true })
-    .where(eq(schema.systemNotifications.id, id));
+    .where(eq(systemNotifications.id, id));
 }
 
 export async function markAllNotificationsRead() {
+  const db = await getDb();
+  if (!db) return;
   await db
-    .update(schema.systemNotifications)
+    .update(systemNotifications)
     .set({ isRead: true })
-    .where(eq(schema.systemNotifications.isRead, false));
+    .where(eq(systemNotifications.isRead, false));
 }
