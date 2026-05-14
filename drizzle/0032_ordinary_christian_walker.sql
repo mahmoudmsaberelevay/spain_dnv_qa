@@ -1,0 +1,2 @@
+ALTER TABLE `clientCases` ADD `spouseName` varchar(255);--> statement-breakpoint
+ALTER TABLE `nationalVisaWorkflows` ADD `status` enum('in_progress','completed','submitted') DEFAULT 'in_progress' NOT NULL;

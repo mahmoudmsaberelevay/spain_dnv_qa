@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE `clientCases` ADD `spouseName` varchar(255);\nALTER TABLE `nationalVisaWorkflows` ADD `status` enum('in_progress','completed','submitted') DEFAULT 'in_progress' NOT NULL;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute ALTER TABLE `clientCases` ADD `spouseName` varchar(255);\nALTER TABLE `nationalVisaWorkflows` ADD `status` enum('in_progress','completed','submitted') DEFAULT 'in_progress' NOT NULL;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 2319
+}

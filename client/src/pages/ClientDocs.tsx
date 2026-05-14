@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, FolderOpen, User, Calendar, ChevronRight, FileText, Briefcase, Baby, Users } from "lucide-react";
 
-type ChildEntry = { ageRange: "0-17" | "18-26" };
+type ChildEntry = { name: string; age: number };
 
 type FormState = {
   clientName: string;
@@ -20,6 +20,7 @@ type FormState = {
   applicationType: "freelancer" | "business_owner" | "";
   maritalStatus: "single" | "family" | "";
   consultant: "Mahmoud" | "Ziad" | "Fouad" | "Kirolos" | "";
+  spouseName: string;
   numberOfKids: number;
   children: ChildEntry[];
   schengenVisaValid: boolean | null; // null = not answered yet
@@ -32,6 +33,7 @@ const EMPTY_FORM: FormState = {
   applicationType: "",
   maritalStatus: "",
   consultant: "",
+  spouseName: "",
   numberOfKids: 0,
   children: [],
   schengenVisaValid: null,
@@ -96,15 +98,15 @@ export default function ClientDocs() {
     const clamped = Math.max(0, Math.min(20, count));
     setForm(f => {
       const existing = f.children.slice(0, clamped);
-      const extra: ChildEntry[] = Array.from({ length: Math.max(0, clamped - existing.length) }, () => ({ ageRange: "0-17" as const }));
+      const extra: ChildEntry[] = Array.from({ length: Math.max(0, clamped - existing.length) }, () => ({ name: "", age: 10 }));
       return { ...f, numberOfKids: clamped, children: [...existing, ...extra] };
     });
   };
 
-  const handleChildAgeRange = (idx: number, ageRange: "0-17" | "18-26") => {
+  const handleChildUpdate = (idx: number, field: keyof ChildEntry, value: string | number) => {
     setForm(f => {
       const children = [...f.children];
-      children[idx] = { ageRange };
+      children[idx] = { ...children[idx], [field]: value };
       return { ...f, children };
     });
   };
@@ -122,16 +124,13 @@ export default function ClientDocs() {
       toast.error("Please enter the Schengen visa expiry date");
       return;
     }
-    if (form.maritalStatus === "family" && form.numberOfKids > 0 && form.children.some(c => !c.ageRange)) {
-      toast.error("Please select an age range for each child");
-      return;
-    }
     createMutation.mutate({
       clientName: form.clientName,
       clientCode: form.clientCode,
       applicationType: form.applicationType as "freelancer" | "business_owner",
       maritalStatus: form.maritalStatus as "single" | "family",
       consultant: form.consultant as "Mahmoud" | "Ziad" | "Fouad" | "Kirolos",
+      spouseName: form.spouseName || undefined,
       children: form.maritalStatus === "family" ? form.children : [],
       schengenVisaValid: form.schengenVisaValid ?? false,
       schengenExpiryDate: form.schengenVisaValid ? form.schengenExpiryDate : undefined,
@@ -216,12 +215,23 @@ export default function ClientDocs() {
                 </div>
               </div>
 
-              {/* ── Children section (only for family) ── */}
+              {/* ── Family section (only for family) ── */}
               {form.maritalStatus === "family" && (
-                <div className="border border-[#1e3a5f]/20 rounded-lg p-4 bg-[#1e3a5f]/5 space-y-3">
+                <div className="border border-[#1e3a5f]/20 rounded-lg p-4 bg-[#1e3a5f]/5 space-y-4">
                   <div className="flex items-center gap-2 mb-1">
-                    <Baby className="w-4 h-4 text-[#1e3a5f]" />
-                    <span className="text-sm font-medium text-[#1e3a5f]">Children</span>
+                    <Users className="w-4 h-4 text-[#1e3a5f]" />
+                    <span className="text-sm font-medium text-[#1e3a5f]">Family Details</span>
+                  </div>
+
+                  {/* Spouse name */}
+                  <div className="space-y-1.5">
+                    <Label className="text-gray-700 text-sm">Spouse Name (Optional)</Label>
+                    <Input
+                      placeholder="Enter spouse / wife name..."
+                      value={form.spouseName}
+                      onChange={e => setForm(f => ({ ...f, spouseName: e.target.value }))}
+                      className="border-gray-300 text-gray-900 bg-white"
+                    />
                   </div>
 
                   {/* Number of kids */}
@@ -251,35 +261,34 @@ export default function ClientDocs() {
                     </div>
                   </div>
 
-                  {/* Per-child age range selectors */}
+                  {/* Per-child name + exact age inputs */}
                   {form.children.length > 0 && (
-                    <div className="space-y-2 pt-1">
-                      <p className="text-xs text-gray-500">Select age range for each child:</p>
+                    <div className="space-y-3 pt-1">
+                      <p className="text-xs text-gray-500 font-medium">Enter name and exact age for each child:</p>
                       {form.children.map((child, idx) => (
                         <div key={idx} className="flex items-center gap-3">
-                          <span className="text-sm text-gray-600 w-16 shrink-0">Child {idx + 1}</span>
-                          <Select
-                            value={child.ageRange}
-                            onValueChange={v => handleChildAgeRange(idx, v as "0-17" | "18-26")}
-                          >
-                            <SelectTrigger className="border-gray-300 text-gray-900 bg-white flex-1">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white border-gray-200">
-                              <SelectItem value="0-17" className="text-gray-900">
-                                <span className="flex items-center gap-2">
-                                  <Baby className="w-3.5 h-3.5 text-blue-500" />
-                                  0 – 17 years
-                                </span>
-                              </SelectItem>
-                              <SelectItem value="18-26" className="text-gray-900">
-                                <span className="flex items-center gap-2">
-                                  <Users className="w-3.5 h-3.5 text-purple-500" />
-                                  18 – 26 years
-                                </span>
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <span className="text-sm text-gray-600 w-14 shrink-0">Child {idx + 1}</span>
+                          <Input
+                            placeholder="Name (optional)"
+                            value={child.name}
+                            onChange={e => handleChildUpdate(idx, "name", e.target.value)}
+                            className="border-gray-300 text-gray-900 bg-white flex-1"
+                          />
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={50}
+                              value={child.age}
+                              onChange={e => handleChildUpdate(idx, "age", parseInt(e.target.value) || 0)}
+                              className="border-gray-300 text-gray-900 bg-white w-16 text-center"
+                            />
+                            <span className="text-xs text-gray-500">yrs</span>
+                          </div>
+                          <span className="text-xs shrink-0 px-1.5 py-0.5 rounded-full font-medium"
+                            style={{ background: child.age < 18 ? '#dbeafe' : '#ede9fe', color: child.age < 18 ? '#1d4ed8' : '#6d28d9' }}>
+                            {child.age < 18 ? "Under 18" : "18+"}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -291,8 +300,8 @@ export default function ClientDocs() {
                       <p className="font-medium text-gray-600">Documents that will be added:</p>
                       {form.children.map((child, idx) => (
                         <p key={idx}>
-                          Child {idx + 1} ({child.ageRange} yrs):{" "}
-                          {child.ageRange === "0-17"
+                          {child.name ? child.name : `Child ${idx + 1}`} ({child.age} yrs):{" "}
+                          {child.age < 18
                             ? "Birth Certificate"
                             : "Police Certificate + Education Enrollment + Single Record"}
                         </p>

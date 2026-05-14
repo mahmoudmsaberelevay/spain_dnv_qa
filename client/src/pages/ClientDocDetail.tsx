@@ -49,6 +49,10 @@ export default function ClientDocDetail() {
   const [showSchengenDialog, setShowSchengenDialog] = useState(false);
   const [schengenVisaValid, setSchengenVisaValid] = useState<boolean | null>(null);
   const [schengenExpiryInput, setSchengenExpiryInput] = useState("");
+  const [showSpouseDialog, setShowSpouseDialog] = useState(false);
+  const [spouseNameInput, setSpouseNameInput] = useState("");
+  const [showChildrenDialog, setShowChildrenDialog] = useState(false);
+  const [childrenEdit, setChildrenEdit] = useState<{ name: string; age: number }[]>([]);
 
   const utils = trpc.useUtils();
 
@@ -148,6 +152,24 @@ export default function ClientDocDetail() {
     onSuccess: () => {
       toast.success("Schengen visa status updated");
       setShowSchengenDialog(false);
+      utils.clientDocs.get.invalidate({ id: clientId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const spouseNameMutation = trpc.clientDocs.setSpouseName.useMutation({
+    onSuccess: () => {
+      toast.success("Spouse name updated");
+      setShowSpouseDialog(false);
+      utils.clientDocs.get.invalidate({ id: clientId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const updateChildrenMutation = trpc.clientDocs.updateChildren.useMutation({
+    onSuccess: () => {
+      toast.success("Children data updated");
+      setShowChildrenDialog(false);
       utils.clientDocs.get.invalidate({ id: clientId });
     },
     onError: (e) => toast.error(e.message),
@@ -405,6 +427,52 @@ export default function ClientDocDetail() {
             </button>
           </div>
         </div>
+        {/* Spouse Name (family only) */}
+        {caseData.maritalStatus === "family" && (
+          <div>
+            <p className="text-xs text-gray-400 mb-1">Spouse Name</p>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-800">
+                {(caseData as any).spouseName ?? <span className="text-gray-400 italic">Not set</span>}
+              </span>
+              <button
+                onClick={() => {
+                  setSpouseNameInput((caseData as any).spouseName ?? "");
+                  setShowSpouseDialog(true);
+                }}
+                className="text-[#1e3a5f] hover:text-[#16304f] text-xs underline"
+              >
+                {(caseData as any).spouseName ? "Edit" : "Add"}
+              </button>
+            </div>
+          </div>
+        )}
+        {/* Children (family only) */}
+        {caseData.maritalStatus === "family" && (
+          <div>
+            <p className="text-xs text-gray-400 mb-1">Children</p>
+            <div className="flex items-center gap-2">
+              {(() => {
+                const kids = (() => { try { return JSON.parse((caseData as any).childrenData ?? "[]"); } catch { return []; } })();
+                return kids.length > 0 ? (
+                  <span className="text-sm font-medium text-gray-800">{kids.length} child{kids.length !== 1 ? "ren" : ""}</span>
+                ) : (
+                  <span className="text-sm text-gray-400 italic">None</span>
+                );
+              })()}
+              <button
+                onClick={() => {
+                  const kids = (() => { try { return JSON.parse((caseData as any).childrenData ?? "[]"); } catch { return []; } })();
+                  setChildrenEdit(kids.length > 0 ? kids : []);
+                  setShowChildrenDialog(true);
+                }}
+                className="text-[#1e3a5f] hover:text-[#16304f] text-xs underline"
+              >
+                Edit
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Embassy Attestation Email Date Panel ── */}
@@ -1242,6 +1310,95 @@ export default function ClientDocDetail() {
                 disabled={deleteMutation.isPending}
               >
                 {deleteMutation.isPending ? "جاري الحذف..." : "حذف نهائياً"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Spouse Name Dialog */}
+      <Dialog open={showSpouseDialog} onOpenChange={setShowSpouseDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">Spouse Name</DialogTitle>
+          </DialogHeader>
+          <div className="py-3 space-y-3">
+            <Input
+              placeholder="Enter spouse / wife name..."
+              value={spouseNameInput}
+              onChange={e => setSpouseNameInput(e.target.value)}
+              className="border-gray-300 text-gray-900"
+            />
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => setShowSpouseDialog(false)}>Cancel</Button>
+              <Button
+                size="sm"
+                className="flex-1 bg-[#1e3a5f] hover:bg-[#16304f] text-white"
+                onClick={() => spouseNameMutation.mutate({ id: clientId, spouseName: spouseNameInput || null })}
+                disabled={spouseNameMutation.isPending}
+              >
+                {spouseNameMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Children Edit Dialog */}
+      <Dialog open={showChildrenDialog} onOpenChange={setShowChildrenDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">Edit Children</DialogTitle>
+          </DialogHeader>
+          <div className="py-3 space-y-4">
+            <div className="flex items-center gap-2">
+              <Label className="text-gray-700 text-sm">Number of Children</Label>
+              <div className="flex items-center gap-2 ml-auto">
+                <Button type="button" variant="outline" size="sm" className="w-8 h-8 p-0"
+                  onClick={() => setChildrenEdit(e => e.slice(0, Math.max(0, e.length - 1)))}
+                  disabled={childrenEdit.length <= 0}>−</Button>
+                <span className="w-8 text-center font-medium">{childrenEdit.length}</span>
+                <Button type="button" variant="outline" size="sm" className="w-8 h-8 p-0"
+                  onClick={() => setChildrenEdit(e => [...e, { name: "", age: 10 }])}>+</Button>
+              </div>
+            </div>
+            {childrenEdit.length > 0 && (
+              <div className="space-y-3">
+                {childrenEdit.map((child, idx) => (
+                  <div key={idx} className="flex items-center gap-3">
+                    <span className="text-sm text-gray-600 w-14 shrink-0">Child {idx + 1}</span>
+                    <Input
+                      placeholder="Name (optional)"
+                      value={child.name}
+                      onChange={e => setChildrenEdit(arr => arr.map((c, i) => i === idx ? { ...c, name: e.target.value } : c))}
+                      className="border-gray-300 text-gray-900 flex-1"
+                    />
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Input
+                        type="number" min={0} max={50}
+                        value={child.age}
+                        onChange={e => setChildrenEdit(arr => arr.map((c, i) => i === idx ? { ...c, age: parseInt(e.target.value) || 0 } : c))}
+                        className="border-gray-300 text-gray-900 w-16 text-center"
+                      />
+                      <span className="text-xs text-gray-500">yrs</span>
+                    </div>
+                    <span className="text-xs shrink-0 px-1.5 py-0.5 rounded-full font-medium"
+                      style={{ background: child.age < 18 ? '#dbeafe' : '#ede9fe', color: child.age < 18 ? '#1d4ed8' : '#6d28d9' }}>
+                      {child.age < 18 ? "<18" : "18+"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => setShowChildrenDialog(false)}>Cancel</Button>
+              <Button
+                size="sm"
+                className="flex-1 bg-[#1e3a5f] hover:bg-[#16304f] text-white"
+                onClick={() => updateChildrenMutation.mutate({ id: clientId, children: childrenEdit })}
+                disabled={updateChildrenMutation.isPending}
+              >
+                {updateChildrenMutation.isPending ? "Saving..." : "Save Changes"}
               </Button>
             </div>
           </div>

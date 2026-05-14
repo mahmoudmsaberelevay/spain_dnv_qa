@@ -1295,12 +1295,13 @@ const clientDocsRouter = router({
       maritalStatus: z.enum(["single", "family"]),
       paralegal: z.enum(["Madonna", "Monica", "Marina"]).optional(),
       consultant: z.enum(["Mahmoud", "Ziad", "Fouad", "Kirolos"]),
-      children: z.array(z.object({ ageRange: z.enum(["0-17", "18-26"]) })).optional().default([]),
+      children: z.array(z.object({ name: z.string().optional().default(""), age: z.number().int().min(0) })).optional().default([]),
+      spouseName: z.string().optional(),
       schengenVisaValid: z.boolean().optional().default(false),
       schengenExpiryDate: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const childrenData: ChildEntry[] = input.children;
+      const childrenData: ChildEntry[] = input.children.map(c => ({ name: c.name ?? "", age: c.age, ageRange: c.age < 18 ? "0-17" as const : "18-26" as const }));
       const result = await createClientCase({
         clientName: input.clientName,
         clientCode: input.clientCode,
@@ -1310,6 +1311,7 @@ const clientDocsRouter = router({
         consultant: input.consultant,
         userId: ctx.user.id,
         childrenData: childrenData as any,
+        spouseName: input.spouseName ?? null,
         schengenVisaValid: input.schengenVisaValid ?? false,
         schengenExpiryDate: input.schengenExpiryDate ?? null,
       });
@@ -1340,12 +1342,12 @@ const clientDocsRouter = router({
   updateChildren: protectedProcedure
     .input(z.object({
       id: z.number(),
-      children: z.array(z.object({ ageRange: z.enum(["0-17", "18-26"]) })),
+      children: z.array(z.object({ name: z.string().optional().default(""), age: z.number().int().min(0) })),
     }))
     .mutation(async ({ input }) => {
       const c = await getClientCase(input.id);
       if (!c) throw new TRPCError({ code: "NOT_FOUND" });
-      const childrenData: ChildEntry[] = input.children;
+      const childrenData: ChildEntry[] = input.children.map(ch => ({ name: ch.name ?? "", age: ch.age, ageRange: ch.age < 18 ? "0-17" as const : "18-26" as const }));
       await updateClientCase(input.id, { childrenData: childrenData as any });
       // Remove old per-child docs
       const { getDb } = await import("./db");
@@ -1715,6 +1717,18 @@ const clientDocsRouter = router({
       } as any);
       return { success: true };
     }),
+
+  setSpouseName: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      spouseName: z.string().nullable(),
+    }))
+    .mutation(async ({ input }) => {
+      const c = await getClientCase(input.id);
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
+      await updateClientCase(input.id, { spouseName: input.spouseName ?? null } as any);
+      return { success: true };
+    }),
 });
 // ─── Workflow Router ─────────────────────────────────────────────────────────
 const workflowRouter = router({
@@ -1869,17 +1883,21 @@ const nationalVisaRouter = router({
       children: z.array(z.object({ name: z.string(), age: z.number().int().min(0) })).optional(),
       followUpEmail: z.string().optional(),
       notes: z.string().optional(),
+      status: z.enum(["in_progress", "completed", "submitted"]).optional().default("in_progress"),
     }))
     .mutation(async ({ input }) => {
       const clientCase = await getClientCase(input.clientCaseId);
       if (!clientCase) throw new TRPCError({ code: "NOT_FOUND", message: "Client not found" });
+      // Auto-use spouseName from client record if wifeName not provided
+      const resolvedWifeName = input.wifeName || (clientCase as any).spouseName || null;
       return createNationalVisaWorkflow({
         clientCaseId: input.clientCaseId,
         clientName: clientCase.clientName,
-        wifeName: input.wifeName ?? null,
+        wifeName: resolvedWifeName,
         childrenData: input.children ? JSON.stringify(input.children) : null,
         followUpEmail: input.followUpEmail ?? null,
         notes: input.notes ?? null,
+        status: input.status ?? "in_progress",
       });
     }),
 
@@ -1890,12 +1908,24 @@ const nationalVisaRouter = router({
       children: z.array(z.object({ name: z.string(), age: z.number().int().min(0) })).optional(),
       followUpEmail: z.string().optional(),
       notes: z.string().optional(),
+      status: z.enum(["in_progress", "completed", "submitted"]).optional(),
     }))
     .mutation(async ({ input }) => {
       const { id, children, ...rest } = input;
       const updateData: Record<string, unknown> = { ...rest };
       if (children !== undefined) updateData.childrenData = JSON.stringify(children);
       const updated = await updateNationalVisaWorkflow(id, updateData as any);
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Workflow not found" });
+      return updated;
+    }),
+
+  updateStatus: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      status: z.enum(["in_progress", "completed", "submitted"]),
+    }))
+    .mutation(async ({ input }) => {
+      const updated = await updateNationalVisaWorkflow(input.id, { status: input.status } as any);
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Workflow not found" });
       return updated;
     }),

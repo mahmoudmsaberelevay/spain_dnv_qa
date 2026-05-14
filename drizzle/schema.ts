@@ -212,8 +212,10 @@ export const clientCases = mysqlTable("clientCases", {
   embassyEmailDate: date("embassyEmailDate"),
   // Google Drive link for client documents folder
   driveLink: text("driveLink"),
-  // Children data: JSON array of { ageRange: "0-17" | "18-26" }
+  // Children data: JSON array of { name: string; age: number } (exact name + age per child)
   childrenData: json("childrenData"),
+  // Spouse / wife name
+  spouseName: varchar("spouseName", { length: 255 }),
   // 3-stage workflow
   stage: mysqlEnum("stage", ["preparation", "submission", "approved"]).default("preparation").notNull(),
   // Submission stage fields
@@ -728,8 +730,10 @@ export const nationalVisaWorkflows = mysqlTable("nationalVisaWorkflows", {
   childrenData: text("childrenData"),
   // Email to CC on follow-up
   followUpEmail: varchar("followUpEmail", { length: 255 }),
-  // Notes / additional info
+   // Notes / additional info
   notes: text("notes"),
+  // Status tracking
+  status: mysqlEnum("status", ["in_progress", "completed", "submitted"]).default("in_progress").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type NationalVisaWorkflow = typeof nationalVisaWorkflows.$inferSelect;

@@ -112,6 +112,11 @@ export default function NationalVisaPage() {
     onError: (e) => toast.error(e.message),
   });
 
+  const updateStatusMutation = trpc.nationalVisa.updateStatus.useMutation({
+    onSuccess: () => { refetchWorkflows(); },
+    onError: (e) => toast.error(e.message),
+  });
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedClient = useMemo(
     () => clients.find((c) => c.id === clientCaseId),
@@ -276,16 +281,18 @@ export default function NationalVisaPage() {
                       key={c.id}
                       onClick={() => {
                         setClientCaseId(c.id);
-                        // Auto-populate children from client record's childrenData
+                        // Auto-populate spouse name from client record
+                        const spName = (c as any).spouseName;
+                        if (spName) setWifeName(spName);
+                        // Auto-populate children from client record's childrenData (exact name+age)
                         const raw = (c as any).childrenData;
                         if (raw) {
                           try {
                             const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
                             if (Array.isArray(arr) && arr.length > 0) {
                               setChildren(arr.map((ch: any) => ({
-                                name: "",
-                                // Convert ageRange to representative age: "0-17" → 10, "18-26" → 20
-                                age: ch.ageRange === "18-26" ? 20 : 10,
+                                name: ch.name || "",
+                                age: typeof ch.age === "number" ? ch.age : (ch.ageRange === "18-26" ? 20 : 10),
                               })));
                             } else {
                               setChildren([]);
@@ -567,8 +574,24 @@ export default function NationalVisaPage() {
                       </div>
 
                       {/* Info */}
-                      <div className="text-right">
-                        <p className="font-semibold">{wf.clientName}</p>
+                      <div className="text-right flex-1">
+                        <div className="flex items-center justify-end gap-2 mb-1">
+                          <select
+                            value={wf.status || "in_progress"}
+                            onChange={e => updateStatusMutation.mutate({ id: wf.id, status: e.target.value as any })}
+                            onClick={e => e.stopPropagation()}
+                            className={`text-xs font-medium px-2 py-0.5 rounded-full border cursor-pointer outline-none ${
+                              wf.status === "submitted" ? "bg-green-50 text-green-700 border-green-200" :
+                              wf.status === "completed" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                              "bg-amber-50 text-amber-700 border-amber-200"
+                            }`}
+                          >
+                            <option value="in_progress">• قيد التجهيز</option>
+                            <option value="completed">✔ مكتمل</option>
+                            <option value="submitted">✓✓ مُقدَم</option>
+                          </select>
+                          <p className="font-semibold">{wf.clientName}</p>
+                        </div>
                         <p className="text-xs text-muted-foreground mt-1">
                           {wf.wifeName ? `الزوجة: ${wf.wifeName}` : "بدون اسم زوجة"}
                           {childCount > 0 ? ` | ${childCount} أبناء` : " | بدون أبناء"}
