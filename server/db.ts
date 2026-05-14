@@ -389,6 +389,35 @@ export async function getConsultantStats() {
   return Object.entries(stats).map(([name, s]) => ({ name, ...s }));
 }
 
+/** Monthly revenue (signed contracts) for a given year, optionally filtered by consultant. */
+export async function getMonthlyRevenue(year: number, consultantName?: string) {
+  const db = await getDb();
+  if (!db) return [] as { month: number; value: number }[];
+  let all = await db.select().from(contracts).where(eq(contracts.status, "signed"));
+  if (consultantName) all = all.filter(c => c.consultantName === consultantName);
+  const monthly: Record<number, number> = {};
+  for (let m = 1; m <= 12; m++) monthly[m] = 0;
+  for (const c of all) {
+    if (!c.createdAt) continue;
+    const d = new Date(c.createdAt);
+    if (d.getFullYear() === year) {
+      monthly[d.getMonth() + 1] += Number(c.contractValue);
+    }
+  }
+  return Object.entries(monthly).map(([month, value]) => ({ month: Number(month), value }));
+}
+
+/** Return all contracts matching optional filters — used for client-side CSV export. */
+export async function getFilteredContracts(consultantName?: string, dateFrom?: Date, dateTo?: Date) {
+  const db = await getDb();
+  if (!db) return [];
+  let all = await db.select().from(contracts).orderBy(desc(contracts.createdAt));
+  if (consultantName) all = all.filter(c => c.consultantName === consultantName);
+  if (dateFrom) all = all.filter(c => c.createdAt && new Date(c.createdAt) >= dateFrom);
+  if (dateTo) all = all.filter(c => c.createdAt && new Date(c.createdAt) <= dateTo);
+  return all;
+}
+
 // ─── Client Documentation DB Helpers ─────────────────────────────────────────
 import { clientCases, clientDocuments, InsertClientCase, InsertClientDocument } from "../drizzle/schema";
 

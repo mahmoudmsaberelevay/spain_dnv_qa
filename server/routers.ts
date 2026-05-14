@@ -16,6 +16,8 @@ import {
   getTotalPaidByContractId, getContractStats, getFamilyMemberDistribution,
   getRecentContracts, getPaymentsByContractId, getNextContractSequence, getNextContractSequenceForYear,
   getConsultantStats,
+  getMonthlyRevenue,
+  getFilteredContracts,
   createProformaInvoice, getAllProformaInvoices, getProformaInvoiceById, markProformaInvoicePaid, updateProformaInvoicePdfUrl,
 } from "./db";
 import { generateContractDoc, uploadContractToStorage, calculateContractValue } from "./contractGenerator";
@@ -1255,6 +1257,12 @@ const contractingRouter = router({
       .input(z.object({ limit: z.number().optional(), consultantName: z.string().optional(), dateFrom: z.date().optional(), dateTo: z.date().optional() }))
       .query(async ({ input }) => getRecentContracts(input.limit ?? 10, input.consultantName, input.dateFrom, input.dateTo)),
     consultantStats: protectedProcedure.query(async () => getConsultantStats()),
+    monthlyRevenue: protectedProcedure
+      .input(z.object({ year: z.number(), consultantName: z.string().optional() }))
+      .query(async ({ input }) => getMonthlyRevenue(input.year, input.consultantName)),
+    exportContracts: protectedProcedure
+      .input(z.object({ consultantName: z.string().optional(), dateFrom: z.date().optional(), dateTo: z.date().optional() }))
+      .query(async ({ input }) => getFilteredContracts(input.consultantName, input.dateFrom, input.dateTo)),
   }),
   // Client search for invoice/proforma creation — accessible to all logged-in users
   searchClients: protectedProcedure

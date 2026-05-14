@@ -508,3 +508,12 @@
 - [x] Fix stamp note bug: social insurance certificate incorrectly showing Higher Education stamp note
 - [x] Date range filter for Contracting Dashboard: backend (db.ts + routers.ts) updated with dateFrom/dateTo params
 - [x] Date range filter for Contracting Dashboard: frontend ContractingDashboard.tsx updated with preset dropdown (All Time, This Month, Last Month, This Quarter, This Year), active filter badges, and memoized date computation
+
+## Change Requests (Round 71)
+- [x] Backend: getMonthlyRevenue(year, consultantName?) helper in db.ts — returns array of {month, value} for a given year
+- [x] Backend: analytics.monthlyRevenue tRPC procedure accepting year and optional consultantName
+- [x] Backend: analytics.exportContracts tRPC procedure accepting consultantName, dateFrom, dateTo — returns all matching contracts as JSON for client-side CSV/Excel generation
+- [x] Frontend: Contracts list page — add date range preset dropdown (All Time, This Month, Last Month, This Quarter, This Year) alongside existing filters
+- [x] Frontend: Contracts list page — add Export CSV button that downloads filtered contracts as a .csv file
+- [x] Frontend: Contracting Dashboard — add Export CSV button that downloads currently filtered contracts
+- [x] Frontend: Contracting Dashboard — add monthly revenue bar chart (recharts BarChart) below stat cards, showing contract value per month for the selected year

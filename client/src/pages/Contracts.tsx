@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,12 +13,84 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Download, Search, FileText, Users, Calendar, CheckCircle, XCircle, Clock, ExternalLink,
+  Plus, Download, Search, FileText, Users, Calendar, CheckCircle, XCircle, Clock, Filter,
 } from "lucide-react";
 import NewContractDialog from "@/components/NewContractDialog";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { usePermissions } from "@/contexts/PermissionsContext";
+
+const CONSULTANTS = ["Ziad El Shurafa", "Mahmoud Saber", "Fouad Abdo", "Kirolos Nabil"];
+
+type DateRangePreset = "all" | "this_month" | "last_month" | "this_quarter" | "this_year";
+
+const DATE_RANGE_LABELS: Record<DateRangePreset, string> = {
+  all: "All Time",
+  this_month: "This Month",
+  last_month: "Last Month",
+  this_quarter: "This Quarter",
+  this_year: "This Year",
+};
+
+function computeDateRange(preset: DateRangePreset): { dateFrom?: Date; dateTo?: Date } {
+  const now = new Date();
+  if (preset === "all") return {};
+  if (preset === "this_month") {
+    return {
+      dateFrom: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0),
+      dateTo: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999),
+    };
+  }
+  if (preset === "last_month") {
+    return {
+      dateFrom: new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0),
+      dateTo: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999),
+    };
+  }
+  if (preset === "this_quarter") {
+    const q = Math.floor(now.getMonth() / 3);
+    return {
+      dateFrom: new Date(now.getFullYear(), q * 3, 1, 0, 0, 0, 0),
+      dateTo: new Date(now.getFullYear(), q * 3 + 3, 0, 23, 59, 59, 999),
+    };
+  }
+  if (preset === "this_year") {
+    return {
+      dateFrom: new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0),
+      dateTo: new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999),
+    };
+  }
+  return {};
+}
+
+function exportToCSV(rows: any[], filename: string) {
+  const headers = [
+    "Contract Code", "Client Name", "Family Members", "Contract Value (EUR)",
+    "Discount (EUR)", "Consultant", "Status", "Date",
+  ];
+  const csvRows = [
+    headers.join(","),
+    ...rows.map((c) =>
+      [
+        c.contractCode,
+        `"${c.clientName}"`,
+        c.familyMembers,
+        Number(c.contractValue).toFixed(2),
+        Number(c.discountValue ?? 0).toFixed(2),
+        `"${c.consultantName ?? ""}"`,
+        c.status,
+        c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "",
+      ].join(",")
+    ),
+  ];
+  const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function Contracts() {
   const { canEdit } = usePermissions();
@@ -26,8 +98,10 @@ export default function Contracts() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [consultantFilter, setConsultantFilter] = useState<string>("all");
+  const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>("all");
 
-  const CONSULTANTS = ["Ziad El Shurafa", "Mahmoud Saber", "Fouad Abdo", "Kirolos Nabil"];
+  const { dateFrom, dateTo } = useMemo(() => computeDateRange(dateRangePreset), [dateRangePreset]);
+
   const [confirmStatus, setConfirmStatus] = useState<{
     contractId: number;
     contractCode: string;
@@ -41,7 +115,7 @@ export default function Contracts() {
   const [redownloadingId, setRedownloadingId] = useState<number | null>(null);
 
   const regenerateDocMutation = trpc.contracting.contracts.regenerateDoc.useMutation({
-    onSuccess: (data, variables) => {
+    onSuccess: (data) => {
       utils.contracting.contracts.list.invalidate();
       window.open(data.docUrl, "_blank");
       toast.success("Contract document ready — downloading now.");
@@ -67,14 +141,31 @@ export default function Contracts() {
     },
   });
 
-  const filtered = contracts?.filter((c) => {
-    const matchesSearch =
-      c.clientName.toLowerCase().includes(search.toLowerCase()) ||
-      c.contractCode.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || c.status === statusFilter;
-    const matchesConsultant = consultantFilter === "all" || c.consultantName === consultantFilter;
-    return matchesSearch && matchesStatus && matchesConsultant;
-  });
+  const filtered = useMemo(() => {
+    if (!contracts) return [];
+    return contracts.filter((c) => {
+      const matchesSearch =
+        c.clientName.toLowerCase().includes(search.toLowerCase()) ||
+        c.contractCode.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = statusFilter === "all" || c.status === statusFilter;
+      const matchesConsultant = consultantFilter === "all" || c.consultantName === consultantFilter;
+      let matchesDate = true;
+      if (dateFrom && c.createdAt) matchesDate = matchesDate && new Date(c.createdAt) >= dateFrom;
+      if (dateTo && c.createdAt) matchesDate = matchesDate && new Date(c.createdAt) <= dateTo;
+      return matchesSearch && matchesStatus && matchesConsultant && matchesDate;
+    });
+  }, [contracts, search, statusFilter, consultantFilter, dateFrom, dateTo]);
+
+  const handleExportCSV = useCallback(() => {
+    if (!filtered.length) {
+      toast.error("No contracts to export.");
+      return;
+    }
+    const preset = dateRangePreset !== "all" ? `_${DATE_RANGE_LABELS[dateRangePreset].replace(/\s+/g, "_")}` : "";
+    const consultant = consultantFilter !== "all" ? `_${consultantFilter.replace(/\s+/g, "_")}` : "";
+    exportToCSV(filtered, `contracts${preset}${consultant}.csv`);
+    toast.success(`Exported ${filtered.length} contracts to CSV.`);
+  }, [filtered, dateRangePreset, consultantFilter]);
 
   const statusOptions = [
     { value: "pending", label: "Pending", icon: Clock, color: "text-yellow-600" },
@@ -82,30 +173,47 @@ export default function Contracts() {
     { value: "cancelled", label: "Cancelled", icon: XCircle, color: "text-red-600" },
   ];
 
+  const hasActiveFilters = dateRangePreset !== "all" || consultantFilter !== "all" || statusFilter !== "all" || search.trim() !== "";
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Issued Contracts</h1>
           <p className="text-muted-foreground text-sm mt-1">
             Manage all generated contracts and their statuses
           </p>
         </div>
-        {canEdit("contracting") && (
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
-            onClick={() => setShowNewContract(true)}
-            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
-            size="lg"
+            variant="outline"
+            size="sm"
+            className="gap-2 h-9"
+            onClick={handleExportCSV}
+            disabled={!filtered.length}
           >
-            <Plus className="h-4 w-4" />
-            Issue New Contract
+            <Download className="h-4 w-4" />
+            Export CSV
+            {filtered.length > 0 && (
+              <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">{filtered.length}</Badge>
+            )}
           </Button>
-        )}
+          {canEdit("contracting") && (
+            <Button
+              onClick={() => setShowNewContract(true)}
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+              size="lg"
+            >
+              <Plus className="h-4 w-4" />
+              Issue New Contract
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 flex-wrap">
+      <div className="flex gap-3 flex-wrap items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -115,6 +223,23 @@ export default function Contracts() {
             className="pl-9 h-10"
           />
         </div>
+
+        {/* Date Range */}
+        <div className="flex items-center gap-1.5">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <Select value={dateRangePreset} onValueChange={(v) => setDateRangePreset(v as DateRangePreset)}>
+            <SelectTrigger className="w-40 h-10">
+              <SelectValue placeholder="All Time" />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(DATE_RANGE_LABELS) as DateRangePreset[]).map((p) => (
+                <SelectItem key={p} value={p}>{DATE_RANGE_LABELS[p]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Status */}
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-40 h-10">
             <SelectValue placeholder="All statuses" />
@@ -126,18 +251,54 @@ export default function Contracts() {
             <SelectItem value="cancelled">Cancelled</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={consultantFilter} onValueChange={setConsultantFilter}>
-          <SelectTrigger className="w-44 h-10">
-            <SelectValue placeholder="All consultants" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Consultants</SelectItem>
-            {CONSULTANTS.map((c) => (
-              <SelectItem key={c} value={c}>{c}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+
+        {/* Consultant */}
+        <div className="flex items-center gap-1.5">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <Select value={consultantFilter} onValueChange={setConsultantFilter}>
+            <SelectTrigger className="w-44 h-10">
+              <SelectValue placeholder="All consultants" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Consultants</SelectItem>
+              {CONSULTANTS.map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
+
+      {/* Active filter badges */}
+      {hasActiveFilters && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {dateRangePreset !== "all" && (
+            <Badge variant="secondary" className="gap-1 text-xs">
+              <Calendar className="h-3 w-3" />
+              {DATE_RANGE_LABELS[dateRangePreset]}
+              <button onClick={() => setDateRangePreset("all")} className="ml-1 hover:text-destructive">×</button>
+            </Badge>
+          )}
+          {consultantFilter !== "all" && (
+            <Badge variant="secondary" className="gap-1 text-xs">
+              {consultantFilter}
+              <button onClick={() => setConsultantFilter("all")} className="ml-1 hover:text-destructive">×</button>
+            </Badge>
+          )}
+          {statusFilter !== "all" && (
+            <Badge variant="secondary" className="gap-1 text-xs capitalize">
+              {statusFilter}
+              <button onClick={() => setStatusFilter("all")} className="ml-1 hover:text-destructive">×</button>
+            </Badge>
+          )}
+          {search.trim() !== "" && (
+            <Badge variant="secondary" className="gap-1 text-xs">
+              "{search}"
+              <button onClick={() => setSearch("")} className="ml-1 hover:text-destructive">×</button>
+            </Badge>
+          )}
+        </div>
+      )}
 
       {/* Contracts Table */}
       <Card className="border shadow-sm">
@@ -154,7 +315,7 @@ export default function Contracts() {
             <div className="p-8 text-center">
               <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
               <p className="text-muted-foreground">
-                {search || statusFilter !== "all" ? "No contracts match your filters." : "No contracts yet. Issue your first contract!"}
+                {hasActiveFilters ? "No contracts match your filters." : "No contracts yet. Issue your first contract!"}
               </p>
             </div>
           ) : (
@@ -256,26 +417,25 @@ export default function Contracts() {
                               Word
                             </Button>
                           )}
-
                           {canEdit("contracting") && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 gap-1 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50"
-                            disabled={redownloadingId === contract.id}
-                            onClick={() => {
-                              setRedownloadingId(contract.id);
-                              regenerateDocMutation.mutate({ id: contract.id });
-                            }}
-                            title="Re-generate and download a fresh Word document"
-                          >
-                            {redownloadingId === contract.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Download className="h-3.5 w-3.5" />
-                            )}
-                            Re-download
-                          </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 gap-1 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                              disabled={redownloadingId === contract.id}
+                              onClick={() => {
+                                setRedownloadingId(contract.id);
+                                regenerateDocMutation.mutate({ id: contract.id });
+                              }}
+                              title="Re-generate and download a fresh Word document"
+                            >
+                              {redownloadingId === contract.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Download className="h-3.5 w-3.5" />
+                              )}
+                              Re-download
+                            </Button>
                           )}
                         </div>
                       </td>

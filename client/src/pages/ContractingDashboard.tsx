@@ -3,13 +3,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Receipt, TrendingUp, Users, Plus, ArrowRight, Clock, UserCheck, Filter, Calendar } from "lucide-react";
+import {
+  FileText, Receipt, TrendingUp, Users, Plus, ArrowRight, Clock,
+  UserCheck, Filter, Calendar, Download,
+} from "lucide-react";
 import { useLocation } from "wouter";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
 import NewContractDialog from "@/components/NewContractDialog";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
+import { toast } from "sonner";
 
 const CONSULTANTS = ["Fouad Abdo", "Kirlos Nabil"];
+
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 type DateRangePreset = "all" | "this_month" | "last_month" | "this_quarter" | "this_year";
 
@@ -24,33 +33,61 @@ const DATE_RANGE_LABELS: Record<DateRangePreset, string> = {
 function computeDateRange(preset: DateRangePreset): { dateFrom?: Date; dateTo?: Date } {
   const now = new Date();
   if (preset === "all") return {};
-
   if (preset === "this_month") {
-    const from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    return { dateFrom: from, dateTo: to };
+    return {
+      dateFrom: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0),
+      dateTo: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999),
+    };
   }
-
   if (preset === "last_month") {
-    const from = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
-    const to = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-    return { dateFrom: from, dateTo: to };
+    return {
+      dateFrom: new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0),
+      dateTo: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999),
+    };
   }
-
   if (preset === "this_quarter") {
-    const quarter = Math.floor(now.getMonth() / 3);
-    const from = new Date(now.getFullYear(), quarter * 3, 1, 0, 0, 0, 0);
-    const to = new Date(now.getFullYear(), quarter * 3 + 3, 0, 23, 59, 59, 999);
-    return { dateFrom: from, dateTo: to };
+    const q = Math.floor(now.getMonth() / 3);
+    return {
+      dateFrom: new Date(now.getFullYear(), q * 3, 1, 0, 0, 0, 0),
+      dateTo: new Date(now.getFullYear(), q * 3 + 3, 0, 23, 59, 59, 999),
+    };
   }
-
   if (preset === "this_year") {
-    const from = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-    const to = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-    return { dateFrom: from, dateTo: to };
+    return {
+      dateFrom: new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0),
+      dateTo: new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999),
+    };
   }
-
   return {};
+}
+
+function exportToCSV(rows: any[], filename: string) {
+  const headers = [
+    "Contract Code", "Client Name", "Family Members", "Contract Value (EUR)",
+    "Discount (EUR)", "Consultant", "Status", "Date",
+  ];
+  const csvRows = [
+    headers.join(","),
+    ...rows.map((c) =>
+      [
+        c.contractCode,
+        `"${c.clientName}"`,
+        c.familyMembers,
+        Number(c.contractValue).toFixed(2),
+        Number(c.discountValue ?? 0).toFixed(2),
+        `"${c.consultantName ?? ""}"`,
+        c.status,
+        c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "",
+      ].join(",")
+    ),
+  ];
+  const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export default function Dashboard() {
@@ -58,6 +95,8 @@ export default function Dashboard() {
   const [showNewContract, setShowNewContract] = useState(false);
   const [selectedConsultant, setSelectedConsultant] = useState<string | undefined>(undefined);
   const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>("all");
+
+  const currentYear = new Date().getFullYear();
 
   const { dateFrom, dateTo } = useMemo(() => computeDateRange(dateRangePreset), [dateRangePreset]);
 
@@ -71,10 +110,48 @@ export default function Dashboard() {
     [selectedConsultant, dateFrom, dateTo]
   );
 
+  const exportInput = useMemo(
+    () => ({ consultantName: selectedConsultant, dateFrom, dateTo }),
+    [selectedConsultant, dateFrom, dateTo]
+  );
+
+  const chartYear = useMemo(() => {
+    if (dateFrom) return dateFrom.getFullYear();
+    return currentYear;
+  }, [dateFrom, currentYear]);
+
+  const monthlyInput = useMemo(
+    () => ({ year: chartYear, consultantName: selectedConsultant }),
+    [chartYear, selectedConsultant]
+  );
+
   const { data: stats, isLoading: statsLoading } = trpc.contracting.analytics.stats.useQuery(statsInput);
   const { data: recentContracts, isLoading: contractsLoading } = trpc.contracting.analytics.recentContracts.useQuery(recentInput);
+  const { data: exportData } = trpc.contracting.analytics.exportContracts.useQuery(exportInput);
+  const { data: monthlyRevenue } = trpc.contracting.analytics.monthlyRevenue.useQuery(monthlyInput);
   const { data: rateInfo } = trpc.contracting.exchangeRate.current.useQuery();
   const { data: consultantStats } = trpc.contracting.analytics.consultantStats.useQuery();
+
+  const chartData = useMemo(() => {
+    if (!monthlyRevenue) return [];
+    return monthlyRevenue.map((d) => ({
+      month: MONTH_LABELS[d.month - 1],
+      value: d.value,
+    }));
+  }, [monthlyRevenue]);
+
+  const hasChartData = chartData.some((d) => d.value > 0);
+
+  const handleExportCSV = useCallback(() => {
+    if (!exportData?.length) {
+      toast.error("No contracts to export.");
+      return;
+    }
+    const preset = dateRangePreset !== "all" ? `_${DATE_RANGE_LABELS[dateRangePreset].replace(/\s+/g, "_")}` : "";
+    const consultant = selectedConsultant ? `_${selectedConsultant.replace(/\s+/g, "_")}` : "";
+    exportToCSV(exportData, `contracts${preset}${consultant}.csv`);
+    toast.success(`Exported ${exportData.length} contracts to CSV.`);
+  }, [exportData, dateRangePreset, selectedConsultant]);
 
   const statCards = [
     {
@@ -158,6 +235,21 @@ export default function Dashboard() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Export CSV */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 h-9"
+            onClick={handleExportCSV}
+            disabled={!exportData?.length}
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+            {exportData && exportData.length > 0 && (
+              <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">{exportData.length}</Badge>
+            )}
+          </Button>
 
           <Button
             onClick={() => setShowNewContract(true)}
@@ -260,6 +352,66 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Monthly Revenue Bar Chart */}
+      <Card className="border shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-semibold flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              Monthly Revenue — {chartYear}
+              {selectedConsultant && (
+                <span className="text-xs font-normal text-muted-foreground">({selectedConsultant})</span>
+              )}
+            </div>
+            <span className="text-xs font-normal text-muted-foreground">Signed contracts only</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!hasChartData ? (
+            <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
+              No signed contracts in {chartYear}
+              {selectedConsultant ? ` for ${selectedConsultant}` : ""}.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v) => v === 0 ? "0" : `€${(v / 1000).toFixed(0)}k`}
+                  width={50}
+                />
+                <Tooltip
+                  formatter={(value: number) => [formatCurrency(value, "EUR"), "Revenue"]}
+                  labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600 }}
+                  contentStyle={{
+                    background: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                  }}
+                  cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
+                />
+                <Bar
+                  dataKey="value"
+                  fill="hsl(var(--primary))"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={40}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Recent Contracts */}
       <Card className="border shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between pb-3">
@@ -334,25 +486,25 @@ export default function Dashboard() {
               {consultantStats
                 .filter(c => !selectedConsultant || c.name === selectedConsultant)
                 .map((c) => (
-                <div key={c.name} className="flex items-center justify-between px-6 py-3 hover:bg-muted/30 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <UserCheck className="h-4 w-4 text-primary" />
+                  <div key={c.name} className="flex items-center justify-between px-6 py-3 hover:bg-muted/30 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <UserCheck className="h-4 w-4 text-primary" />
+                      </div>
+                      <span className="text-sm font-medium text-foreground">{c.name}</span>
                     </div>
-                    <span className="text-sm font-medium text-foreground">{c.name}</span>
+                    <div className="flex items-center gap-4 text-right">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Signed</p>
+                        <p className="text-sm font-bold text-green-600">{c.count}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Total Value</p>
+                        <p className="text-sm font-bold text-foreground">{formatCurrency(c.value, "EUR")}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 text-right">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Signed</p>
-                      <p className="text-sm font-bold text-green-600">{c.count}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Total Value</p>
-                      <p className="text-sm font-bold text-foreground">{formatCurrency(c.value, "EUR")}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))}
             </div>
           </CardContent>
         </Card>
