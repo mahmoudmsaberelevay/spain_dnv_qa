@@ -200,11 +200,18 @@ export const clientCases = mysqlTable("clientCases", {
   clientCode: varchar("clientCode", { length: 64 }).notNull(),
   applicationType: mysqlEnum("applicationType", ["freelancer", "business_owner"]).notNull(),
   maritalStatus: mysqlEnum("maritalStatus", ["single", "family"]).notNull(),
-  paralegal: mysqlEnum("paralegal", ["Madonna", "Monica", "Marina"]).notNull(),
+  paralegal: mysqlEnum("paralegal", ["Madonna", "Monica", "Marina"]),
   consultant: mysqlEnum("consultant", ["Mahmoud", "Ziad", "Fouad", "Kirolos"]).notNull(),
   schengenDate: timestamp("schengenDate"),
   embassyAppointmentDate: timestamp("embassyAppointmentDate"),
   expectedSubmissionDate: timestamp("expectedSubmissionDate"),
+  // Schengen visa tracking
+  schengenVisaValid: boolean("schengenVisaValid").default(false),
+  schengenExpiryDate: date("schengenExpiryDate"),
+  // Embassy attestation email date (for 15-day reminder)
+  embassyEmailDate: date("embassyEmailDate"),
+  // Google Drive link for client documents folder
+  driveLink: text("driveLink"),
   // Children data: JSON array of { ageRange: "0-17" | "18-26" }
   childrenData: json("childrenData"),
   // 3-stage workflow

@@ -27,6 +27,8 @@ export const FREELANCER_MAIN_DOCS: DocDef[] = [
   { docKey: "completion_invoices",        docName: "Completion of Invoices",              category: "main", expirationMonths: 6,    requiresMofa: false, requiresEmbassy: false },
   { docKey: "recommendation_letter",      docName: "Completion of Recommendation Letter", category: "main", expirationMonths: 6,    requiresMofa: false, requiresEmbassy: false },
   { docKey: "declaration_none_practice",  docName: "Declaration None of Practice",        category: "main", expirationMonths: 6,    requiresMofa: true,  requiresEmbassy: true  },
+  { docKey: "admission_not_practice",      docName: "Admission of Not Practice the Job",     category: "main", expirationMonths: 6,    requiresMofa: true,  requiresEmbassy: true  },
+  { docKey: "power_of_attorney",           docName: "Power of Attorney for Document Attestation", category: "main", expirationMonths: null, requiresMofa: false, requiresEmbassy: false },
 ];
 
 // ─── Business Owner — Main Applicant ─────────────────────────────────────────
@@ -46,6 +48,9 @@ export const BUSINESS_OWNER_MAIN_DOCS: DocDef[] = [
   { docKey: "tax_card",                   docName: "Tax Card",                            category: "main", expirationMonths: 12,   requiresMofa: false, requiresEmbassy: false },
   { docKey: "vat_cert",                   docName: "VAT Certificate",                     category: "main", expirationMonths: 12,   requiresMofa: false, requiresEmbassy: false },
   { docKey: "tax_details",                docName: "Tax Details",                         category: "main", expirationMonths: 12,   requiresMofa: true,  requiresEmbassy: true  },
+  { docKey: "company_memorandum",          docName: "Company Memorandum of Association",    category: "main", expirationMonths: null, requiresMofa: true,  requiresEmbassy: true  },
+  { docKey: "admission_not_practice",      docName: "Admission of Not Practice the Job",    category: "main", expirationMonths: 6,    requiresMofa: true,  requiresEmbassy: true  },
+  { docKey: "power_of_attorney",           docName: "Power of Attorney for Document Attestation", category: "main", expirationMonths: null, requiresMofa: false, requiresEmbassy: false },
 ];
 
 // ─── Family Base Documents (always added when maritalStatus = 'family') ───────
@@ -150,6 +155,10 @@ export const ARABIC_DOC_NAMES: Record<string, string> = {
   tax_card:                  "صورة البطاقة الضريبية",
   vat_cert:                  "صورة شهادة ضريبة القيمة المضافة",
   tax_details:               "شهادة البيانات الضريبة",
+  // New documents
+  company_memorandum:         "عقد تأسيس الشركة (تحتاج الي ختم هيئة الاستثمار وختم وزارة الخارجية)",
+  admission_not_practice:     "إقرار عدم مزاولة المهنة",
+  power_of_attorney:          "توكيل رسمي لتوثيق المستندات",
   // Family base docs
   family_passports:              "جوازات سفر أفراد الأسرة",
   marriage_certificates:         "شهادات الزواج",

@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE `clientCases` MODIFY COLUMN `paralegal` enum('Madonna','Monica','Marina');\nALTER TABLE `clientCases` ADD `schengenVisaValid` boolean DEFAULT false;\nALTER TABLE `clientCases` ADD `schengenExpiryDate` date;\nALTER TABLE `clientCases` ADD `embassyEmailDate` date;\nALTER TABLE `clientCases` ADD `driveLink` text;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute ALTER TABLE `clientCases` MODIFY COLUMN `paralegal` enum('Madonna','Monica','Marina');\nALTER TABLE `clientCases` ADD `schengenVisaValid` boolean DEFAULT false;\nALTER TABLE `clientCases` ADD `schengenExpiryDate` date;\nALTER TABLE `clientCases` ADD `embassyEmailDate` date;\nALTER TABLE `clientCases` ADD `driveLink` text;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 3662
+}

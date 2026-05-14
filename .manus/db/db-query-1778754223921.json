@@ -1,0 +1,74 @@
+{
+  "query": "SHOW COLUMNS FROM clientCases LIKE 'schengen%';\nSHOW COLUMNS FROM clientCases LIKE 'embassy%';\nSHOW COLUMNS FROM clientCases LIKE 'drive%';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SHOW COLUMNS FROM clientCases LIKE 'schengen%';\nSHOW COLUMNS FROM clientCases LIKE 'embassy%';\nSHOW COLUMNS FROM clientCases LIKE 'drive%';",
+  "rows": [
+    {
+      "Field": "schengenDate",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "schengenVisaValid",
+      "Type": "tinyint(1)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "schengenExpiryDate",
+      "Type": "date",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "Field",
+      "Type": "Type",
+      "Null": "Null",
+      "Key": "Key",
+      "Default": "Default",
+      "Extra": "Extra"
+    },
+    {
+      "Field": "embassyAppointmentDate",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "embassyEmailDate",
+      "Type": "date",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "Field",
+      "Type": "Type",
+      "Null": "Null",
+      "Key": "Key",
+      "Default": "Default",
+      "Extra": "Extra"
+    },
+    {
+      "Field": "driveLink",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nschengenDate\ttimestamp\tYES\t\tNULL\t\nschengenVisaValid\ttinyint(1)\tYES\t\t0\t\nschengenExpiryDate\tdate\tYES\t\tNULL\t\nField\tType\tNull\tKey\tDefault\tExtra\nembassyAppointmentDate\ttimestamp\tYES\t\tNULL\t\nembassyEmailDate\tdate\tYES\t\tNULL\t\nField\tType\tNull\tKey\tDefault\tExtra\ndriveLink\ttext\tYES\t\tNULL\t\n",
+  "stderr": "",
+  "execution_time_ms": 2154
+}

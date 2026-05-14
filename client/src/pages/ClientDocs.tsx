@@ -19,10 +19,11 @@ type FormState = {
   clientCode: string;
   applicationType: "freelancer" | "business_owner" | "";
   maritalStatus: "single" | "family" | "";
-  paralegal: "Madonna" | "Monica" | "Marina" | "";
   consultant: "Mahmoud" | "Ziad" | "Fouad" | "Kirolos" | "";
   numberOfKids: number;
   children: ChildEntry[];
+  schengenVisaValid: boolean | null; // null = not answered yet
+  schengenExpiryDate: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -30,10 +31,11 @@ const EMPTY_FORM: FormState = {
   clientCode: "",
   applicationType: "",
   maritalStatus: "",
-  paralegal: "",
   consultant: "",
   numberOfKids: 0,
   children: [],
+  schengenVisaValid: null,
+  schengenExpiryDate: "",
 };
 
 export default function ClientDocs() {
@@ -108,8 +110,16 @@ export default function ClientDocs() {
   };
 
   const handleCreate = () => {
-    if (!form.clientName || !form.clientCode || !form.applicationType || !form.maritalStatus || !form.paralegal || !form.consultant) {
-      toast.error("Please fill in all fields");
+    if (!form.clientName || !form.clientCode || !form.applicationType || !form.maritalStatus || !form.consultant) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+    if (form.schengenVisaValid === null) {
+      toast.error("Please indicate whether the client has a valid Schengen visa");
+      return;
+    }
+    if (form.schengenVisaValid && !form.schengenExpiryDate) {
+      toast.error("Please enter the Schengen visa expiry date");
       return;
     }
     if (form.maritalStatus === "family" && form.numberOfKids > 0 && form.children.some(c => !c.ageRange)) {
@@ -121,9 +131,10 @@ export default function ClientDocs() {
       clientCode: form.clientCode,
       applicationType: form.applicationType as "freelancer" | "business_owner",
       maritalStatus: form.maritalStatus as "single" | "family",
-      paralegal: form.paralegal as "Madonna" | "Monica" | "Marina",
       consultant: form.consultant as "Mahmoud" | "Ziad" | "Fouad" | "Kirolos",
       children: form.maritalStatus === "family" ? form.children : [],
+      schengenVisaValid: form.schengenVisaValid ?? false,
+      schengenExpiryDate: form.schengenVisaValid ? form.schengenExpiryDate : undefined,
     });
   };
 
@@ -291,34 +302,68 @@ export default function ClientDocs() {
                 </div>
               )}
 
-              {/* Paralegal + Consultant */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-gray-700 text-sm font-medium">Paralegal</Label>
-                  <Select value={form.paralegal} onValueChange={v => setForm(f => ({ ...f, paralegal: v as any }))}>
-                    <SelectTrigger className="border-gray-300 text-gray-900 bg-white">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      {["Madonna", "Monica", "Marina"].map(p => (
-                        <SelectItem key={p} value={p} className="text-gray-900">{p}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              {/* Consultant only (paralegal assigned later on client page) */}
+              <div className="space-y-1.5">
+                <Label className="text-gray-700 text-sm font-medium">Consultant</Label>
+                <Select value={form.consultant} onValueChange={v => setForm(f => ({ ...f, consultant: v as any }))}>
+                  <SelectTrigger className="border-gray-300 text-gray-900 bg-white">
+                    <SelectValue placeholder="Select consultant" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-gray-200">
+                    {["Mahmoud", "Ziad", "Fouad", "Kirolos"].map(c => (
+                      <SelectItem key={c} value={c} className="text-gray-900">{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-400">Paralegal can be assigned on the client detail page after creation.</p>
+              </div>
+
+              {/* ── Schengen Visa Section ── */}
+              <div className="border border-amber-200 rounded-lg p-4 bg-amber-50 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-amber-800">🛂 Schengen Visa</span>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-gray-700 text-sm font-medium">Consultant</Label>
-                  <Select value={form.consultant} onValueChange={v => setForm(f => ({ ...f, consultant: v as any }))}>
-                    <SelectTrigger className="border-gray-300 text-gray-900 bg-white">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      {["Mahmoud", "Ziad", "Fouad", "Kirolos"].map(c => (
-                        <SelectItem key={c} value={c} className="text-gray-900">{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-gray-700 text-sm">Does the client have a valid Schengen visa?</Label>
+                  <div className="flex gap-3">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={form.schengenVisaValid === true ? "default" : "outline"}
+                      className={form.schengenVisaValid === true
+                        ? "bg-green-600 hover:bg-green-700 text-white border-green-600"
+                        : "border-gray-300 text-gray-700"}
+                      onClick={() => setForm(f => ({ ...f, schengenVisaValid: true, schengenExpiryDate: f.schengenExpiryDate }))}
+                    >
+                      ✓ Yes
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={form.schengenVisaValid === false ? "default" : "outline"}
+                      className={form.schengenVisaValid === false
+                        ? "bg-red-600 hover:bg-red-700 text-white border-red-600"
+                        : "border-gray-300 text-gray-700"}
+                      onClick={() => setForm(f => ({ ...f, schengenVisaValid: false, schengenExpiryDate: "" }))}
+                    >
+                      ✗ No
+                    </Button>
+                  </div>
                 </div>
+                {form.schengenVisaValid === true && (
+                  <div className="space-y-1.5">
+                    <Label className="text-gray-700 text-sm font-medium">Schengen Visa Expiry Date <span className="text-red-500">*</span></Label>
+                    <Input
+                      type="date"
+                      value={form.schengenExpiryDate}
+                      onChange={e => setForm(f => ({ ...f, schengenExpiryDate: e.target.value }))}
+                      className="border-gray-300 text-gray-900 focus:border-[#1e3a5f] focus:ring-[#1e3a5f]"
+                    />
+                  </div>
+                )}
+                {form.schengenVisaValid === false && (
+                  <p className="text-xs text-amber-700">No Schengen visa — reminders will not be sent for visa expiry.</p>
+                )}
               </div>
 
               <Button
@@ -379,39 +424,50 @@ export default function ClientDocs() {
                     <p className="text-gray-400 text-xs mt-0.5">{client.clientCode}</p>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#1e3a5f] transition-colors mt-1" />
-              </div>
-              <div className="flex items-center gap-2 mt-3">
-                <Badge className={`text-xs border px-2 py-0.5 ${getTypeBadge(client.applicationType)}`}>
-                  {getTypeLabel(client.applicationType)}
-                </Badge>
-                <Badge className="text-xs border px-2 py-0.5 bg-gray-100 text-gray-600 border-gray-200">
-                  {client.maritalStatus === "family" ? "Family" : "Single"}
-                </Badge>
-                {client.maritalStatus === "family" && (client.childrenData as any)?.length > 0 && (
-                  <Badge className="text-xs border px-2 py-0.5 bg-purple-50 text-purple-700 border-purple-200 flex items-center gap-1">
-                    <Baby className="w-3 h-3" />
-                    {(client.childrenData as any).length} {(client.childrenData as any).length === 1 ? "child" : "children"}
-                  </Badge>
-                )}
-                <span className="text-gray-400 text-xs ml-auto">{client.consultant}</span>
-              </div>
-              {client.expectedSubmissionDate && (
-                <div className="flex items-center gap-1.5 mt-2 text-xs text-gray-400">
-                  <Calendar className="w-3 h-3" />
-                  Submission: {new Date(client.expectedSubmissionDate).toLocaleDateString()}
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${getTypeBadge(client.applicationType)}`}>
+                    {getTypeLabel(client.applicationType)}
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-[#1e3a5f] transition-colors" />
                 </div>
-              )}
+              </div>
+              <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
+                {client.paralegal && (
+                  <span className="flex items-center gap-1">
+                    <User className="w-3 h-3" />
+                    {client.paralegal}
+                  </span>
+                )}
+                {client.consultant && (
+                  <span className="flex items-center gap-1">
+                    <Briefcase className="w-3 h-3" />
+                    {client.consultant}
+                  </span>
+                )}
+                {client.maritalStatus === "family" && (
+                  <span className="flex items-center gap-1">
+                    <Users className="w-3 h-3" />
+                    Family
+                  </span>
+                )}
+              </div>
             </button>
           ))}
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-            <FolderOpen className="w-8 h-8 text-gray-300" />
+          <div className="w-16 h-16 rounded-full bg-[#1e3a5f]/10 flex items-center justify-center mb-4">
+            <FolderOpen className="w-8 h-8 text-[#1e3a5f]" />
           </div>
-          <p className="text-gray-500 text-sm">No client cases yet</p>
-          <p className="text-gray-400 text-xs mt-1">Create your first client case to get started</p>
+          <h3 className="text-gray-900 font-medium text-lg mb-1">No clients yet</h3>
+          <p className="text-gray-500 text-sm mb-6">Create your first client case to start tracking documents</p>
+          <Button
+            className="bg-[#1e3a5f] hover:bg-[#16304f] text-white gap-2"
+            onClick={() => setOpen(true)}
+          >
+            <Plus className="w-4 h-4" />
+            New Client
+          </Button>
         </div>
       )}
     </div>

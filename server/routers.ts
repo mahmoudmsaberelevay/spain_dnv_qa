@@ -22,7 +22,7 @@ import { generateContractDoc, uploadContractToStorage, calculateContractValue } 
 import { getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
 import { generateAndUploadInvoicePdf } from "./invoiceGenerator";
 import { generateAndUploadProformaPdf } from "./proformaGenerator";
-import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient, notifyNewInvoice, notifyFinClientAdded } from "./emailService";
+import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient, notifyNewInvoice, notifyFinClientAdded, notifyNewClientAssigned } from "./emailService";
 import { generateInvoicePdfBuffer } from "./invoiceGenerator";
 import {
   createClientCase, listClientCases, getClientCase, updateClientCase, deleteClientCase,
@@ -1293,9 +1293,11 @@ const clientDocsRouter = router({
       clientCode: z.string().min(1),
       applicationType: z.enum(["freelancer", "business_owner"]),
       maritalStatus: z.enum(["single", "family"]),
-      paralegal: z.enum(["Madonna", "Monica", "Marina"]),
+      paralegal: z.enum(["Madonna", "Monica", "Marina"]).optional(),
       consultant: z.enum(["Mahmoud", "Ziad", "Fouad", "Kirolos"]),
       children: z.array(z.object({ ageRange: z.enum(["0-17", "18-26"]) })).optional().default([]),
+      schengenVisaValid: z.boolean().optional().default(false),
+      schengenExpiryDate: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const childrenData: ChildEntry[] = input.children;
@@ -1304,10 +1306,12 @@ const clientDocsRouter = router({
         clientCode: input.clientCode,
         applicationType: input.applicationType,
         maritalStatus: input.maritalStatus,
-        paralegal: input.paralegal,
+        paralegal: input.paralegal ?? null,
         consultant: input.consultant,
         userId: ctx.user.id,
         childrenData: childrenData as any,
+        schengenVisaValid: input.schengenVisaValid ?? false,
+        schengenExpiryDate: input.schengenExpiryDate ?? null,
       });
       const insertId = (result as any).insertId as number;
       const checklist = getDocChecklist(input.applicationType, input.maritalStatus, childrenData);
@@ -1321,6 +1325,15 @@ const clientDocsRouter = router({
         requiresEmbassy: d.requiresEmbassy,
       }));
       await createClientDocuments(docs);
+      // Send assignment notification email to paralegal + consultant
+      notifyNewClientAssigned(
+        input.clientName,
+        input.clientCode,
+        input.applicationType,
+        input.maritalStatus,
+        input.paralegal ?? null,
+        input.consultant,
+      ).catch(err => console.error('[clientDocs.create] email error:', err));
       return { id: insertId };
     }),
   // Update children data and re-generate per-child documents
@@ -1633,6 +1646,73 @@ const clientDocsRouter = router({
       const existing = await getClientCase(input.id);
       if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Client not found" });
       await deleteClientCase(input.id);
+      return { success: true };
+    }),
+
+  // Assign or change the paralegal on an existing client case
+  updateParalegal: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      paralegal: z.enum(["Madonna", "Monica", "Marina"]).nullable(),
+    }))
+    .mutation(async ({ input }) => {
+      const c = await getClientCase(input.id);
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
+      await updateClientCase(input.id, { paralegal: input.paralegal } as any);
+      // Notify the newly assigned paralegal (and consultant) about this client
+      if (input.paralegal) {
+        notifyNewClientAssigned(
+          c.clientName,
+          c.clientCode,
+          c.applicationType,
+          c.maritalStatus,
+          input.paralegal,
+          c.consultant,
+        ).catch(err => console.error('[clientDocs.updateParalegal] email error:', err));
+      }
+      return { success: true };
+    }),
+
+  // Set or update the Embassy Attestation Email Date
+  setEmbassyEmailDate: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      embassyEmailDate: z.string().nullable(),
+    }))
+    .mutation(async ({ input }) => {
+      const c = await getClientCase(input.id);
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
+      await updateClientCase(input.id, { embassyEmailDate: input.embassyEmailDate ?? null } as any);
+      return { success: true };
+    }),
+
+  // Set or update the Google Drive link
+  setDriveLink: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      driveLink: z.string().nullable(),
+    }))
+    .mutation(async ({ input }) => {
+      const c = await getClientCase(input.id);
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
+      await updateClientCase(input.id, { driveLink: input.driveLink ?? null } as any);
+      return { success: true };
+    }),
+
+  // Set or update the Schengen visa status and expiry date
+  setSchengenVisa: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      schengenVisaValid: z.boolean(),
+      schengenExpiryDate: z.string().nullable(),
+    }))
+    .mutation(async ({ input }) => {
+      const c = await getClientCase(input.id);
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
+      await updateClientCase(input.id, {
+        schengenVisaValid: input.schengenVisaValid,
+        schengenExpiryDate: input.schengenExpiryDate ?? null,
+      } as any);
       return { success: true };
     }),
 });

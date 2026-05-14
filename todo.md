@@ -452,13 +452,46 @@
 - [x] Add export button to ClientDocDetail.tsx
 
 ## Change Requests (Round 60) — Edit Workflow + Stage Date Sync
-- [ ] Add workflow.update tRPC procedure (update schengenExpiry, childrenNamesData, submissionDate, schengenStatus)
-- [ ] Add Edit button to each workflow card in WorkflowPage.tsx
-- [ ] Build Edit Workflow modal with pre-filled fields (Schengen status/expiry, children names/ages, submission date)
-- [ ] Auto-sync workflow submission date to client Stage Dates (submissionDate field) on create and update
+- [x] Add workflow.update tRPC procedure (update schengenExpiry, childrenNamesData, submissionDate, schengenStatus)
+- [x] Add Edit button to each workflow card in WorkflowPage.tsx
+- [x] Build Edit Workflow modal with pre-filled fields (Schengen status/expiry, children names/ages, submission date)
+- [x] Auto-sync workflow submission date to client Stage Dates (submissionDate field) on create and update
 
 ## Change Requests (Round 61) — Workflow Doc Fixes + Edit Modal
-- [ ] Add Schengen expiry date to client info section in workflowDocxGenerator.ts
-- [ ] Add document validity table (6 items) to important notes section in workflowDocxGenerator.ts
-- [ ] Ensure full RTL right-alignment for ALL text throughout the Word document
-- [ ] Add Edit workflow modal to WorkflowPage.tsx (pre-filled: Schengen status/expiry, children names/ages, submission date)
+- [x] Add Schengen expiry date to client info section in workflowDocxGenerator.ts
+- [x] Add document validity table (6 items) to important notes section in workflowDocxGenerator.ts
+- [x] Ensure full RTL right-alignment for ALL text throughout the Word document
+- [x] Add Edit workflow modal to WorkflowPage.tsx (pre-filled: Schengen status/expiry, children names/ages, submission date)
+
+## Change Requests (Round 62) — Client Docs Module Improvements
+
+### 1. Schengen Visa Tracking + Reminders
+- [x] DB: add schengenVisaValid (boolean), schengenExpiryDate (date) columns to clientCases
+- [x] New-client form: ask Schengen visa yes/no; if yes, show expiry date picker
+- [x] Reminder scheduler: send email 30 days before schengenExpiryDate to paralegal + consultant
+- [x] Reminder scheduler: send email 20 days before schengenExpiryDate to paralegal + consultant
+
+### 2. Embassy Attestation Email Date + 15-day Reminder
+- [x] DB: add embassyEmailDate (date) column to clientCases
+- [x] Client detail page: add "Embassy Attestation Email Date" field (editable any time)
+- [x] Reminder scheduler: send email 15 days after embassyEmailDate to paralegal + consultant
+
+### 3. New Client Assignment Email
+- [x] emailService: add notifyNewClientAssigned() function
+- [x] routers.ts createClientCase: call notifyNewClientAssigned after creation
+
+### 4. Google Drive Link Field
+- [x] DB: add driveLink (text) column to clientCases
+- [x] Client detail page: add Google Drive link field (editable, clickable)
+
+### 5. New Required Documents
+- [x] clientDocDefs.ts: add company_memorandum_of_association to BUSINESS_OWNER_MAIN_DOCS
+- [x] clientDocDefs.ts: add admission_not_practice to FREELANCER_MAIN_DOCS and BUSINESS_OWNER_MAIN_DOCS
+- [x] clientDocDefs.ts: add power_of_attorney to FREELANCER_MAIN_DOCS and BUSINESS_OWNER_MAIN_DOCS
+- [x] Arabic translations for 3 new documents
+- [x] Backfill new documents for all existing clients
+
+### 6. Paralegal Assignment on Client Detail Page
+- [x] Remove paralegal field from new-client creation form (make it optional/nullable in DB)
+- [x] Client detail page: add "Assign Paralegal" dropdown (editable any time)
+- [x] routers.ts: add updateParalegal procedure

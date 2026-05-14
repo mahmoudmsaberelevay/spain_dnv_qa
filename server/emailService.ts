@@ -296,6 +296,56 @@ export async function sendDocReminderToAssignedTeam(
   }
 }
 
+/**
+ * Notify the assigned paralegal and consultant when a new client case is created.
+ */
+export async function notifyNewClientAssigned(
+  clientName: string,
+  clientCode: string,
+  applicationType: string,
+  maritalStatus: string,
+  paralegal: string | null,
+  consultant: string | null,
+): Promise<void> {
+  const recipients: string[] = [];
+  if (paralegal && TEAM_EMAIL_MAP[paralegal]) recipients.push(TEAM_EMAIL_MAP[paralegal]);
+  if (consultant && TEAM_EMAIL_MAP[consultant]) recipients.push(TEAM_EMAIL_MAP[consultant]);
+  const toList = Array.from(new Set(recipients));
+  const appTypeLabel = applicationType === 'freelancer' ? 'Freelancer' : 'Business Owner';
+  const maritalLabel = maritalStatus === 'family' ? 'Family' : 'Single';
+  const subject = `📋 New Client Assigned — ${clientName}`;
+  const html = `
+    <table style="width:100%; border-collapse:collapse; font-size:14px;">
+      <tr><td style="padding:6px 0; color:#8A9499;">Client Name</td><td style="padding:6px 0; color:#2C3A40; font-weight:bold;">${clientName}</td></tr>
+      <tr><td style="padding:6px 0; color:#8A9499;">Client Code</td><td style="padding:6px 0; color:#2C3A40;">${clientCode}</td></tr>
+      <tr><td style="padding:6px 0; color:#8A9499;">Application Type</td><td style="padding:6px 0; color:#2C3A40;">${appTypeLabel}</td></tr>
+      <tr><td style="padding:6px 0; color:#8A9499;">Marital Status</td><td style="padding:6px 0; color:#2C3A40;">${maritalLabel}</td></tr>
+      <tr><td style="padding:6px 0; color:#8A9499;">Paralegal</td><td style="padding:6px 0; color:#2C3A40;">${paralegal ?? '—'}</td></tr>
+      <tr><td style="padding:6px 0; color:#8A9499;">Consultant</td><td style="padding:6px 0; color:#2C3A40;">${consultant ?? '—'}</td></tr>
+    </table>
+    <p style="color:#5E6A71; margin-top:16px; font-size:13px;">A new client case has been created and assigned to you. Please log in to the Elevay system to review the document checklist.</p>`;
+  const plain = `New Client Assigned\n\nClient: ${clientName}\nCode: ${clientCode}\nType: ${appTypeLabel}\nStatus: ${maritalLabel}\nParalegal: ${paralegal ?? '—'}\nConsultant: ${consultant ?? '—'}`;
+  const transporter = createTransporter();
+  if (transporter && toList.length > 0) {
+    const gmailUser = process.env.GMAIL_USER!;
+    try {
+      await transporter.sendMail({
+        from: `"ELEVAY System" <${gmailUser}>`,
+        to: toList.join(', '),
+        subject: `[ELEVAY] ${subject}`,
+        html: wrapInEmailTemplate(subject, html),
+        text: plain,
+      });
+      console.log(`[EmailService] New client notification sent to ${toList.join(', ')} for: ${clientName}`);
+    } catch (err) {
+      console.error('[EmailService] Failed to send new client notification:', err);
+      await notifyOwner({ title: subject, content: plain }).catch(() => {});
+    }
+  } else {
+    await notifyOwner({ title: subject, content: plain }).catch(() => {});
+  }
+}
+
 // ─── Financial Transaction Notifications ────────────────────────────────────
 
 const FIN_NOTIFICATION_RECIPIENTS = [

@@ -211,6 +211,13 @@
       "when": 1778752307067,
       "tag": "0029_oval_the_renegades",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1778754152796,
+      "tag": "0030_solid_pride",
+      "breakpoints": true
     }
   ]
 }

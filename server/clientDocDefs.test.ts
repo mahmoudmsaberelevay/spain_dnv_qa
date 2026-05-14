@@ -76,7 +76,7 @@ describe("getArabicDocName", () => {
 
   it("returns Arabic name for child police certificate key", () => {
     expect(getArabicDocName("child_2_police_certificate", "Child 2 — Police Certificate"))
-      .toBe("الطفل 2 — شهادة حسن السيرة والسلوك");
+      .toBe("الطفل 2 — شهادة حسن السيرة والسلوك ( الفيش والتشبية)");
   });
 
   it("returns Arabic name for child education enrollment key", () => {

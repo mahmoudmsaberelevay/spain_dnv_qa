@@ -8,11 +8,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
   ArrowLeft, CheckCircle2, Circle, Clock, AlertTriangle,
   FileCheck, Stamp, Building2, CalendarDays, ClipboardList,
-  CalendarClock, Check, FileDown, Trash2
+  CalendarClock, Check, FileDown, Trash2, Link2, Mail, UserCheck, ShieldCheck
 } from "lucide-react";
 
 type ActionType = "receive" | "mofa" | "embassy" | "schengen" | "appointment" | "submission" | null;
@@ -36,6 +38,17 @@ export default function ClientDocDetail() {
   // Stage workflow state
   const [stageInputs, setStageInputs] = useState<Record<string, string>>({});
   const [showStageDialog, setShowStageDialog] = useState<Stage | null>(null);
+
+  // New fields state
+  const [showParalegalDialog, setShowParalegalDialog] = useState(false);
+  const [selectedParalegal, setSelectedParalegal] = useState<string>("");
+  const [showDriveLinkDialog, setShowDriveLinkDialog] = useState(false);
+  const [driveLinkInput, setDriveLinkInput] = useState("");
+  const [showEmbassyEmailDialog, setShowEmbassyEmailDialog] = useState(false);
+  const [embassyEmailDateInput, setEmbassyEmailDateInput] = useState("");
+  const [showSchengenDialog, setShowSchengenDialog] = useState(false);
+  const [schengenVisaValid, setSchengenVisaValid] = useState<boolean | null>(null);
+  const [schengenExpiryInput, setSchengenExpiryInput] = useState("");
 
   const utils = trpc.useUtils();
 
@@ -100,6 +113,42 @@ export default function ClientDocDetail() {
       utils.clientDocs.get.invalidate({ id: clientId });
       utils.clientDocs.report.invalidate({ id: clientId });
       utils.clientDocs.dashboard.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const paralegalMutation = trpc.clientDocs.updateParalegal.useMutation({
+    onSuccess: () => {
+      toast.success("Paralegal updated");
+      setShowParalegalDialog(false);
+      utils.clientDocs.get.invalidate({ id: clientId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const driveLinkMutation = trpc.clientDocs.setDriveLink.useMutation({
+    onSuccess: () => {
+      toast.success("Google Drive link saved");
+      setShowDriveLinkDialog(false);
+      utils.clientDocs.get.invalidate({ id: clientId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const embassyEmailMutation = trpc.clientDocs.setEmbassyEmailDate.useMutation({
+    onSuccess: () => {
+      toast.success("Embassy attestation email date saved");
+      setShowEmbassyEmailDialog(false);
+      utils.clientDocs.get.invalidate({ id: clientId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const schengenVisaMutation = trpc.clientDocs.setSchengenVisa.useMutation({
+    onSuccess: () => {
+      toast.success("Schengen visa status updated");
+      setShowSchengenDialog(false);
+      utils.clientDocs.get.invalidate({ id: clientId });
     },
     onError: (e) => toast.error(e.message),
   });
@@ -215,6 +264,8 @@ export default function ClientDocDetail() {
     </div>
   );
 
+  const caseData = data as any;
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6 bg-white min-h-screen">
       {/* Back + Header */}
@@ -228,12 +279,7 @@ export default function ClientDocDetail() {
             {data.clientCode} · {data.applicationType === "freelancer" ? "Freelancer" : "Business Owner"} · {data.maritalStatus === "family" ? "Family" : "Single"}
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-3">
-          <div className="flex items-center gap-2 text-xs text-gray-400">
-            <span>Paralegal: <span className="text-gray-600 font-medium">{data.paralegal}</span></span>
-            <span className="text-gray-200">|</span>
-            <span>Consultant: <span className="text-gray-600 font-medium">{data.consultant}</span></span>
-          </div>
+        <div className="ml-auto flex items-center gap-3 flex-wrap justify-end">
           {/* Export Checklist Button */}
           <Button
             variant="outline"
@@ -257,7 +303,7 @@ export default function ClientDocDetail() {
           </Button>
           {/* Stage Selector */}
           <select
-            value={(data as any).stage ?? "preparation"}
+            value={caseData.stage ?? "preparation"}
             onChange={e => {
               const newStage = e.target.value as Stage;
               if (newStage === "preparation") {
@@ -268,9 +314,9 @@ export default function ClientDocDetail() {
               }
             }}
             className={`text-xs font-semibold px-3 py-1.5 rounded-lg border cursor-pointer focus:outline-none ${
-              ((data as any).stage ?? "preparation") === "preparation"
+              (caseData.stage ?? "preparation") === "preparation"
                 ? "bg-blue-50 text-blue-700 border-blue-200"
-                : ((data as any).stage ?? "preparation") === "submission"
+                : (caseData.stage ?? "preparation") === "submission"
                 ? "bg-amber-50 text-amber-700 border-amber-200"
                 : "bg-emerald-50 text-emerald-700 border-emerald-200"
             }`}
@@ -282,53 +328,162 @@ export default function ClientDocDetail() {
         </div>
       </div>
 
+      {/* ── Client Info Panel ── */}
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* Paralegal */}
+        <div>
+          <p className="text-xs text-gray-400 mb-1">Paralegal</p>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-800">{caseData.paralegal ?? <span className="text-gray-400 italic">Not assigned</span>}</span>
+            <button
+              onClick={() => {
+                setSelectedParalegal(caseData.paralegal ?? "");
+                setShowParalegalDialog(true);
+              }}
+              className="text-[#1e3a5f] hover:text-[#16304f] text-xs underline"
+            >
+              {caseData.paralegal ? "Change" : "Assign"}
+            </button>
+          </div>
+        </div>
+        {/* Consultant */}
+        <div>
+          <p className="text-xs text-gray-400 mb-1">Consultant</p>
+          <span className="text-sm font-medium text-gray-800">{data.consultant}</span>
+        </div>
+        {/* Schengen Visa */}
+        <div>
+          <p className="text-xs text-gray-400 mb-1">Schengen Visa</p>
+          <div className="flex items-center gap-2">
+            {caseData.schengenVisaValid ? (
+              <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                ✓ Valid
+                {caseData.schengenExpiryDate && (
+                  <span className="ml-1 text-emerald-600">— {new Date(caseData.schengenExpiryDate).toLocaleDateString()}</span>
+                )}
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">✗ None</span>
+            )}
+            <button
+              onClick={() => {
+                setSchengenVisaValid(caseData.schengenVisaValid ?? false);
+                setSchengenExpiryInput(caseData.schengenExpiryDate ?? "");
+                setShowSchengenDialog(true);
+              }}
+              className="text-[#1e3a5f] hover:text-[#16304f] text-xs underline"
+            >
+              Edit
+            </button>
+          </div>
+        </div>
+        {/* Google Drive Link */}
+        <div>
+          <p className="text-xs text-gray-400 mb-1">Google Drive</p>
+          <div className="flex items-center gap-2">
+            {caseData.driveLink ? (
+              <a
+                href={caseData.driveLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-[#1e3a5f] underline flex items-center gap-1 truncate max-w-[120px]"
+              >
+                <Link2 className="w-3 h-3 flex-shrink-0" />
+                Open Folder
+              </a>
+            ) : (
+              <span className="text-xs text-gray-400 italic">No link</span>
+            )}
+            <button
+              onClick={() => {
+                setDriveLinkInput(caseData.driveLink ?? "");
+                setShowDriveLinkDialog(true);
+              }}
+              className="text-[#1e3a5f] hover:text-[#16304f] text-xs underline"
+            >
+              {caseData.driveLink ? "Edit" : "Add"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Embassy Attestation Email Date Panel ── */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Mail className="w-5 h-5 text-blue-600 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-blue-900">Embassy Attestation Email Request</p>
+            {caseData.embassyEmailDate ? (
+              <p className="text-xs text-blue-700 mt-0.5">
+                Sent on: <strong>{new Date(caseData.embassyEmailDate).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}</strong>
+                <span className="ml-2 text-blue-500">— Follow-up reminder will be sent 15 days after this date</span>
+              </p>
+            ) : (
+              <p className="text-xs text-blue-500 mt-0.5">No date recorded yet. Set the date when the email was sent.</p>
+            )}
+          </div>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-blue-300 text-blue-700 hover:bg-blue-100 gap-1.5 text-xs flex-shrink-0"
+          onClick={() => {
+            setEmbassyEmailDateInput(caseData.embassyEmailDate ?? "");
+            setShowEmbassyEmailDialog(true);
+          }}
+        >
+          <CalendarDays className="w-3.5 h-3.5" />
+          {caseData.embassyEmailDate ? "Update Date" : "Set Date"}
+        </Button>
+      </div>
+
       {/* Stage Info Panel */}
-      {((data as any).stage === "submission" || (data as any).stage === "approved") && (
+      {(caseData.stage === "submission" || caseData.stage === "approved") && (
         <div className={`rounded-xl border p-4 ${
-          (data as any).stage === "submission" ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"
+          caseData.stage === "submission" ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"
         }`}>
           <h3 className={`text-sm font-semibold mb-3 ${
-            (data as any).stage === "submission" ? "text-amber-800" : "text-emerald-800"
+            caseData.stage === "submission" ? "text-amber-800" : "text-emerald-800"
           }`}>
-            {(data as any).stage === "submission" ? "📤 Submission Details" : "✅ Approval Details"}
+            {caseData.stage === "submission" ? "📤 Submission Details" : "✅ Approval Details"}
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {(data as any).stage === "submission" && [
-              { label: "Submission Date", value: (data as any).submissionDate },
-              { label: "Expected Approval", value: (data as any).expectedApprovalDate },
-              { label: "Translation Done", value: (data as any).translationDate },
+            {caseData.stage === "submission" && [
+              { label: "Submission Date", value: caseData.submissionDate },
+              { label: "Expected Approval", value: caseData.expectedApprovalDate },
+              { label: "Translation Done", value: caseData.translationDate },
             ].map(f => f.value ? (
               <div key={f.label} className="bg-white rounded-lg px-3 py-2 border border-amber-100">
                 <p className="text-xs text-amber-600 opacity-70">{f.label}</p>
                 <p className="text-sm font-medium text-amber-900 mt-0.5">{new Date(f.value).toLocaleDateString()}</p>
               </div>
             ) : null)}
-            {(data as any).stage === "approved" && [
-              { label: "Approval Date", value: (data as any).approvalDate },
-              { label: "Expected Approval", value: (data as any).expectedApprovalDate },
-              { label: "Settlement Fee Date", value: (data as any).settlementFeeDate },
-              { label: "Biometrics Date", value: (data as any).biometricsDate },
+            {caseData.stage === "approved" && [
+              { label: "Approval Date", value: caseData.approvalDate },
+              { label: "Expected Approval", value: caseData.expectedApprovalDate },
+              { label: "Settlement Fee Date", value: caseData.settlementFeeDate },
+              { label: "Biometrics Date", value: caseData.biometricsDate },
             ].map(f => f.value ? (
               <div key={f.label} className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
                 <p className="text-xs text-emerald-600 opacity-70">{f.label}</p>
                 <p className="text-sm font-medium text-emerald-900 mt-0.5">{new Date(f.value).toLocaleDateString()}</p>
               </div>
             ) : null)}
-            {(data as any).stage === "approved" && (data as any).settlementFeeAmount && (
+            {caseData.stage === "approved" && caseData.settlementFeeAmount && (
               <div className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
                 <p className="text-xs text-emerald-600 opacity-70">Settlement Fee</p>
-                <p className="text-sm font-medium text-emerald-900 mt-0.5">€ {(data as any).settlementFeeAmount}</p>
+                <p className="text-sm font-medium text-emerald-900 mt-0.5">€ {caseData.settlementFeeAmount}</p>
               </div>
             )}
-            {(data as any).stage === "approved" && (data as any).approvalDate && (data as any).expectedApprovalDate && (
+            {caseData.stage === "approved" && caseData.approvalDate && caseData.expectedApprovalDate && (
               <div className={`rounded-lg px-3 py-2 border ${
-                new Date((data as any).approvalDate) <= new Date((data as any).expectedApprovalDate)
+                new Date(caseData.approvalDate) <= new Date(caseData.expectedApprovalDate)
                   ? "bg-emerald-100 border-emerald-200"
                   : "bg-red-50 border-red-200"
               }`}>
                 <p className="text-xs opacity-70">On-Time Status</p>
                 <p className="text-sm font-semibold mt-0.5">
-                  {new Date((data as any).approvalDate) <= new Date((data as any).expectedApprovalDate) ? "✓ On Time" : "✗ Delayed"}
+                  {new Date(caseData.approvalDate) <= new Date(caseData.expectedApprovalDate) ? "✓ On Time" : "✗ Delayed"}
                 </p>
               </div>
             )}
@@ -734,6 +889,208 @@ export default function ClientDocDetail() {
         </DialogContent>
       </Dialog>
 
+      {/* ── Paralegal Assignment Dialog ── */}
+      <Dialog open={showParalegalDialog} onOpenChange={setShowParalegalDialog}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 flex items-center gap-2">
+              <UserCheck className="w-4 h-4" />
+              {caseData.paralegal ? "Change Paralegal" : "Assign Paralegal"}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-gray-400 -mt-2">Select the paralegal responsible for this client's documentation</p>
+          <div className="mt-3 space-y-2">
+            {["Madonna", "Monica", "Marina"].map(p => (
+              <div
+                key={p}
+                onClick={() => setSelectedParalegal(p)}
+                className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  selectedParalegal === p
+                    ? "border-[#1e3a5f] bg-[#1e3a5f]/5"
+                    : "border-gray-200 bg-gray-50 hover:border-gray-300"
+                }`}
+              >
+                <div className={`w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 ${
+                  selectedParalegal === p ? "bg-[#1e3a5f] border-[#1e3a5f]" : "border-gray-400"
+                }`}>
+                  {selectedParalegal === p && <div className="w-2 h-2 rounded-full bg-white" />}
+                </div>
+                <span className="text-sm text-gray-700 font-medium">{p}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-4">
+            {caseData.paralegal && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-red-200 text-red-600 hover:bg-red-50"
+                onClick={() => paralegalMutation.mutate({ id: clientId, paralegal: null })}
+                disabled={paralegalMutation.isPending}
+              >
+                Remove
+              </Button>
+            )}
+            <Button
+              className="flex-1 bg-[#1e3a5f] hover:bg-[#16304f] text-white"
+              disabled={!selectedParalegal || paralegalMutation.isPending}
+              onClick={() => paralegalMutation.mutate({ id: clientId, paralegal: selectedParalegal as any })}
+            >
+              {paralegalMutation.isPending ? "Saving..." : "Confirm Assignment"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Google Drive Link Dialog ── */}
+      <Dialog open={showDriveLinkDialog} onOpenChange={setShowDriveLinkDialog}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 flex items-center gap-2">
+              <Link2 className="w-4 h-4" />
+              Google Drive Link
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-gray-400 -mt-2">Paste the Google Drive folder link for this client's documents</p>
+          <Input
+            type="url"
+            placeholder="https://drive.google.com/drive/folders/..."
+            value={driveLinkInput}
+            onChange={e => setDriveLinkInput(e.target.value)}
+            className="mt-3 border-gray-300 text-gray-900 placeholder:text-gray-400"
+          />
+          <div className="flex gap-2 mt-3">
+            {caseData.driveLink && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-red-200 text-red-600 hover:bg-red-50"
+                onClick={() => driveLinkMutation.mutate({ id: clientId, driveLink: null })}
+                disabled={driveLinkMutation.isPending}
+              >
+                Remove
+              </Button>
+            )}
+            <Button
+              className="flex-1 bg-[#1e3a5f] hover:bg-[#16304f] text-white"
+              disabled={!driveLinkInput.trim() || driveLinkMutation.isPending}
+              onClick={() => driveLinkMutation.mutate({ id: clientId, driveLink: driveLinkInput.trim() })}
+            >
+              {driveLinkMutation.isPending ? "Saving..." : "Save Link"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Embassy Attestation Email Date Dialog ── */}
+      <Dialog open={showEmbassyEmailDialog} onOpenChange={setShowEmbassyEmailDialog}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 flex items-center gap-2">
+              <Mail className="w-4 h-4" />
+              Embassy Attestation Email Date
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-gray-400 -mt-2">
+            Set the date when the Embassy Attestation email request was sent.
+            A follow-up reminder will be automatically sent to the paralegal and consultant 15 days after this date.
+          </p>
+          <input
+            type="date"
+            value={embassyEmailDateInput}
+            onChange={e => setEmbassyEmailDateInput(e.target.value)}
+            className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 mt-3 bg-white focus:outline-none focus:border-[#1e3a5f]"
+          />
+          <div className="flex gap-2 mt-3">
+            {caseData.embassyEmailDate && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-red-200 text-red-600 hover:bg-red-50"
+                onClick={() => embassyEmailMutation.mutate({ id: clientId, embassyEmailDate: null })}
+                disabled={embassyEmailMutation.isPending}
+              >
+                Clear
+              </Button>
+            )}
+            <Button
+              className="flex-1 bg-[#1e3a5f] hover:bg-[#16304f] text-white"
+              disabled={!embassyEmailDateInput || embassyEmailMutation.isPending}
+              onClick={() => embassyEmailMutation.mutate({ id: clientId, embassyEmailDate: embassyEmailDateInput })}
+            >
+              {embassyEmailMutation.isPending ? "Saving..." : "Save Date"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Schengen Visa Status Dialog ── */}
+      <Dialog open={showSchengenDialog} onOpenChange={setShowSchengenDialog}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4" />
+              Schengen Visa Status
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-gray-400 -mt-2">
+            Update the client's Schengen visa status. Reminders will be sent 30 and 20 days before expiry.
+          </p>
+          <div className="mt-3 space-y-3">
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                size="sm"
+                variant={schengenVisaValid === true ? "default" : "outline"}
+                className={schengenVisaValid === true
+                  ? "bg-green-600 hover:bg-green-700 text-white border-green-600 flex-1"
+                  : "border-gray-300 text-gray-700 flex-1"}
+                onClick={() => setSchengenVisaValid(true)}
+              >
+                ✓ Has Valid Visa
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={schengenVisaValid === false ? "default" : "outline"}
+                className={schengenVisaValid === false
+                  ? "bg-red-600 hover:bg-red-700 text-white border-red-600 flex-1"
+                  : "border-gray-300 text-gray-700 flex-1"}
+                onClick={() => { setSchengenVisaValid(false); setSchengenExpiryInput(""); }}
+              >
+                ✗ No Visa
+              </Button>
+            </div>
+            {schengenVisaValid === true && (
+              <div className="space-y-1.5">
+                <Label className="text-gray-700 text-sm font-medium">Expiry Date <span className="text-red-500">*</span></Label>
+                <input
+                  type="date"
+                  value={schengenExpiryInput}
+                  onChange={e => setSchengenExpiryInput(e.target.value)}
+                  className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f]"
+                />
+              </div>
+            )}
+          </div>
+          <Button
+            className="w-full bg-[#1e3a5f] hover:bg-[#16304f] text-white mt-4"
+            disabled={
+              schengenVisaValid === null ||
+              (schengenVisaValid === true && !schengenExpiryInput) ||
+              schengenVisaMutation.isPending
+            }
+            onClick={() => schengenVisaMutation.mutate({
+              id: clientId,
+              schengenVisaValid: schengenVisaValid!,
+              schengenExpiryDate: schengenVisaValid ? schengenExpiryInput : null,
+            })}
+          >
+            {schengenVisaMutation.isPending ? "Saving..." : "Update Visa Status"}
+          </Button>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Stage Change Dialog ── */}
       <Dialog open={showStageDialog !== null} onOpenChange={o => !o && setShowStageDialog(null)}>
         <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md">
@@ -768,7 +1125,6 @@ export default function ClientDocDetail() {
                   onChange={e => setStageInputs(p => ({ ...p, translationDate: e.target.value }))}
                   className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm"
                 />
-                <p className="text-xs text-gray-400 mt-1">Date when all document translations were completed</p>
               </div>
               <Button
                 className="w-full bg-amber-600 hover:bg-amber-700 text-white"
