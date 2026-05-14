@@ -73,6 +73,10 @@ export default function NationalVisaPage() {
   const [followUpEmail, setFollowUpEmail] = useState("");
   const [notes, setNotes] = useState("");
 
+  // ── List filter & sort state ──────────────────────────────────────────────
+  const [statusFilter, setStatusFilter] = useState<"all" | "in_progress" | "completed" | "submitted">("all");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest" | "az" | "za">("newest");
+
   // ── Edit state ────────────────────────────────────────────────────────────
   const [editWorkflow, setEditWorkflow] = useState<any | null>(null);
   const [editWifeName, setEditWifeName] = useState("");
@@ -509,20 +513,57 @@ export default function NationalVisaPage() {
 
       {/* ── Saved Workflows List ─────────────────────────────────────────────── */}
       <div>
-        <h2 className="text-xl font-bold text-right mb-4 flex items-center gap-2 justify-end">
-          <span>القوائم المحفوظة</span>
-          <Users className="h-5 w-5" />
-        </h2>
+        {/* Header + filter/sort controls */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4" dir="rtl">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <span>القوائم المحفوظة</span>
+            <Users className="h-5 w-5" />
+          </h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value as any)}
+              className="text-sm border rounded-lg px-3 py-1.5 bg-background outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="all">كل الحالات</option>
+              <option value="in_progress">قيد التجهيز</option>
+              <option value="completed">مكتمل</option>
+              <option value="submitted">مُقدَم</option>
+            </select>
+            <select
+              value={sortOrder}
+              onChange={e => setSortOrder(e.target.value as any)}
+              className="text-sm border rounded-lg px-3 py-1.5 bg-background outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="newest">الأحدث أولاً</option>
+              <option value="oldest">الأقدم أولاً</option>
+              <option value="az">الاسم أ-ي</option>
+              <option value="za">الاسم ي-أ</option>
+            </select>
+          </div>
+        </div>
 
-        {workflows.length === 0 ? (
-          <Card>
-            <CardContent className="py-10 text-center text-muted-foreground">
-              لا توجد قوائم مستندات محفوظة بعد
-            </CardContent>
-          </Card>
-        ) : (
+        {/* Compute filtered + sorted list */}
+        {(() => {
+          const filtered = (workflows as any[]).filter(wf =>
+            statusFilter === "all" || (wf.status || "in_progress") === statusFilter
+          );
+          const sorted = [...filtered].sort((a, b) => {
+            if (sortOrder === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            if (sortOrder === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+            if (sortOrder === "az") return (a.clientName || "").localeCompare(b.clientName || "", "ar");
+            if (sortOrder === "za") return (b.clientName || "").localeCompare(a.clientName || "", "ar");
+            return 0;
+          });
+          if (workflows.length === 0) return (
+            <Card><CardContent className="py-10 text-center text-muted-foreground">لا توجد قوائم مستندات محفوظة بعد</CardContent></Card>
+          );
+          if (sorted.length === 0) return (
+            <Card><CardContent className="py-10 text-center text-muted-foreground">لا توجد قوائم تطابق الفلتر المحدد</CardContent></Card>
+          );
+          return (
           <div className="space-y-3">
-            {workflows.map((wf: any) => {
+            {sorted.map((wf: any) => {
               let childCount = 0;
               if (wf.childrenData) {
                 try {
@@ -606,7 +647,8 @@ export default function NationalVisaPage() {
               );
             })}
           </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* ── Edit Modal ───────────────────────────────────────────────────────── */}

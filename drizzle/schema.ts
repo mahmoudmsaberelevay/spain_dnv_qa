@@ -738,3 +738,17 @@ export const nationalVisaWorkflows = mysqlTable("nationalVisaWorkflows", {
 });
 export type NationalVisaWorkflow = typeof nationalVisaWorkflows.$inferSelect;
 export type InsertNationalVisaWorkflow = typeof nationalVisaWorkflows.$inferInsert;
+
+// ─── System Notifications ────────────────────────────────────────────────────────────────
+export const systemNotifications = mysqlTable("systemNotifications", {
+  id: int("id").autoincrement().primaryKey(),
+  type: varchar("type", { length: 64 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  body: text("body").notNull(),
+  entityId: int("entityId"),
+  entityType: varchar("entityType", { length: 64 }),
+  isRead: boolean("isRead").notNull().default(false),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+});
+export type SystemNotification = typeof systemNotifications.$inferSelect;
+export type InsertSystemNotification = typeof systemNotifications.$inferInsert;

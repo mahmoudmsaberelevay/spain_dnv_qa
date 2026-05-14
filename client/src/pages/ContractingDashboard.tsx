@@ -2,20 +2,29 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Receipt, TrendingUp, Users, Plus, ArrowRight, Clock, UserCheck } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FileText, Receipt, TrendingUp, Users, Plus, ArrowRight, Clock, UserCheck, Filter } from "lucide-react";
 import { useLocation } from "wouter";
 import { useState } from "react";
 import NewContractDialog from "@/components/NewContractDialog";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 
+const CONSULTANTS = ["Fouad Abdo", "Kirlos Nabil"];
+
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const [showNewContract, setShowNewContract] = useState(false);
+  const [selectedConsultant, setSelectedConsultant] = useState<string | undefined>(undefined);
 
-  const { data: stats, isLoading: statsLoading } = trpc.contracting.analytics.stats.useQuery();
-  const { data: recentContracts, isLoading: contractsLoading } = trpc.contracting.analytics.recentContracts.useQuery({ limit: 5 });
+  const { data: stats, isLoading: statsLoading } = trpc.contracting.analytics.stats.useQuery(
+    { consultantName: selectedConsultant },
+  );
+  const { data: recentContracts, isLoading: contractsLoading } = trpc.contracting.analytics.recentContracts.useQuery(
+    { limit: 5, consultantName: selectedConsultant },
+  );
   const { data: rateInfo } = trpc.contracting.exchangeRate.current.useQuery();
   const { data: consultantStats } = trpc.contracting.analytics.consultantStats.useQuery();
+
   const statCards = [
     {
       title: "Total Contracts",
@@ -50,22 +59,59 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
           <p className="text-muted-foreground text-sm mt-1">
             Elevay — Contracting
           </p>
         </div>
-        <Button
-          onClick={() => setShowNewContract(true)}
-          className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
-          size="lg"
-        >
-          <Plus className="h-4 w-4" />
-          Issue New Contract
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* Consultant Filter */}
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <Select
+              value={selectedConsultant ?? "all"}
+              onValueChange={(v) => setSelectedConsultant(v === "all" ? undefined : v)}
+            >
+              <SelectTrigger className="w-44 h-9 text-sm">
+                <SelectValue placeholder="All Consultants" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Consultants</SelectItem>
+                {CONSULTANTS.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            onClick={() => setShowNewContract(true)}
+            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+            size="lg"
+          >
+            <Plus className="h-4 w-4" />
+            Issue New Contract
+          </Button>
+        </div>
       </div>
+
+      {/* Active filter badge */}
+      {selectedConsultant && (
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="gap-1 text-sm">
+            <UserCheck className="h-3.5 w-3.5" />
+            Showing: {selectedConsultant}
+            <button
+              onClick={() => setSelectedConsultant(undefined)}
+              className="ml-1 hover:text-destructive transition-colors"
+              aria-label="Clear filter"
+            >
+              ×
+            </button>
+          </Badge>
+        </div>
+      )}
 
       {/* Exchange Rate Banner */}
       {rateInfo && (
@@ -128,7 +174,12 @@ export default function Dashboard() {
       {/* Recent Contracts */}
       <Card className="border shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <CardTitle className="text-base font-semibold">Recent Contracts</CardTitle>
+          <CardTitle className="text-base font-semibold">
+            Recent Contracts
+            {selectedConsultant && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">— {selectedConsultant}</span>
+            )}
+          </CardTitle>
           <Button
             variant="ghost"
             size="sm"
@@ -144,7 +195,11 @@ export default function Dashboard() {
           ) : !recentContracts?.length ? (
             <div className="p-6 text-center">
               <Clock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-muted-foreground text-sm">No contracts yet. Issue your first contract!</p>
+              <p className="text-muted-foreground text-sm">
+                {selectedConsultant
+                  ? `No contracts found for ${selectedConsultant}.`
+                  : "No contracts yet. Issue your first contract!"}
+              </p>
             </div>
           ) : (
             <div className="divide-y">
@@ -183,7 +238,9 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y">
-              {consultantStats.map((c) => (
+              {consultantStats
+                .filter(c => !selectedConsultant || c.name === selectedConsultant)
+                .map((c) => (
                 <div key={c.name} className="flex items-center justify-between px-6 py-3 hover:bg-muted/30 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">

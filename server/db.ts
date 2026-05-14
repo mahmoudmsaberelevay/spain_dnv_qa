@@ -339,10 +339,11 @@ export async function getPaymentsByContractId(contractId: number) {
   return db.select().from(payments).where(eq(payments.contractId, contractId)).orderBy(desc(payments.paidAt));
 }
 
-export async function getContractStats() {
+export async function getContractStats(consultantName?: string) {
   const db = await getDb();
   if (!db) return { total: 0, pending: 0, signed: 0, cancelled: 0, totalValue: 0 };
-  const all = await db.select().from(contracts);
+  let all = await db.select().from(contracts);
+  if (consultantName) all = all.filter(c => c.consultantName === consultantName);
   const total = all.length;
   const pending = all.filter(c => c.status === "pending").length;
   const signed = all.filter(c => c.status === "signed").length;
@@ -362,9 +363,13 @@ export async function getFamilyMemberDistribution() {
   return Object.entries(dist).map(([members, count]) => ({ members: Number(members), count }));
 }
 
-export async function getRecentContracts(limit = 5) {
+export async function getRecentContracts(limit = 5, consultantName?: string) {
   const db = await getDb();
   if (!db) return [];
+  if (consultantName) {
+    const all = await db.select().from(contracts).orderBy(desc(contracts.createdAt));
+    return all.filter(c => c.consultantName === consultantName).slice(0, limit);
+  }
   return db.select().from(contracts).orderBy(desc(contracts.createdAt)).limit(limit);
 }
 
@@ -727,4 +732,45 @@ export async function getUnpaidReceiptsOlderThanDays(days: number) {
       )
     );
   return rows;
+}
+
+// ─── System Notifications ─────────────────────────────────────────────────────
+export async function createNotification(data: {
+  type: string;
+  title: string;
+  body: string;
+  entityId?: number;
+  entityType?: string;
+}) {
+  await db.insert(schema.systemNotifications).values({
+    type: data.type,
+    title: data.title,
+    body: data.body,
+    entityId: data.entityId ?? null,
+    entityType: data.entityType ?? null,
+    isRead: false,
+    createdAt: Date.now(),
+  });
+}
+
+export async function getRecentNotifications(limit = 30) {
+  return db
+    .select()
+    .from(schema.systemNotifications)
+    .orderBy(schema.systemNotifications.createdAt)
+    .limit(limit);
+}
+
+export async function markNotificationRead(id: number) {
+  await db
+    .update(schema.systemNotifications)
+    .set({ isRead: true })
+    .where(eq(schema.systemNotifications.id, id));
+}
+
+export async function markAllNotificationsRead() {
+  await db
+    .update(schema.systemNotifications)
+    .set({ isRead: true })
+    .where(eq(schema.systemNotifications.isRead, false));
 }

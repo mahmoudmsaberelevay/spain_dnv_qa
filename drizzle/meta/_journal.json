@@ -232,6 +232,13 @@
       "when": 1778758669328,
       "tag": "0032_ordinary_christian_walker",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1778760628935,
+      "tag": "0033_polite_slyde",
+      "breakpoints": true
     }
   ]
 }

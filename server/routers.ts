@@ -812,6 +812,8 @@ const contractingRouter = router({
           docUrl, consultantName: input.consultantName ?? null,
         });
         await notifyNewContract(contractCode, input.clientName, input.familyMembers, contractValue);
+        const { createNotification } = await import("./db");
+        await createNotification({ type: "contract_created", title: "📄 عقد جديد", body: `تم إنشاء عقد جديد لـ ${input.clientName} (كود: ${contractCode})`, entityId: contract.id, entityType: "contract" });
         return { contract, docUrl, filename };
       }),
     updateStatus: protectedProcedure
@@ -821,6 +823,13 @@ const contractingRouter = router({
         if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
         await updateContractStatus(input.id, input.status);
         await notifyContractStatusChange(contract.contractCode, contract.clientName, input.status);
+        if (input.status === "signed") {
+          const { createNotification: cn } = await import("./db");
+          await cn({ type: "contract_signed", title: "✅ عقد موقّع", body: `تم توقيع عقد ${contract.clientName} (كود: ${contract.contractCode})`, entityId: contract.id, entityType: "contract" });
+        } else if (input.status === "cancelled") {
+          const { createNotification: cn } = await import("./db");
+          await cn({ type: "contract_cancelled", title: "❌ عقد ملغي", body: `تم إلغاء عقد ${contract.clientName} (كود: ${contract.contractCode})`, entityId: contract.id, entityType: "contract" });
+        }
         // Auto-sync: when contract is signed, create financial client + commission
         if (input.status === "signed") {
           try {
@@ -952,6 +961,8 @@ const contractingRouter = router({
           input.amountEur,
           remainingBalance
         ).catch(() => {});
+        const { createNotification: cnInv } = await import("./db");
+        await cnInv({ type: "receipt_created", title: "🧳 إيصال جديد", body: `تم إنشاء إيصال ${invoiceCode} لـ ${billingName} بمبلغ €${input.amountEur}`, entityId: invoice.id, entityType: "invoice" });
         return invoice;
       }),
     markPaid: protectedProcedure
@@ -1004,6 +1015,8 @@ const contractingRouter = router({
           }
         }
         await notifyReceiptPaid(invoice.invoiceCode, invoice.contractCode ?? "—", invoice.clientName, Number(invoice.amountEur), remainingBalance);
+        const { createNotification: cnPaid } = await import("./db");
+        await cnPaid({ type: "receipt_paid", title: "✅ إيصال مدفوع", body: `تم تسجيل دفع الإيصال ${invoice.invoiceCode} لـ ${invoice.clientName} بمبلغ €${Number(invoice.amountEur).toFixed(2)}`, entityId: invoice.id, entityType: "invoice" });
         return getInvoiceById(input.id);
       }),
     createLegacy: protectedProcedure
@@ -1234,11 +1247,13 @@ const contractingRouter = router({
     current: publicProcedure.query(async () => getEurToEgpRate()),
   }),
   analytics: router({
-    stats: protectedProcedure.query(async () => getContractStats()),
+    stats: protectedProcedure
+      .input(z.object({ consultantName: z.string().optional() }))
+      .query(async ({ input }) => getContractStats(input.consultantName)),
     familyDistribution: protectedProcedure.query(async () => getFamilyMemberDistribution()),
     recentContracts: protectedProcedure
-      .input(z.object({ limit: z.number().optional() }))
-      .query(async ({ input }) => getRecentContracts(input.limit ?? 10)),
+      .input(z.object({ limit: z.number().optional(), consultantName: z.string().optional() }))
+      .query(async ({ input }) => getRecentContracts(input.limit ?? 10, input.consultantName)),
     consultantStats: protectedProcedure.query(async () => getConsultantStats()),
   }),
   // Client search for invoice/proforma creation — accessible to all logged-in users
@@ -1957,6 +1972,29 @@ const nationalVisaRouter = router({
 });
 
 // ─── App Routerr ─────────────────────────────────────────────────────────────
+
+// ─── Notifications Router ─────────────────────────────────────────────────────
+const notificationsRouter = router({
+  list: protectedProcedure.query(async () => {
+    const { getRecentNotifications } = await import("./db");
+    const rows = await getRecentNotifications(40);
+    // Return newest first
+    return rows.slice().sort((a: any, b: any) => b.createdAt - a.createdAt);
+  }),
+  markRead: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const { markNotificationRead } = await import("./db");
+      await markNotificationRead(input.id);
+      return { ok: true };
+    }),
+  markAllRead: protectedProcedure.mutation(async () => {
+    const { markAllNotificationsRead } = await import("./db");
+    await markAllNotificationsRead();
+    return { ok: true };
+  }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -1980,5 +2018,6 @@ export const appRouter = router({
   waQc: waQcRouter,
   workflow: workflowRouter,
   nationalVisa: nationalVisaRouter,
+  notifications: notificationsRouter,
 });
 export type AppRouter = typeof appRouter;

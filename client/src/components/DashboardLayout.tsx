@@ -56,6 +56,10 @@ import {
   Shield,
   GitBranch,
   Globe,
+  Bell,
+  BellDot,
+  X,
+  CheckCheck,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -64,6 +68,106 @@ import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import BroadcastBanner from "./BroadcastBanner";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
+import { trpc } from "@/lib/trpc";
+
+// ─── Notification Bell Component ─────────────────────────────────────────────────────────────────────
+function NotificationBell() {
+  const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const { data: notifications = [], refetch } = trpc.notifications.list.useQuery(undefined, {
+    refetchInterval: 30_000,
+  });
+  const markReadMut = trpc.notifications.markRead.useMutation({ onSuccess: () => refetch() });
+  const markAllMut = trpc.notifications.markAllRead.useMutation({ onSuccess: () => refetch() });
+
+  const unread = (notifications as any[]).filter((n: any) => !n.isRead).length;
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const typeIcon: Record<string, string> = {
+    contract_created: "📄",
+    contract_signed: "✅",
+    contract_cancelled: "❌",
+    receipt_created: "🧳",
+    receipt_paid: "💰",
+    proforma_created: "📝",
+    proforma_paid: "💵",
+    new_client: "👤",
+    schengen_expiry: "⚠️",
+    embassy_followup: "🏢",
+    unpaid_receipt: "⏰",
+    office_rent: "🏠",
+  };
+
+  return (
+    <div className="relative" ref={panelRef}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="relative h-9 w-9 rounded-lg flex items-center justify-center hover:bg-accent transition-colors"
+        aria-label="Notifications"
+      >
+        {unread > 0 ? <BellDot className="h-5 w-5 text-amber-400" /> : <Bell className="h-5 w-5 text-muted-foreground" />}
+        {unread > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-11 w-80 max-h-[420px] overflow-y-auto rounded-xl border bg-popover shadow-xl z-50 flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-popover">
+            <button
+              onClick={() => markAllMut.mutate()}
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+              disabled={unread === 0}
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+              Mark all read
+            </button>
+            <span className="font-semibold text-sm">Notifications</span>
+          </div>
+          {(notifications as any[]).length === 0 ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">No notifications yet</div>
+          ) : (
+            <div>
+              {(notifications as any[]).map((n: any) => (
+                <div
+                  key={n.id}
+                  onClick={() => { if (!n.isRead) markReadMut.mutate({ id: n.id }); }}
+                  className={cn(
+                    "px-4 py-3 border-b last:border-0 cursor-pointer hover:bg-accent/50 transition-colors",
+                    !n.isRead && "bg-accent/20"
+                  )}
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="text-base mt-0.5">{typeIcon[n.type] ?? "🔔"}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium leading-snug">{n.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{n.body}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        {new Date(n.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    {!n.isRead && <div className="h-2 w-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Module colour map ───────────────────────────────────────────────────────
 const MODULE_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
@@ -502,7 +606,15 @@ function DashboardLayoutContent({
               <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" />
               <span className="font-medium text-sm">{activeItem?.label ?? "Elevay"}</span>
             </div>
-            <span className="font-bold text-base font-serif text-primary">Elevay</span>
+            <div className="flex items-center gap-2">
+              <NotificationBell />
+              <span className="font-bold text-base font-serif text-primary">Elevay</span>
+            </div>
+          </div>
+        )}
+        {!isMobile && (
+          <div className="flex border-b h-12 items-center justify-end bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
+            <NotificationBell />
           </div>
         )}
         <main className="flex-1 p-4 md:p-6">
