@@ -520,3 +520,4 @@
 
 ## Change Requests (Round 72)
 - [x] Fix client assignment email notifications: ensure madona.adel@elevay.com and Mahmoud.saber@elevay.com receive emails when a client is assigned; removed Mahmoud.saberelevay@gmail.com from MAHMOUD_EMAILS; Mahmoud.saber@elevay.com now always in to: list (not just CC) for both new client and doc reminder notifications
+- [x] Fix SMTP delivery: GMAIL_USER and GMAIL_APP_PASSWORD secrets were missing — added correct Gmail App Password; SMTP connection now verified and all email notifications will be delivered via Gmail SMTP
