@@ -677,3 +677,31 @@ export const waMediaFiles = mysqlTable("wa_media_files", {
 });
 export type WaMediaFile = typeof waMediaFiles.$inferSelect;
 export type InsertWaMediaFile = typeof waMediaFiles.$inferInsert;
+
+// ─── Client Workflows ─────────────────────────────────────────────────────────
+export const clientWorkflows = mysqlTable("clientWorkflows", {
+  id: int("id").autoincrement().primaryKey(),
+  clientCaseId: int("clientCaseId").notNull(),
+  clientName: varchar("clientName", { length: 255 }).notNull(),
+  // Submission stage: "one" | "two"
+  submissionStage: varchar("submissionStage", { length: 10 }).notNull().default("one"),
+  // Expected submission date (ISO date string YYYY-MM-DD)
+  submissionDate: varchar("submissionDate", { length: 20 }).notNull(),
+  // Schengen visa status
+  schengenStatus: varchar("schengenStatus", { length: 100 }),
+  // Yearly income in EGP
+  yearlyIncome: int("yearlyIncome").notNull().default(0),
+  // Income proof frequency: "monthly" | "quarterly" | "biannual" | "yearly" | "task"
+  incomeFrequency: varchar("incomeFrequency", { length: 20 }).notNull().default("monthly"),
+  // JSON array of payment entries: [{date: string, amount: number}]
+  incomePayments: text("incomePayments"),
+  // Family members count
+  familyMembersCount: int("familyMembersCount").notNull().default(0),
+  // Application type: "freelancer" | "business_owner"
+  applicationType: varchar("applicationType", { length: 30 }).notNull().default("freelancer"),
+  // Children data JSON (copied from clientCase at creation time)
+  childrenData: text("childrenData"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ClientWorkflow = typeof clientWorkflows.$inferSelect;
+export type InsertClientWorkflow = typeof clientWorkflows.$inferInsert;

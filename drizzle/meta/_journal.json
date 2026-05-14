@@ -197,6 +197,13 @@
       "when": 1778742562045,
       "tag": "0027_talented_ironclad",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "5",
+      "when": 1778746031625,
+      "tag": "0028_warm_wrecker",
+      "breakpoints": true
     }
   ]
 }

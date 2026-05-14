@@ -22,6 +22,7 @@ import AnalysisReport from "./pages/AnalysisReport";
 import ClientDocs from "./pages/ClientDocs";
 import ClientDocsDashboard from "./pages/ClientDocsDashboard";
 import ClientDocDetail from "./pages/ClientDocDetail";
+import WorkflowPage from "./pages/WorkflowPage";
 
 // ─── Contracting Module ─────────────────────────────────────────────
 import ContractingDashboard from "./pages/ContractingDashboard";
@@ -170,6 +171,9 @@ function Router() {
       </Route>
       <Route path="/docs/clients/:id">
         <PageGuard pageKey="client_docs"><DashboardLayout><ClientDocDetail /></DashboardLayout></PageGuard>
+      </Route>
+      <Route path="/docs/workflow">
+        <PageGuard pageKey="client_docs"><DashboardLayout><WorkflowPage /></DashboardLayout></PageGuard>
       </Route>
 
       {/* ── Broadcast Center ── */}

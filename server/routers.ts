@@ -27,9 +27,11 @@ import { generateInvoicePdfBuffer } from "./invoiceGenerator";
 import {
   createClientCase, listClientCases, getClientCase, updateClientCase, deleteClientCase,
   createClientDocuments, getClientDocuments, updateClientDocument, updateClientDocumentsByIds,
+  createClientWorkflow, listClientWorkflows, getClientWorkflowById, deleteClientWorkflow,
 } from "./db";
-import { getDocChecklist, ChildEntry } from "../shared/clientDocDefs";
+import { getDocChecklist, ChildEntry, getArabicDocName } from "../shared/clientDocDefs";
 import { generateChecklistDocx } from "./checklistDocxGenerator";
+import { generateWorkflowDocx } from "./workflowDocxGenerator";
 import { financialRouter } from "./finRouter";
 import { settlementRouter } from "./settlementRouter";
 import { chatRouter, broadcastRouter } from "./chatRouter";
@@ -1634,6 +1636,95 @@ const clientDocsRouter = router({
       return { success: true };
     }),
 });
+// ─── Workflow Router ─────────────────────────────────────────────────────────
+const workflowRouter = router({
+  list: protectedProcedure.query(async () => {
+    return listClientWorkflows();
+  }),
+
+  create: protectedProcedure
+    .input(z.object({
+      clientCaseId: z.number(),
+      submissionStage: z.enum(["one", "two"]),
+      submissionDate: z.string(),
+      schengenStatus: z.string().optional(),
+      yearlyIncome: z.number().int().min(0),
+      incomeFrequency: z.enum(["monthly", "quarterly", "biannual", "yearly", "task"]),
+      incomePayments: z.array(z.object({ date: z.string(), amount: z.number() })),
+    }))
+    .mutation(async ({ input }) => {
+      const clientCase = await getClientCase(input.clientCaseId);
+      if (!clientCase) throw new TRPCError({ code: "NOT_FOUND", message: "Client not found" });
+      const children: ChildEntry[] = Array.isArray(clientCase.childrenData)
+        ? (clientCase.childrenData as ChildEntry[])
+        : [];
+      const familyMembersCount = clientCase.maritalStatus === "family" ? 1 + children.length : 0;
+      const wf = await createClientWorkflow({
+        clientCaseId: input.clientCaseId,
+        clientName: clientCase.clientName,
+        submissionStage: input.submissionStage,
+        submissionDate: input.submissionDate,
+        schengenStatus: input.schengenStatus ?? null,
+        yearlyIncome: input.yearlyIncome,
+        incomeFrequency: input.incomeFrequency,
+        incomePayments: JSON.stringify(input.incomePayments),
+        familyMembersCount,
+        applicationType: clientCase.applicationType,
+        childrenData: JSON.stringify(children),
+      });
+      return wf;
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await deleteClientWorkflow(input.id);
+      return { success: true };
+    }),
+
+  generateDoc: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const wf = await getClientWorkflowById(input.id);
+      if (!wf) throw new TRPCError({ code: "NOT_FOUND", message: "Workflow not found" });
+      // Get remaining documents for this client
+      const clientCase = await getClientCase(wf.clientCaseId);
+      if (!clientCase) throw new TRPCError({ code: "NOT_FOUND", message: "Client case not found" });
+      const children: ChildEntry[] = wf.childrenData ? JSON.parse(wf.childrenData as string) : [];
+      const checklist = getDocChecklist(clientCase.applicationType, clientCase.maritalStatus, children);
+      const allDocs = await getClientDocuments(wf.clientCaseId);
+      const receivedKeys = new Set(allDocs.filter(d => d.received).map(d => d.docKey));
+      // Build pending doc lists
+      const mainApplicantDocs: string[] = [];
+      const familyDocs: string[] = [];
+      checklist.forEach(item => {
+        if (!receivedKeys.has(item.docKey)) {
+          const arabicName = getArabicDocName(item.docKey, item.docName);
+          if (item.category === "main") mainApplicantDocs.push(arabicName);
+          else familyDocs.push(arabicName);
+        }
+      });
+      const payments: Array<{ date: string; amount: number }> = wf.incomePayments
+        ? JSON.parse(wf.incomePayments as string)
+        : [];
+      const buf = await generateWorkflowDocx({
+        clientName: wf.clientName,
+        applicationType: wf.applicationType as "freelancer" | "business_owner",
+        familyMembersCount: wf.familyMembersCount,
+        childrenData: children,
+        schengenStatus: wf.schengenStatus ?? undefined,
+        submissionStage: wf.submissionStage as "one" | "two",
+        submissionDate: wf.submissionDate,
+        yearlyIncome: wf.yearlyIncome,
+        incomeFrequency: wf.incomeFrequency as any,
+        incomePayments: payments,
+        mainApplicantDocs,
+        familyDocs,
+      });
+      return { base64: buf.toString("base64"), clientName: wf.clientName };
+    }),
+});
+
 // ─── App Routerr ─────────────────────────────────────────────────────────────
 export const appRouter = router({
   system: systemRouter,
@@ -1656,5 +1747,6 @@ export const appRouter = router({
   broadcast: broadcastRouter,
   permissions: permissionsRouter,
   waQc: waQcRouter,
+  workflow: workflowRouter,
 });
 export type AppRouter = typeof appRouter;

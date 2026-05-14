@@ -620,3 +620,34 @@ export async function getWaConversations() {
     };
   });
 }
+
+// ─── Client Workflows ─────────────────────────────────────────────────────────
+import { clientWorkflows, InsertClientWorkflow } from "../drizzle/schema";
+
+export async function createClientWorkflow(data: InsertClientWorkflow) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(clientWorkflows).values(data);
+  const id = (result as any).insertId as number;
+  const rows = await db.select().from(clientWorkflows).where(eq(clientWorkflows.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function listClientWorkflows() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(clientWorkflows).orderBy(desc(clientWorkflows.createdAt));
+}
+
+export async function getClientWorkflowById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(clientWorkflows).where(eq(clientWorkflows.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function deleteClientWorkflow(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(clientWorkflows).where(eq(clientWorkflows.id, id));
+}

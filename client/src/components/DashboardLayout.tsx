@@ -54,6 +54,7 @@ import {
   Landmark,
   CalendarClock,
   Shield,
+  GitBranch,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -102,6 +103,7 @@ const modules = [
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "/docs/dashboard" },
       { icon: Users, label: "Clients", path: "/docs" },
+      { icon: GitBranch, label: "Workflow", path: "/docs/workflow" },
     ],
   },
   {
