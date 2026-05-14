@@ -1824,6 +1824,8 @@ const workflowRouter = router({
       const payments: Array<{ date: string; amount: number }> = wf.incomePayments
         ? JSON.parse(wf.incomePayments as string)
         : [];
+      // Use workflow schengenExpiry if set, otherwise fall back to client case schengenExpiryDate (set in Round 62)
+      const resolvedSchengenExpiry = wf.schengenExpiry ?? (clientCase as any).schengenExpiryDate ?? undefined;
       const buf = await generateWorkflowDocx({
         clientName: wf.clientName,
         applicationType: wf.applicationType as "freelancer" | "business_owner",
@@ -1831,7 +1833,7 @@ const workflowRouter = router({
         childrenData: children,
         childrenNamesData: childrenNames,
         schengenStatus: wf.schengenStatus ?? undefined,
-        schengenExpiry: wf.schengenExpiry ?? undefined,
+        schengenExpiry: resolvedSchengenExpiry,
         submissionStage: wf.submissionStage as "one" | "two",
         submissionDate: wf.submissionDate,
         yearlyIncome: wf.yearlyIncome,

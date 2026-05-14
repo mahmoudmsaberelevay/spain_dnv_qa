@@ -15,6 +15,14 @@ import {
   convertInchesToTwip,
 } from "docx";
 
+// ── Template notes for specific documents ────────────────────────────────────────
+// These documents have a note that Elevay will provide the template.
+const TEMPLATE_NOTE_DOCS = new Set([
+  "عقد عمل الاستشارات",
+  "فواتير الدفعات المستقبلة",
+  "خطاب التوصية",
+]);
+
 // ── Stamp notes for specific document keys ─────────────────────────────────────
 // These notes are appended beside the document name in the remaining docs section.
 const STAMP_NOTES: Record<string, string> = {
@@ -123,14 +131,19 @@ function dividerPara(): Paragraph {
   });
 }
 
-/** Document item — checkbox + name + optional stamp note (no numbering) */
+/** Document item — checkbox + name + optional stamp note + optional template note */
 function docItem(arabicName: string): Paragraph {
   const stampNote = getStampNote(arabicName);
+  // Check if any of the template-note doc names is contained in the arabic name
+  const needsTemplateNote = Array.from(TEMPLATE_NOTE_DOCS).some(n => arabicName.includes(n));
   const runs: TextRun[] = [
     new TextRun({ text: `☐  ${arabicName}`, size: 22, rightToLeft: true }),
   ];
   if (stampNote) {
     runs.push(new TextRun({ text: `  ${stampNote}`, size: 20, color: "7f1d1d", rightToLeft: true }));
+  }
+  if (needsTemplateNote) {
+    runs.push(new TextRun({ text: "  (إيليفاي ستقوم بتزويدك بنموذج)", size: 20, color: "1e3a5f", bold: true, rightToLeft: true }));
   }
   return new Paragraph({
     bidirectional: true,
@@ -525,6 +538,16 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
 
   // ── Build document ────────────────────────────────────────────────────────────
   const doc = new Document({
+    // Document-level RTL: sets the default text direction to right-to-left
+    // so that all paragraphs without explicit alignment default to RTL
+    styles: {
+      default: {
+        document: {
+          run: { rightToLeft: true },
+          paragraph: { bidirectional: true, alignment: AlignmentType.RIGHT },
+        },
+      },
+    },
     sections: [
       {
         properties: {
@@ -532,6 +555,7 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
             margin: {
               top: convertInchesToTwip(1),
               bottom: convertInchesToTwip(1),
+              // Swap left/right margins for RTL: wider right margin for binding
               left: convertInchesToTwip(1),
               right: convertInchesToTwip(1),
             },
