@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Trash2, FileDown, Loader2, ChevronRight, ChevronLeft } from "lucide-react";
+import { Plus, Trash2, FileDown, Loader2, ChevronRight, ChevronLeft, Pencil, X } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface PaymentEntry {
@@ -118,6 +118,43 @@ export default function WorkflowPage() {
     onSuccess: () => { refetchWorkflows(); toast.success("تم الحذف"); },
     onError: (e) => toast.error(e.message),
   });
+
+  // ── Edit modal state ──────────────────────────────────────────────────────
+  const [editWorkflow, setEditWorkflow] = useState<any | null>(null);
+  const [editSchengenExpiry, setEditSchengenExpiry] = useState("");
+  const [editChildrenNames, setEditChildrenNames] = useState<ChildNameEntry[]>([]);
+
+  const updateMutation = trpc.workflow.update.useMutation({
+    onSuccess: () => {
+      refetchWorkflows();
+      toast.success("تم تحديث خطة العمل بنجاح");
+      setEditWorkflow(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  function openEdit(wf: any) {
+    setEditWorkflow(wf);
+    setEditSchengenExpiry(wf.schengenExpiry || "");
+    // Parse childrenNamesData
+    let names: ChildNameEntry[] = [];
+    if (wf.childrenNamesData) {
+      try {
+        const arr = typeof wf.childrenNamesData === "string" ? JSON.parse(wf.childrenNamesData) : wf.childrenNamesData;
+        if (Array.isArray(arr)) names = arr;
+      } catch { /* ignore */ }
+    }
+    setEditChildrenNames(names);
+  }
+
+  function handleEditSave() {
+    if (!editWorkflow) return;
+    updateMutation.mutate({
+      id: editWorkflow.id,
+      schengenExpiry: editSchengenExpiry || undefined,
+      childrenNamesData: editChildrenNames.length > 0 ? editChildrenNames : undefined,
+    });
+  }
 
   const generateMutation = trpc.workflow.generateDoc.useMutation({
     onSuccess: (data) => {
@@ -408,23 +445,21 @@ export default function WorkflowPage() {
                 className="text-right"
               />
             </div>
-            {/* Schengen expiry date — shown only when schengenStatus is filled */}
-            {schengenStatus && (
-              <div>
-                <Label className="block text-right mb-2">تاريخ انتهاء تأشيرة شنغن</Label>
-                <Input
-                  type="date"
-                  value={schengenExpiry}
-                  onChange={(e) => setSchengenExpiry(e.target.value)}
-                  className="text-right"
-                />
-                {schengenExpiry && (
-                  <p className="text-xs text-gray-500 text-right mt-1">
-                    تنتهي في: {toArabicDate(schengenExpiry)}
-                  </p>
-                )}
-              </div>
-            )}
+            {/* Schengen expiry date — always visible */}
+            <div>
+              <Label className="block text-right mb-2">تاريخ انتهاء تأشيرة شنغن (اختياري)</Label>
+              <Input
+                type="date"
+                value={schengenExpiry}
+                onChange={(e) => setSchengenExpiry(e.target.value)}
+                className="text-right"
+              />
+              {schengenExpiry && (
+                <p className="text-xs text-gray-500 text-right mt-1">
+                  تنتهي في: {toArabicDate(schengenExpiry)}
+                </p>
+              )}
+            </div>
 
             {/* Timeline preview */}
             {submissionDate && (
@@ -598,6 +633,15 @@ export default function WorkflowPage() {
                     <Trash2 className="w-4 h-4" />
                   </Button>
                   <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => openEdit(wf)}
+                    className="text-blue-600"
+                    title="تعديل"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                  <Button
                     variant="outline"
                     size="sm"
                     onClick={() => generateMutation.mutate({ id: wf.id })}
@@ -622,6 +666,82 @@ export default function WorkflowPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {/* ── Edit workflow dialog ── */}
+      {editWorkflow && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" dir="rtl">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <button onClick={() => setEditWorkflow(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+              <h2 className="text-lg font-bold" style={{ color: "#1e3a5f" }}>
+                تعديل خطة العمل — {editWorkflow.clientName}
+              </h2>
+            </div>
+
+            {/* Schengen expiry */}
+            <div>
+              <Label className="block text-right mb-1">تاريخ انتهاء تأشيرة شنغن</Label>
+              <Input
+                type="date"
+                value={editSchengenExpiry}
+                onChange={(e) => setEditSchengenExpiry(e.target.value)}
+                className="text-right"
+              />
+            </div>
+
+            {/* Children names */}
+            {editChildrenNames.length > 0 && (
+              <div className="space-y-3">
+                <Label className="block text-right font-semibold">أسماء الأطفال</Label>
+                {editChildrenNames.map((child, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <Select
+                      value={child.ageRange}
+                      onValueChange={(v) =>
+                        setEditChildrenNames((prev) =>
+                          prev.map((c, idx) => idx === i ? { ...c, ageRange: v as "0-17" | "18-26" } : c)
+                        )
+                      }
+                    >
+                      <SelectTrigger className="w-36 text-right">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0-17">من 0 إلى 17</SelectItem>
+                        <SelectItem value="18-26">من 18 إلى 26</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      placeholder={`اسم الطفل ${CHILD_ORDINALS[i] || i + 1}`}
+                      value={child.name}
+                      onChange={(e) =>
+                        setEditChildrenNames((prev) =>
+                          prev.map((c, idx) => idx === i ? { ...c, name: e.target.value } : c)
+                        )
+                      }
+                      className="flex-1 text-right"
+                    />
+                    <span className="text-sm text-gray-500 whitespace-nowrap">الطفل {CHILD_ORDINALS[i] || i + 1}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-start gap-3 pt-2">
+              <Button variant="outline" onClick={() => setEditWorkflow(null)}>إلغاء</Button>
+              <Button
+                onClick={handleEditSave}
+                disabled={updateMutation.isPending}
+                style={{ backgroundColor: "#1e3a5f" }}
+                className="text-white"
+              >
+                {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "حفظ التعديلات"}
+              </Button>
+            </div>
           </div>
         </div>
       )}

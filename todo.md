@@ -450,3 +450,15 @@
 - [x] Install docx npm package for Word document generation
 - [x] Add clientDocs.exportChecklist tRPC procedure (Arabic Word doc + Elevay logo)
 - [x] Add export button to ClientDocDetail.tsx
+
+## Change Requests (Round 60) — Edit Workflow + Stage Date Sync
+- [ ] Add workflow.update tRPC procedure (update schengenExpiry, childrenNamesData, submissionDate, schengenStatus)
+- [ ] Add Edit button to each workflow card in WorkflowPage.tsx
+- [ ] Build Edit Workflow modal with pre-filled fields (Schengen status/expiry, children names/ages, submission date)
+- [ ] Auto-sync workflow submission date to client Stage Dates (submissionDate field) on create and update
+
+## Change Requests (Round 61) — Workflow Doc Fixes + Edit Modal
+- [ ] Add Schengen expiry date to client info section in workflowDocxGenerator.ts
+- [ ] Add document validity table (6 items) to important notes section in workflowDocxGenerator.ts
+- [ ] Ensure full RTL right-alignment for ALL text throughout the Word document
+- [ ] Add Edit workflow modal to WorkflowPage.tsx (pre-filled: Schengen status/expiry, children names/ages, submission date)

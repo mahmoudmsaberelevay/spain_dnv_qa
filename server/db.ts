@@ -646,6 +646,14 @@ export async function getClientWorkflowById(id: number) {
   return rows[0];
 }
 
+export async function updateClientWorkflow(id: number, data: Partial<InsertClientWorkflow>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(clientWorkflows).set(data).where(eq(clientWorkflows.id, id));
+  const rows = await db.select().from(clientWorkflows).where(eq(clientWorkflows.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
 export async function deleteClientWorkflow(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

@@ -309,12 +309,27 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
     docChildren.push(stageItem("تاريخ تقديم الطلب (كامل الأسرة) (تقريبي)", input.submissionDate, "قد يتغير وفقاً للظروف"));
     docChildren.push(stageItem("تاريخ الحصول على الموافقة المتوقع", approvalDate));
     docChildren.push(stageItem("تاريخ استلام البطاقات المتوقع", cardCollectionDate));
-  }
+  }  // Timeline final note
+  docChildren.push(
+    new Paragraph({
+      bidirectional: true,
+      alignment: AlignmentType.RIGHT,
+      spacing: { before: 120, after: 200 },
+      children: [
+        new TextRun({
+          text: "ملحوظة : كل تلك المواعيد هي مواعيد تقريبية بناءً على خبرتنا وتوقعنا لسرعة الإجراءات، ولكن من المهم فهم أن هذه المواعيد تتأثر بالعديد من العوامل، أهمها تواريخ الحصول على الفيزا الشنغن وتاريخ انتهائها، بالإضافة لتواريخ الحصول على مواعيد توثيق الأوراق من السفارة الإسبانية، ولذلك من الممكن أن تتأثر أو تتغير تلك المواعيد بتلك الظروف السابق ذكرها.",
+          size: 20,
+          color: "7c3aed",
+          bold: true,
+          italics: true,
+          rightToLeft: true,
+        }),
+      ],
+    })
+  );
   docChildren.push(dividerPara());
-
-  // ── Section 3: Process steps ──────────────────────────────────────────────────
+  // ── Section 3: Process steps ─────────────────────────────────────────────────────
   docChildren.push(sectionHeading("ثالثاً : خطوات سير العملية بالتفصيل"));
-
   const processSteps = [
     "بعد توقيع العقد، سنحتاج إلى شهرين لإعداد كامل ملف الطلب وإتمام التصديق من وزارة الخارجية والسفارة.",
     "بعد ذلك، ستحتاج إلى السفر إلى إسبانيا لمدة ٣ أيام (لا تُحتسب السبت والأحد) لتقديم الطلب.",
@@ -437,12 +452,64 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
     });
   });
 
+  // ── Document validity table ─────────────────────────────────────────────────
+  docChildren.push(dividerPara());
+  docChildren.push(sectionHeading("فترات صلاحية المستندات"));
+  docChildren.push(rtlPara("يوضح الجدول التالي فترات الصلاحية الخاصة ببعض المستندات :", { bold: true, size: 22, spacing: 100 }));
+
+  const validityRows: [string, string][] = [
+    ["شهادات الميلاد", "٦ أشهر"],
+    ["صحيفة الحالة الجنائية", "٣ أشهر"],
+    ["كشف الحساب البنكي", "٣ أشهر"],
+    ["عقد الزواج", "٣ أشهر"],
+    ["شهادات القيد الفردي", "٣ أشهر"],
+    ["شهادات القيد الدراسي", "٣ أشهر"],
+  ];
+
+  // Table header
+  docChildren.push(
+    new Paragraph({
+      bidirectional: true,
+      alignment: AlignmentType.RIGHT,
+      spacing: { after: 60 },
+      children: [
+        new TextRun({ text: "المستند", bold: true, size: 22, rightToLeft: true }),
+        new TextRun({ text: "          ", size: 22 }),
+        new TextRun({ text: "مدة الصلاحية", bold: true, size: 22, rightToLeft: true }),
+      ],
+    })
+  );
+  docChildren.push(
+    new Paragraph({
+      bidirectional: true,
+      alignment: AlignmentType.RIGHT,
+      spacing: { after: 80 },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: "1e3a5f" } },
+      children: [],
+    })
+  );
+
+  validityRows.forEach(([doc, validity]) => {
+    docChildren.push(
+      new Paragraph({
+        bidirectional: true,
+        alignment: AlignmentType.RIGHT,
+        spacing: { after: 60 },
+        children: [
+          new TextRun({ text: doc, size: 22, rightToLeft: true }),
+          new TextRun({ text: "          ", size: 22 }),
+          new TextRun({ text: validity, size: 22, rightToLeft: true }),
+        ],
+      })
+    );
+  });
+
   // Final disclaimer
   docChildren.push(dividerPara());
   docChildren.push(
     new Paragraph({
       bidirectional: true,
-      alignment: AlignmentType.CENTER,
+      alignment: AlignmentType.RIGHT,
       spacing: { after: 120 },
       children: [
         new TextRun({

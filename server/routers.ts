@@ -27,7 +27,7 @@ import { generateInvoicePdfBuffer } from "./invoiceGenerator";
 import {
   createClientCase, listClientCases, getClientCase, updateClientCase, deleteClientCase,
   createClientDocuments, getClientDocuments, updateClientDocument, updateClientDocumentsByIds,
-  createClientWorkflow, listClientWorkflows, getClientWorkflowById, deleteClientWorkflow,
+  createClientWorkflow, listClientWorkflows, getClientWorkflowById, deleteClientWorkflow, updateClientWorkflow,
 } from "./db";
 import { getDocChecklist, ChildEntry, getArabicDocName } from "../shared/clientDocDefs";
 import { generateChecklistDocx } from "./checklistDocxGenerator";
@@ -1676,7 +1676,37 @@ const workflowRouter = router({
         childrenData: JSON.stringify(children),
         childrenNamesData: input.childrenNamesData ? JSON.stringify(input.childrenNamesData) : null,
       });
+      // Auto-sync submission date to client Stage Dates
+      await updateClientCase(input.clientCaseId, {
+        submissionDate: new Date(input.submissionDate),
+      });
       return wf;
+    }),
+
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      submissionStage: z.enum(["one", "two"]).optional(),
+      submissionDate: z.string().optional(),
+      schengenStatus: z.string().optional(),
+      schengenExpiry: z.string().optional(),
+      childrenNamesData: z.array(z.object({ name: z.string(), ageRange: z.enum(["0-17", "18-26"]) })).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, childrenNamesData, ...rest } = input;
+      const updateData: Record<string, unknown> = { ...rest };
+      if (childrenNamesData !== undefined) {
+        updateData.childrenNamesData = JSON.stringify(childrenNamesData);
+      }
+      const updated = await updateClientWorkflow(id, updateData as any);
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Workflow not found" });
+      // Auto-sync submission date to client Stage Dates if provided
+      if (input.submissionDate) {
+        await updateClientCase(updated.clientCaseId, {
+          submissionDate: new Date(input.submissionDate),
+        });
+      }
+      return updated;
     }),
 
   delete: protectedProcedure
