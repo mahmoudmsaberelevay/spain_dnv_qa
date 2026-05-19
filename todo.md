@@ -521,3 +521,10 @@
 ## Change Requests (Round 72)
 - [x] Fix client assignment email notifications: ensure madona.adel@elevay.com and Mahmoud.saber@elevay.com receive emails when a client is assigned; removed Mahmoud.saberelevay@gmail.com from MAHMOUD_EMAILS; Mahmoud.saber@elevay.com now always in to: list (not just CC) for both new client and doc reminder notifications
 - [x] Fix SMTP delivery: GMAIL_USER and GMAIL_APP_PASSWORD secrets were missing — added correct Gmail App Password; SMTP connection now verified and all email notifications will be delivered via Gmail SMTP
+
+## Change Requests (Round 73)
+- [x] DB: add actualPaidAmountEgp (decimal, nullable) and remainingAmountEgp (decimal, nullable) columns to invoices table
+- [x] Backend: update createInvoice procedure to accept actualPaidAmountEgp; auto-calculate remainingAmountEgp = amountEgp - actualPaidAmountEgp
+- [x] Frontend: receipt creation form — add "Actual Paid Amount (EGP)" input field; show live "Remaining (EGP)" = due EGP - paid EGP below it
+- [x] Frontend: receipt list table — add Due (EGP), Paid (EGP), and Remaining (EGP) columns
+- [x] Frontend: receipt PDF template — add DUE AMOUNT (EGP), ACTUAL PAID (EGP), and REMAINING (EGP) rows when partial payment is provided

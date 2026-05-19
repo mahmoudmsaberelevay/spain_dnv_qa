@@ -50,6 +50,7 @@ export default function Invoices() {
   const [amountEur, setAmountEur] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
   const [discountValue, setDiscountValue] = useState<string>("");
+  const [actualPaidEgp, setActualPaidEgp] = useState<string>("");
 
   // Form state — legacy mode
   const [legacyClientId, setLegacyClientId] = useState<string>("none");
@@ -93,6 +94,7 @@ export default function Invoices() {
       setAmountEur("");
       setNotes("");
       setDiscountValue("");
+      setActualPaidEgp("");
     },
     onError: (err) => {
       toast.error(`Failed to create receipt: ${err.message}`);
@@ -167,6 +169,7 @@ export default function Invoices() {
       amountEur: Number(amountEur),
       notes: notes.trim(),
       discountValue: discountValue ? Number(discountValue) : undefined,
+      actualPaidAmountEgp: actualPaidEgp ? Number(actualPaidEgp) : undefined,
     });
   };
 
@@ -262,7 +265,9 @@ export default function Invoices() {
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Client</th>
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Contract</th>
                     <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Amount (EUR)</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Amount (EGP)</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Due (EGP)</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Paid (EGP)</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Remaining (EGP)</th>
                     <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Date</th>
                     <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Status</th>
                     <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Actions</th>
@@ -287,6 +292,22 @@ export default function Invoices() {
                         <span className="text-sm text-muted-foreground">
                           {invoice.amountEgp ? formatCurrency(Number(invoice.amountEgp), "EGP") : "—"}
                         </span>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <span className="text-sm text-muted-foreground">
+                          {invoice.actualPaidAmountEgp != null ? formatCurrency(Number(invoice.actualPaidAmountEgp), "EGP") : "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        {invoice.remainingAmountEgp != null ? (
+                          <span className={`text-sm font-semibold ${
+                            Number(invoice.remainingAmountEgp) > 0 ? "text-amber-700" : "text-green-700"
+                          }`}>
+                            {formatCurrency(Number(invoice.remainingAmountEgp), "EGP")}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-4 text-center">
                         <div className="flex items-center justify-center gap-1 text-muted-foreground">
@@ -480,9 +501,42 @@ export default function Invoices() {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <TrendingDown className="h-4 w-4 text-blue-600" />
-                    <span className="text-sm text-blue-800">Equivalent in EGP</span>
+                    <span className="text-sm text-blue-800">Due Amount (EGP)</span>
                   </div>
                   <span className="font-bold text-blue-900">{formatCurrency(previewEgp, "EGP")}</span>
+                </div>
+              )}
+
+              {/* Actual Paid Amount (EGP) — optional partial payment */}
+              <div className="space-y-2">
+                <Label htmlFor="actualPaidEgp">Actual Paid Amount (EGP) <span className="text-muted-foreground text-xs">(optional — leave blank if full amount paid)</span></Label>
+                <Input
+                  id="actualPaidEgp"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="e.g. 45000"
+                  value={actualPaidEgp}
+                  onChange={(e) => setActualPaidEgp(e.target.value)}
+                  className="h-10"
+                />
+              </div>
+
+              {/* Live remaining EGP calculation */}
+              {previewEgp !== null && actualPaidEgp && Number(actualPaidEgp) >= 0 && (
+                <div className={`border rounded-lg p-3 flex items-center justify-between ${
+                  Math.max(0, previewEgp - Number(actualPaidEgp)) > 0
+                    ? "bg-amber-50 border-amber-200"
+                    : "bg-green-50 border-green-200"
+                }`}>
+                  <span className="text-sm font-medium">
+                    {Math.max(0, previewEgp - Number(actualPaidEgp)) > 0 ? "Remaining (EGP)" : "Fully Paid ✓"}
+                  </span>
+                  <span className={`font-bold ${
+                    Math.max(0, previewEgp - Number(actualPaidEgp)) > 0 ? "text-amber-800" : "text-green-700"
+                  }`}>
+                    {formatCurrency(Math.max(0, previewEgp - Number(actualPaidEgp)), "EGP")}
+                  </span>
                 </div>
               )}
 

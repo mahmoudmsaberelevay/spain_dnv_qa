@@ -144,6 +144,8 @@ export const invoices = mysqlTable("invoices", {
   amountEur: decimal("amountEur", { precision: 10, scale: 2 }).notNull(),
   amountEgp: decimal("amountEgp", { precision: 12, scale: 2 }),
   exchangeRate: decimal("exchangeRate", { precision: 10, scale: 4 }),
+  actualPaidAmountEgp: decimal("actualPaidAmountEgp", { precision: 12, scale: 2 }),
+  remainingAmountEgp: decimal("remainingAmountEgp", { precision: 12, scale: 2 }),
   status: mysqlEnum("status", ["unpaid", "paid"]).default("unpaid").notNull(),
   pdfUrl: text("pdfUrl"),
   driveFileId: varchar("driveFileId", { length: 255 }),

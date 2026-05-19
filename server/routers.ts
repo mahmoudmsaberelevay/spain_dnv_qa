@@ -920,6 +920,7 @@ const contractingRouter = router({
         amountEur: z.number().positive(),
         notes: z.string().min(1, "Payment notes are required"),
         discountValue: z.number().min(0).optional(),
+        actualPaidAmountEgp: z.number().min(0).optional(),
       }))
       .mutation(async ({ input }) => {
         const contract = await getContractById(input.contractId);
@@ -943,17 +944,24 @@ const contractingRouter = router({
         const remainingBalance = contractValue - totalPaid - input.amountEur;
         const billingName = contract.invoicingName || contract.clientName;
         const clientMobile = contract.clientMobile || "";
+        // EGP partial payment
+        const actualPaidEgp = input.actualPaidAmountEgp ?? undefined;
+        const remainingEgp = actualPaidEgp != null ? Math.max(0, amountEgp - actualPaidEgp) : undefined;
         const pdfUrl = await generateAndUploadInvoicePdf({
           invoiceCode, contractCode: contract.contractCode, clientName: billingName, clientMobile,
           amountEur: input.amountEur, amountEgp, exchangeRate: rateInfo.rate,
           contractValue, totalPaid: totalPaid + input.amountEur, remainingBalance,
           createdAt: new Date(), notes: input.notes,
+          actualPaidAmountEgp: actualPaidEgp,
+          remainingAmountEgp: remainingEgp,
         });
         const invoice = await createInvoice({
           invoiceCode, contractId: input.contractId, contractCode: contract.contractCode,
           clientName: billingName, amountEur: input.amountEur.toString(),
           amountEgp: amountEgp.toString(), exchangeRate: rateInfo.rate.toString(),
           status: "unpaid", pdfUrl, notes: input.notes,
+          actualPaidAmountEgp: actualPaidEgp != null ? actualPaidEgp.toString() : undefined,
+          remainingAmountEgp: remainingEgp != null ? remainingEgp.toString() : undefined,
         });
         // Notify team that a new invoice was created
         notifyNewInvoice(

@@ -22,6 +22,9 @@ export interface ReceiptData {
   remainingBalance: number;
   createdAt: Date;
   notes?: string;
+  // Partial payment fields (EGP)
+  actualPaidAmountEgp?: number;
+  remainingAmountEgp?: number;
 }
 
 function formatCurrency(amount: number, currency: string): string {
@@ -220,11 +223,17 @@ function buildPdf(
     // ══════════════════════════════════════════════════════════════════════
     // SUMMARY TABLE (2 columns: label | value)
     // ══════════════════════════════════════════════════════════════════════
-    const summaryRows = [
+    const summaryRows: { label: string; value: string }[] = [
       { label: "TOTAL CONTRACT VALUE", value: formatCurrency(data.contractValue, "EUR") },
       { label: "TOTAL PAID",           value: formatCurrency(data.totalPaid, "EUR") },
       { label: "REMAINING BALANCE",    value: formatCurrency(data.remainingBalance, "EUR") },
     ];
+    // Append EGP partial-payment rows only when provided
+    if (data.actualPaidAmountEgp != null) {
+      summaryRows.push({ label: "DUE AMOUNT (EGP)",    value: formatCurrency(data.amountEgp, "EGP").replace(/^EGP\s*/, "EGP ") });
+      summaryRows.push({ label: "ACTUAL PAID (EGP)",   value: formatCurrency(data.actualPaidAmountEgp, "EGP").replace(/^EGP\s*/, "EGP ") });
+      summaryRows.push({ label: "REMAINING (EGP)",     value: formatCurrency(data.remainingAmountEgp ?? 0, "EGP").replace(/^EGP\s*/, "EGP ") });
+    }
 
     const sLabelW = W * 0.55;
     const sValW   = W * 0.45;
