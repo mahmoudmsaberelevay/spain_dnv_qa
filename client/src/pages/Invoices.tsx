@@ -17,7 +17,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Download, Search, Receipt, Calendar, CheckCircle, Loader2, TrendingDown, Mail, ExternalLink,
+  Plus, Download, Search, Receipt, Calendar, CheckCircle, Loader2, TrendingDown, Mail, ExternalLink, Trash2, RefreshCw,
 } from "lucide-react";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 import { ClientSearchCombobox } from "@/components/ClientSearchCombobox";
@@ -29,6 +29,8 @@ export default function Invoices() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [confirmPaid, setConfirmPaid] = useState<{ id: number; invoiceCode: string; clientName: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; invoiceCode: string; clientName: string } | null>(null);
+  const [regenId, setRegenId] = useState<number | null>(null);
 
   // Send-by-email dialog state
   const [sendEmailDialog, setSendEmailDialog] = useState<{ id: number; invoiceCode: string; clientName: string } | null>(null);
@@ -127,6 +129,26 @@ export default function Invoices() {
       actualPaidAmountEgp: legacyActualPaidEgp ? Number(legacyActualPaidEgp) : undefined,
     });
   };
+
+  const deleteMutation = trpc.contracting.invoices.delete.useMutation({
+    onSuccess: () => {
+      utils.contracting.invoices.list.invalidate();
+      utils.contracting.analytics.stats.invalidate();
+      toast.success("Receipt deleted.");
+      setConfirmDelete(null);
+    },
+    onError: (err) => toast.error(`Failed to delete: ${err.message}`),
+  });
+
+  const regenMutation = trpc.contracting.invoices.regeneratePdf.useMutation({
+    onSuccess: (data) => {
+      utils.contracting.invoices.list.invalidate();
+      toast.success("PDF regenerated successfully!");
+      setRegenId(null);
+      if (data.pdfUrl) window.open(data.pdfUrl, "_blank");
+    },
+    onError: (err) => { toast.error(`Failed to regenerate PDF: ${err.message}`); setRegenId(null); },
+  });
 
   const markPaidMutation = trpc.contracting.invoices.markPaid.useMutation({
     onSuccess: () => {
@@ -362,6 +384,30 @@ export default function Invoices() {
                             >
                               <CheckCircle className="h-3.5 w-3.5" />
                               Mark Paid
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 gap-1 text-xs text-amber-600 hover:text-amber-800 hover:bg-amber-50"
+                            onClick={() => { setRegenId(invoice.id); regenMutation.mutate({ id: invoice.id }); }}
+                            disabled={regenMutation.isPending && regenId === invoice.id}
+                            title="Regenerate PDF with correct values"
+                          >
+                            {regenMutation.isPending && regenId === invoice.id
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <RefreshCw className="h-3.5 w-3.5" />}
+                            Regen
+                          </Button>
+                          {canEdit && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 gap-1 text-xs text-red-600 hover:text-red-800 hover:bg-red-50"
+                              onClick={() => setConfirmDelete({ id: invoice.id, invoiceCode: invoice.invoiceCode, clientName: invoice.clientName })}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
                             </Button>
                           )}
                         </div>
@@ -760,6 +806,30 @@ export default function Invoices() {
               }}
             >
               {markPaidMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Mark as Paid"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Receipt Confirmation */}
+      <AlertDialog open={!!confirmDelete} onOpenChange={() => setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Receipt</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete receipt <strong>{confirmDelete?.invoiceCode}</strong> for{" "}
+              <strong>{confirmDelete?.clientName}</strong>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (confirmDelete) deleteMutation.mutate({ id: confirmDelete.id });
+              }}
+            >
+              {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete Receipt"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

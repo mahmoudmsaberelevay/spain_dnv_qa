@@ -12,7 +12,7 @@ import {
   createDocument, getDocumentsByCaseId, getDocumentById, updateDocument, deleteDocument,
   upsertAnalysisResult, getAnalysisResultByCaseId,
   createContract, getAllContracts, getContractById, updateContractStatus, updateContractDocUrl, applyContractDiscount, createInvoice, getAllInvoices, getInvoicesByContractId,
-  getInvoiceById, markInvoicePaid, updateInvoicePdfUrl, createPayment,
+  getInvoiceById, markInvoicePaid, updateInvoicePdfUrl, deleteInvoice, createPayment,
   getTotalPaidByContractId, getContractStats, getFamilyMemberDistribution,
   getRecentContracts, getPaymentsByContractId, getNextContractSequence, getNextContractSequenceForYear,
   getConsultantStats,
@@ -1098,6 +1098,14 @@ const contractingRouter = router({
         ).catch(() => {});
         return invoice;
       }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const invoice = await getInvoiceById(input.id);
+        if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+        await deleteInvoice(input.id);
+        return { success: true };
+      }),
     sendReceiptByEmail: protectedProcedure
       .input(z.object({ invoiceId: z.number(), clientEmail: z.string().email() }))
       .mutation(async ({ input }) => {
@@ -1113,17 +1121,51 @@ const contractingRouter = router({
       .mutation(async ({ input }) => {
         const invoice = await getInvoiceById(input.id);
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
-        const contract = invoice.contractId != null ? await getContractById(invoice.contractId) : null;
-        const totalPaid = invoice.contractId != null ? await getTotalPaidByContractId(invoice.contractId) : 0;
-        const contractValue = Number(contract?.contractValue ?? 0);
         const rateInfo = await getEurToEgpRate();
-        const amountEgp = convertEurToEgp(Number(invoice.amountEur), rateInfo.rate);
+        // Use stored EGP amount if available, otherwise recalculate at current rate
+        const amountEgp = invoice.amountEgp ? Number(invoice.amountEgp) : convertEurToEgp(Number(invoice.amountEur), rateInfo.rate);
+        const exchangeRate = invoice.exchangeRate ? Number(invoice.exchangeRate) : rateInfo.rate;
+        let contractValue = 0;
+        let totalPaid = 0;
+        let remainingBalance = 0;
+        let clientMobile: string | undefined;
+        if (invoice.contractId != null) {
+          // Contract receipt: use contract value minus discount
+          const contract = await getContractById(invoice.contractId);
+          contractValue = Number(contract?.contractValue ?? 0) - Number(contract?.discountValue ?? 0);
+          totalPaid = await getTotalPaidByContractId(invoice.contractId);
+          remainingBalance = Math.max(0, contractValue - totalPaid);
+          clientMobile = contract?.clientMobile ?? undefined;
+        } else if (invoice.legacyFinClientId != null) {
+          // Legacy receipt: use finClient financial data
+          const { getDb } = await import("./db");
+          const db = await getDb();
+          if (db) {
+            const { finClients } = await import("../drizzle/schema");
+            const { eq } = await import("drizzle-orm");
+            const [fc] = await db.select().from(finClients).where(eq(finClients.id, invoice.legacyFinClientId)).limit(1);
+            if (fc) {
+              contractValue = Number(fc.contractValueEur ?? 0);
+              totalPaid = Number(fc.paidAmountEur ?? 0);
+              remainingBalance = Math.max(0, contractValue - totalPaid);
+            }
+          }
+        }
         const pdfUrl = await generateAndUploadInvoicePdf({
-          invoiceCode: invoice.invoiceCode, contractCode: invoice.contractCode ?? undefined,
-          clientName: invoice.clientName, amountEur: Number(invoice.amountEur),
-          amountEgp, exchangeRate: rateInfo.rate, contractValue, totalPaid,
-          remainingBalance: contractValue - totalPaid, createdAt: new Date(invoice.createdAt),
+          invoiceCode: invoice.invoiceCode,
+          contractCode: invoice.contractCode ?? undefined,
+          clientName: invoice.clientName,
+          clientMobile,
+          amountEur: Number(invoice.amountEur),
+          amountEgp,
+          exchangeRate,
+          contractValue,
+          totalPaid,
+          remainingBalance,
+          createdAt: new Date(invoice.createdAt),
           notes: invoice.notes ?? undefined,
+          actualPaidAmountEgp: invoice.actualPaidAmountEgp ? Number(invoice.actualPaidAmountEgp) : undefined,
+          remainingAmountEgp: invoice.remainingAmountEgp ? Number(invoice.remainingAmountEgp) : undefined,
         });
         await updateInvoicePdfUrl(input.id, pdfUrl);
         return { pdfUrl };

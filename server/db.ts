@@ -273,6 +273,12 @@ export async function getInvoiceById(id: number) {
   return result[0];
 }
 
+export async function deleteInvoice(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(invoices).where(eq(invoices.id, id));
+}
+
 export async function markInvoicePaid(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
