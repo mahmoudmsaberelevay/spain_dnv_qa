@@ -57,6 +57,7 @@ export default function Invoices() {
   const [legacyAmountEur, setLegacyAmountEur] = useState<string>("");
   const [legacyAmountEgp, setLegacyAmountEgp] = useState<string>("");
   const [legacyNotes, setLegacyNotes] = useState<string>("");
+  const [legacyActualPaidEgp, setLegacyActualPaidEgp] = useState<string>("");
 
   const { data: invoices, isLoading } = trpc.contracting.invoices.list.useQuery();
   const { data: contracts } = trpc.contracting.contracts.list.useQuery();
@@ -110,6 +111,7 @@ export default function Invoices() {
       setLegacyAmountEur("");
       setLegacyAmountEgp("");
       setLegacyNotes("");
+      setLegacyActualPaidEgp("");
     },
     onError: (err) => toast.error(`Failed to create legacy receipt: ${err.message}`),
   });
@@ -122,6 +124,7 @@ export default function Invoices() {
       amountEur: Number(legacyAmountEur),
       amountEgp: legacyAmountEgp ? Number(legacyAmountEgp) : undefined,
       notes: legacyNotes.trim() || undefined,
+      actualPaidAmountEgp: legacyActualPaidEgp ? Number(legacyActualPaidEgp) : undefined,
     });
   };
 
@@ -626,6 +629,40 @@ export default function Invoices() {
               {rateInfo && legacyAmountEur && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-blue-800">
                   Live rate: 1 EUR = {rateInfo.rate.toFixed(4)} EGP
+                  {legacyAmountEgp && <span className="ml-2 font-semibold">Due: {Number(legacyAmountEgp).toLocaleString()} EGP</span>}
+                </div>
+              )}
+
+              {/* Actual Paid Amount (EGP) — optional partial payment */}
+              <div className="space-y-2">
+                <Label htmlFor="legacyActualPaidEgp">Actual Paid Amount (EGP) <span className="text-muted-foreground text-xs">(optional — leave blank if full amount paid)</span></Label>
+                <Input
+                  id="legacyActualPaidEgp"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="e.g. 45000"
+                  value={legacyActualPaidEgp}
+                  onChange={(e) => setLegacyActualPaidEgp(e.target.value)}
+                  className="h-10"
+                />
+              </div>
+
+              {/* Live remaining EGP calculation for legacy */}
+              {legacyAmountEgp && legacyActualPaidEgp && Number(legacyActualPaidEgp) >= 0 && (
+                <div className={`border rounded-lg p-3 flex items-center justify-between ${
+                  Math.max(0, Number(legacyAmountEgp) - Number(legacyActualPaidEgp)) > 0
+                    ? "bg-amber-50 border-amber-200"
+                    : "bg-green-50 border-green-200"
+                }`}>
+                  <span className="text-sm font-medium">
+                    {Math.max(0, Number(legacyAmountEgp) - Number(legacyActualPaidEgp)) > 0 ? "Remaining (EGP)" : "Fully Paid ✓"}
+                  </span>
+                  <span className={`font-bold ${
+                    Math.max(0, Number(legacyAmountEgp) - Number(legacyActualPaidEgp)) > 0 ? "text-amber-800" : "text-green-700"
+                  }`}>
+                    {Math.max(0, Number(legacyAmountEgp) - Number(legacyActualPaidEgp)).toLocaleString()} EGP
+                  </span>
                 </div>
               )}
 

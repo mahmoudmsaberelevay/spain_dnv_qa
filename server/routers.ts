@@ -1035,6 +1035,7 @@ const contractingRouter = router({
         amountEur: z.number().positive(),
         amountEgp: z.number().positive().optional(),
         notes: z.string().optional(),
+        actualPaidAmountEgp: z.number().min(0).optional(),
       }))
       .mutation(async ({ input }) => {
         const { listFinClients } = await import("./finDb");
@@ -1050,6 +1051,8 @@ const contractingRouter = router({
         const rateInfo = await getEurToEgpRate();
         const amountEgp = input.amountEgp ?? convertEurToEgp(input.amountEur, rateInfo.rate);
         const invoiceCode = generateInvoiceCode();
+        const actualPaidEgp = input.actualPaidAmountEgp ?? undefined;
+        const remainingEgp = actualPaidEgp != null ? Math.max(0, amountEgp - actualPaidEgp) : undefined;
         const pdfUrl = await generateAndUploadInvoicePdf({
           invoiceCode,
           clientName: client.name,
@@ -1061,6 +1064,8 @@ const contractingRouter = router({
           remainingBalance: 0,
           createdAt: new Date(),
           notes: input.notes,
+          actualPaidAmountEgp: actualPaidEgp,
+          remainingAmountEgp: remainingEgp,
         });
         const invoice = await createInvoice({
           invoiceCode,
@@ -1075,6 +1080,8 @@ const contractingRouter = router({
           notes: input.notes,
           isLegacyReceipt: true,
           legacyFinClientId: input.legacyFinClientId,
+          actualPaidAmountEgp: actualPaidEgp != null ? actualPaidEgp.toString() : undefined,
+          remainingAmountEgp: remainingEgp != null ? remainingEgp.toString() : undefined,
         });
         notifyNewInvoice(
           invoiceCode,

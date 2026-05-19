@@ -1,0 +1,40 @@
+{
+  "query": "SELECT invoiceCode, amountEgp, actualPaidAmountEgp, remainingAmountEgp FROM invoices ORDER BY createdAt DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT invoiceCode, amountEgp, actualPaidAmountEgp, remainingAmountEgp FROM invoices ORDER BY createdAt DESC LIMIT 5;",
+  "rows": [
+    {
+      "invoiceCode": "INV26055E79",
+      "amountEgp": "247200.00",
+      "actualPaidAmountEgp": "NULL",
+      "remainingAmountEgp": "NULL"
+    },
+    {
+      "invoiceCode": "INV2605DQ4L",
+      "amountEgp": "247200.00",
+      "actualPaidAmountEgp": "NULL",
+      "remainingAmountEgp": "NULL"
+    },
+    {
+      "invoiceCode": "INV2605TBMG",
+      "amountEgp": "1229633.00",
+      "actualPaidAmountEgp": "NULL",
+      "remainingAmountEgp": "NULL"
+    },
+    {
+      "invoiceCode": "INV26053SH1",
+      "amountEgp": "49999.88",
+      "actualPaidAmountEgp": "NULL",
+      "remainingAmountEgp": "NULL"
+    },
+    {
+      "invoiceCode": "INV2605Y3Z1",
+      "amountEgp": "132335.00",
+      "actualPaidAmountEgp": "NULL",
+      "remainingAmountEgp": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "invoiceCode\tamountEgp\tactualPaidAmountEgp\tremainingAmountEgp\nINV26055E79\t247200.00\tNULL\tNULL\nINV2605DQ4L\t247200.00\tNULL\tNULL\nINV2605TBMG\t1229633.00\tNULL\tNULL\nINV26053SH1\t49999.88\tNULL\tNULL\nINV2605Y3Z1\t132335.00\tNULL\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 1863
+}
