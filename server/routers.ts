@@ -940,7 +940,8 @@ const contractingRouter = router({
         const amountEgp = convertEurToEgp(input.amountEur, rateInfo.rate);
         const invoiceCode = generateInvoiceCode();
         const totalPaid = await getTotalPaidByContractId(input.contractId);
-        const contractValue = Number(contract.contractValue);
+        // Contract value after discount (this is what the client owes)
+        const contractValue = Number(contract.contractValue) - Number(contract.discountValue ?? 0);
         const remainingBalance = contractValue - totalPaid - input.amountEur;
         const billingName = contract.invoicingName || contract.clientName;
         const clientMobile = contract.clientMobile || "";
@@ -1053,15 +1054,20 @@ const contractingRouter = router({
         const invoiceCode = generateInvoiceCode();
         const actualPaidEgp = input.actualPaidAmountEgp ?? undefined;
         const remainingEgp = actualPaidEgp != null ? Math.max(0, amountEgp - actualPaidEgp) : undefined;
+        // Use finClient financial data for the PDF summary table
+        const finContractValue = Number(client.contractValueEur ?? 0);
+        // Total paid = existing paidAmountEur + this new payment
+        const finTotalPaid = Number(client.paidAmountEur ?? 0) + input.amountEur;
+        const finRemainingBalance = Math.max(0, finContractValue - finTotalPaid);
         const pdfUrl = await generateAndUploadInvoicePdf({
           invoiceCode,
           clientName: client.name,
           amountEur: input.amountEur,
           amountEgp,
           exchangeRate: rateInfo.rate,
-          contractValue: 0,
-          totalPaid: 0,
-          remainingBalance: 0,
+          contractValue: finContractValue,
+          totalPaid: finTotalPaid,
+          remainingBalance: finRemainingBalance,
           createdAt: new Date(),
           notes: input.notes,
           actualPaidAmountEgp: actualPaidEgp,
