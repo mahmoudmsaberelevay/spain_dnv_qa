@@ -549,3 +549,19 @@
 - [x] Frontend: Kanban Pipeline page — 6 stage columns, drag-and-drop cards
 - [x] Frontend: New Lead form dialog — all required fields
 - [x] Permissions: leads module visible to all authenticated users (pageKey: null)
+
+## Change Requests (Round 75) — LEADS Settings Page
+
+- [x] DB: lead_sources table (id, name, color, isActive, isDefault, createdAt) — custom lead source registry
+- [x] DB: lead_integrations table (id, type [meta|website], name, config JSON, isActive, webhookToken, createdAt) — integration registry
+- [x] Backend: leadSettings router — CRUD for lead_sources, CRUD for lead_integrations, getLeadsPermissions, updateLeadsPermissions, exportLeads (CSV/JSON), importLeads (CSV upload)
+- [x] Backend: public webhook endpoint /api/webhook/leads/:token — receives lead from website/landing page using token auth, creates lead record
+- [x] Frontend: LeadsSettings page with 5 tabs: Export/Import, Permissions, Lead Sources, Meta Ads, Website Integration
+- [x] Frontend: Export tab — export all/filtered leads as CSV or JSON with field selection
+- [x] Frontend: Import tab — CSV upload with column mapping preview and dry-run validation
+- [x] Frontend: Permissions tab — table of all team members with toggle for leads module access (read/write/admin)
+- [x] Frontend: Lead Sources tab — list of custom sources with add/edit/delete/color picker; show which sources are in use
+- [x] Frontend: Meta Ads tab — show webhook URL + verify token, instructions for Meta Business Manager setup, test connection button
+- [x] Frontend: Website Integration tab — generate unique webhook token, show POST endpoint URL + JSON payload schema, copy-to-clipboard, test webhook button
+- [x] Sidebar: add Settings nav item to the Leads module in DashboardLayout
+- [x] App.tsx: add /leads/settings route

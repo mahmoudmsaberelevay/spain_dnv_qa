@@ -246,6 +246,7 @@ const modules = [
       { icon: LayoutDashboard, label: "Dashboard", path: "/leads/dashboard" },
       { icon: Filter, label: "All Leads", path: "/leads" },
       { icon: KanbanSquare, label: "Pipeline", path: "/leads/pipeline" },
+      { icon: SettingsIcon, label: "Settings", path: "/leads/settings" },
     ],
   },
   {

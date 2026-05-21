@@ -56,6 +56,7 @@ import LeadsDashboard from "./pages/leads/LeadsDashboard";
 import LeadsList from "./pages/leads/LeadsList";
 import LeadsPipeline from "./pages/leads/LeadsPipeline";
 import LeadProfile from "./pages/leads/LeadProfile";
+import LeadsSettings from "./pages/leads/LeadsSettings";
 
 // ─── WhatsApp Quality Control Module ─────────────────────────────────────────
 import WaQcDashboard from "./pages/waQc/WaQcDashboard";
@@ -240,6 +241,9 @@ function Router() {
       </Route>
       <Route path="/leads/pipeline">
         <DashboardLayout><LeadsPipeline /></DashboardLayout>
+      </Route>
+      <Route path="/leads/settings">
+        <DashboardLayout><LeadsSettings /></DashboardLayout>
       </Route>
       <Route path="/leads/:id">
         <DashboardLayout><LeadProfile /></DashboardLayout>

@@ -59,6 +59,50 @@ async function startServer() {
   const { verifyMetaWebhook, processMetaLeadEvent } = await import("../metaAdsWebhook");
   app.get("/api/webhook/meta-leads", verifyMetaWebhook);
   app.post("/api/webhook/meta-leads", processMetaLeadEvent);
+  // Website / Landing Page Lead Webhook
+  app.post("/api/webhook/leads/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const { getIntegrationByToken } = await import("../leadsSettingsDb");
+      const integration = await getIntegrationByToken(token);
+      if (!integration || integration.type !== "website") {
+        return res.status(404).json({ error: "Integration not found or inactive" });
+      }
+      const body = req.body as Record<string, unknown>;
+      const fullName = (body.full_name ?? body.fullName ?? "") as string;
+      const phone = (body.phone ?? "") as string;
+      if (!fullName) {
+        return res.status(400).json({ error: "full_name is required" });
+      }
+      const { createLead, checkDuplicate } = await import("../leadsDb");
+      // Duplicate check by phone
+      if (phone) {
+        const dup = await checkDuplicate(phone);
+        if (dup) {
+          return res.status(409).json({ error: "Duplicate lead: phone already exists", leadId: dup.id });
+        }
+      }
+      const utmParams = {
+        source: body.utm_source, medium: body.utm_medium, campaign: body.utm_campaign,
+      };
+      const leadId = await createLead({
+        fullName,
+        phone: phone || undefined,
+        email: (body.email as string) || undefined,
+        nationality: (body.nationality as string) || undefined,
+        interestedProgram: (body.interested_program as string) || undefined,
+        interestedCountry: (body.interested_country as string) || undefined,
+        leadSource: (body.lead_source as string) || integration.name,
+        budgetRange: (body.budget_range as string) || undefined,
+        utmParams: Object.values(utmParams).some(Boolean) ? JSON.stringify(utmParams) : undefined,
+        stage: "fresh",
+      });
+      return res.status(200).json({ success: true, leadId });
+    } catch (err) {
+      console.error("[Website Webhook] Error:", err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
   // tRPC API
   app.use(
     "/api/trpc",

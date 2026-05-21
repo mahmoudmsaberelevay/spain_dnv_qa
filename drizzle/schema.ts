@@ -866,3 +866,42 @@ export const leadTasks = mysqlTable("lead_tasks", {
 });
 export type LeadTask = typeof leadTasks.$inferSelect;
 export type InsertLeadTask = typeof leadTasks.$inferInsert;
+
+// ─── LEADS SETTINGS ──────────────────────────────────────────────────────────
+
+export const leadSources = mysqlTable("lead_sources", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  color: varchar("color", { length: 20 }).default("#6366f1"),
+  isActive: boolean("isActive").default(true),
+  isDefault: boolean("isDefault").default(false),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+});
+export type LeadSource = typeof leadSources.$inferSelect;
+export type InsertLeadSource = typeof leadSources.$inferInsert;
+
+export const leadIntegrations = mysqlTable("lead_integrations", {
+  id: int("id").autoincrement().primaryKey(),
+  type: mysqlEnum("type", ["meta", "website"]).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  config: text("config"), // JSON blob: page_id, form_id, verify_token, etc.
+  isActive: boolean("isActive").default(true),
+  webhookToken: varchar("webhookToken", { length: 128 }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type LeadIntegration = typeof leadIntegrations.$inferSelect;
+export type InsertLeadIntegration = typeof leadIntegrations.$inferInsert;
+
+export const leadsPermissions = mysqlTable("leads_permissions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  canView: boolean("canView").default(true),
+  canCreate: boolean("canCreate").default(false),
+  canEdit: boolean("canEdit").default(false),
+  canDelete: boolean("canDelete").default(false),
+  canExport: boolean("canExport").default(false),
+  canImport: boolean("canImport").default(false),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type LeadsPermission = typeof leadsPermissions.$inferSelect;
