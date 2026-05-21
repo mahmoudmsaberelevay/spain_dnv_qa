@@ -55,6 +55,10 @@ async function startServer() {
       console.error("[WA Webhook] Processing error:", err);
     }
   });
+  // Meta Ads Lead Gen Webhook
+  const { verifyMetaWebhook, processMetaLeadEvent } = await import("../metaAdsWebhook");
+  app.get("/api/webhook/meta-leads", verifyMetaWebhook);
+  app.post("/api/webhook/meta-leads", processMetaLeadEvent);
   // tRPC API
   app.use(
     "/api/trpc",

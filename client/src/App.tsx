@@ -51,6 +51,12 @@ import AccessDenied from "./pages/AccessDenied";
 import SalaryReceipts from "./pages/SalaryReceipts";
 import CommissionReceipts from "./pages/CommissionReceipts";
 
+// ─── Leads CRM Module ─────────────────────────────────────────────
+import LeadsDashboard from "./pages/leads/LeadsDashboard";
+import LeadsList from "./pages/leads/LeadsList";
+import LeadsPipeline from "./pages/leads/LeadsPipeline";
+import LeadProfile from "./pages/leads/LeadProfile";
+
 // ─── WhatsApp Quality Control Module ─────────────────────────────────────────
 import WaQcDashboard from "./pages/waQc/WaQcDashboard";
 import WaQcChats from "./pages/waQc/WaQcChats";
@@ -223,6 +229,20 @@ function Router() {
       </Route>
       <Route path="/wa-qc/settings">
         <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcSettings /></DashboardLayout></PageGuard>
+      </Route>
+
+      {/* ── Leads CRM Module ── */}
+      <Route path="/leads">
+        <DashboardLayout><LeadsList /></DashboardLayout>
+      </Route>
+      <Route path="/leads/dashboard">
+        <DashboardLayout><LeadsDashboard /></DashboardLayout>
+      </Route>
+      <Route path="/leads/pipeline">
+        <DashboardLayout><LeadsPipeline /></DashboardLayout>
+      </Route>
+      <Route path="/leads/:id">
+        <DashboardLayout><LeadProfile /></DashboardLayout>
       </Route>
 
       <Route path="/access-denied">

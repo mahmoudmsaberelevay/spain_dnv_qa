@@ -246,6 +246,13 @@
       "when": 1779185580367,
       "tag": "0034_complex_skullbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "5",
+      "when": 1779369944042,
+      "tag": "0035_long_shadowcat",
+      "breakpoints": true
     }
   ]
 }

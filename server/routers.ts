@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
+import { leadsRouter } from "./routers/leads";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -2090,5 +2091,6 @@ export const appRouter = router({
   workflow: workflowRouter,
   nationalVisa: nationalVisaRouter,
   notifications: notificationsRouter,
+  leads: leadsRouter,
 });
 export type AppRouter = typeof appRouter;

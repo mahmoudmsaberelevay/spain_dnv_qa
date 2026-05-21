@@ -528,3 +528,24 @@
 - [x] Frontend: receipt creation form — add "Actual Paid Amount (EGP)" input field; show live "Remaining (EGP)" = due EGP - paid EGP below it
 - [x] Frontend: receipt list table — add Due (EGP), Paid (EGP), and Remaining (EGP) columns
 - [x] Frontend: receipt PDF template — add DUE AMOUNT (EGP), ACTUAL PAID (EGP), and REMAINING (EGP) rows when partial payment is provided
+
+## Change Requests (Round 74) — ELEVAY LEADS CRM Module
+
+- [ ] DB: leads table (full_name, phone, whatsapp, email, nationality, country_of_residence, dob, gender, marital_status, family_members, passport_status, preferred_language, interested_program, interested_country, budget_range, net_worth, occupation, monthly_income, education_level, travel_history, visa_refusals, criminal_record, source_of_funds, lead_source, meta_campaign, meta_adset, meta_ad, utm_params, assigned_to, stage, lead_score, priority, created_at, last_contact_at)
+- [ ] DB: lead_activities table (id, lead_id, user_id, activity_type, description, created_at)
+- [ ] DB: lead_notes table (id, lead_id, user_id, note, is_pinned, is_important, created_at, updated_at)
+- [ ] DB: lead_tasks table (id, lead_id, assigned_to, task_type, due_date, completed, notes, created_at)
+- [ ] Backend: leads router — createLead, getLead, listLeads, updateLead, deleteLead, changeStage, assignLead, duplicateCheck
+- [ ] Backend: lead notes router — addNote, editNote, deleteNote, pinNote
+- [ ] Backend: lead activities router — list activities per lead
+- [ ] Backend: lead tasks router — createTask, completeTask, listTasks
+- [ ] Backend: leads analytics router — stage counts, source breakdown, program breakdown, monthly conversion
+- [ ] Backend: Meta Ads webhook endpoint — receive lead from Meta, create lead record, auto-assign
+- [ ] Frontend: Add "Leads" module card to Home.tsx
+- [ ] Frontend: Add /leads route group to App.tsx with sidebar navigation
+- [ ] Frontend: Leads Dashboard — stat cards (total, fresh, contacted, qualified, converted, dormant), stage chart, source chart, program chart, monthly conversion graph
+- [ ] Frontend: Leads List page — table with search, stage filter, source filter, program filter, assigned filter, date range filter, export CSV
+- [ ] Frontend: Lead Profile page — full detail sections (personal, immigration, tracking), activity timeline, notes panel, tasks panel, stage change button
+- [ ] Frontend: Kanban Pipeline page — 6 stage columns, drag-and-drop cards
+- [ ] Frontend: New Lead form dialog — all required fields
+- [ ] Permissions: add "leads" module access to permissions system

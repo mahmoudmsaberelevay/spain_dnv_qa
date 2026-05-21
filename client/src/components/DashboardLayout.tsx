@@ -60,6 +60,9 @@ import {
   BellDot,
   X,
   CheckCheck,
+  Filter,
+  KanbanSquare,
+  Target,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -176,6 +179,7 @@ const MODULE_COLORS: Record<string, { bg: string; text: string; dot: string }> =
   docs:         { bg: "bg-emerald-500/20",text: "text-emerald-300",dot: "bg-emerald-400" },
   financial:    { bg: "bg-amber-500/20",  text: "text-amber-300",  dot: "bg-amber-400" },
   waQc:         { bg: "bg-green-500/20",  text: "text-green-300",  dot: "bg-green-400" },
+  leads:        { bg: "bg-rose-500/20",   text: "text-rose-300",   dot: "bg-rose-400" },
 };
 
 // ─── Module Definitions ────────────────────────────────────────────────────────
@@ -232,6 +236,16 @@ const modules = [
       { icon: CalendarClock, label: "Upcoming Payments", path: "/finance/upcoming" },
       { icon: Receipt, label: "Salary Receipts", path: "/finance/salary-receipts" },
       { icon: Receipt, label: "Commission Receipts", path: "/finance/commission-receipts" },
+    ],
+  },
+  {
+    id: "leads",
+    label: "ELEVAY LEADS",
+    icon: Target,
+    items: [
+      { icon: LayoutDashboard, label: "Dashboard", path: "/leads/dashboard" },
+      { icon: Filter, label: "All Leads", path: "/leads" },
+      { icon: KanbanSquare, label: "Pipeline", path: "/leads/pipeline" },
     ],
   },
   {

@@ -754,3 +754,115 @@ export const systemNotifications = mysqlTable("systemNotifications", {
 });
 export type SystemNotification = typeof systemNotifications.$inferSelect;
 export type InsertSystemNotification = typeof systemNotifications.$inferInsert;
+
+// ─── ELEVAY LEADS CRM ─────────────────────────────────────────────────────────
+
+export const leads = mysqlTable("leads", {
+  id: int("id").autoincrement().primaryKey(),
+  // Personal Information
+  fullName: varchar("fullName", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 50 }),
+  whatsapp: varchar("whatsapp", { length: 50 }),
+  email: varchar("email", { length: 320 }),
+  nationality: varchar("nationality", { length: 100 }),
+  countryOfResidence: varchar("countryOfResidence", { length: 100 }),
+  dob: date("dob"),
+  gender: mysqlEnum("gender", ["male", "female", "other"]),
+  maritalStatus: mysqlEnum("maritalStatus", ["single", "married", "divorced", "widowed"]),
+  familyMembers: int("familyMembers").default(1),
+  passportStatus: mysqlEnum("passportStatus", ["valid", "expired", "none"]),
+  preferredLanguage: varchar("preferredLanguage", { length: 50 }),
+  // Immigration Information
+  interestedProgram: varchar("interestedProgram", { length: 100 }),
+  interestedCountry: varchar("interestedCountry", { length: 100 }),
+  budgetRange: varchar("budgetRange", { length: 100 }),
+  netWorth: varchar("netWorth", { length: 100 }),
+  occupation: varchar("occupation", { length: 100 }),
+  monthlyIncome: varchar("monthlyIncome", { length: 100 }),
+  educationLevel: varchar("educationLevel", { length: 100 }),
+  travelHistory: text("travelHistory"),
+  visaRefusals: boolean("visaRefusals").default(false),
+  criminalRecord: boolean("criminalRecord").default(false),
+  sourceOfFunds: varchar("sourceOfFunds", { length: 100 }),
+  // Lead Tracking
+  leadSource: varchar("leadSource", { length: 100 }),
+  metaCampaign: varchar("metaCampaign", { length: 255 }),
+  metaAdset: varchar("metaAdset", { length: 255 }),
+  metaAd: varchar("metaAd", { length: 255 }),
+  utmParams: text("utmParams"),
+  assignedTo: varchar("assignedTo", { length: 255 }),
+  stage: mysqlEnum("stage", [
+    "fresh",
+    "contacted",
+    "qualified",
+    "prospect",
+    "client",
+    "dormant",
+    "not_qualified_budget",
+    "not_qualified_work",
+    "not_qualified_study",
+    "not_qualified_criminal",
+    "not_qualified_other",
+  ]).default("fresh").notNull(),
+  leadScore: int("leadScore").default(0),
+  priority: mysqlEnum("priority", ["low", "medium", "high"]).default("medium"),
+  notes: text("notes"),
+  lastContactAt: bigint("lastContactAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type Lead = typeof leads.$inferSelect;
+export type InsertLead = typeof leads.$inferInsert;
+
+export const leadActivities = mysqlTable("lead_activities", {
+  id: int("id").autoincrement().primaryKey(),
+  leadId: int("leadId").notNull(),
+  userId: int("userId"),
+  activityType: mysqlEnum("activityType", [
+    "created",
+    "assigned",
+    "note_added",
+    "whatsapp_sent",
+    "email_sent",
+    "call_made",
+    "stage_changed",
+    "document_uploaded",
+    "followup_scheduled",
+    "meeting_scheduled",
+    "status_updated",
+    "task_created",
+    "task_completed",
+  ]).notNull(),
+  description: text("description").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+});
+export type LeadActivity = typeof leadActivities.$inferSelect;
+export type InsertLeadActivity = typeof leadActivities.$inferInsert;
+
+export const leadNotes = mysqlTable("lead_notes", {
+  id: int("id").autoincrement().primaryKey(),
+  leadId: int("leadId").notNull(),
+  userId: int("userId").notNull(),
+  userName: varchar("userName", { length: 255 }),
+  note: text("note").notNull(),
+  isPinned: boolean("isPinned").default(false),
+  isImportant: boolean("isImportant").default(false),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type LeadNote = typeof leadNotes.$inferSelect;
+export type InsertLeadNote = typeof leadNotes.$inferInsert;
+
+export const leadTasks = mysqlTable("lead_tasks", {
+  id: int("id").autoincrement().primaryKey(),
+  leadId: int("leadId").notNull(),
+  assignedTo: varchar("assignedTo", { length: 255 }),
+  taskType: mysqlEnum("taskType", ["call", "whatsapp", "email", "meeting", "document_request", "other"]).notNull(),
+  dueDate: bigint("dueDate", { mode: "number" }).notNull(),
+  completed: boolean("completed").default(false),
+  completedAt: bigint("completedAt", { mode: "number" }),
+  notes: text("notes"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+});
+export type LeadTask = typeof leadTasks.$inferSelect;
+export type InsertLeadTask = typeof leadTasks.$inferInsert;
