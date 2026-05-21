@@ -20,6 +20,7 @@ import {
   Wallet,
   ChevronRight,
   MessageSquare,
+  Target,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -71,6 +72,17 @@ const BASE_MODULE_CARDS = [
     gradient: "from-amber-600 to-amber-800",
     iconBg: "bg-amber-500/30",
     glow: "shadow-amber-500/20",
+    pageKey: null,
+  },
+  {
+    id: "leads",
+    label: "ELEVAY LEADS",
+    description: "Manage leads, pipeline stages, and follow-ups",
+    path: "/leads/dashboard",
+    icon: Target,
+    gradient: "from-rose-600 to-rose-800",
+    iconBg: "bg-rose-500/30",
+    glow: "shadow-rose-500/20",
     pageKey: null,
   },
   {
