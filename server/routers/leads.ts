@@ -15,6 +15,7 @@ import {
 import { listActivityPresets, listLeadIntegrations } from "../leadsSettingsDb";
 import { syncOneIntegrationById } from "../metaLeadSync";
 import { writeAuditLog, auditCtxFromTrpc } from "../auditLog";
+import { sendLeadAssignmentNotification, TEAM_EMAIL_MAP } from "../emailService";
 
 const STAGES = [
   "fresh", "contacted", "qualified", "prospect", "client", "dormant",
@@ -218,10 +219,11 @@ export const leadsRouter = router({
     }),
 
   assign: protectedProcedure
-    .input(z.object({ id: z.number(), assignedTo: z.string() }))
+    .input(z.object({ id: z.number(), assignedTo: z.string(), origin: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const lead = await getLeadById(input.id);
       if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
+      const prevOwner = lead.assignedTo;
       await updateLead(input.id, { assignedTo: input.assignedTo });
       await addLeadActivity({
         leadId: input.id,
@@ -229,6 +231,22 @@ export const leadsRouter = router({
         activityType: "assigned",
         description: `Assigned to ${input.assignedTo} by ${ctx.user.name ?? "system"}`,
       });
+      // Send email notification to the new owner if their email is known and owner changed
+      if (input.assignedTo !== prevOwner) {
+        const ownerEmail = TEAM_EMAIL_MAP[input.assignedTo];
+        if (ownerEmail) {
+          const origin = input.origin ?? "https://elevay.vip";
+          sendLeadAssignmentNotification({
+            ownerName: input.assignedTo,
+            ownerEmail,
+            leadId: input.id,
+            leadName: lead.fullName,
+            leadPhone: lead.phone,
+            leadProgram: lead.interestedProgram,
+            origin,
+          }).catch(err => console.error('[leads.assign] Email notification error:', err));
+        }
+      }
       return { success: true };
     }),
 

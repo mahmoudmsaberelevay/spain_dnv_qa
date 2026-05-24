@@ -7,7 +7,7 @@
  */
 
 import { syncAllMetaIntegrations, SyncResult } from "./metaLeadSync";
-import { sendLeadSyncSummaryEmail } from "./emailService";
+import { sendLeadSyncSummaryEmail, sendMetaLeadAlert } from "./emailService";
 
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 const ONE_MINUTE_MS = 60 * 1000;
@@ -87,6 +87,17 @@ async function runSync(): Promise<void> {
       );
       if (errors.length > 0) {
         console.warn("[MetaLeadSync] Errors:", errors.join("; "));
+      }
+    }
+
+    // Send immediate alert for each integration that brought in new leads
+    for (const r of results) {
+      if (r.newLeads > 0) {
+        sendMetaLeadAlert({
+          integrationName: r.integrationName,
+          formResults: (r.formResults ?? []).map(f => ({ formName: f.formName, newLeads: f.newLeads })),
+          totalNew: r.newLeads,
+        }).catch(err => console.error('[MetaLeadSync] Failed to send lead alert email:', err));
       }
     }
 

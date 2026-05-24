@@ -173,6 +173,121 @@ export async function sendLeadSyncSummaryEmail(params: {
   await notifyMahmoud(`Daily Lead Sync Summary — ${date}`, html, plain);
 }
 
+/** Send immediate alert when Meta sync brings in new leads — to Mahmoud + Nouran */
+export async function sendMetaLeadAlert(params: {
+  integrationName: string;
+  formResults: Array<{ formName: string; newLeads: number }>;
+  totalNew: number;
+}): Promise<void> {
+  const { integrationName, formResults, totalNew } = params;
+  const transporter = createTransporter();
+  if (!transporter) return;
+
+  const recipients = [
+    "Mahmoud.saber@elevay.com",
+    "Nouran.mamdouh@elevay.com",
+  ];
+
+  const formRows = formResults
+    .filter(f => f.newLeads > 0)
+    .map(f => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#2C3A40;">${f.formName}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#27AE60;font-weight:bold;text-align:center;">${f.newLeads}</td>
+      </tr>`).join('');
+
+  const htmlBody = `
+    <p style="color:#2C3A40;font-size:15px;">
+      <strong>${totalNew} new lead${totalNew !== 1 ? 's' : ''}</strong> have just been downloaded from Meta into the ELEVAY system.
+    </p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:16px 0;">
+      <thead>
+        <tr style="background:#f8f9fa;">
+          <th style="padding:8px 12px;text-align:left;color:#5E6A71;font-weight:600;">Lead Form Name</th>
+          <th style="padding:8px 12px;text-align:center;color:#5E6A71;font-weight:600;">New Leads</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${formRows || '<tr><td colspan="2" style="padding:12px;text-align:center;color:#8A9499;">No new leads</td></tr>'}
+      </tbody>
+    </table>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:8px;">
+      <tr>
+        <td style="padding:6px 0;color:#8A9499;">Campaign / Integration</td>
+        <td style="padding:6px 0;color:#2C3A40;font-weight:600;">${integrationName}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0;color:#8A9499;">Total New Leads</td>
+        <td style="padding:6px 0;color:#27AE60;font-weight:bold;">${totalNew}</td>
+      </tr>
+    </table>
+  `;
+
+  const plain = `New Meta Leads\n\nCampaign: ${integrationName}\nTotal New Leads: ${totalNew}\n\n${formResults.filter(f => f.newLeads > 0).map(f => `  ${f.formName}: ${f.newLeads} new`).join('\n')}`;
+
+  try {
+    await transporter.sendMail({
+      from: `"ELEVAY System" <${process.env.GMAIL_USER}>`,
+      to: recipients.join(', '),
+      subject: 'New Meta Leads',
+      html: wrapInEmailTemplate('New Meta Leads', htmlBody),
+      text: plain,
+    });
+    console.log(`[EmailService] Meta lead alert sent: ${totalNew} new leads from "${integrationName}"`);
+  } catch (err) {
+    console.error('[emailService] sendMetaLeadAlert error:', err);
+  }
+}
+
+/** Send email to a newly assigned lead owner with a deep link to the lead */
+export async function sendLeadAssignmentNotification(params: {
+  ownerName: string;
+  ownerEmail: string;
+  leadId: number;
+  leadName: string;
+  leadPhone?: string | null;
+  leadProgram?: string | null;
+  origin: string;
+}): Promise<void> {
+  const { ownerName, ownerEmail, leadId, leadName, leadPhone, leadProgram, origin } = params;
+  const transporter = createTransporter();
+  if (!transporter) return;
+
+  const leadUrl = `${origin}/leads/${leadId}`;
+
+  const htmlBody = `
+    <p style="color:#2C3A40;font-size:15px;">Hi <strong>${ownerName}</strong>,</p>
+    <p style="color:#2C3A40;font-size:15px;">A new lead has been assigned to you in the ELEVAY system.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:16px 0;">
+      <tr>
+        <td style="padding:8px 0;color:#8A9499;width:140px;">Lead Name</td>
+        <td style="padding:8px 0;color:#2C3A40;font-weight:600;">${leadName}</td>
+      </tr>
+      ${leadPhone ? `<tr><td style="padding:8px 0;color:#8A9499;">Phone</td><td style="padding:8px 0;color:#2C3A40;">${leadPhone}</td></tr>` : ''}
+      ${leadProgram ? `<tr><td style="padding:8px 0;color:#8A9499;">Program</td><td style="padding:8px 0;color:#2C3A40;">${leadProgram}</td></tr>` : ''}
+    </table>
+    <div style="margin-top:24px;">
+      <a href="${leadUrl}" style="display:inline-block;background:#1A3A5C;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:14px;font-weight:600;">Open Lead &rarr;</a>
+    </div>
+    <p style="color:#8A9499;font-size:12px;margin-top:20px;">Or copy this link: ${leadUrl}</p>
+  `;
+
+  const plain = `Hi ${ownerName},\n\nA new lead has been assigned to you.\n\nLead: ${leadName}${leadPhone ? '\nPhone: ' + leadPhone : ''}${leadProgram ? '\nProgram: ' + leadProgram : ''}\n\nOpen lead: ${leadUrl}`;
+
+  try {
+    await transporter.sendMail({
+      from: `"ELEVAY System" <${process.env.GMAIL_USER}>`,
+      to: ownerEmail,
+      subject: `New Lead Assigned: ${leadName}`,
+      html: wrapInEmailTemplate('New Lead Assigned to You', htmlBody),
+      text: plain,
+    });
+    console.log(`[EmailService] Lead assignment notification sent to ${ownerEmail} for lead #${leadId}`);
+  } catch (err) {
+    console.error('[emailService] sendLeadAssignmentNotification error:', err);
+  }
+}
+
 /** Send weekly backup confirmation email to Mahmoud */
 export async function sendBackupNotification(params: {
   date: string;

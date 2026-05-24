@@ -665,3 +665,7 @@
 ## Leads List UX (Round 87b)
 - [x] Page-size selector (25/50/100/200/300) in Leads list
 - [x] Select-all across all pages with bulk actions (delete, change stage, assign)
+
+## Leads CRM Email Notifications (Round 88)
+- [x] Meta sync email alert to Mahmoud.saber@elevay.com + Nouran.mamdouh@elevay.com with campaign name, form name, new lead count
+- [x] Lead assignment email to new owner with lead name, phone, program, and deep link
