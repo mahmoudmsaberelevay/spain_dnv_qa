@@ -138,6 +138,32 @@ export async function uploadInvoiceToDrive(
   return { fileId: res.data.id!, webViewLink: res.data.webViewLink ?? `https://drive.google.com/file/d/${res.data.id}/view` };
 }
 
+export async function uploadBackupToDrive(
+  buffer: Buffer,
+  filename: string
+): Promise<DriveUploadResult> {
+  const drive = getDriveClient();
+  // Get or create dedicated ELEVAY Backups folder at root level
+  const backupFolderId = await getOrCreateFolder("ELEVAY Backups");
+  const stream = Readable.from(buffer);
+  const res = await drive.files.create({
+    requestBody: {
+      name: filename,
+      parents: [backupFolderId],
+      description: `ELEVAY system backup — ${filename}`,
+    },
+    media: {
+      mimeType: "application/json",
+      body: stream,
+    },
+    fields: "id, webViewLink",
+  });
+  return {
+    fileId: res.data.id!,
+    webViewLink: res.data.webViewLink ?? `https://drive.google.com/file/d/${res.data.id}/view`,
+  };
+}
+
 export async function getDriveStatus(): Promise<{ configured: boolean; connected: boolean; rootFolderUrl?: string }> {
   if (!isDriveConfigured()) {
     return { configured: false, connected: false };

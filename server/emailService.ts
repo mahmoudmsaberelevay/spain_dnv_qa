@@ -173,6 +173,44 @@ export async function sendLeadSyncSummaryEmail(params: {
   await notifyMahmoud(`Daily Lead Sync Summary — ${date}`, html, plain);
 }
 
+/** Send weekly backup confirmation email to Mahmoud */
+export async function sendBackupNotification(params: {
+  date: string;
+  filename: string;
+  driveLink: string;
+  sizeKb: number;
+  tables: { name: string; rows: number }[];
+  success: boolean;
+  error?: string;
+}): Promise<void> {
+  const tableRows = params.tables
+    .map(t => `<tr><td style="padding:4px 12px;border:1px solid #ddd">${t.name}</td><td style="padding:4px 12px;border:1px solid #ddd;text-align:right">${t.rows.toLocaleString()}</td></tr>`)
+    .join("");
+  const html = params.success
+    ? `<p>Your weekly ELEVAY system backup was completed on <strong>${params.date}</strong>.</p>
+       <p>📁 <strong>File:</strong> ${params.filename}<br/>
+       📦 <strong>Size:</strong> ${params.sizeKb.toLocaleString()} KB<br/>
+       🔗 <strong>Google Drive:</strong> <a href="${params.driveLink}" style="color:#1a73e8">Open Backup File</a></p>
+       <table style="border-collapse:collapse;margin-top:16px;font-size:13px">
+         <thead><tr>
+           <th style="padding:6px 12px;border:1px solid #ddd;background:#f5f5f5;text-align:left">Table</th>
+           <th style="padding:6px 12px;border:1px solid #ddd;background:#f5f5f5;text-align:right">Records</th>
+         </tr></thead>
+         <tbody>${tableRows}</tbody>
+       </table>
+       <p style="margin-top:16px;color:#666;font-size:12px">Next backup: next Friday at 08:00 Cairo time.</p>`
+    : `<p style="color:#c0392b">⚠️ The weekly backup scheduled for <strong>${params.date}</strong> <strong>failed</strong>.</p>
+       <p><strong>Error:</strong> ${params.error ?? "Unknown error"}</p>
+       <p>Please run a manual backup from the Security &amp; Audit page.</p>`;
+  const subject = params.success
+    ? `Weekly Backup Complete \u2014 ${params.date}`
+    : `Weekly Backup Failed \u2014 ${params.date}`;
+  const plain = params.success
+    ? `Weekly backup complete. File: ${params.filename} (${params.sizeKb} KB). Drive: ${params.driveLink}`
+    : `Weekly backup FAILED: ${params.error}`;
+  await notifyMahmoud(subject, html, plain);
+}
+
 /** Send the receipt PDF directly to the client via email */
 export async function sendReceiptToClient(
   clientEmail: string,

@@ -11,6 +11,7 @@ import { startReminderScheduler } from "../reminderScheduler";
 import { startMonthlyReportScheduler } from "../monthlyReportScheduler";
 import { startRateScheduler } from "../rateScheduler";
 import { startMetaLeadSyncScheduler } from "../metaLeadSyncScheduler";
+import { startWeeklyBackupScheduler } from "../weeklyBackupScheduler";
 import rateLimit from "express-rate-limit";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -162,3 +163,4 @@ startMonthlyReportScheduler();
 startRateScheduler();
 // Start Meta Lead Ads 4-hour sync
 startMetaLeadSyncScheduler();
+startWeeklyBackupScheduler();
