@@ -893,9 +893,11 @@ export const leadIntegrations = mysqlTable("lead_integrations", {
   id: int("id").autoincrement().primaryKey(),
   type: mysqlEnum("type", ["meta", "website"]).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
-  config: text("config"), // JSON blob: page_id, form_id, verify_token, etc.
+  config: text("config"), // JSON blob: page_id, form_id, verify_token, page_access_token, lead_source, assigned_to
   isActive: boolean("isActive").default(true),
   webhookToken: varchar("webhookToken", { length: 128 }),
+  lastSyncAt: bigint("lastSyncAt", { mode: "number" }), // timestamp of last successful Meta sync
+  lastSyncCount: int("lastSyncCount").default(0), // leads pulled in last sync
   createdAt: bigint("createdAt", { mode: "number" }).notNull(),
   updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
 });

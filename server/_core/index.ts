@@ -10,6 +10,7 @@ import { serveStatic, setupVite } from "./vite";
 import { startReminderScheduler } from "../reminderScheduler";
 import { startMonthlyReportScheduler } from "../monthlyReportScheduler";
 import { startRateScheduler } from "../rateScheduler";
+import { startMetaLeadSyncScheduler } from "../metaLeadSyncScheduler";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -136,3 +137,5 @@ startServer().catch(console.error);
 startReminderScheduler();
 startMonthlyReportScheduler();
 startRateScheduler();
+// Start Meta Lead Ads 4-hour sync
+startMetaLeadSyncScheduler();

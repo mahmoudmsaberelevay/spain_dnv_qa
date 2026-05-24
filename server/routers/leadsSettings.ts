@@ -188,4 +188,17 @@ export const leadsSettingsRouter = router({
     const rows = await exportAllLeads();
     return rows;
   }),
+
+  // ─── Meta Sync ─────────────────────────────────────────────────────────────
+  syncMeta: protectedProcedure
+    .input(z.object({ integrationId: z.number().optional() }))
+    .mutation(async ({ input }) => {
+      const { syncAllMetaIntegrations, syncOneIntegrationById } = await import("../metaLeadSync");
+      if (input.integrationId) {
+        const result = await syncOneIntegrationById(input.integrationId);
+        return { results: [result] };
+      }
+      const results = await syncAllMetaIntegrations();
+      return { results };
+    }),
 });

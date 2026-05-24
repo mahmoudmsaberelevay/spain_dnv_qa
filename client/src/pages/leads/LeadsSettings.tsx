@@ -765,16 +765,32 @@ function ActivityPresetsTab() {
 
 function MetaAdsTab() {
   const { data: integrations, refetch } = trpc.leadsSettings.listIntegrations.useQuery();
-  const createMut = trpc.leadsSettings.createIntegration.useMutation({ onSuccess: () => { refetch(); setShowAdd(false); setFormName(""); setFormPageId(""); setFormFormId(""); toast.success("Meta integration added"); } });
+  const createMut = trpc.leadsSettings.createIntegration.useMutation({ onSuccess: () => { refetch(); setShowAdd(false); setFormName(""); setFormPageId(""); setFormFormId(""); setFormAccessToken(""); toast.success("Meta integration added"); } });
   const regenMut = trpc.leadsSettings.regenerateToken.useMutation({ onSuccess: () => { refetch(); toast.success("Token regenerated"); } });
   const deleteMut = trpc.leadsSettings.deleteIntegration.useMutation({ onSuccess: () => { refetch(); toast.success("Integration removed"); } });
   const updateMut = trpc.leadsSettings.updateIntegration.useMutation({ onSuccess: () => { refetch(); toast.success("Updated"); } });
+  const syncMut = trpc.leadsSettings.syncMeta.useMutation({
+    onSuccess: (data) => {
+      refetch();
+      const r = data.results[0];
+      if (!r) return;
+      if (r.errors.length > 0) {
+        toast.error(`Sync error: ${r.errors[0]}`);
+      } else {
+        toast.success(`Sync complete: ${r.newLeads} new lead(s), ${r.skippedDuplicates} duplicate(s) skipped`);
+      }
+    },
+    onError: (e) => toast.error(`Sync failed: ${e.message}`),
+  });
 
   const metaIntegrations = (integrations ?? []).filter(i => i.type === "meta");
   const [showAdd, setShowAdd] = useState(false);
   const [formName, setFormName] = useState("");
   const [formPageId, setFormPageId] = useState("");
   const [formFormId, setFormFormId] = useState("");
+  const [formAccessToken, setFormAccessToken] = useState("");
+  const [editingToken, setEditingToken] = useState<number | null>(null);
+  const [editTokenValue, setEditTokenValue] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
   const copy = (text: string, key: string) => {
@@ -812,6 +828,9 @@ function MetaAdsTab() {
       {/* Integration cards */}
       {metaIntegrations.map(i => {
         const webhookUrl = `${baseUrl}/api/webhook/meta-leads`;
+        const cfg: Record<string, string> = (() => { try { return i.config ? JSON.parse(i.config) : {}; } catch { return {}; } })();
+        const hasToken = !!(cfg.page_access_token);
+        const isSyncing = syncMut.isPending && syncMut.variables?.integrationId === i.id;
         return (
           <div key={i.id} className="border border-border rounded-lg p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -819,21 +838,76 @@ function MetaAdsTab() {
                 <div className="p-2 bg-blue-100 rounded-lg"><Zap className="h-5 w-5 text-blue-600" /></div>
                 <div>
                   <div className="font-semibold text-foreground">{i.name}</div>
-                  <Badge variant={i.isActive ? "default" : "secondary"} className="text-xs mt-0.5">
-                    {i.isActive ? "Active" : "Paused"}
-                  </Badge>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <Badge variant={i.isActive ? "default" : "secondary"} className="text-xs">
+                      {i.isActive ? "Active" : "Paused"}
+                    </Badge>
+                    {i.lastSyncAt ? (
+                      <span className="text-xs text-muted-foreground">Last sync: {new Date(i.lastSyncAt).toLocaleString()} · {i.lastSyncCount ?? 0} new</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Never synced</span>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={!hasToken || isSyncing}
+                  onClick={() => syncMut.mutate({ integrationId: i.id })}
+                  title={hasToken ? "Pull latest leads from Meta now" : "Add Page Access Token first"}
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? "animate-spin" : ""}`} />
+                  {isSyncing ? "Syncing..." : "Sync Now"}
+                </Button>
                 <Switch checked={!!i.isActive} onCheckedChange={v => updateMut.mutate({ id: i.id, isActive: v })} />
                 <button onClick={() => deleteMut.mutate({ id: i.id })} className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             </div>
+
+            {/* Page Access Token — required for Graph API bulk sync */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                Page Access Token
+                <span className="text-red-500">*</span>
+                <span className="text-muted-foreground font-normal">(required for automatic sync)</span>
+              </Label>
+              {editingToken === i.id ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="password"
+                    className="flex-1 font-mono text-xs h-8"
+                    placeholder="Paste your long-lived Page Access Token here"
+                    value={editTokenValue}
+                    onChange={e => setEditTokenValue(e.target.value)}
+                  />
+                  <Button size="sm" onClick={() => {
+                    const newCfg = { ...cfg, page_access_token: editTokenValue };
+                    updateMut.mutate({ id: i.id, config: newCfg });
+                    setEditingToken(null);
+                    setEditTokenValue("");
+                  }} disabled={!editTokenValue.trim()}>Save</Button>
+                  <Button size="sm" variant="outline" onClick={() => { setEditingToken(null); setEditTokenValue(""); }}>Cancel</Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono text-muted-foreground">
+                    {hasToken ? "●●●●●●●●●●●●●●●●●●●● (saved)" : <span className="text-amber-600">Not set — sync will not work until you add this</span>}
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => { setEditingToken(i.id); setEditTokenValue(""); }}>
+                    {hasToken ? "Update" : "Add Token"}
+                  </Button>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Webhook URL (enter this in Meta)</Label>
+                <Label className="text-xs text-muted-foreground">Webhook URL <span className="text-muted-foreground font-normal">(for real-time push from Meta)</span></Label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono truncate">{webhookUrl}</code>
                   <Button size="sm" variant="outline" className="gap-1 shrink-0" onClick={() => copy(webhookUrl, `url-${i.id}`)}>
@@ -842,7 +916,7 @@ function MetaAdsTab() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Verify Token (enter this in Meta)</Label>
+                <Label className="text-xs text-muted-foreground">Verify Token <span className="text-muted-foreground font-normal">(enter this in Meta when setting up webhook)</span></Label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono truncate">{i.webhookToken}</code>
                   <Button size="sm" variant="outline" className="gap-1 shrink-0" onClick={() => copy(i.webhookToken ?? "", `token-${i.id}`)}>
@@ -853,6 +927,9 @@ function MetaAdsTab() {
                   </Button>
                 </div>
               </div>
+              {cfg.form_id && (
+                <div className="text-xs text-muted-foreground">Form ID: <code className="bg-muted px-1 rounded">{cfg.form_id}</code></div>
+              )}
             </div>
           </div>
         );
