@@ -8,6 +8,7 @@ import {
   createLeadTask, getLeadTasks, completeLeadTask, deleteLeadTask,
   getLeadStageCounts, getLeadSourceCounts, getLeadProgramCounts,
   getMonthlyLeadConversions, getLeadTotalCount,
+  bulkDeleteLeads, getLeadsByIds,
 } from "../leadsDb";
 import { listActivityPresets } from "../leadsSettingsDb";
 
@@ -403,6 +404,63 @@ export const leadsRouter = router({
         return { success: true };
       }),
   }),
+
+  // ── Bulk Actions ─────────────────────────────────────────────────────────────
+  bulkDelete: protectedProcedure
+    .input(z.object({ ids: z.array(z.number()).min(1) }))
+    .mutation(async ({ input }) => {
+      const deleted = await bulkDeleteLeads(input.ids);
+      return { deleted };
+    }),
+
+  bulkExport: protectedProcedure
+    .input(z.object({
+      ids: z.array(z.number()).optional(), // if omitted, export all
+      filters: z.object({
+        search: z.string().optional(),
+        stage: z.string().optional(),
+        leadSource: z.string().optional(),
+        interestedProgram: z.string().optional(),
+        assignedTo: z.string().optional(),
+        priority: z.string().optional(),
+        dateFrom: z.number().optional(),
+        dateTo: z.number().optional(),
+        lastActivityFrom: z.number().optional(),
+        lastActivityTo: z.number().optional(),
+      }).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      let rows;
+      if (input.ids && input.ids.length > 0) {
+        rows = await getLeadsByIds(input.ids);
+      } else {
+        rows = await listLeads(input.filters);
+      }
+      // Build CSV
+      const headers = [
+        "ID", "Full Name", "Phone", "WhatsApp", "Email", "Nationality",
+        "Country of Residence", "Gender", "Marital Status", "Family Members",
+        "Interested Program", "Budget Range", "Lead Source", "Stage",
+        "Priority", "Assigned To", "Lead Score", "Notes", "Created At",
+      ];
+      const escape = (v: unknown) => {
+        const s = v == null ? "" : String(v);
+        return s.includes(",") || s.includes('"') || s.includes("\n")
+          ? `"${s.replace(/"/g, '""')}"`
+          : s;
+      };
+      const csvLines = [headers.join(",")];
+      for (const r of rows) {
+        csvLines.push([
+          r.id, r.fullName, r.phone, r.whatsapp, r.email, r.nationality,
+          r.countryOfResidence, r.gender, r.maritalStatus, r.familyMembers,
+          r.interestedProgram, r.budgetRange, r.leadSource, r.stage,
+          r.priority, r.assignedTo, r.leadScore, r.notes,
+          r.createdAt ? new Date(r.createdAt).toISOString() : "",
+        ].map(escape).join(","));
+      }
+      return { csv: csvLines.join("\n"), count: rows.length };
+    }),
 
   // ── Analytics ───────────────────────────────────────────────────────────────
   analytics: router({

@@ -81,6 +81,38 @@ export async function deleteLead(id: number) {
   await db.delete(leads).where(eq(leads.id, id));
 }
 
+export async function bulkDeleteLeads(ids: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  if (ids.length === 0) return 0;
+  // Delete in batches of 100 to avoid query size limits
+  const batchSize = 100;
+  let deleted = 0;
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const batch = ids.slice(i, i + batchSize);
+    for (const id of batch) {
+      await db.delete(leadTasks).where(eq(leadTasks.leadId, id));
+      await db.delete(leadNotes).where(eq(leadNotes.leadId, id));
+      await db.delete(leadActivities).where(eq(leadActivities.leadId, id));
+      await db.delete(leads).where(eq(leads.id, id));
+      deleted++;
+    }
+  }
+  return deleted;
+}
+
+export async function getLeadsByIds(ids: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  if (ids.length === 0) return [];
+  const results = [];
+  for (const id of ids) {
+    const [row] = await db.select().from(leads).where(eq(leads.id, id)).limit(1);
+    if (row) results.push(row);
+  }
+  return results;
+}
+
 export async function checkDuplicate(phone?: string, email?: string, whatsapp?: string) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");

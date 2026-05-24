@@ -18,7 +18,8 @@ import {
 import {
   Settings, Download, Upload, Users, Tag, Zap, Globe,
   Plus, Trash2, RefreshCw, Copy, Check, Eye, Pencil,
-  FileDown, FileUp, AlertCircle, ExternalLink, MapPin, Star,
+  FileDown, FileUp, AlertCircle, ExternalLink, MapPin, Star, List,
+  CheckCircle2, XCircle, Clock, ToggleLeft, ToggleRight,
 } from "lucide-react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -979,6 +980,140 @@ function MetaAdsTab() {
   );
 }
 
+// ─── Lead Forms Tab ──────────────────────────────────────────────────────────
+
+function LeadFormsTab() {
+  const { data: integrations = [], refetch: refetchIntegrations } = trpc.leadsSettings.listIntegrations.useQuery();
+  const metaIntegrations = (integrations as any[]).filter(i => i.type === "meta");
+
+  const { data: formsData, isLoading: formsLoading, refetch: refetchForms } = trpc.leadsSettings.listMetaForms.useQuery(
+    { integrationId: metaIntegrations[0]?.id ?? 0 },
+    { enabled: metaIntegrations.length > 0 }
+  );
+
+  const toggleForm = trpc.leadsSettings.toggleMetaForm.useMutation({
+    onSuccess: () => { refetchForms(); toast.success("Form updated"); },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  const syncNow = trpc.leadsSettings.syncMeta.useMutation({
+    onSuccess: (data: any) => {
+      refetchForms();
+      refetchIntegrations();
+      toast.success(`Sync complete — ${data.newLeads} new lead${data.newLeads !== 1 ? "s" : ""} imported.`);
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  if (metaIntegrations.length === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        <Zap className="w-10 h-10 mx-auto mb-3 opacity-30" />
+        <p className="font-medium">No Meta integration configured</p>
+        <p className="text-sm mt-1">Go to the <strong>Meta Ads</strong> tab to add your Page Access Token first.</p>
+      </div>
+    );
+  }
+
+  const integration = metaIntegrations[0];
+  const forms: any[] = (formsData as any)?.forms ?? [];
+  const disabledFormIds: string[] = ((integration as any).config as any)?.disabledFormIds ?? [];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-foreground">Lead Forms</h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            All lead forms discovered on your <strong>{integration.name}</strong> page.
+            Toggle any form on or off to include or exclude it from the automatic sync.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => refetchForms()} disabled={formsLoading}>
+            <RefreshCw className={`w-4 h-4 mr-1 ${formsLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button size="sm" onClick={() => syncNow.mutate({ integrationId: integration.id })} disabled={syncNow.isPending}>
+            <Zap className="w-4 h-4 mr-1" />
+            {syncNow.isPending ? "Syncing…" : "Sync Now"}
+          </Button>
+        </div>
+      </div>
+
+      {(integration as any).lastSyncAt && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-lg px-4 py-2.5 border">
+          <Clock className="w-3.5 h-3.5" />
+          Last sync: {new Date((integration as any).lastSyncAt).toLocaleString()}
+          {(integration as any).lastSyncCount != null && (
+            <span className="ml-2 text-emerald-600 font-medium">· {(integration as any).lastSyncCount} new lead{(integration as any).lastSyncCount !== 1 ? "s" : ""} imported</span>
+          )}
+        </div>
+      )}
+
+      {formsLoading ? (
+        <div className="text-center py-8 text-muted-foreground text-sm">Loading forms…</div>
+      ) : forms.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground text-sm">
+          <List className="w-8 h-8 mx-auto mb-2 opacity-30" />
+          No lead forms found on this page. Click Refresh to try again.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="text-xs text-muted-foreground mb-3">{forms.length} form{forms.length !== 1 ? "s" : ""} discovered</div>
+          {forms.map((form: any) => {
+            const isEnabled = !disabledFormIds.includes(form.id);
+            const isRunning = form.status === "ACTIVE";
+            return (
+              <div
+                key={form.id}
+                className={`flex items-center justify-between p-4 rounded-lg border transition-colors ${
+                  isEnabled ? "bg-background border-border" : "bg-muted/30 border-dashed border-muted-foreground/30"
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`flex-shrink-0 w-2 h-2 rounded-full ${isRunning ? "bg-emerald-500" : "bg-gray-400"}`} />
+                  <div className="min-w-0">
+                    <div className={`font-medium text-sm truncate ${isEnabled ? "text-foreground" : "text-muted-foreground"}`}>
+                      {form.name}
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      <span className="text-xs text-muted-foreground font-mono">{form.id}</span>
+                      <span className={`inline-flex items-center gap-1 text-xs ${isRunning ? "text-emerald-600" : "text-gray-500"}`}>
+                        {isRunning
+                          ? <><CheckCircle2 className="w-3 h-3" />Running</>
+                          : <><XCircle className="w-3 h-3" />{form.status ?? "Inactive"}</>}
+                      </span>
+                      {form.leadCount != null && (
+                        <span className="text-xs text-muted-foreground">{Number(form.leadCount).toLocaleString()} total leads</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <span className={`text-xs font-medium ${isEnabled ? "text-emerald-600" : "text-muted-foreground"}`}>
+                    {isEnabled ? "Connected" : "Disconnected"}
+                  </span>
+                  <button
+                    onClick={() => toggleForm.mutate({ integrationId: integration.id, formId: form.id, enabled: !isEnabled })}
+                    disabled={toggleForm.isPending}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    title={isEnabled ? "Disconnect this form" : "Connect this form"}
+                  >
+                    {isEnabled
+                      ? <ToggleRight className="w-8 h-8 text-emerald-600" />
+                      : <ToggleLeft className="w-8 h-8" />}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Website Integration Tab ──────────────────────────────────────────────────
 
 function WebsiteIntegrationTab() {
@@ -1123,13 +1258,14 @@ export default function LeadsSettings() {
       </div>
 
       <Tabs defaultValue="export">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="export" className="gap-1 text-xs"><Download className="h-3.5 w-3.5" />Export / Import</TabsTrigger>
           <TabsTrigger value="permissions" className="gap-1 text-xs"><Users className="h-3.5 w-3.5" />Permissions</TabsTrigger>
           <TabsTrigger value="sources" className="gap-1 text-xs"><Tag className="h-3.5 w-3.5" />Lead Sources</TabsTrigger>
           <TabsTrigger value="programs" className="gap-1 text-xs"><MapPin className="h-3.5 w-3.5" />Programs</TabsTrigger>
           <TabsTrigger value="presets" className="gap-1 text-xs"><Star className="h-3.5 w-3.5" />Activity Presets</TabsTrigger>
           <TabsTrigger value="meta" className="gap-1 text-xs"><Zap className="h-3.5 w-3.5" />Meta Ads</TabsTrigger>
+          <TabsTrigger value="forms" className="gap-1 text-xs"><List className="h-3.5 w-3.5" />Lead Forms</TabsTrigger>
           <TabsTrigger value="website" className="gap-1 text-xs"><Globe className="h-3.5 w-3.5" />Website</TabsTrigger>
         </TabsList>
 
@@ -1139,6 +1275,7 @@ export default function LeadsSettings() {
         <TabsContent value="programs" className="mt-6"><ProgramsTab /></TabsContent>
         <TabsContent value="presets" className="mt-6"><ActivityPresetsTab /></TabsContent>
         <TabsContent value="meta" className="mt-6"><MetaAdsTab /></TabsContent>
+        <TabsContent value="forms" className="mt-6"><LeadFormsTab /></TabsContent>
         <TabsContent value="website" className="mt-6"><WebsiteIntegrationTab /></TabsContent>
       </Tabs>
     </div>

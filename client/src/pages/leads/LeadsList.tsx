@@ -1,9 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -13,7 +12,10 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Plus, Search, Phone, Mail, User, Calendar, Download, Filter, X } from "lucide-react";
+import {
+  Plus, Search, Phone, Mail, User, Calendar, Download,
+  Filter, X, Trash2, CheckSquare, Square, MinusSquare,
+} from "lucide-react";
 
 const STAGES = [
   { value: "fresh", label: "Fresh", color: "bg-blue-100 text-blue-700 border-blue-200" },
@@ -69,20 +71,22 @@ export default function LeadsList() {
   const [lastActivityFrom, setLastActivityFrom] = useState("");
   const [lastActivityTo, setLastActivityTo] = useState("");
 
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+
   // Load dynamic programs and sources from settings
   const { data: dynamicPrograms = [] } = trpc.leadsSettings.listPrograms.useQuery();
   const { data: dynamicSources = [] } = trpc.leadsSettings.listSources.useQuery();
 
   const allPrograms = useMemo(() => {
     const fromSettings = dynamicPrograms.filter(p => p.isActive).map(p => p.name);
-    const combined = [...new Set([...PROGRAMS, ...fromSettings])];
-    return combined;
+    return [...new Set([...PROGRAMS, ...fromSettings])];
   }, [dynamicPrograms]);
 
   const allSources = useMemo(() => {
     const fromSettings = dynamicSources.filter(s => s.isActive).map(s => s.name);
-    const combined = [...new Set([...SOURCES, ...fromSettings])];
-    return combined;
+    return [...new Set([...SOURCES, ...fromSettings])];
   }, [dynamicSources]);
 
   const [showCreate, setShowCreate] = useState(false);
@@ -114,6 +118,52 @@ export default function LeadsList() {
 
   const { data: leads = [], isLoading } = trpc.leads.list.useQuery(filters);
 
+  // Bulk mutations
+  const bulkDelete = trpc.leads.bulkDelete.useMutation({
+    onSuccess: (data) => {
+      utils.leads.list.invalidate();
+      utils.leads.analytics.overview.invalidate();
+      setSelectedIds(new Set());
+      setShowBulkDeleteConfirm(false);
+      toast.success(`${data.deleted} lead${data.deleted !== 1 ? "s" : ""} deleted.`);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const bulkExport = trpc.leads.bulkExport.useMutation({
+    onSuccess: (data) => {
+      const blob = new Blob([data.csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `elevay-leads-selected-${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`${data.count} lead${data.count !== 1 ? "s" : ""} exported.`);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const toggleSelect = useCallback((id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const allSelected = leads.length > 0 && selectedIds.size === leads.length;
+  const someSelected = selectedIds.size > 0 && selectedIds.size < leads.length;
+
+  const toggleSelectAll = useCallback(() => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(leads.map(l => l.id)));
+    }
+  }, [allSelected, leads]);
+
   const createLead = trpc.leads.create.useMutation({
     onSuccess: () => {
       utils.leads.list.invalidate();
@@ -139,7 +189,7 @@ export default function LeadsList() {
     createLead.mutate(form);
   }
 
-  function exportCSV() {
+  function exportAllCSV() {
     const headers = ["ID", "Name", "Phone", "WhatsApp", "Email", "Nationality", "Program", "Source", "Stage", "Priority", "Assigned To", "Created"];
     const rows = leads.map(l => [
       l.id, l.fullName, l.phone ?? "", l.whatsapp ?? "", l.email ?? "",
@@ -157,14 +207,50 @@ export default function LeadsList() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Leads</h1>
-          <p className="text-muted-foreground text-sm mt-1">{leads.length} lead{leads.length !== 1 ? "s" : ""} found</p>
+          <p className="text-muted-foreground text-sm mt-1">
+            {leads.length} lead{leads.length !== 1 ? "s" : ""} found
+            {selectedIds.size > 0 && (
+              <span className="ml-2 text-blue-600 font-medium">· {selectedIds.size} selected</span>
+            )}
+          </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={exportCSV}>
-            <Download className="w-4 h-4 mr-1" /> Export CSV
+        <div className="flex gap-2 flex-wrap items-center">
+          {selectedIds.size > 0 && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => bulkExport.mutate({ ids: Array.from(selectedIds) })}
+                disabled={bulkExport.isPending}
+              >
+                <Download className="w-4 h-4 mr-1" />
+                {bulkExport.isPending ? "Exporting…" : `Export ${selectedIds.size}`}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-red-600 hover:text-red-700 border-red-200 hover:border-red-300 hover:bg-red-50"
+                onClick={() => setShowBulkDeleteConfirm(true)}
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                Delete {selectedIds.size}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                <X className="w-4 h-4 mr-1" /> Clear Selection
+              </Button>
+            </>
+          )}
+          <Button variant="outline" size="sm" onClick={exportAllCSV}>
+            <Download className="w-4 h-4 mr-1" /> Export All
           </Button>
           <Button size="sm" onClick={() => setShowCreate(true)}>
             <Plus className="w-4 h-4 mr-1" /> New Lead
@@ -255,7 +341,7 @@ export default function LeadsList() {
       ) : leads.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center text-muted-foreground">
-            <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <UsersIcon className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="font-medium">No leads found</p>
             <p className="text-sm mt-1">Try adjusting your filters or create a new lead.</p>
           </CardContent>
@@ -265,6 +351,19 @@ export default function LeadsList() {
           <table className="w-full text-sm">
             <thead className="bg-muted/50 border-b">
               <tr>
+                <th className="px-4 py-3 w-10">
+                  <button
+                    onClick={toggleSelectAll}
+                    className="text-muted-foreground hover:text-foreground transition-colors flex items-center"
+                    title={allSelected ? "Deselect all" : "Select all"}
+                  >
+                    {allSelected
+                      ? <CheckSquare className="w-4 h-4 text-blue-600" />
+                      : someSelected
+                        ? <MinusSquare className="w-4 h-4 text-blue-500" />
+                        : <Square className="w-4 h-4" />}
+                  </button>
+                </th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Contact</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Program</th>
@@ -278,43 +377,50 @@ export default function LeadsList() {
             <tbody className="divide-y">
               {leads.map(lead => {
                 const stage = getStageMeta(lead.stage);
+                const isSelected = selectedIds.has(lead.id);
                 return (
                   <tr
                     key={lead.id}
-                    className="hover:bg-muted/30 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/leads/${lead.id}`)}
+                    className={`hover:bg-muted/30 transition-colors ${isSelected ? "bg-blue-50/60 dark:bg-blue-950/20" : ""}`}
                   >
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 w-10" onClick={e => toggleSelect(lead.id, e)}>
+                      <button className="text-muted-foreground hover:text-foreground transition-colors flex items-center">
+                        {isSelected
+                          ? <CheckSquare className="w-4 h-4 text-blue-600" />
+                          : <Square className="w-4 h-4" />}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
                       <div className="font-medium text-foreground">{lead.fullName}</div>
                       {lead.nationality && <div className="text-xs text-muted-foreground">{lead.nationality}</div>}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
                       <div className="flex flex-col gap-0.5">
                         {lead.phone && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Phone className="w-3 h-3" />{lead.phone}</span>}
                         {lead.email && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Mail className="w-3 h-3" />{lead.email}</span>}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">{lead.interestedProgram ?? "—"}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">{lead.leadSource ?? "—"}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>{lead.interestedProgram ?? "—"}</td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>{lead.leadSource ?? "—"}</td>
+                    <td className="px-4 py-3 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${stage.color}`}>
                         {stage.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
                       {lead.priority && (
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${PRIORITY_COLORS[lead.priority] ?? ""}`}>
                           {lead.priority}
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                    <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
                       <div className="flex items-center gap-1">
                         <User className="w-3 h-3" />
                         {lead.assignedTo ?? "Unassigned"}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
+                    <td className="px-4 py-3 text-xs text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
                         {new Date(lead.createdAt).toLocaleDateString()}
@@ -327,6 +433,28 @@ export default function LeadsList() {
           </table>
         </div>
       )}
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <Dialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete {selectedIds.size} Lead{selectedIds.size !== 1 ? "s" : ""}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            This will permanently delete {selectedIds.size} lead{selectedIds.size !== 1 ? "s" : ""} and all their activities, notes, and documents. This action cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkDeleteConfirm(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => bulkDelete.mutate({ ids: Array.from(selectedIds) })}
+              disabled={bulkDelete.isPending}
+            >
+              {bulkDelete.isPending ? "Deleting…" : `Delete ${selectedIds.size} Lead${selectedIds.size !== 1 ? "s" : ""}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create Lead Dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
@@ -363,7 +491,7 @@ export default function LeadsList() {
                 <Select value={form.interestedProgram} onValueChange={v => setForm(f => ({ ...f, interestedProgram: v }))}>
                   <SelectTrigger className="mt-1"><SelectValue placeholder="Select…" /></SelectTrigger>
                   <SelectContent>
-                    {PROGRAMS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    {allPrograms.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -372,7 +500,7 @@ export default function LeadsList() {
                 <Select value={form.leadSource} onValueChange={v => setForm(f => ({ ...f, leadSource: v }))}>
                   <SelectTrigger className="mt-1"><SelectValue placeholder="Select…" /></SelectTrigger>
                   <SelectContent>
-                    {SOURCES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    {allSources.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -389,7 +517,7 @@ export default function LeadsList() {
               </div>
               <div>
                 <Label>Priority</Label>
-                <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v as any }))}>
+                <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v as "low" | "medium" | "high" }))}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="high">High</SelectItem>
@@ -426,7 +554,7 @@ export default function LeadsList() {
   );
 }
 
-function Users({ className }: { className?: string }) {
+function UsersIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />

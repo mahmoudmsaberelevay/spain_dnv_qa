@@ -588,9 +588,24 @@
 
 ## Change Requests (Round 77) — Meta Auto-Discover All Lead Forms
 
-- [ ] Sync engine: remove requirement for formId in config; auto-discover ALL lead forms on the page via /page_id/leadgen_forms endpoint
-- [ ] Sync engine: iterate over all discovered forms and pull leads from each one since lastSyncAt
-- [ ] LeadsSettings Meta Ads tab: remove Form ID input field; Page ID auto-detected from token
-- [ ] LeadsSettings Meta Ads tab: show auto-discovered forms list after token is saved
-- [ ] Pre-configure integration with Mahmoud's token (Page: Elevay Global, ID: 817555428107479)
-- [ ] Test sync end-to-end
+- [x] Sync engine: remove requirement for formId in config; auto-discover ALL lead forms on the page via /page_id/leadgen_forms endpoint
+- [x] Sync engine: iterate over all discovered forms and pull leads from each one since lastSyncAt
+- [x] LeadsSettings Meta Ads tab: remove Form ID input field; Page ID auto-detected from token
+- [x] LeadsSettings Meta Ads tab: show auto-discovered forms list after token is saved
+- [x] Pre-configure integration with Mahmoud's token (Page: Elevay Global, ID: 817555428107479)
+- [x] Test sync end-to-end
+
+## Change Requests (Round 78) — Bulk Actions & Lead Forms Management
+
+- [ ] Backend: leads.bulkDelete procedure — accepts array of lead IDs, deletes all, protected
+- [ ] Backend: leads.bulkExport procedure — accepts array of lead IDs (or "all"), returns CSV data
+- [ ] Backend: leadsSettings.listMetaForms procedure — calls Meta Graph API to list all forms on the page with id, name, status; marks which ones are "connected" (being synced)
+- [ ] Backend: leadsSettings.toggleMetaForm procedure — add/remove a form from an excluded list in integration config so user can disable specific forms from syncing
+- [ ] Frontend: LeadsList — add checkbox column (select row), select-all checkbox in header
+- [ ] Frontend: LeadsList — bulk action bar appears when 1+ leads selected: shows count, Delete Selected button, Export Selected button
+- [ ] Frontend: LeadsList — Delete Selected: confirmation dialog, calls bulkDelete, refreshes list
+- [ ] Frontend: LeadsList — Export Selected: downloads CSV of selected leads
+- [ ] Frontend: LeadsSettings — add "Lead Forms" tab showing all Meta forms discovered from the page
+- [ ] Frontend: LeadsSettings Lead Forms tab — table with columns: Form Name, Status (Active/Archived), Leads Count, Connected toggle (green=syncing, grey=excluded), Last Synced
+- [ ] Frontend: LeadsSettings Lead Forms tab — "Refresh Forms" button to re-fetch from Meta API
+- [ ] Frontend: LeadsSettings Lead Forms tab — show "Not connected" state if no Meta integration token is configured

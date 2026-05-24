@@ -189,9 +189,57 @@ export const leadsSettingsRouter = router({
     return rows;
   }),
 
-  // ─── Meta Sync ─────────────────────────────────────────────────────────────
-  syncMeta: protectedProcedure
-    .input(z.object({ integrationId: z.number().optional() }))
+  // ─── Meta Forms Management ─────────────────────────────────────────────────────
+  listMetaForms: protectedProcedure
+    .input(z.object({ integrationId: z.number() }))
+    .query(async ({ input }) => {
+      const db = await (await import("../db")).getDb();
+      if (!db) throw new Error("DB not available");
+      const { leadIntegrations } = await import("../../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      const [integration] = await db.select().from(leadIntegrations).where(eq(leadIntegrations.id, input.integrationId)).limit(1);
+      if (!integration) throw new Error("Integration not found");
+      const config = integration.config ? JSON.parse(integration.config) : {};
+      const { page_access_token: accessToken, page_id: pageId, excluded_forms: excludedFormsRaw } = config;
+      if (!accessToken || !pageId) throw new Error("Integration not configured with token and page ID");
+      const excludedForms: string[] = Array.isArray(excludedFormsRaw) ? excludedFormsRaw : [];
+      const params = new URLSearchParams({ access_token: accessToken, fields: "id,name,status,leads_count", limit: "100" });
+      const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/leadgen_forms?${params.toString()}`);
+      const json = await res.json() as { data?: Array<{ id: string; name: string; status: string; leads_count?: number }>; error?: { message: string } };
+      if (json.error) throw new Error(json.error.message);
+      const forms = (json.data ?? []).map(f => ({
+        id: f.id,
+        name: f.name,
+        status: f.status,
+        leadsCount: f.leads_count ?? 0,
+        connected: !excludedForms.includes(f.id),
+      }));
+      return { forms, lastSyncAt: integration.lastSyncAt, lastSyncCount: integration.lastSyncCount };
+    }),
+
+  toggleMetaForm: protectedProcedure
+    .input(z.object({ integrationId: z.number(), formId: z.string(), connected: z.boolean() }))
+    .mutation(async ({ input }) => {
+      const db = await (await import("../db")).getDb();
+      if (!db) throw new Error("DB not available");
+      const { leadIntegrations } = await import("../../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      const [integration] = await db.select().from(leadIntegrations).where(eq(leadIntegrations.id, input.integrationId)).limit(1);
+      if (!integration) throw new Error("Integration not found");
+      const config = integration.config ? JSON.parse(integration.config) : {};
+      let excludedForms: string[] = Array.isArray(config.excluded_forms) ? config.excluded_forms : [];
+      if (input.connected) {
+        excludedForms = excludedForms.filter((id: string) => id !== input.formId);
+      } else {
+        if (!excludedForms.includes(input.formId)) excludedForms.push(input.formId);
+      }
+      const updatedConfig = { ...config, excluded_forms: excludedForms };
+      await db.update(leadIntegrations).set({ config: JSON.stringify(updatedConfig), updatedAt: Date.now() }).where(eq(leadIntegrations.id, input.integrationId));
+      return { success: true };
+    }),
+
+  // ─── Meta Sync ───────────────────────────────────────────────────────────────
+  syncMeta: protectedProcedure   .input(z.object({ integrationId: z.number().optional() }))
     .mutation(async ({ input }) => {
       const { syncAllMetaIntegrations, syncOneIntegrationById } = await import("../metaLeadSync");
       if (input.integrationId) {
