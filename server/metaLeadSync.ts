@@ -18,7 +18,7 @@
  */
 
 import { getDb } from "./db";
-import { leadIntegrations, leads } from "../drizzle/schema";
+import { leadIntegrations, leads, leadActivities } from "../drizzle/schema";
 import { eq, and, or } from "drizzle-orm";
 
 const META_GRAPH_BASE = "https://graph.facebook.com/v19.0";
@@ -32,6 +32,11 @@ interface MetaLead {
   id: string;
   created_time: string;
   ad_id?: string;
+  ad_name?: string;
+  adset_id?: string;
+  adset_name?: string;
+  campaign_id?: string;
+  campaign_name?: string;
   form_id?: string;
   field_data: MetaFieldData[];
 }
@@ -160,7 +165,7 @@ async function fetchMetaLeadsPage(
 ): Promise<MetaLeadsResponse> {
   const params = new URLSearchParams({
     access_token: accessToken,
-    fields: "created_time,id,ad_id,form_id,field_data",
+    fields: "created_time,id,ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,form_id,field_data",
     limit: "100",
   });
 
@@ -323,34 +328,91 @@ async function syncOneIntegration(integration: {
             continue;
           }
 
-          // Build notes: combine user notes + extra unmapped fields + meta metadata
-          const noteParts: string[] = [];
-          if (mapped.notes) noteParts.push(mapped.notes);
-          if (mapped._extra) noteParts.push(`--- Additional Fields ---\n${mapped._extra}`);
-          noteParts.push(`Meta Form: ${form.name}`);
-          if (metaLead.ad_id) noteParts.push(`Meta Ad ID: ${metaLead.ad_id}`);
-          noteParts.push(`Meta Lead ID: ${metaLead.id}`);
-
+          // Parse created_time to a readable format: "24 May 2026 — 09:43"
           const createdAtMs = new Date(metaLead.created_time).getTime() || now;
+          const createdDate = new Date(createdAtMs);
+          const createdReadable = createdDate.toLocaleString("en-GB", {
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: "Africa/Cairo",
+          });
 
-          await db.insert(leads).values({
+          // Build notes: meta source info
+          const noteParts: string[] = [];
+          noteParts.push(`📅 Submitted: ${createdReadable} (Cairo)`);
+          noteParts.push(`📋 Form: ${form.name}`);
+          if (metaLead.campaign_name) noteParts.push(`📢 Campaign: ${metaLead.campaign_name}`);
+          if (metaLead.adset_name) noteParts.push(`🎯 Ad Set: ${metaLead.adset_name}`);
+          if (metaLead.ad_name) noteParts.push(`🖼️ Ad: ${metaLead.ad_name}`);
+          noteParts.push(`🔗 Meta Lead ID: ${metaLead.id}`);
+
+          // Insert the lead and capture the new ID
+          const [insertResult] = await db.insert(leads).values({
             fullName: mapped.fullName || "Unknown",
             email: email || null,
             phone: phone || null,
             whatsapp: mapped.whatsapp || phone || null,
+            // Country field → nationality
             nationality: mapped.nationality || null,
+            // Program field → interestedProgram
             interestedProgram: mapped.interestedProgram || null,
             budgetRange: mapped.budgetRange || null,
             leadSource: leadSource || "Meta Ads",
             metaFormId: form.id,
             metaFormName: form.name,
+            metaCampaign: metaLead.campaign_name || metaLead.campaign_id || null,
+            metaAdset: metaLead.adset_name || metaLead.adset_id || null,
+            metaAd: metaLead.ad_name || metaLead.ad_id || null,
             stage: "fresh",
             assignedTo: assignedTo || null,
-            notes: noteParts.join("\n\n") || null,
+            notes: noteParts.join("\n") || null,
             leadScore: 0,
             createdAt: createdAtMs,
             updatedAt: createdAtMs,
           });
+
+          const newLeadId = (insertResult as any).insertId as number;
+
+          // Log a "Form Submission" activity with numbered Q&A pairs
+          if (newLeadId) {
+            try {
+              const fieldData = metaLead.field_data ?? [];
+              const activityLines: string[] = [
+                `📋 Form Submission — ${form.name}`,
+                `📅 Submitted: ${createdReadable} (Cairo)`,
+              ];
+              if (metaLead.campaign_name) activityLines.push(`📢 Campaign: ${metaLead.campaign_name}`);
+              if (metaLead.adset_name) activityLines.push(`🎯 Ad Set: ${metaLead.adset_name}`);
+              if (metaLead.ad_name) activityLines.push(`🖼️ Ad: ${metaLead.ad_name}`);
+              activityLines.push("");
+              activityLines.push("── Form Answers ──");
+
+              fieldData.forEach((f, idx) => {
+                // Clean up the question label: replace underscores with spaces, trim
+                const question = f.name.replace(/_/g, " ").trim();
+                // Clean up the answer: replace underscores with spaces
+                const answer = (f.values?.[0] ?? "").replace(/_/g, " ").trim();
+                activityLines.push(`Question ${idx + 1}: ${question}`);
+                activityLines.push(`Answer ${idx + 1}: ${answer}`);
+                activityLines.push("");
+              });
+
+              await db.insert(leadActivities).values({
+                leadId: newLeadId,
+                userId: null,
+                activityType: "created",
+                description: activityLines.join("\n"),
+                score: 0,
+                createdAt: createdAtMs,
+              });
+            } catch {
+              // Activity logging failure should not block the lead import
+            }
+          }
 
           result.newLeads++;
         }
