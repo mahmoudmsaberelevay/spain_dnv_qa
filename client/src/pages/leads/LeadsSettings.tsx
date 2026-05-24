@@ -55,6 +55,8 @@ const PERM_KEYS = ["canView", "canCreate", "canEdit", "canDelete", "canExport", 
 
 const ELEVAY_FIELDS = [
   { key: "fullName", label: "Full Name", required: true },
+  { key: "__firstName__", label: "First Name (will combine with Last Name)" },
+  { key: "__lastName__", label: "Last Name (will combine with First Name)" },
   { key: "phone", label: "Phone", required: true },
   { key: "email", label: "Email" },
   { key: "whatsapp", label: "WhatsApp" },
@@ -137,7 +139,10 @@ function ExportImportTab() {
       const autoMap: Record<string, string> = {};
       headers.forEach(h => {
         const lower = h.toLowerCase().replace(/[\s_-]/g, "");
-        if (lower.includes("firstname") || lower.includes("fullname") || lower === "name") autoMap[h] = "fullName";
+        if (lower === "fullname" || lower === "name") autoMap[h] = "fullName";
+        // LeadSquared uses separate First Name / Last Name columns — map them to special keys
+        else if (lower === "firstname" || lower === "first") autoMap[h] = "__firstName__";
+        else if (lower === "lastname" || lower === "last") autoMap[h] = "__lastName__";
         else if (lower.includes("phone") || lower.includes("mobile")) autoMap[h] = "phone";
         else if (lower.includes("email")) autoMap[h] = "email";
         else if (lower.includes("whatsapp")) autoMap[h] = "whatsapp";
@@ -174,6 +179,9 @@ function ExportImportTab() {
     setStep("preview");
   };
 
+  // Known LeadSquared placeholder/test names that should be skipped
+  const PLACEHOLDER_NAMES = new Set(["robertblock", "robert block", "john doe", "jane doe", "test lead", "sample lead", "test user"]);
+
   const runImport = async () => {
     let success = 0; let skipped = 0; const errors: string[] = [];
     for (const row of csvRows) {
@@ -182,7 +190,23 @@ function ExportImportTab() {
         const field = mapping[h];
         if (field && field !== "__skip__") obj[field] = row[i] ?? "";
       });
-      if (!obj.fullName) { skipped++; continue; }
+
+      // Combine First Name + Last Name if fullName not directly mapped
+      if (!obj.fullName && (obj["__firstName__"] || obj["__lastName__"])) {
+        obj.fullName = [obj["__firstName__"], obj["__lastName__"]].filter(Boolean).join(" ").trim();
+      }
+      delete obj["__firstName__"];
+      delete obj["__lastName__"];
+
+      // Skip rows with no name
+      if (!obj.fullName?.trim()) { skipped++; continue; }
+
+      // Skip known LeadSquared placeholder/test rows
+      if (PLACEHOLDER_NAMES.has(obj.fullName.toLowerCase().trim())) { skipped++; continue; }
+
+      // Skip rows with no contact info at all (phone and email both empty)
+      if (!obj.phone?.trim() && !obj.email?.trim()) { skipped++; continue; }
+
       try {
         await importMut.mutateAsync({ fullName: obj.fullName, phone: obj.phone, email: obj.email || undefined, whatsapp: obj.whatsapp, nationality: obj.nationality, countryOfResidence: obj.countryOfResidence, interestedProgram: obj.interestedProgram, budgetRange: obj.budgetRange, occupation: obj.occupation, leadSource: obj.leadSource || "LeadSquared Import", assignedTo: obj.assignedTo, notes: obj.notes, skipDuplicateCheck: false });
         success++;
