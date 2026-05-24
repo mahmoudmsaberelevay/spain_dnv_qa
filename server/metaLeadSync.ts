@@ -342,6 +342,8 @@ async function syncOneIntegration(integration: {
             interestedProgram: mapped.interestedProgram || null,
             budgetRange: mapped.budgetRange || null,
             leadSource: leadSource || "Meta Ads",
+            metaFormId: form.id,
+            metaFormName: form.name,
             stage: "new",
             assignedTo: assignedTo ? parseInt(assignedTo) || null : null,
             notes: noteParts.join("\n\n") || null,
@@ -376,13 +378,17 @@ async function syncOneIntegration(integration: {
   return result;
 }
 
-/** Sync a single integration by ID — called by "Sync Now" button */
-export async function syncOneIntegrationById(id: number): Promise<SyncResult> {
+/** Sync a single integration by ID with optional historical since timestamp override */
+export async function syncOneIntegrationById(id: number, sinceOverrideMs?: number): Promise<SyncResult> {
   const db = await getDb();
   if (!db) return { integrationId: id, integrationName: "Unknown", newLeads: 0, skippedDuplicates: 0, formsDiscovered: 0, errors: ["DB not available"] };
   const [integration] = await db.select().from(leadIntegrations).where(eq(leadIntegrations.id, id)).limit(1);
   if (!integration) return { integrationId: id, integrationName: "Unknown", newLeads: 0, skippedDuplicates: 0, formsDiscovered: 0, errors: ["Integration not found"] };
-  return syncOneIntegration(integration);
+  // If a historical override is provided, temporarily override lastSyncAt
+  const integrationWithOverride = sinceOverrideMs !== undefined
+    ? { ...integration, lastSyncAt: sinceOverrideMs }
+    : integration;
+  return syncOneIntegration(integrationWithOverride);
 }
 
 /** Sync ALL active Meta integrations — called by the 4-hour heartbeat */

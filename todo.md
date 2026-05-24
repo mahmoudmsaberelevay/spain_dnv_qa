@@ -597,15 +597,24 @@
 
 ## Change Requests (Round 78) — Bulk Actions & Lead Forms Management
 
-- [ ] Backend: leads.bulkDelete procedure — accepts array of lead IDs, deletes all, protected
-- [ ] Backend: leads.bulkExport procedure — accepts array of lead IDs (or "all"), returns CSV data
-- [ ] Backend: leadsSettings.listMetaForms procedure — calls Meta Graph API to list all forms on the page with id, name, status; marks which ones are "connected" (being synced)
-- [ ] Backend: leadsSettings.toggleMetaForm procedure — add/remove a form from an excluded list in integration config so user can disable specific forms from syncing
-- [ ] Frontend: LeadsList — add checkbox column (select row), select-all checkbox in header
-- [ ] Frontend: LeadsList — bulk action bar appears when 1+ leads selected: shows count, Delete Selected button, Export Selected button
-- [ ] Frontend: LeadsList — Delete Selected: confirmation dialog, calls bulkDelete, refreshes list
-- [ ] Frontend: LeadsList — Export Selected: downloads CSV of selected leads
-- [ ] Frontend: LeadsSettings — add "Lead Forms" tab showing all Meta forms discovered from the page
-- [ ] Frontend: LeadsSettings Lead Forms tab — table with columns: Form Name, Status (Active/Archived), Leads Count, Connected toggle (green=syncing, grey=excluded), Last Synced
-- [ ] Frontend: LeadsSettings Lead Forms tab — "Refresh Forms" button to re-fetch from Meta API
-- [ ] Frontend: LeadsSettings Lead Forms tab — show "Not connected" state if no Meta integration token is configured
+- [x] Backend: leads.bulkDelete procedure — accepts array of lead IDs, deletes all, protected
+- [x] Backend: leads.bulkExport procedure — accepts array of lead IDs (or "all"), returns CSV data
+- [x] Backend: leadsSettings.listMetaForms procedure — calls Meta Graph API to list all forms on the page with id, name, status; marks which ones are "connected" (being synced)
+- [x] Backend: leadsSettings.toggleMetaForm procedure — add/remove a form from an excluded list in integration config so user can disable specific forms from syncing
+- [x] Frontend: LeadsList — add checkbox column (select row), select-all checkbox in header
+- [x] Frontend: LeadsList — bulk action bar appears when 1+ leads selected: shows count, Delete Selected button, Export Selected button
+- [x] Frontend: LeadsList — Delete Selected: confirmation dialog, calls bulkDelete, refreshes list
+- [x] Frontend: LeadsList — Export Selected: downloads CSV of selected leads
+- [x] Frontend: LeadsSettings — add "Lead Forms" tab showing all Meta forms discovered from the page
+- [x] Frontend: LeadsSettings Lead Forms tab — table with columns: Form Name, Status (Active/Archived), Leads Count, Connected toggle (green=syncing, grey=excluded), Last Synced
+- [x] Frontend: LeadsSettings Lead Forms tab — "Refresh Forms" button to re-fetch from Meta API
+- [x] Frontend: LeadsSettings Lead Forms tab — show "Not connected" state if no Meta integration token is configured
+
+## Change Requests (Round 79) — Search, Form Filter, Sync Progress, Historical Sync
+- [x] Backend: extend listLeads to support `search` param (fullName, email, phone LIKE search)
+- [x] Backend: extend listLeads to support `metaFormId` filter (filter by which Meta form the lead came from)
+- [x] Backend: add `historicalSync` procedure — syncs all Meta forms from April 1 2026 to now, ignoring lastSyncAt
+- [x] Frontend: LeadsList — add search bar (debounced, searches name/email/phone)
+- [x] Frontend: LeadsList — add "Form" filter dropdown showing all Meta forms
+- [x] Frontend: LeadFormsTab — add loading spinner/progress on Sync Now button (already has isPending, improve visual)
+- [x] Frontend: LeadFormsTab — add "Full Sync from Apr 1 2026" button with progress indicator and result toast

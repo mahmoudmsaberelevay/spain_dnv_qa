@@ -10,7 +10,8 @@ import {
   getMonthlyLeadConversions, getLeadTotalCount,
   bulkDeleteLeads, getLeadsByIds,
 } from "../leadsDb";
-import { listActivityPresets } from "../leadsSettingsDb";
+import { listActivityPresets, listLeadIntegrations } from "../leadsSettingsDb";
+import { syncOneIntegrationById } from "../metaLeadSync";
 
 const STAGES = [
   "fresh", "contacted", "qualified", "prospect", "client", "dormant",
@@ -101,6 +102,7 @@ export const leadsRouter = router({
       dateTo: z.number().optional(),
       lastActivityFrom: z.number().optional(),
       lastActivityTo: z.number().optional(),
+      metaFormId: z.string().optional(),
     }).optional())
     .query(async ({ input }) => {
       return listLeads(input);
@@ -460,6 +462,48 @@ export const leadsRouter = router({
         ].map(escape).join(","));
       }
       return { csv: csvLines.join("\n"), count: rows.length };
+    }),
+
+  // ── Historical Sync ────────────────────────────────────────────────────────
+  historicalSync: protectedProcedure
+    .input(z.object({
+      integrationId: z.number().optional(), // if omitted, syncs all active Meta integrations
+    }).optional())
+    .mutation(async ({ input }) => {
+      // April 1, 2026 00:00:00 UTC as the historical since timestamp
+      const APRIL_1_2026_MS = new Date('2026-04-01T00:00:00Z').getTime();
+      const db = await (await import('../db')).getDb();
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'DB not available' });
+
+      const { leadIntegrations } = await import('../../drizzle/schema');
+      const { eq, and } = await import('drizzle-orm');
+
+      let integrationIds: number[];
+      if (input?.integrationId) {
+        integrationIds = [input.integrationId];
+      } else {
+        const rows = await db
+          .select({ id: leadIntegrations.id })
+          .from(leadIntegrations)
+          .where(and(eq(leadIntegrations.type, 'meta'), eq(leadIntegrations.isActive, true)));
+        integrationIds = rows.map(r => r.id);
+      }
+
+      if (integrationIds.length === 0) {
+        return { results: [], totalNew: 0, totalSkipped: 0 };
+      }
+
+      const results = [];
+      let totalNew = 0;
+      let totalSkipped = 0;
+      for (const id of integrationIds) {
+        const result = await syncOneIntegrationById(id, APRIL_1_2026_MS);
+        results.push(result);
+        totalNew += result.newLeads;
+        totalSkipped += result.skippedDuplicates;
+      }
+
+      return { results, totalNew, totalSkipped };
     }),
 
   // ── Analytics ───────────────────────────────────────────────────────────────

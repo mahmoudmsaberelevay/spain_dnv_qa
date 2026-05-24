@@ -786,6 +786,8 @@ export const leads = mysqlTable("leads", {
   sourceOfFunds: varchar("sourceOfFunds", { length: 100 }),
   // Lead Tracking
   leadSource: varchar("leadSource", { length: 100 }),
+  metaFormId: varchar("metaFormId", { length: 100 }),
+  metaFormName: varchar("metaFormName", { length: 255 }),
   metaCampaign: varchar("metaCampaign", { length: 255 }),
   metaAdset: varchar("metaAdset", { length: 255 }),
   metaAd: varchar("metaAd", { length: 255 }),

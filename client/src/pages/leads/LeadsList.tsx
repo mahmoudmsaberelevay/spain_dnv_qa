@@ -12,9 +12,8 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import {
-  Plus, Search, Phone, Mail, User, Calendar, Download,
-  Filter, X, Trash2, CheckSquare, Square, MinusSquare,
+import { Plus, Search, Phone, Mail, User, Calendar, Download,
+  Filter, X, Trash2, CheckSquare, Square, MinusSquare, RefreshCw, LayoutList,
 } from "lucide-react";
 
 const STAGES = [
@@ -65,6 +64,8 @@ export default function LeadsList() {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [programFilter, setProgramFilter] = useState("all");
   const [assignedFilter, setAssignedFilter] = useState("all");
+  const [metaFormFilter, setMetaFormFilter] = useState("all");
+  const [showHistoricalSyncConfirm, setShowHistoricalSyncConfirm] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [createdFrom, setCreatedFrom] = useState("");
   const [createdTo, setCreatedTo] = useState("");
@@ -97,28 +98,52 @@ export default function LeadsList() {
     notes: "", budgetRange: "",
   });
 
+  // Load Meta forms for the form filter dropdown
+  const { data: metaFormsData } = trpc.leadsSettings.listMetaForms.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+  });
+  const metaForms = metaFormsData?.forms ?? [];
+
   const filters = useMemo(() => ({
     search: search || undefined,
     stage: stageFilter !== "all" ? stageFilter : undefined,
     leadSource: sourceFilter !== "all" ? sourceFilter : undefined,
     interestedProgram: programFilter !== "all" ? programFilter : undefined,
     assignedTo: assignedFilter !== "all" ? assignedFilter : undefined,
+    metaFormId: metaFormFilter !== "all" ? metaFormFilter : undefined,
     dateFrom: createdFrom ? new Date(createdFrom).getTime() : undefined,
     dateTo: createdTo ? new Date(createdTo + "T23:59:59").getTime() : undefined,
     lastActivityFrom: lastActivityFrom ? new Date(lastActivityFrom).getTime() : undefined,
     lastActivityTo: lastActivityTo ? new Date(lastActivityTo + "T23:59:59").getTime() : undefined,
-  }), [search, stageFilter, sourceFilter, programFilter, assignedFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
+  }), [search, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
 
-  const hasActiveFilters = stageFilter !== "all" || sourceFilter !== "all" || programFilter !== "all" || assignedFilter !== "all" || createdFrom || createdTo || lastActivityFrom || lastActivityTo;
+  const hasActiveFilters = stageFilter !== "all" || sourceFilter !== "all" || programFilter !== "all" || assignedFilter !== "all" || metaFormFilter !== "all" || createdFrom || createdTo || lastActivityFrom || lastActivityTo;
 
   function clearAllFilters() {
     setStageFilter("all"); setSourceFilter("all"); setProgramFilter("all"); setAssignedFilter("all");
+    setMetaFormFilter("all");
     setCreatedFrom(""); setCreatedTo(""); setLastActivityFrom(""); setLastActivityTo("");
   }
 
   const { data: leads = [], isLoading } = trpc.leads.list.useQuery(filters);
 
   // Bulk mutations
+  // Historical sync mutation
+  const historicalSync = trpc.leads.historicalSync.useMutation({
+    onSuccess: (data) => {
+      utils.leads.list.invalidate();
+      utils.leads.analytics.overview.invalidate();
+      setShowHistoricalSyncConfirm(false);
+      toast.success(
+        `Historical sync complete — ${data.totalNew} new lead${data.totalNew !== 1 ? "s" : ""} added, ${data.totalSkipped} duplicate${data.totalSkipped !== 1 ? "s" : ""} skipped.`
+      );
+    },
+    onError: (err) => {
+      setShowHistoricalSyncConfirm(false);
+      toast.error(`Sync failed: ${err.message}`);
+    },
+  });
+
   const bulkDelete = trpc.leads.bulkDelete.useMutation({
     onSuccess: (data) => {
       utils.leads.list.invalidate();
@@ -249,6 +274,16 @@ export default function LeadsList() {
               </Button>
             </>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowHistoricalSyncConfirm(true)}
+            disabled={historicalSync.isPending}
+            title="Fetch all leads from Meta forms starting April 1, 2026"
+          >
+            <RefreshCw className={`w-4 h-4 mr-1 ${historicalSync.isPending ? "animate-spin" : ""}`} />
+            {historicalSync.isPending ? "Syncing…" : "Lead Sync"}
+          </Button>
           <Button variant="outline" size="sm" onClick={exportAllCSV}>
             <Download className="w-4 h-4 mr-1" /> Export All
           </Button>
@@ -305,6 +340,20 @@ export default function LeadsList() {
               <span className="w-2 h-2 rounded-full bg-primary-foreground" />
             )}
           </Button>
+          {metaForms.length > 0 && (
+            <Select value={metaFormFilter} onValueChange={setMetaFormFilter}>
+              <SelectTrigger className="w-48">
+                <LayoutList className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                <SelectValue placeholder="All Forms" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Meta Forms</SelectItem>
+                {metaForms.map(f => (
+                  <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" onClick={clearAllFilters} className="gap-1.5 text-muted-foreground hover:text-foreground">
               <X className="w-3.5 h-3.5" /> Clear All
@@ -433,6 +482,28 @@ export default function LeadsList() {
           </table>
         </div>
       )}
+
+      {/* Historical Sync Confirmation Dialog */}
+      <Dialog open={showHistoricalSyncConfirm} onOpenChange={setShowHistoricalSyncConfirm}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Lead Sync from April 1, 2026</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            This will fetch all leads from every connected Meta form starting from <strong>April 1, 2026</strong> and add any new leads to the system. Duplicates (matched by phone or email) will be skipped automatically.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHistoricalSyncConfirm(false)}>Cancel</Button>
+            <Button
+              onClick={() => historicalSync.mutate({})}
+              disabled={historicalSync.isPending}
+            >
+              <RefreshCw className={`w-4 h-4 mr-1 ${historicalSync.isPending ? "animate-spin" : ""}`} />
+              {historicalSync.isPending ? "Syncing…" : "Start Sync"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Bulk Delete Confirmation Dialog */}
       <Dialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>

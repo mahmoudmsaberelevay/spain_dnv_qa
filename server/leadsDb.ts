@@ -33,6 +33,7 @@ export async function listLeads(filters?: {
   dateTo?: number;
   lastActivityFrom?: number;
   lastActivityTo?: number;
+  metaFormId?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -60,6 +61,7 @@ export async function listLeads(filters?: {
   if (filters?.dateTo) conditions.push(sql`${leads.createdAt} <= ${filters.dateTo}`);
   if (filters?.lastActivityFrom) conditions.push(sql`${leads.lastContactAt} >= ${filters.lastActivityFrom}`);
   if (filters?.lastActivityTo) conditions.push(sql`${leads.lastContactAt} <= ${filters.lastActivityTo}`);
+  if (filters?.metaFormId) conditions.push(eq(leads.metaFormId, filters.metaFormId));
   if (conditions.length > 0) {
     query = query.where(and(...conditions));
   }

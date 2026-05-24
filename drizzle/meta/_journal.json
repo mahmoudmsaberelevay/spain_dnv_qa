@@ -281,6 +281,13 @@
       "when": 1779613214468,
       "tag": "0039_fat_pestilence",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "5",
+      "when": 1779617532083,
+      "tag": "0040_overrated_yellow_claw",
+      "breakpoints": true
     }
   ]
 }

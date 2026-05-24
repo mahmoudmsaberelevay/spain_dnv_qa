@@ -1035,7 +1035,9 @@ function LeadFormsTab() {
             Refresh
           </Button>
           <Button size="sm" onClick={() => syncNow.mutate({ integrationId: integration.id })} disabled={syncNow.isPending}>
-            <Zap className="w-4 h-4 mr-1" />
+            {syncNow.isPending
+              ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+              : <Zap className="w-4 h-4 mr-1" />}
             {syncNow.isPending ? "Syncing…" : "Sync Now"}
           </Button>
         </div>
