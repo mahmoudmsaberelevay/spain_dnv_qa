@@ -377,6 +377,11 @@ async function syncOneIntegration(integration: {
             leadScore: 0,
             createdAt: createdAtMs,
             updatedAt: createdAtMs,
+            // Meta lead form submission implies GDPR consent and data sharing consent
+            gdprConsent: true,
+            dataSharingConsent: true,
+            marketingOptIn: true,
+            dataRegion: "EG",
           });
 
           const newLeadId = (insertResult as any).insertId as number;

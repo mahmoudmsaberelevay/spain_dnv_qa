@@ -41,6 +41,7 @@ export default function LeadsMetaExport() {
   const [dateTo, setDateTo] = useState("");
   const [selectedStages, setSelectedStages] = useState<string[]>([]);
   const [isExporting, setIsExporting] = useState(false);
+  const [quickFilter, setQuickFilter] = useState<"all" | "contract" | "payment">("all");
 
   const queryInput = useMemo(() => ({
     dateFrom: dateFrom ? new Date(dateFrom).getTime() : undefined,
@@ -52,7 +53,13 @@ export default function LeadsMetaExport() {
     staleTime: 30_000,
   });
 
-  const rows = data?.rows ?? [];
+  const allRows = data?.rows ?? [];
+  // Apply quick filter on top of server-side results
+  const rows = useMemo(() => {
+    if (quickFilter === "contract") return allRows.filter(r => r.contract_signed_date);
+    if (quickFilter === "payment") return allRows.filter(r => r.payment_received_date);
+    return allRows;
+  }, [allRows, quickFilter]);
 
   // Summary stats
   const stats = useMemo(() => {
@@ -164,16 +171,43 @@ export default function LeadsMetaExport() {
                 className="h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
-            {(dateFrom || dateTo || selectedStages.length > 0) && (
+            {(dateFrom || dateTo || selectedStages.length > 0 || quickFilter !== "all") && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setDateFrom(""); setDateTo(""); setSelectedStages([]); }}
+                onClick={() => { setDateFrom(""); setDateTo(""); setSelectedStages([]); setQuickFilter("all"); }}
                 className="text-muted-foreground"
               >
                 Clear filters
               </Button>
             )}
+          </div>
+
+          {/* Quick filters */}
+          <div className="flex flex-wrap gap-2">
+            <span className="text-xs text-muted-foreground self-center mr-1">Quick:</span>
+            {[
+              { key: "all" as const, label: "All Leads", icon: "👥" },
+              { key: "contract" as const, label: "Contract Signed", icon: "📝" },
+              { key: "payment" as const, label: "Payment Received", icon: "💳" },
+            ].map(q => (
+              <button
+                key={q.key}
+                onClick={() => setQuickFilter(q.key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  quickFilter === q.key
+                    ? q.key === "contract" ? "border-blue-500 bg-blue-500/15 text-blue-300"
+                      : q.key === "payment" ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
+                      : "border-rose-500 bg-rose-500/15 text-rose-300"
+                    : "border-border text-muted-foreground hover:border-muted-foreground"
+                }`}
+              >
+                <span>{q.icon}</span> {q.label}
+                {quickFilter === q.key && q.key !== "all" && (
+                  <span className="ml-1 bg-current/20 rounded-full px-1.5 py-0.5 text-[10px]">{rows.length}</span>
+                )}
+              </button>
+            ))}
           </div>
 
           {/* Stage filter */}
