@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "./_core/trpc";
+import { getLastBackupStatus } from "./weeklyBackupScheduler";
 import { TRPCError } from "@trpc/server";
 import { getDb } from "./db";
 import { auditLogs, users } from "../drizzle/schema";
@@ -117,14 +118,7 @@ export const adminRouter = router({
   // ── Weekly Backup Status ──────────────────────────────────────────────────────
   getWeeklyBackupStatus: adminProcedure
     .query(() => {
-      const { getLastBackupStatus } = require("../weeklyBackupScheduler");
-      return getLastBackupStatus() as {
-        lastBackupDate: string;
-        lastBackupStatus: "success" | "failed" | null;
-        lastBackupTimestamp: number | null;
-        lastBackupDriveLink: string;
-        nextBackupInfo: string;
-      };
+      return getLastBackupStatus();
     }),
 
   // ── User List (for admin management) ─────────────────────────────────────────
