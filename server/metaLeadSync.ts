@@ -98,6 +98,7 @@ function mapMetaFieldsToLead(fieldData: MetaFieldData[]): Record<string, string>
       case "interested_program":
       case "program":
       case "service":
+      case "interested_in":
         map.interestedProgram = val;
         break;
       case "budget":
@@ -338,14 +339,13 @@ async function syncOneIntegration(integration: {
             phone: phone || null,
             whatsapp: mapped.whatsapp || phone || null,
             nationality: mapped.nationality || null,
-            city: mapped.city || null,
             interestedProgram: mapped.interestedProgram || null,
             budgetRange: mapped.budgetRange || null,
             leadSource: leadSource || "Meta Ads",
             metaFormId: form.id,
             metaFormName: form.name,
-            stage: "new",
-            assignedTo: assignedTo ? parseInt(assignedTo) || null : null,
+            stage: "fresh",
+            assignedTo: assignedTo || null,
             notes: noteParts.join("\n\n") || null,
             leadScore: 0,
             createdAt: createdAtMs,
