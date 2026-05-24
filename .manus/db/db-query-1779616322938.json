@@ -1,0 +1,9 @@
+{
+  "query": "\nINSERT INTO lead_integrations (type, name, config, isActive, webhookToken, createdAt, updatedAt)\nVALUES (\n  'meta',\n  'Elevay Global — All Lead Forms',\n  '{\"page_access_token\":\"EAAdPbOmjSc0BRqqtufUhUZCcEASf0qAFqKY6o6o937IZBFYEMRq7Cg8Azd3igBLAL5ZBdK7fCauhaX9lprduBfZATE4DjHAZAcuJ8HrCZAv0hnpenZAljQzSEflBbv2JCpZCOGC4XZBogHgiZCy93M119ZBbBZCBarGZBeOGb4CPk6VYsBVMZA2BDeIZCFXwCPtxhSZCXSzdOJ23\",\"page_id\":\"817555428107479\"}',\n  1,\n  CONCAT('elevay-meta-', SUBSTRING(MD5(RAND()), 1, 16)),\n  UNIX_TIMESTAMP() * 1000,\n  UNIX_TIMESTAMP() * 1000\n);\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute \nINSERT INTO lead_integrations (type, name, config, isActive, webhookToken, createdAt, updatedAt)\nVALUES (\n  'meta',\n  'Elevay Global — All Lead Forms',\n  '{\"page_access_token\":\"EAAdPbOmjSc0BRqqtufUhUZCcEASf0qAFqKY6o6o937IZBFYEMRq7Cg8Azd3igBLAL5ZBdK7fCauhaX9lprduBfZATE4DjHAZAcuJ8HrCZAv0hnpenZAljQzSEflBbv2JCpZCOGC4XZBogHgiZCy93M119ZBbBZCBarGZBeOGb4CPk6VYsBVMZA2BDeIZCFXwCPtxhSZCXSzdOJ23\",\"page_id\":\"817555428107479\"}',\n  1,\n  CONCAT('elevay-meta-', SUBSTRING(MD5(RAND()), 1, 16)),\n  UNIX_TIMESTAMP() * 1000,\n  UNIX_TIMESTAMP() * 1000\n);\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1875
+}

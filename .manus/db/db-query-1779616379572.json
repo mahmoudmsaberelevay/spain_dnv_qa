@@ -1,0 +1,19 @@
+{
+  "query": "SELECT id, type, name, isActive, lastSyncAt, lastSyncCount, createdAt FROM lead_integrations WHERE type = 'meta' ORDER BY id DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT id, type, name, isActive, lastSyncAt, lastSyncCount, createdAt FROM lead_integrations WHERE type = 'meta' ORDER BY id DESC LIMIT 5;",
+  "rows": [
+    {
+      "id": "1",
+      "type": "meta",
+      "name": "Elevay Global — All Lead Forms",
+      "isActive": "1",
+      "lastSyncAt": "NULL",
+      "lastSyncCount": "0",
+      "createdAt": "1779616322000"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\ttype\tname\tisActive\tlastSyncAt\tlastSyncCount\tcreatedAt\n1\tmeta\tElevay Global — All Lead Forms\t1\tNULL\t0\t1779616322000\n",
+  "stderr": "",
+  "execution_time_ms": 1739
+}

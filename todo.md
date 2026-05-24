@@ -585,3 +585,12 @@
 - [x] Frontend: LeadProfile — WhatsApp direct button next to phone number: opens wa.me link in new tab
 - [x] Frontend: LeadProfile — Send Email dialog: compose subject + body, send via system SMTP, log as activity
 - [x] Frontend: LeadsList — advanced filter panel: date created range, stage multi-select, interested program, assigned to, last activity date range
+
+## Change Requests (Round 77) — Meta Auto-Discover All Lead Forms
+
+- [ ] Sync engine: remove requirement for formId in config; auto-discover ALL lead forms on the page via /page_id/leadgen_forms endpoint
+- [ ] Sync engine: iterate over all discovered forms and pull leads from each one since lastSyncAt
+- [ ] LeadsSettings Meta Ads tab: remove Form ID input field; Page ID auto-detected from token
+- [ ] LeadsSettings Meta Ads tab: show auto-discovered forms list after token is saved
+- [ ] Pre-configure integration with Mahmoud's token (Page: Elevay Global, ID: 817555428107479)
+- [ ] Test sync end-to-end

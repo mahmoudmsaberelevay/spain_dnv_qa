@@ -765,7 +765,7 @@ function ActivityPresetsTab() {
 
 function MetaAdsTab() {
   const { data: integrations, refetch } = trpc.leadsSettings.listIntegrations.useQuery();
-  const createMut = trpc.leadsSettings.createIntegration.useMutation({ onSuccess: () => { refetch(); setShowAdd(false); setFormName(""); setFormPageId(""); setFormFormId(""); setFormAccessToken(""); toast.success("Meta integration added"); } });
+  const createMut = trpc.leadsSettings.createIntegration.useMutation({ onSuccess: () => { refetch(); setShowAdd(false); setFormName(""); setFormAccessToken(""); toast.success("Meta integration added — click Sync Now to pull your leads"); } });
   const regenMut = trpc.leadsSettings.regenerateToken.useMutation({ onSuccess: () => { refetch(); toast.success("Token regenerated"); } });
   const deleteMut = trpc.leadsSettings.deleteIntegration.useMutation({ onSuccess: () => { refetch(); toast.success("Integration removed"); } });
   const updateMut = trpc.leadsSettings.updateIntegration.useMutation({ onSuccess: () => { refetch(); toast.success("Updated"); } });
@@ -777,7 +777,8 @@ function MetaAdsTab() {
       if (r.errors.length > 0) {
         toast.error(`Sync error: ${r.errors[0]}`);
       } else {
-        toast.success(`Sync complete: ${r.newLeads} new lead(s), ${r.skippedDuplicates} duplicate(s) skipped`);
+        const formsMsg = (r as any).formsDiscovered ? ` across ${(r as any).formsDiscovered} form(s)` : "";
+        toast.success(`Sync complete: ${r.newLeads} new lead(s), ${r.skippedDuplicates} duplicate(s) skipped${formsMsg}`);
       }
     },
     onError: (e) => toast.error(`Sync failed: ${e.message}`),
@@ -786,8 +787,6 @@ function MetaAdsTab() {
   const metaIntegrations = (integrations ?? []).filter(i => i.type === "meta");
   const [showAdd, setShowAdd] = useState(false);
   const [formName, setFormName] = useState("");
-  const [formPageId, setFormPageId] = useState("");
-  const [formFormId, setFormFormId] = useState("");
   const [formAccessToken, setFormAccessToken] = useState("");
   const [editingToken, setEditingToken] = useState<number | null>(null);
   const [editTokenValue, setEditTokenValue] = useState("");
@@ -807,21 +806,20 @@ function MetaAdsTab() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-foreground">Meta Ads Lead Forms</h3>
-          <p className="text-sm text-muted-foreground">Connect your Facebook/Instagram Lead Ad forms to automatically receive new leads.</p>
+          <p className="text-sm text-muted-foreground">Paste your Page Access Token once — ELEVAY auto-discovers <strong>all</strong> your lead forms and syncs every 4 hours. New forms are picked up automatically.</p>
         </div>
         <Button onClick={() => setShowAdd(true)} className="gap-2"><Plus className="h-4 w-4" />Connect Form</Button>
       </div>
 
       {/* Setup instructions */}
       <div className="border border-blue-200 bg-blue-50 rounded-lg p-4 space-y-3">
-        <h4 className="font-medium text-blue-900 flex items-center gap-2"><Zap className="h-4 w-4" />How to connect Meta Lead Ads</h4>
+        <h4 className="font-medium text-blue-900 flex items-center gap-2"><Zap className="h-4 w-4" />How it works</h4>
         <ol className="text-sm text-blue-800 space-y-1.5 list-decimal list-inside">
-          <li>Go to <a href="https://business.facebook.com/latest/leads_center" target="_blank" rel="noreferrer" className="underline font-medium">Meta Business Suite → Leads Center</a></li>
-          <li>Click <strong>Integrations → CRM Integration</strong></li>
-          <li>Choose <strong>Custom Integration (Webhook)</strong></li>
-          <li>Enter the Webhook URL and Verify Token from each integration below</li>
-          <li>Select the Lead Ad form you want to connect</li>
-          <li>Click <strong>Test</strong> — a test lead will appear in your ELEVAY LEADS list</li>
+          <li>Click <strong>Connect Form</strong> and paste your <strong>Page Access Token</strong> from Meta Business Manager</li>
+          <li>ELEVAY automatically finds <strong>all lead forms</strong> on your page — no Form ID needed</li>
+          <li>Leads sync every <strong>4 hours automatically</strong> — duplicates are always skipped</li>
+          <li>New campaigns with new forms are picked up on the next sync — zero configuration</li>
+          <li>Click <strong>Sync Now</strong> on any integration to pull leads immediately</li>
         </ol>
       </div>
 
@@ -927,9 +925,10 @@ function MetaAdsTab() {
                   </Button>
                 </div>
               </div>
-              {cfg.form_id && (
-                <div className="text-xs text-muted-foreground">Form ID: <code className="bg-muted px-1 rounded">{cfg.form_id}</code></div>
-              )}
+              <div className="text-xs text-muted-foreground">
+                {cfg.page_id ? <>Page ID: <code className="bg-muted px-1 rounded">{cfg.page_id}</code> · </> : null}
+                All lead forms auto-discovered on each sync
+              </div>
             </div>
           </div>
         );
@@ -944,25 +943,34 @@ function MetaAdsTab() {
       {/* Add dialog */}
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Connect Meta Lead Form</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Connect Meta Lead Ads</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
+              Paste your Page Access Token below. ELEVAY will automatically discover all lead forms on your page and sync them every 4 hours.
+            </div>
             <div className="space-y-2">
               <Label>Integration Name</Label>
-              <Input placeholder="e.g. Spain DNV - Facebook Campaign" value={formName} onChange={e => setFormName(e.target.value)} />
+              <Input placeholder="e.g. ELEVAY Facebook Leads" value={formName} onChange={e => setFormName(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Facebook Page ID <span className="text-muted-foreground text-xs">(optional)</span></Label>
-              <Input placeholder="e.g. 123456789" value={formPageId} onChange={e => setFormPageId(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Lead Form ID <span className="text-muted-foreground text-xs">(optional)</span></Label>
-              <Input placeholder="e.g. 987654321" value={formFormId} onChange={e => setFormFormId(e.target.value)} />
+              <Label>Page Access Token <span className="text-red-500">*</span></Label>
+              <Input
+                type="password"
+                placeholder="Paste your long-lived Page Access Token"
+                value={formAccessToken}
+                onChange={e => setFormAccessToken(e.target.value)}
+                className="font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">Get this from Meta Business Manager → System Users → Generate New Token</p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
-            <Button onClick={() => createMut.mutate({ type: "meta", name: formName, config: { pageId: formPageId, formId: formFormId } })} disabled={!formName.trim() || createMut.isPending}>
-              Create Integration
+            <Button
+              onClick={() => createMut.mutate({ type: "meta", name: formName, config: { page_access_token: formAccessToken } })}
+              disabled={!formName.trim() || !formAccessToken.trim() || createMut.isPending}
+            >
+              {createMut.isPending ? "Connecting..." : "Connect"}
             </Button>
           </DialogFooter>
         </DialogContent>
