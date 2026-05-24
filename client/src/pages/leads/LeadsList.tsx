@@ -70,6 +70,12 @@ export default function LeadsList() {
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
 
+  // ── Read initial filter values from URL query params ──────────────────────
+  // e.g. /leads?campaign=Spain+DNV+May+2026 or /leads?form=Spain+28+April+2026
+  const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const initialCampaign = urlParams.get("campaign") ?? "";
+  const initialForm = urlParams.get("form") ?? "";
+
   // ── Filter state ──────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 350);
@@ -77,7 +83,9 @@ export default function LeadsList() {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [programFilter, setProgramFilter] = useState("all");
   const [assignedFilter, setAssignedFilter] = useState("all");
-  const [metaFormFilter, setMetaFormFilter] = useState("all");
+  // Pre-populate from URL param if provided (from dashboard chart click)
+  const [metaFormFilter, setMetaFormFilter] = useState(initialForm || "all");
+  const [campaignFilter, setCampaignFilter] = useState(initialCampaign);
   const [showHistoricalSyncConfirm, setShowHistoricalSyncConfirm] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [createdFrom, setCreatedFrom] = useState("");
@@ -137,6 +145,7 @@ export default function LeadsList() {
     interestedProgram: programFilter !== "all" ? programFilter : undefined,
     assignedTo: assignedFilter !== "all" ? assignedFilter : undefined,
     metaFormId: metaFormFilter !== "all" ? metaFormFilter : undefined,
+    metaCampaign: campaignFilter || undefined,
     dateFrom: createdFrom ? new Date(createdFrom).getTime() : undefined,
     dateTo: createdTo ? new Date(createdTo + "T23:59:59").getTime() : undefined,
     lastActivityFrom: lastActivityFrom ? new Date(lastActivityFrom).getTime() : undefined,
@@ -144,23 +153,23 @@ export default function LeadsList() {
     page,
     pageSize: PAGE_SIZE,
   }), [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter,
-    createdFrom, createdTo, lastActivityFrom, lastActivityTo, page]);
+    campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo, page]);
 
   // Reset page when non-page filters change
   useEffect(() => {
-    const key = JSON.stringify({ debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo });
+    const key = JSON.stringify({ debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo });
     if (prevFiltersRef.current && prevFiltersRef.current !== key) {
       setPage(1);
       setSelectedIds(new Set());
     }
     prevFiltersRef.current = key;
-  }, [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
+  }, [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
 
-  const hasActiveFilters = stageFilter !== "all" || sourceFilter !== "all" || programFilter !== "all" || assignedFilter !== "all" || metaFormFilter !== "all" || createdFrom || createdTo || lastActivityFrom || lastActivityTo;
+  const hasActiveFilters = stageFilter !== "all" || sourceFilter !== "all" || programFilter !== "all" || assignedFilter !== "all" || metaFormFilter !== "all" || !!campaignFilter || createdFrom || createdTo || lastActivityFrom || lastActivityTo;
 
   function clearAllFilters() {
     setStageFilter("all"); setSourceFilter("all"); setProgramFilter("all"); setAssignedFilter("all");
-    setMetaFormFilter("all");
+    setMetaFormFilter("all"); setCampaignFilter("");
     setCreatedFrom(""); setCreatedTo(""); setLastActivityFrom(""); setLastActivityTo("");
   }
 
@@ -463,6 +472,20 @@ export default function LeadsList() {
             </Button>
           )}
         </div>
+
+        {/* Active campaign / form filter chips */}
+        {(campaignFilter) && (
+          <div className="flex flex-wrap gap-2">
+            {campaignFilter && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+                🎯 Campaign: {campaignFilter.length > 50 ? campaignFilter.slice(0, 48) + "…" : campaignFilter}
+                <button onClick={() => setCampaignFilter("")} className="ml-1 hover:text-blue-600 rounded-full">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Advanced Date Filters */}
         {showAdvancedFilters && (

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -6,6 +6,7 @@ import {
   PieChart, Pie, Cell, Legend,
 } from "recharts";
 import { Users, UserCheck, TrendingUp, UserX, Star, Clock } from "lucide-react";
+import { useLocation } from "wouter";
 
 const STAGE_COLORS: Record<string, string> = {
   fresh: "#3b82f6",
@@ -40,6 +41,15 @@ const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Se
 
 export default function LeadsDashboard() {
   const [year] = useState(() => new Date().getFullYear());
+  const [, navigate] = useLocation();
+
+  const goToLeadsByCampaign = useCallback((campaign: string) => {
+    navigate(`/leads?campaign=${encodeURIComponent(campaign)}`);
+  }, [navigate]);
+
+  const goToLeadsByForm = useCallback((formName: string) => {
+    navigate(`/leads?form=${encodeURIComponent(formName)}`);
+  }, [navigate]);
 
   const { data: overview, isLoading: overviewLoading } = trpc.leads.analytics.overview.useQuery();
   const { data: monthly, isLoading: monthlyLoading } = trpc.leads.analytics.monthlyConversions.useQuery({ year });
@@ -233,8 +243,15 @@ export default function LeadsDashboard() {
                   width={240}
                   tickFormatter={(v: string) => v.length > 38 ? v.slice(0, 36) + "…" : v}
                 />
-                <Tooltip formatter={(v: number) => [v, "Leads"]} />
-                <Bar dataKey="value" name="Leads" fill="#3b82f6" radius={[0, 4, 4, 0]}>
+                <Tooltip formatter={(v: number) => [v, "Leads"]} cursor={{ fill: "rgba(59,130,246,0.08)" }} />
+                <Bar
+                  dataKey="value"
+                  name="Leads"
+                  fill="#3b82f6"
+                  radius={[0, 4, 4, 0]}
+                  style={{ cursor: "pointer" }}
+                  onClick={(data: { name: string }) => goToLeadsByCampaign(data.name)}
+                >
                   {campaignCounts.map((_, i) => (
                     <Cell key={i} fill={["#3b82f6","#06b6d4","#8b5cf6","#10b981","#f59e0b","#ef4444","#f97316","#ec4899"][i % 8]} />
                   ))}
@@ -262,8 +279,15 @@ export default function LeadsDashboard() {
                   width={220}
                   tickFormatter={(v: string) => v.length > 32 ? v.slice(0, 30) + "…" : v}
                 />
-                <Tooltip formatter={(v: number) => [v, "Leads"]} />
-                <Bar dataKey="value" name="Leads" fill="#10b981" radius={[0, 4, 4, 0]}>
+                <Tooltip formatter={(v: number) => [v, "Leads"]} cursor={{ fill: "rgba(16,185,129,0.08)" }} />
+                <Bar
+                  dataKey="value"
+                  name="Leads"
+                  fill="#10b981"
+                  radius={[0, 4, 4, 0]}
+                  style={{ cursor: "pointer" }}
+                  onClick={(data: { name: string }) => goToLeadsByForm(data.name)}
+                >
                   {formCounts.map((_, i) => (
                     <Cell key={i} fill={["#10b981","#06b6d4","#3b82f6","#8b5cf6","#f59e0b","#ef4444","#f97316","#ec4899"][i % 8]} />
                   ))}

@@ -105,6 +105,7 @@ export const leadsRouter = router({
       lastActivityFrom: z.number().optional(),
       lastActivityTo: z.number().optional(),
       metaFormId: z.string().optional(),
+      metaCampaign: z.string().optional(),
       page: z.number().int().min(1).optional(),
       pageSize: z.number().int().min(10).max(200).optional(),
     }).optional())

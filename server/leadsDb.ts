@@ -34,6 +34,7 @@ export async function listLeads(filters?: {
   lastActivityFrom?: number;
   lastActivityTo?: number;
   metaFormId?: string;
+  metaCampaign?: string;
   page?: number;
   pageSize?: number;
 }) {
@@ -67,6 +68,7 @@ export async function listLeads(filters?: {
   if (filters?.lastActivityFrom) conditions.push(sql`${leads.lastContactAt} >= ${filters.lastActivityFrom}`);
   if (filters?.lastActivityTo) conditions.push(sql`${leads.lastContactAt} <= ${filters.lastActivityTo}`);
   if (filters?.metaFormId) conditions.push(eq(leads.metaFormId, filters.metaFormId));
+  if (filters?.metaCampaign) conditions.push(eq(leads.metaCampaign, filters.metaCampaign));
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
