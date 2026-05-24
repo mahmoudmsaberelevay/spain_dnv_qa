@@ -123,6 +123,56 @@ function wrapInEmailTemplate(title: string, body: string): string {
   `;
 }
 
+/**
+ * Send daily lead sync summary to Mahmoud.
+ * Called by the Meta sync scheduler when the daily summary check fires.
+ */
+export async function sendLeadSyncSummaryEmail(params: {
+  date: string;
+  totalNew: number;
+  totalSkipped: number;
+  byForm: Array<{ formName: string; newLeads: number; errors: string[] }>;
+  errors: string[];
+}): Promise<void> {
+  const { date, totalNew, totalSkipped, byForm, errors } = params;
+
+  const formRows = byForm
+    .filter(f => f.newLeads > 0 || f.errors.length > 0)
+    .map(f => `
+      <tr>
+        <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;color:#2C3A40;">${f.formName}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;color:#27AE60;font-weight:bold;text-align:center;">${f.newLeads}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;color:${f.errors.length > 0 ? '#C0392B' : '#8A9499'};text-align:center;">${f.errors.length > 0 ? f.errors.join(', ') : '—'}</td>
+      </tr>`).join('');
+
+  const html = `
+    <p style="color:#2C3A40;font-size:14px;">Here is your daily lead sync summary for <strong>${date}</strong>.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:16px 0;">
+      <tr style="background:#f8f9fa;">
+        <th style="padding:8px;text-align:left;color:#5E6A71;font-weight:600;">Form</th>
+        <th style="padding:8px;text-align:center;color:#5E6A71;font-weight:600;">New Leads</th>
+        <th style="padding:8px;text-align:center;color:#5E6A71;font-weight:600;">Errors</th>
+      </tr>
+      ${formRows || '<tr><td colspan="3" style="padding:12px;text-align:center;color:#8A9499;">No new leads today</td></tr>'}
+    </table>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <tr>
+        <td style="padding:6px 0;color:#8A9499;">Total New Leads</td>
+        <td style="padding:6px 0;color:#27AE60;font-weight:bold;">${totalNew}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0;color:#8A9499;">Duplicates Skipped</td>
+        <td style="padding:6px 0;color:#8A9499;">${totalSkipped}</td>
+      </tr>
+      ${errors.length > 0 ? `<tr><td style="padding:6px 0;color:#C0392B;">Errors</td><td style="padding:6px 0;color:#C0392B;">${errors.join(', ')}</td></tr>` : ''}
+    </table>
+  `;
+
+  const plain = `Daily Lead Sync Summary — ${date}\n\nTotal New Leads: ${totalNew}\nDuplicates Skipped: ${totalSkipped}\n${errors.length > 0 ? 'Errors: ' + errors.join(', ') + '\n' : ''}\nBreakdown by form:\n${byForm.map(f => `  ${f.formName}: ${f.newLeads} new`).join('\n')}`;
+
+  await notifyMahmoud(`Daily Lead Sync Summary — ${date}`, html, plain);
+}
+
 /** Send the receipt PDF directly to the client via email */
 export async function sendReceiptToClient(
   clientEmail: string,

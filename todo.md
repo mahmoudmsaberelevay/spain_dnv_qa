@@ -633,3 +633,13 @@
 - [x] Frontend: Add "Change Stage" bulk button with stage picker dialog
 - [x] Frontend: Add "Assign Owner" bulk button with team member picker dialog
 - [x] Frontend: Reset page to 1 when filters change
+
+## Change Requests (Round 81) — Kanban Pipeline Board & Daily Sync Summary Email
+
+- [x] Frontend: Fix LeadsPipeline.tsx to use new paginated query shape (leadsData.leads instead of direct array)
+- [x] Frontend: LeadsPipeline fetches all leads with pageSize=5000 so all stages are visible on the board
+- [x] Backend: Add formResults field to SyncResult interface for per-form breakdown
+- [x] Backend: Track per-form new leads and errors in the sync loop
+- [x] Backend: Add sendLeadSyncSummaryEmail helper to emailService.ts
+- [x] Backend: Rewrite metaLeadSyncScheduler.ts to accumulate daily results and send summary email at 08:00 Cairo time
+- [x] Backend: Daily summary email includes per-form breakdown table, total new leads, duplicates skipped, and errors

@@ -211,6 +211,7 @@ export interface SyncResult {
   skippedDuplicates: number;
   formsDiscovered: number;
   errors: string[];
+  formResults?: Array<{ formName: string; newLeads: number; errors: string[] }>;
 }
 
 /** Sync one Meta integration — auto-discovers all forms on the page */
@@ -227,6 +228,7 @@ async function syncOneIntegration(integration: {
     skippedDuplicates: 0,
     formsDiscovered: 0,
     errors: [],
+    formResults: [],
   };
 
   let config: Record<string, string> = {};
@@ -306,6 +308,8 @@ async function syncOneIntegration(integration: {
   // Sync leads from each form
   for (const form of forms) {
     let afterCursor: string | undefined;
+    let formNewLeads = 0;
+    const formErrors: string[] = [];
 
     try {
       do {
@@ -415,6 +419,7 @@ async function syncOneIntegration(integration: {
           }
 
           result.newLeads++;
+          formNewLeads++;
         }
 
         // Pagination
@@ -423,8 +428,13 @@ async function syncOneIntegration(integration: {
         if (!hasNextPage) break;
       } while (afterCursor);
     } catch (err) {
-      result.errors.push(`Form "${form.name}": ${err instanceof Error ? err.message : String(err)}`);
+      const errMsg = `Form "${form.name}": ${err instanceof Error ? err.message : String(err)}`;
+      result.errors.push(errMsg);
+      formErrors.push(errMsg);
     }
+
+    // Record per-form breakdown for daily summary
+    result.formResults!.push({ formName: form.name, newLeads: formNewLeads, errors: formErrors });
   }
 
   // Update lastSyncAt and lastSyncCount

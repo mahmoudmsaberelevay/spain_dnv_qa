@@ -35,11 +35,14 @@ export default function LeadsPipeline() {
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const dragLeadRef = useRef<{ id: number; fromStage: string } | null>(null);
 
-  const { data: allLeads = [], isLoading } = trpc.leads.list.useQuery({});
+  // Fetch all leads for the board (no pagination — board needs all stages visible at once)
+  // Use a large page size to get all leads in one request
+  const { data: leadsData, isLoading } = trpc.leads.list.useQuery({ page: 1, pageSize: 5000 });
+  const allLeads = leadsData?.leads ?? [];
 
   const changeStage = trpc.leads.changeStage.useMutation({
     onSuccess: () => {
-      utils.leads.list.invalidate({});
+      utils.leads.list.invalidate();
       utils.leads.analytics.overview.invalidate();
     },
     onError: (e) => toast.error(e.message),
