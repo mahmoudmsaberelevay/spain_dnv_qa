@@ -95,13 +95,16 @@ export default function LeadsList() {
 
   // ── Pagination ────────────────────────────────────────────────────────────
   const [page, setPage] = useState(1);
-  const PAGE_SIZE = 100;
+  const [pageSize, setPageSize] = useState(100);
+  const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 300];
 
   // Reset to page 1 whenever filters change
   const prevFiltersRef = useRef<string>("");
 
   // ── Bulk selection state ──────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  // When true, ALL matching leads across all pages are selected (not just visible ones)
+  const [allPagesSelected, setAllPagesSelected] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [showBulkStageDialog, setShowBulkStageDialog] = useState(false);
   const [showBulkOwnerDialog, setShowBulkOwnerDialog] = useState(false);
@@ -151,16 +154,17 @@ export default function LeadsList() {
     lastActivityFrom: lastActivityFrom ? new Date(lastActivityFrom).getTime() : undefined,
     lastActivityTo: lastActivityTo ? new Date(lastActivityTo + "T23:59:59").getTime() : undefined,
     page,
-    pageSize: PAGE_SIZE,
+    pageSize,
   }), [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter,
-    campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo, page]);
+    campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo, page, pageSize]);
 
-  // Reset page when non-page filters change
+  // Reset page and selection when non-page filters change
   useEffect(() => {
     const key = JSON.stringify({ debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo });
     if (prevFiltersRef.current && prevFiltersRef.current !== key) {
       setPage(1);
       setSelectedIds(new Set());
+      setAllPagesSelected(false);
     }
     prevFiltersRef.current = key;
   }, [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
@@ -200,6 +204,7 @@ export default function LeadsList() {
       utils.leads.list.invalidate();
       utils.leads.analytics.overview.invalidate();
       setSelectedIds(new Set());
+      setAllPagesSelected(false);
       setShowBulkDeleteConfirm(false);
       toast.success(`${data.deleted} lead${data.deleted !== 1 ? "s" : ""} deleted.`);
     },
@@ -225,6 +230,7 @@ export default function LeadsList() {
       utils.leads.list.invalidate();
       utils.leads.analytics.overview.invalidate();
       setSelectedIds(new Set());
+      setAllPagesSelected(false);
       setShowBulkStageDialog(false);
       setBulkStageValue("");
       toast.success(`${data.updated} lead${data.updated !== 1 ? "s" : ""} moved to ${getStageMeta(bulkStageValue).label}.`);
@@ -236,6 +242,7 @@ export default function LeadsList() {
     onSuccess: (data) => {
       utils.leads.list.invalidate();
       setSelectedIds(new Set());
+      setAllPagesSelected(false);
       setShowBulkOwnerDialog(false);
       setBulkOwnerValue("");
       const ownerLabel = bulkOwnerValue === "__unassign__" ? "Unassigned" : bulkOwnerValue;
@@ -255,23 +262,29 @@ export default function LeadsList() {
   }, []);
 
   const allSelected = leads.length > 0 && leads.every(l => selectedIds.has(l.id));
-  const someSelected = leads.some(l => selectedIds.has(l.id)) && !allSelected;
+  const someSelected = (leads.some(l => selectedIds.has(l.id)) && !allSelected) || (allPagesSelected && selectedIds.size < total);
 
   const toggleSelectAll = useCallback(() => {
-    if (allSelected) {
+    if (allPagesSelected) {
+      // Deselect everything
+      setAllPagesSelected(false);
+      setSelectedIds(new Set());
+    } else if (allSelected) {
+      // All on this page selected — deselect this page
       setSelectedIds(prev => {
         const next = new Set(prev);
         leads.forEach(l => next.delete(l.id));
         return next;
       });
     } else {
+      // Select all on this page
       setSelectedIds(prev => {
         const next = new Set(prev);
         leads.forEach(l => next.add(l.id));
         return next;
       });
     }
-  }, [allSelected, leads]);
+  }, [allSelected, allPagesSelected, leads, total]);
 
   // ── Create lead ───────────────────────────────────────────────────────────
   const createLead = trpc.leads.create.useMutation({
@@ -315,7 +328,10 @@ export default function LeadsList() {
     URL.revokeObjectURL(url);
   }
 
-  const selectedCount = selectedIds.size;
+  // When allPagesSelected, the effective count is the total matching leads
+  const selectedCount = allPagesSelected ? total : selectedIds.size;
+  // The IDs to pass to bulk mutations — undefined means "use server-side filter" when allPagesSelected
+  const bulkIds = allPagesSelected ? undefined : Array.from(selectedIds);
 
   return (
     <div className="space-y-5">
@@ -326,7 +342,7 @@ export default function LeadsList() {
           <p className="text-muted-foreground text-sm mt-1">
             {total} lead{total !== 1 ? "s" : ""} total
             {selectedCount > 0 && (
-              <span className="ml-2 text-blue-600 font-medium">· {selectedCount} selected</span>
+              <span className="ml-2 text-blue-600 font-medium">· {selectedCount} selected{allPagesSelected ? " (all pages)" : ""}</span>
             )}
           </p>
         </div>
@@ -356,7 +372,7 @@ export default function LeadsList() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => bulkExport.mutate({ ids: Array.from(selectedIds) })}
+                onClick={() => bulkExport.mutate({ ids: allPagesSelected ? [] : Array.from(selectedIds) })}
                 disabled={bulkExport.isPending}
               >
                 <Download className="w-4 h-4 mr-1" />
@@ -367,6 +383,7 @@ export default function LeadsList() {
                 size="sm"
                 className="text-red-600 hover:text-red-700 border-red-200 hover:border-red-300 hover:bg-red-50"
                 onClick={() => setShowBulkDeleteConfirm(true)}
+                title={allPagesSelected ? `Delete all ${total} matching leads` : undefined}
               >
                 <Trash2 className="w-4 h-4 mr-1" />
                 Delete {selectedCount}
@@ -375,7 +392,7 @@ export default function LeadsList() {
                 variant="ghost"
                 size="sm"
                 className="text-muted-foreground"
-                onClick={() => setSelectedIds(new Set())}
+                onClick={() => { setSelectedIds(new Set()); setAllPagesSelected(false); }}
               >
                 <X className="w-4 h-4 mr-1" /> Clear
               </Button>
@@ -510,6 +527,34 @@ export default function LeadsList() {
         )}
       </div>
 
+      {/* Select-all-pages banner — shown when all leads on the current page are selected but there are more pages */}
+      {allSelected && !allPagesSelected && totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-sm">
+          <span className="text-blue-800 dark:text-blue-200">
+            All <strong>{leads.length}</strong> leads on this page are selected.
+          </span>
+          <button
+            className="text-blue-700 dark:text-blue-300 font-semibold underline underline-offset-2 hover:text-blue-900 transition-colors"
+            onClick={() => setAllPagesSelected(true)}
+          >
+            Select all {total} matching leads across all pages
+          </button>
+        </div>
+      )}
+      {allPagesSelected && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-blue-100 dark:bg-blue-900/40 border border-blue-300 dark:border-blue-700 rounded-lg text-sm">
+          <span className="text-blue-900 dark:text-blue-100 font-medium">
+            All <strong>{total}</strong> matching leads are selected (across all pages).
+          </span>
+          <button
+            className="text-blue-700 dark:text-blue-300 font-semibold underline underline-offset-2 hover:text-blue-900 transition-colors"
+            onClick={() => { setAllPagesSelected(false); setSelectedIds(new Set()); }}
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground">
@@ -612,12 +657,31 @@ export default function LeadsList() {
         </div>
       )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-1">
+      {/* Pagination + page-size selector */}
+      <div className="flex items-center justify-between pt-1 flex-wrap gap-3">
+        <div className="flex items-center gap-3">
           <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages} · {total} leads total
+            {total > 0 ? `Showing ${Math.min((page - 1) * pageSize + 1, total)}–${Math.min(page * pageSize, total)} of ${total} leads` : "No leads"}
           </p>
+          {/* Page size selector */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Per page:</span>
+            <Select
+              value={String(pageSize)}
+              onValueChange={(v) => { setPageSize(Number(v)); setPage(1); setSelectedIds(new Set()); setAllPagesSelected(false); }}
+            >
+              <SelectTrigger className="h-7 w-20 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map(n => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {totalPages > 1 && (
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -628,7 +692,7 @@ export default function LeadsList() {
               <ChevronLeft className="w-4 h-4" />
               Prev
             </Button>
-            <span className="text-sm font-medium px-2">{page}</span>
+            <span className="text-sm font-medium px-2">Page {page} of {totalPages}</span>
             <Button
               variant="outline"
               size="sm"
@@ -639,8 +703,8 @@ export default function LeadsList() {
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Historical Sync Confirmation Dialog */}
       <Dialog open={showHistoricalSyncConfirm} onOpenChange={setShowHistoricalSyncConfirm}>
@@ -677,7 +741,7 @@ export default function LeadsList() {
             <Button variant="outline" onClick={() => setShowBulkDeleteConfirm(false)}>Cancel</Button>
             <Button
               variant="destructive"
-              onClick={() => bulkDelete.mutate({ ids: Array.from(selectedIds) })}
+              onClick={() => bulkDelete.mutate({ ids: allPagesSelected ? [] : Array.from(selectedIds) })}
               disabled={bulkDelete.isPending}
             >
               {bulkDelete.isPending ? "Deleting…" : `Delete ${selectedCount} Lead${selectedCount !== 1 ? "s" : ""}`}
@@ -712,7 +776,7 @@ export default function LeadsList() {
             <Button
               onClick={() => {
                 if (!bulkStageValue) { toast.error("Please select a stage."); return; }
-                bulkUpdateStage.mutate({ ids: Array.from(selectedIds), stage: bulkStageValue as any });
+                bulkUpdateStage.mutate({ ids: allPagesSelected ? [] : Array.from(selectedIds), stage: bulkStageValue as any });
               }}
               disabled={bulkUpdateStage.isPending || !bulkStageValue}
             >
@@ -748,7 +812,7 @@ export default function LeadsList() {
               onClick={() => {
                 if (!bulkOwnerValue) { toast.error("Please select a team member."); return; }
                 const assignedTo = bulkOwnerValue === "__unassign__" ? null : bulkOwnerValue;
-                bulkUpdateOwner.mutate({ ids: Array.from(selectedIds), assignedTo });
+                bulkUpdateOwner.mutate({ ids: allPagesSelected ? [] : Array.from(selectedIds), assignedTo });
               }}
               disabled={bulkUpdateOwner.isPending || !bulkOwnerValue}
             >

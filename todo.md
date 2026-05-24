@@ -657,3 +657,11 @@
 - [x] Build weeklyBackupScheduler.ts — runs every Friday at 08:00 Cairo, exports all DB tables as JSON, uploads to Google Drive "ELEVAY Backups" folder, sends confirmation email
 - [x] Register weeklyBackupScheduler in server entry point
 - [x] Show last backup date/status on Security & Audit page
+
+## Performance & Pipeline Bugs (Round 87)
+- [x] Fix slow All Leads page and Pipeline page loading — add DB indexes and optimise query
+- [x] Fix "Contacted" stage leads not showing in pipeline Kanban view
+
+## Leads List UX (Round 87b)
+- [x] Page-size selector (25/50/100/200/300) in Leads list
+- [x] Select-all across all pages with bulk actions (delete, change stage, assign)

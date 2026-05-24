@@ -1,0 +1,18 @@
+{
+  "query": "SELECT stage, COUNT(*) as count FROM leads GROUP BY stage ORDER BY count DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT stage, COUNT(*) as count FROM leads GROUP BY stage ORDER BY count DESC;",
+  "rows": [
+    {
+      "stage": "fresh",
+      "count": "2557"
+    },
+    {
+      "stage": "contacted",
+      "count": "100"
+    }
+  ],
+  "messages": [],
+  "stdout": "stage\tcount\nfresh\t2557\ncontacted\t100\n",
+  "stderr": "",
+  "execution_time_ms": 1783
+}

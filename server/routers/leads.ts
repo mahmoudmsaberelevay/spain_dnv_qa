@@ -108,10 +108,40 @@ export const leadsRouter = router({
       metaFormId: z.string().optional(),
       metaCampaign: z.string().optional(),
       page: z.number().int().min(1).optional(),
-      pageSize: z.number().int().min(10).max(200).optional(),
+      pageSize: z.number().int().min(10).max(300).optional(),
     }).optional())
     .query(async ({ input }) => {
       return listLeads(input);
+    }),
+
+  // Returns only the IDs of all leads matching the current filters (for cross-page select-all)
+  selectAllIds: protectedProcedure
+    .input(z.object({
+      search: z.string().optional(),
+      stage: z.string().optional(),
+      leadSource: z.string().optional(),
+      interestedProgram: z.string().optional(),
+      assignedTo: z.string().optional(),
+      priority: z.string().optional(),
+      dateFrom: z.number().optional(),
+      dateTo: z.number().optional(),
+      lastActivityFrom: z.number().optional(),
+      lastActivityTo: z.number().optional(),
+      metaFormId: z.string().optional(),
+      metaCampaign: z.string().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const result = await listLeads({ ...input, page: 1, pageSize: 10000 });
+      return { ids: result.leads.map(l => l.id), total: result.total };
+    }),
+
+  // Pipeline: fetch all leads for a specific stage (no 200-row cap, used by Kanban board)
+  listByStage: protectedProcedure
+    .input(z.object({
+      stage: z.string(),
+    }))
+    .query(async ({ input }) => {
+      return listLeads({ stage: input.stage, pageSize: 10000, page: 1 });
     }),
 
   update: protectedProcedure

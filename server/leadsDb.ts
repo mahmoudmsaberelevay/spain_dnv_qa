@@ -42,7 +42,7 @@ export async function listLeads(filters?: {
   if (!db) throw new Error("DB not available");
 
   const page = Math.max(1, filters?.page ?? 1);
-  const pageSize = Math.min(200, Math.max(10, filters?.pageSize ?? 100));
+  const pageSize = Math.min(300, Math.max(10, filters?.pageSize ?? 100));
   const offset = (page - 1) * pageSize;
 
   const conditions: any[] = [];
