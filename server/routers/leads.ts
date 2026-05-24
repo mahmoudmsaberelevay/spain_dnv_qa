@@ -8,6 +8,7 @@ import {
   createLeadTask, getLeadTasks, completeLeadTask, deleteLeadTask,
   getLeadStageCounts, getLeadSourceCounts, getLeadProgramCounts,
   getMonthlyLeadConversions, getLeadTotalCount,
+  getLeadCampaignCounts, getLeadFormCounts,
   bulkDeleteLeads, getLeadsByIds,
   bulkUpdateLeadsStage, bulkUpdateLeadsOwner,
 } from "../leadsDb";
@@ -548,5 +549,9 @@ export const leadsRouter = router({
     monthlyConversions: protectedProcedure
       .input(z.object({ year: z.number().int() }))
       .query(async ({ input }) => getMonthlyLeadConversions(input.year)),
+
+    byCampaign: protectedProcedure.query(async () => getLeadCampaignCounts()),
+
+    byForm: protectedProcedure.query(async () => getLeadFormCounts()),
   }),
 });

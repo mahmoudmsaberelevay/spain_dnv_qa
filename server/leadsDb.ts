@@ -303,3 +303,27 @@ export async function getLeadTotalCount() {
   const [row] = await db.select({ count: sql<number>`COUNT(*)` }).from(leads);
   return Number(row?.count ?? 0);
 }
+
+export async function getLeadCampaignCounts() {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db
+    .select({ campaign: leads.metaCampaign, count: sql<number>`COUNT(*)` })
+    .from(leads)
+    .where(sql`${leads.metaCampaign} IS NOT NULL AND ${leads.metaCampaign} != ''`)
+    .groupBy(leads.metaCampaign)
+    .orderBy(sql`COUNT(*) DESC`)
+    .limit(15);
+}
+
+export async function getLeadFormCounts() {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db
+    .select({ form: leads.metaFormName, count: sql<number>`COUNT(*)` })
+    .from(leads)
+    .where(sql`${leads.metaFormName} IS NOT NULL AND ${leads.metaFormName} != ''`)
+    .groupBy(leads.metaFormName)
+    .orderBy(sql`COUNT(*) DESC`)
+    .limit(20);
+}

@@ -43,6 +43,8 @@ export default function LeadsDashboard() {
 
   const { data: overview, isLoading: overviewLoading } = trpc.leads.analytics.overview.useQuery();
   const { data: monthly, isLoading: monthlyLoading } = trpc.leads.analytics.monthlyConversions.useQuery({ year });
+  const { data: campaignData } = trpc.leads.analytics.byCampaign.useQuery();
+  const { data: formData } = trpc.leads.analytics.byForm.useQuery();
 
   const stageCounts = useMemo(() => {
     if (!overview?.stageCounts) return [];
@@ -71,6 +73,22 @@ export default function LeadsDashboard() {
       .map(p => ({ name: p.program ?? "Unknown", value: Number(p.count) }))
       .sort((a, b) => b.value - a.value);
   }, [overview]);
+
+  const campaignCounts = useMemo(() => {
+    if (!campaignData) return [];
+    return campaignData.map(c => ({
+      name: c.campaign ?? "Unknown",
+      value: Number(c.count),
+    }));
+  }, [campaignData]);
+
+  const formCounts = useMemo(() => {
+    if (!formData) return [];
+    return formData.map(f => ({
+      name: f.form ?? "Unknown",
+      value: Number(f.count),
+    }));
+  }, [formData]);
 
   const monthlyData = useMemo(() => {
     if (!monthly) return [];
@@ -197,6 +215,64 @@ export default function LeadsDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Campaign Performance Chart */}
+      {campaignCounts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">🎯 Leads by Meta Campaign</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={Math.max(220, campaignCounts.length * 36)}>
+              <BarChart data={campaignCounts} layout="vertical" margin={{ top: 4, right: 40, left: 8, bottom: 0 }}>
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tick={{ fontSize: 11 }}
+                  width={240}
+                  tickFormatter={(v: string) => v.length > 38 ? v.slice(0, 36) + "…" : v}
+                />
+                <Tooltip formatter={(v: number) => [v, "Leads"]} />
+                <Bar dataKey="value" name="Leads" fill="#3b82f6" radius={[0, 4, 4, 0]}>
+                  {campaignCounts.map((_, i) => (
+                    <Cell key={i} fill={["#3b82f6","#06b6d4","#8b5cf6","#10b981","#f59e0b","#ef4444","#f97316","#ec4899"][i % 8]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Lead Form Performance Chart */}
+      {formCounts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">📋 Leads by Meta Form</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={Math.max(200, formCounts.length * 34)}>
+              <BarChart data={formCounts} layout="vertical" margin={{ top: 4, right: 40, left: 8, bottom: 0 }}>
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tick={{ fontSize: 11 }}
+                  width={220}
+                  tickFormatter={(v: string) => v.length > 32 ? v.slice(0, 30) + "…" : v}
+                />
+                <Tooltip formatter={(v: number) => [v, "Leads"]} />
+                <Bar dataKey="value" name="Leads" fill="#10b981" radius={[0, 4, 4, 0]}>
+                  {formCounts.map((_, i) => (
+                    <Cell key={i} fill={["#10b981","#06b6d4","#3b82f6","#8b5cf6","#f59e0b","#ef4444","#f97316","#ec4899"][i % 8]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Program Breakdown */}
       {programCounts.length > 0 && (
