@@ -643,3 +643,12 @@
 - [x] Backend: Add sendLeadSyncSummaryEmail helper to emailService.ts
 - [x] Backend: Rewrite metaLeadSyncScheduler.ts to accumulate daily results and send summary email at 08:00 Cairo time
 - [x] Backend: Daily summary email includes per-form breakdown table, total new leads, duplicates skipped, and errors
+
+## Security Hardening (Round 85)
+- [ ] API rate limiting — express-rate-limit on /api/trpc and /api/oauth endpoints
+- [ ] Session expiry — 8-hour JWT/cookie max-age, auto-logout on frontend when session expires
+- [ ] Audit log DB table — record user, action, resource, ip, timestamp for view/export/delete events
+- [ ] Audit log middleware — hook into tRPC procedures to log sensitive actions automatically
+- [ ] Audit log admin page — /admin/audit-log with filter by user, action, date range
+- [ ] Export Full Backup — admin-only procedure that dumps all tables as JSON/CSV zip download
+- [ ] Export Full Backup UI — button on admin page with progress indicator and download link

@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `audit_logs` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`userId` int,\n\t`userEmail` varchar(320),\n\t`userName` varchar(255),\n\t`action` varchar(100) NOT NULL,\n\t`resource` varchar(100) NOT NULL,\n\t`resourceId` varchar(100),\n\t`details` text,\n\t`ipAddress` varchar(64),\n\t`userAgent` varchar(512),\n\t`createdAt` bigint NOT NULL,\n\tCONSTRAINT `audit_logs_id` PRIMARY KEY(`id`)\n);\nCREATE INDEX `audit_logs_userId_idx` ON `audit_logs` (`userId`);\nCREATE INDEX `audit_logs_action_idx` ON `audit_logs` (`action`);\nCREATE INDEX `audit_logs_createdAt_idx` ON `audit_logs` (`createdAt`);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute CREATE TABLE `audit_logs` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`userId` int,\n\t`userEmail` varchar(320),\n\t`userName` varchar(255),\n\t`action` varchar(100) NOT NULL,\n\t`resource` varchar(100) NOT NULL,\n\t`resourceId` varchar(100),\n\t`details` text,\n\t`ipAddress` varchar(64),\n\t`userAgent` varchar(512),\n\t`createdAt` bigint NOT NULL,\n\tCONSTRAINT `audit_logs_id` PRIMARY KEY(`id`)\n);\nCREATE INDEX `audit_logs_userId_idx` ON `audit_logs` (`userId`);\nCREATE INDEX `audit_logs_action_idx` ON `audit_logs` (`action`);\nCREATE INDEX `audit_logs_createdAt_idx` ON `audit_logs` (`createdAt`);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 3277
+}

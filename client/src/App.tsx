@@ -59,6 +59,8 @@ import LeadProfile from "./pages/leads/LeadProfile";
 import LeadsSettings from "./pages/leads/LeadsSettings";
 import LeadsMetaExport from "./pages/leads/LeadsMetaExport";
 
+import AdminSecurity from "@/pages/AdminSecurity";
+
 // ─── WhatsApp Quality Control Module ─────────────────────────────────────────
 import WaQcDashboard from "./pages/waQc/WaQcDashboard";
 import WaQcChats from "./pages/waQc/WaQcChats";
@@ -208,6 +210,11 @@ function Router() {
       {/* ── Permissions Manager (owner only) ── */}
       <Route path="/admin/permissions">
         <DashboardLayout><PermissionsManager /></DashboardLayout>
+      </Route>
+
+      {/* ── Admin Security & Audit ── */}
+      <Route path="/admin/security">
+        <DashboardLayout><AdminSecurity /></DashboardLayout>
       </Route>
 
       {/* ── WhatsApp Quality Control Module ── */}

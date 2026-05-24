@@ -14,6 +14,7 @@ import {
 } from "../leadsDb";
 import { listActivityPresets, listLeadIntegrations } from "../leadsSettingsDb";
 import { syncOneIntegrationById } from "../metaLeadSync";
+import { writeAuditLog, auditCtxFromTrpc } from "../auditLog";
 
 const STAGES = [
   "fresh", "contacted", "qualified", "prospect", "client", "dormant",
@@ -415,8 +416,9 @@ export const leadsRouter = router({
   // ── Bulk Actions ─────────────────────────────────────────────────────────────
   bulkDelete: protectedProcedure
     .input(z.object({ ids: z.array(z.number()).min(1) }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const deleted = await bulkDeleteLeads(input.ids);
+      await writeAuditLog(auditCtxFromTrpc(ctx), "bulk_delete", "leads", undefined, `Deleted ${deleted} leads: [${input.ids.join(",")}]`);
       return { deleted };
     }),
 
@@ -427,8 +429,9 @@ export const leadsRouter = router({
         "not_qualified_budget", "not_qualified_work", "not_qualified_study",
         "not_qualified_criminal", "not_qualified_other"]),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const updated = await bulkUpdateLeadsStage(input.ids, input.stage);
+      await writeAuditLog(auditCtxFromTrpc(ctx), "bulk_update", "leads", undefined, `Stage → ${input.stage} for ${updated} leads: [${input.ids.join(",")}]`);
       return { updated };
     }),
 
@@ -437,8 +440,9 @@ export const leadsRouter = router({
       ids: z.array(z.number()).min(1),
       assignedTo: z.string().nullable(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const updated = await bulkUpdateLeadsOwner(input.ids, input.assignedTo);
+      await writeAuditLog(auditCtxFromTrpc(ctx), "bulk_update", "leads", undefined, `Owner → ${input.assignedTo ?? "Unassigned"} for ${updated} leads: [${input.ids.join(",")}]`);
       return { updated };
     }),
 
@@ -458,7 +462,7 @@ export const leadsRouter = router({
         lastActivityTo: z.number().optional(),
       }).optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       let rows;
       if (input.ids && input.ids.length > 0) {
         rows = await getLeadsByIds(input.ids);
@@ -467,6 +471,7 @@ export const leadsRouter = router({
         const result = await listLeads({ ...input.filters, page: 1, pageSize: 10000 });
         rows = result.leads;
       }
+      await writeAuditLog(auditCtxFromTrpc(ctx), "export", "leads", undefined, `Exported ${rows.length} leads as CSV`);
       // Build CSV
       const headers = [
         "ID", "Full Name", "Phone", "WhatsApp", "Email", "Nationality",

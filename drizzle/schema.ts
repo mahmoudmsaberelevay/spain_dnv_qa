@@ -979,3 +979,20 @@ export const leadActivityPresets = mysqlTable("lead_activity_presets", {
 });
 export type LeadActivityPreset = typeof leadActivityPresets.$inferSelect;
 export type InsertLeadActivityPreset = typeof leadActivityPresets.$inferInsert;
+
+// ─── AUDIT LOGS ───────────────────────────────────────────────────────────────
+export const auditLogs = mysqlTable("audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"),
+  userEmail: varchar("userEmail", { length: 320 }),
+  userName: varchar("userName", { length: 255 }),
+  action: varchar("action", { length: 100 }).notNull(),
+  resource: varchar("resource", { length: 100 }).notNull(),
+  resourceId: varchar("resourceId", { length: 100 }),
+  details: text("details"),
+  ipAddress: varchar("ipAddress", { length: 64 }),
+  userAgent: varchar("userAgent", { length: 512 }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+});
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = typeof auditLogs.$inferInsert;

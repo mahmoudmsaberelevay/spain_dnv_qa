@@ -295,6 +295,13 @@
       "when": 1779626111359,
       "tag": "0041_watery_blue_shield",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "5",
+      "when": 1779628172170,
+      "tag": "0042_foamy_cyclops",
+      "breakpoints": true
     }
   ]
 }

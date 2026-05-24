@@ -1,0 +1,9 @@
+{
+  "query": "\nINSERT INTO users (openId, email, name, role, createdAt, updatedAt)\nVALUES\n  ('manual_nouran_mamdouh', 'nouran.Mamdouh@elevay.com', 'Nouran Mamdouh', 'user', NOW(), NOW()),\n  ('manual_hager_hany',     'hager.hany@elevay.com',     'Hager Hany',     'user', NOW(), NOW()),\n  ('manual_eman_ahmed',     'eman.ahmed@elevay.com',      'Eman Ahmed',     'user', NOW(), NOW()),\n  ('manual_marwa_abdallah', 'marwa.abdallah@elevay.com',  'Marwa Abdallah', 'user', NOW(), NOW()),\n  ('manual_basmala_shereef','basmala.shereef@elevay.com', 'Basmala Shereef','user', NOW(), NOW())\nON DUPLICATE KEY UPDATE name = VALUES(name), updatedAt = NOW();\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute \nINSERT INTO users (openId, email, name, role, createdAt, updatedAt)\nVALUES\n  ('manual_nouran_mamdouh', 'nouran.Mamdouh@elevay.com', 'Nouran Mamdouh', 'user', NOW(), NOW()),\n  ('manual_hager_hany',     'hager.hany@elevay.com',     'Hager Hany',     'user', NOW(), NOW()),\n  ('manual_eman_ahmed',     'eman.ahmed@elevay.com',      'Eman Ahmed',     'user', NOW(), NOW()),\n  ('manual_marwa_abdallah', 'marwa.abdallah@elevay.com',  'Marwa Abdallah', 'user', NOW(), NOW()),\n  ('manual_basmala_shereef','basmala.shereef@elevay.com', 'Basmala Shereef','user', NOW(), NOW())\nON DUPLICATE KEY UPDATE name = VALUES(name), updatedAt = NOW();\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1790
+}

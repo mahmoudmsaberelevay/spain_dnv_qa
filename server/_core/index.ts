@@ -11,6 +11,7 @@ import { startReminderScheduler } from "../reminderScheduler";
 import { startMonthlyReportScheduler } from "../monthlyReportScheduler";
 import { startRateScheduler } from "../rateScheduler";
 import { startMetaLeadSyncScheduler } from "../metaLeadSyncScheduler";
+import rateLimit from "express-rate-limit";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -34,6 +35,28 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+
+  // ── Rate limiting ──────────────────────────────────────────────────────────
+  // General API limiter: 200 requests per minute per IP
+  const apiLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many requests, please try again in a minute." },
+    skip: (req) => req.ip === "127.0.0.1" || req.ip === "::1", // skip localhost
+  });
+  // Strict OAuth limiter: 20 attempts per 15 minutes per IP
+  const oauthLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many login attempts, please try again later." },
+  });
+  app.use("/api/trpc", apiLimiter);
+  app.use("/api/oauth", oauthLimiter);
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));

@@ -1,0 +1,40 @@
+{
+  "query": "SELECT id, name, email, role FROM users WHERE email IN ('nouran.Mamdouh@elevay.com','hager.hany@elevay.com','eman.ahmed@elevay.com','marwa.abdallah@elevay.com','basmala.shereef@elevay.com') ORDER BY id;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT id, name, email, role FROM users WHERE email IN ('nouran.Mamdouh@elevay.com','hager.hany@elevay.com','eman.ahmed@elevay.com','marwa.abdallah@elevay.com','basmala.shereef@elevay.com') ORDER BY id;",
+  "rows": [
+    {
+      "id": "12484156",
+      "name": "Nouran Mamdouh",
+      "email": "nouran.Mamdouh@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "12484157",
+      "name": "Hager Hany",
+      "email": "hager.hany@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "12484158",
+      "name": "Eman Ahmed",
+      "email": "eman.ahmed@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "12484159",
+      "name": "Marwa Abdallah",
+      "email": "marwa.abdallah@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "12484160",
+      "name": "Basmala Shereef",
+      "email": "basmala.shereef@elevay.com",
+      "role": "user"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\trole\n12484156\tNouran Mamdouh\tnouran.Mamdouh@elevay.com\tuser\n12484157\tHager Hany\thager.hany@elevay.com\tuser\n12484158\tEman Ahmed\teman.ahmed@elevay.com\tuser\n12484159\tMarwa Abdallah\tmarwa.abdallah@elevay.com\tuser\n12484160\tBasmala Shereef\tbasmala.shereef@elevay.com\tuser\n",
+  "stderr": "",
+  "execution_time_ms": 1772
+}

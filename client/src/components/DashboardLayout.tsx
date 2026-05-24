@@ -540,6 +540,22 @@ function DashboardLayoutContent({
                 {!isCollapsed && <span>Permissions</span>}
               </button>
             )}
+            {/* Security & Audit — admin only */}
+            {user?.role === "admin" && (
+              <button
+                onClick={() => setLocation("/admin/security")}
+                className={cn(
+                  "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors mb-1",
+                  location === "/admin/security"
+                    ? "bg-white/10 text-white"
+                    : "text-white/50 hover:text-white hover:bg-white/5"
+                )}
+                title="Security & Audit"
+              >
+                <Shield className="h-3.5 w-3.5 shrink-0" />
+                {!isCollapsed && <span>Security & Audit</span>}
+              </button>
+            )}
             {/* Broadcast Center — admin only */}
             {user?.role === "admin" && (
               <button

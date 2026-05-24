@@ -40,6 +40,7 @@ import { financialRouter } from "./finRouter";
 import { settlementRouter } from "./settlementRouter";
 import { chatRouter, broadcastRouter } from "./chatRouter";
 import { permissionsRouter } from "./permissionsRouter";
+import { adminRouter } from "./adminRouter";
 import { waQcRouter } from "./waQcRouter";
 
 const MOFA_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/mofa_stamp_a1afffba.png";
@@ -2094,5 +2095,6 @@ export const appRouter = router({
   notifications: notificationsRouter,
   leads: leadsRouter,
   leadsSettings: leadsSettingsRouter,
+  admin: adminRouter,
 });
 export type AppRouter = typeof appRouter;

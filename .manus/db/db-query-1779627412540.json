@@ -1,0 +1,25 @@
+{
+  "query": "SELECT DISTINCT module FROM modulePermissions LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT DISTINCT module FROM modulePermissions LIMIT 20;",
+  "rows": [
+    {
+      "module": "waQc"
+    },
+    {
+      "module": "appAnalysis"
+    },
+    {
+      "module": "clientDocs"
+    },
+    {
+      "module": "contracting"
+    },
+    {
+      "module": "financial"
+    }
+  ],
+  "messages": [],
+  "stdout": "module\nwaQc\nappAnalysis\nclientDocs\ncontracting\nfinancial\n",
+  "stderr": "",
+  "execution_time_ms": 1771
+}
