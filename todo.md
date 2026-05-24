@@ -656,4 +656,4 @@
 ## Weekly Google Drive Backup (Round 86)
 - [x] Build weeklyBackupScheduler.ts — runs every Friday at 08:00 Cairo, exports all DB tables as JSON, uploads to Google Drive "ELEVAY Backups" folder, sends confirmation email
 - [x] Register weeklyBackupScheduler in server entry point
-- [ ] Show last backup date/status on Security & Audit page (deferred — not yet implemented)
+- [x] Show last backup date/status on Security & Audit page

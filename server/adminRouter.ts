@@ -114,6 +114,19 @@ export const adminRouter = router({
       };
     }),
 
+  // ── Weekly Backup Status ──────────────────────────────────────────────────────
+  getWeeklyBackupStatus: adminProcedure
+    .query(() => {
+      const { getLastBackupStatus } = require("../weeklyBackupScheduler");
+      return getLastBackupStatus() as {
+        lastBackupDate: string;
+        lastBackupStatus: "success" | "failed" | null;
+        lastBackupTimestamp: number | null;
+        lastBackupDriveLink: string;
+        nextBackupInfo: string;
+      };
+    }),
+
   // ── User List (for admin management) ─────────────────────────────────────────
   listUsers: adminProcedure
     .query(async () => {

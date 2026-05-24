@@ -115,8 +115,14 @@ async function runWeeklyBackup(): Promise<void> {
       console.warn("[WeeklyBackup] Email notification failed (non-critical):", emailErr);
     }
 
+    lastBackupStatus = "success";
+    lastBackupTimestamp = Date.now();
+    lastBackupDriveLink = webViewLink;
     console.log(`[WeeklyBackup] ✅ Backup complete. ${tables.reduce((s, t) => s + t.rows, 0).toLocaleString()} total records backed up.`);
   } catch (err) {
+    lastBackupStatus = "failed";
+    lastBackupTimestamp = Date.now();
+    lastBackupDriveLink = "";
     console.error("[WeeklyBackup] ❌ Backup failed:", err);
     try {
       await sendBackupNotification({ date: dateStr, filename, driveLink: "", sizeKb: 0, tables: [], success: false, error: String(err) });
@@ -125,6 +131,35 @@ async function runWeeklyBackup(): Promise<void> {
 }
 
 let lastBackupDate = "";
+let lastBackupStatus: "success" | "failed" | null = null;
+let lastBackupTimestamp: number | null = null;
+let lastBackupDriveLink = "";
+
+/** Returns the last backup status for display on the admin page */
+export function getLastBackupStatus(): {
+  lastBackupDate: string;
+  lastBackupStatus: "success" | "failed" | null;
+  lastBackupTimestamp: number | null;
+  lastBackupDriveLink: string;
+  nextBackupInfo: string;
+} {
+  // Calculate next Friday 08:00 Cairo
+  const now = new Date();
+  const cairoNow = new Date(now.toLocaleString("en-US", { timeZone: "Africa/Cairo" }));
+  const dayOfWeek = cairoNow.getDay(); // 0=Sun, 5=Fri
+  const daysUntilFriday = dayOfWeek <= 5 ? 5 - dayOfWeek : 6;
+  const nextFriday = new Date(cairoNow);
+  nextFriday.setDate(cairoNow.getDate() + (daysUntilFriday === 0 ? 7 : daysUntilFriday));
+  nextFriday.setHours(8, 0, 0, 0);
+  const nextBackupInfo = nextFriday.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }) + " at 08:00 Cairo";
+  return {
+    lastBackupDate,
+    lastBackupStatus,
+    lastBackupTimestamp,
+    lastBackupDriveLink,
+    nextBackupInfo,
+  };
+}
 
 async function checkAndRunWeeklyBackup(): Promise<void> {
   const today = getCairoDateString();

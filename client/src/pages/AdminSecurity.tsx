@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Shield, Download, RefreshCw, Search, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
+import { Shield, Download, RefreshCw, Search, ChevronLeft, ChevronRight, AlertTriangle, CalendarCheck, CloudOff } from "lucide-react";
 
 const ACTION_COLORS: Record<string, string> = {
   login: "bg-green-100 text-green-800",
@@ -43,6 +43,8 @@ export default function AdminSecurity() {
     },
     { enabled: isAdmin }
   );
+
+  const { data: weeklyBackupStatus } = trpc.admin.getWeeklyBackupStatus.useQuery(undefined, { enabled: isAdmin, refetchInterval: 60000 });
 
   const backupMutation = trpc.admin.exportFullBackup.useMutation({
     onSuccess: (data) => {
@@ -91,12 +93,51 @@ export default function AdminSecurity() {
         </Button>
       </div>
 
-      {/* Backup Info Card */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-        <Shield className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
-        <div className="text-sm text-blue-800">
-          <p className="font-semibold mb-1">Full Database Backup</p>
-          <p>Clicking "Export Full Backup" will generate a complete JSON export of all your data — leads, contracts, clients, financial records, and more — and download it directly to your computer. Store this file in a secure location (e.g., Google Drive or an encrypted USB drive).</p>
+      {/* Backup Cards Row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Manual Backup Card */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+          <Shield className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+          <div className="text-sm text-blue-800">
+            <p className="font-semibold mb-1">Manual Backup (Download)</p>
+            <p>Exports all data as a JSON file and downloads it to your computer. Use for on-demand snapshots.</p>
+          </div>
+        </div>
+        {/* Weekly Drive Backup Status Card */}
+        <div className={`border rounded-lg p-4 flex items-start gap-3 ${
+          weeklyBackupStatus?.lastBackupStatus === "success"
+            ? "bg-green-50 border-green-200"
+            : weeklyBackupStatus?.lastBackupStatus === "failed"
+            ? "bg-red-50 border-red-200"
+            : "bg-gray-50 border-gray-200"
+        }`}>
+          {weeklyBackupStatus?.lastBackupStatus === "failed" ? (
+            <CloudOff className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
+          ) : (
+            <CalendarCheck className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
+          )}
+          <div className="text-sm">
+            <p className={`font-semibold mb-1 ${
+              weeklyBackupStatus?.lastBackupStatus === "failed" ? "text-red-800" : "text-green-800"
+            }`}>Weekly Google Drive Backup</p>
+            {weeklyBackupStatus?.lastBackupStatus ? (
+              <div className="space-y-0.5">
+                <p className={weeklyBackupStatus.lastBackupStatus === "success" ? "text-green-700" : "text-red-700"}>
+                  Last backup: <strong>{weeklyBackupStatus.lastBackupDate}</strong>
+                  {" "}({weeklyBackupStatus.lastBackupStatus === "success" ? "✅ Success" : "❌ Failed"})
+                </p>
+                {weeklyBackupStatus.lastBackupDriveLink && (
+                  <p className="text-green-700">
+                    <a href={weeklyBackupStatus.lastBackupDriveLink} target="_blank" rel="noreferrer"
+                      className="underline font-medium">Open in Google Drive</a>
+                  </p>
+                )}
+                <p className="text-gray-500">Next: {weeklyBackupStatus.nextBackupInfo}</p>
+              </div>
+            ) : (
+              <p className="text-gray-500">No backup run yet this session. Runs every Friday at 08:00 Cairo.</p>
+            )}
+          </div>
         </div>
       </div>
 
