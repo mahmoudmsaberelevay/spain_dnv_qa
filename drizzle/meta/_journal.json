@@ -288,6 +288,13 @@
       "when": 1779617532083,
       "tag": "0040_overrated_yellow_claw",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "5",
+      "when": 1779626111359,
+      "tag": "0041_watery_blue_shield",
+      "breakpoints": true
     }
   ]
 }

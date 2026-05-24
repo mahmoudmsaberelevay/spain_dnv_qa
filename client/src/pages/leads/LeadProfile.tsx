@@ -18,7 +18,7 @@ import {
   ArrowLeft, Phone, Mail, Globe, User, Calendar, Flag, Star,
   MessageSquare, CheckSquare, Clock, Pin, AlertCircle, Trash2,
   Plus, Edit2, PhoneCall, Send, MessageCircle, Zap, ChevronDown,
-  ChevronRight,
+  ChevronRight, Shield,
 } from "lucide-react";
 
 const STAGES = [
@@ -320,6 +320,25 @@ export default function LeadProfile() {
               {lead.leadScore !== undefined && lead.leadScore !== null && <InfoRow label="Lead Score" value={String(lead.leadScore)} />}
             </CardContent>
           </Card>
+
+          {/* GDPR & Consent */}
+          {(lead.gdprConsent || lead.dataSharingConsent || lead.marketingOptIn || lead.optOutSignal) && (
+            <Card className="border-emerald-500/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                  <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                  GDPR & Consent
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <InfoRow label="GDPR Consent" value={lead.gdprConsent ? "✓ Given" : "Not given"} />
+                <InfoRow label="Data Sharing" value={lead.dataSharingConsent ? "✓ Agreed" : "Not agreed"} />
+                <InfoRow label="Marketing Opt-in" value={lead.marketingOptIn ? "✓ Opted in" : "Not opted in"} />
+                {lead.optOutSignal && <InfoRow label="Opt-out Signal" value="⚠ Opt-out received" highlight />}
+                {lead.dataRegion && <InfoRow label="Data Region" value={lead.dataRegion} />}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Quick Activity Log — Preset Buttons */}
           <Card>

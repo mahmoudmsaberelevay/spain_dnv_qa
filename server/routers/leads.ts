@@ -535,6 +535,107 @@ export const leadsRouter = router({
       return { results, totalNew, totalSkipped };
     }),
 
+  // ── Meta CRM Export ────────────────────────────────────────────────────────
+  metaExport: protectedProcedure
+    .input(z.object({
+      dateFrom: z.number().optional(),
+      dateTo: z.number().optional(),
+      stages: z.array(z.string()).optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const { createHash } = await import("crypto");
+      const sha256 = (val: string | null | undefined) => {
+        if (!val) return null;
+        return createHash("sha256").update(val.trim().toLowerCase()).digest("hex");
+      };
+      // Stage → Meta event mapping
+      const stageToEvent: Record<string, string> = {
+        fresh: "Lead",
+        contacted: "Lead",
+        qualified: "QualifiedLead",
+        prospect: "QualifiedLead",
+        client: "Purchase",
+        dormant: "Lead",
+        not_qualified_budget: "Lead",
+        not_qualified_work: "Lead",
+        not_qualified_study: "Lead",
+        not_qualified_criminal: "Lead",
+        not_qualified_other: "Lead",
+      };
+      // Fetch all leads for export (up to 10000)
+      const { leads: allLeads } = await listLeads({ page: 1, pageSize: 10000 });
+      // Filter by date / stage if provided
+      const filtered = allLeads.filter(lead => {
+        if (input?.dateFrom && lead.createdAt < input.dateFrom) return false;
+        if (input?.dateTo && lead.createdAt > input.dateTo) return false;
+        if (input?.stages && input.stages.length > 0 && !input.stages.includes(lead.stage)) return false;
+        return true;
+      });
+      const rows = filtered.map(lead => ({
+        // Hashed PII for Meta CAPI
+        em: sha256(lead.email),
+        ph: sha256(lead.phone),
+        fn: sha256(lead.fullName?.split(" ")[0]),
+        ln: sha256(lead.fullName?.split(" ").slice(1).join(" ") || lead.fullName),
+        // Raw identity
+        full_name: lead.fullName,
+        email: lead.email,
+        phone: lead.phone,
+        nationality: lead.nationality,
+        country_of_residence: lead.countryOfResidence,
+        gender: lead.gender,
+        // Meta Attribution
+        meta_lead_id: lead.metaLeadId,
+        meta_form_id: lead.metaFormId,
+        meta_form_name: lead.metaFormName,
+        meta_page_id: lead.metaPageId,
+        meta_campaign_id: lead.metaCampaignId,
+        meta_adset_id: lead.metaAdsetId,
+        meta_ad_id: lead.metaAdId,
+        meta_campaign_name: lead.metaCampaign,
+        meta_adset_name: lead.metaAdset,
+        meta_ad_name: lead.metaAd,
+        is_organic: lead.isOrganic ? "true" : "false",
+        // UTM
+        utm_source: lead.utmSource,
+        utm_medium: lead.utmMedium,
+        utm_campaign: lead.utmCampaign,
+        utm_content: lead.utmContent,
+        utm_term: lead.utmTerm,
+        fbclid: lead.fbclid,
+        fbc: lead.fbcCookie,
+        fbp: lead.fbpCookie,
+        // Pipeline
+        lead_status: lead.stage,
+        meta_event: stageToEvent[lead.stage] ?? "Lead",
+        lead_score: lead.leadScore,
+        program_of_interest: lead.interestedProgram,
+        investment_budget: lead.investmentBudget ?? lead.budgetRange,
+        number_of_applicants: lead.numberOfApplicants,
+        estimated_deal_value: lead.estimatedDealValue,
+        deal_currency: lead.dealCurrency,
+        // Conversion
+        consultation_booked_date: lead.consultationBookedDate ? new Date(lead.consultationBookedDate).toISOString() : null,
+        consultation_completed_date: lead.consultationCompletedDate ? new Date(lead.consultationCompletedDate).toISOString() : null,
+        contract_signed_date: lead.contractSignedDate ? new Date(lead.contractSignedDate).toISOString() : null,
+        contract_value_usd: lead.contractValueUsd,
+        contract_value_eur: lead.contractValueEur,
+        payment_received_date: lead.paymentReceivedDate ? new Date(lead.paymentReceivedDate).toISOString() : null,
+        total_payments_received: lead.totalPaymentsReceived,
+        // GDPR
+        gdpr_consent: lead.gdprConsent ? "true" : "false",
+        data_sharing_consent: lead.dataSharingConsent ? "true" : "false",
+        marketing_opt_in: lead.marketingOptIn ? "true" : "false",
+        opt_out_signal: lead.optOutSignal ? "true" : "false",
+        data_region: lead.dataRegion ?? "EG",
+        // Timestamps
+        lead_created_time: new Date(lead.createdAt).toISOString(),
+        lead_source: lead.leadSource,
+        assigned_to: lead.assignedTo,
+      }));
+      return { rows, total: rows.length };
+    }),
+
   // ── Analytics ───────────────────────────────────────────────────────────────
   analytics: router({
     overview: protectedProcedure.query(async () => {
