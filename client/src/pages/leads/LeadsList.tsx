@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Plus, Search, Phone, Mail, User, Calendar, Download,
   Filter, X, Trash2, CheckSquare, Square, MinusSquare, RefreshCw, LayoutList,
+  ChevronLeft, ChevronRight, Tag, UserCheck,
 } from "lucide-react";
 
 const STAGES = [
@@ -55,11 +56,23 @@ function getStageMeta(stage: string) {
   return STAGES.find(s => s.value === stage) ?? { label: stage, color: "bg-gray-100 text-gray-600 border-gray-200" };
 }
 
+/** Debounce a value by `delay` ms */
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
 export default function LeadsList() {
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
 
+  // ── Filter state ──────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 350);
   const [stageFilter, setStageFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [programFilter, setProgramFilter] = useState("all");
@@ -72,11 +85,22 @@ export default function LeadsList() {
   const [lastActivityFrom, setLastActivityFrom] = useState("");
   const [lastActivityTo, setLastActivityTo] = useState("");
 
-  // Bulk selection state
+  // ── Pagination ────────────────────────────────────────────────────────────
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 100;
+
+  // Reset to page 1 whenever filters change
+  const prevFiltersRef = useRef<string>("");
+
+  // ── Bulk selection state ──────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [showBulkStageDialog, setShowBulkStageDialog] = useState(false);
+  const [showBulkOwnerDialog, setShowBulkOwnerDialog] = useState(false);
+  const [bulkStageValue, setBulkStageValue] = useState("");
+  const [bulkOwnerValue, setBulkOwnerValue] = useState("");
 
-  // Load dynamic programs and sources from settings
+  // ── Dynamic settings ──────────────────────────────────────────────────────
   const { data: dynamicPrograms = [] } = trpc.leadsSettings.listPrograms.useQuery();
   const { data: dynamicSources = [] } = trpc.leadsSettings.listSources.useQuery();
 
@@ -90,6 +114,7 @@ export default function LeadsList() {
     return [...new Set([...SOURCES, ...fromSettings])];
   }, [dynamicSources]);
 
+  // ── Create form ───────────────────────────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({
     fullName: "", phone: "", whatsapp: "", email: "",
@@ -98,14 +123,15 @@ export default function LeadsList() {
     notes: "", budgetRange: "",
   });
 
-  // Load Meta forms for the form filter dropdown
+  // ── Meta forms for filter dropdown ────────────────────────────────────────
   const { data: metaFormsData } = trpc.leadsSettings.listMetaForms.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
   });
   const metaForms = metaFormsData?.forms ?? [];
 
+  // ── Build query filters ───────────────────────────────────────────────────
   const filters = useMemo(() => ({
-    search: search || undefined,
+    search: debouncedSearch || undefined,
     stage: stageFilter !== "all" ? stageFilter : undefined,
     leadSource: sourceFilter !== "all" ? sourceFilter : undefined,
     interestedProgram: programFilter !== "all" ? programFilter : undefined,
@@ -115,7 +141,20 @@ export default function LeadsList() {
     dateTo: createdTo ? new Date(createdTo + "T23:59:59").getTime() : undefined,
     lastActivityFrom: lastActivityFrom ? new Date(lastActivityFrom).getTime() : undefined,
     lastActivityTo: lastActivityTo ? new Date(lastActivityTo + "T23:59:59").getTime() : undefined,
-  }), [search, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
+    page,
+    pageSize: PAGE_SIZE,
+  }), [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter,
+    createdFrom, createdTo, lastActivityFrom, lastActivityTo, page]);
+
+  // Reset page when non-page filters change
+  useEffect(() => {
+    const key = JSON.stringify({ debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo });
+    if (prevFiltersRef.current && prevFiltersRef.current !== key) {
+      setPage(1);
+      setSelectedIds(new Set());
+    }
+    prevFiltersRef.current = key;
+  }, [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
 
   const hasActiveFilters = stageFilter !== "all" || sourceFilter !== "all" || programFilter !== "all" || assignedFilter !== "all" || metaFormFilter !== "all" || createdFrom || createdTo || lastActivityFrom || lastActivityTo;
 
@@ -125,10 +164,13 @@ export default function LeadsList() {
     setCreatedFrom(""); setCreatedTo(""); setLastActivityFrom(""); setLastActivityTo("");
   }
 
-  const { data: leads = [], isLoading } = trpc.leads.list.useQuery(filters);
+  // ── Data query ────────────────────────────────────────────────────────────
+  const { data: leadsData, isLoading } = trpc.leads.list.useQuery(filters);
+  const leads = leadsData?.leads ?? [];
+  const total = leadsData?.total ?? 0;
+  const totalPages = leadsData?.totalPages ?? 1;
 
-  // Bulk mutations
-  // Historical sync mutation
+  // ── Mutations ─────────────────────────────────────────────────────────────
   const historicalSync = trpc.leads.historicalSync.useMutation({
     onSuccess: (data) => {
       utils.leads.list.invalidate();
@@ -169,6 +211,31 @@ export default function LeadsList() {
     onError: (err) => toast.error(err.message),
   });
 
+  const bulkUpdateStage = trpc.leads.bulkUpdateStage.useMutation({
+    onSuccess: (data) => {
+      utils.leads.list.invalidate();
+      utils.leads.analytics.overview.invalidate();
+      setSelectedIds(new Set());
+      setShowBulkStageDialog(false);
+      setBulkStageValue("");
+      toast.success(`${data.updated} lead${data.updated !== 1 ? "s" : ""} moved to ${getStageMeta(bulkStageValue).label}.`);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const bulkUpdateOwner = trpc.leads.bulkUpdateOwner.useMutation({
+    onSuccess: (data) => {
+      utils.leads.list.invalidate();
+      setSelectedIds(new Set());
+      setShowBulkOwnerDialog(false);
+      setBulkOwnerValue("");
+      const ownerLabel = bulkOwnerValue === "__unassign__" ? "Unassigned" : bulkOwnerValue;
+      toast.success(`${data.updated} lead${data.updated !== 1 ? "s" : ""} assigned to ${ownerLabel}.`);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // ── Selection helpers ─────────────────────────────────────────────────────
   const toggleSelect = useCallback((id: number, e: React.MouseEvent) => {
     e.stopPropagation();
     setSelectedIds(prev => {
@@ -178,17 +245,26 @@ export default function LeadsList() {
     });
   }, []);
 
-  const allSelected = leads.length > 0 && selectedIds.size === leads.length;
-  const someSelected = selectedIds.size > 0 && selectedIds.size < leads.length;
+  const allSelected = leads.length > 0 && leads.every(l => selectedIds.has(l.id));
+  const someSelected = leads.some(l => selectedIds.has(l.id)) && !allSelected;
 
   const toggleSelectAll = useCallback(() => {
     if (allSelected) {
-      setSelectedIds(new Set());
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        leads.forEach(l => next.delete(l.id));
+        return next;
+      });
     } else {
-      setSelectedIds(new Set(leads.map(l => l.id)));
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        leads.forEach(l => next.add(l.id));
+        return next;
+      });
     }
   }, [allSelected, leads]);
 
+  // ── Create lead ───────────────────────────────────────────────────────────
   const createLead = trpc.leads.create.useMutation({
     onSuccess: () => {
       utils.leads.list.invalidate();
@@ -230,6 +306,8 @@ export default function LeadsList() {
     URL.revokeObjectURL(url);
   }
 
+  const selectedCount = selectedIds.size;
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -237,15 +315,35 @@ export default function LeadsList() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Leads</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            {leads.length} lead{leads.length !== 1 ? "s" : ""} found
-            {selectedIds.size > 0 && (
-              <span className="ml-2 text-blue-600 font-medium">· {selectedIds.size} selected</span>
+            {total} lead{total !== 1 ? "s" : ""} total
+            {selectedCount > 0 && (
+              <span className="ml-2 text-blue-600 font-medium">· {selectedCount} selected</span>
             )}
           </p>
         </div>
         <div className="flex gap-2 flex-wrap items-center">
-          {selectedIds.size > 0 && (
+          {selectedCount > 0 && (
             <>
+              {/* Bulk Stage Change */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setBulkStageValue(""); setShowBulkStageDialog(true); }}
+                className="gap-1.5"
+              >
+                <Tag className="w-4 h-4" />
+                Change Stage ({selectedCount})
+              </Button>
+              {/* Bulk Owner Change */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setBulkOwnerValue(""); setShowBulkOwnerDialog(true); }}
+                className="gap-1.5"
+              >
+                <UserCheck className="w-4 h-4" />
+                Assign Owner ({selectedCount})
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -253,7 +351,7 @@ export default function LeadsList() {
                 disabled={bulkExport.isPending}
               >
                 <Download className="w-4 h-4 mr-1" />
-                {bulkExport.isPending ? "Exporting…" : `Export ${selectedIds.size}`}
+                {bulkExport.isPending ? "Exporting…" : `Export ${selectedCount}`}
               </Button>
               <Button
                 variant="outline"
@@ -262,7 +360,7 @@ export default function LeadsList() {
                 onClick={() => setShowBulkDeleteConfirm(true)}
               >
                 <Trash2 className="w-4 h-4 mr-1" />
-                Delete {selectedIds.size}
+                Delete {selectedCount}
               </Button>
               <Button
                 variant="ghost"
@@ -270,7 +368,7 @@ export default function LeadsList() {
                 className="text-muted-foreground"
                 onClick={() => setSelectedIds(new Set())}
               >
-                <X className="w-4 h-4 mr-1" /> Clear Selection
+                <X className="w-4 h-4 mr-1" /> Clear
               </Button>
             </>
           )}
@@ -285,7 +383,7 @@ export default function LeadsList() {
             {historicalSync.isPending ? "Syncing…" : "Lead Sync"}
           </Button>
           <Button variant="outline" size="sm" onClick={exportAllCSV}>
-            <Download className="w-4 h-4 mr-1" /> Export All
+            <Download className="w-4 h-4 mr-1" /> Export Page
           </Button>
           <Button size="sm" onClick={() => setShowCreate(true)}>
             <Plus className="w-4 h-4 mr-1" /> New Lead
@@ -298,7 +396,12 @@ export default function LeadsList() {
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search name, phone, email…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+            <Input
+              placeholder="Search name, phone, email…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9"
+            />
           </div>
           <Select value={stageFilter} onValueChange={setStageFilter}>
             <SelectTrigger className="w-40"><SelectValue placeholder="Stage" /></SelectTrigger>
@@ -386,7 +489,10 @@ export default function LeadsList() {
 
       {/* Table */}
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground">Loading leads…</div>
+        <div className="text-center py-12 text-muted-foreground">
+          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-40" />
+          Loading leads…
+        </div>
       ) : leads.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center text-muted-foreground">
@@ -404,7 +510,7 @@ export default function LeadsList() {
                   <button
                     onClick={toggleSelectAll}
                     className="text-muted-foreground hover:text-foreground transition-colors flex items-center"
-                    title={allSelected ? "Deselect all" : "Select all"}
+                    title={allSelected ? "Deselect all on page" : "Select all on page"}
                   >
                     {allSelected
                       ? <CheckSquare className="w-4 h-4 text-blue-600" />
@@ -483,6 +589,36 @@ export default function LeadsList() {
         </div>
       )}
 
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-1">
+          <p className="text-sm text-muted-foreground">
+            Page {page} of {totalPages} · {total} leads total
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1 || isLoading}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Prev
+            </Button>
+            <span className="text-sm font-medium px-2">{page}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || isLoading}
+            >
+              Next
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Historical Sync Confirmation Dialog */}
       <Dialog open={showHistoricalSyncConfirm} onOpenChange={setShowHistoricalSyncConfirm}>
         <DialogContent className="max-w-sm">
@@ -509,10 +645,10 @@ export default function LeadsList() {
       <Dialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Delete {selectedIds.size} Lead{selectedIds.size !== 1 ? "s" : ""}?</DialogTitle>
+            <DialogTitle>Delete {selectedCount} Lead{selectedCount !== 1 ? "s" : ""}?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground py-2">
-            This will permanently delete {selectedIds.size} lead{selectedIds.size !== 1 ? "s" : ""} and all their activities, notes, and documents. This action cannot be undone.
+            This will permanently delete {selectedCount} lead{selectedCount !== 1 ? "s" : ""} and all their activities, notes, and documents. This action cannot be undone.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowBulkDeleteConfirm(false)}>Cancel</Button>
@@ -521,7 +657,79 @@ export default function LeadsList() {
               onClick={() => bulkDelete.mutate({ ids: Array.from(selectedIds) })}
               disabled={bulkDelete.isPending}
             >
-              {bulkDelete.isPending ? "Deleting…" : `Delete ${selectedIds.size} Lead${selectedIds.size !== 1 ? "s" : ""}`}
+              {bulkDelete.isPending ? "Deleting…" : `Delete ${selectedCount} Lead${selectedCount !== 1 ? "s" : ""}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Stage Change Dialog */}
+      <Dialog open={showBulkStageDialog} onOpenChange={setShowBulkStageDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Change Stage for {selectedCount} Lead{selectedCount !== 1 ? "s" : ""}</DialogTitle>
+          </DialogHeader>
+          <div className="py-3 space-y-2">
+            <Label>New Stage</Label>
+            <Select value={bulkStageValue} onValueChange={setBulkStageValue}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a stage…" />
+              </SelectTrigger>
+              <SelectContent>
+                {STAGES.map(s => (
+                  <SelectItem key={s.value} value={s.value}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border mr-2 ${s.color}`}>{s.label}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkStageDialog(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!bulkStageValue) { toast.error("Please select a stage."); return; }
+                bulkUpdateStage.mutate({ ids: Array.from(selectedIds), stage: bulkStageValue as any });
+              }}
+              disabled={bulkUpdateStage.isPending || !bulkStageValue}
+            >
+              {bulkUpdateStage.isPending ? "Updating…" : `Update ${selectedCount} Lead${selectedCount !== 1 ? "s" : ""}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Owner Change Dialog */}
+      <Dialog open={showBulkOwnerDialog} onOpenChange={setShowBulkOwnerDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Assign Owner for {selectedCount} Lead{selectedCount !== 1 ? "s" : ""}</DialogTitle>
+          </DialogHeader>
+          <div className="py-3 space-y-2">
+            <Label>Assign To</Label>
+            <Select value={bulkOwnerValue} onValueChange={setBulkOwnerValue}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a team member…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__unassign__">— Unassign —</SelectItem>
+                {TEAM.map(t => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkOwnerDialog(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!bulkOwnerValue) { toast.error("Please select a team member."); return; }
+                const assignedTo = bulkOwnerValue === "__unassign__" ? null : bulkOwnerValue;
+                bulkUpdateOwner.mutate({ ids: Array.from(selectedIds), assignedTo });
+              }}
+              disabled={bulkUpdateOwner.isPending || !bulkOwnerValue}
+            >
+              {bulkUpdateOwner.isPending ? "Assigning…" : `Assign ${selectedCount} Lead${selectedCount !== 1 ? "s" : ""}`}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,6 @@
 import { getDb } from "./db";
 import { leads, leadActivities, leadNotes, leadTasks } from "../drizzle/schema";
-import { eq, desc, like, or, and, sql } from "drizzle-orm";
+import { eq, desc, like, or, and, sql, inArray, count } from "drizzle-orm";
 import type { InsertLead, InsertLeadActivity, InsertLeadNote, InsertLeadTask } from "../drizzle/schema";
 
 const now = () => Date.now();
@@ -34,10 +34,15 @@ export async function listLeads(filters?: {
   lastActivityFrom?: number;
   lastActivityTo?: number;
   metaFormId?: string;
+  page?: number;
+  pageSize?: number;
 }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  let query = db.select().from(leads).$dynamic();
+
+  const page = Math.max(1, filters?.page ?? 1);
+  const pageSize = Math.min(200, Math.max(10, filters?.pageSize ?? 100));
+  const offset = (page - 1) * pageSize;
 
   const conditions: any[] = [];
 
@@ -62,10 +67,26 @@ export async function listLeads(filters?: {
   if (filters?.lastActivityFrom) conditions.push(sql`${leads.lastContactAt} >= ${filters.lastActivityFrom}`);
   if (filters?.lastActivityTo) conditions.push(sql`${leads.lastContactAt} <= ${filters.lastActivityTo}`);
   if (filters?.metaFormId) conditions.push(eq(leads.metaFormId, filters.metaFormId));
-  if (conditions.length > 0) {
-    query = query.where(and(...conditions));
-  }
-  return query.orderBy(desc(leads.createdAt));
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // Run data + count in parallel for best performance
+  const [rows, [{ total }]] = await Promise.all([
+    db.select().from(leads)
+      .where(whereClause)
+      .orderBy(desc(leads.createdAt))
+      .limit(pageSize)
+      .offset(offset),
+    db.select({ total: count() }).from(leads).where(whereClause),
+  ]);
+
+  return {
+    leads: rows,
+    total: total as number,
+    page,
+    pageSize,
+    totalPages: Math.ceil((total as number) / pageSize),
+  };
 }
 
 export async function updateLead(id: number, data: Partial<InsertLead>) {
@@ -87,18 +108,18 @@ export async function bulkDeleteLeads(ids: number[]) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   if (ids.length === 0) return 0;
-  // Delete in batches of 100 to avoid query size limits
-  const batchSize = 100;
+  // Delete related records in bulk batches using IN clause (much faster than N individual queries)
+  const batchSize = 200;
   let deleted = 0;
   for (let i = 0; i < ids.length; i += batchSize) {
     const batch = ids.slice(i, i + batchSize);
-    for (const id of batch) {
-      await db.delete(leadTasks).where(eq(leadTasks.leadId, id));
-      await db.delete(leadNotes).where(eq(leadNotes.leadId, id));
-      await db.delete(leadActivities).where(eq(leadActivities.leadId, id));
-      await db.delete(leads).where(eq(leads.id, id));
-      deleted++;
-    }
+    await Promise.all([
+      db.delete(leadTasks).where(inArray(leadTasks.leadId, batch)),
+      db.delete(leadNotes).where(inArray(leadNotes.leadId, batch)),
+      db.delete(leadActivities).where(inArray(leadActivities.leadId, batch)),
+    ]);
+    await db.delete(leads).where(inArray(leads.id, batch));
+    deleted += batch.length;
   }
   return deleted;
 }
@@ -107,12 +128,42 @@ export async function getLeadsByIds(ids: number[]) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   if (ids.length === 0) return [];
-  const results = [];
-  for (const id of ids) {
-    const [row] = await db.select().from(leads).where(eq(leads.id, id)).limit(1);
-    if (row) results.push(row);
+  // Single query with IN clause instead of N individual queries
+  return db.select().from(leads).where(inArray(leads.id, ids));
+}
+
+/** Bulk update stage for multiple leads */
+export async function bulkUpdateLeadsStage(ids: number[], stage: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  if (ids.length === 0) return 0;
+  const batchSize = 200;
+  let updated = 0;
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const batch = ids.slice(i, i + batchSize);
+    await db.update(leads)
+      .set({ stage: stage as any, updatedAt: now() })
+      .where(inArray(leads.id, batch));
+    updated += batch.length;
   }
-  return results;
+  return updated;
+}
+
+/** Bulk update assignedTo for multiple leads */
+export async function bulkUpdateLeadsOwner(ids: number[], assignedTo: string | null) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  if (ids.length === 0) return 0;
+  const batchSize = 200;
+  let updated = 0;
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const batch = ids.slice(i, i + batchSize);
+    await db.update(leads)
+      .set({ assignedTo: assignedTo ?? null, updatedAt: now() })
+      .where(inArray(leads.id, batch));
+    updated += batch.length;
+  }
+  return updated;
 }
 
 export async function checkDuplicate(phone?: string, email?: string, whatsapp?: string) {

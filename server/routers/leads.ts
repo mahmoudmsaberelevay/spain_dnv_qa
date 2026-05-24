@@ -9,6 +9,7 @@ import {
   getLeadStageCounts, getLeadSourceCounts, getLeadProgramCounts,
   getMonthlyLeadConversions, getLeadTotalCount,
   bulkDeleteLeads, getLeadsByIds,
+  bulkUpdateLeadsStage, bulkUpdateLeadsOwner,
 } from "../leadsDb";
 import { listActivityPresets, listLeadIntegrations } from "../leadsSettingsDb";
 import { syncOneIntegrationById } from "../metaLeadSync";
@@ -103,6 +104,8 @@ export const leadsRouter = router({
       lastActivityFrom: z.number().optional(),
       lastActivityTo: z.number().optional(),
       metaFormId: z.string().optional(),
+      page: z.number().int().min(1).optional(),
+      pageSize: z.number().int().min(10).max(200).optional(),
     }).optional())
     .query(async ({ input }) => {
       return listLeads(input);
@@ -415,6 +418,28 @@ export const leadsRouter = router({
       return { deleted };
     }),
 
+  bulkUpdateStage: protectedProcedure
+    .input(z.object({
+      ids: z.array(z.number()).min(1),
+      stage: z.enum(["fresh", "contacted", "qualified", "prospect", "client", "dormant",
+        "not_qualified_budget", "not_qualified_work", "not_qualified_study",
+        "not_qualified_criminal", "not_qualified_other"]),
+    }))
+    .mutation(async ({ input }) => {
+      const updated = await bulkUpdateLeadsStage(input.ids, input.stage);
+      return { updated };
+    }),
+
+  bulkUpdateOwner: protectedProcedure
+    .input(z.object({
+      ids: z.array(z.number()).min(1),
+      assignedTo: z.string().nullable(),
+    }))
+    .mutation(async ({ input }) => {
+      const updated = await bulkUpdateLeadsOwner(input.ids, input.assignedTo);
+      return { updated };
+    }),
+
   bulkExport: protectedProcedure
     .input(z.object({
       ids: z.array(z.number()).optional(), // if omitted, export all
@@ -436,7 +461,9 @@ export const leadsRouter = router({
       if (input.ids && input.ids.length > 0) {
         rows = await getLeadsByIds(input.ids);
       } else {
-        rows = await listLeads(input.filters);
+        // Export all — fetch without pagination (pageSize=10000)
+        const result = await listLeads({ ...input.filters, page: 1, pageSize: 10000 });
+        rows = result.leads;
       }
       // Build CSV
       const headers = [

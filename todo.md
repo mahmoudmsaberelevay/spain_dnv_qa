@@ -618,3 +618,18 @@
 - [x] Frontend: LeadsList — add "Form" filter dropdown showing all Meta forms
 - [x] Frontend: LeadFormsTab — add loading spinner/progress on Sync Now button (already has isPending, improve visual)
 - [x] Frontend: LeadFormsTab — add "Full Sync from Apr 1 2026" button with progress indicator and result toast
+
+## Change Requests (Round 80) — Leads Module Performance Audit & Bulk Actions
+
+- [x] DB: Add 12 indexes to leads table (stage, assignedTo, leadSource, metaFormId, createdAt, updatedAt, lastContactAt, priority, interestedProgram, phone, email, fullName)
+- [x] DB: Add 2 indexes to lead_activities table (leadId, createdAt)
+- [x] Backend: Add pagination to listLeads (page, pageSize params; returns leads + total + totalPages)
+- [x] Backend: Fix getLeadsByIds — replace N+1 loop with single IN clause query
+- [x] Backend: Fix bulkDeleteLeads — replace N×4 loop with parallel batch IN clause deletes
+- [x] Backend: Add bulkUpdateLeadsStage helper and procedure
+- [x] Backend: Add bulkUpdateLeadsOwner helper and procedure
+- [x] Frontend: Add debounced search (350ms) to prevent query on every keystroke
+- [x] Frontend: Add pagination controls (Prev/Next, page indicator) to LeadsList
+- [x] Frontend: Add "Change Stage" bulk button with stage picker dialog
+- [x] Frontend: Add "Assign Owner" bulk button with team member picker dialog
+- [x] Frontend: Reset page to 1 when filters change
