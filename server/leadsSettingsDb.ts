@@ -1,5 +1,5 @@
 import { getDb } from "./db";
-import { leadSources, leadIntegrations, leadsPermissions, leads, users } from "../drizzle/schema";
+import { leadSources, leadIntegrations, leadsPermissions, leads, users, leadPrograms, leadActivityPresets } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import type { InsertLeadSource, InsertLeadIntegration } from "../drizzle/schema";
 import crypto from "crypto";
@@ -32,6 +32,59 @@ export async function updateLeadSource(id: number, data: { name?: string; color?
 export async function deleteLeadSource(id: number) {
   const db = await getDb();
   await db.delete(leadSources).where(eq(leadSources.id, id));
+}
+
+// ─── Lead Programs ────────────────────────────────────────────────────────────
+
+export async function listLeadPrograms() {
+  const db = await getDb();
+  return db.select().from(leadPrograms).orderBy(leadPrograms.createdAt);
+}
+
+export async function createLeadProgram(data: { name: string }) {
+  const db = await getDb();
+  await db.insert(leadPrograms).values({ name: data.name, isActive: true, createdAt: Date.now() });
+}
+
+export async function updateLeadProgram(id: number, data: { name?: string; isActive?: boolean }) {
+  const db = await getDb();
+  await db.update(leadPrograms).set(data).where(eq(leadPrograms.id, id));
+}
+
+export async function deleteLeadProgram(id: number) {
+  const db = await getDb();
+  await db.delete(leadPrograms).where(eq(leadPrograms.id, id));
+}
+
+// ─── Activity Presets ─────────────────────────────────────────────────────────
+
+export async function listActivityPresets() {
+  const db = await getDb();
+  return db.select().from(leadActivityPresets).orderBy(leadActivityPresets.createdAt);
+}
+
+export async function createActivityPreset(data: {
+  label: string;
+  activityType: "call" | "whatsapp" | "sms" | "email" | "meeting" | "note" | "stage_change" | "email_sent" | "other";
+  score: number;
+}) {
+  const db = await getDb();
+  await db.insert(leadActivityPresets).values({ ...data, isActive: true, isDefault: false, createdAt: Date.now() });
+}
+
+export async function updateActivityPreset(id: number, data: {
+  label?: string;
+  activityType?: "call" | "whatsapp" | "sms" | "email" | "meeting" | "note" | "stage_change" | "email_sent" | "other";
+  score?: number;
+  isActive?: boolean;
+}) {
+  const db = await getDb();
+  await db.update(leadActivityPresets).set(data).where(eq(leadActivityPresets.id, id));
+}
+
+export async function deleteActivityPreset(id: number) {
+  const db = await getDb();
+  await db.delete(leadActivityPresets).where(eq(leadActivityPresets.id, id));
 }
 
 // ─── Lead Integrations ────────────────────────────────────────────────────────
@@ -99,7 +152,6 @@ export async function regenerateWebhookToken(id: number) {
 
 export async function getLeadsPermissions() {
   const db = await getDb();
-  // Join with users to get name and email
   const rows = await db
     .select({
       id: leadsPermissions.id,

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -16,7 +17,8 @@ import { toast } from "sonner";
 import {
   ArrowLeft, Phone, Mail, Globe, User, Calendar, Flag, Star,
   MessageSquare, CheckSquare, Clock, Pin, AlertCircle, Trash2,
-  Plus, Edit2, PhoneCall, Send,
+  Plus, Edit2, PhoneCall, Send, MessageCircle, Zap, ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
 const STAGES = [
@@ -40,17 +42,49 @@ const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
   created: <Plus className="w-3.5 h-3.5" />,
   assigned: <User className="w-3.5 h-3.5" />,
   note_added: <MessageSquare className="w-3.5 h-3.5" />,
-  whatsapp_sent: <Send className="w-3.5 h-3.5" />,
+  whatsapp_sent: <MessageCircle className="w-3.5 h-3.5" />,
   email_sent: <Mail className="w-3.5 h-3.5" />,
   call_made: <PhoneCall className="w-3.5 h-3.5" />,
+  call: <PhoneCall className="w-3.5 h-3.5" />,
+  whatsapp: <MessageCircle className="w-3.5 h-3.5" />,
+  sms: <MessageSquare className="w-3.5 h-3.5" />,
+  email: <Mail className="w-3.5 h-3.5" />,
   stage_changed: <Flag className="w-3.5 h-3.5" />,
+  stage_change: <Flag className="w-3.5 h-3.5" />,
   task_created: <CheckSquare className="w-3.5 h-3.5" />,
   task_completed: <CheckSquare className="w-3.5 h-3.5" />,
   status_updated: <Edit2 className="w-3.5 h-3.5" />,
+  meeting_scheduled: <Calendar className="w-3.5 h-3.5" />,
+  meeting: <Calendar className="w-3.5 h-3.5" />,
+};
+
+const ACTIVITY_COLORS: Record<string, string> = {
+  call_made: "bg-green-100 text-green-700",
+  call: "bg-green-100 text-green-700",
+  whatsapp_sent: "bg-emerald-100 text-emerald-700",
+  whatsapp: "bg-emerald-100 text-emerald-700",
+  email_sent: "bg-blue-100 text-blue-700",
+  email: "bg-blue-100 text-blue-700",
+  sms: "bg-sky-100 text-sky-700",
+  meeting_scheduled: "bg-purple-100 text-purple-700",
+  meeting: "bg-purple-100 text-purple-700",
+  stage_changed: "bg-amber-100 text-amber-700",
+  stage_change: "bg-amber-100 text-amber-700",
+  note_added: "bg-gray-100 text-gray-600",
 };
 
 function getStageMeta(stage: string) {
   return STAGES.find(s => s.value === stage) ?? { label: stage, color: "bg-gray-100 text-gray-600 border-gray-200" };
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  if (!score) return null;
+  const positive = score > 0;
+  return (
+    <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${positive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+      {positive ? "+" : ""}{score}
+    </span>
+  );
 }
 
 export default function LeadProfile() {
@@ -63,11 +97,25 @@ export default function LeadProfile() {
   const { data: activities = [] } = trpc.leads.activities.list.useQuery({ leadId });
   const { data: notes = [] } = trpc.leads.notes.list.useQuery({ leadId });
   const { data: tasks = [] } = trpc.leads.tasks.list.useQuery({ leadId });
+  const { data: presets = [] } = trpc.leadsSettings.listActivityPresets.useQuery();
 
   const [newNote, setNewNote] = useState("");
   const [noteImportant, setNoteImportant] = useState(false);
   const [showTaskDialog, setShowTaskDialog] = useState(false);
   const [taskForm, setTaskForm] = useState({ taskType: "call" as typeof TASK_TYPES[number], dueDate: "", notes: "", assignedTo: "" });
+
+  // Preset activity
+  const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
+  const [presetNote, setPresetNote] = useState("");
+  const [showPresetDialog, setShowPresetDialog] = useState(false);
+
+  // Email dialog
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+
+  // Activity expand
+  const [expandedActivity, setExpandedActivity] = useState<number | null>(null);
 
   const changeStage = trpc.leads.changeStage.useMutation({
     onSuccess: () => { utils.leads.get.invalidate({ id: leadId }); utils.leads.activities.list.invalidate({ leadId }); },
@@ -100,14 +148,39 @@ export default function LeadProfile() {
     onSuccess: () => utils.leads.tasks.list.invalidate({ leadId }),
   });
 
-  const addActivity = trpc.leads.activities.add.useMutation({
-    onSuccess: () => utils.leads.activities.list.invalidate({ leadId }),
+  const logPresetActivity = trpc.leads.logPresetActivity.useMutation({
+    onSuccess: (data) => {
+      utils.leads.activities.list.invalidate({ leadId });
+      utils.leads.get.invalidate({ id: leadId });
+      setShowPresetDialog(false);
+      setPresetNote("");
+      setSelectedPreset(null);
+      toast.success(`Activity logged! Lead score: ${data.newScore}`);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const sendEmail = trpc.leads.sendEmail.useMutation({
+    onSuccess: () => {
+      utils.leads.activities.list.invalidate({ leadId });
+      utils.leads.get.invalidate({ id: leadId });
+      setShowEmailDialog(false);
+      setEmailSubject("");
+      setEmailBody("");
+      toast.success("Email sent successfully!");
+    },
+    onError: (e) => toast.error(e.message),
   });
 
   if (isLoading) return <div className="text-center py-20 text-muted-foreground">Loading lead…</div>;
   if (!lead) return <div className="text-center py-20 text-muted-foreground">Lead not found.</div>;
 
   const stageMeta = getStageMeta(lead.stage);
+  const activePresets = presets.filter(p => p.isActive);
+
+  // WhatsApp number: prefer whatsapp field, fallback to phone
+  const waNumber = (lead.whatsapp || lead.phone || "").replace(/\D/g, "");
+  const waUrl = waNumber ? `https://wa.me/${waNumber}` : null;
 
   return (
     <div className="space-y-6">
@@ -125,6 +198,12 @@ export default function LeadProfile() {
             {lead.priority && (
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${lead.priority === "high" ? "bg-red-100 text-red-700 border-red-200" : lead.priority === "medium" ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-gray-100 text-gray-600 border-gray-200"}`}>
                 {lead.priority} priority
+              </span>
+            )}
+            {/* Lead Score */}
+            {lead.leadScore !== undefined && lead.leadScore !== null && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border bg-yellow-50 text-yellow-700 border-yellow-200">
+                <Star className="w-3 h-3" /> Score: {lead.leadScore}
               </span>
             )}
           </div>
@@ -155,12 +234,53 @@ export default function LeadProfile() {
               <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Contact</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              {lead.phone && <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-muted-foreground" />{lead.phone}</div>}
-              {lead.whatsapp && <div className="flex items-center gap-2"><MessageSquare className="w-4 h-4 text-muted-foreground" />{lead.whatsapp}</div>}
-              {lead.email && <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-muted-foreground" />{lead.email}</div>}
+              {lead.phone && (
+                <div className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <a href={`tel:${lead.phone}`} className="hover:text-primary transition-colors">{lead.phone}</a>
+                </div>
+              )}
+              {lead.whatsapp && (
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span>{lead.whatsapp}</span>
+                </div>
+              )}
+              {lead.email && (
+                <div className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <a href={`mailto:${lead.email}`} className="hover:text-primary transition-colors truncate">{lead.email}</a>
+                </div>
+              )}
               {lead.nationality && <div className="flex items-center gap-2"><Globe className="w-4 h-4 text-muted-foreground" />{lead.nationality}</div>}
               {lead.countryOfResidence && <div className="flex items-center gap-2"><Globe className="w-4 h-4 text-muted-foreground" />Resides in {lead.countryOfResidence}</div>}
               {lead.preferredLanguage && <div className="flex items-center gap-2"><MessageSquare className="w-4 h-4 text-muted-foreground" />Speaks {lead.preferredLanguage}</div>}
+
+              {/* Quick Contact Buttons */}
+              <div className="pt-2 flex flex-wrap gap-2">
+                {waUrl && (
+                  <a href={waUrl} target="_blank" rel="noreferrer">
+                    <Button size="sm" variant="outline" className="gap-1.5 text-green-700 border-green-300 hover:bg-green-50">
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      WhatsApp
+                    </Button>
+                  </a>
+                )}
+                {lead.email && (
+                  <Button size="sm" variant="outline" className="gap-1.5 text-blue-700 border-blue-300 hover:bg-blue-50" onClick={() => setShowEmailDialog(true)}>
+                    <Mail className="w-3.5 h-3.5" />
+                    Send Email
+                  </Button>
+                )}
+                {lead.phone && (
+                  <a href={`tel:${lead.phone}`}>
+                    <Button size="sm" variant="outline" className="gap-1.5">
+                      <Phone className="w-3.5 h-3.5" />
+                      Call
+                    </Button>
+                  </a>
+                )}
+              </div>
             </CardContent>
           </Card>
 
@@ -197,25 +317,35 @@ export default function LeadProfile() {
               {lead.metaAd && <InfoRow label="Ad" value={lead.metaAd} />}
               {lead.assignedTo && <InfoRow label="Assigned To" value={lead.assignedTo} />}
               {lead.lastContactAt && <InfoRow label="Last Contact" value={new Date(lead.lastContactAt).toLocaleDateString()} />}
+              {lead.leadScore !== undefined && lead.leadScore !== null && <InfoRow label="Lead Score" value={String(lead.leadScore)} />}
             </CardContent>
           </Card>
 
-          {/* Quick Actions */}
+          {/* Quick Activity Log — Preset Buttons */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Log Activity</CardTitle>
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <Zap className="w-3.5 h-3.5" />
+                Log Activity
+              </CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {(["call_made", "whatsapp_sent", "email_sent", "meeting_scheduled"] as const).map(type => (
-                <Button
-                  key={type}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => addActivity.mutate({ leadId, activityType: type, description: `${type.replace(/_/g, " ")} logged` })}
-                >
-                  {type === "call_made" ? "📞 Call" : type === "whatsapp_sent" ? "💬 WhatsApp" : type === "email_sent" ? "📧 Email" : "📅 Meeting"}
-                </Button>
-              ))}
+            <CardContent className="space-y-2">
+              {activePresets.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  {activePresets.map(preset => (
+                    <button
+                      key={preset.id}
+                      onClick={() => { setSelectedPreset(preset.id); setShowPresetDialog(true); }}
+                      className="flex items-center justify-between w-full px-3 py-2 text-sm rounded-lg border border-border hover:bg-muted/50 transition-colors text-left"
+                    >
+                      <span className="font-medium text-foreground">{preset.label}</span>
+                      <ScoreBadge score={preset.score} />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No activity presets configured. Add them in LEADS Settings → Activity Presets.</p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -259,7 +389,7 @@ export default function LeadProfile() {
                         <div className="flex-1">
                           {note.isPinned && <Pin className="w-3 h-3 text-blue-500 inline mr-1" />}
                           {note.isImportant && <AlertCircle className="w-3 h-3 text-amber-500 inline mr-1" />}
-                          <span>{note.note}</span>
+                          <span className="whitespace-pre-wrap">{note.note}</span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <button onClick={() => pinNote.mutate({ id: note.id, isPinned: !note.isPinned })} className="text-muted-foreground hover:text-blue-500 transition-colors">
@@ -328,18 +458,45 @@ export default function LeadProfile() {
               {activities.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">No activity yet</p>
               ) : (
-                <div className="space-y-3 max-h-80 overflow-y-auto">
-                  {activities.map(act => (
-                    <div key={act.id} className="flex items-start gap-3 text-sm">
-                      <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0 text-muted-foreground mt-0.5">
-                        {ACTIVITY_ICONS[act.activityType] ?? <Clock className="w-3.5 h-3.5" />}
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                  {activities.map(act => {
+                    const iconColor = ACTIVITY_COLORS[act.activityType] ?? "bg-gray-100 text-gray-600";
+                    const isExpanded = expandedActivity === act.id;
+                    // Show full description — split on ": " to show label vs body
+                    const [actLabel, ...bodyParts] = act.description.split(": ");
+                    const actBody = bodyParts.join(": ");
+                    return (
+                      <div key={act.id} className="flex items-start gap-3 text-sm">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${iconColor}`}>
+                          {ACTIVITY_ICONS[act.activityType] ?? <Clock className="w-3.5 h-3.5" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-foreground font-medium leading-snug">{actLabel}</p>
+                              {actBody && (
+                                <button
+                                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mt-0.5 transition-colors"
+                                  onClick={() => setExpandedActivity(isExpanded ? null : act.id)}
+                                >
+                                  {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                                  {isExpanded ? "Hide details" : "Show details"}
+                                </button>
+                              )}
+                              {isExpanded && actBody && (
+                                <div className="mt-1.5 text-sm text-foreground bg-muted/50 rounded p-2 whitespace-pre-wrap border border-border">
+                                  {actBody}
+                                </div>
+                              )}
+                            </div>
+                            {/* Score badge if present */}
+                            {(act as any).score ? <ScoreBadge score={(act as any).score} /> : null}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{new Date(act.createdAt).toLocaleString()}</p>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <p className="text-foreground">{act.description}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{new Date(act.createdAt).toLocaleString()}</p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -389,6 +546,91 @@ export default function LeadProfile() {
               disabled={createTask.isPending}
             >
               {createTask.isPending ? "Creating…" : "Create Task"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preset Activity Dialog */}
+      <Dialog open={showPresetDialog} onOpenChange={v => { setShowPresetDialog(v); if (!v) { setPresetNote(""); setSelectedPreset(null); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedPreset ? presets.find(p => p.id === selectedPreset)?.label ?? "Log Activity" : "Log Activity"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {selectedPreset && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
+                <Zap className="w-4 h-4 shrink-0" />
+                <span>This will add <ScoreBadge score={presets.find(p => p.id === selectedPreset)?.score ?? 0} /> to the lead score.</span>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Note <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Textarea
+                value={presetNote}
+                onChange={e => setPresetNote(e.target.value)}
+                placeholder="Add details about this activity…"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowPresetDialog(false); setPresetNote(""); setSelectedPreset(null); }}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!selectedPreset) return;
+                logPresetActivity.mutate({ leadId, presetId: selectedPreset, note: presetNote || undefined });
+              }}
+              disabled={logPresetActivity.isPending || !selectedPreset}
+            >
+              {logPresetActivity.isPending ? "Logging…" : "Log Activity"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Email Dialog */}
+      <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="w-5 h-5" />
+              Send Email to {lead.fullName}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
+              To: <span className="font-medium text-foreground">{lead.email}</span>
+            </div>
+            <div className="space-y-2">
+              <Label>Subject</Label>
+              <Input value={emailSubject} onChange={e => setEmailSubject(e.target.value)} placeholder="e.g. Your Spain DNV Application Update" />
+            </div>
+            <div className="space-y-2">
+              <Label>Message</Label>
+              <Textarea
+                value={emailBody}
+                onChange={e => setEmailBody(e.target.value)}
+                placeholder="Write your message here…"
+                rows={6}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEmailDialog(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!emailSubject.trim()) { toast.error("Subject is required."); return; }
+                if (!emailBody.trim()) { toast.error("Message body is required."); return; }
+                sendEmail.mutate({ leadId, subject: emailSubject.trim(), body: emailBody.trim() });
+              }}
+              disabled={sendEmail.isPending}
+              className="gap-2"
+            >
+              <Send className="w-4 h-4" />
+              {sendEmail.isPending ? "Sending…" : "Send Email"}
             </Button>
           </DialogFooter>
         </DialogContent>

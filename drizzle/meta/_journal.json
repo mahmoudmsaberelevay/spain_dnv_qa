@@ -260,6 +260,20 @@
       "when": 1779371958063,
       "tag": "0036_hot_paper_doll",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "5",
+      "when": 1779610140732,
+      "tag": "0037_round_texas_twister",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "5",
+      "when": 1779610297779,
+      "tag": "0038_cold_gambit",
+      "breakpoints": true
     }
   ]
 }

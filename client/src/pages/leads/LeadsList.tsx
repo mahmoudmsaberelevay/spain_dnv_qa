@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Plus, Search, Phone, Mail, User, Calendar, Download } from "lucide-react";
+import { Plus, Search, Phone, Mail, User, Calendar, Download, Filter, X } from "lucide-react";
 
 const STAGES = [
   { value: "fresh", label: "Fresh", color: "bg-blue-100 text-blue-700 border-blue-200" },
@@ -63,6 +63,27 @@ export default function LeadsList() {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [programFilter, setProgramFilter] = useState("all");
   const [assignedFilter, setAssignedFilter] = useState("all");
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [createdFrom, setCreatedFrom] = useState("");
+  const [createdTo, setCreatedTo] = useState("");
+  const [lastActivityFrom, setLastActivityFrom] = useState("");
+  const [lastActivityTo, setLastActivityTo] = useState("");
+
+  // Load dynamic programs and sources from settings
+  const { data: dynamicPrograms = [] } = trpc.leadsSettings.listPrograms.useQuery();
+  const { data: dynamicSources = [] } = trpc.leadsSettings.listSources.useQuery();
+
+  const allPrograms = useMemo(() => {
+    const fromSettings = dynamicPrograms.filter(p => p.isActive).map(p => p.name);
+    const combined = [...new Set([...PROGRAMS, ...fromSettings])];
+    return combined;
+  }, [dynamicPrograms]);
+
+  const allSources = useMemo(() => {
+    const fromSettings = dynamicSources.filter(s => s.isActive).map(s => s.name);
+    const combined = [...new Set([...SOURCES, ...fromSettings])];
+    return combined;
+  }, [dynamicSources]);
 
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({
@@ -78,7 +99,18 @@ export default function LeadsList() {
     leadSource: sourceFilter !== "all" ? sourceFilter : undefined,
     interestedProgram: programFilter !== "all" ? programFilter : undefined,
     assignedTo: assignedFilter !== "all" ? assignedFilter : undefined,
-  }), [search, stageFilter, sourceFilter, programFilter, assignedFilter]);
+    dateFrom: createdFrom ? new Date(createdFrom).getTime() : undefined,
+    dateTo: createdTo ? new Date(createdTo + "T23:59:59").getTime() : undefined,
+    lastActivityFrom: lastActivityFrom ? new Date(lastActivityFrom).getTime() : undefined,
+    lastActivityTo: lastActivityTo ? new Date(lastActivityTo + "T23:59:59").getTime() : undefined,
+  }), [search, stageFilter, sourceFilter, programFilter, assignedFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
+
+  const hasActiveFilters = stageFilter !== "all" || sourceFilter !== "all" || programFilter !== "all" || assignedFilter !== "all" || createdFrom || createdTo || lastActivityFrom || lastActivityTo;
+
+  function clearAllFilters() {
+    setStageFilter("all"); setSourceFilter("all"); setProgramFilter("all"); setAssignedFilter("all");
+    setCreatedFrom(""); setCreatedTo(""); setLastActivityFrom(""); setLastActivityTo("");
+  }
 
   const { data: leads = [], isLoading } = trpc.leads.list.useQuery(filters);
 
@@ -141,39 +173,80 @@ export default function LeadsList() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search name, phone, email…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-3">
+          <div className="relative flex-1 min-w-48">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input placeholder="Search name, phone, email…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+          </div>
+          <Select value={stageFilter} onValueChange={setStageFilter}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Stage" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Stages</SelectItem>
+              {STAGES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={programFilter} onValueChange={setProgramFilter}>
+            <SelectTrigger className="w-44"><SelectValue placeholder="Program" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Programs</SelectItem>
+              {allPrograms.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={sourceFilter} onValueChange={setSourceFilter}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Source" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Sources</SelectItem>
+              {allSources.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={assignedFilter} onValueChange={setAssignedFilter}>
+            <SelectTrigger className="w-44"><SelectValue placeholder="Assigned To" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Team</SelectItem>
+              {TEAM.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button
+            variant={showAdvancedFilters ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowAdvancedFilters(v => !v)}
+            className="gap-1.5"
+          >
+            <Filter className="w-3.5 h-3.5" />
+            Date Filters
+            {(createdFrom || createdTo || lastActivityFrom || lastActivityTo) && (
+              <span className="w-2 h-2 rounded-full bg-primary-foreground" />
+            )}
+          </Button>
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearAllFilters} className="gap-1.5 text-muted-foreground hover:text-foreground">
+              <X className="w-3.5 h-3.5" /> Clear All
+            </Button>
+          )}
         </div>
-        <Select value={stageFilter} onValueChange={setStageFilter}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Stage" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Stages</SelectItem>
-            {STAGES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={programFilter} onValueChange={setProgramFilter}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Program" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Programs</SelectItem>
-            {PROGRAMS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={sourceFilter} onValueChange={setSourceFilter}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Source" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Sources</SelectItem>
-            {SOURCES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={assignedFilter} onValueChange={setAssignedFilter}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Assigned To" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Team</SelectItem>
-            {TEAM.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-          </SelectContent>
-        </Select>
+
+        {/* Advanced Date Filters */}
+        {showAdvancedFilters && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-muted/30 rounded-lg border border-border">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Created From</Label>
+              <Input type="date" value={createdFrom} onChange={e => setCreatedFrom(e.target.value)} className="h-8 text-xs" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Created To</Label>
+              <Input type="date" value={createdTo} onChange={e => setCreatedTo(e.target.value)} className="h-8 text-xs" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Last Activity From</Label>
+              <Input type="date" value={lastActivityFrom} onChange={e => setLastActivityFrom(e.target.value)} className="h-8 text-xs" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Last Activity To</Label>
+              <Input type="date" value={lastActivityTo} onChange={e => setLastActivityTo(e.target.value)} className="h-8 text-xs" />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Table */}

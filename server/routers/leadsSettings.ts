@@ -1,13 +1,16 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
-import { TRPCError } from "@trpc/server";
 import {
   listLeadSources, createLeadSource, updateLeadSource, deleteLeadSource,
   listLeadIntegrations, createLeadIntegration, updateLeadIntegration,
   deleteLeadIntegration, regenerateWebhookToken,
   getLeadsPermissions, getAllUsersForPermissions, upsertLeadsPermission,
   exportAllLeads,
+  listLeadPrograms, createLeadProgram, updateLeadProgram, deleteLeadProgram,
+  listActivityPresets, createActivityPreset, updateActivityPreset, deleteActivityPreset,
 } from "../leadsSettingsDb";
+
+const ACTIVITY_TYPES = ["call", "whatsapp", "sms", "email", "meeting", "note", "stage_change", "email_sent", "other"] as const;
 
 export const leadsSettingsRouter = router({
 
@@ -42,6 +45,74 @@ export const leadsSettingsRouter = router({
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await deleteLeadSource(input.id);
+      return { success: true };
+    }),
+
+  // ─── Lead Programs ─────────────────────────────────────────────────────────
+  listPrograms: protectedProcedure.query(async () => {
+    return listLeadPrograms();
+  }),
+
+  createProgram: protectedProcedure
+    .input(z.object({ name: z.string().min(1).max(150) }))
+    .mutation(async ({ input }) => {
+      await createLeadProgram(input);
+      return { success: true };
+    }),
+
+  updateProgram: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      name: z.string().min(1).max(150).optional(),
+      isActive: z.boolean().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await updateLeadProgram(id, data);
+      return { success: true };
+    }),
+
+  deleteProgram: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await deleteLeadProgram(input.id);
+      return { success: true };
+    }),
+
+  // ─── Activity Presets ──────────────────────────────────────────────────────
+  listActivityPresets: protectedProcedure.query(async () => {
+    return listActivityPresets();
+  }),
+
+  createActivityPreset: protectedProcedure
+    .input(z.object({
+      label: z.string().min(1).max(150),
+      activityType: z.enum(ACTIVITY_TYPES),
+      score: z.number().int().min(-100).max(100),
+    }))
+    .mutation(async ({ input }) => {
+      await createActivityPreset(input);
+      return { success: true };
+    }),
+
+  updateActivityPreset: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      label: z.string().min(1).max(150).optional(),
+      activityType: z.enum(ACTIVITY_TYPES).optional(),
+      score: z.number().int().min(-100).max(100).optional(),
+      isActive: z.boolean().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await updateActivityPreset(id, data);
+      return { success: true };
+    }),
+
+  deleteActivityPreset: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await deleteActivityPreset(input.id);
       return { success: true };
     }),
 

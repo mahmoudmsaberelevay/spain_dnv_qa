@@ -1,0 +1,2 @@
+ALTER TABLE `lead_activities` MODIFY COLUMN `activityType` enum('created','assigned','note_added','whatsapp_sent','email_sent','call_made','stage_changed','document_uploaded','followup_scheduled','meeting_scheduled','status_updated','task_created','task_completed','call','whatsapp','sms','email','meeting','note','stage_change','other') NOT NULL;--> statement-breakpoint
+ALTER TABLE `lead_activities` ADD `score` int DEFAULT 0;

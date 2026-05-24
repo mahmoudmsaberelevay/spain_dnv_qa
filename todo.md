@@ -565,3 +565,23 @@
 - [x] Frontend: Website Integration tab — generate unique webhook token, show POST endpoint URL + JSON payload schema, copy-to-clipboard, test webhook button
 - [x] Sidebar: add Settings nav item to the Leads module in DashboardLayout
 - [x] App.tsx: add /leads/settings route
+
+## Change Requests (Round 76) — LEADS CRM Improvements
+
+- [x] DB: lead_programs table (id, name, isActive, createdAt) — custom interested program registry
+- [x] DB: lead_activity_presets table (id, label, activityType, score, isActive) — preset scored activity types
+- [x] DB: leads.leadScore update logic — add score delta on each preset activity log
+- [x] Backend: leadPrograms router — listPrograms, createProgram, updateProgram, deleteProgram
+- [x] Backend: activityPresets router — listPresets, createPreset, updatePreset, deletePreset
+- [x] Backend: leads.sendEmail procedure — send email to lead from system using SMTP (Gmail)
+- [x] Backend: leads.listLeads — extend filters: dateFrom, dateTo, stage, interestedProgram, assignedTo, lastActivityFrom, lastActivityTo
+- [x] Backend: Meta sync — store pageId/formId in integration config; document how to retrieve leads via Meta Graph API
+- [x] Frontend: LeadsSettings — add "Programs" tab with add/edit/delete/toggle for interested programs
+- [x] Frontend: LeadsSettings — add "Activity Presets" tab with preset list (label, type, score), add/edit/delete
+- [x] Frontend: LeadsSettings — Meta Ads tab: show pageId/formId fields; add "Sync Now" button that calls Meta Graph API to pull recent leads
+- [x] Frontend: LeadsSettings — Import tab: LeadSquared CSV column mapping wizard (map LeadSquared columns to ELEVAY fields), dry-run preview, confirm import
+- [x] Frontend: LeadProfile — show full note/activity body text inline (expandable if long)
+- [x] Frontend: LeadProfile — preset activity picker: dropdown/buttons for preset activities (Phone Call, No Answer, SMS, WhatsApp) with auto-filled score; score badge shown on each activity
+- [x] Frontend: LeadProfile — WhatsApp direct button next to phone number: opens wa.me link in new tab
+- [x] Frontend: LeadProfile — Send Email dialog: compose subject + body, send via system SMTP, log as activity
+- [x] Frontend: LeadsList — advanced filter panel: date created range, stage multi-select, interested program, assigned to, last activity date range

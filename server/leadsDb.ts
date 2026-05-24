@@ -31,6 +31,8 @@ export async function listLeads(filters?: {
   priority?: string;
   dateFrom?: number;
   dateTo?: number;
+  lastActivityFrom?: number;
+  lastActivityTo?: number;
 }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -56,11 +58,11 @@ export async function listLeads(filters?: {
   if (filters?.priority) conditions.push(eq(leads.priority, filters.priority as any));
   if (filters?.dateFrom) conditions.push(sql`${leads.createdAt} >= ${filters.dateFrom}`);
   if (filters?.dateTo) conditions.push(sql`${leads.createdAt} <= ${filters.dateTo}`);
-
+  if (filters?.lastActivityFrom) conditions.push(sql`${leads.lastContactAt} >= ${filters.lastActivityFrom}`);
+  if (filters?.lastActivityTo) conditions.push(sql`${leads.lastContactAt} <= ${filters.lastActivityTo}`);
   if (conditions.length > 0) {
     query = query.where(and(...conditions));
   }
-
   return query.orderBy(desc(leads.createdAt));
 }
 

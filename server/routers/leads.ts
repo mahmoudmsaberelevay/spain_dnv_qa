@@ -9,6 +9,7 @@ import {
   getLeadStageCounts, getLeadSourceCounts, getLeadProgramCounts,
   getMonthlyLeadConversions, getLeadTotalCount,
 } from "../leadsDb";
+import { listActivityPresets } from "../leadsSettingsDb";
 
 const STAGES = [
   "fresh", "contacted", "qualified", "prospect", "client", "dormant",
@@ -47,7 +48,6 @@ export const leadsRouter = router({
       skipDuplicateCheck: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      // Duplicate check
       if (!input.skipDuplicateCheck) {
         const dup = await checkDuplicate(input.phone, input.email || undefined, input.whatsapp);
         if (dup) {
@@ -98,6 +98,8 @@ export const leadsRouter = router({
       priority: z.string().optional(),
       dateFrom: z.number().optional(),
       dateTo: z.number().optional(),
+      lastActivityFrom: z.number().optional(),
+      lastActivityTo: z.number().optional(),
     }).optional())
     .query(async ({ input }) => {
       return listLeads(input);
@@ -195,6 +197,84 @@ export const leadsRouter = router({
     .input(z.object({ phone: z.string().optional(), email: z.string().optional(), whatsapp: z.string().optional() }))
     .query(async ({ input }) => {
       return checkDuplicate(input.phone, input.email, input.whatsapp);
+    }),
+
+  // ── Preset Activity Log ─────────────────────────────────────────────────────
+  logPresetActivity: protectedProcedure
+    .input(z.object({
+      leadId: z.number(),
+      presetId: z.number(),
+      note: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const presets = await listActivityPresets();
+      const preset = presets.find(p => p.id === input.presetId);
+      if (!preset) throw new TRPCError({ code: "NOT_FOUND", message: "Activity preset not found" });
+
+      const lead = await getLeadById(input.leadId);
+      if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
+
+      // Log activity with preset label and optional note
+      const description = input.note
+        ? `${preset.label}: ${input.note}`
+        : preset.label;
+
+      await addLeadActivity({
+        leadId: input.leadId,
+        userId: ctx.user.id,
+        activityType: preset.activityType as any,
+        description,
+        score: preset.score,
+      });
+
+      // Update lead score and lastContactAt
+      const newScore = Math.min(100, Math.max(0, (lead.leadScore ?? 0) + preset.score));
+      await updateLead(input.leadId, { leadScore: newScore, lastContactAt: Date.now() });
+
+      return { success: true, newScore };
+    }),
+
+  // ── Send Email ──────────────────────────────────────────────────────────────
+  sendEmail: protectedProcedure
+    .input(z.object({
+      leadId: z.number(),
+      subject: z.string().min(1),
+      body: z.string().min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const lead = await getLeadById(input.leadId);
+      if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!lead.email) throw new TRPCError({ code: "BAD_REQUEST", message: "Lead has no email address" });
+
+      const nodemailer = await import("nodemailer");
+      const user = process.env.GMAIL_USER;
+      const pass = process.env.GMAIL_APP_PASSWORD;
+      if (!user || !pass) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Email not configured" });
+
+      const transporter = nodemailer.default.createTransport({
+        service: "gmail",
+        auth: { user, pass },
+      });
+
+      await transporter.sendMail({
+        from: `ELEVAY <${user}>`,
+        to: lead.email,
+        subject: input.subject,
+        html: input.body.replace(/\n/g, "<br>"),
+      });
+
+      // Log as activity
+      await addLeadActivity({
+        leadId: input.leadId,
+        userId: ctx.user.id,
+        activityType: "email_sent",
+        description: `Email sent: "${input.subject}"`,
+        score: 1,
+      });
+      const newScore = Math.min(100, (lead.leadScore ?? 0) + 1);
+      await updateLead(input.leadId, { leadScore: newScore, lastContactAt: Date.now() });
+
+      return { success: true };
     }),
 
   // ── Activities ──────────────────────────────────────────────────────────────

@@ -832,8 +832,17 @@ export const leadActivities = mysqlTable("lead_activities", {
     "status_updated",
     "task_created",
     "task_completed",
+    "call",
+    "whatsapp",
+    "sms",
+    "email",
+    "meeting",
+    "note",
+    "stage_change",
+    "other",
   ]).notNull(),
   description: text("description").notNull(),
+  score: int("score").default(0),
   createdAt: bigint("createdAt", { mode: "number" }).notNull(),
 });
 export type LeadActivity = typeof leadActivities.$inferSelect;
@@ -905,3 +914,26 @@ export const leadsPermissions = mysqlTable("leads_permissions", {
   updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
 });
 export type LeadsPermission = typeof leadsPermissions.$inferSelect;
+
+// ─── LEADS PROGRAMS ──────────────────────────────────────────────────────────
+export const leadPrograms = mysqlTable("lead_programs", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 150 }).notNull(),
+  isActive: boolean("isActive").default(true),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+});
+export type LeadProgram = typeof leadPrograms.$inferSelect;
+export type InsertLeadProgram = typeof leadPrograms.$inferInsert;
+
+// ─── LEADS ACTIVITY PRESETS ───────────────────────────────────────────────────
+export const leadActivityPresets = mysqlTable("lead_activity_presets", {
+  id: int("id").autoincrement().primaryKey(),
+  label: varchar("label", { length: 150 }).notNull(),
+  activityType: mysqlEnum("activityType", ["call", "whatsapp", "sms", "email", "meeting", "note", "stage_change", "email_sent", "other"]).notNull().default("other"),
+  score: int("score").notNull().default(0),
+  isActive: boolean("isActive").default(true),
+  isDefault: boolean("isDefault").default(false),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+});
+export type LeadActivityPreset = typeof leadActivityPresets.$inferSelect;
+export type InsertLeadActivityPreset = typeof leadActivityPresets.$inferInsert;
