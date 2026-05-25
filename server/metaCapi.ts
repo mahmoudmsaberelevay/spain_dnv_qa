@@ -54,7 +54,6 @@ export async function sendCapiEvent(data: CapiEventData): Promise<void> {
   }
 
   const payload: Record<string, unknown> = { data: [event] };
-  if (ENV.metaCapiTestCode) payload.test_event_code = ENV.metaCapiTestCode;
   const body = JSON.stringify(payload);
   const url = `https://graph.facebook.com/${API_VERSION}/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`;
 
