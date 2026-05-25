@@ -1,22 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { MessageSquare, Users, Search, Image, Video, Music, FileText, MapPin, Smile } from "lucide-react";
-
-function MessageTypeIcon({ type }: { type: string }) {
-  const map: Record<string, React.ReactNode> = {
-    image: <Image className="h-3 w-3 text-blue-400" />,
-    video: <Video className="h-3 w-3 text-purple-400" />,
-    audio: <Music className="h-3 w-3 text-green-400" />,
-    document: <FileText className="h-3 w-3 text-orange-400" />,
-    location: <MapPin className="h-3 w-3 text-red-400" />,
-    reaction: <Smile className="h-3 w-3 text-yellow-400" />,
-  };
-  return map[type] ? <span className="shrink-0">{map[type]}</span> : null;
-}
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+import {
+  MessageSquare, Users, Search, Image, Video, Music, FileText, MapPin,
+  Send, Bot, X, Loader2, Phone, RefreshCw,
+} from "lucide-react";
+import { Streamdown } from "streamdown";
 
 function formatTime(date: Date | string | null | undefined) {
   if (!date) return "";
@@ -29,69 +24,293 @@ function formatTime(date: Date | string | null | undefined) {
   return d.toLocaleDateString();
 }
 
+function formatMsgTime(ts: number | null | undefined, fallback: Date | string) {
+  const d = ts ? new Date(ts) : new Date(fallback);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+const BUSINESS_PHONE_ID = "1107700702429603";
+
+function MediaBubble({ msg }: { msg: any }) {
+  if (msg.messageType === "image") {
+    return (
+      <div>
+        <div className="bg-black/20 flex items-center justify-center h-24 w-40 rounded-lg">
+          <Image className="h-8 w-8 text-white/50" />
+        </div>
+        {msg.caption && <p className="text-xs mt-1 opacity-80">{msg.caption}</p>}
+      </div>
+    );
+  }
+  if (msg.messageType === "video") {
+    return (
+      <div className="flex items-center gap-2">
+        <Video className="h-5 w-5 shrink-0 opacity-80" />
+        <span className="text-sm">{msg.caption || "Video"}</span>
+      </div>
+    );
+  }
+  if (msg.messageType === "audio") {
+    return (
+      <div className="flex items-center gap-2">
+        <Music className="h-5 w-5 shrink-0 opacity-80" />
+        <span className="text-sm">Voice / Audio</span>
+      </div>
+    );
+  }
+  if (msg.messageType === "document") {
+    return (
+      <div className="flex items-center gap-2">
+        <FileText className="h-5 w-5 shrink-0 opacity-80" />
+        <span className="text-sm">{msg.fileName || msg.caption || "Document"}</span>
+      </div>
+    );
+  }
+  if (msg.messageType === "location") {
+    return (
+      <div className="flex items-center gap-2">
+        <MapPin className="h-5 w-5 shrink-0 opacity-80" />
+        <span className="text-sm">{msg.locationName || `${msg.latitude}, ${msg.longitude}`}</span>
+      </div>
+    );
+  }
+  if (msg.messageType === "reaction") {
+    return <span className="text-2xl">{msg.reactionEmoji}</span>;
+  }
+  return (
+    <span className="text-sm break-words whitespace-pre-wrap">
+      {msg.textContent || msg.caption || `[${msg.messageType}]`}
+    </span>
+  );
+}
+
+function AiPanel({ groupId, onClose }: { groupId: string; onClose: () => void }) {
+  const [question, setQuestion] = useState("");
+  const [history, setHistory] = useState<Array<{ q: string; a: string }>>([]);
+  const askMutation = trpc.waQc.aiQuery.ask.useMutation({
+    onSuccess: (data) => {
+      const answer = typeof data.answer === "string" ? data.answer : String(data.answer);
+      setHistory(prev => [...prev, { q: question, a: answer }]);
+      setQuestion("");
+    },
+    onError: (err) => {
+      toast.error("AI Error: " + err.message);
+    },
+  });
+
+  const suggestions = [
+    "Summarize this conversation",
+    "What documents were requested?",
+    "Any urgent issues mentioned?",
+    "What did the client ask about?",
+  ];
+
+  const handleAsk = (q?: string) => {
+    const text = q || question;
+    if (!text.trim() || askMutation.isPending) return;
+    setQuestion(text);
+    askMutation.mutate({ question: text, groupId });
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+        <div className="flex items-center gap-2">
+          <Bot className="h-4 w-4 text-yellow-400" />
+          <span className="text-sm font-semibold text-foreground">AI Assistant</span>
+        </div>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      {history.length === 0 && (
+        <div className="p-3 space-y-1.5">
+          <p className="text-[11px] text-muted-foreground mb-2">Ask about this conversation:</p>
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              onClick={() => handleAsk(s)}
+              className="w-full text-left text-xs px-3 py-2 rounded-lg bg-accent/30 hover:bg-accent/60 text-foreground transition-colors"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-4">
+        {history.map((item, i) => (
+          <div key={i} className="space-y-2">
+            <div className="flex justify-end">
+              <div className="bg-primary/20 rounded-xl px-3 py-2 max-w-[90%]">
+                <p className="text-xs text-foreground">{item.q}</p>
+              </div>
+            </div>
+            <div className="flex justify-start">
+              <div className="bg-accent/30 rounded-xl px-3 py-2 max-w-[90%]">
+                <div className="text-xs text-foreground">
+                  <Streamdown>{item.a}</Streamdown>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+        {askMutation.isPending && (
+          <div className="flex items-center gap-2 text-muted-foreground text-xs">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Analyzing conversation...
+          </div>
+        )}
+      </div>
+
+      <div className="p-3 border-t border-border/50">
+        <div className="flex gap-2">
+          <Input
+            placeholder="Ask about this chat..."
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleAsk()}
+            className="text-xs h-8 bg-background border-border/50"
+          />
+          <Button
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={() => handleAsk()}
+            disabled={!question.trim() || askMutation.isPending}
+          >
+            {askMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function WaQcConversations() {
   const [location] = useLocation();
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  const [convSearch, setConvSearch] = useState("");
+  const [msgSearch, setMsgSearch] = useState("");
+  const [debouncedMsgSearch, setDebouncedMsgSearch] = useState("");
+  const [replyText, setReplyText] = useState("");
+  const [showAi, setShowAi] = useState(false);
+  const [showMsgSearch, setShowMsgSearch] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const msgSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Parse groupId from URL query
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const gid = params.get("groupId");
     if (gid) setSelectedGroupId(gid);
   }, [location]);
 
-  const { data: conversations, isLoading: convsLoading } = trpc.waQc.conversations.list.useQuery();
-  const { data: messages, isLoading: msgsLoading } = trpc.waQc.messages.list.useQuery(
-    { groupId: selectedGroupId || undefined, limit: 100, offset: 0 },
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [selectedGroupId]);
+
+  const { data: conversations, isLoading: convsLoading, refetch: refetchConvs } = trpc.waQc.conversations.list.useQuery();
+
+  const { data: messages, isLoading: msgsLoading, refetch: refetchMsgs } = trpc.waQc.messages.listForConversation.useQuery(
+    { groupId: selectedGroupId || "", search: debouncedMsgSearch || undefined, limit: 150, offset: 0 },
     { enabled: !!selectedGroupId }
   );
 
+  const sendReplyMutation = trpc.waQc.sendReply.useMutation({
+    onSuccess: () => {
+      setReplyText("");
+      toast.success("Message sent successfully");
+      setTimeout(() => refetchMsgs(), 1500);
+    },
+    onError: (err) => {
+      toast.error("Failed to send: " + err.message);
+    },
+  });
+
   const filteredConvs = conversations?.filter((c) =>
-    !search || c.name.toLowerCase().includes(search.toLowerCase())
+    !convSearch || c.name.toLowerCase().includes(convSearch.toLowerCase())
   );
 
   const selectedConv = conversations?.find((c) => c.id === selectedGroupId);
+  const toPhone = selectedGroupId || "";
+
+  const handleSendReply = () => {
+    if (!replyText.trim() || !toPhone) return;
+    sendReplyMutation.mutate({ toPhone, message: replyText.trim() });
+  };
+
+  const handleMsgSearchChange = useCallback((v: string) => {
+    setMsgSearch(v);
+    if (msgSearchTimer.current) clearTimeout(msgSearchTimer.current);
+    msgSearchTimer.current = setTimeout(() => setDebouncedMsgSearch(v), 400);
+  }, []);
+
+  const sortedMessages = messages?.rows ? [...messages.rows].sort((a, b) => {
+    const ta = a.whatsappTimestamp ?? new Date(a.createdAt).getTime();
+    const tb = b.whatsappTimestamp ?? new Date(b.createdAt).getTime();
+    return ta - tb;
+  }) : [];
 
   return (
-    <div className="p-6 space-y-4">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Conversations</h1>
-        <p className="text-sm text-muted-foreground">Browse full conversation threads by group</p>
+    <div className="p-4 space-y-3 h-[calc(100vh-64px)] flex flex-col">
+      <div className="flex items-center justify-between shrink-0">
+        <div>
+          <h1 className="text-xl font-bold text-foreground">Conversations</h1>
+          <p className="text-sm text-muted-foreground">Browse, reply, and analyze WhatsApp conversations</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refetchConvs()} className="gap-1.5">
+          <RefreshCw className="h-3.5 w-3.5" />
+          Refresh
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100vh-220px)]">
+      <div className="flex gap-3 flex-1 min-h-0">
         {/* Conversation List */}
-        <Card className="border-border/50 flex flex-col overflow-hidden">
+        <Card className="border-border/50 flex flex-col w-72 shrink-0 overflow-hidden">
           <div className="p-3 border-b border-border/50">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                placeholder="Search groups..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search conversations..."
+                value={convSearch}
+                onChange={(e) => setConvSearch(e.target.value)}
                 className="pl-8 h-8 text-sm bg-card border-border/50"
               />
             </div>
           </div>
           <div className="flex-1 overflow-y-auto">
             {convsLoading ? (
-              <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">Loading...</div>
+              <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+                <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading...
+              </div>
             ) : !filteredConvs?.length ? (
               <div className="flex flex-col items-center justify-center py-12 text-center px-4">
                 <MessageSquare className="h-8 w-8 text-muted-foreground/30 mb-2" />
                 <p className="text-sm text-muted-foreground">No conversations yet</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">Messages will appear here once received</p>
               </div>
             ) : (
               <div className="divide-y divide-border/50">
                 {filteredConvs.map((conv) => (
                   <button
                     key={conv.id}
-                    onClick={() => setSelectedGroupId(conv.id)}
-                    className={`w-full flex items-start gap-3 px-3 py-3 hover:bg-accent/30 transition-colors text-left ${selectedGroupId === conv.id ? "bg-accent/50" : ""}`}
+                    onClick={() => {
+                      setSelectedGroupId(conv.id);
+                      setShowAi(false);
+                      setMsgSearch("");
+                      setDebouncedMsgSearch("");
+                      setShowMsgSearch(false);
+                    }}
+                    className={`w-full flex items-start gap-3 px-3 py-3 hover:bg-accent/30 transition-colors text-left ${selectedGroupId === conv.id ? "bg-accent/50 border-l-2 border-primary" : ""}`}
                   >
                     <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      {conv.isGroup ? <Users className="h-4 w-4 text-primary" /> : <MessageSquare className="h-4 w-4 text-primary" />}
+                      {conv.isGroup ? <Users className="h-4 w-4 text-primary" /> : (
+                        <span className="text-sm font-bold text-primary">
+                          {(conv.name || "?").charAt(0).toUpperCase()}
+                        </span>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
@@ -102,6 +321,9 @@ export default function WaQcConversations() {
                         {conv.lastSender && <span className="font-medium">{conv.lastSender}: </span>}
                         {conv.lastMessage}
                       </p>
+                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 mt-0.5">
+                        {conv.messageCount} msgs
+                      </Badge>
                     </div>
                   </button>
                 ))}
@@ -110,61 +332,181 @@ export default function WaQcConversations() {
           </div>
         </Card>
 
-        {/* Message Thread */}
-        <Card className="border-border/50 lg:col-span-2 flex flex-col overflow-hidden">
-          {!selectedGroupId ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-4">
-              <MessageSquare className="h-12 w-12 text-muted-foreground/30 mb-3" />
-              <p className="text-sm text-muted-foreground">Select a conversation to view messages</p>
-            </div>
-          ) : (
-            <>
-              <div className="px-4 py-3 border-b border-border/50 flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  {selectedConv?.isGroup ? <Users className="h-4 w-4 text-primary" /> : <MessageSquare className="h-4 w-4 text-primary" />}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{selectedConv?.name || selectedGroupId}</p>
-                  <p className="text-xs text-muted-foreground">{selectedConv?.messageCount?.toLocaleString()} messages</p>
-                </div>
+        {/* Chat View */}
+        <div className="flex-1 min-w-0 flex gap-3">
+          <Card className="border-border/50 flex flex-col flex-1 min-w-0 overflow-hidden">
+            {!selectedGroupId ? (
+              <div className="flex flex-col items-center justify-center h-full text-center px-4">
+                <MessageSquare className="h-14 w-14 text-muted-foreground/20 mb-4" />
+                <p className="text-base font-medium text-muted-foreground">Select a conversation</p>
+                <p className="text-sm text-muted-foreground/60 mt-1">Choose a chat from the left to view messages</p>
               </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {msgsLoading ? (
-                  <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">Loading messages...</div>
-                ) : !messages?.rows?.length ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <MessageSquare className="h-8 w-8 text-muted-foreground/30 mb-2" />
-                    <p className="text-sm text-muted-foreground">No messages in this conversation</p>
-                  </div>
-                ) : (
-                  [...messages.rows].reverse().map((msg) => (
-                    <div key={msg.id} className="flex items-start gap-2.5">
-                      <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <span className="text-[10px] font-semibold text-primary">
-                          {(msg.senderName || msg.senderPhone || "?").charAt(0).toUpperCase()}
+            ) : (
+              <>
+                {/* Chat Header */}
+                <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
+                      {selectedConv?.isGroup ? <Users className="h-4 w-4 text-primary" /> : (
+                        <span className="text-sm font-bold text-primary">
+                          {(selectedConv?.name || "?").charAt(0).toUpperCase()}
                         </span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline gap-2 mb-0.5">
-                          <span className="text-xs font-semibold text-foreground">{msg.senderName || msg.senderPhone}</span>
-                          <span className="text-[10px] text-muted-foreground/60">
-                            {new Date(msg.whatsappTimestamp ? msg.whatsappTimestamp : msg.createdAt).toLocaleTimeString()}
-                          </span>
-                        </div>
-                        <div className={`inline-block max-w-full rounded-xl px-3 py-2 text-sm ${msg.messageType === "text" ? "bg-accent/40 text-foreground" : "bg-primary/10 text-foreground"}`}>
-                          <div className="flex items-center gap-1.5">
-                            <MessageTypeIcon type={msg.messageType} />
-                            <span className="break-words">{msg.textContent || msg.caption || `[${msg.messageType}]`}</span>
-                          </div>
-                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{selectedConv?.name || selectedGroupId}</p>
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-3 w-3 text-muted-foreground/60" />
+                        <p className="text-xs text-muted-foreground">{selectedGroupId}</p>
+                        <span className="text-muted-foreground/40">·</span>
+                        <p className="text-xs text-muted-foreground">{selectedConv?.messageCount?.toLocaleString()} messages</p>
                       </div>
                     </div>
-                  ))
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant={showMsgSearch ? "secondary" : "ghost"}
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => {
+                        setShowMsgSearch(!showMsgSearch);
+                        if (showMsgSearch) { setMsgSearch(""); setDebouncedMsgSearch(""); }
+                      }}
+                      title="Search in chat"
+                    >
+                      <Search className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={showAi ? "secondary" : "ghost"}
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setShowAi(!showAi)}
+                      title="AI Assistant"
+                    >
+                      <Bot className="h-4 w-4 text-yellow-400" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => refetchMsgs()} title="Refresh">
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* In-chat search */}
+                {showMsgSearch && (
+                  <div className="px-4 py-2 border-b border-border/50 bg-accent/10">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Search messages in this chat..."
+                        value={msgSearch}
+                        onChange={(e) => handleMsgSearchChange(e.target.value)}
+                        className="pl-8 h-8 text-sm bg-background border-border/50"
+                        autoFocus
+                      />
+                      {msgSearch && (
+                        <button
+                          onClick={() => { setMsgSearch(""); setDebouncedMsgSearch(""); }}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    {debouncedMsgSearch && (
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        {messages?.total ?? 0} result(s) for &quot;{debouncedMsgSearch}&quot;
+                      </p>
+                    )}
+                  </div>
                 )}
-              </div>
-            </>
+
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                  {msgsLoading ? (
+                    <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading messages...
+                    </div>
+                  ) : !sortedMessages.length ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <MessageSquare className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                      <p className="text-sm text-muted-foreground">
+                        {debouncedMsgSearch ? `No messages matching "${debouncedMsgSearch}"` : "No messages in this conversation"}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {sortedMessages.map((msg, idx) => {
+                        const isOutgoing = msg.senderId === BUSINESS_PHONE_ID || msg.senderPhone === BUSINESS_PHONE_ID;
+                        const showSender = !isOutgoing && (idx === 0 || sortedMessages[idx - 1]?.senderId !== msg.senderId);
+                        return (
+                          <div key={msg.id} className={`flex ${isOutgoing ? "justify-end" : "justify-start"} items-end gap-2`}>
+                            {!isOutgoing && (
+                              <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mb-0.5">
+                                <span className="text-[10px] font-bold text-primary">
+                                  {(msg.senderName || msg.senderPhone || "?").charAt(0).toUpperCase()}
+                                </span>
+                              </div>
+                            )}
+                            <div className={`max-w-[70%] flex flex-col ${isOutgoing ? "items-end" : "items-start"}`}>
+                              {showSender && (
+                                <span className="text-[11px] font-semibold text-primary/80 mb-0.5 px-1">
+                                  {msg.senderName || msg.senderPhone}
+                                </span>
+                              )}
+                              <div className={`rounded-2xl px-3 py-2 text-sm ${isOutgoing ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-accent/50 text-foreground rounded-bl-sm"}`}>
+                                <MediaBubble msg={msg} />
+                              </div>
+                              <span className={`text-[10px] text-muted-foreground/60 mt-0.5 px-1 ${isOutgoing ? "text-right" : "text-left"}`}>
+                                {formatMsgTime(msg.whatsappTimestamp, msg.createdAt)}
+                              </span>
+                            </div>
+                            {isOutgoing && <div className="w-7 shrink-0" />}
+                          </div>
+                        );
+                      })}
+                      <div ref={messagesEndRef} />
+                    </>
+                  )}
+                </div>
+
+                {/* Reply Box */}
+                <div className="px-4 py-3 border-t border-border/50 shrink-0">
+                  <div className="flex gap-2 items-end">
+                    <Textarea
+                      placeholder="Type a reply... (Enter to send, Shift+Enter for new line)"
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendReply();
+                        }
+                      }}
+                      className="resize-none min-h-[40px] max-h-[120px] text-sm bg-background border-border/50"
+                      rows={1}
+                    />
+                    <Button
+                      size="icon"
+                      className="h-10 w-10 shrink-0"
+                      onClick={handleSendReply}
+                      disabled={!replyText.trim() || sendReplyMutation.isPending}
+                      title="Send reply"
+                    >
+                      {sendReplyMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </Card>
+
+          {/* AI Panel */}
+          {showAi && selectedGroupId && (
+            <Card className="border-border/50 w-72 shrink-0 overflow-hidden flex flex-col">
+              <AiPanel groupId={selectedGroupId} onClose={() => setShowAi(false)} />
+            </Card>
           )}
-        </Card>
+        </div>
       </div>
     </div>
   );
