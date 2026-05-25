@@ -108,9 +108,11 @@ export const leadsRouter = router({
     .input(z.object({
       search: z.string().optional(),
       stage: z.string().optional(),
+      stages: z.array(z.string()).optional(),
       leadSource: z.string().optional(),
       interestedProgram: z.string().optional(),
       assignedTo: z.string().optional(),
+      assignedToList: z.array(z.string()).optional(),
       priority: z.string().optional(),
       dateFrom: z.number().optional(),
       dateTo: z.number().optional(),
@@ -130,9 +132,11 @@ export const leadsRouter = router({
     .input(z.object({
       search: z.string().optional(),
       stage: z.string().optional(),
+      stages: z.array(z.string()).optional(),
       leadSource: z.string().optional(),
       interestedProgram: z.string().optional(),
       assignedTo: z.string().optional(),
+      assignedToList: z.array(z.string()).optional(),
       priority: z.string().optional(),
       dateFrom: z.number().optional(),
       dateTo: z.number().optional(),

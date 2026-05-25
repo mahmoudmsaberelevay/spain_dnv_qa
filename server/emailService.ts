@@ -32,7 +32,7 @@ export const TEAM_EMAIL_MAP: Record<string, string> = {
   "Madonna Adel": "madonna.adel@elevay.com",
   "Monica Sobhy": "monica.sobhy@elevay.com",
   "Nouran Mamdouh": "nouran.Mamdouh@elevay.com",
-  "Hager Hany": "hager.hany@elevay.com",
+  "Hager Hany": "hager.hany@elevay.com",  // correct spelling
   "Marwa Abdallah": "marwa.abdallah@elevay.com",
   "Basmala Shereef": "basmala.shereef@elevay.com",
   "Eman Ahmed": "eman.ahmed@elevay.com",
@@ -45,6 +45,7 @@ export const TEAM_EMAIL_MAP: Record<string, string> = {
   Monica: "monica.sobhy@elevay.com",
   Marina: "marina.kamel@elevay.com",
   Nouran: "nouran.Mamdouh@elevay.com",
+  Hagar: "hager.hany@elevay.com",  // legacy alias for old spelling
 };
 
 /** Create a reusable nodemailer transporter using Gmail SMTP */
