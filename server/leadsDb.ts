@@ -28,6 +28,7 @@ export async function listLeads(filters?: {
   stages?: string[];          // multi-select stage filter
   leadSource?: string;
   interestedProgram?: string;
+  programs?: string[];         // multi-select program filter
   assignedTo?: string;
   assignedToList?: string[];  // multi-select owner filter
   priority?: string;
@@ -67,7 +68,14 @@ export async function listLeads(filters?: {
     conditions.push(eq(leads.stage, filters.stage as any));
   }
   if (filters?.leadSource) conditions.push(eq(leads.leadSource, filters.leadSource));
-  if (filters?.interestedProgram) conditions.push(like(leads.interestedProgram, `%${filters.interestedProgram}%`));
+  // program: single value OR multi-value array
+  if (filters?.programs && filters.programs.length > 0) {
+    conditions.push(
+      or(...filters.programs.map(p => like(leads.interestedProgram, `%${p}%`)))
+    );
+  } else if (filters?.interestedProgram) {
+    conditions.push(like(leads.interestedProgram, `%${filters.interestedProgram}%`));
+  }
   // assignedTo: single value OR multi-value array
   if (filters?.assignedToList && filters.assignedToList.length > 0) {
     conditions.push(inArray(leads.assignedTo, filters.assignedToList));
