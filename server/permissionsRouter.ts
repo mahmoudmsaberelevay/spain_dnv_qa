@@ -61,7 +61,7 @@ export const MODULE_PAGE_KEYS: Record<ModuleName, string[]> = {
     "fin_dashboard", "fin_accounts", "fin_income", "fin_expenses",
     "fin_transfers", "fin_reports", "fin_employees", "fin_categories",
     "fin_commissions", "fin_clients", "fin_bulk_upload", "fin_settlement",
-    "fin_upcoming",
+    "fin_upcoming", "fin_salary_receipts", "fin_commission_receipts",
   ],
   waQc: ["wa_qc"],
 };
@@ -74,6 +74,7 @@ export const ALL_PAGE_KEYS = [
   "fin_dashboard", "fin_accounts", "fin_income", "fin_expenses",
   "fin_transfers", "fin_reports", "fin_employees", "fin_categories",
   "fin_commissions", "fin_clients", "fin_bulk_upload", "fin_settlement", "fin_upcoming",
+  "fin_salary_receipts", "fin_commission_receipts",
   "wa_qc",
   "settings", "chat", "broadcast",
 ] as const;

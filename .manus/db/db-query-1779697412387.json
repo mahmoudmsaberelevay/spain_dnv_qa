@@ -1,0 +1,16 @@
+{
+  "query": "SELECT id, name, email, role FROM users WHERE name LIKE '%hager%' OR name LIKE '%Hager%' OR email LIKE '%hager%' OR email LIKE '%Hager%';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT id, name, email, role FROM users WHERE name LIKE '%hager%' OR name LIKE '%Hager%' OR email LIKE '%hager%' OR email LIKE '%Hager%';",
+  "rows": [
+    {
+      "id": "12484157",
+      "name": "Hager Hany",
+      "email": "hager.hany@elevay.com",
+      "role": "user"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\trole\n12484157\tHager Hany\thager.hany@elevay.com\tuser\n",
+  "stderr": "",
+  "execution_time_ms": 1743
+}

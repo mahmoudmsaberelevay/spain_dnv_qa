@@ -1,0 +1,18 @@
+{
+  "query": "SELECT id, name, email, role, createdAt, lastSignedIn FROM users WHERE email = 'hager.hany@elevay.com' ORDER BY createdAt;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT id, name, email, role, createdAt, lastSignedIn FROM users WHERE email = 'hager.hany@elevay.com' ORDER BY createdAt;",
+  "rows": [
+    {
+      "id": "12484157",
+      "name": "Hager Hany",
+      "email": "hager.hany@elevay.com",
+      "role": "user",
+      "createdAt": "2026-05-24 12:57:39",
+      "lastSignedIn": "2026-05-25 08:27:34"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\trole\tcreatedAt\tlastSignedIn\n12484157\tHager Hany\thager.hany@elevay.com\tuser\t2026-05-24 12:57:39\t2026-05-25 08:27:34\n",
+  "stderr": "",
+  "execution_time_ms": 1765
+}

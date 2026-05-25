@@ -1,0 +1,86 @@
+{
+  "query": "SELECT pageKey, canAccess FROM userPermissions WHERE userId = 12484157 ORDER BY pageKey;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT pageKey, canAccess FROM userPermissions WHERE userId = 12484157 ORDER BY pageKey;",
+  "rows": [
+    {
+      "pageKey": "analysis_dashboard",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "cases",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "client_docs",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "contracts",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "fin_accounts",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "fin_bulk_upload",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "fin_categories",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "fin_clients",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "fin_commissions",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "fin_dashboard",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "fin_employees",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "fin_expenses",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "fin_income",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "fin_reports",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "fin_settlement",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "fin_transfers",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "fin_upcoming",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "receipts",
+      "canAccess": "1"
+    },
+    {
+      "pageKey": "wa_qc",
+      "canAccess": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "pageKey\tcanAccess\nanalysis_dashboard\t1\ncases\t1\nclient_docs\t1\ncontracts\t1\nfin_accounts\t1\nfin_bulk_upload\t1\nfin_categories\t1\nfin_clients\t1\nfin_commissions\t1\nfin_dashboard\t1\nfin_employees\t1\nfin_expenses\t1\nfin_income\t1\nfin_reports\t1\nfin_settlement\t1\nfin_transfers\t1\nfin_upcoming\t1\nreceipts\t1\nwa_qc\t1\n",
+  "stderr": "",
+  "execution_time_ms": 1829
+}
