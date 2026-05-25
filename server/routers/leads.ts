@@ -11,6 +11,7 @@ import {
   getLeadCampaignCounts, getLeadFormCounts,
   bulkDeleteLeads, getLeadsByIds,
   bulkUpdateLeadsStage, bulkUpdateLeadsOwner,
+  getNewLeadsReport, getStageChangeReport, getUserActivityReport,
 } from "../leadsDb";
 import { listActivityPresets, listLeadIntegrations } from "../leadsSettingsDb";
 import { syncOneIntegrationById } from "../metaLeadSync";
@@ -705,8 +706,22 @@ export const leadsRouter = router({
       .input(z.object({ year: z.number().int() }))
       .query(async ({ input }) => getMonthlyLeadConversions(input.year)),
 
-    byCampaign: protectedProcedure.query(async () => getLeadCampaignCounts()),
-
+     byCampaign: protectedProcedure.query(async () => getLeadCampaignCounts()),
     byForm: protectedProcedure.query(async () => getLeadFormCounts()),
+  }),
+
+  // ── Reporting ───────────────────────────────────────────────────────────────
+  reporting: router({
+    newLeads: protectedProcedure
+      .input(z.object({ dateFrom: z.number(), dateTo: z.number() }))
+      .query(async ({ input }) => getNewLeadsReport(input.dateFrom, input.dateTo)),
+
+    stageChanges: protectedProcedure
+      .input(z.object({ dateFrom: z.number(), dateTo: z.number(), userId: z.number().optional() }))
+      .query(async ({ input }) => getStageChangeReport(input.dateFrom, input.dateTo, input.userId)),
+
+    userActivity: protectedProcedure
+      .input(z.object({ dateFrom: z.number(), dateTo: z.number(), userId: z.number().optional() }))
+      .query(async ({ input }) => getUserActivityReport(input.dateFrom, input.dateTo, input.userId)),
   }),
 });

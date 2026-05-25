@@ -669,3 +669,10 @@
 ## Leads CRM Email Notifications (Round 88)
 - [x] Meta sync email alert to Mahmoud.saber@elevay.com + Nouran.mamdouh@elevay.com with campaign name, form name, new lead count
 - [x] Lead assignment email to new owner with lead name, phone, program, and deep link
+
+## Leads Module Improvements (Round 89)
+- [x] Owner change button inside lead detail page (with email notification to new owner)
+- [x] Fix program filter (partial/case-insensitive match), add date range, owner, and stage filters to All Leads page
+- [x] Meta lead form: custom lead source field per form — leads from that form use that source
+- [x] Leads Reporting page: user activity report (total activities per user per time frame)
+- [x] Leads Reporting page: new leads count and stage change report per time frame

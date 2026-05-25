@@ -1020,6 +1020,12 @@ function LeadFormsTab() {
     onError: (err: any) => toast.error(err.message),
   });
 
+  const setFormSource = trpc.leadsSettings.setFormLeadSource.useMutation({
+    onSuccess: () => { refetchForms(); refetchIntegrations(); toast.success("Lead source saved"); },
+    onError: (err: any) => toast.error(err.message),
+  });
+  const [formSourceEdits, setFormSourceEdits] = useState<Record<string, string>>({});
+
   const syncNow = trpc.leadsSettings.syncMeta.useMutation({
     onSuccess: (data: any) => {
       refetchForms();
@@ -1042,6 +1048,7 @@ function LeadFormsTab() {
   const integration = metaIntegrations[0];
   const forms: any[] = (formsData as any)?.forms ?? [];
   const disabledFormIds: string[] = ((integration as any).config as any)?.disabledFormIds ?? [];
+  const perFormSources: Record<string, string> = (() => { try { const c = JSON.parse((integration as any).config ?? "{}"); return (c.form_sources && typeof c.form_sources === "object") ? c.form_sources : {}; } catch { return {}; } })();
 
   return (
     <div className="space-y-6">
@@ -1117,6 +1124,21 @@ function LeadFormsTab() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-xs text-muted-foreground">Lead Source</span>
+                    <Input
+                      className="h-7 text-xs w-40"
+                      placeholder={perFormSources[form.id] ? perFormSources[form.id] : "e.g. Spain DNV Ads"}
+                      value={formSourceEdits[form.id] ?? perFormSources[form.id] ?? ""}
+                      onChange={e => setFormSourceEdits(prev => ({ ...prev, [form.id]: e.target.value }))}
+                      onBlur={() => {
+                        const val = formSourceEdits[form.id] ?? "";
+                        if (val !== (perFormSources[form.id] ?? "")) {
+                          setFormSource.mutate({ integrationId: integration.id, formId: form.id, leadSource: val });
+                        }
+                      }}
+                    />
+                  </div>
                   <span className={`text-xs font-medium ${isEnabled ? "text-emerald-600" : "text-muted-foreground"}`}>
                     {isEnabled ? "Connected" : "Disconnected"}
                   </span>

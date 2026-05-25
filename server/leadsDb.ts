@@ -60,7 +60,7 @@ export async function listLeads(filters?: {
   }
   if (filters?.stage) conditions.push(eq(leads.stage, filters.stage as any));
   if (filters?.leadSource) conditions.push(eq(leads.leadSource, filters.leadSource));
-  if (filters?.interestedProgram) conditions.push(eq(leads.interestedProgram, filters.interestedProgram));
+  if (filters?.interestedProgram) conditions.push(like(leads.interestedProgram, `%${filters.interestedProgram}%`));
   if (filters?.assignedTo) conditions.push(eq(leads.assignedTo, filters.assignedTo));
   if (filters?.priority) conditions.push(eq(leads.priority, filters.priority as any));
   if (filters?.dateFrom) conditions.push(sql`${leads.createdAt} >= ${filters.dateFrom}`);
@@ -328,4 +328,84 @@ export async function getLeadFormCounts() {
     .groupBy(leads.metaFormName)
     .orderBy(sql`COUNT(*) DESC`)
     .limit(20);
+}
+
+// ─── Reporting ────────────────────────────────────────────────────────────────
+
+/** Get new leads count grouped by day within a date range */
+export async function getNewLeadsReport(dateFrom: number, dateTo: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const [{ total }] = await db
+    .select({ total: sql<number>`COUNT(*)` })
+    .from(leads)
+    .where(sql`${leads.createdAt} >= ${dateFrom} AND ${leads.createdAt} <= ${dateTo}`);
+  const byDay = await db
+    .select({
+      day: sql<string>`DATE(FROM_UNIXTIME(${leads.createdAt} / 1000))`,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(leads)
+    .where(sql`${leads.createdAt} >= ${dateFrom} AND ${leads.createdAt} <= ${dateTo}`)
+    .groupBy(sql`DATE(FROM_UNIXTIME(${leads.createdAt} / 1000))`)
+    .orderBy(sql`DATE(FROM_UNIXTIME(${leads.createdAt} / 1000))`);
+  return { total: Number(total), byDay };
+}
+
+/** Get stage change activities within a date range, optionally filtered by user */
+export async function getStageChangeReport(dateFrom: number, dateTo: number, userId?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const conditions: any[] = [
+    eq(leadActivities.activityType, "stage_changed"),
+    sql`${leadActivities.createdAt} >= ${dateFrom}`,
+    sql`${leadActivities.createdAt} <= ${dateTo}`,
+  ];
+  if (userId) conditions.push(eq(leadActivities.userId, userId));
+  const rows = await db
+    .select({
+      id: leadActivities.id,
+      leadId: leadActivities.leadId,
+      userId: leadActivities.userId,
+      description: leadActivities.description,
+      createdAt: leadActivities.createdAt,
+    })
+    .from(leadActivities)
+    .where(and(...conditions))
+    .orderBy(desc(leadActivities.createdAt))
+    .limit(500);
+  return rows;
+}
+
+/** Get activity counts per user within a date range */
+export async function getUserActivityReport(dateFrom: number, dateTo: number, userId?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const conditions: any[] = [
+    sql`${leadActivities.createdAt} >= ${dateFrom}`,
+    sql`${leadActivities.createdAt} <= ${dateTo}`,
+  ];
+  if (userId) conditions.push(eq(leadActivities.userId, userId));
+  // Summary: total per user
+  const summary = await db
+    .select({
+      userId: leadActivities.userId,
+      total: sql<number>`COUNT(*)`,
+      byType: sql<string>`GROUP_CONCAT(DISTINCT ${leadActivities.activityType})`,
+    })
+    .from(leadActivities)
+    .where(and(...conditions))
+    .groupBy(leadActivities.userId);
+  // Breakdown per user per type
+  const breakdown = await db
+    .select({
+      userId: leadActivities.userId,
+      activityType: leadActivities.activityType,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(leadActivities)
+    .where(and(...conditions))
+    .groupBy(leadActivities.userId, leadActivities.activityType)
+    .orderBy(leadActivities.userId, desc(sql`COUNT(*)`));
+  return { summary, breakdown };
 }

@@ -238,6 +238,28 @@ export const leadsSettingsRouter = router({
       return { success: true };
     }),
 
+  // ─── Per-Form Lead Source Override ──────────────────────────────────────────
+  setFormLeadSource: protectedProcedure
+    .input(z.object({ integrationId: z.number(), formId: z.string(), leadSource: z.string() }))
+    .mutation(async ({ input }) => {
+      const db = await (await import("../db")).getDb();
+      if (!db) throw new Error("DB not available");
+      const { leadIntegrations } = await import("../../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      const [integration] = await db.select().from(leadIntegrations).where(eq(leadIntegrations.id, input.integrationId)).limit(1);
+      if (!integration) throw new Error("Integration not found");
+      const config = integration.config ? JSON.parse(integration.config) : {};
+      const formSources: Record<string, string> = config.form_sources ?? {};
+      if (input.leadSource.trim()) {
+        formSources[input.formId] = input.leadSource.trim();
+      } else {
+        delete formSources[input.formId];
+      }
+      const updatedConfig = { ...config, form_sources: formSources };
+      await db.update(leadIntegrations).set({ config: JSON.stringify(updatedConfig), updatedAt: Date.now() }).where(eq(leadIntegrations.id, input.integrationId));
+      return { success: true };
+    }),
+
   // ─── Meta Sync ───────────────────────────────────────────────────────────────
   syncMeta: protectedProcedure   .input(z.object({ integrationId: z.number().optional() }))
     .mutation(async ({ input }) => {

@@ -36,7 +36,7 @@ const STAGES = [
 ] as const;
 
 const TASK_TYPES = ["call", "whatsapp", "email", "meeting", "document_request", "other"] as const;
-const TEAM = ["Mahmoud Saber", "Fouad", "Kirolos", "Ziad El Shurafa", "Madonna Adel"];
+const TEAM = ["Mahmoud", "Fouad", "Kirolos", "Ziad", "Madonna", "Monica", "Marina", "Nouran"];
 
 const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
   created: <Plus className="w-3.5 h-3.5" />,
@@ -108,6 +108,20 @@ export default function LeadProfile() {
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
   const [presetNote, setPresetNote] = useState("");
   const [showPresetDialog, setShowPresetDialog] = useState(false);
+
+  // Owner change dialog
+  const [showOwnerDialog, setShowOwnerDialog] = useState(false);
+  const [newOwner, setNewOwner] = useState("");
+
+  const assignLead = trpc.leads.assign.useMutation({
+    onSuccess: () => {
+      utils.leads.get.invalidate({ id: leadId });
+      utils.leads.activities.list.invalidate({ leadId });
+      setShowOwnerDialog(false);
+      toast.success("Owner updated");
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   // Email dialog
   const [showEmailDialog, setShowEmailDialog] = useState(false);
@@ -212,8 +226,17 @@ export default function LeadProfile() {
             {lead.assignedTo && ` · Assigned to ${lead.assignedTo}`}
           </p>
         </div>
-        {/* Stage Change */}
+        {/* Stage Change + Owner Change */}
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-1.5"
+            onClick={() => { setNewOwner(lead.assignedTo ?? ""); setShowOwnerDialog(true); }}
+          >
+            <User className="w-4 h-4" />
+            {lead.assignedTo ? lead.assignedTo : "Assign Owner"}
+          </Button>
           <Select value={lead.stage} onValueChange={v => changeStage.mutate({ id: leadId, stage: v as any })}>
             <SelectTrigger className="w-44">
               <SelectValue />
@@ -650,6 +673,37 @@ export default function LeadProfile() {
             >
               <Send className="w-4 h-4" />
               {sendEmail.isPending ? "Sending…" : "Send Email"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Owner Dialog */}
+      <Dialog open={showOwnerDialog} onOpenChange={setShowOwnerDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <User className="w-4 h-4" /> Change Lead Owner
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <Label>Select new owner</Label>
+            <Select value={newOwner} onValueChange={setNewOwner}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select team member" />
+              </SelectTrigger>
+              <SelectContent>
+                {TEAM.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowOwnerDialog(false)}>Cancel</Button>
+            <Button
+              disabled={!newOwner || assignLead.isPending}
+              onClick={() => assignLead.mutate({ id: leadId, assignedTo: newOwner, origin: window.location.origin })}
+            >
+              {assignLead.isPending ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>

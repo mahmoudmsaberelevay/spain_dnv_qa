@@ -248,6 +248,7 @@ const modules = [
       { icon: Filter, label: "All Leads", path: "/leads" },
       { icon: KanbanSquare, label: "Pipeline", path: "/leads/pipeline" },
       { icon: BarChart2, label: "Meta Export", path: "/leads/meta-export" },
+      { icon: BarChart3, label: "Reporting", path: "/leads/reporting" },
       { icon: SettingsIcon, label: "Settings", path: "/leads/settings" },
     ],
   },

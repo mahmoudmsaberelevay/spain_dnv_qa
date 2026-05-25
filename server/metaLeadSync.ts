@@ -240,6 +240,7 @@ async function syncOneIntegration(integration: {
   }
 
   const { page_access_token: accessToken, lead_source: leadSource, assigned_to: assignedTo } = config;
+  const perFormSources: Record<string, string> = (config.form_sources && typeof config.form_sources === "object") ? config.form_sources as Record<string, string> : {};
 
   // page_id can be in config or auto-detected — we always auto-detect from /me/accounts
   let pageId = config.page_id;
@@ -365,7 +366,7 @@ async function syncOneIntegration(integration: {
             // Program field → interestedProgram
             interestedProgram: mapped.interestedProgram || null,
             budgetRange: mapped.budgetRange || null,
-            leadSource: leadSource || "Meta Ads",
+            leadSource: perFormSources[form.id] || leadSource || "Meta Ads",
             metaFormId: form.id,
             metaFormName: form.name,
             metaCampaign: metaLead.campaign_name || metaLead.campaign_id || null,
