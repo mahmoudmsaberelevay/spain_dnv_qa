@@ -9,4 +9,5 @@ export const ENV = {
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   metaPixelId: process.env.META_PIXEL_ID ?? "",
   metaCapiToken: process.env.META_CAPI_TOKEN ?? "",
+  metaCapiTestCode: process.env.META_CAPI_TEST_CODE ?? "",
 };
