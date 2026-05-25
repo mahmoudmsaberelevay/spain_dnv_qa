@@ -676,3 +676,14 @@
 - [x] Meta lead form: custom lead source field per form — leads from that form use that source
 - [x] Leads Reporting page: user activity report (total activities per user per time frame)
 - [x] Leads Reporting page: new leads count and stage change report per time frame
+
+## Leads Reporting Enhancements (Round 90)
+- [x] Multi-select activity type filter in Team Activity report tab
+- [x] Save filter as named preset (shared across all users in Leads module)
+- [x] Load/delete saved presets from a dropdown in the Reporting page
+- [x] All Leads page: multi-activity filter, date range, owner filter, saveable shared presets
+- [x] Leads Reporting page: multi-activity filter with saveable shared presets
+- [x] All Leads page: customizable column visibility (created date, last activity date, last activity type, etc.)
+
+## CSV Import Enhancements (Round 90)
+- [x] CSV import: add field mapping for created date, current stage, last activity date, last activity type

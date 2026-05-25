@@ -378,7 +378,7 @@ export async function getStageChangeReport(dateFrom: number, dateTo: number, use
 }
 
 /** Get activity counts per user within a date range */
-export async function getUserActivityReport(dateFrom: number, dateTo: number, userId?: number) {
+export async function getUserActivityReport(dateFrom: number, dateTo: number, userId?: number, activityTypes?: string[]) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   const conditions: any[] = [
@@ -386,6 +386,9 @@ export async function getUserActivityReport(dateFrom: number, dateTo: number, us
     sql`${leadActivities.createdAt} <= ${dateTo}`,
   ];
   if (userId) conditions.push(eq(leadActivities.userId, userId));
+  if (activityTypes && activityTypes.length > 0) {
+    conditions.push(inArray(leadActivities.activityType as any, activityTypes));
+  }
   // Summary: total per user
   const summary = await db
     .select({

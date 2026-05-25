@@ -14,8 +14,11 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Plus, Search, Phone, Mail, User, Calendar, Download,
   Filter, X, Trash2, CheckSquare, Square, MinusSquare, RefreshCw, LayoutList,
-  ChevronLeft, ChevronRight, Tag, UserCheck,
+  ChevronLeft, ChevronRight, Tag, UserCheck, Columns3, Save, BookOpen,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
 
 const STAGES = [
   { value: "fresh", label: "Fresh", color: "bg-blue-100 text-blue-700 border-blue-200" },
@@ -111,18 +114,106 @@ export default function LeadsList() {
   const [bulkStageValue, setBulkStageValue] = useState("");
   const [bulkOwnerValue, setBulkOwnerValue] = useState("");
 
+  // ── Activity type filter (multi-select) ──────────────────────────────────
+  const ACTIVITY_TYPES = [
+    { value: "created", label: "Lead Created" },
+    { value: "stage_changed", label: "Stage Changed" },
+    { value: "assigned", label: "Assigned" },
+    { value: "call", label: "Call" },
+    { value: "whatsapp", label: "WhatsApp" },
+    { value: "email", label: "Email" },
+    { value: "meeting", label: "Meeting" },
+    { value: "note_added", label: "Note Added" },
+    { value: "document_request", label: "Document Request" },
+    { value: "status_updated", label: "Status Updated" },
+    { value: "other", label: "Other" },
+  ];
+  const [activityTypeFilter, setActivityTypeFilter] = useState<string[]>([]);
+  function toggleActivityType(val: string) {
+    setActivityTypeFilter(prev =>
+      prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val]
+    );
+  }
+
+  // ── Column visibility (persisted to localStorage) ────────────────────────────
+  const ALL_COLUMNS = [
+    { key: "contact", label: "Contact" },
+    { key: "program", label: "Program" },
+    { key: "source", label: "Source" },
+    { key: "stage", label: "Stage" },
+    { key: "priority", label: "Priority" },
+    { key: "assigned", label: "Assigned To" },
+    { key: "createdAt", label: "Created Date" },
+    { key: "nationality", label: "Nationality" },
+    { key: "budget", label: "Budget" },
+    { key: "lastActivity", label: "Last Activity Date" },
+  ];
+  const DEFAULT_VISIBLE = ["contact", "program", "source", "stage", "priority", "assigned", "createdAt"];
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("leads_visible_columns");
+      return saved ? JSON.parse(saved) : DEFAULT_VISIBLE;
+    } catch { return DEFAULT_VISIBLE; }
+  });
+  function toggleColumn(key: string) {
+    setVisibleColumns(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      localStorage.setItem("leads_visible_columns", JSON.stringify(next));
+      return next;
+    });
+  }
+  const col = (key: string) => visibleColumns.includes(key);
+
+  // ── Shared filter presets ─────────────────────────────────────────────────────
+  const [showSavePreset, setShowSavePreset] = useState(false);
+  const [presetName, setPresetName] = useState("");
+  const { data: presets = [], refetch: refetchPresets } = trpc.leads.reporting.listPresets.useQuery();
+  const savePreset = trpc.leads.reporting.savePreset.useMutation({
+    onSuccess: () => { refetchPresets(); setShowSavePreset(false); setPresetName(""); toast.success("Preset saved — visible to all team members."); },
+    onError: (e) => toast.error(e.message),
+  });
+  const deletePreset = trpc.leads.reporting.deletePreset.useMutation({
+    onSuccess: () => { refetchPresets(); toast.success("Preset deleted."); },
+    onError: (e) => toast.error(e.message),
+  });
+  function applyPreset(filterJson: string) {
+    try {
+      const f = JSON.parse(filterJson);
+      setStageFilter(f.stage ?? "all");
+      setSourceFilter(f.source ?? "all");
+      setProgramFilter(f.program ?? "all");
+      setAssignedFilter(f.assignedTo ?? "all");
+      setCreatedFrom(f.createdFrom ?? "");
+      setCreatedTo(f.createdTo ?? "");
+      setActivityTypeFilter(f.activityTypes ?? []);
+      if (f.activityTypes?.length) setShowAdvancedFilters(true);
+      toast.success("Preset applied.");
+    } catch { toast.error("Failed to apply preset."); }
+  }
+  function buildPresetJson() {
+    return JSON.stringify({
+      stage: stageFilter !== "all" ? stageFilter : undefined,
+      source: sourceFilter !== "all" ? sourceFilter : undefined,
+      program: programFilter !== "all" ? programFilter : undefined,
+      assignedTo: assignedFilter !== "all" ? assignedFilter : undefined,
+      createdFrom: createdFrom || undefined,
+      createdTo: createdTo || undefined,
+      activityTypes: activityTypeFilter.length > 0 ? activityTypeFilter : undefined,
+    });
+  }
+
   // ── Dynamic settings ──────────────────────────────────────────────────────
   const { data: dynamicPrograms = [] } = trpc.leadsSettings.listPrograms.useQuery();
   const { data: dynamicSources = [] } = trpc.leadsSettings.listSources.useQuery();
 
   const allPrograms = useMemo(() => {
     const fromSettings = dynamicPrograms.filter(p => p.isActive).map(p => p.name);
-    return [...new Set([...PROGRAMS, ...fromSettings])];
+    return Array.from(new Set([...PROGRAMS, ...fromSettings]));
   }, [dynamicPrograms]);
 
   const allSources = useMemo(() => {
     const fromSettings = dynamicSources.filter(s => s.isActive).map(s => s.name);
-    return [...new Set([...SOURCES, ...fromSettings])];
+    return Array.from(new Set([...SOURCES, ...fromSettings]));
   }, [dynamicSources]);
 
   // ── Create form ───────────────────────────────────────────────────────────
@@ -135,10 +226,8 @@ export default function LeadsList() {
   });
 
   // ── Meta forms for filter dropdown ────────────────────────────────────────
-  const { data: metaFormsData } = trpc.leadsSettings.listMetaForms.useQuery(undefined, {
-    staleTime: 5 * 60 * 1000,
-  });
-  const metaForms = metaFormsData?.forms ?? [];
+  // listMetaForms requires an integrationId — skip it in the leads list context
+  const metaForms: { id: string; name: string }[] = [];
 
   // ── Build query filters ───────────────────────────────────────────────────
   const filters = useMemo(() => ({
@@ -457,6 +546,7 @@ export default function LeadsList() {
               {TEAM.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
             </SelectContent>
           </Select>
+          {/* Advanced Filters toggle */}
           <Button
             variant={showAdvancedFilters ? "default" : "outline"}
             size="sm"
@@ -464,11 +554,88 @@ export default function LeadsList() {
             className="gap-1.5"
           >
             <Filter className="w-3.5 h-3.5" />
-            Date Filters
-            {(createdFrom || createdTo || lastActivityFrom || lastActivityTo) && (
+            More Filters
+            {(createdFrom || createdTo || lastActivityFrom || lastActivityTo || activityTypeFilter.length > 0) && (
               <span className="w-2 h-2 rounded-full bg-primary-foreground" />
             )}
           </Button>
+
+          {/* Column visibility */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Columns3 className="w-3.5 h-3.5" />
+                Columns
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-52 p-3" align="end">
+              <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Visible Columns</p>
+              <div className="space-y-2">
+                {ALL_COLUMNS.map(c => (
+                  <label key={c.key} className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={visibleColumns.includes(c.key)}
+                      onCheckedChange={() => toggleColumn(c.key)}
+                    />
+                    <span className="text-sm">{c.label}</span>
+                  </label>
+                ))}
+              </div>
+              <Separator className="my-2" />
+              <Button variant="ghost" size="sm" className="w-full text-xs" onClick={() => {
+                setVisibleColumns(DEFAULT_VISIBLE);
+                localStorage.setItem("leads_visible_columns", JSON.stringify(DEFAULT_VISIBLE));
+              }}>Reset to default</Button>
+            </PopoverContent>
+          </Popover>
+
+          {/* Shared presets */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <BookOpen className="w-3.5 h-3.5" />
+                Presets {presets.length > 0 && <span className="text-xs text-muted-foreground">({presets.length})</span>}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-3" align="end">
+              <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Saved Filter Presets</p>
+              {presets.length === 0 && <p className="text-xs text-muted-foreground py-2">No presets saved yet.</p>}
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {presets.map((p: { id: number; name: string; filterJson: string }) => (
+                  <div key={p.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-muted/50">
+                    <button className="text-sm flex-1 text-left truncate" onClick={() => applyPreset(p.filterJson)}>{p.name}</button>
+                    <button onClick={() => deletePreset.mutate({ id: p.id })} className="text-muted-foreground hover:text-red-500 transition-colors flex-shrink-0">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <Separator className="my-2" />
+              {!showSavePreset ? (
+                <Button variant="outline" size="sm" className="w-full gap-1.5" onClick={() => setShowSavePreset(true)}>
+                  <Save className="w-3.5 h-3.5" /> Save current filters as preset
+                </Button>
+              ) : (
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Preset name…"
+                    value={presetName}
+                    onChange={e => setPresetName(e.target.value)}
+                    className="h-8 text-xs"
+                    autoFocus
+                    onKeyDown={e => { if (e.key === "Enter" && presetName.trim()) savePreset.mutate({ name: presetName.trim(), filterJson: buildPresetJson() }); }}
+                  />
+                  <div className="flex gap-1.5">
+                    <Button size="sm" className="flex-1 text-xs" disabled={!presetName.trim() || savePreset.isPending}
+                      onClick={() => savePreset.mutate({ name: presetName.trim(), filterJson: buildPresetJson() })}>
+                      {savePreset.isPending ? "Saving…" : "Save"}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setShowSavePreset(false); setPresetName(""); }}>Cancel</Button>
+                  </div>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
           {metaForms.length > 0 && (
             <Select value={metaFormFilter} onValueChange={setMetaFormFilter}>
               <SelectTrigger className="w-48">
@@ -504,24 +671,52 @@ export default function LeadsList() {
           </div>
         )}
 
-        {/* Advanced Date Filters */}
+        {/* Advanced Filters Panel */}
         {showAdvancedFilters && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-muted/30 rounded-lg border border-border">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Created From</Label>
-              <Input type="date" value={createdFrom} onChange={e => setCreatedFrom(e.target.value)} className="h-8 text-xs" />
+          <div className="p-4 bg-muted/30 rounded-lg border border-border space-y-4">
+            {/* Date filters */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Date Range</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Created From</Label>
+                  <Input type="date" value={createdFrom} onChange={e => setCreatedFrom(e.target.value)} className="h-8 text-xs" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Created To</Label>
+                  <Input type="date" value={createdTo} onChange={e => setCreatedTo(e.target.value)} className="h-8 text-xs" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Last Activity From</Label>
+                  <Input type="date" value={lastActivityFrom} onChange={e => setLastActivityFrom(e.target.value)} className="h-8 text-xs" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Last Activity To</Label>
+                  <Input type="date" value={lastActivityTo} onChange={e => setLastActivityTo(e.target.value)} className="h-8 text-xs" />
+                </div>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Created To</Label>
-              <Input type="date" value={createdTo} onChange={e => setCreatedTo(e.target.value)} className="h-8 text-xs" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Last Activity From</Label>
-              <Input type="date" value={lastActivityFrom} onChange={e => setLastActivityFrom(e.target.value)} className="h-8 text-xs" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Last Activity To</Label>
-              <Input type="date" value={lastActivityTo} onChange={e => setLastActivityTo(e.target.value)} className="h-8 text-xs" />
+            {/* Activity type multi-select */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Activity Types {activityTypeFilter.length > 0 && <span className="ml-1 text-primary">({activityTypeFilter.length} selected)</span>}
+              </p>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                {ACTIVITY_TYPES.map(at => (
+                  <label key={at.value} className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={activityTypeFilter.includes(at.value)}
+                      onCheckedChange={() => toggleActivityType(at.value)}
+                    />
+                    <span className="text-sm">{at.label}</span>
+                  </label>
+                ))}
+              </div>
+              {activityTypeFilter.length > 0 && (
+                <button className="mt-2 text-xs text-muted-foreground hover:text-foreground underline" onClick={() => setActivityTypeFilter([])}>
+                  Clear activity filter
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -588,13 +783,16 @@ export default function LeadsList() {
                   </button>
                 </th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Contact</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Program</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Source</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stage</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Priority</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Assigned</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Date</th>
+                {col("contact") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Contact</th>}
+                {col("nationality") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Nationality</th>}
+                {col("program") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Program</th>}
+                {col("source") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Source</th>}
+                {col("stage") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stage</th>}
+                {col("priority") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Priority</th>}
+                {col("assigned") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Assigned</th>}
+                {col("createdAt") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Created</th>}
+                {col("budget") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Budget</th>}
+                {col("lastActivity") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Last Activity</th>}
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -615,40 +813,62 @@ export default function LeadsList() {
                     </td>
                     <td className="px-4 py-3 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
                       <div className="font-medium text-foreground">{lead.fullName}</div>
-                      {lead.nationality && <div className="text-xs text-muted-foreground">{lead.nationality}</div>}
                     </td>
-                    <td className="px-4 py-3 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
-                      <div className="flex flex-col gap-0.5">
-                        {lead.phone && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Phone className="w-3 h-3" />{lead.phone}</span>}
-                        {lead.email && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Mail className="w-3 h-3" />{lead.email}</span>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>{lead.interestedProgram ?? "—"}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>{lead.leadSource ?? "—"}</td>
-                    <td className="px-4 py-3 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${stage.color}`}>
-                        {stage.label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
-                      {lead.priority && (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${PRIORITY_COLORS[lead.priority] ?? ""}`}>
-                          {lead.priority}
+                    {col("contact") && (
+                      <td className="px-4 py-3 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
+                        <div className="flex flex-col gap-0.5">
+                          {lead.phone && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Phone className="w-3 h-3" />{lead.phone}</span>}
+                          {lead.email && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Mail className="w-3 h-3" />{lead.email}</span>}
+                        </div>
+                      </td>
+                    )}
+                    {col("nationality") && <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>{lead.nationality ?? "—"}</td>}
+                    {col("program") && <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>{lead.interestedProgram ?? "—"}</td>}
+                    {col("source") && <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>{lead.leadSource ?? "—"}</td>}
+                    {col("stage") && (
+                      <td className="px-4 py-3 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${stage.color}`}>
+                          {stage.label}
                         </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
-                      <div className="flex items-center gap-1">
-                        <User className="w-3 h-3" />
-                        {lead.assignedTo ?? "Unassigned"}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
-                      <div className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {new Date(lead.createdAt).toLocaleDateString()}
-                      </div>
-                    </td>
+                      </td>
+                    )}
+                    {col("priority") && (
+                      <td className="px-4 py-3 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
+                        {lead.priority && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${PRIORITY_COLORS[lead.priority] ?? ""}`}>
+                            {lead.priority}
+                          </span>
+                        )}
+                      </td>
+                    )}
+                    {col("assigned") && (
+                      <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
+                        <div className="flex items-center gap-1">
+                          <User className="w-3 h-3" />
+                          {lead.assignedTo ?? "Unassigned"}
+                        </div>
+                      </td>
+                    )}
+                    {col("createdAt") && (
+                      <td className="px-4 py-3 text-xs text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {new Date(lead.createdAt).toLocaleDateString()}
+                        </div>
+                      </td>
+                    )}
+                    {col("budget") && (
+                      <td className="px-4 py-3 text-xs text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
+                        {(lead as { budgetRange?: string }).budgetRange ?? "—"}
+                      </td>
+                    )}
+                    {col("lastActivity") && (
+                      <td className="px-4 py-3 text-xs text-muted-foreground cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
+                        {(lead as { lastActivityAt?: number }).lastActivityAt
+                          ? new Date((lead as { lastActivityAt?: number }).lastActivityAt!).toLocaleDateString()
+                          : "—"}
+                      </td>
+                    )}
                   </tr>
                 );
               })}

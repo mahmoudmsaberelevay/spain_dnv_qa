@@ -3,7 +3,11 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { BarChart3, Users, TrendingUp, ArrowRightLeft, Download, RefreshCw } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { toast } from "sonner";
+import { BarChart3, Users, TrendingUp, ArrowRightLeft, Download, RefreshCw, Filter, Save, Trash2, ChevronDown } from "lucide-react";
 
 // ─── Date range helpers ───────────────────────────────────────────────────────
 
@@ -101,6 +105,38 @@ export default function LeadsReporting() {
   const [customTo, setCustomTo] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<"activity" | "newLeads" | "stageChanges">("newLeads");
+  const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
+  const [savePresetName, setSavePresetName] = useState("");
+  const [showSavePreset, setShowSavePreset] = useState(false);
+
+  // Preset CRUD
+  const utils = trpc.useUtils();
+  const { data: savedPresets } = trpc.leads.reporting.listPresets.useQuery();
+  const savePresetMut = trpc.leads.reporting.savePreset.useMutation({
+    onSuccess: () => { utils.leads.reporting.listPresets.invalidate(); setSavePresetName(""); setShowSavePreset(false); toast.success("Preset saved"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const deletePresetMut = trpc.leads.reporting.deletePreset.useMutation({
+    onSuccess: () => { utils.leads.reporting.listPresets.invalidate(); toast.success("Preset deleted"); },
+  });
+
+  function applyPresetFilter(p: { filterJson: string }) {
+    try {
+      const f = JSON.parse(p.filterJson);
+      if (f.preset) setPreset(f.preset as RangePreset);
+      if (f.customFrom) setCustomFrom(f.customFrom);
+      if (f.customTo) setCustomTo(f.customTo);
+      if (f.userId) setSelectedUserId(String(f.userId ?? "all"));
+      if (f.activityTypes) setSelectedActivityTypes(f.activityTypes);
+      toast.success("Preset applied");
+    } catch { toast.error("Failed to apply preset"); }
+  }
+
+  function toggleActivityType(type: string) {
+    setSelectedActivityTypes(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  }
 
   // Compute date range
   const { dateFrom, dateTo } = useMemo(() => {
@@ -115,6 +151,7 @@ export default function LeadsReporting() {
   }, [preset, customFrom, customTo]);
 
   const userId = selectedUserId !== "all" ? parseInt(selectedUserId) : undefined;
+  const activityTypesFilter = selectedActivityTypes.length > 0 ? selectedActivityTypes : undefined;
 
   // Queries
   const { data: usersData } = trpc.admin.listUsers.useQuery();
@@ -129,7 +166,7 @@ export default function LeadsReporting() {
     { enabled: activeTab === "stageChanges" }
   );
   const userActivityQ = trpc.leads.reporting.userActivity.useQuery(
-    { dateFrom, dateTo, userId },
+    { dateFrom, dateTo, userId, activityTypes: activityTypesFilter },
     { enabled: activeTab === "activity" }
   );
 
@@ -236,6 +273,93 @@ export default function LeadsReporting() {
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        {/* Activity type multi-select (shown on Team Activity tab) */}
+        {activeTab === "activity" && (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground font-medium">Activity Types</span>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
+                  <Filter className="w-3.5 h-3.5" />
+                  {selectedActivityTypes.length === 0 ? "All types" : `${selectedActivityTypes.length} selected`}
+                  <ChevronDown className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2" align="start">
+                <div className="space-y-1">
+                  <button className="text-xs text-muted-foreground hover:text-foreground w-full text-left px-2 py-1" onClick={() => setSelectedActivityTypes([])}>
+                    Clear all
+                  </button>
+                  {Object.entries(ACTIVITY_TYPE_LABELS).map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer">
+                      <Checkbox
+                        checked={selectedActivityTypes.includes(key)}
+                        onCheckedChange={() => toggleActivityType(key)}
+                      />
+                      <span className="text-sm">{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
+
+        {/* Saved presets */}
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground font-medium">Saved Presets</span>
+          <div className="flex items-center gap-1.5">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
+                  <Save className="w-3.5 h-3.5" />
+                  Presets
+                  <ChevronDown className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-2" align="start">
+                <div className="space-y-1">
+                  {(!savedPresets || (savedPresets as any[]).length === 0) && (
+                    <p className="text-xs text-muted-foreground px-2 py-2">No saved presets yet</p>
+                  )}
+                  {(savedPresets as any[] ?? []).map((p: any) => (
+                    <div key={p.id} className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-muted/50">
+                      <button className="text-sm text-left flex-1" onClick={() => applyPresetFilter(p)}>{p.name}</button>
+                      <button onClick={() => deletePresetMut.mutate({ id: p.id })} className="text-muted-foreground hover:text-destructive">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="border-t mt-1 pt-1">
+                    {showSavePreset ? (
+                      <div className="flex gap-1 px-1">
+                        <Input
+                          value={savePresetName}
+                          onChange={e => setSavePresetName(e.target.value)}
+                          placeholder="Preset name…"
+                          className="h-7 text-xs"
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && savePresetName.trim()) {
+                              savePresetMut.mutate({ name: savePresetName.trim(), filterJson: JSON.stringify({ preset, customFrom, customTo, userId: selectedUserId, activityTypes: selectedActivityTypes }) });
+                            }
+                          }}
+                        />
+                        <Button size="sm" className="h-7 px-2 text-xs" onClick={() => {
+                          if (savePresetName.trim()) savePresetMut.mutate({ name: savePresetName.trim(), filterJson: JSON.stringify({ preset, customFrom, customTo, userId: selectedUserId, activityTypes: selectedActivityTypes }) });
+                        }}>Save</Button>
+                      </div>
+                    ) : (
+                      <button className="text-xs text-muted-foreground hover:text-foreground w-full text-left px-2 py-1.5" onClick={() => setShowSavePreset(true)}>
+                        + Save current filters as preset
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
 
         {/* Date range display */}

@@ -125,7 +125,7 @@ export const leadsSettingsRouter = router({
     .input(z.object({
       type: z.enum(["meta", "website"]),
       name: z.string().min(1),
-      config: z.record(z.unknown()).optional(),
+      config: z.record(z.string(), z.unknown()).optional(),
     }))
     .mutation(async ({ input }) => {
       return createLeadIntegration(input);
@@ -135,7 +135,7 @@ export const leadsSettingsRouter = router({
     .input(z.object({
       id: z.number(),
       name: z.string().optional(),
-      config: z.record(z.unknown()).optional(),
+      config: z.record(z.string(), z.unknown()).optional(),
       isActive: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {

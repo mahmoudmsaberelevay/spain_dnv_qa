@@ -87,7 +87,8 @@ export const adminRouter = router({
           const tableSchema = (schema as Record<string, unknown>)[tableName];
           if (tableSchema && typeof tableSchema === "object" && "getSQL" in tableSchema) {
             // It's a drizzle table
-            const rows = await dbConn.select().from(tableSchema as Parameters<typeof dbConn.select>[0]);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const rows = await (dbConn as any).select().from(tableSchema);
             backup[tableName] = rows;
           }
         } catch {

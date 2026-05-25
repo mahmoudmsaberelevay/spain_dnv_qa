@@ -69,6 +69,10 @@ const ELEVAY_FIELDS = [
   { key: "leadSource", label: "Lead Source" },
   { key: "assignedTo", label: "Assigned To" },
   { key: "notes", label: "Notes" },
+  { key: "stage", label: "Current Stage" },
+  { key: "createdAt", label: "Created Date" },
+  { key: "__lastActivityDate__", label: "Last Activity Date" },
+  { key: "__lastActivityType__", label: "Last Activity Type" },
   { key: "__skip__", label: "— Skip this column —" },
 ];
 
@@ -154,6 +158,10 @@ function ExportImportTab() {
         else if (lower.includes("source") || lower.includes("leadsource")) autoMap[h] = "leadSource";
         else if (lower.includes("owner") || lower.includes("assigned")) autoMap[h] = "assignedTo";
         else if (lower.includes("note") || lower.includes("comment")) autoMap[h] = "notes";
+        else if (lower.includes("stage") || lower.includes("status")) autoMap[h] = "stage";
+        else if ((lower.includes("created") && lower.includes("date")) || lower === "createdat" || lower === "createdon" || lower === "date") autoMap[h] = "createdAt";
+        else if (lower.includes("lastactivity") && lower.includes("date")) autoMap[h] = "__lastActivityDate__";
+        else if (lower.includes("lastactivity") && lower.includes("type")) autoMap[h] = "__lastActivityType__";
         else autoMap[h] = "__skip__";
       });
       setMapping(autoMap);
@@ -207,8 +215,36 @@ function ExportImportTab() {
       // Skip rows with no contact info at all (phone and email both empty)
       if (!obj.phone?.trim() && !obj.email?.trim()) { skipped++; continue; }
 
+      // Parse optional date fields
+      let parsedCreatedAt: number | undefined;
+      if (obj.createdAt) {
+        const d = new Date(obj.createdAt);
+        if (!isNaN(d.getTime())) parsedCreatedAt = d.getTime();
+      }
+      const lastActivityDate = obj["__lastActivityDate__"];
+      const lastActivityType = obj["__lastActivityType__"];
+      delete obj["__lastActivityDate__"];
+      delete obj["__lastActivityType__"];
+
+      // Normalise stage value
+      const stageMap: Record<string, string> = {
+        fresh: "fresh", new: "fresh", contacted: "contacted", qualified: "qualified",
+        prospect: "prospect", client: "client", dormant: "dormant",
+      };
+      const rawStage = (obj.stage ?? "").toLowerCase().trim().replace(/\s+/g, "_");
+      const normalisedStage = stageMap[rawStage] ?? undefined;
+
       try {
-        await importMut.mutateAsync({ fullName: obj.fullName, phone: obj.phone, email: obj.email || undefined, whatsapp: obj.whatsapp, nationality: obj.nationality, countryOfResidence: obj.countryOfResidence, interestedProgram: obj.interestedProgram, budgetRange: obj.budgetRange, occupation: obj.occupation, leadSource: obj.leadSource || "LeadSquared Import", assignedTo: obj.assignedTo, notes: obj.notes, skipDuplicateCheck: false });
+        const lead = await importMut.mutateAsync({ fullName: obj.fullName, phone: obj.phone, email: obj.email || undefined, whatsapp: obj.whatsapp, nationality: obj.nationality, countryOfResidence: obj.countryOfResidence, interestedProgram: obj.interestedProgram, budgetRange: obj.budgetRange, occupation: obj.occupation, leadSource: obj.leadSource || "LeadSquared Import", assignedTo: obj.assignedTo, notes: obj.notes, stage: normalisedStage, importedCreatedAt: parsedCreatedAt, skipDuplicateCheck: false });
+        // If last activity date/type provided, create an activity record
+        if (lastActivityDate && lead?.id) {
+          const actDate = new Date(lastActivityDate);
+          if (!isNaN(actDate.getTime())) {
+            try {
+              await (window as any).__trpcClient?.leads?.addActivity?.mutate?.({ leadId: lead.id, type: lastActivityType || "other", description: `Imported activity: ${lastActivityType || "other"}`, createdAt: actDate.getTime() });
+            } catch { /* best-effort */ }
+          }
+        }
         success++;
       } catch (err: any) {
         if (err?.message?.includes("Duplicate")) skipped++;
@@ -1143,7 +1179,7 @@ function LeadFormsTab() {
                     {isEnabled ? "Connected" : "Disconnected"}
                   </span>
                   <button
-                    onClick={() => toggleForm.mutate({ integrationId: integration.id, formId: form.id, enabled: !isEnabled })}
+                    onClick={() => toggleForm.mutate({ integrationId: integration.id, formId: form.id, connected: !isEnabled })}
                     disabled={toggleForm.isPending}
                     className="text-muted-foreground hover:text-foreground transition-colors"
                     title={isEnabled ? "Disconnect this form" : "Connect this form"}

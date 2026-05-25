@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
+import { getDb } from "../db";
+import { leadsReportPresets } from "../../drizzle/schema";
+import { eq, desc } from "drizzle-orm";
 import {
   createLead, getLeadById, listLeads, updateLead, deleteLead, checkDuplicate,
   addLeadActivity, getLeadActivities,
@@ -53,6 +56,8 @@ export const leadsRouter = router({
       priority: z.enum(["low", "medium", "high"]).optional(),
       notes: z.string().optional(),
       skipDuplicateCheck: z.boolean().optional(),
+      stage: z.string().optional(),
+      importedCreatedAt: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       if (!input.skipDuplicateCheck) {
@@ -64,11 +69,15 @@ export const leadsRouter = router({
           });
         }
       }
+      // Validate stage if provided
+      const VALID_STAGES = ["fresh","contacted","qualified","prospect","client","dormant","not_qualified_budget","not_qualified_work","not_qualified_study","not_qualified_criminal","not_qualified_other"];
+      const importedStage = input.stage && VALID_STAGES.includes(input.stage) ? input.stage : "fresh";
       const id = await createLead({
         ...input,
         email: input.email || undefined,
-        stage: "fresh",
+        stage: importedStage,
         leadScore: 0,
+        createdAt: input.importedCreatedAt ?? Date.now(),
       });
       await addLeadActivity({
         leadId: id,
@@ -721,7 +730,41 @@ export const leadsRouter = router({
       .query(async ({ input }) => getStageChangeReport(input.dateFrom, input.dateTo, input.userId)),
 
     userActivity: protectedProcedure
-      .input(z.object({ dateFrom: z.number(), dateTo: z.number(), userId: z.number().optional() }))
-      .query(async ({ input }) => getUserActivityReport(input.dateFrom, input.dateTo, input.userId)),
+      .input(z.object({
+        dateFrom: z.number(),
+        dateTo: z.number(),
+        userId: z.number().optional(),
+        activityTypes: z.array(z.string()).optional(),
+      }))
+      .query(async ({ input }) => getUserActivityReport(input.dateFrom, input.dateTo, input.userId, input.activityTypes)),
+
+    // ── Shared filter presets (visible to all users) ──────────────────────────────
+    listPresets: protectedProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      return db.select().from(leadsReportPresets).orderBy(desc(leadsReportPresets.createdAt));
+    }),
+    savePreset: protectedProcedure
+      .input(z.object({ name: z.string().min(1).max(255), filterJson: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        await db.insert(leadsReportPresets).values({
+          name: input.name,
+          filterJson: input.filterJson,
+          createdByEmail: ctx.user?.email ?? null,
+          createdByName: ctx.user?.name ?? null,
+          createdAt: Date.now(),
+        });
+        return { success: true };
+      }),
+    deletePreset: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        await db.delete(leadsReportPresets).where(eq(leadsReportPresets.id, input.id));
+        return { success: true };
+      }),
   }),
 });

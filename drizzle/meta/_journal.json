@@ -302,6 +302,13 @@
       "when": 1779628172170,
       "tag": "0042_foamy_cyclops",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "5",
+      "when": 1779698732985,
+      "tag": "0043_uneven_black_knight",
+      "breakpoints": true
     }
   ]
 }

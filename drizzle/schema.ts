@@ -996,3 +996,17 @@ export const auditLogs = mysqlTable("audit_logs", {
 });
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
+
+// ─── LEADS REPORT PRESETS ─────────────────────────────────────────────────────
+// Shared filter presets for the Leads Reporting page — visible to all users
+export const leadsReportPresets = mysqlTable("leads_report_presets", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  // JSON-encoded filter object: { activityTypes: string[], userId?: number, datePreset?: string }
+  filterJson: text("filterJson").notNull(),
+  createdByEmail: varchar("createdByEmail", { length: 320 }),
+  createdByName: varchar("createdByName", { length: 255 }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+});
+export type LeadsReportPreset = typeof leadsReportPresets.$inferSelect;
+export type InsertLeadsReportPreset = typeof leadsReportPresets.$inferInsert;
