@@ -21,6 +21,7 @@ const ADMIN_EMAILS = [
   "mahmoud.saber@elevay.com",
   "mahmoud.saberelevay@gmail.com",
   "walid.mammdouh@gmail.com",
+  "hager.hany@elevay.com",
 ];
 const READONLY_EMAILS = [
   "ziad.elshurafa@elevay.com",
