@@ -22,15 +22,29 @@ export const MAHMOUD_CC = "Mahmoud.saber@elevay.com";
 
 // Map from display name → email for targeted per-case reminders
 export const TEAM_EMAIL_MAP: Record<string, string> = {
-  // Paralegals
-  Madonna: "madonna.adel@elevay.com",
-  Monica: "monica.sobhy@elevay.com",
-  Marina: "marina.kamel@elevay.com",
+  // Owner
+  "Mahmoud Saber": "Mahmoud.saber@elevay.com",
   // Consultants
+  "Fouad Abdo": "fouad.abdo@elevay.com",
+  "Kirolos Nabil": "kirlos.nabil@elevay.com",
+  "Ziad El Shurafa": "ziad.elshurafa@elevay.com",
+  // Paralegals / Support
+  "Madonna Adel": "madonna.adel@elevay.com",
+  "Monica Sobhy": "monica.sobhy@elevay.com",
+  "Nouran Mamdouh": "nouran.Mamdouh@elevay.com",
+  "Hager Hany": "hager.hany@elevay.com",
+  "Marwa Abdallah": "marwa.abdallah@elevay.com",
+  "Basmala Shereef": "basmala.shereef@elevay.com",
+  "Eman Ahmed": "eman.ahmed@elevay.com",
+  // Legacy short-name aliases (keep for backward compatibility)
   Mahmoud: "Mahmoud.saber@elevay.com",
   Fouad: "fouad.abdo@elevay.com",
   Kirolos: "kirlos.nabil@elevay.com",
   Ziad: "ziad.elshurafa@elevay.com",
+  Madonna: "madonna.adel@elevay.com",
+  Monica: "monica.sobhy@elevay.com",
+  Marina: "marina.kamel@elevay.com",
+  Nouran: "nouran.Mamdouh@elevay.com",
 };
 
 /** Create a reusable nodemailer transporter using Gmail SMTP */

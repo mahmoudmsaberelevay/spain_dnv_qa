@@ -1,0 +1,70 @@
+{
+  "query": "\nSELECT id, email, name, role FROM users \nWHERE LOWER(email) IN (\n  'nouran.mamdouh@elevay.com',\n  'hager.hany@elevay.com',\n  'marwa.abdallah@elevay.com',\n  'ziad.elshurafa@elevay.com',\n  'fouad.abdo@elevay.com',\n  'kirlos.nabil@elevay.com',\n  'basmala.shereef@elevay.com',\n  'eman.ahmed@elevay.com',\n  'madonna.adel@elevay.com',\n  'monica.sobhy@elevay.com'\n);\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute \nSELECT id, email, name, role FROM users \nWHERE LOWER(email) IN (\n  'nouran.mamdouh@elevay.com',\n  'hager.hany@elevay.com',\n  'marwa.abdallah@elevay.com',\n  'ziad.elshurafa@elevay.com',\n  'fouad.abdo@elevay.com',\n  'kirlos.nabil@elevay.com',\n  'basmala.shereef@elevay.com',\n  'eman.ahmed@elevay.com',\n  'madonna.adel@elevay.com',\n  'monica.sobhy@elevay.com'\n);\n",
+  "rows": [
+    {
+      "id": "191",
+      "email": "ziad.elshurafa@elevay.com",
+      "name": "ziad.elshurafa",
+      "role": "user"
+    },
+    {
+      "id": "933743",
+      "email": "madonna.adel@elevay.com",
+      "name": "Madonna Adel",
+      "role": "user"
+    },
+    {
+      "id": "933764",
+      "email": "monica.sobhy@elevay.com",
+      "name": "Monica Sobhy",
+      "role": "user"
+    },
+    {
+      "id": "933919",
+      "email": "fouad.abdo@elevay.com",
+      "name": "Fouad Abdo",
+      "role": "user"
+    },
+    {
+      "id": "4230011",
+      "email": "kirlos.nabil@elevay.com",
+      "name": "Kirlos Nabil",
+      "role": "user"
+    },
+    {
+      "id": "12484156",
+      "email": "nouran.Mamdouh@elevay.com",
+      "name": "Nouran Mamdouh",
+      "role": "user"
+    },
+    {
+      "id": "12484157",
+      "email": "hager.hany@elevay.com",
+      "name": "Hager Hany",
+      "role": "user"
+    },
+    {
+      "id": "12484158",
+      "email": "eman.ahmed@elevay.com",
+      "name": "Eman Ahmed",
+      "role": "user"
+    },
+    {
+      "id": "12484159",
+      "email": "marwa.abdallah@elevay.com",
+      "name": "Marwa Abdallah",
+      "role": "user"
+    },
+    {
+      "id": "12484160",
+      "email": "basmala.shereef@elevay.com",
+      "name": "Basmala Shereef",
+      "role": "user"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\temail\tname\trole\n191\tziad.elshurafa@elevay.com\tziad.elshurafa\tuser\n933743\tmadonna.adel@elevay.com\tMadonna Adel\tuser\n933764\tmonica.sobhy@elevay.com\tMonica Sobhy\tuser\n933919\tfouad.abdo@elevay.com\tFouad Abdo\tuser\n4230011\tkirlos.nabil@elevay.com\tKirlos Nabil\tuser\n12484156\tnouran.Mamdouh@elevay.com\tNouran Mamdouh\tuser\n12484157\thager.hany@elevay.com\tHager Hany\tuser\n12484158\teman.ahmed@elevay.com\tEman Ahmed\tuser\n12484159\tmarwa.abdallah@elevay.com\tMarwa Abdallah\tuser\n12484160\tbasmala.shereef@elevay.com\tBasmala Shereef\tuser\n",
+  "stderr": "",
+  "execution_time_ms": 1790
+}

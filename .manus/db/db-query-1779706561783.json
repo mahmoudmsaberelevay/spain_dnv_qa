@@ -1,0 +1,70 @@
+{
+  "query": "SELECT DISTINCT pageKey FROM userPermissions ORDER BY pageKey LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT DISTINCT pageKey FROM userPermissions ORDER BY pageKey LIMIT 20;",
+  "rows": [
+    {
+      "pageKey": "analysis_dashboard"
+    },
+    {
+      "pageKey": "broadcast"
+    },
+    {
+      "pageKey": "cases"
+    },
+    {
+      "pageKey": "chat"
+    },
+    {
+      "pageKey": "client_docs"
+    },
+    {
+      "pageKey": "contracting"
+    },
+    {
+      "pageKey": "contracts"
+    },
+    {
+      "pageKey": "fin_accounts"
+    },
+    {
+      "pageKey": "fin_bulk_upload"
+    },
+    {
+      "pageKey": "fin_categories"
+    },
+    {
+      "pageKey": "fin_clients"
+    },
+    {
+      "pageKey": "fin_commission_receipts"
+    },
+    {
+      "pageKey": "fin_commissions"
+    },
+    {
+      "pageKey": "fin_dashboard"
+    },
+    {
+      "pageKey": "fin_employees"
+    },
+    {
+      "pageKey": "fin_expenses"
+    },
+    {
+      "pageKey": "fin_income"
+    },
+    {
+      "pageKey": "fin_reports"
+    },
+    {
+      "pageKey": "fin_salary_receipts"
+    },
+    {
+      "pageKey": "fin_settlement"
+    }
+  ],
+  "messages": [],
+  "stdout": "pageKey\nanalysis_dashboard\nbroadcast\ncases\nchat\nclient_docs\ncontracting\ncontracts\nfin_accounts\nfin_bulk_upload\nfin_categories\nfin_clients\nfin_commission_receipts\nfin_commissions\nfin_dashboard\nfin_employees\nfin_expenses\nfin_income\nfin_reports\nfin_salary_receipts\nfin_settlement\n",
+  "stderr": "",
+  "execution_time_ms": 1758
+}

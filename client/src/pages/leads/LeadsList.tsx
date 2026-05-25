@@ -46,7 +46,17 @@ const SOURCES = [
 ];
 
 const TEAM = [
-  "Mahmoud Saber", "Fouad", "Kirolos", "Ziad El Shurafa", "Madonna Adel",
+  "Mahmoud Saber",
+  "Nouran Mamdouh",
+  "Hager Hany",
+  "Marwa Abdallah",
+  "Ziad El Shurafa",
+  "Fouad Abdo",
+  "Kirolos Nabil",
+  "Basmala Shereef",
+  "Eman Ahmed",
+  "Madonna Adel",
+  "Monica Sobhy",
 ];
 
 const PRIORITY_COLORS: Record<string, string> = {
