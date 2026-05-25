@@ -187,6 +187,15 @@ function AiPanel({ groupId, onClose }: { groupId: string; onClose: () => void })
   );
 }
 
+// ─── Unread tracking: persist last-viewed timestamp per conversation in localStorage ───
+const STORAGE_KEY = "wa-qc-last-viewed";
+function loadLastViewed(): Record<string, number> {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch { return {}; }
+}
+function saveLastViewed(map: Record<string, number>) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(map)); } catch {}
+}
+
 export default function WaQcConversations() {
   const [location] = useLocation();
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -198,6 +207,8 @@ export default function WaQcConversations() {
   const [showMsgSearch, setShowMsgSearch] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const msgSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // lastViewed: groupId → unix ms timestamp of when user last opened that conversation
+  const [lastViewed, setLastViewed] = useState<Record<string, number>>(() => loadLastViewed());
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -211,11 +222,16 @@ export default function WaQcConversations() {
     }
   }, [selectedGroupId]);
 
-  const { data: conversations, isLoading: convsLoading, refetch: refetchConvs } = trpc.waQc.conversations.list.useQuery();
+  // Auto-refresh conversations list every 5 minutes
+  const { data: conversations, isLoading: convsLoading, refetch: refetchConvs } = trpc.waQc.conversations.list.useQuery(
+    undefined,
+    { refetchInterval: 5 * 60 * 1000 }
+  );
 
+  // Auto-refresh active conversation messages every 5 minutes
   const { data: messages, isLoading: msgsLoading, refetch: refetchMsgs } = trpc.waQc.messages.listForConversation.useQuery(
     { groupId: selectedGroupId || "", search: debouncedMsgSearch || undefined, limit: 150, offset: 0 },
-    { enabled: !!selectedGroupId }
+    { enabled: !!selectedGroupId, refetchInterval: 5 * 60 * 1000 }
   );
 
   const sendReplyMutation = trpc.waQc.sendReply.useMutation({
@@ -235,6 +251,21 @@ export default function WaQcConversations() {
 
   const selectedConv = conversations?.find((c) => c.id === selectedGroupId);
   const toPhone = selectedGroupId || "";
+
+  // Mark a conversation as viewed (record current timestamp)
+  const markAsViewed = useCallback((groupId: string) => {
+    const updated = { ...loadLastViewed(), [groupId]: Date.now() };
+    saveLastViewed(updated);
+    setLastViewed(updated);
+  }, []);
+
+  // Check if a conversation has new messages since last viewed
+  const hasUnread = useCallback((conv: any): boolean => {
+    if (!conv.lastMessageAt) return false;
+    const lastViewedTs = lastViewed[conv.id];
+    if (!lastViewedTs) return true; // never opened → treat as unread
+    return new Date(conv.lastMessageAt).getTime() > lastViewedTs;
+  }, [lastViewed]);
 
   const handleSendReply = () => {
     if (!replyText.trim() || !toPhone) return;
@@ -260,10 +291,13 @@ export default function WaQcConversations() {
           <h1 className="text-xl font-bold text-foreground">Conversations</h1>
           <p className="text-sm text-muted-foreground">Browse, reply, and analyze WhatsApp conversations</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetchConvs()} className="gap-1.5">
-          <RefreshCw className="h-3.5 w-3.5" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground/50">Auto-refreshes every 5 min</span>
+          <Button variant="outline" size="sm" onClick={() => { refetchConvs(); if (selectedGroupId) refetchMsgs(); }} className="gap-1.5">
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh Now
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-3 flex-1 min-h-0">
@@ -302,19 +336,25 @@ export default function WaQcConversations() {
                       setMsgSearch("");
                       setDebouncedMsgSearch("");
                       setShowMsgSearch(false);
+                      markAsViewed(conv.id);
                     }}
                     className={`w-full flex items-start gap-3 px-3 py-3 hover:bg-accent/30 transition-colors text-left ${selectedGroupId === conv.id ? "bg-accent/50 border-l-2 border-primary" : ""}`}
                   >
-                    <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      {conv.isGroup ? <Users className="h-4 w-4 text-primary" /> : (
-                        <span className="text-sm font-bold text-primary">
-                          {(conv.name || "?").charAt(0).toUpperCase()}
-                        </span>
+                    <div className="relative h-9 w-9 shrink-0">
+                      <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
+                        {conv.isGroup ? <Users className="h-4 w-4 text-primary" /> : (
+                          <span className="text-sm font-bold text-primary">
+                            {(conv.name || "?").charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      {hasUnread(conv) && selectedGroupId !== conv.id && (
+                        <span className="absolute top-0 right-0 h-2.5 w-2.5 rounded-full bg-red-500 border-2 border-background" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-sm font-medium text-foreground truncate">{conv.name}</span>
+                        <span className={`text-sm font-medium truncate ${hasUnread(conv) && selectedGroupId !== conv.id ? "text-foreground font-semibold" : "text-foreground"}`}>{conv.name}</span>
                         <span className="text-[10px] text-muted-foreground/60 shrink-0 ml-1">{formatTime(conv.lastMessageAt)}</span>
                       </div>
                       <p className="text-xs text-muted-foreground truncate">
