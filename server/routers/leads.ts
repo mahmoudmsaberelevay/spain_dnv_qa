@@ -20,6 +20,7 @@ import { listActivityPresets, listLeadIntegrations } from "../leadsSettingsDb";
 import { syncOneIntegrationById } from "../metaLeadSync";
 import { writeAuditLog, auditCtxFromTrpc } from "../auditLog";
 import { sendLeadAssignmentNotification, TEAM_EMAIL_MAP } from "../emailService";
+import { sendCapiEvent, stageToCapiEvent } from "../metaCapi";
 
 const STAGES = [
   "fresh", "contacted", "qualified", "prospect", "client", "dormant",
@@ -93,6 +94,17 @@ export const leadsRouter = router({
           description: `Assigned to ${input.assignedTo}`,
         });
       }
+      // Fire CAPI Lead event asynchronously — never block the response
+      const nameParts = (input.fullName ?? "").trim().split(" ");
+      sendCapiEvent({
+        eventName: "Lead",
+        leadId: id,
+        email: input.email || undefined,
+        phone: input.phone || undefined,
+        firstName: nameParts[0],
+        lastName: nameParts.slice(1).join(" ") || undefined,
+        externalId: String(id),
+      }).catch(() => {});
       return { id };
     }),
 
@@ -231,6 +243,18 @@ export const leadsRouter = router({
         activityType: "stage_changed",
         description: `Stage changed from "${prevStage}" to "${input.stage}" by ${ctx.user.name ?? "system"}`,
       });
+      // Fire CAPI stage event asynchronously
+      const capiEventName = stageToCapiEvent(input.stage);
+      if (capiEventName) {
+        sendCapiEvent({
+          eventName: capiEventName,
+          customEventName: capiEventName === "CustomEvent" ? `stage_${input.stage}` : undefined,
+          leadId: input.id,
+          email: lead.email || undefined,
+          phone: lead.phone || undefined,
+          externalId: String(input.id),
+        }).catch(() => {});
+      }
       return { success: true };
     }),
 
@@ -496,6 +520,18 @@ export const leadsRouter = router({
     .mutation(async ({ input, ctx }) => {
       const updated = await bulkUpdateLeadsStage(input.ids, input.stage);
       await writeAuditLog(auditCtxFromTrpc(ctx), "bulk_update", "leads", undefined, `Stage → ${input.stage} for ${updated} leads: [${input.ids.join(",")}]`);
+      // Fire CAPI events for bulk stage change (fire-and-forget)
+      const bulkCapiEvent = stageToCapiEvent(input.stage);
+      if (bulkCapiEvent) {
+        for (const leadId of input.ids) {
+          sendCapiEvent({
+            eventName: bulkCapiEvent,
+            customEventName: bulkCapiEvent === "CustomEvent" ? `stage_${input.stage}` : undefined,
+            leadId,
+            externalId: String(leadId),
+          }).catch(() => {});
+        }
+      }
       return { updated };
     }),
 
