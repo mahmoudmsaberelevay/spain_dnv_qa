@@ -378,7 +378,7 @@ export default function Contracts() {
                       <td className="px-4 py-4 text-center">
                         <Select
                           value={contract.status}
-                          disabled={!canAccess("contracting")}
+                          disabled={!canAccess("contracts")}
                           onValueChange={(val) => {
                             setConfirmStatus({
                               contractId: contract.id,
