@@ -1,0 +1,124 @@
+{
+  "query": "SELECT id, name, email, role FROM users ORDER BY id;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT id, name, email, role FROM users ORDER BY id;",
+  "rows": [
+    {
+      "id": "1",
+      "name": "Mahmoud Saber",
+      "email": "mahmoud.saberelevay@gmail.com",
+      "role": "admin"
+    },
+    {
+      "id": "191",
+      "name": "ziad.elshurafa",
+      "email": "ziad.elshurafa@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "120001",
+      "name": "Mahmoud Saber",
+      "email": "mahmoud.saber@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "420521",
+      "name": "Mahmoud Saber",
+      "email": "mahmoudsaber.ali3488@gmail.com",
+      "role": "user"
+    },
+    {
+      "id": "930164",
+      "name": "Mohamed abdelfatah",
+      "email": "mohamed.abdelfatah@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "933707",
+      "name": "Lea",
+      "email": "lea.guerrero@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "933743",
+      "name": "Madonna Adel",
+      "email": "madonna.adel@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "933764",
+      "name": "Monica Sobhy",
+      "email": "monica.sobhy@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "933843",
+      "name": "Minerva",
+      "email": "minerva.aguilar@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "933870",
+      "name": "Marina Kamel",
+      "email": "marina.kamel@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "933919",
+      "name": "Fouad Abdo",
+      "email": "fouad.abdo@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "934165",
+      "name": "Jewele",
+      "email": "jewel.umandap@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "2610015",
+      "name": "walid mammdouh",
+      "email": "walid.mammdouh@gmail.com",
+      "role": "admin"
+    },
+    {
+      "id": "4230011",
+      "name": "Kirlos Nabil",
+      "email": "kirlos.nabil@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "12484156",
+      "name": "Nouran Mamdouh",
+      "email": "nouran.mamdouh@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "12484157",
+      "name": "Hager Hany",
+      "email": "hager.hany@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "12484158",
+      "name": "Eman Ahmed",
+      "email": "eman.ahmed@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "12484159",
+      "name": "Marwa Abdallah",
+      "email": "marwa.abdallah@elevay.com",
+      "role": "user"
+    },
+    {
+      "id": "12484160",
+      "name": "Basmala Shereef",
+      "email": "basmala.shereef@elevay.com",
+      "role": "user"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\trole\n1\tMahmoud Saber\tmahmoud.saberelevay@gmail.com\tadmin\n191\tziad.elshurafa\tziad.elshurafa@elevay.com\tuser\n120001\tMahmoud Saber\tmahmoud.saber@elevay.com\tuser\n420521\tMahmoud Saber\tmahmoudsaber.ali3488@gmail.com\tuser\n930164\tMohamed abdelfatah\tmohamed.abdelfatah@elevay.com\tuser\n933707\tLea\tlea.guerrero@elevay.com\tuser\n933743\tMadonna Adel\tmadonna.adel@elevay.com\tuser\n933764\tMonica Sobhy\tmonica.sobhy@elevay.com\tuser\n933843\tMinerva\tminerva.aguilar@elevay.com\tuser\n933870\tMarina Kamel\tmarina.kamel@elevay.com\tuser\n933919\tFouad Abdo\tfouad.abdo@elevay.com\tuser\n934165\tJewele\tjewel.umandap@elevay.com\tuser\n2610015\twalid mammdouh\twalid.mammdouh@gmail.com\tadmin\n4230011\tKirlos Nabil\tkirlos.nabil@elevay.com\tuser\n12484156\tNouran Mamdouh\tnouran.mamdouh@elevay.com\tuser\n12484157\tHager Hany\thager.hany@elevay.com\tuser\n12484158\tEman Ahmed\teman.ahmed@elevay.com\tuser\n12484159\tMarwa Abdallah\tmarwa.abdallah@elevay.com\tuser\n12484160\tBasmala Shereef\tbasmala.shereef@elevay.com\tuser\n",
+  "stderr": "",
+  "execution_time_ms": 1641
+}

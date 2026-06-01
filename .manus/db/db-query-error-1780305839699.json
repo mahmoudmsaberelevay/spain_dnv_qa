@@ -1,0 +1,8 @@
+{
+  "query": "\nSELECT u.id, u.name, u.email, u.role, mp.module, mp.accessLevel, mp.canAccess, mp.canEdit, mp.canCreate\nFROM users u\nLEFT JOIN modulePermissions mp ON u.id = mp.userId\nWHERE u.name LIKE '%irolos%' OR u.email LIKE '%irolos%'\nORDER BY u.id, mp.module;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute \nSELECT u.id, u.name, u.email, u.role, mp.module, mp.accessLevel, mp.canAccess, mp.canEdit, mp.canCreate\nFROM users u\nLEFT JOIN modulePermissions mp ON u.id = mp.userId\nWHERE u.name LIKE '%irolos%' OR u.email LIKE '%irolos%'\nORDER BY u.id, mp.module;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 2: Unknown column 'mp.canaccess' in 'field list'"
+  ]
+}

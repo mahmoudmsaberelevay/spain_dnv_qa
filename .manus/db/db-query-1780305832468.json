@@ -1,0 +1,157 @@
+{
+  "query": "SHOW TABLES;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SHOW TABLES;",
+  "rows": [
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "__drizzle_migrations"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "analysisResults"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "appSettings"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "audit_logs"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "broadcastDismissals"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "broadcasts"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "cases"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "chatMessages"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "clientCases"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "clientDocuments"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "clientWorkflows"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "commissionReceiptItems"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "commissionReceipts"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "contracts"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "documents"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "finAccounts"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "finCategories"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "finClients"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "finCommissions"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "finEmployees"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "finTransactions"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "groupPermissions"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "invoices"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "lead_activities"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "lead_activity_presets"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "lead_integrations"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "lead_notes"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "lead_programs"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "lead_sources"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "lead_tasks"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "leads"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "leads_permissions"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "leads_report_presets"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "modulePermissions"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "nationalVisaWorkflows"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "payments"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "pendingInvites"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "proformaInvoices"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "salaryReceipts"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "settlementPayments"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "systemNotifications"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "upcomingPayments"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "userGroups"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "userPermissions"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "users"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "wa_media_files"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "wa_messages"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "whatsapp_config"
+    },
+    {
+      "Tables_in_CjqhSqoCBRNxigxoNR3Jk2": "whatsapp_groups"
+    }
+  ],
+  "messages": [],
+  "stdout": "Tables_in_CjqhSqoCBRNxigxoNR3Jk2\n__drizzle_migrations\nanalysisResults\nappSettings\naudit_logs\nbroadcastDismissals\nbroadcasts\ncases\nchatMessages\nclientCases\nclientDocuments\nclientWorkflows\ncommissionReceiptItems\ncommissionReceipts\ncontracts\ndocuments\nfinAccounts\nfinCategories\nfinClients\nfinCommissions\nfinEmployees\nfinTransactions\ngroupPermissions\ninvoices\nlead_activities\nlead_activity_presets\nlead_integrations\nlead_notes\nlead_programs\nlead_sources\nlead_tasks\nleads\nleads_permissions\nleads_report_presets\nmodulePermissions\nnationalVisaWorkflows\npayments\npendingInvites\nproformaInvoices\nsalaryReceipts\nsettlementPayments\nsystemNotifications\nupcomingPayments\nuserGroups\nuserPermissions\nusers\nwa_media_files\nwa_messages\nwhatsapp_config\nwhatsapp_groups\n",
+  "stderr": "",
+  "execution_time_ms": 1627
+}
