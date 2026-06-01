@@ -804,69 +804,83 @@ export default function LeadsList() {
                     key={lead.id}
                     className={`hover:bg-muted/30 transition-colors ${isSelected ? "bg-blue-50/60 dark:bg-blue-950/20" : ""}`}
                   >
-                    <td className="px-4 py-3 w-10" onClick={e => toggleSelect(lead.id, e)}>
+                    <td className="px-4 py-3 w-10" onClick={e => { e.stopPropagation(); toggleSelect(lead.id, e); }}>
                       <button className="text-muted-foreground hover:text-foreground transition-colors flex items-center">
                         {isSelected
                           ? <CheckSquare className="w-4 h-4 text-blue-600" />
                           : <Square className="w-4 h-4" />}
                       </button>
                     </td>
-                    <td className="px-4 py-3 cursor-pointer" onClick={(e) => { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }}>
-                      <a href={`/leads/${lead.id}`} onClick={e => e.preventDefault()} className="block font-medium text-foreground hover:no-underline">{lead.fullName}</a>
+                    <td className="p-0">
+                      <a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 font-medium text-foreground hover:no-underline">{lead.fullName}</a>
                     </td>
                     {col("contact") && (
-                      <td className="px-4 py-3 cursor-pointer" onClick={(e) => { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }}>
-                        <div className="flex flex-col gap-0.5">
-                          {lead.phone && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Phone className="w-3 h-3" />{lead.phone}</span>}
-                          {lead.email && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Mail className="w-3 h-3" />{lead.email}</span>}
-                        </div>
+                      <td className="p-0">
+                        <a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 hover:no-underline">
+                          <div className="flex flex-col gap-0.5">
+                            {lead.phone && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Phone className="w-3 h-3" />{lead.phone}</span>}
+                            {lead.email && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Mail className="w-3 h-3" />{lead.email}</span>}
+                          </div>
+                        </a>
                       </td>
                     )}
-                    {col("nationality") && <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={(e) => { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }}><a href={`/leads/${lead.id}`} onClick={e=>e.preventDefault()} className="block text-muted-foreground hover:no-underline">{lead.nationality ?? "—"}</a></td>}
-                    {col("program") && <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={(e) => { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }}><a href={`/leads/${lead.id}`} onClick={e=>e.preventDefault()} className="block text-muted-foreground hover:no-underline">{lead.interestedProgram ?? "—"}</a></td>}
-                    {col("source") && <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={(e) => { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }}><a href={`/leads/${lead.id}`} onClick={e=>e.preventDefault()} className="block text-muted-foreground hover:no-underline">{lead.leadSource ?? "—"}</a></td>}
+                    {col("nationality") && <td className="p-0"><a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 text-sm text-muted-foreground hover:no-underline">{lead.nationality ?? "—"}</a></td>}
+                    {col("program") && <td className="p-0"><a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 text-sm text-muted-foreground hover:no-underline">{lead.interestedProgram ?? "—"}</a></td>}
+                    {col("source") && <td className="p-0"><a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 text-sm text-muted-foreground hover:no-underline">{lead.leadSource ?? "—"}</a></td>}
                     {col("stage") && (
-                      <td className="px-4 py-3 cursor-pointer" onClick={(e) => { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }}>
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${stage.color}`}>
-                          {stage.label}
-                        </span>
+                      <td className="p-0">
+                        <a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 hover:no-underline">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${stage.color}`}>
+                            {stage.label}
+                          </span>
+                        </a>
                       </td>
                     )}
                     {col("priority") && (
-                      <td className="px-4 py-3 cursor-pointer" onClick={(e) => { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }}>
-                        {lead.priority && (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${PRIORITY_COLORS[lead.priority] ?? ""}`}>
-                            {lead.priority}
-                          </span>
-                        )}
+                      <td className="p-0">
+                        <a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 hover:no-underline">
+                          {lead.priority && (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${PRIORITY_COLORS[lead.priority] ?? ""}`}>
+                              {lead.priority}
+                            </span>
+                          )}
+                        </a>
                       </td>
                     )}
                     {col("assigned") && (
-                      <td className="px-4 py-3 text-sm text-muted-foreground cursor-pointer" onClick={(e) => { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }}>
-                        <div className="flex items-center gap-1">
-                          <User className="w-3 h-3" />
-                          {lead.assignedTo ?? "Unassigned"}
-                        </div>
+                      <td className="p-0">
+                        <a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 text-sm text-muted-foreground hover:no-underline">
+                          <div className="flex items-center gap-1">
+                            <User className="w-3 h-3" />
+                            {lead.assignedTo ?? "Unassigned"}
+                          </div>
+                        </a>
                       </td>
                     )}
                     {col("createdAt") && (
-                      <td className="px-4 py-3 text-xs text-muted-foreground cursor-pointer" onClick={(e) => { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }}>
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(lead.createdAt).toLocaleDateString()}
-                        </div>
+                      <td className="p-0">
+                        <a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 text-xs text-muted-foreground hover:no-underline">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(lead.createdAt).toLocaleDateString()}
+                          </div>
+                        </a>
                       </td>
                     )}
                     {col("budget") && (
-                      <td className="px-4 py-3 text-xs text-muted-foreground cursor-pointer" onClick={(e) => { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }}>
-                        {(lead as { budgetRange?: string }).budgetRange ?? "—"}
+                      <td className="p-0">
+                        <a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 text-xs text-muted-foreground hover:no-underline">
+                          {(lead as { budgetRange?: string }).budgetRange ?? "—"}
+                        </a>
                       </td>
                     )}
                     {col("lastActivity") && (
-                      <td className="px-4 py-3 text-xs text-muted-foreground cursor-pointer" onClick={(e) => { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }}>
-                        {(lead as { lastActivityAt?: number }).lastActivityAt
-                          ? new Date((lead as { lastActivityAt?: number }).lastActivityAt!).toLocaleDateString()
-                          : "—"}
+                      <td className="p-0">
+                        <a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 text-xs text-muted-foreground hover:no-underline">
+                          {(lead as { lastActivityAt?: number }).lastActivityAt
+                            ? new Date((lead as { lastActivityAt?: number }).lastActivityAt!).toLocaleDateString()
+                            : "—"}
+                        </a>
                       </td>
                     )}
                   </tr>
