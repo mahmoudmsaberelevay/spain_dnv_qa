@@ -1,9 +1,0 @@
-{
-  "query": "\nUPDATE leads SET assignedTo = 'Hager Hany' WHERE assignedTo = 'Hagar Hany';\nUPDATE leads SET assignedTo = 'Nouran Mamdouh' WHERE assignedTo = 'Nouran';\n",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute \nUPDATE leads SET assignedTo = 'Hager Hany' WHERE assignedTo = 'Hagar Hany';\nUPDATE leads SET assignedTo = 'Nouran Mamdouh' WHERE assignedTo = 'Nouran';\n",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 2094
-}

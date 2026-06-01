@@ -9,7 +9,6 @@ import {
   getWaConversations,
 } from "./db";
 import { invokeLLM } from "./_core/llm";
-import axios from "axios";
 
 // ─── Access Guard ─────────────────────────────────────────────────────────────
 const waQcProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -39,23 +38,6 @@ export const waQcRouter = router({
       }))
       .query(async ({ input }) => {
         return getWaMessages(input);
-      }),
-
-    // Paginated messages for a conversation with optional in-chat search
-    listForConversation: waQcProcedure
-      .input(z.object({
-        groupId: z.string(),
-        search: z.string().optional(),
-        limit: z.number().min(1).max(200).default(100),
-        offset: z.number().min(0).default(0),
-      }))
-      .query(async ({ input }) => {
-        return getWaMessages({
-          groupId: input.groupId,
-          search: input.search || undefined,
-          limit: input.limit,
-          offset: input.offset,
-        });
       }),
   }),
 
@@ -118,7 +100,7 @@ export const waQcRouter = router({
         });
 
         const contextText = allMessages
-          .slice(0, 150)
+          .slice(0, 100)
           .map((m) => {
             const sender = m.senderName || m.senderPhone || "Unknown";
             const time = m.whatsappTimestamp
@@ -129,10 +111,9 @@ export const waQcRouter = router({
           })
           .join("\n");
 
-        const systemPrompt = `You are an AI assistant analyzing WhatsApp conversations for ELEVAY, a citizenship and residency consultation company. 
+        const systemPrompt = `You are an AI assistant analyzing WhatsApp group messages for ELEVAY, a citizenship and residency consultation company. 
 Answer questions about the conversations, identify patterns, summarize discussions, and provide insights.
 Be concise and professional. If asked about specific clients or documents, reference the actual message content.
-Always respond in the same language the user asks in (Arabic or English).
 
 Here are the recent messages:
 ${contextText}`;
@@ -161,42 +142,6 @@ ${contextText}`;
         return { answer, quotes };
       }),
   }),
-
-  // Send Reply
-  sendReply: waQcProcedure
-    .input(z.object({
-      toPhone: z.string().min(7),
-      message: z.string().min(1).max(4096),
-    }))
-    .mutation(async ({ input }) => {
-      const config = await getActiveConfig();
-      const accessToken = config?.accessToken || process.env.WHATSAPP_ACCESS_TOKEN;
-      const phoneNumberId = config?.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
-
-      if (!accessToken) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No WhatsApp access token configured." });
-      if (!phoneNumberId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No WhatsApp Phone Number ID configured." });
-
-      const to = input.toPhone.replace(/[^0-9]/g, "");
-      const url = `https://graph.facebook.com/v22.0/${phoneNumberId}/messages`;
-
-      try {
-        const response = await axios.post(url, {
-          messaging_product: "whatsapp",
-          recipient_type: "individual",
-          to,
-          type: "text",
-          text: { preview_url: false, body: input.message },
-        }, {
-          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-          timeout: 15000,
-        });
-        return { success: true, messageId: response.data?.messages?.[0]?.id, to };
-      } catch (err: any) {
-        const metaError = err?.response?.data?.error;
-        const msg = metaError ? `Meta API error ${metaError.code}: ${metaError.message}` : err.message;
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: msg });
-      }
-    }),
 
   // Config
   config: router({
@@ -247,9 +192,10 @@ ${contextText}`;
         if (!config.accessToken) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Access token is missing." });
         if (!config.phoneNumberId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Phone Number ID is missing." });
         const to = input.toPhone.replace(/[^0-9]/g, "");
+        const axiosLib = (await import("axios")).default;
         const url = `https://graph.facebook.com/v22.0/${config.phoneNumberId}/messages`;
         try {
-          const response = await axios.post(url, {
+          const response = await axiosLib.post(url, {
             messaging_product: "whatsapp",
             to,
             type: "template",

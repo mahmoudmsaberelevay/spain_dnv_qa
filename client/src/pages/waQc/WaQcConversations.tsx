@@ -9,9 +9,23 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   MessageSquare, Users, Search, Image, Video, Music, FileText, MapPin,
-  Send, Bot, X, Loader2, Phone, RefreshCw,
+  Smile, Send, Bot, Sparkles, X, ChevronDown, Download, Loader2,
+  Phone, RefreshCw,
 } from "lucide-react";
 import { Streamdown } from "streamdown";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function MessageTypeIcon({ type }: { type: string }) {
+  const map: Record<string, React.ReactNode> = {
+    image: <Image className="h-3.5 w-3.5 text-blue-400" />,
+    video: <Video className="h-3.5 w-3.5 text-purple-400" />,
+    audio: <Music className="h-3.5 w-3.5 text-green-400" />,
+    document: <FileText className="h-3.5 w-3.5 text-orange-400" />,
+    location: <MapPin className="h-3.5 w-3.5 text-red-400" />,
+    reaction: <Smile className="h-3.5 w-3.5 text-yellow-400" />,
+  };
+  return map[type] ? <span className="shrink-0">{map[type]}</span> : null;
+}
 
 function formatTime(date: Date | string | null | undefined) {
   if (!date) return "";
@@ -29,47 +43,49 @@ function formatMsgTime(ts: number | null | undefined, fallback: Date | string) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+// Business phone number ID — messages sent from this number are "outgoing"
 const BUSINESS_PHONE_ID = "1107700702429603";
 
+// ─── Media Bubble ─────────────────────────────────────────────────────────────
 function MediaBubble({ msg }: { msg: any }) {
-  if (msg.messageType === "image") {
+  if (msg.messageType === "image" && msg.mediaId) {
     return (
-      <div>
-        <div className="bg-black/20 flex items-center justify-center h-24 w-40 rounded-lg">
-          <Image className="h-8 w-8 text-white/50" />
+      <div className="rounded-lg overflow-hidden max-w-[240px]">
+        <div className="bg-accent/30 flex items-center justify-center h-32 rounded-lg">
+          <Image className="h-8 w-8 text-muted-foreground/50" />
         </div>
-        {msg.caption && <p className="text-xs mt-1 opacity-80">{msg.caption}</p>}
+        {msg.caption && <p className="text-xs mt-1 text-muted-foreground">{msg.caption}</p>}
       </div>
     );
   }
-  if (msg.messageType === "video") {
+  if (msg.messageType === "video" && msg.mediaId) {
     return (
-      <div className="flex items-center gap-2">
-        <Video className="h-5 w-5 shrink-0 opacity-80" />
+      <div className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2">
+        <Video className="h-5 w-5 text-purple-400 shrink-0" />
         <span className="text-sm">{msg.caption || "Video"}</span>
       </div>
     );
   }
-  if (msg.messageType === "audio") {
+  if (msg.messageType === "audio" && msg.mediaId) {
     return (
-      <div className="flex items-center gap-2">
-        <Music className="h-5 w-5 shrink-0 opacity-80" />
+      <div className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2">
+        <Music className="h-5 w-5 text-green-400 shrink-0" />
         <span className="text-sm">Voice / Audio</span>
       </div>
     );
   }
-  if (msg.messageType === "document") {
+  if (msg.messageType === "document" && msg.mediaId) {
     return (
-      <div className="flex items-center gap-2">
-        <FileText className="h-5 w-5 shrink-0 opacity-80" />
+      <div className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2">
+        <FileText className="h-5 w-5 text-orange-400 shrink-0" />
         <span className="text-sm">{msg.fileName || msg.caption || "Document"}</span>
       </div>
     );
   }
   if (msg.messageType === "location") {
     return (
-      <div className="flex items-center gap-2">
-        <MapPin className="h-5 w-5 shrink-0 opacity-80" />
+      <div className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2">
+        <MapPin className="h-5 w-5 text-red-400 shrink-0" />
         <span className="text-sm">{msg.locationName || `${msg.latitude}, ${msg.longitude}`}</span>
       </div>
     );
@@ -84,6 +100,7 @@ function MediaBubble({ msg }: { msg: any }) {
   );
 }
 
+// ─── AI Panel ─────────────────────────────────────────────────────────────────
 function AiPanel({ groupId, onClose }: { groupId: string; onClose: () => void }) {
   const [question, setQuestion] = useState("");
   const [history, setHistory] = useState<Array<{ q: string; a: string }>>([]);
@@ -94,7 +111,7 @@ function AiPanel({ groupId, onClose }: { groupId: string; onClose: () => void })
       setQuestion("");
     },
     onError: (err) => {
-      toast.error("AI Error: " + err.message);
+      toast({ title: "AI Error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -113,7 +130,8 @@ function AiPanel({ groupId, onClose }: { groupId: string; onClose: () => void })
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full border-l border-border/50 bg-card/50">
+      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
         <div className="flex items-center gap-2">
           <Bot className="h-4 w-4 text-yellow-400" />
@@ -124,6 +142,7 @@ function AiPanel({ groupId, onClose }: { groupId: string; onClose: () => void })
         </Button>
       </div>
 
+      {/* Suggestions */}
       {history.length === 0 && (
         <div className="p-3 space-y-1.5">
           <p className="text-[11px] text-muted-foreground mb-2">Ask about this conversation:</p>
@@ -139,6 +158,7 @@ function AiPanel({ groupId, onClose }: { groupId: string; onClose: () => void })
         </div>
       )}
 
+      {/* History */}
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
         {history.map((item, i) => (
           <div key={i} className="space-y-2">
@@ -149,7 +169,7 @@ function AiPanel({ groupId, onClose }: { groupId: string; onClose: () => void })
             </div>
             <div className="flex justify-start">
               <div className="bg-accent/30 rounded-xl px-3 py-2 max-w-[90%]">
-                <div className="text-xs text-foreground">
+                <div className="text-xs text-foreground prose prose-sm prose-invert max-w-none">
                   <Streamdown>{item.a}</Streamdown>
                 </div>
               </div>
@@ -164,6 +184,7 @@ function AiPanel({ groupId, onClose }: { groupId: string; onClose: () => void })
         )}
       </div>
 
+      {/* Input */}
       <div className="p-3 border-t border-border/50">
         <div className="flex gap-2">
           <Input
@@ -187,15 +208,7 @@ function AiPanel({ groupId, onClose }: { groupId: string; onClose: () => void })
   );
 }
 
-// ─── Unread tracking: persist last-viewed timestamp per conversation in localStorage ───
-const STORAGE_KEY = "wa-qc-last-viewed";
-function loadLastViewed(): Record<string, number> {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch { return {}; }
-}
-function saveLastViewed(map: Record<string, number>) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(map)); } catch {}
-}
-
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function WaQcConversations() {
   const [location] = useLocation();
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -207,41 +220,36 @@ export default function WaQcConversations() {
   const [showMsgSearch, setShowMsgSearch] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const msgSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // lastViewed: groupId → unix ms timestamp of when user last opened that conversation
-  const [lastViewed, setLastViewed] = useState<Record<string, number>>(() => loadLastViewed());
 
+  // Parse groupId from URL query
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const gid = params.get("groupId");
     if (gid) setSelectedGroupId(gid);
   }, [location]);
 
+  // Scroll to bottom when messages load
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [selectedGroupId]);
 
-  // Auto-refresh conversations list every 5 minutes
-  const { data: conversations, isLoading: convsLoading, refetch: refetchConvs } = trpc.waQc.conversations.list.useQuery(
-    undefined,
-    { refetchInterval: 5 * 60 * 1000 }
-  );
+  const { data: conversations, isLoading: convsLoading, refetch: refetchConvs } = trpc.waQc.conversations.list.useQuery();
 
-  // Auto-refresh active conversation messages every 5 minutes
   const { data: messages, isLoading: msgsLoading, refetch: refetchMsgs } = trpc.waQc.messages.listForConversation.useQuery(
     { groupId: selectedGroupId || "", search: debouncedMsgSearch || undefined, limit: 150, offset: 0 },
-    { enabled: !!selectedGroupId, refetchInterval: 5 * 60 * 1000 }
+    { enabled: !!selectedGroupId }
   );
 
   const sendReplyMutation = trpc.waQc.sendReply.useMutation({
     onSuccess: () => {
       setReplyText("");
-      toast.success("Message sent successfully");
+      toast({ title: "Message sent", description: "Your reply was sent successfully." });
       setTimeout(() => refetchMsgs(), 1500);
     },
     onError: (err) => {
-      toast.error("Failed to send: " + err.message);
+      toast({ title: "Failed to send", description: err.message, variant: "destructive" });
     },
   });
 
@@ -250,22 +258,9 @@ export default function WaQcConversations() {
   );
 
   const selectedConv = conversations?.find((c) => c.id === selectedGroupId);
+
+  // The "to phone" is the groupId itself (which is the sender's phone number for 1:1 chats)
   const toPhone = selectedGroupId || "";
-
-  // Mark a conversation as viewed (record current timestamp)
-  const markAsViewed = useCallback((groupId: string) => {
-    const updated = { ...loadLastViewed(), [groupId]: Date.now() };
-    saveLastViewed(updated);
-    setLastViewed(updated);
-  }, []);
-
-  // Check if a conversation has new messages since last viewed
-  const hasUnread = useCallback((conv: any): boolean => {
-    if (!conv.lastMessageAt) return false;
-    const lastViewedTs = lastViewed[conv.id];
-    if (!lastViewedTs) return true; // never opened → treat as unread
-    return new Date(conv.lastMessageAt).getTime() > lastViewedTs;
-  }, [lastViewed]);
 
   const handleSendReply = () => {
     if (!replyText.trim() || !toPhone) return;
@@ -291,17 +286,14 @@ export default function WaQcConversations() {
           <h1 className="text-xl font-bold text-foreground">Conversations</h1>
           <p className="text-sm text-muted-foreground">Browse, reply, and analyze WhatsApp conversations</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground/50">Auto-refreshes every 5 min</span>
-          <Button variant="outline" size="sm" onClick={() => { refetchConvs(); if (selectedGroupId) refetchMsgs(); }} className="gap-1.5">
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh Now
-          </Button>
-        </div>
+        <Button variant="outline" size="sm" onClick={() => refetchConvs()} className="gap-1.5">
+          <RefreshCw className="h-3.5 w-3.5" />
+          Refresh
+        </Button>
       </div>
 
       <div className="flex gap-3 flex-1 min-h-0">
-        {/* Conversation List */}
+        {/* ── Conversation List ── */}
         <Card className="border-border/50 flex flex-col w-72 shrink-0 overflow-hidden">
           <div className="p-3 border-b border-border/50">
             <div className="relative">
@@ -330,40 +322,30 @@ export default function WaQcConversations() {
                 {filteredConvs.map((conv) => (
                   <button
                     key={conv.id}
-                    onClick={() => {
-                      setSelectedGroupId(conv.id);
-                      setShowAi(false);
-                      setMsgSearch("");
-                      setDebouncedMsgSearch("");
-                      setShowMsgSearch(false);
-                      markAsViewed(conv.id);
-                    }}
+                    onClick={() => { setSelectedGroupId(conv.id); setShowAi(false); setMsgSearch(""); setDebouncedMsgSearch(""); }}
                     className={`w-full flex items-start gap-3 px-3 py-3 hover:bg-accent/30 transition-colors text-left ${selectedGroupId === conv.id ? "bg-accent/50 border-l-2 border-primary" : ""}`}
                   >
-                    <div className="relative h-9 w-9 shrink-0">
-                      <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
-                        {conv.isGroup ? <Users className="h-4 w-4 text-primary" /> : (
-                          <span className="text-sm font-bold text-primary">
-                            {(conv.name || "?").charAt(0).toUpperCase()}
-                          </span>
-                        )}
-                      </div>
-                      {hasUnread(conv) && selectedGroupId !== conv.id && (
-                        <span className="absolute top-0 right-0 h-2.5 w-2.5 rounded-full bg-red-500 border-2 border-background" />
+                    <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      {conv.isGroup ? <Users className="h-4 w-4 text-primary" /> : (
+                        <span className="text-sm font-bold text-primary">
+                          {(conv.name || "?").charAt(0).toUpperCase()}
+                        </span>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className={`text-sm font-medium truncate ${hasUnread(conv) && selectedGroupId !== conv.id ? "text-foreground font-semibold" : "text-foreground"}`}>{conv.name}</span>
+                        <span className="text-sm font-medium text-foreground truncate">{conv.name}</span>
                         <span className="text-[10px] text-muted-foreground/60 shrink-0 ml-1">{formatTime(conv.lastMessageAt)}</span>
                       </div>
                       <p className="text-xs text-muted-foreground truncate">
                         {conv.lastSender && <span className="font-medium">{conv.lastSender}: </span>}
                         {conv.lastMessage}
                       </p>
-                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 mt-0.5">
-                        {conv.messageCount} msgs
-                      </Badge>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5">
+                          {conv.messageCount} msgs
+                        </Badge>
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -372,7 +354,7 @@ export default function WaQcConversations() {
           </div>
         </Card>
 
-        {/* Chat View */}
+        {/* ── Chat View ── */}
         <div className="flex-1 min-w-0 flex gap-3">
           <Card className="border-border/50 flex flex-col flex-1 min-w-0 overflow-hidden">
             {!selectedGroupId ? (
@@ -403,15 +385,12 @@ export default function WaQcConversations() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2">
                     <Button
                       variant={showMsgSearch ? "secondary" : "ghost"}
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => {
-                        setShowMsgSearch(!showMsgSearch);
-                        if (showMsgSearch) { setMsgSearch(""); setDebouncedMsgSearch(""); }
-                      }}
+                      onClick={() => { setShowMsgSearch(!showMsgSearch); if (showMsgSearch) { setMsgSearch(""); setDebouncedMsgSearch(""); } }}
                       title="Search in chat"
                     >
                       <Search className="h-4 w-4" />
@@ -425,13 +404,19 @@ export default function WaQcConversations() {
                     >
                       <Bot className="h-4 w-4 text-yellow-400" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => refetchMsgs()} title="Refresh">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => refetchMsgs()}
+                      title="Refresh messages"
+                    >
                       <RefreshCw className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
 
-                {/* In-chat search */}
+                {/* In-chat search bar */}
                 {showMsgSearch && (
                   <div className="px-4 py-2 border-b border-border/50 bg-accent/10">
                     <div className="relative">
@@ -454,7 +439,7 @@ export default function WaQcConversations() {
                     </div>
                     {debouncedMsgSearch && (
                       <p className="text-[11px] text-muted-foreground mt-1">
-                        {messages?.total ?? 0} result(s) for &quot;{debouncedMsgSearch}&quot;
+                        {messages?.total ?? 0} result(s) for "{debouncedMsgSearch}"
                       </p>
                     )}
                   </div>
@@ -476,10 +461,16 @@ export default function WaQcConversations() {
                   ) : (
                     <>
                       {sortedMessages.map((msg, idx) => {
+                        // Determine if this is an outgoing message (sent by the business)
                         const isOutgoing = msg.senderId === BUSINESS_PHONE_ID || msg.senderPhone === BUSINESS_PHONE_ID;
                         const showSender = !isOutgoing && (idx === 0 || sortedMessages[idx - 1]?.senderId !== msg.senderId);
+
                         return (
-                          <div key={msg.id} className={`flex ${isOutgoing ? "justify-end" : "justify-start"} items-end gap-2`}>
+                          <div
+                            key={msg.id}
+                            className={`flex ${isOutgoing ? "justify-end" : "justify-start"} items-end gap-2`}
+                          >
+                            {/* Avatar for incoming */}
                             {!isOutgoing && (
                               <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mb-0.5">
                                 <span className="text-[10px] font-bold text-primary">
@@ -487,19 +478,28 @@ export default function WaQcConversations() {
                                 </span>
                               </div>
                             )}
-                            <div className={`max-w-[70%] flex flex-col ${isOutgoing ? "items-end" : "items-start"}`}>
+
+                            <div className={`max-w-[70%] ${isOutgoing ? "items-end" : "items-start"} flex flex-col`}>
                               {showSender && (
                                 <span className="text-[11px] font-semibold text-primary/80 mb-0.5 px-1">
                                   {msg.senderName || msg.senderPhone}
                                 </span>
                               )}
-                              <div className={`rounded-2xl px-3 py-2 text-sm ${isOutgoing ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-accent/50 text-foreground rounded-bl-sm"}`}>
+                              <div
+                                className={`rounded-2xl px-3 py-2 text-sm ${
+                                  isOutgoing
+                                    ? "bg-primary text-primary-foreground rounded-br-sm"
+                                    : "bg-accent/50 text-foreground rounded-bl-sm"
+                                }`}
+                              >
                                 <MediaBubble msg={msg} />
                               </div>
                               <span className={`text-[10px] text-muted-foreground/60 mt-0.5 px-1 ${isOutgoing ? "text-right" : "text-left"}`}>
                                 {formatMsgTime(msg.whatsappTimestamp, msg.createdAt)}
                               </span>
                             </div>
+
+                            {/* Avatar placeholder for outgoing alignment */}
                             {isOutgoing && <div className="w-7 shrink-0" />}
                           </div>
                         );
@@ -513,7 +513,7 @@ export default function WaQcConversations() {
                 <div className="px-4 py-3 border-t border-border/50 shrink-0">
                   <div className="flex gap-2 items-end">
                     <Textarea
-                      placeholder="Type a reply... (Enter to send, Shift+Enter for new line)"
+                      placeholder="Type a reply..."
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
                       onKeyDown={(e) => {
@@ -530,17 +530,20 @@ export default function WaQcConversations() {
                       className="h-10 w-10 shrink-0"
                       onClick={handleSendReply}
                       disabled={!replyText.trim() || sendReplyMutation.isPending}
-                      title="Send reply"
+                      title="Send reply (Enter)"
                     >
-                      {sendReplyMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      {sendReplyMutation.isPending
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <Send className="h-4 w-4" />}
                     </Button>
                   </div>
+                  <p className="text-[11px] text-muted-foreground/50 mt-1">Press Enter to send · Shift+Enter for new line</p>
                 </div>
               </>
             )}
           </Card>
 
-          {/* AI Panel */}
+          {/* ── AI Panel ── */}
           {showAi && selectedGroupId && (
             <Card className="border-border/50 w-72 shrink-0 overflow-hidden flex flex-col">
               <AiPanel groupId={selectedGroupId} onClose={() => setShowAi(false)} />

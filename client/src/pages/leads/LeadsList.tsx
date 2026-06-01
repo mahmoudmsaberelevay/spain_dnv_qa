@@ -46,17 +46,7 @@ const SOURCES = [
 ];
 
 const TEAM = [
-  "Mahmoud Saber",
-  "Nouran Mamdouh",
-  "Hager Hany",
-  "Marwa Abdallah",
-  "Ziad El Shurafa",
-  "Fouad Abdo",
-  "Kirolos Nabil",
-  "Basmala Shereef",
-  "Eman Ahmed",
-  "Madonna Adel",
-  "Monica Sobhy",
+  "Mahmoud Saber", "Fouad", "Kirolos", "Ziad El Shurafa", "Madonna Adel",
 ];
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -92,14 +82,10 @@ export default function LeadsList() {
   // ── Filter state ──────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 350);
-  const [stageFilters, setStageFilters] = useState<string[]>([]);   // multi-select
+  const [stageFilter, setStageFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
-  const [programFilters, setProgramFilters] = useState<string[]>([]); // multi-select
-  const [ownerFilters, setOwnerFilters] = useState<string[]>([]);    // multi-select
-  // legacy single-value aliases (kept for preset compatibility)
-  const stageFilter = stageFilters.length === 1 ? stageFilters[0] : "all";
-  const programFilter = programFilters.length === 1 ? programFilters[0] : "all";
-  const assignedFilter = ownerFilters.length === 1 ? ownerFilters[0] : "all";
+  const [programFilter, setProgramFilter] = useState("all");
+  const [assignedFilter, setAssignedFilter] = useState("all");
   // Pre-populate from URL param if provided (from dashboard chart click)
   const [metaFormFilter, setMetaFormFilter] = useState(initialForm || "all");
   const [campaignFilter, setCampaignFilter] = useState(initialCampaign);
@@ -193,10 +179,10 @@ export default function LeadsList() {
   function applyPreset(filterJson: string) {
     try {
       const f = JSON.parse(filterJson);
-      setStageFilters(f.stages ?? (f.stage && f.stage !== "all" ? [f.stage] : []));
+      setStageFilter(f.stage ?? "all");
       setSourceFilter(f.source ?? "all");
-      setProgramFilters(f.programs ?? (f.program && f.program !== "all" ? [f.program] : []));
-      setOwnerFilters(f.owners ?? (f.assignedTo && f.assignedTo !== "all" ? [f.assignedTo] : []));
+      setProgramFilter(f.program ?? "all");
+      setAssignedFilter(f.assignedTo ?? "all");
       setCreatedFrom(f.createdFrom ?? "");
       setCreatedTo(f.createdTo ?? "");
       setActivityTypeFilter(f.activityTypes ?? []);
@@ -206,10 +192,10 @@ export default function LeadsList() {
   }
   function buildPresetJson() {
     return JSON.stringify({
-      stages: stageFilters.length > 0 ? stageFilters : undefined,
+      stage: stageFilter !== "all" ? stageFilter : undefined,
       source: sourceFilter !== "all" ? sourceFilter : undefined,
-      programs: programFilters.length > 0 ? programFilters : undefined,
-      owners: ownerFilters.length > 0 ? ownerFilters : undefined,
+      program: programFilter !== "all" ? programFilter : undefined,
+      assignedTo: assignedFilter !== "all" ? assignedFilter : undefined,
       createdFrom: createdFrom || undefined,
       createdTo: createdTo || undefined,
       activityTypes: activityTypeFilter.length > 0 ? activityTypeFilter : undefined,
@@ -246,10 +232,10 @@ export default function LeadsList() {
   // ── Build query filters ───────────────────────────────────────────────────
   const filters = useMemo(() => ({
     search: debouncedSearch || undefined,
-    stages: stageFilters.length > 0 ? stageFilters : undefined,
+    stage: stageFilter !== "all" ? stageFilter : undefined,
     leadSource: sourceFilter !== "all" ? sourceFilter : undefined,
-    programs: programFilters.length > 0 ? programFilters : undefined,
-    assignedToList: ownerFilters.length > 0 ? ownerFilters : undefined,
+    interestedProgram: programFilter !== "all" ? programFilter : undefined,
+    assignedTo: assignedFilter !== "all" ? assignedFilter : undefined,
     metaFormId: metaFormFilter !== "all" ? metaFormFilter : undefined,
     metaCampaign: campaignFilter || undefined,
     dateFrom: createdFrom ? new Date(createdFrom).getTime() : undefined,
@@ -258,24 +244,24 @@ export default function LeadsList() {
     lastActivityTo: lastActivityTo ? new Date(lastActivityTo + "T23:59:59").getTime() : undefined,
     page,
     pageSize,
-  }), [debouncedSearch, stageFilters, sourceFilter, programFilters, ownerFilters, metaFormFilter,
+  }), [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter,
     campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo, page, pageSize]);
 
   // Reset page and selection when non-page filters change
   useEffect(() => {
-    const key = JSON.stringify({ debouncedSearch, stageFilters, sourceFilter, programFilters, ownerFilters, metaFormFilter, campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo });
+    const key = JSON.stringify({ debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo });
     if (prevFiltersRef.current && prevFiltersRef.current !== key) {
       setPage(1);
       setSelectedIds(new Set());
       setAllPagesSelected(false);
     }
     prevFiltersRef.current = key;
-  }, [debouncedSearch, stageFilters, sourceFilter, programFilters, ownerFilters, metaFormFilter, campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
+  }, [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
 
-  const hasActiveFilters = stageFilters.length > 0 || sourceFilter !== "all" || programFilters.length > 0 || ownerFilters.length > 0 || metaFormFilter !== "all" || !!campaignFilter || createdFrom || createdTo || lastActivityFrom || lastActivityTo;
+  const hasActiveFilters = stageFilter !== "all" || sourceFilter !== "all" || programFilter !== "all" || assignedFilter !== "all" || metaFormFilter !== "all" || !!campaignFilter || createdFrom || createdTo || lastActivityFrom || lastActivityTo;
 
   function clearAllFilters() {
-    setStageFilters([]); setSourceFilter("all"); setProgramFilters([]); setOwnerFilters([]);
+    setStageFilter("all"); setSourceFilter("all"); setProgramFilter("all"); setAssignedFilter("all");
     setMetaFormFilter("all"); setCampaignFilter("");
     setCreatedFrom(""); setCreatedTo(""); setLastActivityFrom(""); setLastActivityTo("");
   }
@@ -532,80 +518,20 @@ export default function LeadsList() {
               className="pl-9"
             />
           </div>
-          {/* Multi-select Stage filter */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className={`gap-1.5 min-w-[120px] justify-between ${stageFilters.length > 0 ? "border-primary text-primary" : ""}`}>
-                <span className="truncate">
-                  {stageFilters.length === 0 ? "All Stages" : stageFilters.length === 1 ? (STAGES.find(s => s.value === stageFilters[0])?.label ?? stageFilters[0]) : `${stageFilters.length} Stages`}
-                </span>
-                {stageFilters.length > 0 && (
-                  <span
-                    className="ml-1 rounded-full bg-primary text-primary-foreground text-xs w-4 h-4 flex items-center justify-center cursor-pointer"
-                    onClick={e => { e.stopPropagation(); setStageFilters([]); }}
-                  >×</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-52 p-2" align="start">
-              <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide px-1">Stage</p>
-              <div className="space-y-1 max-h-64 overflow-y-auto">
-                {STAGES.map(s => (
-                  <label key={s.value} className="flex items-center gap-2 cursor-pointer px-1 py-1 rounded hover:bg-muted">
-                    <Checkbox
-                      checked={stageFilters.includes(s.value)}
-                      onCheckedChange={() => setStageFilters(prev =>
-                        prev.includes(s.value) ? prev.filter(v => v !== s.value) : [...prev, s.value]
-                      )}
-                    />
-                    <span className="text-sm">{s.label}</span>
-                  </label>
-                ))}
-              </div>
-              {stageFilters.length > 0 && (
-                <Button variant="ghost" size="sm" className="w-full mt-2 text-xs" onClick={() => setStageFilters([])}>
-                  Clear
-                </Button>
-              )}
-            </PopoverContent>
-          </Popover>
-          {/* Multi-select Program filter */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className={`gap-1.5 min-w-[130px] justify-between ${programFilters.length > 0 ? "border-primary text-primary" : ""}`}>
-                <span className="truncate">
-                  {programFilters.length === 0 ? "All Programs" : programFilters.length === 1 ? programFilters[0] : `${programFilters.length} Programs`}
-                </span>
-                {programFilters.length > 0 && (
-                  <span
-                    className="ml-1 rounded-full bg-primary text-primary-foreground text-xs w-4 h-4 flex items-center justify-center cursor-pointer"
-                    onClick={e => { e.stopPropagation(); setProgramFilters([]); }}
-                  >×</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-64 p-2" align="start">
-              <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide px-1">Program</p>
-              <div className="space-y-1 max-h-64 overflow-y-auto">
-                {allPrograms.map(p => (
-                  <label key={p} className="flex items-center gap-2 cursor-pointer px-1 py-1 rounded hover:bg-muted">
-                    <Checkbox
-                      checked={programFilters.includes(p)}
-                      onCheckedChange={() => setProgramFilters(prev =>
-                        prev.includes(p) ? prev.filter(v => v !== p) : [...prev, p]
-                      )}
-                    />
-                    <span className="text-sm">{p}</span>
-                  </label>
-                ))}
-              </div>
-              {programFilters.length > 0 && (
-                <Button variant="ghost" size="sm" className="w-full mt-2 text-xs" onClick={() => setProgramFilters([])}>
-                  Clear
-                </Button>
-              )}
-            </PopoverContent>
-          </Popover>
+          <Select value={stageFilter} onValueChange={setStageFilter}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Stage" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Stages</SelectItem>
+              {STAGES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={programFilter} onValueChange={setProgramFilter}>
+            <SelectTrigger className="w-44"><SelectValue placeholder="Program" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Programs</SelectItem>
+              {allPrograms.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
             <SelectTrigger className="w-40"><SelectValue placeholder="Source" /></SelectTrigger>
             <SelectContent>
@@ -613,43 +539,13 @@ export default function LeadsList() {
               {allSources.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
-          {/* Multi-select Owner filter */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className={`gap-1.5 min-w-[130px] justify-between ${ownerFilters.length > 0 ? "border-primary text-primary" : ""}`}>
-                <span className="truncate">
-                  {ownerFilters.length === 0 ? "All Team" : ownerFilters.length === 1 ? ownerFilters[0].split(" ")[0] : `${ownerFilters.length} Owners`}
-                </span>
-                {ownerFilters.length > 0 && (
-                  <span
-                    className="ml-1 rounded-full bg-primary text-primary-foreground text-xs w-4 h-4 flex items-center justify-center cursor-pointer"
-                    onClick={e => { e.stopPropagation(); setOwnerFilters([]); }}
-                  >×</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-52 p-2" align="start">
-              <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide px-1">Assigned To</p>
-              <div className="space-y-1 max-h-64 overflow-y-auto">
-                {TEAM.map(t => (
-                  <label key={t} className="flex items-center gap-2 cursor-pointer px-1 py-1 rounded hover:bg-muted">
-                    <Checkbox
-                      checked={ownerFilters.includes(t)}
-                      onCheckedChange={() => setOwnerFilters(prev =>
-                        prev.includes(t) ? prev.filter(v => v !== t) : [...prev, t]
-                      )}
-                    />
-                    <span className="text-sm">{t}</span>
-                  </label>
-                ))}
-              </div>
-              {ownerFilters.length > 0 && (
-                <Button variant="ghost" size="sm" className="w-full mt-2 text-xs" onClick={() => setOwnerFilters([])}>
-                  Clear
-                </Button>
-              )}
-            </PopoverContent>
-          </Popover>
+          <Select value={assignedFilter} onValueChange={setAssignedFilter}>
+            <SelectTrigger className="w-44"><SelectValue placeholder="Assigned To" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Team</SelectItem>
+              {TEAM.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+            </SelectContent>
+          </Select>
           {/* Advanced Filters toggle */}
           <Button
             variant={showAdvancedFilters ? "default" : "outline"}

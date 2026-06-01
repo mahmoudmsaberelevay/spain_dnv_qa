@@ -211,6 +211,48 @@ export default function LeadsReporting() {
     URL.revokeObjectURL(url);
   }
 
+  function exportCurrentTab() {
+    const dateLabel = `${new Date(dateFrom).toISOString().slice(0,10)}_to_${new Date(dateTo).toISOString().slice(0,10)}`;
+    if (activeTab === "newLeads") {
+      downloadCsv(
+        newLeadsByDay.map((r: any) => ({ date: r.day, new_leads: Number(r.count) })),
+        `new_leads_${dateLabel}.csv`
+      );
+    } else if (activeTab === "stageChanges") {
+      // Export both the raw list and the matrix summary
+      const matrixRows: Record<string, unknown>[] = [];
+      for (const fromStage of stageFromKeys) {
+        for (const toStage of stageFromKeys) {
+          const count = stageMatrix[fromStage]?.[toStage] ?? 0;
+          if (count > 0) matrixRows.push({ from_stage: fromStage, to_stage: toStage, count });
+        }
+      }
+      const rawRows = stageChanges.map((r: any) => ({
+        lead_id: r.leadId,
+        user_id: r.userId,
+        description: r.description,
+        date: new Date(r.createdAt).toLocaleString(),
+      }));
+      downloadCsv([...matrixRows, {}, ...rawRows], `stage_changes_${dateLabel}.csv`);
+    } else if (activeTab === "activity") {
+      const rows = activityBreakdown.map((b: any) => {
+        const u = usersList.find((u: any) => u.id === b.userId);
+        return {
+          user_name: u?.name || u?.email || `User #${b.userId}`,
+          user_email: u?.email || "",
+          activity_type: ACTIVITY_TYPE_LABELS[b.activityType] ?? b.activityType,
+          count: Number(b.count),
+        };
+      });
+      downloadCsv(rows, `team_activity_${dateLabel}.csv`);
+    }
+  }
+
+  const exportDisabled =
+    (activeTab === "newLeads" && newLeadsByDay.length === 0) ||
+    (activeTab === "stageChanges" && stageChanges.length === 0) ||
+    (activeTab === "activity" && activityBreakdown.length === 0);
+
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       {/* Header */}
@@ -224,6 +266,16 @@ export default function LeadsReporting() {
             Analyse team activity, new leads, and stage movement over any time period
           </p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={exportCurrentTab}
+          disabled={exportDisabled}
+          className="flex items-center gap-2"
+        >
+          <Download className="w-4 h-4" />
+          Export CSV
+        </Button>
       </div>
 
       {/* Filters Row */}

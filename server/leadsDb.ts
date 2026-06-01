@@ -25,12 +25,9 @@ export async function getLeadById(id: number) {
 export async function listLeads(filters?: {
   search?: string;
   stage?: string;
-  stages?: string[];          // multi-select stage filter
   leadSource?: string;
   interestedProgram?: string;
-  programs?: string[];         // multi-select program filter
   assignedTo?: string;
-  assignedToList?: string[];  // multi-select owner filter
   priority?: string;
   dateFrom?: number;
   dateTo?: number;
@@ -61,27 +58,10 @@ export async function listLeads(filters?: {
       )
     );
   }
-  // stage: single value OR multi-value array
-  if (filters?.stages && filters.stages.length > 0) {
-    conditions.push(inArray(leads.stage, filters.stages as any[]));
-  } else if (filters?.stage) {
-    conditions.push(eq(leads.stage, filters.stage as any));
-  }
+  if (filters?.stage) conditions.push(eq(leads.stage, filters.stage as any));
   if (filters?.leadSource) conditions.push(eq(leads.leadSource, filters.leadSource));
-  // program: single value OR multi-value array
-  if (filters?.programs && filters.programs.length > 0) {
-    conditions.push(
-      or(...filters.programs.map(p => like(leads.interestedProgram, `%${p}%`)))
-    );
-  } else if (filters?.interestedProgram) {
-    conditions.push(like(leads.interestedProgram, `%${filters.interestedProgram}%`));
-  }
-  // assignedTo: single value OR multi-value array
-  if (filters?.assignedToList && filters.assignedToList.length > 0) {
-    conditions.push(inArray(leads.assignedTo, filters.assignedToList));
-  } else if (filters?.assignedTo) {
-    conditions.push(eq(leads.assignedTo, filters.assignedTo));
-  }
+  if (filters?.interestedProgram) conditions.push(like(leads.interestedProgram, `%${filters.interestedProgram}%`));
+  if (filters?.assignedTo) conditions.push(eq(leads.assignedTo, filters.assignedTo));
   if (filters?.priority) conditions.push(eq(leads.priority, filters.priority as any));
   if (filters?.dateFrom) conditions.push(sql`${leads.createdAt} >= ${filters.dateFrom}`);
   if (filters?.dateTo) conditions.push(sql`${leads.createdAt} <= ${filters.dateTo}`);
