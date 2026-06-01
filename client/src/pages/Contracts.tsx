@@ -93,7 +93,7 @@ function exportToCSV(rows: any[], filename: string) {
 }
 
 export default function Contracts() {
-  const { canEdit } = usePermissions();
+  const { canEdit, canAccess } = usePermissions();
   const [showNewContract, setShowNewContract] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -378,7 +378,7 @@ export default function Contracts() {
                       <td className="px-4 py-4 text-center">
                         <Select
                           value={contract.status}
-                          disabled={!canEdit("contracting")}
+                          disabled={!canAccess("contracting")}
                           onValueChange={(val) => {
                             setConfirmStatus({
                               contractId: contract.id,
