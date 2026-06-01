@@ -137,29 +137,20 @@ export async function deleteEmployee(id: number) {
 
 // ─── Fin Clients ─────────────────────────────────────────────────────────────
 type FinClientSortField = "clientCode" | "name" | "program" | "consultant" | "contractValueEur" | "paidAmountEur" | "remainingAmountEur" | "signingDate";
-export type SigningDateRange = "today" | "this_week" | "this_month" | "this_year";
+export type SigningDateRange = "this_month" | "previous_month";
 function getSigningDateBounds(range: SigningDateRange): { from: string; to: string } {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  if (range === "today") {
-    const today = fmt(now);
-    return { from: today, to: today };
-  }
-  if (range === "this_week") {
-    const day = now.getDay(); // 0=Sun
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday
-    const mon = new Date(now); mon.setDate(diff);
-    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-    return { from: fmt(mon), to: fmt(sun) };
-  }
   if (range === "this_month") {
     const from = new Date(now.getFullYear(), now.getMonth(), 1);
     const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     return { from: fmt(from), to: fmt(to) };
   }
-  // this_year
-  return { from: `${now.getFullYear()}-01-01`, to: `${now.getFullYear()}-12-31` };
+  // previous_month
+  const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const to = new Date(now.getFullYear(), now.getMonth(), 0);
+  return { from: fmt(from), to: fmt(to) };
 }
 export async function listFinClients(opts?: { search?: string; consultant?: string; signingDateRange?: SigningDateRange; limit?: number; offset?: number; sortField?: FinClientSortField; sortDir?: "asc" | "desc" }) {
   const db = await getDb(); if (!db) return [];

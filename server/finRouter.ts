@@ -173,7 +173,7 @@ const finClientsRouter = router({
     .input(z.object({
       search: z.string().optional(),
       consultant: z.string().optional(),
-      signingDateRange: z.enum(["today", "this_week", "this_month", "this_year"]).optional(),
+      signingDateRange: z.enum(["this_month", "previous_month"]).optional(),
       limit: z.number().optional(),
       offset: z.number().optional(),
       sortField: z.enum(["clientCode", "name", "program", "consultant", "contractValueEur", "paidAmountEur", "remainingAmountEur", "signingDate"]).optional(),
@@ -184,14 +184,14 @@ const finClientsRouter = router({
     .input(z.object({
       search: z.string().optional(),
       consultant: z.string().optional(),
-      signingDateRange: z.enum(["today", "this_week", "this_month", "this_year"]).optional(),
+      signingDateRange: z.enum(["this_month", "previous_month"]).optional(),
     }).optional())
     .query(async ({ input }) => countFinClients(input ?? undefined)),
   totals: finReadProcedure
     .input(z.object({
       search: z.string().optional(),
       consultant: z.string().optional(),
-      signingDateRange: z.enum(["today", "this_week", "this_month", "this_year"]).optional(),
+      signingDateRange: z.enum(["this_month", "previous_month"]).optional(),
     }).optional())
     .query(async ({ input }) => getFinClientTotals(input ?? undefined)),
   get: finReadProcedure
