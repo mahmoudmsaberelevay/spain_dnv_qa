@@ -43,7 +43,7 @@ export default function FinClients() {
   const [codeFilter, setCodeFilter] = useState("");
   const [debouncedCode, setDebouncedCode] = useState("");
   const [consultant, setConsultant] = useState<string>("all");
-  const [signingDateRange, setSigningDateRange] = useState<"all" | "this_month" | "previous_month">("all");
+  const [signingDateRange, setSigningDateRange] = useState<"all" | "this_month" | "previous_month" | "this_year">("all");
   const [sortField, setSortField] = useState<SortField>("clientCode");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [page, setPage] = useState(0);
@@ -92,7 +92,7 @@ export default function FinClients() {
   const queryParams = useMemo(() => ({
     search: combinedSearch,
     consultant: consultant !== "all" ? consultant : undefined,
-    signingDateRange: signingDateRange !== "all" ? signingDateRange as "this_month" | "previous_month" : undefined,
+    signingDateRange: signingDateRange !== "all" ? signingDateRange as "this_month" | "previous_month" | "this_year" : undefined,
     limit: pageSize,
     offset: page * pageSize,
     sortField: sortField,
@@ -102,7 +102,7 @@ export default function FinClients() {
   const countParams = useMemo(() => ({
     search: combinedSearch,
     consultant: consultant !== "all" ? consultant : undefined,
-    signingDateRange: signingDateRange !== "all" ? signingDateRange as "this_month" | "previous_month" : undefined,
+    signingDateRange: signingDateRange !== "all" ? signingDateRange as "this_month" | "previous_month" | "this_year" : undefined,
   }), [combinedSearch, consultant, signingDateRange]);
 
   // Fetch all for export (no limit) — only when exporting
@@ -392,6 +392,7 @@ export default function FinClients() {
             <SelectItem value="all">All Signing Dates</SelectItem>
             <SelectItem value="this_month">This Month</SelectItem>
             <SelectItem value="previous_month">Previous Month</SelectItem>
+            <SelectItem value="this_year">This Year</SelectItem>
           </SelectContent>
         </Select>
         <Select value={sortField + "_" + sortDir} onValueChange={(v) => {

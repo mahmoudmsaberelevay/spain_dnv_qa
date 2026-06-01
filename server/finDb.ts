@@ -137,7 +137,7 @@ export async function deleteEmployee(id: number) {
 
 // ─── Fin Clients ─────────────────────────────────────────────────────────────
 type FinClientSortField = "clientCode" | "name" | "program" | "consultant" | "contractValueEur" | "paidAmountEur" | "remainingAmountEur" | "signingDate";
-export type SigningDateRange = "this_month" | "previous_month";
+export type SigningDateRange = "this_month" | "previous_month" | "this_year";
 function getSigningDateBounds(range: SigningDateRange): { from: string; to: string } {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -146,6 +146,9 @@ function getSigningDateBounds(range: SigningDateRange): { from: string; to: stri
     const from = new Date(now.getFullYear(), now.getMonth(), 1);
     const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     return { from: fmt(from), to: fmt(to) };
+  }
+  if (range === "this_year") {
+    return { from: `${now.getFullYear()}-01-01`, to: `${now.getFullYear()}-12-31` };
   }
   // previous_month
   const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
