@@ -59,6 +59,7 @@ import LeadProfile from "./pages/leads/LeadProfile";
 import LeadsSettings from "./pages/leads/LeadsSettings";
 import LeadsMetaExport from "./pages/leads/LeadsMetaExport";
 import LeadsReporting from "./pages/leads/LeadsReporting";
+import TasksPage from "./pages/leads/TasksPage";
 
 import AdminSecurity from "@/pages/AdminSecurity";
 
@@ -259,6 +260,9 @@ function Router() {
       </Route>
       <Route path="/leads/reporting">
         <DashboardLayout><LeadsReporting /></DashboardLayout>
+      </Route>
+      <Route path="/leads/tasks">
+        <DashboardLayout><TasksPage /></DashboardLayout>
       </Route>
       <Route path="/leads/:id">
         <DashboardLayout><LeadProfile /></DashboardLayout>

@@ -412,3 +412,31 @@ export async function getUserActivityReport(dateFrom: number, dateTo: number, us
     .orderBy(leadActivities.userId, desc(sql`COUNT(*)`));
   return { summary, breakdown };
 }
+
+// ─── All Tasks (for Tasks page) ───────────────────────────────────────────────
+export async function getAllTasksWithLeads(filters: { assignedTo?: string } = {}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const conditions: any[] = [eq(leadTasks.completed, false)];
+  if (filters.assignedTo) conditions.push(eq(leadTasks.assignedTo, filters.assignedTo));
+  const rows = await db
+    .select({
+      id: leadTasks.id,
+      leadId: leadTasks.leadId,
+      assignedTo: leadTasks.assignedTo,
+      taskType: leadTasks.taskType,
+      dueDate: leadTasks.dueDate,
+      completed: leadTasks.completed,
+      completedAt: leadTasks.completedAt,
+      notes: leadTasks.notes,
+      createdAt: leadTasks.createdAt,
+      leadName: leads.fullName,
+      leadStage: leads.stage,
+      leadPhone: leads.phone,
+    })
+    .from(leadTasks)
+    .innerJoin(leads, eq(leadTasks.leadId, leads.id))
+    .where(and(...conditions))
+    .orderBy(leadTasks.dueDate);
+  return rows;
+}

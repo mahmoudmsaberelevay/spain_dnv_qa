@@ -36,7 +36,7 @@ const STAGES = [
 ] as const;
 
 const TASK_TYPES = ["call", "whatsapp", "email", "meeting", "document_request", "other"] as const;
-const TEAM = ["Mahmoud", "Fouad", "Kirolos", "Ziad", "Madonna", "Monica", "Marina", "Nouran"];
+const TEAM = ["Mahmoud", "Fouad", "Kirolos", "Ziad", "Madonna", "Monica", "Marina", "Nouran", "Hager", "Eman", "Marwa", "Basmala"];
 
 const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
   created: <Plus className="w-3.5 h-3.5" />,

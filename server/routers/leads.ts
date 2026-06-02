@@ -8,7 +8,7 @@ import {
   createLead, getLeadById, listLeads, updateLead, deleteLead, checkDuplicate,
   addLeadActivity, getLeadActivities,
   addLeadNote, getLeadNotes, updateLeadNote, deleteLeadNote, getLeadNoteById,
-  createLeadTask, getLeadTasks, completeLeadTask, deleteLeadTask,
+  createLeadTask, getLeadTasks, completeLeadTask, deleteLeadTask, getAllTasksWithLeads,
   getLeadStageCounts, getLeadSourceCounts, getLeadProgramCounts,
   getMonthlyLeadConversions, getLeadTotalCount,
   getLeadCampaignCounts, getLeadFormCounts,
@@ -698,6 +698,11 @@ export const leadsRouter = router({
       }));
       return { rows, total: rows.length };
     }),
+
+  // ── All Tasks (Tasks page) ─────────────────────────────────────────────────
+  getAllTasks: protectedProcedure
+    .input(z.object({ assignedTo: z.string().optional() }).optional())
+    .query(async ({ input }) => getAllTasksWithLeads({ assignedTo: input?.assignedTo })),
 
   // ── Analytics ───────────────────────────────────────────────────────────────
   analytics: router({

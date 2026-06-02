@@ -64,6 +64,7 @@ import {
   KanbanSquare,
   Target,
   BarChart2,
+  CheckSquare,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -249,6 +250,7 @@ const modules = [
       { icon: KanbanSquare, label: "Pipeline", path: "/leads/pipeline" },
       { icon: BarChart2, label: "Meta Export", path: "/leads/meta-export" },
       { icon: BarChart3, label: "Reporting", path: "/leads/reporting" },
+      { icon: CheckSquare, label: "Tasks", path: "/leads/tasks" },
       { icon: SettingsIcon, label: "Settings", path: "/leads/settings" },
     ],
   },
