@@ -440,7 +440,7 @@ export const leadsRouter = router({
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const id = await createLeadTask(input);
+        const id = await createLeadTask({ ...input, createdBy: ctx.user.name ?? undefined });
         await addLeadActivity({
           leadId: input.leadId,
           userId: ctx.user.id,
@@ -701,8 +701,8 @@ export const leadsRouter = router({
 
   // ── All Tasks (Tasks page) ─────────────────────────────────────────────────
   getAllTasks: protectedProcedure
-    .input(z.object({ assignedTo: z.string().optional() }).optional())
-    .query(async ({ input }) => getAllTasksWithLeads({ assignedTo: input?.assignedTo })),
+    .input(z.object({ createdBy: z.string().optional() }).optional())
+    .query(async ({ input }) => getAllTasksWithLeads({ createdBy: input?.createdBy })),
 
   // ── Analytics ───────────────────────────────────────────────────────────────
   analytics: router({

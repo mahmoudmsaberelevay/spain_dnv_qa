@@ -911,6 +911,7 @@ export const leadTasks = mysqlTable("lead_tasks", {
   completed: boolean("completed").default(false),
   completedAt: bigint("completedAt", { mode: "number" }),
   notes: text("notes"),
+  createdBy: varchar("createdBy", { length: 255 }),
   createdAt: bigint("createdAt", { mode: "number" }).notNull(),
 });
 export type LeadTask = typeof leadTasks.$inferSelect;

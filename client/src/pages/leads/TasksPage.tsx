@@ -190,8 +190,10 @@ export default function TasksPage() {
   const [ownerFilter, setOwnerFilter] = useState("all");
   const utils = trpc.useUtils();
 
+  const queryInput = ownerFilter !== "all" ? { createdBy: ownerFilter } : { createdBy: undefined };
   const { data: tasks = [], isLoading } = trpc.leads.getAllTasks.useQuery(
-    ownerFilter !== "all" ? { assignedTo: ownerFilter } : {},
+    queryInput,
+    { refetchOnMount: true },
   );
 
   const completeTask = trpc.leads.tasks.complete.useMutation({

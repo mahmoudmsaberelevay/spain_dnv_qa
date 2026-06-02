@@ -1,0 +1,18 @@
+{
+  "query": "SELECT assignedTo, COUNT(*) as count FROM lead_tasks WHERE completed = 0 GROUP BY assignedTo ORDER BY count DESC LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT assignedTo, COUNT(*) as count FROM lead_tasks WHERE completed = 0 GROUP BY assignedTo ORDER BY count DESC LIMIT 20;",
+  "rows": [
+    {
+      "assignedTo": "Nouran",
+      "count": "52"
+    },
+    {
+      "assignedTo": "NULL",
+      "count": "11"
+    }
+  ],
+  "messages": [],
+  "stdout": "assignedTo\tcount\nNouran\t52\nNULL\t11\n",
+  "stderr": "",
+  "execution_time_ms": 1702
+}
