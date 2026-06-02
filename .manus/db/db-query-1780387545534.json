@@ -1,0 +1,18 @@
+{
+  "query": "\nSELECT DISTINCT assignedTo, COUNT(*) as taskCount\nFROM lead_tasks\nWHERE completed = 0\nGROUP BY assignedTo\nORDER BY assignedTo;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute \nSELECT DISTINCT assignedTo, COUNT(*) as taskCount\nFROM lead_tasks\nWHERE completed = 0\nGROUP BY assignedTo\nORDER BY assignedTo;\n",
+  "rows": [
+    {
+      "assignedTo": "NULL",
+      "taskCount": "11"
+    },
+    {
+      "assignedTo": "Nouran",
+      "taskCount": "48"
+    }
+  ],
+  "messages": [],
+  "stdout": "assignedTo\ttaskCount\nNULL\t11\nNouran\t48\n",
+  "stderr": "",
+  "execution_time_ms": 1838
+}

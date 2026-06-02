@@ -1,0 +1,66 @@
+{
+  "query": "\nSELECT u.id, u.name, u.email, up.pageKey, up.canAccess, up.canEdit\nFROM users u\nJOIN userPermissions up ON up.userId = u.id\nWHERE up.pageKey = 'fin_employees' AND up.canAccess = 1\nORDER BY u.name;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute \nSELECT u.id, u.name, u.email, up.pageKey, up.canAccess, up.canEdit\nFROM users u\nJOIN userPermissions up ON up.userId = u.id\nWHERE up.pageKey = 'fin_employees' AND up.canAccess = 1\nORDER BY u.name;\n",
+  "rows": [
+    {
+      "id": "933919",
+      "name": "Fouad Abdo",
+      "email": "fouad.abdo@elevay.com",
+      "pageKey": "fin_employees",
+      "canAccess": "1",
+      "canEdit": "0"
+    },
+    {
+      "id": "12484157",
+      "name": "Hager Hany",
+      "email": "hager.hany@elevay.com",
+      "pageKey": "fin_employees",
+      "canAccess": "1",
+      "canEdit": "1"
+    },
+    {
+      "id": "933743",
+      "name": "Madonna Adel",
+      "email": "madonna.adel@elevay.com",
+      "pageKey": "fin_employees",
+      "canAccess": "1",
+      "canEdit": "0"
+    },
+    {
+      "id": "420521",
+      "name": "Mahmoud Saber",
+      "email": "mahmoudsaber.ali3488@gmail.com",
+      "pageKey": "fin_employees",
+      "canAccess": "1",
+      "canEdit": "1"
+    },
+    {
+      "id": "930164",
+      "name": "Mohamed abdelfatah",
+      "email": "mohamed.abdelfatah@elevay.com",
+      "pageKey": "fin_employees",
+      "canAccess": "1",
+      "canEdit": "1"
+    },
+    {
+      "id": "933764",
+      "name": "Monica Sobhy",
+      "email": "monica.sobhy@elevay.com",
+      "pageKey": "fin_employees",
+      "canAccess": "1",
+      "canEdit": "0"
+    },
+    {
+      "id": "191",
+      "name": "ziad.elshurafa",
+      "email": "ziad.elshurafa@elevay.com",
+      "pageKey": "fin_employees",
+      "canAccess": "1",
+      "canEdit": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\tpageKey\tcanAccess\tcanEdit\n933919\tFouad Abdo\tfouad.abdo@elevay.com\tfin_employees\t1\t0\n12484157\tHager Hany\thager.hany@elevay.com\tfin_employees\t1\t1\n933743\tMadonna Adel\tmadonna.adel@elevay.com\tfin_employees\t1\t0\n420521\tMahmoud Saber\tmahmoudsaber.ali3488@gmail.com\tfin_employees\t1\t1\n930164\tMohamed abdelfatah\tmohamed.abdelfatah@elevay.com\tfin_employees\t1\t1\n933764\tMonica Sobhy\tmonica.sobhy@elevay.com\tfin_employees\t1\t0\n191\tziad.elshurafa\tziad.elshurafa@elevay.com\tfin_employees\t1\t1\n",
+  "stderr": "",
+  "execution_time_ms": 1776
+}

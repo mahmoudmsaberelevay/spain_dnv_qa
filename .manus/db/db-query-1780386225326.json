@@ -1,0 +1,76 @@
+{
+  "query": "\nSELECT u.id, u.name, up.canAccess, up.canEdit\nFROM users u\nJOIN userPermissions up ON up.userId = u.id\nWHERE up.pageKey = 'fin_employees'\nORDER BY up.canAccess DESC, u.name;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute \nSELECT u.id, u.name, up.canAccess, up.canEdit\nFROM users u\nJOIN userPermissions up ON up.userId = u.id\nWHERE up.pageKey = 'fin_employees'\nORDER BY up.canAccess DESC, u.name;\n",
+  "rows": [
+    {
+      "id": "420521",
+      "name": "Mahmoud Saber",
+      "canAccess": "1",
+      "canEdit": "1"
+    },
+    {
+      "id": "191",
+      "name": "ziad.elshurafa",
+      "canAccess": "1",
+      "canEdit": "1"
+    },
+    {
+      "id": "933919",
+      "name": "Fouad Abdo",
+      "canAccess": "0",
+      "canEdit": "0"
+    },
+    {
+      "id": "12484157",
+      "name": "Hager Hany",
+      "canAccess": "0",
+      "canEdit": "0"
+    },
+    {
+      "id": "934165",
+      "name": "Jewele",
+      "canAccess": "0",
+      "canEdit": "0"
+    },
+    {
+      "id": "933707",
+      "name": "Lea",
+      "canAccess": "0",
+      "canEdit": "0"
+    },
+    {
+      "id": "933743",
+      "name": "Madonna Adel",
+      "canAccess": "0",
+      "canEdit": "0"
+    },
+    {
+      "id": "933870",
+      "name": "Marina Kamel",
+      "canAccess": "0",
+      "canEdit": "0"
+    },
+    {
+      "id": "933843",
+      "name": "Minerva",
+      "canAccess": "0",
+      "canEdit": "0"
+    },
+    {
+      "id": "930164",
+      "name": "Mohamed abdelfatah",
+      "canAccess": "0",
+      "canEdit": "0"
+    },
+    {
+      "id": "933764",
+      "name": "Monica Sobhy",
+      "canAccess": "0",
+      "canEdit": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tcanAccess\tcanEdit\n420521\tMahmoud Saber\t1\t1\n191\tziad.elshurafa\t1\t1\n933919\tFouad Abdo\t0\t0\n12484157\tHager Hany\t0\t0\n934165\tJewele\t0\t0\n933707\tLea\t0\t0\n933743\tMadonna Adel\t0\t0\n933870\tMarina Kamel\t0\t0\n933843\tMinerva\t0\t0\n930164\tMohamed abdelfatah\t0\t0\n933764\tMonica Sobhy\t0\t0\n",
+  "stderr": "",
+  "execution_time_ms": 1821
+}

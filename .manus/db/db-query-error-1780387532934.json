@@ -1,0 +1,8 @@
+{
+  "query": "\nSELECT DISTINCT assigned_to, COUNT(*) as taskCount\nFROM lead_tasks\nWHERE is_done = 0\nGROUP BY assigned_to\nORDER BY assigned_to;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute \nSELECT DISTINCT assigned_to, COUNT(*) as taskCount\nFROM lead_tasks\nWHERE is_done = 0\nGROUP BY assigned_to\nORDER BY assigned_to;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 2: Unknown column 'assigned_to' in 'group statement'"
+  ]
+}
