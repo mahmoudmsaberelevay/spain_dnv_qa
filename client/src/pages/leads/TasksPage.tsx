@@ -204,21 +204,20 @@ export default function TasksPage() {
     onError: (e) => toast.error(e.message),
   });
 
-  const now = Date.now();
-  const todayStart = getStartOfDay(new Date());
-  const todayEnd = getEndOfDay(new Date());
-
-  const { overdue, dueToday, future } = useMemo(() => {
+   const { overdue, dueToday, future } = useMemo(() => {
+    const todayStart = getStartOfDay(new Date());
+    const todayEnd = getEndOfDay(new Date());
     const overdue: Task[] = [];
     const dueToday: Task[] = [];
     const future: Task[] = [];
     for (const t of tasks) {
-      if (t.dueDate < todayStart) overdue.push(t);
-      else if (t.dueDate <= todayEnd) dueToday.push(t);
+      const due = Number(t.dueDate);
+      if (due < todayStart) overdue.push(t);
+      else if (due <= todayEnd) dueToday.push(t);
       else future.push(t);
     }
     return { overdue, dueToday, future };
-  }, [tasks, now]);
+  }, [tasks]);
 
   return (
     <div className="space-y-6">

@@ -1,0 +1,60 @@
+{
+  "query": "SELECT dueDate, createdBy, taskType FROM lead_tasks WHERE completed = 0 ORDER BY dueDate ASC LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT dueDate, createdBy, taskType FROM lead_tasks WHERE completed = 0 ORDER BY dueDate ASC LIMIT 10;",
+  "rows": [
+    {
+      "dueDate": "1780531200000",
+      "createdBy": "NULL",
+      "taskType": "call"
+    },
+    {
+      "dueDate": "1780876800000",
+      "createdBy": "Nouran Mamdouh",
+      "taskType": "call"
+    },
+    {
+      "dueDate": "1780876800000",
+      "createdBy": "Nouran Mamdouh",
+      "taskType": "call"
+    },
+    {
+      "dueDate": "1780876800000",
+      "createdBy": "Nouran Mamdouh",
+      "taskType": "call"
+    },
+    {
+      "dueDate": "1780876800000",
+      "createdBy": "Nouran Mamdouh",
+      "taskType": "call"
+    },
+    {
+      "dueDate": "1780876800000",
+      "createdBy": "Nouran Mamdouh",
+      "taskType": "call"
+    },
+    {
+      "dueDate": "1780876800000",
+      "createdBy": "Nouran Mamdouh",
+      "taskType": "call"
+    },
+    {
+      "dueDate": "1780876800000",
+      "createdBy": "Nouran Mamdouh",
+      "taskType": "call"
+    },
+    {
+      "dueDate": "1780876800000",
+      "createdBy": "Nouran Mamdouh",
+      "taskType": "call"
+    },
+    {
+      "dueDate": "1780876800000",
+      "createdBy": "Nouran Mamdouh",
+      "taskType": "call"
+    }
+  ],
+  "messages": [],
+  "stdout": "dueDate\tcreatedBy\ttaskType\n1780531200000\tNULL\tcall\n1780876800000\tNouran Mamdouh\tcall\n1780876800000\tNouran Mamdouh\tcall\n1780876800000\tNouran Mamdouh\tcall\n1780876800000\tNouran Mamdouh\tcall\n1780876800000\tNouran Mamdouh\tcall\n1780876800000\tNouran Mamdouh\tcall\n1780876800000\tNouran Mamdouh\tcall\n1780876800000\tNouran Mamdouh\tcall\n1780876800000\tNouran Mamdouh\tcall\n",
+  "stderr": "",
+  "execution_time_ms": 1752
+}
