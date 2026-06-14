@@ -1011,3 +1011,22 @@ export const leadsReportPresets = mysqlTable("leads_report_presets", {
 });
 export type LeadsReportPreset = typeof leadsReportPresets.$inferSelect;
 export type InsertLeadsReportPreset = typeof leadsReportPresets.$inferInsert;
+
+// ─── MARKETING SUMMARIES ──────────────────────────────────────────────────────
+export const marketingSummaries = mysqlTable("marketing_summaries", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  country: varchar("country", { length: 100 }).notNull(),
+  programType: varchar("programType", { length: 100 }).notNull(),
+  programSubtype: varchar("programSubtype", { length: 100 }),
+  status: varchar("status", { length: 20 }).notNull().default("draft"),
+  documentJson: text("documentJson").notNull(),
+  colorsJson: text("colorsJson"),
+  typographyJson: text("typographyJson"),
+  lastUpdated: varchar("lastUpdated", { length: 20 }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type MarketingSummary = typeof marketingSummaries.$inferSelect;
+export type InsertMarketingSummary = typeof marketingSummaries.$inferInsert;

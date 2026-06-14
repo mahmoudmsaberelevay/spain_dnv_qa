@@ -65,6 +65,9 @@ import {
   Target,
   BarChart2,
   CheckSquare,
+  Sparkles,
+  GitCompare,
+  FileSignature,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -182,6 +185,7 @@ const MODULE_COLORS: Record<string, { bg: string; text: string; dot: string }> =
   financial:    { bg: "bg-amber-500/20",  text: "text-amber-300",  dot: "bg-amber-400" },
   waQc:         { bg: "bg-green-500/20",  text: "text-green-300",  dot: "bg-green-400" },
   leads:        { bg: "bg-rose-500/20",   text: "text-rose-300",   dot: "bg-rose-400" },
+  marketing:    { bg: "bg-purple-500/20", text: "text-purple-300", dot: "bg-purple-400" },
 };
 
 // ─── Module Definitions ────────────────────────────────────────────────────────
@@ -252,6 +256,16 @@ const modules = [
       { icon: BarChart3, label: "Reporting", path: "/leads/reporting" },
       { icon: CheckSquare, label: "Tasks", path: "/leads/tasks" },
       { icon: SettingsIcon, label: "Settings", path: "/leads/settings" },
+    ],
+  },
+  {
+    id: "marketing",
+    label: "Marketing",
+    icon: Megaphone,
+    items: [
+      { icon: Sparkles, label: "Summary Generator", path: "/marketing/summary-generator" },
+      { icon: GitCompare, label: "Program Comparison", path: "/marketing/program-comparison" },
+      { icon: FileSignature, label: "Program Proposal", path: "/marketing/program-proposal" },
     ],
   },
   {
@@ -339,7 +353,7 @@ function DashboardLayoutContent({
   const isMobile = useIsMobile();
 
   // Determine active module from current path
-  const activeModuleId = location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : location.startsWith("/wa-qc") ? "waQc" : "contracting";
+  const activeModuleId = location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : location.startsWith("/wa-qc") ? "waQc" : location.startsWith("/leads") ? "leads" : location.startsWith("/marketing") ? "marketing" : "contracting";
   const [expandedModule, setExpandedModule] = useState<string>(activeModuleId);
 
   // Sync expanded module with navigation

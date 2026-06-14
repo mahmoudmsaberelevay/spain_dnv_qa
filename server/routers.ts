@@ -42,6 +42,7 @@ import { chatRouter, broadcastRouter } from "./chatRouter";
 import { permissionsRouter } from "./permissionsRouter";
 import { adminRouter } from "./adminRouter";
 import { waQcRouter } from "./waQcRouter";
+import { marketingRouter } from "./marketingRouter";
 
 const MOFA_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/mofa_stamp_a1afffba.png";
 const SPAIN_EMBASSY_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/spain_embassy_stamp_cf83213b.png";
@@ -2095,6 +2096,7 @@ export const appRouter = router({
   notifications: notificationsRouter,
   leads: leadsRouter,
   leadsSettings: leadsSettingsRouter,
+  marketing: marketingRouter,
   admin: adminRouter,
 });
 export type AppRouter = typeof appRouter;

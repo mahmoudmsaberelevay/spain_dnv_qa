@@ -63,6 +63,13 @@ import TasksPage from "./pages/leads/TasksPage";
 
 import AdminSecurity from "@/pages/AdminSecurity";
 
+// ─── Marketing Module ─────────────────────────────────────────────────────────
+import MarketingDashboard from "./pages/marketing/MarketingDashboard";
+import SummaryGenerator from "./pages/marketing/SummaryGenerator";
+import SummaryEditor from "./pages/marketing/SummaryEditor";
+import ProgramComparison from "./pages/marketing/ProgramComparison";
+import ProgramProposal from "./pages/marketing/ProgramProposal";
+
 // ─── WhatsApp Quality Control Module ─────────────────────────────────────────
 import WaQcDashboard from "./pages/waQc/WaQcDashboard";
 import WaQcChats from "./pages/waQc/WaQcChats";
@@ -266,6 +273,23 @@ function Router() {
       </Route>
       <Route path="/leads/:id">
         <DashboardLayout><LeadProfile /></DashboardLayout>
+      </Route>
+
+      {/* ── Marketing Module ── */}
+      <Route path="/marketing">
+        <DashboardLayout><MarketingDashboard /></DashboardLayout>
+      </Route>
+      <Route path="/marketing/summary-generator">
+        <DashboardLayout><SummaryGenerator /></DashboardLayout>
+      </Route>
+      <Route path="/marketing/summary-generator/:id">
+        <DashboardLayout><SummaryEditor /></DashboardLayout>
+      </Route>
+      <Route path="/marketing/program-comparison">
+        <DashboardLayout><ProgramComparison /></DashboardLayout>
+      </Route>
+      <Route path="/marketing/program-proposal">
+        <DashboardLayout><ProgramProposal /></DashboardLayout>
       </Route>
 
       <Route path="/access-denied">
