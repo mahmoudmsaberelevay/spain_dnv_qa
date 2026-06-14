@@ -807,6 +807,7 @@ const contractingRouter = router({
         consultantName: z.string().optional(),
         country: z.string().default("spain"),
         contractValueOverride: z.number().optional(),
+        currency: z.enum(["EUR", "USD"]).default("EUR"),
       }))
       .mutation(async ({ input }) => {
         const contractCode = await generateContractCode();
@@ -821,7 +822,7 @@ const contractingRouter = router({
         const contract = await createContract({
           contractCode, clientName: input.clientName, invoicingName: input.invoicingName,
           clientMobile: input.clientMobile, familyMembers: input.familyMembers,
-          contractValue: contractValue.toString(), currency: "EUR", status: "pending",
+          contractValue: contractValue.toString(), currency: input.currency, status: "pending",
           country: input.country,
           docUrl, consultantName: input.consultantName ?? null,
         });

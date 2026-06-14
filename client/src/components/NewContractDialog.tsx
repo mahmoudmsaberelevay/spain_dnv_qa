@@ -42,6 +42,7 @@ export default function NewContractDialog({ open, onClose }: Props) {
   const [familyMembers, setFamilyMembers] = useState<number | "">("");
   const [consultantName, setConsultantName] = useState("");
   const [contractValueOverride, setContractValueOverride] = useState<number | "">("");
+  const [currency, setCurrency] = useState<"EUR" | "USD">("EUR");
   const [result, setResult] = useState<{ contractCode: string; docUrl: string; filename: string; country: string } | null>(null);
 
   const utils = trpc.useUtils();
@@ -80,6 +81,7 @@ export default function NewContractDialog({ open, onClose }: Props) {
       consultantName: consultantName || undefined,
       country,
       contractValueOverride: !isSpain && contractValueOverride !== "" ? Number(contractValueOverride) : undefined,
+      currency,
     });
   };
 
@@ -91,6 +93,7 @@ export default function NewContractDialog({ open, onClose }: Props) {
     setFamilyMembers("");
     setConsultantName("");
     setContractValueOverride("");
+    setCurrency("EUR");
     setResult(null);
     createMutation.reset();
     onClose();
@@ -257,24 +260,35 @@ export default function NewContractDialog({ open, onClose }: Props) {
 
               {!isSpain && (
                 <div className="space-y-2">
-                  <Label htmlFor="contractValueOverride" className="flex items-center gap-2">
+                  <Label className="flex items-center gap-2">
                     <Receipt className="h-3.5 w-3.5" />
-                    Contract Value (EUR)
+                    Contract Value
                     <span className="text-xs text-muted-foreground font-normal">(optional — leave blank if not yet agreed)</span>
                   </Label>
-                  <Input
-                    id="contractValueOverride"
-                    type="number"
-                    min={0}
-                    placeholder="e.g. 50000"
-                    value={contractValueOverride}
-                    onChange={(e) => setContractValueOverride(e.target.value ? Number(e.target.value) : "")}
-                    disabled={createMutation.isPending}
-                    className="h-10"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="contractValueOverride"
+                      type="number"
+                      min={0}
+                      placeholder="e.g. 50000"
+                      value={contractValueOverride}
+                      onChange={(e) => setContractValueOverride(e.target.value ? Number(e.target.value) : "")}
+                      disabled={createMutation.isPending}
+                      className="h-10 flex-1"
+                    />
+                    <Select value={currency} onValueChange={(v) => setCurrency(v as "EUR" | "USD")} disabled={createMutation.isPending}>
+                      <SelectTrigger className="h-10 w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="EUR">€ EUR</SelectItem>
+                        <SelectItem value="USD">$ USD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   {contractValueOverride !== "" && (
                     <p className="text-xs text-muted-foreground">
-                      {formatCurrency(Number(contractValueOverride), "EUR")} will be recorded as the contract value.
+                      {formatCurrency(Number(contractValueOverride), currency)} will be recorded as the contract value.
                     </p>
                   )}
                 </div>

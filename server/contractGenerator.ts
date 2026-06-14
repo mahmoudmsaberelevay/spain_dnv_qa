@@ -1,5 +1,5 @@
 import axios from "axios";
-import { storagePut, storageGet } from "./storage";
+import { storagePut } from "./storage";
 import PizZip from "pizzip";
 
 // ── Template registry ──────────────────────────────────────────────────────
@@ -12,19 +12,19 @@ const TEMPLATE_REGISTRY: Record<string, { url?: string; storageKey?: string; lab
     label: "Spain Digital Nomad Visa",
   },
   egypt: {
-    storageKey: "egypt_f7ee6335.docx",
+    url: "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/contract-templates/egypt.docx",
     label: "Egypt Citizenship",
   },
   dominica: {
-    storageKey: "dominica_14f977ca.docx",
+    url: "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/contract-templates/dominica.docx",
     label: "Dominica Citizenship",
   },
   saint_kitts: {
-    storageKey: "saint_kitts_147c12ca.docx",
+    url: "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/contract-templates/saint_kitts.docx",
     label: "Saint Kitts & Nevis Citizenship",
   },
   grenada: {
-    storageKey: "grenada_b00de6b7.docx",
+    url: "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/contract-templates/grenada.docx",
     label: "Grenada Citizenship",
   },
 };
@@ -44,12 +44,7 @@ async function getTemplate(country: string): Promise<Buffer> {
 
   let buffer: Buffer;
 
-  if (entry.storageKey) {
-    // Fetch from the project's S3 bucket via storageGet (returns a signed URL)
-    const { url } = await storageGet(entry.storageKey);
-    const response = await axios.get(url, { responseType: "arraybuffer", timeout: 30000 });
-    buffer = Buffer.from(response.data);
-  } else if (entry.url) {
+  if (entry.url) {
     const response = await axios.get(entry.url, { responseType: "arraybuffer", timeout: 30000 });
     buffer = Buffer.from(response.data);
   } else {
