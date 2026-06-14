@@ -1,0 +1,9 @@
+{
+  "query": "UPDATE lead_tasks SET createdBy = 'Nouran' WHERE createdBy = 'Nouran Mamdouh';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute UPDATE lead_tasks SET createdBy = 'Nouran' WHERE createdBy = 'Nouran Mamdouh';",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1825
+}

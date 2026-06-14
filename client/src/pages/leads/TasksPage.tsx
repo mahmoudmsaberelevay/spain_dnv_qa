@@ -12,8 +12,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 const TEAM = [
-  "Mahmoud Saber", "Fouad", "Kirolos", "Ziad El Shurafa", "Madonna Adel",
-  "Monica Sobhy", "Marina Kamel", "Nouran", "Hager Hany", "Eman Ahmed", "Marwa Abdallah", "Basmala Shereef",
+  "Mahmoud Saber", "Fouad Abdo", "Kirolos", "Ziad El Shurafa", "Madonna Adel",
+  "Monica Sobhy", "Marina Kamel", "Nouran Mamdouh", "Hager Hany", "Eman Ahmed", "Marwa Abdallah", "Basmala Shereef",
 ];
 
 const TASK_TYPE_ICONS: Record<string, React.ReactNode> = {

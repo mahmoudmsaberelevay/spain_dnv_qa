@@ -1,0 +1,34 @@
+{
+  "query": "SELECT createdBy, COUNT(*) as count FROM lead_tasks WHERE completed = 0 GROUP BY createdBy ORDER BY count DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT createdBy, COUNT(*) as count FROM lead_tasks WHERE completed = 0 GROUP BY createdBy ORDER BY count DESC;",
+  "rows": [
+    {
+      "createdBy": "Nouran Mamdouh",
+      "count": "175"
+    },
+    {
+      "createdBy": "Marwa Abdallah",
+      "count": "52"
+    },
+    {
+      "createdBy": "Eman Ahmed",
+      "count": "4"
+    },
+    {
+      "createdBy": "Fouad Abdo",
+      "count": "3"
+    },
+    {
+      "createdBy": "Nouran",
+      "count": "2"
+    },
+    {
+      "createdBy": "NULL",
+      "count": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "createdBy\tcount\nNouran Mamdouh\t175\nMarwa Abdallah\t52\nEman Ahmed\t4\nFouad Abdo\t3\nNouran\t2\nNULL\t1\n",
+  "stderr": "",
+  "execution_time_ms": 1795
+}

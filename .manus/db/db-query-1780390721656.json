@@ -1,0 +1,22 @@
+{
+  "query": "SELECT createdBy, COUNT(*) as count FROM lead_tasks WHERE completed = 0 GROUP BY createdBy;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 8S12RinR3BcAsAG.513d3e019de5 --database CjqhSqoCBRNxigxoNR3Jk2 --execute SELECT createdBy, COUNT(*) as count FROM lead_tasks WHERE completed = 0 GROUP BY createdBy;",
+  "rows": [
+    {
+      "createdBy": "NULL",
+      "count": "11"
+    },
+    {
+      "createdBy": "Nouran",
+      "count": "55"
+    },
+    {
+      "createdBy": "Nouran Mamdouh",
+      "count": "2"
+    }
+  ],
+  "messages": [],
+  "stdout": "createdBy\tcount\nNULL\t11\nNouran\t55\nNouran Mamdouh\t2\n",
+  "stderr": "",
+  "execution_time_ms": 1807
+}
