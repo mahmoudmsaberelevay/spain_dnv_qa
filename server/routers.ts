@@ -22,7 +22,7 @@ import {
   getFilteredContracts,
   createProformaInvoice, getAllProformaInvoices, getProformaInvoiceById, markProformaInvoicePaid, updateProformaInvoicePdfUrl,
 } from "./db";
-import { generateContractDoc, uploadContractToStorage, calculateContractValue } from "./contractGenerator";
+import { generateContractDoc, uploadContractToStorage, calculateContractValue, CONTRACT_COUNTRIES } from "./contractGenerator";
 import { getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
 import { generateAndUploadInvoicePdf } from "./invoiceGenerator";
 import { generateAndUploadProformaPdf } from "./proformaGenerator";
@@ -805,16 +805,24 @@ const contractingRouter = router({
         clientMobile: z.string().min(5),
         familyMembers: z.number().int().min(1),
         consultantName: z.string().optional(),
+        country: z.string().default("spain"),
+        contractValueOverride: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
         const contractCode = await generateContractCode();
-        const contractValue = calculateContractValue(input.familyMembers);
-        const { buffer, filename } = await generateContractDoc(input.clientName, input.familyMembers, contractCode);
+        const contractValue = input.contractValueOverride !== undefined
+          ? input.contractValueOverride
+          : calculateContractValue(input.familyMembers, input.country);
+        const { buffer, filename } = await generateContractDoc(
+          input.clientName, input.familyMembers, contractCode,
+          input.country, input.contractValueOverride
+        );
         const docUrl = await uploadContractToStorage(buffer, contractCode, input.clientName);
         const contract = await createContract({
           contractCode, clientName: input.clientName, invoicingName: input.invoicingName,
           clientMobile: input.clientMobile, familyMembers: input.familyMembers,
           contractValue: contractValue.toString(), currency: "EUR", status: "pending",
+          country: input.country,
           docUrl, consultantName: input.consultantName ?? null,
         });
         await notifyNewContract(contractCode, input.clientName, input.familyMembers, contractValue);
@@ -822,6 +830,7 @@ const contractingRouter = router({
         await createNotification({ type: "contract_created", title: "📄 عقد جديد", body: `تم إنشاء عقد جديد لـ ${input.clientName} (كود: ${contractCode})`, entityId: contract.id, entityType: "contract" });
         return { contract, docUrl, filename };
       }),
+    getCountries: protectedProcedure.query(() => CONTRACT_COUNTRIES),
     updateStatus: protectedProcedure
       .input(z.object({ id: z.number(), status: z.enum(["pending", "signed", "cancelled"]) }))
       .mutation(async ({ input }) => {

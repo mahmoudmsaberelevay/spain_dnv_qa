@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Download, CheckCircle, Users, User, FileText, Phone, Receipt, UserCheck } from "lucide-react";
+import { Loader2, Download, CheckCircle, Users, User, FileText, Phone, Receipt, UserCheck, Globe } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -19,27 +19,35 @@ const CONSULTANTS = [
   "Kirolos Nabil",
 ];
 
-interface Props {
-  open: boolean;
-  onClose: () => void;
-}
+// Spain uses family-size pricing; citizenship programs require a manual fee entry
+const SPAIN_PRICING: Record<number, number> = { 1: 12000, 2: 13000, 3: 14000, 4: 14000 };
 
-function getContractValue(members: number): number {
+function getSpainValue(members: number): number {
   if (members === 1) return 12000;
   if (members === 2) return 13000;
   if (members <= 4) return 14000;
   return 15000;
 }
 
+interface Props {
+  open: boolean;
+  onClose: () => void;
+}
+
 export default function NewContractDialog({ open, onClose }: Props) {
+  const [country, setCountry] = useState("spain");
   const [clientName, setClientName] = useState("");
   const [invoicingName, setInvoicingName] = useState("");
   const [clientMobile, setClientMobile] = useState("");
   const [familyMembers, setFamilyMembers] = useState<number | "">("");
   const [consultantName, setConsultantName] = useState("");
-  const [result, setResult] = useState<{ contractCode: string; docUrl: string; filename: string } | null>(null);
+  const [contractValueOverride, setContractValueOverride] = useState<number | "">("");
+  const [result, setResult] = useState<{ contractCode: string; docUrl: string; filename: string; country: string } | null>(null);
 
   const utils = trpc.useUtils();
+
+  // Load country list from backend
+  const { data: countries } = trpc.contracting.contracts.getCountries.useQuery();
 
   const createMutation = trpc.contracting.contracts.create.useMutation({
     onSuccess: (data) => {
@@ -47,6 +55,7 @@ export default function NewContractDialog({ open, onClose }: Props) {
         contractCode: data.contract!.contractCode,
         docUrl: data.docUrl,
         filename: data.filename,
+        country: country,
       });
       utils.contracting.contracts.list.invalidate();
       utils.contracting.analytics.stats.invalidate();
@@ -58,31 +67,45 @@ export default function NewContractDialog({ open, onClose }: Props) {
     },
   });
 
+  const isSpain = country === "spain";
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientName.trim() || !invoicingName.trim() || !clientMobile.trim() || !familyMembers) return;
+    if (!clientName.trim() || !invoicingName.trim() || !clientMobile.trim() || !familyMembers || !country) return;
     createMutation.mutate({
       clientName: clientName.trim(),
       invoicingName: invoicingName.trim(),
       clientMobile: clientMobile.trim(),
       familyMembers: Number(familyMembers),
       consultantName: consultantName || undefined,
+      country,
+      contractValueOverride: !isSpain && contractValueOverride !== "" ? Number(contractValueOverride) : undefined,
     });
   };
 
   const handleClose = () => {
+    setCountry("spain");
     setClientName("");
     setInvoicingName("");
     setClientMobile("");
     setFamilyMembers("");
     setConsultantName("");
+    setContractValueOverride("");
     setResult(null);
     createMutation.reset();
     onClose();
   };
 
-  const previewValue = familyMembers ? getContractValue(Number(familyMembers)) : null;
-  const isFormValid = clientName.trim() && invoicingName.trim() && clientMobile.trim() && familyMembers && consultantName;
+  const previewValue = isSpain && familyMembers ? getSpainValue(Number(familyMembers)) : null;
+  const isFormValid =
+    clientName.trim() &&
+    invoicingName.trim() &&
+    clientMobile.trim() &&
+    familyMembers &&
+    consultantName &&
+    country;
+
+  const selectedCountryLabel = countries?.find((c) => c.key === country)?.label ?? country;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -95,11 +118,35 @@ export default function NewContractDialog({ open, onClose }: Props) {
                 Issue New Contract
               </DialogTitle>
               <DialogDescription>
-                Fill in the client details to generate a new contract document.
+                Select the program country, then fill in the client details to generate the contract.
               </DialogDescription>
             </DialogHeader>
 
             <form onSubmit={handleSubmit} className="space-y-4 py-2">
+              {/* Country / Program selector */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Globe className="h-3.5 w-3.5" />
+                  Program Country
+                </Label>
+                <Select value={country} onValueChange={(v) => { setCountry(v); setContractValueOverride(""); }} disabled={createMutation.isPending}>
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Select country..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(countries ?? [
+                      { key: "spain", label: "Spain Digital Nomad Visa" },
+                      { key: "egypt", label: "Egypt Citizenship" },
+                      { key: "dominica", label: "Dominica Citizenship" },
+                      { key: "saint_kitts", label: "Saint Kitts & Nevis Citizenship" },
+                      { key: "grenada", label: "Grenada Citizenship" },
+                    ]).map((c) => (
+                      <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Arabic Name — used ONLY in the contract Word document */}
               <div className="space-y-2">
                 <Label htmlFor="clientName" className="flex items-center gap-2">
@@ -193,7 +240,8 @@ export default function NewContractDialog({ open, onClose }: Props) {
                 />
               </div>
 
-              {previewValue !== null && (
+              {/* Contract value — auto-calculated for Spain, manual for citizenship programs */}
+              {isSpain && previewValue !== null && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-amber-800 font-medium">Calculated Contract Value</span>
@@ -204,6 +252,31 @@ export default function NewContractDialog({ open, onClose }: Props) {
                   <p className="text-xs text-amber-700 mt-1">
                     Based on {familyMembers} family member{Number(familyMembers) > 1 ? "s" : ""}
                   </p>
+                </div>
+              )}
+
+              {!isSpain && (
+                <div className="space-y-2">
+                  <Label htmlFor="contractValueOverride" className="flex items-center gap-2">
+                    <Receipt className="h-3.5 w-3.5" />
+                    Contract Value (EUR)
+                    <span className="text-xs text-muted-foreground font-normal">(optional — leave blank if not yet agreed)</span>
+                  </Label>
+                  <Input
+                    id="contractValueOverride"
+                    type="number"
+                    min={0}
+                    placeholder="e.g. 50000"
+                    value={contractValueOverride}
+                    onChange={(e) => setContractValueOverride(e.target.value ? Number(e.target.value) : "")}
+                    disabled={createMutation.isPending}
+                    className="h-10"
+                  />
+                  {contractValueOverride !== "" && (
+                    <p className="text-xs text-muted-foreground">
+                      {formatCurrency(Number(contractValueOverride), "EUR")} will be recorded as the contract value.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -250,6 +323,10 @@ export default function NewContractDialog({ open, onClose }: Props) {
                   <Badge className="bg-green-100 text-green-800 border border-green-200 font-mono">
                     {result.contractCode}
                   </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-green-800">Program</span>
+                  <span className="text-sm font-medium text-green-900">{selectedCountryLabel}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-green-800">Client</span>

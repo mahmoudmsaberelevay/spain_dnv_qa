@@ -1,134 +1,164 @@
 import axios from "axios";
-import { storagePut } from "./storage";
+import { storagePut, storageGet } from "./storage";
 import PizZip from "pizzip";
 
-const TEMPLATE_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/kN35iJC3mTAPmbEMAFkqBd/12K-Spain-NewContract_6b0097ff.docx";
+// ── Template registry ──────────────────────────────────────────────────────
+// Keys match the `country` field stored in the contracts table.
+// The Spain template is fetched from an external CDN; the others are stored in
+// the project's own S3 bucket via manus-upload-file --webdev.
+const TEMPLATE_REGISTRY: Record<string, { url?: string; storageKey?: string; label: string }> = {
+  spain: {
+    url: "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/kN35iJC3mTAPmbEMAFkqBd/12K-Spain-NewContract_6b0097ff.docx",
+    label: "Spain Digital Nomad Visa",
+  },
+  egypt: {
+    storageKey: "egypt_f7ee6335.docx",
+    label: "Egypt Citizenship",
+  },
+  dominica: {
+    storageKey: "dominica_14f977ca.docx",
+    label: "Dominica Citizenship",
+  },
+  saint_kitts: {
+    storageKey: "saint_kitts_147c12ca.docx",
+    label: "Saint Kitts & Nevis Citizenship",
+  },
+  grenada: {
+    storageKey: "grenada_b00de6b7.docx",
+    label: "Grenada Citizenship",
+  },
+};
 
-// Cache the template locally to avoid re-downloading on every request
-let templateBuffer: Buffer | null = null;
+export const CONTRACT_COUNTRIES = Object.entries(TEMPLATE_REGISTRY).map(([key, val]) => ({
+  key,
+  label: val.label,
+}));
 
-async function getTemplate(): Promise<Buffer> {
-  if (templateBuffer) return templateBuffer;
-  const response = await axios.get(TEMPLATE_URL, {
-    responseType: "arraybuffer",
-    timeout: 30000,
-  });
-  templateBuffer = Buffer.from(response.data);
-  return templateBuffer;
+// Per-country template buffer cache
+const templateCache: Record<string, Buffer> = {};
+
+async function getTemplate(country: string): Promise<Buffer> {
+  if (templateCache[country]) return templateCache[country];
+
+  const entry = TEMPLATE_REGISTRY[country] ?? TEMPLATE_REGISTRY["spain"];
+
+  let buffer: Buffer;
+
+  if (entry.storageKey) {
+    // Fetch from the project's S3 bucket via storageGet (returns a signed URL)
+    const { url } = await storageGet(entry.storageKey);
+    const response = await axios.get(url, { responseType: "arraybuffer", timeout: 30000 });
+    buffer = Buffer.from(response.data);
+  } else if (entry.url) {
+    const response = await axios.get(entry.url, { responseType: "arraybuffer", timeout: 30000 });
+    buffer = Buffer.from(response.data);
+  } else {
+    throw new Error(`No template source for country: ${country}`);
+  }
+
+  templateCache[country] = buffer;
+  return buffer;
 }
 
-export function calculateContractValue(familyMembers: number): number {
-  if (familyMembers === 1) return 12000;
-  if (familyMembers === 2) return 13000;
-  if (familyMembers <= 4) return 14000;
-  return 15000;
+// ── Pricing ────────────────────────────────────────────────────────────────
+// Spain uses a family-size pricing ladder.
+// All citizenship programs (Egypt, Dominica, Saint Kitts, Grenada) use a flat
+// placeholder value; the actual fee is entered manually per client.
+export function calculateContractValue(familyMembers: number, country = "spain"): number {
+  if (country === "spain") {
+    if (familyMembers === 1) return 12000;
+    if (familyMembers === 2) return 13000;
+    if (familyMembers <= 4) return 14000;
+    return 15000;
+  }
+  // For citizenship programs the fee varies by investment type; default to 0
+  // so the user can set it via the discount / manual value field.
+  return 0;
 }
 
+// ── XML helpers ────────────────────────────────────────────────────────────
 /**
  * Replace a placeholder text in the docx XML and strip the red highlight/color
  * formatting from its containing <w:r> run.
- *
- * Strategy: find the <w:r> run that contains the placeholder text, remove
- * <w:highlight w:val="red"/> and <w:color w:val="FF0000"/> from its <w:rPr>,
- * then replace the placeholder text with the new value.
  */
 function replaceAndClean(xml: string, placeholder: string, value: string): string {
   const escapedValue = escapeXml(value);
-
-  // Find the index of the placeholder text in the XML
   const placeholderIdx = xml.indexOf(placeholder);
   if (placeholderIdx === -1) return xml;
 
-  // Find the start of the <w:r> run that contains this placeholder
   const runStart = xml.lastIndexOf("<w:r ", placeholderIdx);
   if (runStart === -1) return xml.replace(placeholder, escapedValue);
 
-  // Find the end of this run (</w:r>)
   const runEnd = xml.indexOf("</w:r>", placeholderIdx);
   if (runEnd === -1) return xml.replace(placeholder, escapedValue);
 
-  // Extract the run XML
   let runXml = xml.slice(runStart, runEnd + "</w:r>".length);
-
-  // Remove red highlight and red color formatting tags from the run
   runXml = runXml
     .replace(/<w:highlight w:val="red"\/>/g, "")
     .replace(/<w:color w:val="FF0000"\/>/g, "");
-
-  // Replace the placeholder text with the actual value
   runXml = runXml.replace(placeholder, escapedValue);
 
-  // Splice back into the full XML
   return xml.slice(0, runStart) + runXml + xml.slice(runEnd + "</w:r>".length);
 }
 
-/**
- * Generate a contract Word document by replacing the highlighted placeholder fields:
- *
- * Field 1 (Page 1): "XXXXXXXXXXXXXXXXXXXX" → client full name
- *   (has both red highlight + red color in the XML)
- *
- * Field 2 (Page 5, first highlighted line): "………………..…" → family members count
- *   Context: "وبناءً عليه، فإن عدد أفراد الأسرة هو: ………………..…"
- *
- * Field 3 (Page 5, second highlighted line): "………………..…" → contract value in EUR
- *   Context: "وعليه، فإن إجمالي قيمة هذا العقد تُقدَّر بمبلغ: ………………..…"
- *
- * The signature lines (also dots) are left untouched.
- */
-/** Get today's date formatted as D/M/YYYY in Cairo timezone (Africa/Cairo = UTC+2) */
+/** Get today's date formatted as D/M/YYYY in Cairo timezone (UTC+2) */
 function getCairoDateString(): string {
   const now = new Date();
-  // Cairo is UTC+2 (no DST)
-  const cairoOffset = 2 * 60; // minutes
+  const cairoOffset = 2 * 60;
   const cairoMs = now.getTime() + (cairoOffset - now.getTimezoneOffset()) * 60000;
   const cairoDate = new Date(cairoMs);
-  const day = cairoDate.getDate();
-  const month = cairoDate.getMonth() + 1;
-  const year = cairoDate.getFullYear();
-  return `${day}/${month}/${year}`;
+  return `${cairoDate.getDate()}/${cairoDate.getMonth() + 1}/${cairoDate.getFullYear()}`;
 }
 
+/** Escape special XML characters */
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+// ── Main generator ─────────────────────────────────────────────────────────
 export async function generateContractDoc(
   clientName: string,
   familyMembers: number,
-  contractCode: string
+  contractCode: string,
+  country = "spain",
+  contractValueOverride?: number
 ): Promise<{ buffer: Buffer; filename: string }> {
-  const contractValue = calculateContractValue(familyMembers);
-  const templateBuf = await getTemplate();
+  const contractValue =
+    contractValueOverride !== undefined
+      ? contractValueOverride
+      : calculateContractValue(familyMembers, country);
 
-  // Load the docx as a zip archive
+  const templateBuf = await getTemplate(country);
+
   const zip = new PizZip(templateBuf.toString("binary"), { base64: false });
   let docXml = zip.file("word/document.xml")!.asText();
 
-  const contractValueFormatted = `${contractValue.toLocaleString("en-US")} EUR`;
-
-  // ── Replacement 0: Date (Page 1, yellow-highlighted) ───────────────────────
-  // The template contains a hardcoded date like "7/4/2026" or "8/4/2026".
-  // We replace it with today's Cairo date in D/M/YYYY format.
-  // Match any date pattern D/M/YYYY or DD/MM/YYYY near the start of the document.
   const todayDate = getCairoDateString();
-  // Replace the first occurrence of a date pattern in the XML (the contract date)
+
+  // ── Date replacement ──────────────────────────────────────────────────────
+  // Replace the first date pattern (D/M/YYYY or DD/MM/YYYY) in the document.
   docXml = docXml.replace(/\d{1,2}\/\d{1,2}\/20\d{2}/, todayDate);
 
-  // ── Replacement 1: Client name (Page 1) ────────────────────────────────────
-  // Placeholder: "XXXXXXXXXXXXXXXXXXXX" with red highlight + red color
+  // ── Client name ───────────────────────────────────────────────────────────
+  // All templates use the same placeholder: "XXXXXXXXXXXXXXXXXXXX"
   docXml = replaceAndClean(docXml, "XXXXXXXXXXXXXXXXXXXX", clientName);
 
-  // ── Replacement 2: Family members (Page 5, first highlighted line) ─────────
-  // Placeholder: "………………..…" — first occurrence
-  // Context: "عدد أفراد الأسرة هو: ………………..…"
-  docXml = replaceAndClean(docXml, "………………..", String(familyMembers));
+  // ── Family members & contract value (Spain only) ──────────────────────────
+  if (country === "spain") {
+    const contractValueFormatted = `${contractValue.toLocaleString("en-US")} EUR`;
+    docXml = replaceAndClean(docXml, "………………..", String(familyMembers));
+    docXml = replaceAndClean(docXml, "………………..", contractValueFormatted);
+  }
+  // For citizenship programs the fee section is left as-is in the template
+  // (no placeholder to replace — the template body already describes the program fees).
 
-  // ── Replacement 3: Contract value (Page 5, second highlighted line) ────────
-  // Placeholder: "………………..…" — second occurrence (first was already replaced above)
-  // Context: "قيمة هذا العقد تُقدَّر بمبلغ: ………………..…"
-  docXml = replaceAndClean(docXml, "………………..", contractValueFormatted);
-
-  // Write the modified XML back into the zip
   zip.file("word/document.xml", docXml);
 
-  // Generate the output buffer
   const outputBuffer = Buffer.from(
     zip.generate({ type: "nodebuffer", compression: "DEFLATE" })
   );
@@ -136,7 +166,7 @@ export async function generateContractDoc(
   const filename = `Contract_${contractCode}_${clientName.replace(/\s+/g, "_")}.docx`;
 
   console.log(
-    `[ContractGenerator] Generated contract ${contractCode} for "${clientName}" (${familyMembers} members, ${contractValueFormatted}), size: ${outputBuffer.length} bytes`
+    `[ContractGenerator] Generated contract ${contractCode} for "${clientName}" | country: ${country} | ${familyMembers} members | value: ${contractValue} EUR | size: ${outputBuffer.length} bytes`
   );
 
   return { buffer: outputBuffer, filename };
@@ -154,14 +184,4 @@ export async function uploadContractToStorage(
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   );
   return url;
-}
-
-/** Escape special XML characters to prevent document corruption */
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
 }

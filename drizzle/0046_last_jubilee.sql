@@ -1,0 +1,1 @@
+ALTER TABLE `contracts` ADD `country` varchar(64) DEFAULT 'spain' NOT NULL;

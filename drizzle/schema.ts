@@ -122,6 +122,7 @@ export const contracts = mysqlTable("contracts", {
   contractValue: decimal("contractValue", { precision: 10, scale: 2 }).notNull(),
   currency: varchar("currency", { length: 10 }).default("EUR").notNull(),
   status: mysqlEnum("status", ["pending", "signed", "cancelled"]).default("pending").notNull(),
+  country: varchar("country", { length: 64 }).default("spain").notNull(),
   consultantName: varchar("consultantName", { length: 128 }),
   discountValue: decimal("discountValue", { precision: 10, scale: 2 }).default("0"),
   docUrl: text("docUrl"),
