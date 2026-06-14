@@ -140,8 +140,10 @@ export async function generateContractDoc(
   docXml = docXml.replace(/\d{1,2}\/\d{1,2}\/20\d{2}/, todayDate);
 
   // ── Client name ───────────────────────────────────────────────────────────
-  // All templates use the same placeholder: "XXXXXXXXXXXXXXXXXXXX"
+  // Spain template uses "XXXXXXXXXXXXXXXXXXXX"
+  // Citizenship templates (Egypt, Dominica, St Kitts, Grenada) use "Inset The Client Name"
   docXml = replaceAndClean(docXml, "XXXXXXXXXXXXXXXXXXXX", clientName);
+  docXml = replaceAndClean(docXml, "Inset The Client Name", clientName);
 
   // ── Family members & contract value (Spain only) ──────────────────────────
   if (country === "spain") {
