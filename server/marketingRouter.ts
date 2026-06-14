@@ -4,6 +4,8 @@ import { TRPCError } from "@trpc/server";
 import { getDb } from "./db";
 import { marketingSummaries } from "../drizzle/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { storagePut } from "./storage";
+import { nanoid } from "nanoid";
 
 export const marketingRouter = router({
   // List all summaries for the current user
@@ -57,28 +59,63 @@ export const marketingRouter = router({
         programSubtype: input.programSubtype || "RESIDENCY",
         createdAt: now,
         pages: [
-          { id: `cover-${now}`, pageType: "cover", photoIndex: 0, blocks: [] },
-          { id: `photo-1-${now}`, pageType: "photo", photoIndex: 0, blocks: [
-            { id: `b1a`, type: "header", text: `Welcome to ${input.country}` },
-            { id: `b1b`, type: "primary", text: input.programType },
-          ]},
-          { id: `photo-2-${now}`, pageType: "photo", photoIndex: 1, blocks: [
-            { id: `b2a`, type: "header", text: "Why Choose This Program?" },
-          ]},
-          { id: `photo-3-${now}`, pageType: "photo", photoIndex: 2, blocks: [
-            { id: `b3a`, type: "header", text: "Key Requirements" },
-          ]},
-          { id: `photo-4-${now}`, pageType: "photo", photoIndex: 3, blocks: [
-            { id: `b4a`, type: "header", text: "Application Process" },
-          ]},
-          { id: `photo-5-${now}`, pageType: "photo", photoIndex: 4, blocks: [
-            { id: `b5a`, type: "header", text: "Contact ELEVAY" },
-            { id: `b5b`, type: "normal", text: "www.elevay.vip" },
-          ]},
-          { id: `text-1-${now}`, pageType: "text", blocks: [
-            { id: `tb1`, type: "header", text: "Program Overview" },
-            { id: `tb2`, type: "normal", text: "Add your program overview text here..." },
-          ]},
+          {
+            id: `cover-${now}`,
+            template: "cover",
+            photoUrl: null,
+            content: {
+              countryName: input.country.toUpperCase(),
+              programLabel: input.programType,
+              programSubtype: (input.programSubtype || "RESIDENCY").toUpperCase(),
+              summaryLabel: "PROGRAM SUMMARY",
+            },
+          },
+          {
+            id: `overview-${now}`,
+            template: "overview",
+            photoUrl: null,
+            content: {
+              sectionLabel: "PROGRAMME OVERVIEW",
+              heading: `${input.country} ${input.programType}`,
+              intro: "",
+              infoRows: [],
+            },
+          },
+          {
+            id: `eligibility-${now}`,
+            template: "eligibility",
+            photoUrl: null,
+            content: {
+              requirements: [],
+              idealCandidateHeading: "Ideal Candidate",
+              idealCandidateIntro: "",
+              idealCandidateBullets: [],
+            },
+          },
+          {
+            id: `process-${now}`,
+            template: "process",
+            photoUrl: null,
+            content: {
+              stages: [],
+              feesHeading: "Programme Fees",
+              feeRows: [],
+            },
+          },
+          {
+            id: `about-${now}`,
+            template: "about",
+            photoUrl: null,
+            content: {
+              heading: `About ${input.country}`,
+              paragraphs: [],
+              infoRows: [],
+              rankingsHeading: "Global Rankings",
+              rankings: [],
+              membershipsHeading: "International Memberships",
+              memberships: [],
+            },
+          },
         ],
       });
 
@@ -122,6 +159,31 @@ export const marketingRouter = router({
       return { success: true };
     }),
 
+  // Upload a photo for a summary page
+  uploadPagePhoto: protectedProcedure
+    .input(z.object({
+      summaryId: z.number(),
+      pageId: z.string(),
+      fileBase64: z.string(),
+      fileName: z.string(),
+      mimeType: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const [existing] = await db
+        .select({ id: marketingSummaries.id })
+        .from(marketingSummaries)
+        .where(and(eq(marketingSummaries.id, input.summaryId), eq(marketingSummaries.userId, ctx.user.id)));
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Summary not found" });
+
+      const buffer = Buffer.from(input.fileBase64, "base64");
+      const ext = input.fileName.split(".").pop() || "jpg";
+      const fileKey = `marketing/summaries/${input.summaryId}/${input.pageId}-${nanoid(8)}.${ext}`;
+      const { url } = await storagePut(fileKey, buffer, input.mimeType);
+      return { url };
+    }),
+
   // Delete a summary
   deleteSummary: protectedProcedure
     .input(z.object({ id: z.number() }))
@@ -134,7 +196,7 @@ export const marketingRouter = router({
       return { success: true };
     }),
 
-  // Export summary as PDF (returns a placeholder URL for now)
+  // Export summary as PDF — client-side print dialog
   exportSummaryPdf: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
@@ -145,9 +207,6 @@ export const marketingRouter = router({
         .from(marketingSummaries)
         .where(and(eq(marketingSummaries.id, input.id), eq(marketingSummaries.userId, ctx.user.id)));
       if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Summary not found" });
-
-      // PDF generation will be implemented in a future phase
-      // For now return a placeholder that triggers a toast
-      return { url: "#", message: "PDF export coming soon" };
+      return { url: "#", message: "Use the Export PDF button in the editor" };
     }),
 });

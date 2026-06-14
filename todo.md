@@ -691,11 +691,23 @@
 ## Marketing Module
 - [x] Add Marketing module card to home page
 - [x] Add Marketing module navigation in DashboardLayout sidebar
-- [ ] Add Marketing module permissions
+- [x] Add Marketing module permissions (Marketing module is always visible to all authenticated users)
 - [x] Build Summary Generator — database schema (marketing_summaries table)
 - [x] Build Summary Generator — tRPC procedures (create, list, get, update, delete, export)
 - [x] Build Summary Generator — frontend document editor with page templates
 - [x] Build Summary Generator — Cover, Overview, Eligibility, Process, About Country page templates
-- [ ] Build Summary Generator — PDF export (placeholder implemented, full PDF export pending)
+- [x] Build Summary Generator — PDF export (browser print-to-PDF with full country photos and ELEVAY logo on every page)
 - [x] Build Program Enhanced Comparison page (placeholder built)
 - [x] Build Program Proposal page (placeholder built)
+
+## Marketing Module Rebuild (Round 91)
+- [x] Rebuild Summary Generator — remove auto-generated photos, add user photo upload per page
+- [x] Rebuild Summary Editor — 5 structured page templates (Cover, Programme Overview, Eligibility, Process, About Country, Custom Blank)
+- [x] Cover template: 50/50 split, left=uploaded photo, right=ELEVAY branding + teal banner with country name
+- [x] Programme Overview template: two-column, left=coat of arms + info rows, right=uploaded photo
+- [x] Eligibility template: two-column, left=numbered requirements (red badges), right=ideal candidate box
+- [x] Process template: two-column, left=stages with dividers, right=fees table
+- [x] About Country template: two-column, left=uploaded photo, right=country info + rankings box
+- [x] Custom Blank template: user-selectable layout (1-col, 2-col, 3-col, full-width) with content blocks
+- [x] Backend: S3 upload procedure for summary page photos (uploadPagePhoto mutation)
+- [x] PDF export: print-ready output matching exact template designs (browser print dialog, A4 format)
