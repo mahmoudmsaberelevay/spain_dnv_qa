@@ -701,8 +701,8 @@ export const leadsRouter = router({
 
   // ── All Tasks (Tasks page) ─────────────────────────────────────────────────
   getAllTasks: protectedProcedure
-    .input(z.object({ createdBy: z.string().optional() }).optional())
-    .query(async ({ input }) => getAllTasksWithLeads({ createdBy: input?.createdBy })),
+    .input(z.object({ assignedTo: z.string().optional() }).optional())
+    .query(async ({ input }) => getAllTasksWithLeads({ assignedTo: input?.assignedTo })),
 
   // ── Analytics ───────────────────────────────────────────────────────────────
   analytics: router({

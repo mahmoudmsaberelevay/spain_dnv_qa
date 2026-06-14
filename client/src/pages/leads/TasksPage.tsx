@@ -12,8 +12,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 const TEAM = [
-  "Mahmoud Saber", "Fouad Abdo", "Kirolos", "Ziad El Shurafa", "Madonna Adel",
-  "Monica Sobhy", "Marina Kamel", "Nouran Mamdouh", "Hager Hany", "Eman Ahmed", "Marwa Abdallah", "Basmala Shereef",
+  "Mahmoud", "Fouad", "Kirolos", "Ziad", "Madonna",
+  "Monica", "Marina", "Nouran", "Hager", "Eman", "Marwa", "Basmala",
 ];
 
 const TASK_TYPE_ICONS: Record<string, React.ReactNode> = {
@@ -190,7 +190,7 @@ export default function TasksPage() {
   const [ownerFilter, setOwnerFilter] = useState("all");
   const utils = trpc.useUtils();
 
-  const queryInput = ownerFilter !== "all" ? { createdBy: ownerFilter } : { createdBy: undefined };
+  const queryInput = ownerFilter !== "all" ? { assignedTo: ownerFilter } : { assignedTo: undefined };
   const { data: tasks = [], isLoading } = trpc.leads.getAllTasks.useQuery(
     queryInput,
     { refetchOnMount: true },

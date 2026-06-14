@@ -414,11 +414,11 @@ export async function getUserActivityReport(dateFrom: number, dateTo: number, us
 }
 
 // ─── All Tasks (for Tasks page) ───────────────────────────────────────────────
-export async function getAllTasksWithLeads(filters: { createdBy?: string } = {}) {
+export async function getAllTasksWithLeads(filters: { assignedTo?: string } = {}) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   const conditions: any[] = [eq(leadTasks.completed, false)];
-  if (filters.createdBy) conditions.push(eq(leadTasks.createdBy, filters.createdBy));
+  if (filters.assignedTo) conditions.push(eq(leadTasks.assignedTo, filters.assignedTo));
   const rows = await db
     .select({
       id: leadTasks.id,
