@@ -689,13 +689,13 @@
 - [x] CSV import: add field mapping for created date, current stage, last activity date, last activity type
 
 ## Marketing Module
-- [ ] Add Marketing module card to home page
-- [ ] Add Marketing module navigation in DashboardLayout sidebar
+- [x] Add Marketing module card to home page
+- [x] Add Marketing module navigation in DashboardLayout sidebar
 - [ ] Add Marketing module permissions
-- [ ] Build Summary Generator — database schema (marketing_summaries table)
-- [ ] Build Summary Generator — tRPC procedures (create, list, get, update, delete, export)
-- [ ] Build Summary Generator — frontend document editor with page templates
-- [ ] Build Summary Generator — Cover, Overview, Eligibility, Process, About Country page templates
-- [ ] Build Summary Generator — PDF export
-- [ ] Build Program Enhanced Comparison page
-- [ ] Build Program Proposal page
+- [x] Build Summary Generator — database schema (marketing_summaries table)
+- [x] Build Summary Generator — tRPC procedures (create, list, get, update, delete, export)
+- [x] Build Summary Generator — frontend document editor with page templates
+- [x] Build Summary Generator — Cover, Overview, Eligibility, Process, About Country page templates
+- [ ] Build Summary Generator — PDF export (placeholder implemented, full PDF export pending)
+- [x] Build Program Enhanced Comparison page (placeholder built)
+- [x] Build Program Proposal page (placeholder built)

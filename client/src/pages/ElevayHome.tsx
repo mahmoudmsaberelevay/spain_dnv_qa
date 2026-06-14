@@ -22,6 +22,7 @@ import {
   MessageSquare,
   Target,
   X,
+  Megaphone,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
@@ -95,6 +96,17 @@ const BASE_MODULE_CARDS = [
     iconBg: "bg-green-500/30",
     glow: "shadow-green-500/20",
     pageKey: "wa_qc", // only show if user has this permission
+  },
+  {
+    id: "marketing",
+    label: "Marketing",
+    description: "Program summaries, comparisons, and proposals",
+    path: "/marketing",
+    icon: Megaphone,
+    gradient: "from-purple-600 to-purple-800",
+    iconBg: "bg-purple-500/30",
+    glow: "shadow-purple-500/20",
+    pageKey: null, // always visible
   },
 ];
 

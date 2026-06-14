@@ -52,32 +52,34 @@ export const marketingRouter = router({
     .mutation(async ({ ctx, input }) => {
       const now = Date.now();
       const defaultDoc = JSON.stringify({
+        country: input.country,
+        programType: input.programType,
+        programSubtype: input.programSubtype || "RESIDENCY",
+        createdAt: now,
         pages: [
-          {
-            pageId: `page-${now}`,
-            pageNumber: 1,
-            template: "cover",
-            content: {
-              countryName: input.country.toUpperCase(),
-              programLabel: input.programType.toUpperCase(),
-              programType: input.programSubtype?.toUpperCase() || "RESIDENCY",
-              summary: "PROGRAM SUMMARY",
-              lastUpdatedText: `last updated in ${new Date().toLocaleString("en-US", { month: "long", year: "numeric" })}`,
-            },
-          },
+          { id: `cover-${now}`, pageType: "cover", photoIndex: 0, blocks: [] },
+          { id: `photo-1-${now}`, pageType: "photo", photoIndex: 0, blocks: [
+            { id: `b1a`, type: "header", text: `Welcome to ${input.country}` },
+            { id: `b1b`, type: "primary", text: input.programType },
+          ]},
+          { id: `photo-2-${now}`, pageType: "photo", photoIndex: 1, blocks: [
+            { id: `b2a`, type: "header", text: "Why Choose This Program?" },
+          ]},
+          { id: `photo-3-${now}`, pageType: "photo", photoIndex: 2, blocks: [
+            { id: `b3a`, type: "header", text: "Key Requirements" },
+          ]},
+          { id: `photo-4-${now}`, pageType: "photo", photoIndex: 3, blocks: [
+            { id: `b4a`, type: "header", text: "Application Process" },
+          ]},
+          { id: `photo-5-${now}`, pageType: "photo", photoIndex: 4, blocks: [
+            { id: `b5a`, type: "header", text: "Contact ELEVAY" },
+            { id: `b5b`, type: "normal", text: "www.elevay.vip" },
+          ]},
+          { id: `text-1-${now}`, pageType: "text", blocks: [
+            { id: `tb1`, type: "header", text: "Program Overview" },
+            { id: `tb2`, type: "normal", text: "Add your program overview text here..." },
+          ]},
         ],
-        colors: {
-          primary: "#5BA3B8",
-          secondary: "#1A3A5C",
-          accent: "#E63946",
-          divider: "#CCCCCC",
-          background: "#FFFFFF",
-          text: "#2C2C2C",
-        },
-        typography: {
-          headingFont: "Montserrat",
-          bodyFont: "Open Sans",
-        },
       });
 
       const db = await getDb();
