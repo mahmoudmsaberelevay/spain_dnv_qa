@@ -144,10 +144,6 @@ export async function generateContractDoc(
   // Citizenship templates (Egypt, Dominica, St Kitts, Grenada) use "Inset The Client Name"
   docXml = replaceAndClean(docXml, "XXXXXXXXXXXXXXXXXXXX", clientName);
   docXml = replaceAndClean(docXml, "Inset The Client Name", clientName);
-  // The word "Here" appears as a separate <w:r> run right after the name placeholder in all 4 citizenship templates.
-  // We remove the entire run that contains only "Here " (with optional trailing space) to avoid matching
-  // legitimate uses of the word "here" elsewhere in the document.
-  docXml = docXml.replace(/<w:r[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<w:t[^>]*>Here\s*<\/w:t><\/w:r>/, "");
 
   // ── Family members & contract value (Spain only) ──────────────────────────
   if (country === "spain") {
