@@ -398,10 +398,26 @@ export const marketingRouter = router({
       contentRatio: z.string().optional(),
       pillarFocus: z.string().optional(),
       featuredPrograms: z.array(z.string()).optional(),
-      startDate: z.string().optional(),
+      startDate: z.union([z.string(), z.date()]).optional(),
     }))
     .mutation(async ({ input }) => {
-      const start = input.startDate ? new Date(input.startDate) : new Date();
+      // Robustly parse startDate regardless of format (string, Date object, or undefined)
+      let start: Date;
+      if (!input.startDate) {
+        start = new Date();
+      } else if (input.startDate instanceof Date) {
+        start = input.startDate;
+      } else {
+        // Try YYYY-MM-DD first, then fallback to direct parse, then today
+        const s = String(input.startDate);
+        const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (isoMatch) {
+          start = new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+        } else {
+          const parsed = new Date(s);
+          start = isNaN(parsed.getTime()) ? new Date() : parsed;
+        }
+      }
       const programs = input.featuredPrograms?.join(", ") || "Spain DNV, Dominica, Grenada, Saint Kitts, Greece Golden Visa";
       const contentRatio = input.contentRatio || "40% EU Residency, 40% Caribbean, 20% Brand";
       const pillarFocus = input.pillarFocus || "ROI, Lifestyle, Family, Mobility";
@@ -600,7 +616,7 @@ Return JSON: { monthNumber:${monthNumber}, monthName:"${monthName}", theme, obje
     .input(z.object({
       id: z.number().optional(),
       title: z.string(),
-      startDate: z.string(),
+      startDate: z.union([z.string(), z.date()]).transform(v => v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 20)),
       contentRatio: z.string().optional(),
       pillarFocus: z.string().optional(),
       featuredPrograms: z.string().optional(),
@@ -615,7 +631,7 @@ Return JSON: { monthNumber:${monthNumber}, monthName:"${monthName}", theme, obje
         await db.update(marketingPlans)
           .set({
             title: input.title,
-            startDate: input.startDate.slice(0, 20),
+            startDate: input.startDate,
             contentRatio: input.contentRatio,
             pillarFocus: input.pillarFocus,
             featuredPrograms: input.featuredPrograms,
@@ -628,7 +644,7 @@ Return JSON: { monthNumber:${monthNumber}, monthName:"${monthName}", theme, obje
         const [result] = await db.insert(marketingPlans).values({
           userId: uid,
           title: input.title,
-          startDate: input.startDate.slice(0, 20),
+          startDate: input.startDate,
           contentRatio: input.contentRatio,
           pillarFocus: input.pillarFocus,
           featuredPrograms: input.featuredPrograms,
