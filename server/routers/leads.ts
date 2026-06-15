@@ -22,7 +22,7 @@ import { writeAuditLog, auditCtxFromTrpc } from "../auditLog";
 import { sendLeadAssignmentNotification, TEAM_EMAIL_MAP } from "../emailService";
 
 const STAGES = [
-  "fresh", "contacted", "qualified", "prospect", "client", "dormant",
+  "fresh", "contacted", "qualified", "prospect", "client", "dormant", "resubmit",
   "not_qualified_budget", "not_qualified_work", "not_qualified_study",
   "not_qualified_criminal", "not_qualified_other",
 ] as const;
@@ -65,19 +65,22 @@ export const leadsRouter = router({
         if (dup) {
           throw new TRPCError({
             code: "CONFLICT",
-            message: `Duplicate lead detected: ${dup.fullName} (ID: ${dup.id}). Use skipDuplicateCheck to proceed anyway.`,
+            message: JSON.stringify({
+              message: `A lead with this phone number already exists: ${dup.fullName}`,
+              existingLeadId: dup.id,
+              existingLeadName: dup.fullName,
+            }),
           });
         }
       }
       // Validate stage if provided
-      const VALID_STAGES = ["fresh","contacted","qualified","prospect","client","dormant","not_qualified_budget","not_qualified_work","not_qualified_study","not_qualified_criminal","not_qualified_other"];
-      const importedStage = input.stage && VALID_STAGES.includes(input.stage) ? input.stage : "fresh";
+      const VALID_STAGES = ["fresh","contacted","qualified","prospect","client","dormant","resubmit","not_qualified_budget","not_qualified_work","not_qualified_study","not_qualified_criminal","not_qualified_other"];
+      const importedStage = (input.stage && VALID_STAGES.includes(input.stage) ? input.stage : "fresh") as "fresh" | "contacted" | "qualified" | "prospect" | "client" | "dormant" | "resubmit" | "not_qualified_budget" | "not_qualified_work" | "not_qualified_study" | "not_qualified_criminal" | "not_qualified_other";
       const id = await createLead({
         ...input,
         email: input.email || undefined,
         stage: importedStage,
         leadScore: 0,
-        createdAt: input.importedCreatedAt ?? Date.now(),
       });
       await addLeadActivity({
         leadId: id,
@@ -395,24 +398,19 @@ export const leadsRouter = router({
 
     edit: protectedProcedure
       .input(z.object({ id: z.number(), note: z.string().min(1), isImportant: z.boolean().optional() }))
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const existing = await getLeadNoteById(input.id);
         if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
-        if (existing.userId !== ctx.user.id && ctx.user.role !== "admin") {
-          throw new TRPCError({ code: "FORBIDDEN", message: "You can only edit your own notes." });
-        }
+        // Any team member can edit any note
         await updateLeadNote(input.id, { note: input.note, isImportant: input.isImportant });
         return { success: true };
       }),
-
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const existing = await getLeadNoteById(input.id);
         if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
-        if (existing.userId !== ctx.user.id && ctx.user.role !== "admin") {
-          throw new TRPCError({ code: "FORBIDDEN", message: "You can only delete your own notes." });
-        }
+        // Any team member can delete any note
         await deleteLeadNote(input.id);
         return { success: true };
       }),

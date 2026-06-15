@@ -18,7 +18,7 @@
  */
 
 import { getDb } from "./db";
-import { leadIntegrations, leads, leadActivities } from "../drizzle/schema";
+import { leadIntegrations, leads, leadActivities, leadNotes } from "../drizzle/schema";
 import { eq, and, or } from "drizzle-orm";
 
 const META_GRAPH_BASE = "https://graph.facebook.com/v19.0";
@@ -186,22 +186,32 @@ async function fetchMetaLeadsPage(
   return json;
 }
 
-/** Check if a lead already exists by phone or email (deduplication) */
-async function leadExists(db: Awaited<ReturnType<typeof getDb>>, phone?: string, email?: string): Promise<boolean> {
-  if (!db) return false;
-  if (!phone && !email) return false;
-
-  const conditions = [];
-  if (phone) conditions.push(eq(leads.phone, phone));
-  if (email) conditions.push(eq(leads.email, email));
-
-  const [existing] = await db
-    .select({ id: leads.id })
-    .from(leads)
-    .where(or(...conditions))
-    .limit(1);
-
-  return !!existing;
+/** Find existing lead by phone (primary) or email (fallback). Returns the lead row or null. */
+async function findExistingLead(
+  db: Awaited<ReturnType<typeof getDb>>,
+  phone?: string,
+  email?: string
+): Promise<{ id: number; fullName: string; stage: string } | null> {
+  if (!db) return null;
+  // Phone-only check first (more reliable for deduplication)
+  if (phone) {
+    const [existing] = await db
+      .select({ id: leads.id, fullName: leads.fullName, stage: leads.stage })
+      .from(leads)
+      .where(eq(leads.phone, phone))
+      .limit(1);
+    if (existing) return existing as { id: number; fullName: string; stage: string };
+  }
+  // Fallback to email check
+  if (email) {
+    const [existing] = await db
+      .select({ id: leads.id, fullName: leads.fullName, stage: leads.stage })
+      .from(leads)
+      .where(eq(leads.email, email))
+      .limit(1);
+    if (existing) return existing as { id: number; fullName: string; stage: string };
+  }
+  return null;
 }
 
 export interface SyncResult {
@@ -326,10 +336,47 @@ async function syncOneIntegration(integration: {
           const phone = mapped.phone || mapped.whatsapp || undefined;
           const email = mapped.email || undefined;
 
-          // Deduplication check
-          const isDuplicate = await leadExists(db, phone, email);
-          if (isDuplicate) {
+          // Deduplication check — if phone matches an existing lead, add a note and change stage to 'resubmit'
+          const existingLead = await findExistingLead(db, phone, email);
+          if (existingLead) {
             result.skippedDuplicates++;
+            // Add a resubmit note to the existing lead
+            try {
+              const resubmitNote = [
+                `🔄 This lead resubmitted again via Meta Ads`,
+                `📋 Form: ${form.name}`,
+                metaLead.campaign_name ? `📢 Campaign: ${metaLead.campaign_name}` : null,
+                metaLead.ad_name ? `🖼️ Ad: ${metaLead.ad_name}` : null,
+                `📅 Resubmitted: ${new Date(metaLead.created_time).toLocaleString("en-GB", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Africa/Cairo" })} (Cairo)`,
+                `🔗 Meta Lead ID: ${metaLead.id}`,
+              ].filter(Boolean).join("\n");
+              const noteTs = Date.now();
+              await db.insert(leadNotes).values({
+                leadId: existingLead.id,
+                userId: 0, // system
+                userName: "System (Meta Sync)",
+                note: resubmitNote,
+                isPinned: false,
+                isImportant: true,
+                createdAt: noteTs,
+                updatedAt: noteTs,
+              });
+              // Change stage to 'resubmit'
+              await db.update(leads)
+                .set({ stage: "resubmit", updatedAt: Date.now() })
+                .where(eq(leads.id, existingLead.id));
+              // Log activity
+              await db.insert(leadActivities).values({
+                leadId: existingLead.id,
+                userId: null,
+                activityType: "stage_changed",
+                description: `Stage changed to Resubmit — lead resubmitted via Meta Ads (Form: ${form.name})`,
+                score: 0,
+                createdAt: Date.now(),
+              });
+            } catch {
+              // Note/stage update failure should not block sync
+            }
             continue;
           }
 

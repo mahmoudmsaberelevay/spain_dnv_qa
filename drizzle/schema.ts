@@ -840,6 +840,7 @@ export const leads = mysqlTable("leads", {
     "prospect",
     "client",
     "dormant",
+    "resubmit",
     "not_qualified_budget",
     "not_qualified_work",
     "not_qualified_study",

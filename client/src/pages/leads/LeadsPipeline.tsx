@@ -11,6 +11,7 @@ const PIPELINE_STAGES = [
   { value: "prospect", label: "Prospect", color: "border-t-cyan-500", headerBg: "bg-cyan-50 dark:bg-cyan-950/30", badge: "bg-cyan-100 text-cyan-700" },
   { value: "client", label: "Client", color: "border-t-emerald-500", headerBg: "bg-emerald-50 dark:bg-emerald-950/30", badge: "bg-emerald-100 text-emerald-700" },
   { value: "dormant", label: "Dormant", color: "border-t-gray-400", headerBg: "bg-gray-50 dark:bg-gray-900/30", badge: "bg-gray-100 text-gray-600" },
+  { value: "resubmit", label: "Resubmit", color: "border-t-violet-500", headerBg: "bg-violet-50 dark:bg-violet-950/30", badge: "bg-violet-100 text-violet-700" },
 ];
 
 const NOT_QUALIFIED_STAGES = [

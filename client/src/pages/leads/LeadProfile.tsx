@@ -28,6 +28,7 @@ const STAGES = [
   { value: "prospect", label: "Prospect", color: "bg-cyan-100 text-cyan-700 border-cyan-200" },
   { value: "client", label: "Client", color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
   { value: "dormant", label: "Dormant", color: "bg-gray-100 text-gray-600 border-gray-200" },
+  { value: "resubmit", label: "Resubmit", color: "bg-violet-100 text-violet-700 border-violet-200" },
   { value: "not_qualified_budget", label: "NQ - Budget", color: "bg-red-100 text-red-700 border-red-200" },
   { value: "not_qualified_work", label: "NQ - Work", color: "bg-orange-100 text-orange-700 border-orange-200" },
   { value: "not_qualified_study", label: "NQ - Study", color: "bg-pink-100 text-pink-700 border-pink-200" },
@@ -101,6 +102,9 @@ export default function LeadProfile() {
 
   const [newNote, setNewNote] = useState("");
   const [noteImportant, setNoteImportant] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editNoteText, setEditNoteText] = useState("");
+  const [editNoteImportant, setEditNoteImportant] = useState(false);
   const [showTaskDialog, setShowTaskDialog] = useState(false);
   const [taskForm, setTaskForm] = useState({ taskType: "call" as typeof TASK_TYPES[number], dueDate: "", notes: "", assignedTo: "" });
 
@@ -147,6 +151,10 @@ export default function LeadProfile() {
 
   const pinNote = trpc.leads.notes.pin.useMutation({
     onSuccess: () => utils.leads.notes.list.invalidate({ leadId }),
+  });
+  const editNote = trpc.leads.notes.edit.useMutation({
+    onSuccess: () => { utils.leads.notes.list.invalidate({ leadId }); setEditingNoteId(null); toast.success("Note updated"); },
+    onError: (e) => toast.error(e.message),
   });
 
   const createTask = trpc.leads.tasks.create.useMutation({
@@ -427,24 +435,55 @@ export default function LeadProfile() {
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {notes.map(note => (
                     <div key={note.id} className={`rounded-lg p-3 text-sm border ${note.isImportant ? "bg-amber-50 border-amber-200 dark:bg-amber-950/20" : "bg-muted/30 border-border"}`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1">
-                          {note.isPinned && <Pin className="w-3 h-3 text-blue-500 inline mr-1" />}
-                          {note.isImportant && <AlertCircle className="w-3 h-3 text-amber-500 inline mr-1" />}
-                          <span className="whitespace-pre-wrap">{note.note}</span>
+                      {editingNoteId === note.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editNoteText}
+                            onChange={e => setEditNoteText(e.target.value)}
+                            rows={3}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                          />
+                          <div className="flex items-center justify-between">
+                            <label className="flex items-center gap-2 text-xs cursor-pointer">
+                              <input type="checkbox" checked={editNoteImportant} onChange={e => setEditNoteImportant(e.target.checked)} className="rounded" />
+                              <AlertCircle className="w-3 h-3 text-amber-500" /> Important
+                            </label>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline" onClick={() => setEditingNoteId(null)}>Cancel</Button>
+                              <Button size="sm" onClick={() => editNote.mutate({ id: note.id, note: editNoteText, isImportant: editNoteImportant })} disabled={!editNoteText.trim() || editNote.isPending}>Save</Button>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button onClick={() => pinNote.mutate({ id: note.id, isPinned: !note.isPinned })} className="text-muted-foreground hover:text-blue-500 transition-colors">
-                            <Pin className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => deleteNote.mutate({ id: note.id })} className="text-muted-foreground hover:text-red-500 transition-colors">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {note.userName ?? "You"} · {new Date(note.createdAt).toLocaleString()}
-                      </div>
+                      ) : (
+                        <>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              {note.isPinned && <Pin className="w-3 h-3 text-blue-500 inline mr-1" />}
+                              {note.isImportant && <AlertCircle className="w-3 h-3 text-amber-500 inline mr-1" />}
+                              <span className="whitespace-pre-wrap">{note.note}</span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => { setEditingNoteId(note.id); setEditNoteText(note.note); setEditNoteImportant(note.isImportant ?? false); }}
+                                className="text-muted-foreground hover:text-primary transition-colors"
+                                title="Edit note"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => pinNote.mutate({ id: note.id, isPinned: !note.isPinned })} className="text-muted-foreground hover:text-blue-500 transition-colors">
+                                <Pin className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => deleteNote.mutate({ id: note.id })} className="text-muted-foreground hover:text-red-500 transition-colors">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {note.userName ?? "You"} · {new Date(note.createdAt).toLocaleString()}
+                            {note.updatedAt !== note.createdAt && <span className="ml-1 italic">(edited)</span>}
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Plus, Search, Phone, Mail, User, Calendar, Download,
   Filter, X, Trash2, CheckSquare, Square, MinusSquare, RefreshCw, LayoutList,
-  ChevronLeft, ChevronRight, Tag, UserCheck, Columns3, Save, BookOpen,
+  ChevronLeft, ChevronRight, Tag, UserCheck, Columns3, Save, BookOpen, AlertTriangle,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -27,6 +27,7 @@ const STAGES = [
   { value: "prospect", label: "Prospect", color: "bg-cyan-100 text-cyan-700 border-cyan-200" },
   { value: "client", label: "Client", color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
   { value: "dormant", label: "Dormant", color: "bg-gray-100 text-gray-600 border-gray-200" },
+  { value: "resubmit", label: "Resubmit", color: "bg-violet-100 text-violet-700 border-violet-200" },
   { value: "not_qualified_budget", label: "NQ - Budget", color: "bg-red-100 text-red-700 border-red-200" },
   { value: "not_qualified_work", label: "NQ - Work", color: "bg-orange-100 text-orange-700 border-orange-200" },
   { value: "not_qualified_study", label: "NQ - Study", color: "bg-pink-100 text-pink-700 border-pink-200" },
@@ -219,6 +220,7 @@ export default function LeadsList() {
 
   // ── Create form ───────────────────────────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false);
+  const [duplicateInfo, setDuplicateInfo] = useState<{ id: number; name: string } | null>(null);
   const [form, setForm] = useState({
     fullName: "", phone: "", whatsapp: "", email: "",
     nationality: "", interestedProgram: "", leadSource: "",
@@ -382,12 +384,18 @@ export default function LeadsList() {
       utils.leads.list.invalidate();
       utils.leads.analytics.overview.invalidate();
       setShowCreate(false);
+      setDuplicateInfo(null);
       setForm({ fullName: "", phone: "", whatsapp: "", email: "", nationality: "", interestedProgram: "", leadSource: "", assignedTo: "", priority: "medium", notes: "", budgetRange: "" });
       toast.success("Lead created — new lead added to pipeline.");
     },
     onError: (err) => {
       if (err.data?.code === "CONFLICT") {
-        toast.error(`Duplicate detected: ${err.message}`);
+        try {
+          const parsed = JSON.parse(err.message);
+          setDuplicateInfo({ id: parsed.existingLeadId, name: parsed.existingLeadName });
+        } catch {
+          toast.error(`Duplicate detected: ${err.message}`);
+        }
       } else {
         toast.error(err.message);
       }
@@ -1064,6 +1072,25 @@ export default function LeadsList() {
             <DialogTitle>New Lead</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {duplicateInfo && (
+              <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800 p-3 text-sm">
+                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-medium text-red-700 dark:text-red-400">Duplicate phone number detected</p>
+                  <p className="text-red-600 dark:text-red-300 mt-0.5">
+                    A lead with this phone already exists:{" "}
+                    <button
+                      className="font-semibold underline hover:no-underline"
+                      onClick={() => { setShowCreate(false); setDuplicateInfo(null); navigate(`/leads/${duplicateInfo.id}`); }}
+                    >
+                      {duplicateInfo.name} (Lead #{duplicateInfo.id})
+                    </button>
+                  </p>
+                  <p className="text-xs text-red-500 mt-1">Click the name above to open the existing lead, or change the phone number to proceed.</p>
+                </div>
+                <button onClick={() => setDuplicateInfo(null)} className="text-red-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+              </div>
+            )}
             <div>
               <Label>Full Name <span className="text-red-500">*</span></Label>
               <Input value={form.fullName} onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))} placeholder="e.g. Ahmed Mohamed" className="mt-1" />
@@ -1144,7 +1171,7 @@ export default function LeadsList() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setShowCreate(false); setDuplicateInfo(null); }}>Cancel</Button>
             <Button onClick={handleCreate} disabled={createLead.isPending}>
               {createLead.isPending ? "Creating…" : "Create Lead"}
             </Button>
