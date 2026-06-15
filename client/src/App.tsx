@@ -69,6 +69,7 @@ import SummaryGenerator from "./pages/marketing/SummaryGenerator";
 import SummaryEditor from "./pages/marketing/SummaryEditor";
 import ProgramComparison from "./pages/marketing/ProgramComparison";
 import ProgramProposal from "./pages/marketing/ProgramProposal";
+import MarketingPlan from "./pages/marketing/MarketingPlan";
 
 // ─── WhatsApp Quality Control Module ─────────────────────────────────────────
 import WaQcDashboard from "./pages/waQc/WaQcDashboard";
@@ -290,6 +291,9 @@ function Router() {
       </Route>
       <Route path="/marketing/program-proposal">
         <DashboardLayout><ProgramProposal /></DashboardLayout>
+      </Route>
+      <Route path="/marketing/marketing-plan">
+        <DashboardLayout><MarketingPlan /></DashboardLayout>
       </Route>
 
       <Route path="/access-denied">

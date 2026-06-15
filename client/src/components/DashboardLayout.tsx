@@ -68,6 +68,7 @@ import {
   Sparkles,
   GitCompare,
   FileSignature,
+  Calendar,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -266,6 +267,7 @@ const modules = [
       { icon: Sparkles, label: "Summary Generator", path: "/marketing/summary-generator" },
       { icon: GitCompare, label: "Program Comparison", path: "/marketing/program-comparison" },
       { icon: FileSignature, label: "Program Proposal", path: "/marketing/program-proposal" },
+      { icon: Calendar, label: "Marketing Plan", path: "/marketing/marketing-plan" },
     ],
   },
   {

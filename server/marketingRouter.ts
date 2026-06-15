@@ -291,7 +291,7 @@ export const marketingRouter = router({
 
       const content = response.choices?.[0]?.message?.content;
       if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI response empty" });
-      const parsed = JSON.parse(content);
+      const parsed = JSON.parse(content as string);
       parsed.generatedAt = new Date().toISOString();
       return parsed;
     }),
@@ -372,7 +372,7 @@ export const marketingRouter = router({
 
       const content = response.choices?.[0]?.message?.content;
       if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI response empty" });
-      const aiContent = JSON.parse(content);
+      const aiContent = JSON.parse(content as string);
 
       return {
         country: program.country,
@@ -390,6 +390,127 @@ export const marketingRouter = router({
         programSummary: aiContent.programSummary || "",
         recommendation: aiContent.recommendation || "",
         generatedAt: new Date().toISOString(),
+      };
+    }),
+
+  generateMarketingPlan: protectedProcedure
+    .input(z.object({
+      contentRatio: z.string().optional(),
+      pillarFocus: z.string().optional(),
+      featuredPrograms: z.array(z.string()).optional(),
+      startDate: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const start = input.startDate ? new Date(input.startDate) : new Date();
+      const startStr = start.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+      const end = new Date(start);
+      end.setMonth(end.getMonth() + 3);
+      const endStr = end.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+      const systemPrompt = "You are the Head of Marketing at ELEVAY, a premium citizenship and residency by investment consultancy. Programs: Spain DNV, Portugal D7/D8/D2, Greece Golden Visa, Malta PR, UK Expansion Worker, Canada Skilled Migration, Caribbean Citizenship (Dominica, Grenada, Saint Kitts, Saint Lucia, Antigua, Vanuatu, Nauru, Sao Tome, Egypt, Turkey). Target: HNWI in MENA region. All captions in Arabic.";
+      const userPrompt = "Create a comprehensive 3-month social media marketing plan for ELEVAY from " + startStr + " to " + endStr + ".\n\nCustomization:\n- Content Ratio: " + (input.contentRatio || "40% EU Residency, 40% Caribbean Citizenship, 20% Brand & Trust") + "\n- Pillar Focus: " + (input.pillarFocus || "Investment ROI, Lifestyle & Freedom, Family Security, Global Mobility") + "\n- Featured Programs: " + (input.featuredPrograms?.join(", ") || "Spain DNV, Dominica, Grenada, Saint Kitts, Greece Golden Visa") + "\n\nReturn JSON with this structure: { planTitle, dateRange: {start, end}, strategy: {overview, contentPillars: [{name, percentage, description}], targetAudience, tone}, months: [{monthNumber, monthName, theme, objective, weeks: [{weekNumber, weekLabel, focus, posts: [{day, type, topic, caption, hashtags}]}]}], hashtagLibrary: {brand, residency, citizenship, arabic}, engagementStrategy: {bestPostingTimes, communityManagement, paidAmplification}, kpis: [{metric, target, measurement}] }";
+      const response = await invokeLLM({
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+      });
+      const content = response.choices?.[0]?.message?.content;
+      if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI response empty" });
+      return JSON.parse(content as string);
+    }),
+
+  generateWeekMedia: protectedProcedure
+    .input(z.object({
+      weekLabel: z.string(),
+      weekFocus: z.string(),
+      posts: z.array(z.object({
+        day: z.string(),
+        type: z.string(),
+        topic: z.string(),
+        caption: z.string(),
+        hashtags: z.array(z.string()),
+      })),
+    }))
+    .mutation(async ({ input }) => {
+      const { generateImage } = await import("./_core/imageGeneration");
+      const { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, Packer } = await import("docx");
+      const { storagePut: s3put } = await import("./storage");
+      const promptsReq = input.posts.map((p) => ({ day: p.day, type: p.type, topic: p.topic }));
+      const aiPromptsResp = await invokeLLM({
+        messages: [
+          { role: "system", content: "You are the Creative Director at ELEVAY. Brand: Navy blue (#1A3A5C), Teal (#5BA3B8). Style: premium, no people, no faces, no passports, no text in images, no square marks, destination photography." },
+          { role: "user", content: "Generate image prompts for ELEVAY social media for " + input.weekLabel + " (Focus: " + input.weekFocus + "). Posts: " + JSON.stringify(promptsReq) + ". Return JSON: { staticPrompts: [{day, topic, imagePrompt}], reelKeyframes: [{day, topic, mergeInstructions, scenes: [{sceneNumber, duration, keyframePrompt, videoPrompt}], voiceOverScript, backgroundMusicSuggestion}] }" },
+        ],
+        response_format: { type: "json_object" },
+      });
+      const promptsContent = aiPromptsResp.choices?.[0]?.message?.content;
+      if (!promptsContent) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI prompts generation failed" });
+      const prompts = JSON.parse(promptsContent as string) as {
+        staticPrompts: Array<{ day: string; topic: string; imagePrompt: string }>;
+        reelKeyframes: Array<{ day: string; topic: string; mergeInstructions: string; scenes: Array<{ sceneNumber: number; duration: string; keyframePrompt: string; videoPrompt: string }>; voiceOverScript: string; backgroundMusicSuggestion: string }>;
+      };
+      const staticImageUrls: Array<{ day: string; topic: string; url: string }> = [];
+      await Promise.all((prompts.staticPrompts || []).map(async (sp) => {
+        try {
+          const result = await generateImage({ prompt: sp.imagePrompt + ", square 1:1, 4K, ELEVAY brand, no people, no text, no passports" });
+          if (result.url) staticImageUrls.push({ day: sp.day, topic: sp.topic, url: result.url });
+        } catch (e) { console.error("Static image failed for " + sp.day, e); }
+      }));
+      const reelData: Array<{ day: string; topic: string; mergeInstructions: string; voiceOverScript: string; backgroundMusicSuggestion: string; scenes: Array<{ sceneNumber: number; duration: string; videoPrompt: string; keyframeUrl: string }> }> = [];
+      await Promise.all((prompts.reelKeyframes || []).map(async (reel) => {
+        const sceneResults: Array<{ sceneNumber: number; duration: string; videoPrompt: string; keyframeUrl: string }> = [];
+        await Promise.all(reel.scenes.map(async (scene) => {
+          try {
+            const result = await generateImage({ prompt: scene.keyframePrompt + ", 9:16 vertical, cinematic, no people, no text, no passports, no square marks" });
+            sceneResults.push({ sceneNumber: scene.sceneNumber, duration: scene.duration, videoPrompt: scene.videoPrompt, keyframeUrl: result.url || "" });
+          } catch (e) {
+            sceneResults.push({ sceneNumber: scene.sceneNumber, duration: scene.duration, videoPrompt: scene.videoPrompt, keyframeUrl: "" });
+          }
+        }));
+        sceneResults.sort((a, b) => a.sceneNumber - b.sceneNumber);
+        reelData.push({ day: reel.day, topic: reel.topic, mergeInstructions: reel.mergeInstructions, voiceOverScript: reel.voiceOverScript, backgroundMusicSuggestion: reel.backgroundMusicSuggestion, scenes: sceneResults });
+      }));
+      const docChildren: InstanceType<typeof Paragraph>[] = [];
+      docChildren.push(new Paragraph({ text: "ELEVAY Weekly Content Package", heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER }));
+      docChildren.push(new Paragraph({ text: input.weekLabel + " — " + input.weekFocus, heading: HeadingLevel.HEADING_2, alignment: AlignmentType.CENTER }));
+      docChildren.push(new Paragraph({ text: "" }));
+      docChildren.push(new Paragraph({ text: "SECTION 1: POST CAPTIONS", heading: HeadingLevel.HEADING_1 }));
+      input.posts.forEach((post, idx) => {
+        docChildren.push(new Paragraph({ text: "Post " + (idx + 1) + ": " + post.day + " — " + post.type, heading: HeadingLevel.HEADING_2 }));
+        docChildren.push(new Paragraph({ children: [new TextRun({ text: "Topic: ", bold: true }), new TextRun(post.topic)] }));
+        docChildren.push(new Paragraph({ children: [new TextRun({ text: "Caption (Arabic):", bold: true })] }));
+        docChildren.push(new Paragraph({ text: post.caption, alignment: AlignmentType.RIGHT }));
+        if (post.hashtags.length > 0) docChildren.push(new Paragraph({ children: [new TextRun({ text: "Hashtags: ", bold: true }), new TextRun(post.hashtags.join(" "))] }));
+        docChildren.push(new Paragraph({ text: "" }));
+      });
+      docChildren.push(new Paragraph({ text: "SECTION 2: REEL PRODUCTION PACKAGES", heading: HeadingLevel.HEADING_1 }));
+      reelData.forEach((reel, reelIdx) => {
+        docChildren.push(new Paragraph({ text: "Reel " + (reelIdx + 1) + ": " + reel.day + " — " + reel.topic, heading: HeadingLevel.HEADING_2 }));
+        docChildren.push(new Paragraph({ children: [new TextRun({ text: "VIDEO PROMPTS:", bold: true, underline: {} })] }));
+        reel.scenes.forEach((scene) => {
+          docChildren.push(new Paragraph({ children: [new TextRun({ text: "Scene " + scene.sceneNumber + " (" + scene.duration + "): ", bold: true }), new TextRun(scene.videoPrompt)] }));
+        });
+        docChildren.push(new Paragraph({ text: "" }));
+        docChildren.push(new Paragraph({ children: [new TextRun({ text: "MERGE & MUSIC INSTRUCTIONS:", bold: true, underline: {} })] }));
+        docChildren.push(new Paragraph({ text: reel.mergeInstructions }));
+        docChildren.push(new Paragraph({ children: [new TextRun({ text: "Background Music: ", bold: true }), new TextRun(reel.backgroundMusicSuggestion)] }));
+        docChildren.push(new Paragraph({ text: "" }));
+        docChildren.push(new Paragraph({ children: [new TextRun({ text: "ARABIC VOICE-OVER SCRIPT:", bold: true, underline: {} })] }));
+        docChildren.push(new Paragraph({ text: reel.voiceOverScript, alignment: AlignmentType.RIGHT }));
+        docChildren.push(new Paragraph({ text: "" }));
+      });
+      const doc = new Document({ sections: [{ children: docChildren }] });
+      const docBuffer = await Packer.toBuffer(doc);
+      const docKey = "marketing/week-packages/" + nanoid() + "-content-package.docx";
+      const { url: docUrl } = await s3put(docKey, docBuffer, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      return {
+        weekLabel: input.weekLabel,
+        weekFocus: input.weekFocus,
+        generatedAt: new Date().toISOString(),
+        staticImages: staticImageUrls,
+        reels: reelData,
+        wordDocUrl: docUrl,
       };
     }),
 });
