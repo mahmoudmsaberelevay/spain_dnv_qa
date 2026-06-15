@@ -1031,3 +1031,32 @@ export const marketingSummaries = mysqlTable("marketing_summaries", {
 });
 export type MarketingSummary = typeof marketingSummaries.$inferSelect;
 export type InsertMarketingSummary = typeof marketingSummaries.$inferInsert;
+
+// ─── MARKETING PLANS ─────────────────────────────────────────────────────────
+export const marketingPlans = mysqlTable("marketing_plans", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  title: varchar("title", { length: 500 }).notNull(),
+  startDate: varchar("start_date", { length: 50 }).notNull(),
+  contentRatio: text("content_ratio"),
+  pillarFocus: text("pillar_focus"),
+  featuredPrograms: text("featured_programs"),
+  planJson: text("plan_json"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type MarketingPlan = typeof marketingPlans.$inferSelect;
+export type InsertMarketingPlan = typeof marketingPlans.$inferInsert;
+
+export const marketingWeekMedia = mysqlTable("marketing_week_media", {
+  id: int("id").autoincrement().primaryKey(),
+  planId: int("plan_id"),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  weekLabel: varchar("week_label", { length: 200 }).notNull(),
+  weekFocus: text("week_focus"),
+  resultJson: text("result_json"),
+  wordDocUrl: text("word_doc_url"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type MarketingWeekMedia = typeof marketingWeekMedia.$inferSelect;
+export type InsertMarketingWeekMedia = typeof marketingWeekMedia.$inferInsert;

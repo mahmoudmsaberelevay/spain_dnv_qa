@@ -330,6 +330,13 @@
       "when": 1781441101583,
       "tag": "0046_last_jubilee",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "5",
+      "when": 1781520957472,
+      "tag": "0047_loose_lightspeed",
+      "breakpoints": true
     }
   ]
 }

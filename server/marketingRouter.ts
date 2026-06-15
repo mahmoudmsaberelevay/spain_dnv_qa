@@ -2,7 +2,7 @@ import { z } from "zod";
 import { protectedProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getDb } from "./db";
-import { marketingSummaries } from "../drizzle/schema";
+import { marketingSummaries, marketingPlans, marketingWeekMedia } from "../drizzle/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
@@ -504,7 +504,7 @@ export const marketingRouter = router({
       const docBuffer = await Packer.toBuffer(doc);
       const docKey = "marketing/week-packages/" + nanoid() + "-content-package.docx";
       const { url: docUrl } = await s3put(docKey, docBuffer, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-      return {
+      const result = {
         weekLabel: input.weekLabel,
         weekFocus: input.weekFocus,
         generatedAt: new Date().toISOString(),
@@ -512,5 +512,94 @@ export const marketingRouter = router({
         reels: reelData,
         wordDocUrl: docUrl,
       };
+      // Save to DB so it persists
+      if (input.planId) {
+        const db = await getDb();
+        if (db) {
+          await db.insert(marketingWeekMedia).values({
+            planId: input.planId,
+            userId: String(ctx.user.id),
+            weekLabel: input.weekLabel,
+            weekFocus: input.weekFocus,
+            resultJson: JSON.stringify(result),
+            wordDocUrl: docUrl,
+          });
+        }
+      }
+      return result;
+    }),
+
+  // ── Plan persistence ──────────────────────────────────────────────────────
+  savePlan: protectedProcedure
+    .input(z.object({
+      id: z.number().optional(),
+      title: z.string(),
+      startDate: z.string(),
+      contentRatio: z.string().optional(),
+      pillarFocus: z.string().optional(),
+      featuredPrograms: z.string().optional(),
+      planJson: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      if (input.id) {
+        await db.update(marketingPlans)
+          .set({
+            title: input.title,
+            startDate: input.startDate,
+            contentRatio: input.contentRatio,
+            pillarFocus: input.pillarFocus,
+            featuredPrograms: input.featuredPrograms,
+            planJson: input.planJson,
+          })
+          .where(and(eq(marketingPlans.id, input.id), eq(marketingPlans.userId, String(ctx.user.id))));
+        return { id: input.id };
+      } else {
+        const [result] = await db.insert(marketingPlans).values({
+          userId: String(ctx.user.id),
+          title: input.title,
+          startDate: input.startDate,
+          contentRatio: input.contentRatio,
+          pillarFocus: input.pillarFocus,
+          featuredPrograms: input.featuredPrograms,
+          planJson: input.planJson,
+        });
+        return { id: (result as any).insertId as number };
+      }
+    }),
+
+  listPlans: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+    const rows = await db
+      .select({ id: marketingPlans.id, title: marketingPlans.title, startDate: marketingPlans.startDate, createdAt: marketingPlans.createdAt })
+      .from(marketingPlans)
+      .where(eq(marketingPlans.userId, String(ctx.user.id)))
+      .orderBy(desc(marketingPlans.createdAt));
+    return rows;
+  }),
+
+  getPlan: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const [row] = await db
+        .select()
+        .from(marketingPlans)
+        .where(and(eq(marketingPlans.id, input.id), eq(marketingPlans.userId, String(ctx.user.id))));
+      if (!row) throw new TRPCError({ code: "NOT_FOUND" });
+      return row;
+    }),
+
+  deletePlan: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      await db.delete(marketingPlans)
+        .where(and(eq(marketingPlans.id, input.id), eq(marketingPlans.userId, String(ctx.user.id))));
+      return { success: true };
     }),
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   Loader2, Sparkles, Download, Image, Film, FileText,
-  ChevronDown, ChevronRight, Calendar, Target, Hash, Zap
+  ChevronDown, ChevronRight, Calendar, Target, Hash, Zap,
+  FolderOpen, Trash2, Save
 } from "lucide-react";
 
 const PROGRAMS = [
@@ -64,6 +65,9 @@ export default function MarketingPlan() {
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
   const [weekMediaResults, setWeekMediaResults] = useState<Record<string, WeekMediaResult>>({});
   const [generatingWeeks, setGeneratingWeeks] = useState<Set<string>>(new Set());
+  const [savedPlanId, setSavedPlanId] = useState<number | null>(null);
+  const [showSavedPlans, setShowSavedPlans] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Form state
   const [contentRatio, setContentRatio] = useState("40% EU Residency, 40% Caribbean Citizenship, 20% Brand & Trust");
@@ -71,11 +75,43 @@ export default function MarketingPlan() {
   const [selectedPrograms, setSelectedPrograms] = useState<string[]>(["Spain DNV", "Dominica", "Grenada", "Saint Kitts & Nevis", "Greece Golden Visa"]);
   const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
 
+  // Persistence
+  const utils = trpc.useUtils();
+  const { data: savedPlans } = trpc.marketing.listPlans.useQuery();
+  const savePlanMutation = trpc.marketing.savePlan.useMutation({
+    onSuccess: (data) => {
+      setSavedPlanId(data.id);
+      setIsSaving(false);
+      utils.marketing.listPlans.invalidate();
+    },
+    onError: () => setIsSaving(false),
+  });
+  const deletePlanMutation = trpc.marketing.deletePlan.useMutation({
+    onSuccess: () => utils.marketing.listPlans.invalidate(),
+  });
+
+  // Auto-save whenever plan changes
+  useEffect(() => {
+    if (!plan) return;
+    setIsSaving(true);
+    const title = plan.planTitle || ("Marketing Plan " + startDate);
+    savePlanMutation.mutate({
+      id: savedPlanId ?? undefined,
+      title,
+      startDate,
+      contentRatio,
+      pillarFocus,
+      featuredPrograms: selectedPrograms.join(", "),
+      planJson: JSON.stringify(plan),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan]);
+
   const generatePlanMutation = trpc.marketing.generateMarketingPlan.useMutation({
     onSuccess: (data) => {
       setPlan(data as Plan);
       setExpandedMonths(new Set([1]));
-      toast.success("3-Month Marketing Plan generated!");
+      toast.success("3-Month Marketing Plan generated and saved!");
     },
     onError: (err) => toast.error("Failed to generate plan: " + err.message),
   });
@@ -121,7 +157,21 @@ export default function MarketingPlan() {
       weekLabel: week.weekLabel,
       weekFocus: week.focus,
       posts: week.posts,
+      planId: savedPlanId ?? undefined,
     });
+  };
+
+  const handleLoadPlan = (row: { id: number; title: string; startDate: string; planJson?: string | null }) => {
+    if (row.planJson) {
+      try {
+        setPlan(JSON.parse(row.planJson) as Plan);
+        setSavedPlanId(row.id);
+        setExpandedMonths(new Set([1]));
+        setWeekMediaResults({});
+        setShowSavedPlans(false);
+        toast.success("Plan loaded: " + row.title);
+      } catch { toast.error("Failed to parse saved plan"); }
+    }
   };
 
   return (
@@ -132,7 +182,46 @@ export default function MarketingPlan() {
           <h1 className="text-2xl font-bold text-[#1A3A5C]">Marketing Plan Generator</h1>
           <p className="text-sm text-gray-500 mt-1">Generate a full 3-month ELEVAY social media strategy with weekly content packages</p>
         </div>
+        <div className="flex items-center gap-2">
+          {isSaving && <span className="text-xs text-gray-400 flex items-center gap-1"><Save className="w-3 h-3" /> Saving...</span>}
+          {savedPlanId && !isSaving && <span className="text-xs text-emerald-600 flex items-center gap-1"><Save className="w-3 h-3" /> Saved</span>}
+          <Button variant="outline" size="sm" onClick={() => setShowSavedPlans(!showSavedPlans)} className="gap-2">
+            <FolderOpen className="w-4 h-4" />
+            Saved Plans {savedPlans && savedPlans.length > 0 && <Badge variant="secondary" className="ml-1">{savedPlans.length}</Badge>}
+          </Button>
+        </div>
       </div>
+
+      {/* Saved Plans Panel */}
+      {showSavedPlans && (
+        <Card className="border-[#5BA3B8]/30 bg-[#f0f8fb]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-[#1A3A5C]">Saved Plans</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!savedPlans || savedPlans.length === 0 ? (
+              <p className="text-sm text-gray-400">No saved plans yet. Generate a plan to save it automatically.</p>
+            ) : (
+              <div className="space-y-2">
+                {savedPlans.map((row) => (
+                  <div key={row.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-[#5BA3B8]/20">
+                    <div>
+                      <p className="text-sm font-medium text-[#1A3A5C]">{row.title}</p>
+                      <p className="text-xs text-gray-400">Start: {row.startDate} · Saved: {new Date(row.createdAt).toLocaleDateString()}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => handleLoadPlan(row as { id: number; title: string; startDate: string; planJson?: string | null })}>Load</Button>
+                      <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => deletePlanMutation.mutate({ id: row.id })}>
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Configuration Card */}
       <Card className="border-[#5BA3B8]/30">
@@ -164,10 +253,10 @@ export default function MarketingPlan() {
                 <button
                   key={p}
                   onClick={() => toggleProgram(p)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  className={`px-2 py-1 rounded-full text-xs font-medium border transition-colors ${
                     selectedPrograms.includes(p)
                       ? "bg-[#1A3A5C] text-white border-[#1A3A5C]"
-                      : "bg-white text-gray-600 border-gray-300 hover:border-[#5BA3B8]"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-[#5BA3B8]"
                   }`}
                 >
                   {p}
@@ -178,12 +267,12 @@ export default function MarketingPlan() {
           <Button
             onClick={handleGeneratePlan}
             disabled={generatePlanMutation.isPending}
-            className="w-full bg-[#1A3A5C] hover:bg-[#1A3A5C]/90 text-white"
+            className="w-full bg-[#1A3A5C] hover:bg-[#1A3A5C]/90 text-white gap-2"
           >
             {generatePlanMutation.isPending ? (
-              <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generating 3-Month Plan...</>
+              <><Loader2 className="w-4 h-4 animate-spin" /> Generating 3-Month Plan (1-2 min)...</>
             ) : (
-              <><Sparkles className="w-4 h-4 mr-2" />Generate 3-Month Marketing Plan</>
+              <><Sparkles className="w-4 h-4" /> Generate 3-Month Marketing Plan</>
             )}
           </Button>
         </CardContent>
@@ -195,223 +284,180 @@ export default function MarketingPlan() {
           {/* Strategy Overview */}
           <Card className="border-[#5BA3B8]/30">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base text-[#1A3A5C]">
-                {plan.planTitle} — {plan.dateRange.start} to {plan.dateRange.end}
+              <CardTitle className="text-base text-[#1A3A5C] flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#5BA3B8]" />
+                {plan.planTitle}
+                <span className="text-xs font-normal text-gray-400 ml-2">{plan.dateRange?.start} → {plan.dateRange?.end}</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-gray-700 leading-relaxed">{plan.strategy.overview}</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {plan.strategy.contentPillars.map((pillar, i) => (
-                  <div key={i} className="bg-[#1A3A5C]/5 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-[#1A3A5C]">{pillar.percentage}%</div>
-                    <div className="text-xs font-medium text-[#5BA3B8] mt-1">{pillar.name}</div>
-                    <div className="text-xs text-gray-500 mt-1">{pillar.description}</div>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-gray-600">{plan.strategy?.overview}</p>
+              <div className="flex flex-wrap gap-2">
+                {plan.strategy?.contentPillars?.map((p, i) => (
+                  <div key={i} className="bg-[#f0f8fb] border border-[#5BA3B8]/30 rounded-lg px-3 py-1 text-xs">
+                    <span className="font-semibold text-[#1A3A5C]">{p.name}</span>
+                    <span className="text-[#5BA3B8] ml-1">({p.percentage}%)</span>
                   </div>
                 ))}
               </div>
-              {/* KPIs */}
-              {plan.kpis && plan.kpis.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-semibold text-[#1A3A5C] mb-2 flex items-center gap-1"><Zap className="w-3 h-3" />KPIs</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                    {plan.kpis.map((kpi, i) => (
-                      <div key={i} className="bg-gray-50 rounded p-2 text-xs">
-                        <div className="font-medium text-[#1A3A5C]">{kpi.metric}</div>
-                        <div className="text-[#5BA3B8]">{kpi.target}</div>
-                        <div className="text-gray-500">{kpi.measurement}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {/* Hashtag Library */}
-              {plan.hashtagLibrary && (
-                <div>
-                  <h4 className="text-sm font-semibold text-[#1A3A5C] mb-2 flex items-center gap-1"><Hash className="w-3 h-3" />Hashtag Library</h4>
-                  <div className="flex flex-wrap gap-1">
-                    {[...plan.hashtagLibrary.brand, ...plan.hashtagLibrary.residency, ...plan.hashtagLibrary.citizenship, ...plan.hashtagLibrary.arabic].map((tag, i) => (
-                      <span key={i} className="text-xs bg-[#5BA3B8]/10 text-[#5BA3B8] px-2 py-0.5 rounded">{tag}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
 
           {/* Monthly Calendar */}
-          {plan.months.map((month) => (
-            <Card key={month.monthNumber} className="border-[#5BA3B8]/20">
+          {plan.months?.map((month) => (
+            <Card key={month.monthNumber} className="border-[#5BA3B8]/30">
               <CardHeader
-                className="pb-3 cursor-pointer"
+                className="pb-3 cursor-pointer select-none"
                 onClick={() => toggleMonth(month.monthNumber)}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#1A3A5C] text-white flex items-center justify-center text-sm font-bold">
-                      {month.monthNumber}
-                    </div>
-                    <div>
-                      <CardTitle className="text-base text-[#1A3A5C]">{month.monthName}</CardTitle>
-                      <p className="text-xs text-[#5BA3B8]">{month.theme} — {month.objective}</p>
-                    </div>
+                <CardTitle className="text-base text-[#1A3A5C] flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-[#5BA3B8]" />
+                    Month {month.monthNumber}: {month.monthName}
+                    <Badge className="bg-[#5BA3B8]/20 text-[#1A3A5C] text-xs font-normal">{month.theme}</Badge>
                   </div>
-                  {expandedMonths.has(month.monthNumber) ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
-                </div>
+                  {expandedMonths.has(month.monthNumber) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </CardTitle>
+                <p className="text-xs text-gray-500 mt-1">{month.objective}</p>
               </CardHeader>
 
               {expandedMonths.has(month.monthNumber) && (
-                <CardContent className="space-y-3 pt-0">
-                  {month.weeks.map((week) => {
+                <CardContent className="space-y-3">
+                  {month.weeks?.map((week) => {
                     const weekKey = week.weekLabel;
                     const isExpanded = expandedWeeks.has(weekKey);
                     const isGenerating = generatingWeeks.has(weekKey);
                     const mediaResult = weekMediaResults[weekKey];
 
                     return (
-                      <div key={week.weekNumber} className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div key={week.weekNumber} className="border border-gray-100 rounded-lg overflow-hidden">
                         {/* Week Header */}
                         <div
-                          className="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100"
+                          className="flex items-center justify-between px-4 py-3 bg-gray-50 cursor-pointer"
                           onClick={() => toggleWeek(weekKey)}
                         >
                           <div className="flex items-center gap-2">
-                            <Calendar className="w-4 h-4 text-[#5BA3B8]" />
-                            <span className="text-sm font-medium text-[#1A3A5C]">{week.weekLabel}</span>
-                            <Badge variant="outline" className="text-xs text-[#5BA3B8] border-[#5BA3B8]/30">{week.focus}</Badge>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {mediaResult && <Badge className="text-xs bg-green-100 text-green-700 border-0">✓ Generated</Badge>}
                             {isExpanded ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
+                            <span className="text-sm font-semibold text-[#1A3A5C]">{week.weekLabel}</span>
+                            <span className="text-xs text-gray-500">— {week.focus}</span>
                           </div>
+                          <Button
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); handleGenerateWeekMedia(week); }}
+                            disabled={isGenerating}
+                            className="bg-[#5BA3B8] hover:bg-[#5BA3B8]/90 text-white text-xs h-7 gap-1"
+                          >
+                            {isGenerating ? (
+                              <><Loader2 className="w-3 h-3 animate-spin" /> Generating...</>
+                            ) : (
+                              <><Zap className="w-3 h-3" /> Generate Media Package</>
+                            )}
+                          </Button>
                         </div>
 
                         {/* Week Content */}
                         {isExpanded && (
-                          <div className="p-3 space-y-3">
+                          <div className="p-4 space-y-3">
                             {/* Posts Grid */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                              {week.posts.map((post, pi) => (
-                                <div key={pi} className="bg-white border border-gray-100 rounded-lg p-3">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${DAY_COLORS[post.day] || "bg-gray-100 text-gray-700"}`}>{post.day}</span>
-                                    <span className={`text-xs px-2 py-0.5 rounded-full ${POST_TYPE_COLORS[post.type] || "bg-gray-100 text-gray-600"}`}>{post.type}</span>
+                              {week.posts?.map((post, pi) => (
+                                <div key={pi} className="border border-gray-100 rounded-lg p-3 space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DAY_COLORS[post.day] || "bg-gray-100 text-gray-700"}`}>{post.day}</span>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full ${POST_TYPE_COLORS[post.type] || "bg-gray-100 text-gray-700"}`}>{post.type}</span>
                                   </div>
-                                  <p className="text-xs font-medium text-[#1A3A5C] mb-1">{post.topic}</p>
-                                  <p className="text-xs text-gray-600 leading-relaxed text-right" dir="rtl">{post.caption}</p>
-                                  {post.hashtags.length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mt-1">
-                                      {post.hashtags.slice(0, 4).map((tag, ti) => (
-                                        <span key={ti} className="text-xs text-[#5BA3B8]">{tag}</span>
-                                      ))}
-                                    </div>
-                                  )}
+                                  <p className="text-xs font-medium text-[#1A3A5C]">{post.topic}</p>
+                                  <p className="text-xs text-gray-500 line-clamp-2">{post.caption}</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {post.hashtags?.slice(0, 4).map((h, hi) => (
+                                      <span key={hi} className="text-xs text-[#5BA3B8]">#{h}</span>
+                                    ))}
+                                  </div>
                                 </div>
                               ))}
                             </div>
 
-                            {/* Generate Media Button */}
-                            <Button
-                              onClick={() => handleGenerateWeekMedia(week)}
-                              disabled={isGenerating}
-                              className="w-full bg-[#5BA3B8] hover:bg-[#5BA3B8]/90 text-white"
-                              size="sm"
-                            >
-                              {isGenerating ? (
-                                <><Loader2 className="w-3 h-3 mr-2 animate-spin" />Generating Media Package (2–4 min)...</>
-                              ) : (
-                                <><Sparkles className="w-3 h-3 mr-2" />Generate Week Media Package (4 Statics + 20 Keyframes + Word Doc)</>
-                              )}
-                            </Button>
-
                             {/* Media Results */}
                             {mediaResult && (
-                              <div className="space-y-3 border-t pt-3">
-                                <h4 className="text-sm font-semibold text-[#1A3A5C]">Generated Media Package</h4>
+                              <div className="mt-4 space-y-4 border-t pt-4">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="text-sm font-semibold text-[#1A3A5C]">Generated Media Package</h4>
+                                  <a href={mediaResult.wordDocUrl} download target="_blank" rel="noreferrer">
+                                    <Button size="sm" variant="outline" className="gap-1 text-xs h-7">
+                                      <FileText className="w-3 h-3" /> Download Word Doc
+                                    </Button>
+                                  </a>
+                                </div>
 
                                 {/* Static Images */}
-                                {mediaResult.staticImages.length > 0 && (
-                                  <div>
-                                    <p className="text-xs font-medium text-gray-600 mb-2 flex items-center gap-1"><Image className="w-3 h-3" />Static Images (1080×1080)</p>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                      {mediaResult.staticImages.map((img, i) => (
-                                        <div key={i} className="space-y-1">
-                                          <img src={img.url} alt={img.topic} className="w-full aspect-square object-cover rounded-lg border" />
-                                          <p className="text-xs text-center text-gray-500">{img.day}</p>
-                                          <a href={img.url} download className="block">
-                                            <Button size="sm" variant="outline" className="w-full h-6 text-xs">
-                                              <Download className="w-3 h-3 mr-1" />Download
-                                            </Button>
-                                          </a>
-                                        </div>
-                                      ))}
-                                    </div>
+                                <div>
+                                  <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2 flex items-center gap-1">
+                                    <Image className="w-3 h-3" /> Static Images (4)
+                                  </h5>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                    {mediaResult.staticImages?.map((img, i) => (
+                                      <div key={i} className="space-y-1">
+                                        <img src={img.url} alt={img.topic} className="w-full aspect-square object-cover rounded-lg border" />
+                                        <p className="text-xs text-gray-500 text-center">{img.day}</p>
+                                        <a href={img.url} download target="_blank" rel="noreferrer" className="block">
+                                          <Button size="sm" variant="outline" className="w-full text-xs h-6 gap-1">
+                                            <Download className="w-2 h-2" /> Download
+                                          </Button>
+                                        </a>
+                                      </div>
+                                    ))}
                                   </div>
-                                )}
+                                </div>
 
-                                {/* Reel Keyframes */}
-                                {mediaResult.reels.length > 0 && (
-                                  <div>
-                                    <p className="text-xs font-medium text-gray-600 mb-2 flex items-center gap-1"><Film className="w-3 h-3" />Reel Keyframes (5 scenes × 5 sec = 25 sec)</p>
-                                    <div className="space-y-3">
-                                      {mediaResult.reels.map((reel, ri) => (
-                                        <div key={ri} className="border border-purple-100 rounded-lg p-3 bg-purple-50/30">
-                                          <p className="text-xs font-semibold text-[#1A3A5C] mb-2">Reel {ri + 1}: {reel.day} — {reel.topic}</p>
-                                          {/* Keyframe images */}
-                                          <div className="grid grid-cols-5 gap-1 mb-2">
-                                            {reel.scenes.map((scene) => (
-                                              <div key={scene.sceneNumber} className="space-y-0.5">
-                                                {scene.keyframeUrl ? (
-                                                  <img src={scene.keyframeUrl} alt={"Scene " + scene.sceneNumber} className="w-full aspect-[9/16] object-cover rounded border" />
-                                                ) : (
-                                                  <div className="w-full aspect-[9/16] bg-gray-200 rounded border flex items-center justify-center text-xs text-gray-400">—</div>
-                                                )}
-                                                <p className="text-xs text-center text-gray-400">S{scene.sceneNumber}</p>
-                                                {scene.keyframeUrl && (
-                                                  <a href={scene.keyframeUrl} download>
-                                                    <Button size="sm" variant="outline" className="w-full h-5 text-xs p-0"><Download className="w-2 h-2" /></Button>
-                                                  </a>
-                                                )}
-                                              </div>
-                                            ))}
-                                          </div>
-                                          {/* Video prompts */}
-                                          <details className="text-xs">
-                                            <summary className="cursor-pointer text-[#5BA3B8] font-medium">View Video Prompts & Instructions</summary>
-                                            <div className="mt-2 space-y-1 bg-white rounded p-2">
-                                              {reel.scenes.map((scene) => (
-                                                <div key={scene.sceneNumber} className="border-b border-gray-100 pb-1 last:border-0">
-                                                  <span className="font-medium text-[#1A3A5C]">Scene {scene.sceneNumber}: </span>
-                                                  <span className="text-gray-600">{scene.videoPrompt}</span>
-                                                </div>
-                                              ))}
-                                              <div className="mt-2 pt-2 border-t">
-                                                <p className="font-medium text-[#1A3A5C]">Merge Instructions:</p>
-                                                <p className="text-gray-600 whitespace-pre-line">{reel.mergeInstructions}</p>
-                                              </div>
-                                              <div className="mt-1">
-                                                <p className="font-medium text-[#1A3A5C]">Background Music: </p>
-                                                <p className="text-gray-600">{reel.backgroundMusicSuggestion}</p>
-                                              </div>
-                                              <div className="mt-1">
-                                                <p className="font-medium text-[#1A3A5C]">Arabic Voice-Over Script:</p>
-                                                <p className="text-gray-600 text-right" dir="rtl">{reel.voiceOverScript}</p>
-                                              </div>
+                                {/* Reels */}
+                                <div>
+                                  <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2 flex items-center gap-1">
+                                    <Film className="w-3 h-3" /> Reels (4 × 5 Keyframes)
+                                  </h5>
+                                  <div className="space-y-4">
+                                    {mediaResult.reels?.map((reel, ri) => (
+                                      <div key={ri} className="border border-purple-100 rounded-lg p-3 space-y-3">
+                                        <div className="flex items-center gap-2">
+                                          <Badge className="bg-purple-100 text-purple-800 text-xs">Reel {ri + 1}</Badge>
+                                          <span className="text-xs font-medium text-[#1A3A5C]">{reel.day} — {reel.topic}</span>
+                                        </div>
+
+                                        {/* Keyframes */}
+                                        <div className="grid grid-cols-5 gap-1">
+                                          {reel.scenes?.map((scene, si) => (
+                                            <div key={si} className="space-y-1">
+                                              <img src={scene.keyframeUrl} alt={"Scene " + scene.sceneNumber} className="w-full aspect-square object-cover rounded border" />
+                                              <p className="text-xs text-center text-gray-400">Scene {scene.sceneNumber}</p>
                                             </div>
-                                          </details>
+                                          ))}
                                         </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
 
-                                {/* Word Document Download */}
-                                <a href={mediaResult.wordDocUrl} download={"ELEVAY-" + mediaResult.weekLabel + "-Content-Package.docx"}>
-                                  <Button className="w-full bg-[#1A3A5C] hover:bg-[#1A3A5C]/90 text-white" size="sm">
-                                    <FileText className="w-4 h-4 mr-2" />
-                                    Download Word Document (Captions + Voice-Over Scripts)
-                                  </Button>
-                                </a>
+                                        {/* Video Prompts */}
+                                        <div className="space-y-1">
+                                          <p className="text-xs font-semibold text-gray-600">Video Prompts:</p>
+                                          {reel.scenes?.map((scene, si) => (
+                                            <div key={si} className="bg-gray-50 rounded p-2 text-xs text-gray-600">
+                                              <span className="font-medium text-purple-700">Scene {scene.sceneNumber} ({scene.duration}):</span> {scene.videoPrompt}
+                                            </div>
+                                          ))}
+                                        </div>
+
+                                        {/* Merge Instructions */}
+                                        <div className="bg-amber-50 border border-amber-200 rounded p-2">
+                                          <p className="text-xs font-semibold text-amber-700">Merge & Music Instructions:</p>
+                                          <p className="text-xs text-amber-600 mt-1">{reel.mergeInstructions}</p>
+                                          <p className="text-xs text-amber-600 mt-1"><span className="font-medium">Music:</span> {reel.backgroundMusicSuggestion}</p>
+                                        </div>
+
+                                        {/* Voice-Over */}
+                                        <div className="bg-blue-50 border border-blue-200 rounded p-2" dir="rtl">
+                                          <p className="text-xs font-semibold text-blue-700" dir="ltr">Arabic Voice-Over Script:</p>
+                                          <p className="text-xs text-blue-600 mt-1 leading-relaxed">{reel.voiceOverScript}</p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -423,6 +469,28 @@ export default function MarketingPlan() {
               )}
             </Card>
           ))}
+
+          {/* Hashtag Library */}
+          {plan.hashtagLibrary && (
+            <Card className="border-[#5BA3B8]/30">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base text-[#1A3A5C] flex items-center gap-2">
+                  <Hash className="w-4 h-4 text-[#5BA3B8]" />
+                  Hashtag Library
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {Object.entries(plan.hashtagLibrary).map(([cat, tags]) => (
+                  <div key={cat} className="flex flex-wrap gap-1 items-center">
+                    <span className="text-xs font-semibold text-gray-500 capitalize w-20">{cat}:</span>
+                    {(tags as string[]).map((tag, i) => (
+                      <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">#{tag}</span>
+                    ))}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </div>
