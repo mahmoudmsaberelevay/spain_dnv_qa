@@ -207,7 +207,7 @@ export default function MarketingPlan() {
                   <div key={row.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-[#5BA3B8]/20">
                     <div>
                       <p className="text-sm font-medium text-[#1A3A5C]">{row.title}</p>
-                      <p className="text-xs text-gray-400">Start: {row.startDate} · Saved: {new Date(row.createdAt).toLocaleDateString()}</p>
+                      <p className="text-xs text-gray-400">Start: {row.startDate} · Saved: {new Date(Number(row.createdAt)).toLocaleDateString()}</p>
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={() => handleLoadPlan(row as { id: number; title: string; startDate: string; planJson?: string | null })}>Load</Button>

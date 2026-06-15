@@ -424,12 +424,16 @@ export const marketingRouter = router({
     .input(z.object({
       weekLabel: z.string(),
       weekFocus: z.string(),
+      planId: z.number().optional(),
       posts: z.array(z.object({
         day: z.string(),
         type: z.string(),
         topic: z.string(),
         caption: z.string(),
-        hashtags: z.array(z.string()),
+        // Accept both array and string (AI sometimes returns comma-separated string)
+        hashtags: z.union([z.array(z.string()), z.string()]).transform(v =>
+          Array.isArray(v) ? v : v.split(/[,\s]+/).map(h => h.replace(/^#/, "").trim()).filter(Boolean)
+        ),
       })),
     }))
     .mutation(async ({ input }) => {
@@ -518,11 +522,10 @@ export const marketingRouter = router({
         if (db) {
           await db.insert(marketingWeekMedia).values({
             planId: input.planId,
-            userId: String(ctx.user.id),
-            weekLabel: input.weekLabel,
-            weekFocus: input.weekFocus,
+            weekLabel: input.weekLabel.slice(0, 100),
+            weekFocus: (input.weekFocus || "").slice(0, 255),
             resultJson: JSON.stringify(result),
-            wordDocUrl: docUrl,
+            createdAt: Date.now(),
           });
         }
       }
@@ -543,27 +546,32 @@ export const marketingRouter = router({
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const now = Date.now();
+      const uid = Number(ctx.user.id);
       if (input.id) {
         await db.update(marketingPlans)
           .set({
             title: input.title,
-            startDate: input.startDate,
+            startDate: input.startDate.slice(0, 20),
             contentRatio: input.contentRatio,
             pillarFocus: input.pillarFocus,
             featuredPrograms: input.featuredPrograms,
             planJson: input.planJson,
+            updatedAt: now,
           })
-          .where(and(eq(marketingPlans.id, input.id), eq(marketingPlans.userId, String(ctx.user.id))));
+          .where(and(eq(marketingPlans.id, input.id), eq(marketingPlans.userId, uid)));
         return { id: input.id };
       } else {
         const [result] = await db.insert(marketingPlans).values({
-          userId: String(ctx.user.id),
+          userId: uid,
           title: input.title,
-          startDate: input.startDate,
+          startDate: input.startDate.slice(0, 20),
           contentRatio: input.contentRatio,
           pillarFocus: input.pillarFocus,
           featuredPrograms: input.featuredPrograms,
           planJson: input.planJson,
+          createdAt: now,
+          updatedAt: now,
         });
         return { id: (result as any).insertId as number };
       }
@@ -572,10 +580,11 @@ export const marketingRouter = router({
   listPlans: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+    const uid = Number(ctx.user.id);
     const rows = await db
-      .select({ id: marketingPlans.id, title: marketingPlans.title, startDate: marketingPlans.startDate, createdAt: marketingPlans.createdAt })
+      .select({ id: marketingPlans.id, title: marketingPlans.title, startDate: marketingPlans.startDate, createdAt: marketingPlans.createdAt, planJson: marketingPlans.planJson })
       .from(marketingPlans)
-      .where(eq(marketingPlans.userId, String(ctx.user.id)))
+      .where(eq(marketingPlans.userId, uid))
       .orderBy(desc(marketingPlans.createdAt));
     return rows;
   }),
@@ -585,10 +594,11 @@ export const marketingRouter = router({
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const uid = Number(ctx.user.id);
       const [row] = await db
         .select()
         .from(marketingPlans)
-        .where(and(eq(marketingPlans.id, input.id), eq(marketingPlans.userId, String(ctx.user.id))));
+        .where(and(eq(marketingPlans.id, input.id), eq(marketingPlans.userId, uid)));
       if (!row) throw new TRPCError({ code: "NOT_FOUND" });
       return row;
     }),
@@ -598,8 +608,9 @@ export const marketingRouter = router({
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const uid = Number(ctx.user.id);
       await db.delete(marketingPlans)
-        .where(and(eq(marketingPlans.id, input.id), eq(marketingPlans.userId, String(ctx.user.id))));
+        .where(and(eq(marketingPlans.id, input.id), eq(marketingPlans.userId, uid)));
       return { success: true };
     }),
 });
