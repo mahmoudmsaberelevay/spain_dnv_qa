@@ -62,6 +62,7 @@ export default function FinIncome() {
 
   const { data: accounts } = trpc.financial.accounts.list.useQuery();
   const { data: categories } = trpc.financial.categories.list.useQuery({ type: "income" });
+  const { data: employees } = trpc.financial.employees.list.useQuery();
   const { data: finClients } = trpc.financial.clients.list.useQuery();
 
   const createMut = trpc.financial.transactions.createIncome.useMutation({
@@ -133,6 +134,12 @@ export default function FinIncome() {
     categories?.forEach(c => m.set(c.id, c.name));
     return m;
   }, [categories]);
+
+  const employeeMap = useMemo(() => {
+    const m = new Map<number, string>();
+    employees?.forEach((e: any) => m.set(e.id, e.name));
+    return m;
+  }, [employees]);
 
   const clientMap = useMemo(() => {
     const m = new Map<number, string>();
@@ -288,6 +295,7 @@ export default function FinIncome() {
                     <th className="text-left py-2 font-medium">Description</th>
                     <th className="text-left py-2 font-medium">Category</th>
                     <th className="text-left py-2 font-medium">Account</th>
+                    <th className="text-left py-2 font-medium">Employee</th>
                     <th className="text-left py-2 font-medium">Client</th>
                     <th className="text-right py-2 font-medium">Amount</th>
                     <th className="text-right py-2 font-medium">Balance After</th>
@@ -302,6 +310,7 @@ export default function FinIncome() {
                       <td className="py-2 font-medium">{tx.description}</td>
                       <td className="py-2 text-muted-foreground">{categoryMap.get(tx.categoryId!) ?? "—"}</td>
                       <td className="py-2 text-muted-foreground">{accountMap.get(tx.accountId!) ?? "—"}</td>
+                      <td className="py-2 text-muted-foreground">{tx.employeeId ? (employeeMap.get(tx.employeeId) ?? "—") : "—"}</td>
                       <td className="py-2 text-muted-foreground text-xs">{tx.finClientId ? (clientMap.get(tx.finClientId) ?? "—") : "—"}</td>
                       <td className="py-2 text-right text-green-600 font-semibold">{fmt(Number(tx.amount))}</td>
                       <td className="py-2 text-right">{tx.balanceAfter ? fmt(Number(tx.balanceAfter)) : "—"}</td>

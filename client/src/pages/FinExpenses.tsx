@@ -234,6 +234,7 @@ export default function FinExpenses() {
                     <th className="text-left py-2 font-medium">Category</th>
                     <th className="text-left py-2 font-medium">Account</th>
                     <th className="text-left py-2 font-medium">Employee</th>
+                    <th className="text-left py-2 font-medium">Client</th>
                     <th className="text-right py-2 font-medium">Amount</th>
                     <th className="text-right py-2 font-medium">Balance After</th>
                     <th></th>
@@ -248,6 +249,7 @@ export default function FinExpenses() {
                       <td className="py-2 text-muted-foreground">{categoryMap.get(tx.categoryId!) ?? "—"}</td>
                       <td className="py-2 text-muted-foreground">{accountMap.get(tx.accountId!) ?? "—"}</td>
                       <td className="py-2 text-muted-foreground">{tx.employeeId ? employeeMap.get(tx.employeeId) ?? "—" : "—"}</td>
+                      <td className="py-2 text-muted-foreground text-xs">{tx.finClientId ? (clientMap.get(tx.finClientId) ?? "—") : "—"}</td>
                       <td className="py-2 text-right text-red-600 font-semibold">{fmt(Number(tx.amount))}</td>
                       <td className="py-2 text-right">{tx.balanceAfter ? fmt(Number(tx.balanceAfter)) : "—"}</td>
                       <td className="py-2 text-right">
@@ -263,7 +265,7 @@ export default function FinExpenses() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 bg-muted/20 font-semibold">
-                    <td colSpan={6} className="py-2 pl-2 text-right text-sm">Page Total</td>
+                    <td colSpan={7} className="py-2 pl-2 text-right text-sm">Page Total</td>
                     <td className="py-2 text-right text-red-600">{fmt(pageTotal)}</td>
                     <td colSpan={2}></td>
                   </tr>
