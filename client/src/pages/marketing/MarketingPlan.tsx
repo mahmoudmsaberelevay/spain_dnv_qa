@@ -53,11 +53,15 @@ const POST_TYPE_COLORS: Record<string, string> = {
 };
 
 const DAY_COLORS: Record<string, string> = {
-  Monday: "bg-[#1A3A5C] text-white",
-  Wednesday: "bg-[#5BA3B8] text-white",
-  Friday: "bg-amber-500 text-white",
-  Saturday: "bg-emerald-600 text-white",
+  Sunday: "bg-[#1A3A5C] text-white",
+  Monday: "bg-[#5BA3B8] text-white",
+  Tuesday: "bg-violet-600 text-white",
+  Wednesday: "bg-amber-500 text-white",
+  Thursday: "bg-emerald-600 text-white",
+  Friday: "bg-pink-600 text-white",
+  Saturday: "bg-orange-500 text-white",
 };
+const WEEK_DAYS_ORDER = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"];
 
 export default function MarketingPlan() {
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -358,23 +362,58 @@ export default function MarketingPlan() {
                         {/* Week Content */}
                         {isExpanded && (
                           <div className="p-4 space-y-3">
-                            {/* Posts Grid */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                              {week.posts?.map((post, pi) => (
-                                <div key={pi} className="border border-gray-100 rounded-lg p-3 space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DAY_COLORS[post.day] || "bg-gray-100 text-gray-700"}`}>{post.day}</span>
-                                    <span className={`text-xs px-2 py-0.5 rounded-full ${POST_TYPE_COLORS[post.type] || "bg-gray-100 text-gray-700"}`}>{post.type}</span>
+                            {/* 5-Day Posts Grid — grouped by day */}
+                            <div className="space-y-3">
+                              {WEEK_DAYS_ORDER.map((dayName) => {
+                                const dayPosts = week.posts?.filter(p => p.day === dayName) || [];
+                                if (dayPosts.length === 0) return null;
+                                const staticPost = dayPosts.find(p => p.type === "Static Design");
+                                const reelPost = dayPosts.find(p => p.type === "Reel");
+                                return (
+                                  <div key={dayName} className="border border-gray-100 rounded-lg overflow-hidden">
+                                    {/* Day Header */}
+                                    <div className={`px-3 py-2 flex items-center gap-2 ${DAY_COLORS[dayName] || "bg-gray-100 text-gray-700"}`}>
+                                      <span className="text-sm font-bold">{dayName}</span>
+                                      {staticPost && <span className="text-xs opacity-80 truncate">{staticPost.topic}</span>}
+                                    </div>
+                                    {/* Static + Reel side by side */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+                                      {/* Static Design */}
+                                      {staticPost && (
+                                        <div className="p-3 space-y-1.5">
+                                          <div className="flex items-center gap-1.5">
+                                            <Image className="w-3 h-3 text-blue-500" />
+                                            <span className="text-xs font-semibold text-blue-700">Static Design (1:1)</span>
+                                          </div>
+                                          <p className="text-xs font-medium text-[#1A3A5C]">{staticPost.topic}</p>
+                                          <p className="text-xs text-gray-500 line-clamp-3">{staticPost.caption}</p>
+                                          <div className="flex flex-wrap gap-1">
+                                            {staticPost.hashtags?.slice(0, 4).map((h, hi) => (
+                                              <span key={hi} className="text-xs text-[#5BA3B8]">#{h}</span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {/* Reel */}
+                                      {reelPost && (
+                                        <div className="p-3 space-y-1.5">
+                                          <div className="flex items-center gap-1.5">
+                                            <Film className="w-3 h-3 text-purple-500" />
+                                            <span className="text-xs font-semibold text-purple-700">Reel (9:16) — 5 Keyframes</span>
+                                          </div>
+                                          <p className="text-xs font-medium text-[#1A3A5C]">{reelPost.topic}</p>
+                                          <p className="text-xs text-gray-500 line-clamp-3">{reelPost.caption}</p>
+                                          <div className="flex flex-wrap gap-1">
+                                            {reelPost.hashtags?.slice(0, 4).map((h, hi) => (
+                                              <span key={hi} className="text-xs text-[#5BA3B8]">#{h}</span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
-                                  <p className="text-xs font-medium text-[#1A3A5C]">{post.topic}</p>
-                                  <p className="text-xs text-gray-500 line-clamp-2">{post.caption}</p>
-                                  <div className="flex flex-wrap gap-1">
-                                    {post.hashtags?.slice(0, 4).map((h, hi) => (
-                                      <span key={hi} className="text-xs text-[#5BA3B8]">#{h}</span>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
 
                             {/* Media Results */}
@@ -389,30 +428,35 @@ export default function MarketingPlan() {
                                   </a>
                                 </div>
 
-                                {/* Static Images */}
+                                {/* Static Images — 5 days, 1:1 */}
                                 <div>
                                   <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2 flex items-center gap-1">
-                                    <Image className="w-3 h-3" /> Static Images (4)
+                                    <Image className="w-3 h-3" /> Static Designs (1:1) — {mediaResult.staticImages?.length || 0} images
                                   </h5>
-                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                    {mediaResult.staticImages?.map((img, i) => (
-                                      <div key={i} className="space-y-1">
-                                        <img src={img.url} alt={img.topic} className="w-full aspect-square object-cover rounded-lg border" />
-                                        <p className="text-xs text-gray-500 text-center">{img.day}</p>
-                                        <a href={img.url} download target="_blank" rel="noreferrer" className="block">
-                                          <Button size="sm" variant="outline" className="w-full text-xs h-6 gap-1">
-                                            <Download className="w-2 h-2" /> Download
-                                          </Button>
-                                        </a>
-                                      </div>
-                                    ))}
+                                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                                    {WEEK_DAYS_ORDER.map((dayName) => {
+                                      const img = mediaResult.staticImages?.find(i => i.day === dayName);
+                                      if (!img) return null;
+                                      return (
+                                        <div key={dayName} className="space-y-1">
+                                          <div className={`text-xs px-2 py-0.5 rounded text-center font-medium ${DAY_COLORS[dayName] || "bg-gray-100 text-gray-700"}`}>{dayName}</div>
+                                          <img src={img.url} alt={img.topic} className="w-full aspect-square object-cover rounded-lg border" />
+                                          <p className="text-xs text-gray-500 text-center line-clamp-1">{img.topic}</p>
+                                          <a href={img.url} download target="_blank" rel="noreferrer" className="block">
+                                            <Button size="sm" variant="outline" className="w-full text-xs h-6 gap-1">
+                                              <Download className="w-2 h-2" /> Download
+                                            </Button>
+                                          </a>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
 
-                                {/* Reels */}
+                                {/* Reels — 5 days, 9:16, 5 keyframes each */}
                                 <div>
                                   <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2 flex items-center gap-1">
-                                    <Film className="w-3 h-3" /> Reels (4 × 5 Keyframes)
+                                    <Film className="w-3 h-3" /> Reels (9:16) — {mediaResult.reels?.length || 0} reels × 5 Keyframes
                                   </h5>
                                   <div className="space-y-4">
                                     {mediaResult.reels?.map((reel, ri) => (
@@ -422,12 +466,19 @@ export default function MarketingPlan() {
                                           <span className="text-xs font-medium text-[#1A3A5C]">{reel.day} — {reel.topic}</span>
                                         </div>
 
-                                        {/* Keyframes */}
+                                        {/* Keyframes — 9:16 vertical aspect ratio */}
                                         <div className="grid grid-cols-5 gap-1">
                                           {reel.scenes?.map((scene, si) => (
                                             <div key={si} className="space-y-1">
-                                              <img src={scene.keyframeUrl} alt={"Scene " + scene.sceneNumber} className="w-full aspect-square object-cover rounded border" />
+                                              <div className="relative w-full" style={{ paddingBottom: "177.78%" }}>
+                                                <img
+                                                  src={scene.keyframeUrl}
+                                                  alt={"Scene " + scene.sceneNumber}
+                                                  className="absolute inset-0 w-full h-full object-cover rounded border"
+                                                />
+                                              </div>
                                               <p className="text-xs text-center text-gray-400">Scene {scene.sceneNumber}</p>
+                                              <p className="text-xs text-center text-gray-300 line-clamp-1">{scene.duration}</p>
                                             </div>
                                           ))}
                                         </div>

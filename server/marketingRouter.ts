@@ -407,7 +407,7 @@ export const marketingRouter = router({
       end.setMonth(end.getMonth() + 3);
       const endStr = end.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
       const systemPrompt = "You are the Head of Marketing at ELEVAY, a premium citizenship and residency by investment consultancy. Programs: Spain DNV, Portugal D7/D8/D2, Greece Golden Visa, Malta PR, UK Expansion Worker, Canada Skilled Migration, Caribbean Citizenship (Dominica, Grenada, Saint Kitts, Saint Lucia, Antigua, Vanuatu, Nauru, Sao Tome, Egypt, Turkey). Target: HNWI in MENA region. All captions in Arabic.";
-      const userPrompt = "Create a comprehensive 3-month social media marketing plan for ELEVAY from " + startStr + " to " + endStr + ".\n\nCustomization:\n- Content Ratio: " + (input.contentRatio || "40% EU Residency, 40% Caribbean Citizenship, 20% Brand & Trust") + "\n- Pillar Focus: " + (input.pillarFocus || "Investment ROI, Lifestyle & Freedom, Family Security, Global Mobility") + "\n- Featured Programs: " + (input.featuredPrograms?.join(", ") || "Spain DNV, Dominica, Grenada, Saint Kitts, Greece Golden Visa") + "\n\nReturn JSON with this structure: { planTitle, dateRange: {start, end}, strategy: {overview, contentPillars: [{name, percentage, description}], targetAudience, tone}, months: [{monthNumber, monthName, theme, objective, weeks: [{weekNumber, weekLabel, focus, posts: [{day, type, topic, caption, hashtags}]}]}], hashtagLibrary: {brand, residency, citizenship, arabic}, engagementStrategy: {bestPostingTimes, communityManagement, paidAmplification}, kpis: [{metric, target, measurement}] }";
+      const userPrompt = "Create a comprehensive 3-month social media marketing plan for ELEVAY from " + startStr + " to " + endStr + ".\n\nCustomization:\n- Content Ratio: " + (input.contentRatio || "40% EU Residency, 40% Caribbean Citizenship, 20% Brand & Trust") + "\n- Pillar Focus: " + (input.pillarFocus || "Investment ROI, Lifestyle & Freedom, Family Security, Global Mobility") + "\n- Featured Programs: " + (input.featuredPrograms?.join(", ") || "Spain DNV, Dominica, Grenada, Saint Kitts, Greece Golden Visa") + "\n\nCRITICAL POSTING STRUCTURE — strictly follow this for EVERY week:\n- Each week MUST have exactly 10 posts: 5 days × 2 post types per day\n- Days in order: Sunday, Monday, Tuesday, Wednesday, Thursday\n- Each day has exactly 2 posts in this order:\n  1. type: \"Static Design\" — a 1:1 square image post\n  2. type: \"Reel\" — a 9:16 vertical video reel\n- Each day MUST feature a DIFFERENT program from the featured programs list. Spread programs evenly across the 5 days each week. Do NOT repeat the same program on multiple days in the same week.\n- The topic field MUST include the country/program name (e.g., \"Spain DNV: Digital Freedom in Europe\")\n\nReturn JSON with this structure: { planTitle, dateRange: {start, end}, strategy: {overview, contentPillars: [{name, percentage, description}], targetAudience, tone}, months: [{monthNumber, monthName, theme, objective, weeks: [{weekNumber, weekLabel, focus, posts: [{day, type, topic, caption, hashtags}]}]}], hashtagLibrary: {brand, residency, citizenship, arabic}, engagementStrategy: {bestPostingTimes, communityManagement, paidAmplification}, kpis: [{metric, target, measurement}] }";
       const response = await invokeLLM({
         messages: [
           { role: "system", content: systemPrompt },
@@ -444,7 +444,7 @@ export const marketingRouter = router({
       const aiPromptsResp = await invokeLLM({
         messages: [
           { role: "system", content: "You are the Creative Director at ELEVAY. Brand: Navy blue (#1A3A5C), Teal (#5BA3B8). Style: premium, no people, no faces, no passports, no text in images, no square marks, destination photography." },
-          { role: "user", content: "Generate image prompts for ELEVAY social media for " + input.weekLabel + " (Focus: " + input.weekFocus + "). Posts: " + JSON.stringify(promptsReq) + ". Return JSON: { staticPrompts: [{day, topic, imagePrompt}], reelKeyframes: [{day, topic, mergeInstructions, scenes: [{sceneNumber, duration, keyframePrompt, videoPrompt}], voiceOverScript, backgroundMusicSuggestion}] }" },
+          { role: "user", content: `Generate image prompts for ELEVAY social media for ${input.weekLabel} (Focus: ${input.weekFocus}).\n\nPosts: ${JSON.stringify(promptsReq)}\n\nCRITICAL RULES:\n1. staticPrompts: For each Static Design post, create a 1:1 square image prompt. The country/program name MUST appear as elegant text overlay in the design (e.g. \"Spain DNV\" or \"Dominica Citizenship\"). Use ELEVAY brand colors navy (#1A3A5C) and teal (#5BA3B8). No people, no passports.\n2. reelKeyframes: For each Reel post, create EXACTLY 5 keyframe scenes (sceneNumber 1-5). Each reel is 9:16 vertical format. NO text, NO captions, NO words inside any reel keyframe image. Pure cinematic destination visuals only. Each scene: 3-4 seconds.\n3. Return JSON: { staticPrompts: [{day, topic, program, imagePrompt}], reelKeyframes: [{day, topic, program, mergeInstructions, scenes: [{sceneNumber, duration, keyframePrompt, videoPrompt}], voiceOverScript, backgroundMusicSuggestion}] }` },
         ],
         response_format: { type: "json_object" },
       });
@@ -457,7 +457,9 @@ export const marketingRouter = router({
       const staticImageUrls: Array<{ day: string; topic: string; url: string }> = [];
       await Promise.all((prompts.staticPrompts || []).map(async (sp) => {
         try {
-          const result = await generateImage({ prompt: sp.imagePrompt + ", square 1:1, 4K, ELEVAY brand, no people, no text, no passports" });
+          // Static: 1:1 square, must include program name as text in design
+          const staticPrompt = sp.imagePrompt + ", 1:1 square format, ELEVAY brand design, navy blue (#1A3A5C) and teal (#5BA3B8) color scheme, elegant text overlay showing the program name '" + sp.topic.split(":")[0].trim() + "', premium typography, no people, no passports, no square marks, 4K quality";
+          const result = await generateImage({ prompt: staticPrompt });
           if (result.url) staticImageUrls.push({ day: sp.day, topic: sp.topic, url: result.url });
         } catch (e) { console.error("Static image failed for " + sp.day, e); }
       }));
@@ -466,7 +468,9 @@ export const marketingRouter = router({
         const sceneResults: Array<{ sceneNumber: number; duration: string; videoPrompt: string; keyframeUrl: string }> = [];
         await Promise.all(reel.scenes.map(async (scene) => {
           try {
-            const result = await generateImage({ prompt: scene.keyframePrompt + ", 9:16 vertical, cinematic, no people, no text, no passports, no square marks" });
+            // Reel keyframe: strictly 9:16 vertical, NO text, NO captions, NO words
+            const reelPrompt = scene.keyframePrompt + ", 9:16 vertical portrait format, cinematic wide-angle shot, destination photography, no people, no faces, absolutely NO text, NO captions, NO words, NO letters, NO typography, NO passports, no square marks, ultra-realistic, golden hour lighting";
+            const result = await generateImage({ prompt: reelPrompt });
             sceneResults.push({ sceneNumber: scene.sceneNumber, duration: scene.duration, videoPrompt: scene.videoPrompt, keyframeUrl: result.url || "" });
           } catch (e) {
             sceneResults.push({ sceneNumber: scene.sceneNumber, duration: scene.duration, videoPrompt: scene.videoPrompt, keyframeUrl: "" });
