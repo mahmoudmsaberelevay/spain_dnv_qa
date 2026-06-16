@@ -7,4 +7,8 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  // Meta Pixel & Conversions API
+  metaPixelId: process.env.META_PIXEL_ID ?? "",
+  metaCapiToken: process.env.META_CAPI_TOKEN ?? "",
+  metaCapiTestCode: process.env.META_CAPI_TEST_CODE ?? "",
 };

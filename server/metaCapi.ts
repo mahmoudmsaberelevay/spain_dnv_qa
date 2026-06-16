@@ -85,8 +85,10 @@ export async function sendCapiEvent(payload: CapiEventPayload): Promise<void> {
     data: [event],
   };
 
-  if (payload.testEventCode) {
-    body.test_event_code = payload.testEventCode;
+  // Auto-inject test event code from ENV when not in production (or when explicitly passed)
+  const testCode = payload.testEventCode || (!ENV.isProduction ? ENV.metaCapiTestCode : "");
+  if (testCode) {
+    body.test_event_code = testCode;
   }
 
   try {

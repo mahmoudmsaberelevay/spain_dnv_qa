@@ -20,6 +20,7 @@ import { listActivityPresets, listLeadIntegrations } from "../leadsSettingsDb";
 import { syncOneIntegrationById } from "../metaLeadSync";
 import { writeAuditLog, auditCtxFromTrpc } from "../auditLog";
 import { sendLeadAssignmentNotification, TEAM_EMAIL_MAP } from "../emailService";
+import { sendCapiEvent, stageToCapiEvent } from "../metaCapi";
 
 const STAGES = [
   "fresh", "contacted", "qualified", "prospect", "client", "dormant", "resubmit",
@@ -96,6 +97,14 @@ export const leadsRouter = router({
           description: `Assigned to ${input.assignedTo}`,
         });
       }
+      // Fire CAPI Lead event (non-blocking)
+      sendCapiEvent({
+        eventName: "Lead",
+        leadId: id,
+        email: input.email || undefined,
+        phone: input.phone || input.whatsapp || undefined,
+        country: input.nationality || undefined,
+      }).catch(() => {});
       return { id };
     }),
 
@@ -228,6 +237,18 @@ export const leadsRouter = router({
         activityType: "stage_changed",
         description: `Stage changed from "${prevStage}" to "${input.stage}" by ${ctx.user.name ?? "system"}`,
       });
+      // Fire CAPI event for the new stage (non-blocking)
+      const capiEventName = stageToCapiEvent(input.stage);
+      if (capiEventName) {
+        sendCapiEvent({
+          eventName: capiEventName,
+          customEventName: capiEventName === "CustomEvent" ? input.stage : undefined,
+          leadId: input.id,
+          email: lead.email || undefined,
+          phone: lead.phone || lead.whatsapp || undefined,
+          country: lead.nationality || undefined,
+        }).catch(() => {});
+      }
       return { success: true };
     }),
 
@@ -488,6 +509,22 @@ export const leadsRouter = router({
     .mutation(async ({ input, ctx }) => {
       const updated = await bulkUpdateLeadsStage(input.ids, input.stage);
       await writeAuditLog(auditCtxFromTrpc(ctx), "bulk_update", "leads", undefined, `Stage → ${input.stage} for ${updated} leads: [${input.ids.join(",")}]`);
+      // Fire CAPI events for each lead (non-blocking)
+      const capiEventName = stageToCapiEvent(input.stage);
+      if (capiEventName) {
+        Promise.all(input.ids.map(async (leadId) => {
+          const lead = await getLeadById(leadId);
+          if (!lead) return;
+          return sendCapiEvent({
+            eventName: capiEventName,
+            customEventName: capiEventName === "CustomEvent" ? input.stage : undefined,
+            leadId,
+            email: lead.email || undefined,
+            phone: lead.phone || lead.whatsapp || undefined,
+            country: lead.nationality || undefined,
+          });
+        })).catch(() => {});
+      }
       return { updated };
     }),
 

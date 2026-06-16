@@ -20,6 +20,7 @@
 import { getDb } from "./db";
 import { leadIntegrations, leads, leadActivities, leadNotes } from "../drizzle/schema";
 import { eq, and, or } from "drizzle-orm";
+import { sendCapiEvent } from "./metaCapi";
 
 const META_GRAPH_BASE = "https://graph.facebook.com/v19.0";
 
@@ -469,6 +470,17 @@ async function syncOneIntegration(integration: {
             } catch {
               // Activity logging failure should not block the lead import
             }
+          }
+
+          // Fire CAPI Lead event for the newly synced lead (non-blocking)
+          if (newLeadId) {
+            sendCapiEvent({
+              eventName: "Lead",
+              leadId: newLeadId,
+              email: email,
+              phone: phone,
+              country: mapped.nationality || undefined,
+            }).catch(() => {});
           }
 
           result.newLeads++;
