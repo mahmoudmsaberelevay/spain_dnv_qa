@@ -7,6 +7,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import { invokeLLM } from "./_core/llm";
+import { generatePlanRuleBased, generateWeekMediaPrompts } from "./marketingTemplates";
 
 export const marketingRouter = router({
   // List all summaries for the current user
@@ -418,61 +419,12 @@ export const marketingRouter = router({
           start = isNaN(parsed.getTime()) ? new Date() : parsed;
         }
       }
-      const programs = input.featuredPrograms?.join(", ") || "Spain DNV, Dominica, Grenada, Saint Kitts, Greece Golden Visa";
+      const programs = input.featuredPrograms || ["Spain DNV", "Dominica", "Grenada", "Saint Kitts & Nevis", "Greece Golden Visa"];
       const contentRatio = input.contentRatio || "40% EU Residency, 40% Caribbean, 20% Brand";
       const pillarFocus = input.pillarFocus || "ROI, Lifestyle, Family, Mobility";
-      const systemPrompt = "ELEVAY marketing expert. Programs: Spain DNV, Portugal D7/D8/D2, Greece Golden Visa, Malta PR, Caribbean (Dominica, Grenada, Saint Kitts, Saint Lucia, Antigua, Vanuatu). HNWI MENA audience. Arabic captions.";
-
-      // Generate strategy + hashtags first (small call)
-      const strategyStart = start.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
-      const strategyResp = await invokeLLM({
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `ELEVAY 3-month strategy starting ${strategyStart}. Content: ${contentRatio}. Focus: ${pillarFocus}. Programs: ${programs}. Return JSON: { planTitle, dateRange:{start,end}, strategy:{overview,contentPillars:[{name,percentage,description}],targetAudience,tone}, hashtagLibrary:{brand,residency,citizenship,arabic}, engagementStrategy:{bestPostingTimes,communityManagement,paidAmplification}, kpis:[{metric,target,measurement}] }` },
-        ],
-        response_format: { type: "json_object" },
-      });
-      const strategyContent = strategyResp.choices?.[0]?.message?.content;
-      if (!strategyContent) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Strategy generation failed" });
-      const strategy = JSON.parse(strategyContent as string);
-
-      // Generate each month separately (3 smaller calls)
-      const months = [];
-      const programList = programs.split(",").map(p => p.trim());
-      for (let m = 0; m < 3; m++) {
-        const monthStart = new Date(start);
-        monthStart.setMonth(monthStart.getMonth() + m);
-        const monthName = monthStart.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
-        const monthNumber = m + 1;
-        // Rotate programs for each month to ensure variety
-        const monthPrograms = [...programList.slice(m % programList.length), ...programList.slice(0, m % programList.length)];
-        const monthResp = await invokeLLM({
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: `Generate Month ${monthNumber} (${monthName}) for ELEVAY social media plan. Programs to feature: ${monthPrograms.slice(0, 5).join(", ")}. Content: ${contentRatio}.
-
-RULES: Each week has exactly 4 weeks. Each week has 10 posts: 5 days (Sunday,Monday,Tuesday,Wednesday,Thursday) × 2 posts. Each day: post 1 type "Static Design", post 2 type "Reel". Each day features a different program. Topic includes program name. Captions in Arabic. Hashtags as array.
-
-Return JSON: { monthNumber:${monthNumber}, monthName:"${monthName}", theme, objective, weeks:[{weekNumber,weekLabel,focus,posts:[{day,type,topic,caption,hashtags:[]}]}] }` },
-          ],
-          response_format: { type: "json_object" },
-        });
-        const monthContent = monthResp.choices?.[0]?.message?.content;
-        if (!monthContent) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Month ${monthNumber} generation failed` });
-        const monthData = JSON.parse(monthContent as string);
-        months.push(monthData);
-      }
-
-      // Merge all parts into final plan
-      return {
-        planTitle: strategy.planTitle || `ELEVAY 3-Month Marketing Plan`,
-        dateRange: strategy.dateRange || { start: start.toISOString(), end: new Date(start.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString() },
-        strategy: strategy.strategy || {},
-        months,
-        hashtagLibrary: strategy.hashtagLibrary || {},
-        engagementStrategy: strategy.engagementStrategy || {},
-        kpis: strategy.kpis || [],
-      };
+      // Rule-based plan generation — zero LLM calls, no quota usage
+      const plan = generatePlanRuleBased({ startDate: start, programs, contentRatio, pillarFocus });
+      return plan;
     }),
 
   generateWeekMedia: protectedProcedure
@@ -498,35 +450,12 @@ Return JSON: { monthNumber:${monthNumber}, monthName:"${monthName}", theme, obje
 
       // Get only the unique days and their topics for prompts (keep it small)
       const WEEK_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"];
-      const staticPosts = input.posts.filter(p => p.type === "Static Design");
-      const dayTopics = WEEK_DAYS.map(d => {
-        const sp = staticPosts.find(p => p.day === d);
-        return sp ? { day: d, topic: sp.topic } : null;
-      }).filter(Boolean) as Array<{ day: string; topic: string }>;
-
-      // Generate image prompts (split into 2 calls: static + reels)
-      const staticPromptsResp = await invokeLLM({
-        messages: [
-          { role: "system", content: "ELEVAY Creative Director. Brand: Navy (#1A3A5C), Teal (#5BA3B8). Premium destination photography. No people, no passports." },
-          { role: "user", content: `Generate 1:1 square static design image prompts for these ELEVAY posts. Each must include the program name as elegant text overlay. Return JSON: { staticPrompts: [{day, topic, imagePrompt}] }\n\nPosts: ${JSON.stringify(dayTopics)}` },
-        ],
-        response_format: { type: "json_object" },
-      });
-      const reelPromptsResp = await invokeLLM({
-        messages: [
-          { role: "system", content: "ELEVAY Creative Director. Brand: Navy (#1A3A5C), Teal (#5BA3B8). Cinematic 9:16 vertical reels. No people, no text in visuals." },
-          { role: "user", content: `Generate reel production packages for these ELEVAY posts. Each reel: EXACTLY 5 keyframe scenes, 9:16 vertical, NO text in any frame. Return JSON: { reelKeyframes: [{day, topic, mergeInstructions, scenes:[{sceneNumber,duration,keyframePrompt,videoPrompt}], voiceOverScript, backgroundMusicSuggestion}] }\n\nPosts: ${JSON.stringify(dayTopics)}` },
-        ],
-        response_format: { type: "json_object" },
-      });
-
-      const staticPromptsContent = staticPromptsResp.choices?.[0]?.message?.content;
-      const reelPromptsContent = reelPromptsResp.choices?.[0]?.message?.content;
-      if (!staticPromptsContent || !reelPromptsContent) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI prompts generation failed" });
-
-      const staticPromptsData = JSON.parse(staticPromptsContent as string) as { staticPrompts: Array<{ day: string; topic: string; imagePrompt: string }> };
-      const reelPromptsData = JSON.parse(reelPromptsContent as string) as { reelKeyframes: Array<{ day: string; topic: string; mergeInstructions: string; scenes: Array<{ sceneNumber: number; duration: string; keyframePrompt: string; videoPrompt: string }>; voiceOverScript: string; backgroundMusicSuggestion: string }> };
-
+      // Rule-based media prompts — zero LLM calls, no quota usage
+      const { staticPrompts: staticPromptsArr, reelKeyframes: reelKeyframesArr } = generateWeekMediaPrompts(
+        input.posts.map(p => ({ day: p.day, type: p.type, topic: p.topic }))
+      );
+      const staticPromptsData = { staticPrompts: staticPromptsArr };
+      const reelPromptsData = { reelKeyframes: reelKeyframesArr.map(r => ({ ...r, mergeInstructions: `Merge all 5 keyframes sequentially. Each scene: ${r.scenes[0]?.duration || "3s"}. Add smooth transitions. 9:16 vertical format. Background music: ${r.backgroundMusicSuggestion}` })) };
       // Generate static images sequentially (one per day) to avoid timeout
       const staticImageUrls: Array<{ day: string; topic: string; url: string }> = [];
       for (const sp of (staticPromptsData.staticPrompts || [])) {
