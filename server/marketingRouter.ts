@@ -460,8 +460,31 @@ export const marketingRouter = router({
       const staticImageUrls: Array<{ day: string; topic: string; url: string }> = [];
       for (const sp of (staticPromptsData.staticPrompts || [])) {
         try {
-          const programName = sp.topic.split(":")[0].trim();
-          const staticPrompt = sp.imagePrompt + ", 1:1 square format, navy blue (#1A3A5C) and teal (#5BA3B8) color scheme, program name '" + programName + "' as elegant white text overlay at the bottom, small geometric origami bird logo in bottom-right corner, NO text saying ELEVAY, NO word ELEVAY anywhere in the image, no people, no passports, ultra premium social media post";
+          const rawProgramKey = sp.topic.split(":")[0].trim();
+          // Map short keys to full correct spelling
+          const PROGRAM_NAME_MAP: Record<string, string> = {
+            "Spain DNV": "Spain Digital Nomad Visa",
+            "Greece Golden Visa": "Greece Golden Visa",
+            "Malta PR": "Malta Permanent Residency",
+            "Portugal D7": "Portugal D7 Residency",
+            "Portugal D8": "Portugal Digital Nomad Visa",
+            "Portugal D2": "Portugal D2 Entrepreneur Visa",
+            "Dominica": "Dominica Citizenship",
+            "Grenada": "Grenada Citizenship",
+            "Saint Kitts & Nevis": "Saint Kitts & Nevis Citizenship",
+            "Saint Lucia": "Saint Lucia Citizenship",
+            "Antigua & Barbuda": "Antigua & Barbuda Citizenship",
+            "Vanuatu": "Vanuatu Citizenship",
+            "Nauru": "Nauru Residency",
+            "Sao Tome": "Sao Tome Residency",
+            "Turkey": "Turkey Citizenship",
+            "Egypt": "Egypt Golden Visa",
+            "Canada Skilled Migration": "Canada Skilled Migration",
+            "UK Expansion Worker": "UK Expansion Worker Visa",
+            "ELEVAY": "Since 1998",
+          };
+          const programName = PROGRAM_NAME_MAP[rawProgramKey] || rawProgramKey;
+          const staticPrompt = sp.imagePrompt + ", 1:1 square format, navy blue (#1A3A5C) and baby blue (#5BA3B8) color scheme, program name '" + programName + "' as elegant white text overlay at the bottom, small geometric origami bird icon in baby blue color (#5BA3B8) in bottom-right corner, NO text saying ELEVAY, NO word ELEVAY anywhere in the image, no people, no passports, ultra premium social media post";
           const result = await generateImage({
             prompt: staticPrompt,
             originalImages: [{ url: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663524211981/lREaBIOduQHCnBME.png", mimeType: "image/png" }]
