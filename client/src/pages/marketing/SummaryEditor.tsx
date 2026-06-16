@@ -3,13 +3,32 @@ import { useRoute, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import {
   ChevronLeft, Plus, Trash2, Download, Upload, Loader2,
-  ChevronUp, ChevronDown, FileText, Image as ImageIcon, X
+  ChevronUp, ChevronDown, FileText, X, Palette, Type
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 // ─── ELEVAY Brand ──────────────────────────────────────────────────────────────
 const ELEVAY_LOGO = "https://files.manuscdn.com/user_upload_by_module/session_file/310519663524211981/amjcwILftyyzFnPH.png";
@@ -30,6 +49,15 @@ export interface Requirement { heading: string; text: string; }
 export interface Stage { heading: string; text: string; }
 export interface FeeRow { label: string; value: string; }
 export interface ContentBlock { type: "text" | "image" | "list"; text?: string; items?: string[]; imageUrl?: string; }
+
+/** Per-page typography overrides — stored inside page.content.style */
+export interface PageStyle {
+  headingFontSize?: number;
+  headingColor?: string;
+  bodyFontSize?: number;
+  bodyColor?: string;
+  accentColor?: string;
+}
 
 export interface PageData {
   id: string;
@@ -54,6 +82,126 @@ const TEMPLATE_LABELS: Record<TemplateType, string> = {
   about: "About Country",
   blank: "Custom Blank",
 };
+
+const TEMPLATE_ICONS: Record<TemplateType, string> = {
+  cover: "★",
+  overview: "📋",
+  eligibility: "✓",
+  process: "⚙",
+  about: "🌍",
+  blank: "📄",
+};
+
+// ─── Style helpers ─────────────────────────────────────────────────────────────
+function getStyle(page: PageData): PageStyle {
+  return ((page.content as Record<string, unknown>).style as PageStyle) || {};
+}
+
+function setStyle(page: PageData, updates: Partial<PageStyle>): PageData {
+  const current = getStyle(page);
+  return { ...page, content: { ...page.content, style: { ...current, ...updates } } };
+}
+
+// ─── Per-Page Typography Panel ─────────────────────────────────────────────────
+function TypographyPanel({ page, onChange }: { page: PageData; onChange: (p: PageData) => void }) {
+  const s = getStyle(page);
+  const [open, setOpen] = useState(false);
+
+  const colorField = (label: string, key: keyof PageStyle, defaultVal: string) => (
+    <div className="flex items-center gap-2">
+      <span className="text-[11px] text-gray-400 w-28 shrink-0">{label}</span>
+      <div className="flex items-center gap-1.5 flex-1">
+        <input
+          type="color"
+          value={(s[key] as string) || defaultVal}
+          onChange={e => onChange(setStyle(page, { [key]: e.target.value }))}
+          className="w-7 h-7 rounded cursor-pointer border border-white/20 bg-transparent"
+        />
+        <Input
+          value={(s[key] as string) || ""}
+          onChange={e => onChange(setStyle(page, { [key]: e.target.value || undefined }))}
+          className="bg-[#0f1623] border-white/10 text-white text-xs h-7 flex-1 font-mono"
+          placeholder={defaultVal}
+        />
+        <button
+          onClick={() => onChange(setStyle(page, { [key]: undefined }))}
+          className="p-1 text-gray-600 hover:text-gray-300 transition-colors"
+          title="Reset to default"
+        >
+          <X className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
+  );
+
+  const sizeField = (label: string, key: keyof PageStyle, defaultVal: number) => (
+    <div className="flex items-center gap-2">
+      <span className="text-[11px] text-gray-400 w-28 shrink-0">{label}</span>
+      <div className="flex items-center gap-1.5 flex-1">
+        <Input
+          type="number"
+          value={(s[key] as number) || ""}
+          onChange={e => onChange(setStyle(page, { [key]: e.target.value ? Number(e.target.value) : undefined }))}
+          className="bg-[#0f1623] border-white/10 text-white text-xs h-7 flex-1"
+          placeholder={String(defaultVal)}
+          min={6}
+          max={72}
+        />
+        <span className="text-[11px] text-gray-500">px</span>
+        <button
+          onClick={() => onChange(setStyle(page, { [key]: undefined }))}
+          className="p-1 text-gray-600 hover:text-gray-300 transition-colors"
+          title="Reset to default"
+        >
+          <X className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="border border-white/10 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-2 px-3 py-2.5 bg-[#1a2235] hover:bg-[#1e2840] transition-colors text-left"
+      >
+        <div className="flex items-center gap-2 flex-1">
+          <div className="w-6 h-6 rounded-lg bg-teal-900/50 flex items-center justify-center">
+            <Palette className="w-3.5 h-3.5 text-teal-400" />
+          </div>
+          <span className="text-xs font-semibold text-white">Typography & Colors</span>
+          {(s.headingColor || s.bodyColor || s.accentColor || s.headingFontSize || s.bodyFontSize) && (
+            <span className="text-[10px] bg-teal-600/30 text-teal-400 px-1.5 py-0.5 rounded-full">Custom</span>
+          )}
+        </div>
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="p-3 bg-[#141c2b] space-y-3">
+          <div className="text-[10px] text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+            <Type className="w-3 h-3" /> Heading
+          </div>
+          {sizeField("Font Size", "headingFontSize", page.template === "cover" ? 32 : 20)}
+          {colorField("Color", "headingColor", COLORS.navy)}
+          <div className="h-px bg-white/5" />
+          <div className="text-[10px] text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+            <Type className="w-3 h-3" /> Body Text
+          </div>
+          {sizeField("Font Size", "bodyFontSize", 11)}
+          {colorField("Color", "bodyColor", COLORS.text)}
+          <div className="h-px bg-white/5" />
+          <div className="text-[10px] text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+            <Palette className="w-3 h-3" /> Accent
+          </div>
+          {colorField("Accent Color", "accentColor", COLORS.teal)}
+          <p className="text-[10px] text-gray-600 mt-1">
+            Overrides ELEVAY brand colors for this page only. Leave blank to use defaults.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Photo Upload Button ───────────────────────────────────────────────────────
 function PhotoUploadButton({ pageId, summaryId, currentUrl, onUploaded }: {
@@ -84,7 +232,7 @@ function PhotoUploadButton({ pageId, summaryId, currentUrl, onUploaded }: {
       {currentUrl ? (
         <div className="relative group rounded-lg overflow-hidden border border-white/10">
           <img src={currentUrl} alt="Page photo" className="w-full h-32 object-cover" />
-          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
             <button onClick={() => fileRef.current?.click()} className="px-3 py-1.5 bg-teal-600 text-white text-xs rounded-lg">
               Change
             </button>
@@ -104,7 +252,7 @@ function PhotoUploadButton({ pageId, summaryId, currentUrl, onUploaded }: {
   );
 }
 
-// ─── JSON list editor (for info rows, requirements, stages, etc.) ─────────────
+// ─── Shared sub-editors ────────────────────────────────────────────────────────
 function InfoRowEditor({ rows, onChange, labelPlaceholder = "Label", valuePlaceholder = "Value" }: {
   rows: InfoRow[]; onChange: (rows: InfoRow[]) => void;
   labelPlaceholder?: string; valuePlaceholder?: string;
@@ -242,7 +390,7 @@ function CoverEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
             className="bg-[#0f1623] border-white/10 text-white text-sm" placeholder="e.g. Citizenship by Investment" />
         </div>
         <div>
-          <Label className="text-gray-400 text-xs mb-1 block">Program Subtype (spaced caps)</Label>
+          <Label className="text-gray-400 text-xs mb-1 block">Program Subtype</Label>
           <Input value={String(c.programSubtype || "")} onChange={e => set("programSubtype", e.target.value)}
             className="bg-[#0f1623] border-white/10 text-white text-sm" placeholder="e.g. CITIZENSHIP" />
         </div>
@@ -252,6 +400,7 @@ function CoverEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
             className="bg-[#0f1623] border-white/10 text-white text-sm" />
         </div>
       </div>
+      <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
 }
@@ -268,7 +417,7 @@ function OverviewEditor({ page, summaryId, onChange }: { page: PageData; summary
           onUploaded={url => onChange({ ...page, photoUrl: url })} />
       </div>
       <div>
-        <Label className="text-gray-400 text-xs mb-1 block">Section Label (spaced caps)</Label>
+        <Label className="text-gray-400 text-xs mb-1 block">Section Label</Label>
         <Input value={String(c.sectionLabel || "")} onChange={e => set("sectionLabel", e.target.value)}
           className="bg-[#0f1623] border-white/10 text-white text-sm" placeholder="PROGRAMME OVERVIEW" />
       </div>
@@ -283,10 +432,11 @@ function OverviewEditor({ page, summaryId, onChange }: { page: PageData; summary
           className="bg-[#0f1623] border-white/10 text-white text-sm min-h-[80px] resize-none" rows={3} />
       </div>
       <div>
-        <Label className="text-gray-400 text-xs mb-2 block">Info Rows (teal label + bold value)</Label>
+        <Label className="text-gray-400 text-xs mb-2 block">Info Rows</Label>
         <InfoRowEditor rows={(c.infoRows || []) as InfoRow[]} onChange={rows => set("infoRows", rows)}
           labelPlaceholder="LABEL (teal)" valuePlaceholder="Value (bold navy)" />
       </div>
+      <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
 }
@@ -303,16 +453,16 @@ function EligibilityEditor({ page, summaryId, onChange }: { page: PageData; summ
   return (
     <div className="space-y-4">
       <div>
-        <Label className="text-gray-400 text-xs mb-1.5 block">Page Photo (optional, used as background accent)</Label>
+        <Label className="text-gray-400 text-xs mb-1.5 block">Page Photo (optional)</Label>
         <PhotoUploadButton pageId={page.id} summaryId={summaryId} currentUrl={page.photoUrl}
           onUploaded={url => onChange({ ...page, photoUrl: url })} />
       </div>
       <div>
-        <Label className="text-gray-400 text-xs mb-2 block">Requirements (left column — numbered with red badges)</Label>
+        <Label className="text-gray-400 text-xs mb-2 block">Requirements (numbered with red badges)</Label>
         <RequirementsEditor reqs={(c.requirements || []) as Requirement[]} onChange={reqs => set("requirements", reqs)} />
       </div>
       <div className="border-t border-white/10 pt-4">
-        <Label className="text-gray-400 text-xs mb-2 block">Ideal Candidate Box (right column)</Label>
+        <Label className="text-gray-400 text-xs mb-2 block">Ideal Candidate Box</Label>
         <div className="space-y-2">
           <Input value={String(c.idealCandidateHeading || "Ideal Candidate")} onChange={e => set("idealCandidateHeading", e.target.value)}
             className="bg-[#0f1623] border-white/10 text-white text-sm" placeholder="Box heading" />
@@ -322,6 +472,7 @@ function EligibilityEditor({ page, summaryId, onChange }: { page: PageData; summ
           <BulletListEditor items={(c.idealCandidateBullets || []) as string[]} onChange={items => set("idealCandidateBullets", items)} />
         </div>
       </div>
+      <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
 }
@@ -348,6 +499,7 @@ function ProcessEditor({ page, summaryId, onChange }: { page: PageData; summaryI
         <InfoRowEditor rows={(c.feeRows || []) as InfoRow[]} onChange={rows => set("feeRows", rows)}
           labelPlaceholder="Fee type" valuePlaceholder="Amount" />
       </div>
+      <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
 }
@@ -392,6 +544,7 @@ function AboutEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
           className="bg-[#0f1623] border-white/10 text-white text-sm mb-2" />
         <BulletListEditor items={(c.memberships || []) as string[]} onChange={items => set("memberships", items)} placeholder="e.g. United Nations" />
       </div>
+      <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
 }
@@ -455,13 +608,20 @@ function BlankEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
           </button>
         </div>
       </div>
+      <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
 }
 
-// ─── Page Preview (A4 proportional) ───────────────────────────────────────────
+// ─── Page Preview ──────────────────────────────────────────────────────────────
 function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
   const monthYear = new Date(doc.createdAt).toLocaleString("en-US", { month: "long", year: "numeric" });
+  const s = getStyle(page);
+  const headingColor = s.headingColor || COLORS.navy;
+  const bodyColor = s.bodyColor || COLORS.text;
+  const accentColor = s.accentColor || COLORS.teal;
+  const headingFs = s.headingFontSize;
+  const bodyFs = s.bodyFontSize;
 
   const wrapperStyle: React.CSSProperties = {
     width: "100%",
@@ -493,26 +653,22 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
     const c = page.content as { countryName?: string; programLabel?: string; programSubtype?: string; summaryLabel?: string };
     return (
       <div style={{ ...wrapperStyle, display: "flex" }}>
-        {/* Left: photo */}
         <div style={{ width: "50%", height: "100%", background: COLORS.navy, overflow: "hidden", flexShrink: 0 }}>
-          {page.photoUrl
-            ? <img src={page.photoUrl} alt="cover" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.2)", fontSize: "8px" }}>Upload Photo</div>
-          }
+          {page.photoUrl ? <img src={page.photoUrl} alt="cover" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.2)", fontSize: "8px" }}>Upload Photo</div>}
         </div>
-        {/* Right: branding */}
         <div style={{ width: "50%", height: "100%", background: "white", display: "flex", flexDirection: "column", padding: "16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "auto" }}>
             <img src={ELEVAY_LOGO} alt="ELEVAY" style={{ height: "20px", width: "auto", objectFit: "contain" }} />
             <div>
-              <div style={{ fontSize: "6px", fontWeight: 700, color: COLORS.navy, letterSpacing: "0.1em" }}>ELEVAY</div>
-              <div style={{ fontSize: "5px", color: COLORS.teal, letterSpacing: "0.08em" }}>CITIZENSHIP & RESIDENCY</div>
+              <div style={{ fontSize: "6px", fontWeight: 700, color: headingColor, letterSpacing: "0.1em" }}>ELEVAY</div>
+              <div style={{ fontSize: "5px", color: accentColor, letterSpacing: "0.08em" }}>CITIZENSHIP & RESIDENCY</div>
             </div>
           </div>
           <div style={{ flex: 1 }} />
-          <div style={{ background: COLORS.teal, padding: "10px 12px", marginLeft: "-16px", marginRight: "-16px" }}>
-            <div style={{ color: "white", fontSize: "14px", fontWeight: 700, letterSpacing: "0.05em" }}>{c.countryName || doc.country.toUpperCase()}</div>
-            <div style={{ color: "rgba(255,255,255,0.85)", fontSize: "7px", marginTop: "3px", letterSpacing: "0.08em" }}>{c.programLabel || doc.programType}</div>
+          <div style={{ background: accentColor, padding: "10px 12px", marginLeft: "-16px", marginRight: "-16px" }}>
+            <div style={{ color: "white", fontSize: headingFs ? `${headingFs * 0.44}px` : "14px", fontWeight: 700, letterSpacing: "0.05em" }}>{c.countryName || doc.country.toUpperCase()}</div>
+            <div style={{ color: "rgba(255,255,255,0.85)", fontSize: bodyFs ? `${bodyFs * 0.44}px` : "7px", marginTop: "3px" }}>{c.programLabel || doc.programType}</div>
             <div style={{ color: "rgba(255,255,255,0.7)", fontSize: "6px", letterSpacing: "0.15em", textTransform: "uppercase", marginTop: "2px" }}>{c.summaryLabel || "PROGRAM SUMMARY"}</div>
             <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "5px", marginTop: "6px" }}>Last updated: {monthYear}</div>
           </div>
@@ -528,25 +684,21 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
       <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
         {header}
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-          {/* Left col */}
           <div style={{ width: "45%", padding: "10px 10px 10px 12px", borderRight: `1px solid ${COLORS.divider}`, overflow: "hidden" }}>
-            <div style={{ fontSize: "5px", letterSpacing: "0.15em", color: COLORS.teal, textTransform: "uppercase", marginBottom: "4px" }}>{c.sectionLabel || "PROGRAMME OVERVIEW"}</div>
-            <div style={{ fontSize: "9px", fontWeight: 700, color: COLORS.navy, marginBottom: "4px", lineHeight: 1.2 }}>{c.heading || ""}</div>
-            <div style={{ fontSize: "6px", color: COLORS.text, lineHeight: 1.5, marginBottom: "6px" }}>{c.intro || ""}</div>
+            <div style={{ fontSize: "5px", letterSpacing: "0.15em", color: accentColor, textTransform: "uppercase", marginBottom: "4px" }}>{c.sectionLabel || "PROGRAMME OVERVIEW"}</div>
+            <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "9px", fontWeight: 700, color: headingColor, marginBottom: "4px", lineHeight: 1.2 }}>{c.heading || ""}</div>
+            <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "6px", color: bodyColor, lineHeight: 1.5, marginBottom: "6px" }}>{c.intro || ""}</div>
             {rows.map((row, i) => (
               <div key={i}>
                 {i > 0 && <div style={{ height: "1px", background: COLORS.divider, margin: "4px 0" }} />}
-                <div style={{ fontSize: "5px", letterSpacing: "0.1em", color: COLORS.teal, textTransform: "uppercase" }}>{row.label}</div>
-                <div style={{ fontSize: "6px", fontWeight: 700, color: COLORS.navy }}>{row.value}</div>
+                <div style={{ fontSize: "5px", letterSpacing: "0.1em", color: accentColor, textTransform: "uppercase" }}>{row.label}</div>
+                <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor }}>{row.value}</div>
               </div>
             ))}
           </div>
-          {/* Right col: photo */}
           <div style={{ width: "55%", overflow: "hidden" }}>
-            {page.photoUrl
-              ? <img src={page.photoUrl} alt="overview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              : <div style={{ width: "100%", height: "100%", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: "7px" }}>Upload Photo</div>
-            }
+            {page.photoUrl ? <img src={page.photoUrl} alt="overview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : <div style={{ width: "100%", height: "100%", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: "7px" }}>Upload Photo</div>}
           </div>
         </div>
         {footer}
@@ -562,27 +714,25 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
       <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
         {header}
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-          {/* Left: requirements */}
           <div style={{ width: "50%", padding: "10px 8px 10px 12px", borderRight: `1px solid ${COLORS.divider}`, overflow: "hidden" }}>
             {reqs.map((req, i) => (
               <div key={i} style={{ marginBottom: "6px" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: "4px", marginBottom: "2px" }}>
                   <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: COLORS.red, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: "5px", fontWeight: 700, flexShrink: 0 }}>{i + 1}</div>
-                  <div style={{ fontSize: "6px", fontWeight: 700, color: COLORS.navy, lineHeight: 1.3 }}>{req.heading}</div>
+                  <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor, lineHeight: 1.3 }}>{req.heading}</div>
                 </div>
-                <div style={{ fontSize: "5.5px", color: COLORS.text, lineHeight: 1.4, paddingLeft: "16px" }}>{req.text}</div>
+                <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, lineHeight: 1.4, paddingLeft: "16px" }}>{req.text}</div>
               </div>
             ))}
           </div>
-          {/* Right: ideal candidate */}
           <div style={{ width: "50%", padding: "10px 12px 10px 8px", overflow: "hidden" }}>
-            <div style={{ border: `1px solid ${COLORS.teal}`, borderRadius: "4px", padding: "8px", background: COLORS.lightTeal }}>
-              <div style={{ fontSize: "7px", fontWeight: 700, color: COLORS.navy, marginBottom: "4px" }}>{c.idealCandidateHeading || "Ideal Candidate"}</div>
-              <div style={{ fontSize: "5.5px", color: COLORS.text, lineHeight: 1.5, marginBottom: "4px" }}>{c.idealCandidateIntro || ""}</div>
+            <div style={{ border: `1px solid ${accentColor}`, borderRadius: "4px", padding: "8px", background: COLORS.lightTeal }}>
+              <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "7px", fontWeight: 700, color: headingColor, marginBottom: "4px" }}>{c.idealCandidateHeading || "Ideal Candidate"}</div>
+              <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, lineHeight: 1.5, marginBottom: "4px" }}>{c.idealCandidateIntro || ""}</div>
               {bullets.map((b, i) => (
                 <div key={i} style={{ display: "flex", gap: "4px", marginBottom: "2px" }}>
-                  <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: COLORS.teal, marginTop: "2px", flexShrink: 0 }} />
-                  <div style={{ fontSize: "5.5px", color: COLORS.text }}>{b}</div>
+                  <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
+                  <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor }}>{b}</div>
                 </div>
               ))}
             </div>
@@ -601,30 +751,28 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
       <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
         {header}
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-          {/* Left: stages */}
           <div style={{ width: "55%", padding: "10px 8px 10px 12px", borderRight: `1px solid ${COLORS.divider}`, overflow: "hidden" }}>
             {stages.map((stage, i) => (
               <div key={i}>
                 {i > 0 && <div style={{ height: "1px", background: COLORS.divider, margin: "5px 0" }} />}
                 <div style={{ display: "flex", gap: "4px", alignItems: "flex-start" }}>
-                  <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: COLORS.teal, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: "5px", fontWeight: 700, flexShrink: 0, marginTop: "1px" }}>{i + 1}</div>
+                  <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: accentColor, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: "5px", fontWeight: 700, flexShrink: 0, marginTop: "1px" }}>{i + 1}</div>
                   <div>
-                    <div style={{ fontSize: "6px", fontWeight: 700, color: COLORS.navy, marginBottom: "1px" }}>{stage.heading}</div>
-                    <div style={{ fontSize: "5.5px", color: COLORS.text, lineHeight: 1.4 }}>{stage.text}</div>
+                    <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor, marginBottom: "1px" }}>{stage.heading}</div>
+                    <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, lineHeight: 1.4 }}>{stage.text}</div>
                   </div>
                 </div>
               </div>
             ))}
           </div>
-          {/* Right: fees */}
           <div style={{ width: "45%", padding: "10px 12px 10px 8px", overflow: "hidden" }}>
-            <div style={{ fontSize: "7px", fontWeight: 700, color: COLORS.navy, marginBottom: "6px" }}>{c.feesHeading || "Programme Fees"}</div>
+            <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "7px", fontWeight: 700, color: headingColor, marginBottom: "6px" }}>{c.feesHeading || "Programme Fees"}</div>
             {feeRows.map((row, i) => (
               <div key={i}>
                 {i > 0 && <div style={{ height: "1px", background: COLORS.divider, margin: "3px 0" }} />}
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <div style={{ fontSize: "5.5px", color: COLORS.text }}>{row.label}</div>
-                  <div style={{ fontSize: "5.5px", fontWeight: 700, color: COLORS.navy }}>{row.value}</div>
+                  <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor }}>{row.label}</div>
+                  <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", fontWeight: 700, color: headingColor }}>{row.value}</div>
                 </div>
               </div>
             ))}
@@ -636,39 +784,34 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
   }
 
   if (page.template === "about") {
-    const c = page.content as { heading?: string; paragraphs?: string[]; infoRows?: InfoRow[]; rankingsHeading?: string; rankings?: string[]; membershipsHeading?: string; memberships?: string[] };
+    const c = page.content as { heading?: string; paragraphs?: string[]; infoRows?: InfoRow[]; rankingsHeading?: string; rankings?: string[] };
     const rows = (c.infoRows || []) as InfoRow[];
     const rankings = (c.rankings || []) as string[];
-    const memberships = (c.memberships || []) as string[];
     return (
       <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
         {header}
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-          {/* Left: photo */}
           <div style={{ width: "45%", overflow: "hidden" }}>
-            {page.photoUrl
-              ? <img src={page.photoUrl} alt="about" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              : <div style={{ width: "100%", height: "100%", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: "7px" }}>Upload Photo</div>
-            }
+            {page.photoUrl ? <img src={page.photoUrl} alt="about" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : <div style={{ width: "100%", height: "100%", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: "7px" }}>Upload Photo</div>}
           </div>
-          {/* Right: info */}
           <div style={{ width: "55%", padding: "10px 12px 10px 8px", borderLeft: `1px solid ${COLORS.divider}`, overflow: "hidden" }}>
-            <div style={{ fontSize: "9px", fontWeight: 700, color: COLORS.navy, marginBottom: "5px" }}>{c.heading || ""}</div>
+            <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "9px", fontWeight: 700, color: headingColor, marginBottom: "5px" }}>{c.heading || ""}</div>
             {(c.paragraphs || []).slice(0, 2).map((p, i) => (
-              <div key={i} style={{ fontSize: "5.5px", color: COLORS.text, lineHeight: 1.5, marginBottom: "4px" }}>{p}</div>
+              <div key={i} style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, lineHeight: 1.5, marginBottom: "4px" }}>{p}</div>
             ))}
             {rows.slice(0, 3).map((row, i) => (
               <div key={i}>
                 {i > 0 && <div style={{ height: "1px", background: COLORS.divider, margin: "3px 0" }} />}
-                <div style={{ fontSize: "5px", letterSpacing: "0.1em", color: COLORS.teal, textTransform: "uppercase" }}>{row.label}</div>
-                <div style={{ fontSize: "6px", fontWeight: 700, color: COLORS.navy }}>{row.value}</div>
+                <div style={{ fontSize: "5px", letterSpacing: "0.1em", color: accentColor, textTransform: "uppercase" }}>{row.label}</div>
+                <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor }}>{row.value}</div>
               </div>
             ))}
             {rankings.length > 0 && (
               <div style={{ border: `1px solid ${COLORS.divider}`, borderRadius: "3px", padding: "5px", marginTop: "5px" }}>
-                <div style={{ fontSize: "6px", fontWeight: 700, color: COLORS.navy, marginBottom: "3px" }}>{c.rankingsHeading || "Global Rankings"}</div>
+                <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor, marginBottom: "3px" }}>{c.rankingsHeading || "Global Rankings"}</div>
                 {rankings.slice(0, 3).map((r, i) => (
-                  <div key={i} style={{ fontSize: "5px", color: COLORS.text, marginBottom: "1px" }}>• {r}</div>
+                  <div key={i} style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5px", color: bodyColor, marginBottom: "1px" }}>• {r}</div>
                 ))}
               </div>
             )}
@@ -690,11 +833,11 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
           ? <div style={{ color: "#ccc", fontSize: "7px", textAlign: "center", marginTop: "30px" }}>Empty page — add content blocks</div>
           : blocks.map((block, i) => (
               <div key={i} style={{ marginBottom: "6px" }}>
-                {block.type === "text" && <div style={{ fontSize: "6px", color: COLORS.text, lineHeight: 1.5 }}>{block.text}</div>}
+                {block.type === "text" && <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "6px", color: bodyColor, lineHeight: 1.5 }}>{block.text}</div>}
                 {block.type === "list" && (block.items || []).map((item, j) => (
                   <div key={j} style={{ display: "flex", gap: "4px", marginBottom: "2px" }}>
-                    <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: COLORS.teal, marginTop: "2px", flexShrink: 0 }} />
-                    <div style={{ fontSize: "5.5px", color: COLORS.text }}>{item}</div>
+                    <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
+                    <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor }}>{item}</div>
                   </div>
                 ))}
               </div>
@@ -702,6 +845,53 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
         }
       </div>
       {footer}
+    </div>
+  );
+}
+
+// ─── Sortable Page Item ────────────────────────────────────────────────────────
+function SortablePageItem({ page, idx, selectedPageIdx, onSelect }: {
+  page: PageData; idx: number; selectedPageIdx: number; onSelect: (idx: number) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <button
+        onClick={() => onSelect(idx)}
+        className={`w-full flex items-center gap-1.5 px-2 py-2 rounded-lg text-left transition-all text-xs ${
+          selectedPageIdx === idx ? "bg-teal-600/30 border border-teal-500/50 text-white" : "hover:bg-white/5 text-gray-400 border border-transparent"
+        }`}
+      >
+        {/* Drag handle */}
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-0.5 text-gray-600 hover:text-gray-400 shrink-0"
+          onClick={e => e.stopPropagation()}
+          title="Drag to reorder"
+        >
+          <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
+            <circle cx="3" cy="2" r="1.2" /><circle cx="7" cy="2" r="1.2" />
+            <circle cx="3" cy="6" r="1.2" /><circle cx="7" cy="6" r="1.2" />
+            <circle cx="3" cy="10" r="1.2" /><circle cx="7" cy="10" r="1.2" />
+          </svg>
+        </div>
+        <div className="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-white/10 text-xs">
+          {TEMPLATE_ICONS[page.template]}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="truncate font-medium text-[11px]">{TEMPLATE_LABELS[page.template]}</div>
+          <div className="text-[10px] text-gray-600">{page.photoUrl ? "📷 Photo" : "No photo"}</div>
+        </div>
+        <span className="text-[10px] text-gray-600 shrink-0">{idx + 1}</span>
+      </button>
     </div>
   );
 }
@@ -723,6 +913,12 @@ export default function SummaryEditor() {
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedRef = useRef<string>("");
   const [showAddPage, setShowAddPage] = useState(false);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   useEffect(() => {
     if (!summary) return;
@@ -734,7 +930,6 @@ export default function SummaryEditor() {
         return;
       }
     } catch {}
-    // Build default doc from summary metadata
     const now = summary.createdAt;
     setDoc({
       country: summary.country,
@@ -796,7 +991,26 @@ export default function SummaryEditor() {
     setSelectedPageIdx(newIdx);
   };
 
-  // PDF Export
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDragId(null);
+    if (!doc) return;
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = doc.pages.findIndex(p => p.id === active.id);
+    const newIdx = doc.pages.findIndex(p => p.id === over.id);
+    if (oldIdx === -1 || newIdx === -1) return;
+    const newPages = arrayMove(doc.pages, oldIdx, newIdx);
+    setDoc({ ...doc, pages: newPages });
+    if (selectedPageIdx === oldIdx) setSelectedPageIdx(newIdx);
+    else if (selectedPageIdx === newIdx) setSelectedPageIdx(oldIdx);
+    toast.success(`Page moved to position ${newIdx + 1}`);
+  };
+
+  // PDF Export with per-page style overrides
   const handleExportPdf = async () => {
     if (!doc) return;
     setIsExporting(true);
@@ -812,11 +1026,18 @@ export default function SummaryEditor() {
           <div style="color:white;font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;">${country} — ${programType}</div>
         </div>`;
       const footerHtml = `
-        <div style="height:28px;border-top:1px solid ${COLORS.divider};display:flex;align-items:center;justify-content:space-between;padding:0 28px;flex-shrink:0;">
+        <div style="height:28px;border-top:1px solid ${COLORS.divider};display:flex;align-items:center;padding:0 28px;flex-shrink:0;">
           <div style="font-size:7px;color:#999;text-transform:uppercase;letter-spacing:0.08em;">ELEVAY — Citizenship & Residency by Investment</div>
         </div>`;
 
       const pagesHtml = doc.pages.map((page) => {
+        const ps = getStyle(page);
+        const hColor = ps.headingColor || COLORS.navy;
+        const bColor = ps.bodyColor || COLORS.text;
+        const aColor = ps.accentColor || COLORS.teal;
+        const hFs = ps.headingFontSize;
+        const bFs = ps.bodyFontSize;
+
         if (page.template === "cover") {
           const c = page.content as { countryName?: string; programLabel?: string; programSubtype?: string; summaryLabel?: string };
           return `<div class="page" style="display:flex;font-family:'Montserrat',sans-serif;">
@@ -827,14 +1048,14 @@ export default function SummaryEditor() {
               <div style="display:flex;align-items:center;gap:12px;margin-bottom:auto;">
                 <img src="${ELEVAY_LOGO}" style="height:40px;width:auto;object-fit:contain;" />
                 <div>
-                  <div style="font-size:11px;font-weight:700;color:${COLORS.navy};letter-spacing:0.1em;">ELEVAY</div>
-                  <div style="font-size:9px;color:${COLORS.teal};letter-spacing:0.08em;">CITIZENSHIP & RESIDENCY</div>
+                  <div style="font-size:11px;font-weight:700;color:${hColor};letter-spacing:0.1em;">ELEVAY</div>
+                  <div style="font-size:9px;color:${aColor};letter-spacing:0.08em;">CITIZENSHIP & RESIDENCY</div>
                 </div>
               </div>
               <div style="flex:1;"></div>
-              <div style="background:${COLORS.teal};padding:24px 28px;margin:0 -40px -40px -40px;">
-                <div style="color:white;font-size:32px;font-weight:700;letter-spacing:0.05em;margin-bottom:6px;">${c.countryName || doc.country.toUpperCase()}</div>
-                <div style="color:rgba(255,255,255,0.9);font-size:14px;margin-bottom:4px;">${c.programLabel || doc.programType}</div>
+              <div style="background:${aColor};padding:24px 28px;margin:0 -40px -40px -40px;">
+                <div style="color:white;font-size:${hFs || 32}px;font-weight:700;letter-spacing:0.05em;margin-bottom:6px;">${c.countryName || doc.country.toUpperCase()}</div>
+                <div style="color:rgba(255,255,255,0.9);font-size:${bFs || 14}px;margin-bottom:4px;">${c.programLabel || doc.programType}</div>
                 <div style="color:rgba(255,255,255,0.7);font-size:10px;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:12px;">${c.summaryLabel || "PROGRAM SUMMARY"}</div>
                 <div style="color:rgba(255,255,255,0.5);font-size:9px;">Last updated: ${monthYear}</div>
               </div>
@@ -849,14 +1070,12 @@ export default function SummaryEditor() {
             ${headerHtml(doc.country, doc.programType)}
             <div style="flex:1;display:flex;overflow:hidden;">
               <div style="width:45%;padding:28px 20px 20px 28px;border-right:1px solid ${COLORS.divider};overflow:hidden;">
-                <div style="font-size:9px;letter-spacing:0.15em;color:${COLORS.teal};text-transform:uppercase;margin-bottom:8px;">${c.sectionLabel || "PROGRAMME OVERVIEW"}</div>
-                <div style="font-size:20px;font-weight:700;color:${COLORS.navy};margin-bottom:10px;line-height:1.2;">${c.heading || ""}</div>
-                <div style="font-size:11px;color:${COLORS.text};line-height:1.6;margin-bottom:16px;">${c.intro || ""}</div>
-                ${rows.map((row, i) => `
-                  ${i > 0 ? `<div style="height:1px;background:${COLORS.divider};margin:8px 0;"></div>` : ""}
-                  <div style="font-size:8px;letter-spacing:0.12em;color:${COLORS.teal};text-transform:uppercase;">${row.label}</div>
-                  <div style="font-size:11px;font-weight:700;color:${COLORS.navy};">${row.value}</div>
-                `).join("")}
+                <div style="font-size:9px;letter-spacing:0.15em;color:${aColor};text-transform:uppercase;margin-bottom:8px;">${c.sectionLabel || "PROGRAMME OVERVIEW"}</div>
+                <div style="font-size:${hFs || 20}px;font-weight:700;color:${hColor};margin-bottom:10px;line-height:1.2;">${c.heading || ""}</div>
+                <div style="font-size:${bFs || 11}px;color:${bColor};line-height:1.6;margin-bottom:16px;">${c.intro || ""}</div>
+                ${rows.map((row, i) => `${i > 0 ? `<div style="height:1px;background:${COLORS.divider};margin:8px 0;"></div>` : ""}
+                  <div style="font-size:8px;letter-spacing:0.12em;color:${aColor};text-transform:uppercase;">${row.label}</div>
+                  <div style="font-size:${bFs || 11}px;font-weight:700;color:${hColor};">${row.value}</div>`).join("")}
               </div>
               <div style="width:55%;overflow:hidden;">
                 ${page.photoUrl ? `<img src="${page.photoUrl}" style="width:100%;height:100%;object-fit:cover;" />` : `<div style="width:100%;height:100%;background:#f0f4f8;display:flex;align-items:center;justify-content:center;color:#ccc;">No Photo</div>`}
@@ -874,21 +1093,19 @@ export default function SummaryEditor() {
             ${headerHtml(doc.country, doc.programType)}
             <div style="flex:1;display:flex;overflow:hidden;">
               <div style="width:50%;padding:24px 16px 20px 28px;border-right:1px solid ${COLORS.divider};overflow:hidden;">
-                ${reqs.map((req, i) => `
-                  <div style="margin-bottom:14px;">
+                ${reqs.map((req, i) => `<div style="margin-bottom:14px;">
                     <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:4px;">
                       <div style="width:22px;height:22px;border-radius:50%;background:${COLORS.red};display:flex;align-items:center;justify-content:center;color:white;font-size:9px;font-weight:700;flex-shrink:0;">${i + 1}</div>
-                      <div style="font-size:11px;font-weight:700;color:${COLORS.navy};line-height:1.3;">${req.heading}</div>
+                      <div style="font-size:${hFs || 11}px;font-weight:700;color:${hColor};line-height:1.3;">${req.heading}</div>
                     </div>
-                    <div style="font-size:10px;color:${COLORS.text};line-height:1.5;padding-left:30px;">${req.text}</div>
-                  </div>
-                `).join("")}
+                    <div style="font-size:${bFs || 10}px;color:${bColor};line-height:1.5;padding-left:30px;">${req.text}</div>
+                  </div>`).join("")}
               </div>
               <div style="width:50%;padding:24px 28px 20px 16px;overflow:hidden;">
-                <div style="border:1.5px solid ${COLORS.teal};border-radius:6px;padding:16px;background:${COLORS.lightTeal};">
-                  <div style="font-size:13px;font-weight:700;color:${COLORS.navy};margin-bottom:8px;">${c.idealCandidateHeading || "Ideal Candidate"}</div>
-                  <div style="font-size:10px;color:${COLORS.text};line-height:1.5;margin-bottom:8px;">${c.idealCandidateIntro || ""}</div>
-                  ${bullets.map(b => `<div style="display:flex;gap:6px;margin-bottom:4px;"><div style="width:6px;height:6px;border-radius:50%;background:${COLORS.teal};margin-top:3px;flex-shrink:0;"></div><div style="font-size:10px;color:${COLORS.text};">${b}</div></div>`).join("")}
+                <div style="border:1.5px solid ${aColor};border-radius:6px;padding:16px;background:${COLORS.lightTeal};">
+                  <div style="font-size:${hFs || 13}px;font-weight:700;color:${hColor};margin-bottom:8px;">${c.idealCandidateHeading || "Ideal Candidate"}</div>
+                  <div style="font-size:${bFs || 10}px;color:${bColor};line-height:1.5;margin-bottom:8px;">${c.idealCandidateIntro || ""}</div>
+                  ${bullets.map(b => `<div style="display:flex;gap:6px;margin-bottom:4px;"><div style="width:6px;height:6px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};">${b}</div></div>`).join("")}
                 </div>
               </div>
             </div>
@@ -904,26 +1121,22 @@ export default function SummaryEditor() {
             ${headerHtml(doc.country, doc.programType)}
             <div style="flex:1;display:flex;overflow:hidden;">
               <div style="width:55%;padding:24px 16px 20px 28px;border-right:1px solid ${COLORS.divider};overflow:hidden;">
-                ${stages.map((stage, i) => `
-                  ${i > 0 ? `<div style="height:1px;background:${COLORS.divider};margin:10px 0;"></div>` : ""}
+                ${stages.map((stage, i) => `${i > 0 ? `<div style="height:1px;background:${COLORS.divider};margin:10px 0;"></div>` : ""}
                   <div style="display:flex;gap:8px;align-items:flex-start;">
-                    <div style="width:18px;height:18px;border-radius:50%;background:${COLORS.teal};display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:700;flex-shrink:0;margin-top:1px;">${i + 1}</div>
+                    <div style="width:18px;height:18px;border-radius:50%;background:${aColor};display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:700;flex-shrink:0;margin-top:1px;">${i + 1}</div>
                     <div>
-                      <div style="font-size:11px;font-weight:700;color:${COLORS.navy};margin-bottom:3px;">${stage.heading}</div>
-                      <div style="font-size:10px;color:${COLORS.text};line-height:1.5;">${stage.text}</div>
+                      <div style="font-size:${hFs || 11}px;font-weight:700;color:${hColor};margin-bottom:3px;">${stage.heading}</div>
+                      <div style="font-size:${bFs || 10}px;color:${bColor};line-height:1.5;">${stage.text}</div>
                     </div>
-                  </div>
-                `).join("")}
+                  </div>`).join("")}
               </div>
               <div style="width:45%;padding:24px 28px 20px 16px;overflow:hidden;">
-                <div style="font-size:13px;font-weight:700;color:${COLORS.navy};margin-bottom:10px;">${c.feesHeading || "Programme Fees"}</div>
-                ${feeRows.map((row, i) => `
-                  ${i > 0 ? `<div style="height:1px;background:${COLORS.divider};margin:6px 0;"></div>` : ""}
+                <div style="font-size:${hFs || 13}px;font-weight:700;color:${hColor};margin-bottom:10px;">${c.feesHeading || "Programme Fees"}</div>
+                ${feeRows.map((row, i) => `${i > 0 ? `<div style="height:1px;background:${COLORS.divider};margin:6px 0;"></div>` : ""}
                   <div style="display:flex;justify-content:space-between;">
-                    <div style="font-size:10px;color:${COLORS.text};">${row.label}</div>
-                    <div style="font-size:10px;font-weight:700;color:${COLORS.navy};">${row.value}</div>
-                  </div>
-                `).join("")}
+                    <div style="font-size:${bFs || 10}px;color:${bColor};">${row.label}</div>
+                    <div style="font-size:${bFs || 10}px;font-weight:700;color:${hColor};">${row.value}</div>
+                  </div>`).join("")}
               </div>
             </div>
             ${footerHtml}
@@ -942,22 +1155,18 @@ export default function SummaryEditor() {
                 ${page.photoUrl ? `<img src="${page.photoUrl}" style="width:100%;height:100%;object-fit:cover;" />` : `<div style="width:100%;height:100%;background:#f0f4f8;display:flex;align-items:center;justify-content:center;color:#ccc;">No Photo</div>`}
               </div>
               <div style="width:55%;padding:24px 28px 20px 16px;border-left:1px solid ${COLORS.divider};overflow:hidden;">
-                <div style="font-size:20px;font-weight:700;color:${COLORS.navy};margin-bottom:10px;">${c.heading || ""}</div>
-                ${((c.paragraphs || []) as string[]).map(p => `<div style="font-size:10px;color:${COLORS.text};line-height:1.6;margin-bottom:8px;">${p}</div>`).join("")}
-                ${rows.map((row, i) => `
-                  ${i > 0 ? `<div style="height:1px;background:${COLORS.divider};margin:6px 0;"></div>` : ""}
-                  <div style="font-size:8px;letter-spacing:0.1em;color:${COLORS.teal};text-transform:uppercase;">${row.label}</div>
-                  <div style="font-size:10px;font-weight:700;color:${COLORS.navy};">${row.value}</div>
-                `).join("")}
-                ${rankings.length > 0 ? `
-                  <div style="border:1px solid ${COLORS.divider};border-radius:4px;padding:10px;margin-top:10px;">
-                    <div style="font-size:10px;font-weight:700;color:${COLORS.navy};margin-bottom:5px;">${c.rankingsHeading || "Global Rankings"}</div>
-                    ${rankings.map(r => `<div style="font-size:9px;color:${COLORS.text};margin-bottom:2px;">• ${r}</div>`).join("")}
+                <div style="font-size:${hFs || 20}px;font-weight:700;color:${hColor};margin-bottom:10px;">${c.heading || ""}</div>
+                ${((c.paragraphs || []) as string[]).map(p => `<div style="font-size:${bFs || 10}px;color:${bColor};line-height:1.6;margin-bottom:8px;">${p}</div>`).join("")}
+                ${rows.map((row, i) => `${i > 0 ? `<div style="height:1px;background:${COLORS.divider};margin:6px 0;"></div>` : ""}
+                  <div style="font-size:8px;letter-spacing:0.1em;color:${aColor};text-transform:uppercase;">${row.label}</div>
+                  <div style="font-size:${bFs || 10}px;font-weight:700;color:${hColor};">${row.value}</div>`).join("")}
+                ${rankings.length > 0 ? `<div style="border:1px solid ${COLORS.divider};border-radius:4px;padding:10px;margin-top:10px;">
+                    <div style="font-size:${hFs ? hFs - 2 : 10}px;font-weight:700;color:${hColor};margin-bottom:5px;">${c.rankingsHeading || "Global Rankings"}</div>
+                    ${rankings.map(r => `<div style="font-size:${bFs || 9}px;color:${bColor};margin-bottom:2px;">• ${r}</div>`).join("")}
                   </div>` : ""}
-                ${memberships.length > 0 ? `
-                  <div style="border:1px solid ${COLORS.divider};border-radius:4px;padding:10px;margin-top:8px;">
-                    <div style="font-size:10px;font-weight:700;color:${COLORS.navy};margin-bottom:5px;">${c.membershipsHeading || "International Memberships"}</div>
-                    ${memberships.map(m => `<div style="font-size:9px;color:${COLORS.text};margin-bottom:2px;">• ${m}</div>`).join("")}
+                ${memberships.length > 0 ? `<div style="border:1px solid ${COLORS.divider};border-radius:4px;padding:10px;margin-top:8px;">
+                    <div style="font-size:${hFs ? hFs - 2 : 10}px;font-weight:700;color:${hColor};margin-bottom:5px;">${c.membershipsHeading || "International Memberships"}</div>
+                    ${memberships.map(m => `<div style="font-size:${bFs || 9}px;color:${bColor};margin-bottom:2px;">• ${m}</div>`).join("")}
                   </div>` : ""}
               </div>
             </div>
@@ -972,8 +1181,8 @@ export default function SummaryEditor() {
           ${headerHtml(doc.country, doc.programType)}
           <div style="flex:1;padding:28px;overflow:hidden;">
             ${blocks.map(block => {
-              if (block.type === "text") return `<div style="font-size:11px;color:${COLORS.text};line-height:1.6;margin-bottom:10px;">${block.text}</div>`;
-              if (block.type === "list") return (block.items || []).map(item => `<div style="display:flex;gap:6px;margin-bottom:4px;"><div style="width:6px;height:6px;border-radius:50%;background:${COLORS.teal};margin-top:3px;flex-shrink:0;"></div><div style="font-size:10px;color:${COLORS.text};">${item}</div></div>`).join("");
+              if (block.type === "text") return `<div style="font-size:${bFs || 11}px;color:${bColor};line-height:1.6;margin-bottom:10px;">${block.text}</div>`;
+              if (block.type === "list") return (block.items || []).map(item => `<div style="display:flex;gap:6px;margin-bottom:4px;"><div style="width:6px;height:6px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};">${item}</div></div>`).join("");
               return "";
             }).join("")}
           </div>
@@ -992,11 +1201,11 @@ export default function SummaryEditor() {
           @media print { body { background:white; } .page { margin:0; box-shadow:none; } }
         </style>
       </head><body>${pagesHtml}
-        <script>window.onload=function(){setTimeout(function(){window.print();},1800);};</script>
+        <script>window.onload=function(){setTimeout(function(){window.print();},1800);};<\/script>
       </body></html>`);
       printWindow.document.close();
       toast.success("PDF export opened — use Ctrl+P / Cmd+P to save as PDF");
-    } catch (e) {
+    } catch {
       toast.error("Export failed");
     } finally {
       setIsExporting(false);
@@ -1012,6 +1221,7 @@ export default function SummaryEditor() {
   }
 
   const currentPage = doc.pages[selectedPageIdx];
+  const activeDragPage = activeDragId ? doc.pages.find(p => p.id === activeDragId) : null;
 
   return (
     <div className="flex flex-col bg-[#0f1623] overflow-hidden" style={{ height: "calc(100vh - 0px)" }}>
@@ -1034,30 +1244,44 @@ export default function SummaryEditor() {
 
       {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: Page list */}
-        <div className="w-44 border-r border-white/10 bg-[#141c2e] flex flex-col overflow-hidden shrink-0">
+        {/* Left: Page list with drag-and-drop */}
+        <div className="w-48 border-r border-white/10 bg-[#141c2e] flex flex-col overflow-hidden shrink-0">
           <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
             <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Pages</span>
             <span className="text-xs text-gray-600">{doc.pages.length}</span>
           </div>
-          <div className="flex-1 overflow-y-auto py-2 space-y-1 px-2">
-            {doc.pages.map((page, idx) => (
-              <button key={page.id} onClick={() => setSelectedPageIdx(idx)}
-                className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left transition-all text-xs ${
-                  selectedPageIdx === idx ? "bg-teal-600/30 border border-teal-500/50 text-white" : "hover:bg-white/5 text-gray-400 border border-transparent"
-                }`}>
-                <div className="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-white/10 text-xs">
-                  {page.template === "cover" ? "★" : page.template === "overview" ? "📋" : page.template === "eligibility" ? "✓" : page.template === "process" ? "⚙" : page.template === "about" ? "🌍" : <FileText className="w-3 h-3" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="truncate font-medium text-[11px]">{TEMPLATE_LABELS[page.template]}</div>
-                  <div className="text-[10px] text-gray-600">{page.photoUrl ? "📷 Photo added" : "No photo"}</div>
-                </div>
-                <span className="text-[10px] text-gray-600 shrink-0">{idx + 1}</span>
-              </button>
-            ))}
+          <div className="flex-1 overflow-y-auto py-2 space-y-0.5 px-2">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext items={doc.pages.map(p => p.id)} strategy={verticalListSortingStrategy}>
+                {doc.pages.map((page, idx) => (
+                  <SortablePageItem
+                    key={page.id}
+                    page={page}
+                    idx={idx}
+                    selectedPageIdx={selectedPageIdx}
+                    onSelect={setSelectedPageIdx}
+                  />
+                ))}
+              </SortableContext>
+              <DragOverlay>
+                {activeDragPage ? (
+                  <div className="flex items-center gap-2 px-2 py-2 rounded-lg bg-teal-600/40 border border-teal-500/60 text-white text-xs shadow-2xl">
+                    <div className="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-white/20 text-xs">
+                      {TEMPLATE_ICONS[activeDragPage.template]}
+                    </div>
+                    <span className="font-medium text-[11px] truncate">{TEMPLATE_LABELS[activeDragPage.template]}</span>
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
           </div>
           <div className="p-2 border-t border-white/10">
+            <p className="text-[10px] text-gray-600 text-center mb-1.5">Drag ⠿ handle to reorder</p>
             <button onClick={() => setShowAddPage(!showAddPage)}
               className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs transition-colors">
               <Plus className="w-3 h-3" /> Add Page
@@ -1083,16 +1307,16 @@ export default function SummaryEditor() {
             </span>
             <div className="flex items-center gap-1">
               <button onClick={() => movePage(selectedPageIdx, -1)} disabled={selectedPageIdx === 0}
-                className="p-1.5 rounded hover:bg-white/10 text-gray-500 hover:text-white disabled:opacity-30 transition-colors">
+                className="p-1.5 rounded hover:bg-white/10 text-gray-500 hover:text-white disabled:opacity-30 transition-colors" title="Move up">
                 <ChevronUp className="w-3.5 h-3.5" />
               </button>
               <button onClick={() => movePage(selectedPageIdx, 1)} disabled={selectedPageIdx === doc.pages.length - 1}
-                className="p-1.5 rounded hover:bg-white/10 text-gray-500 hover:text-white disabled:opacity-30 transition-colors">
+                className="p-1.5 rounded hover:bg-white/10 text-gray-500 hover:text-white disabled:opacity-30 transition-colors" title="Move down">
                 <ChevronDown className="w-3.5 h-3.5" />
               </button>
               {currentPage.template !== "cover" && (
                 <button onClick={() => deletePage(selectedPageIdx)}
-                  className="p-1.5 rounded hover:bg-red-900/30 text-gray-500 hover:text-red-400 transition-colors">
+                  className="p-1.5 rounded hover:bg-red-900/30 text-gray-500 hover:text-red-400 transition-colors" title="Delete page">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               )}
