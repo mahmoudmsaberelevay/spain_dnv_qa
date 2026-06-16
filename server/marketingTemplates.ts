@@ -38,7 +38,7 @@ const SPAIN_DNV: ProgramTemplates = {
       topic: "Spain DNV: بوابة أوروبا الرقمية",
       caption: "🇪🇸 إسبانيا تفتح أبوابها للعمل الحر والرقمي!\n\nتأشيرة الرحّال الرقمي الإسبانية تمنحك الإقامة القانونية في قلب أوروبا، مع حرية العمل لأي شركة حول العالم.\n\n✅ إقامة قانونية في إسبانيا\n✅ الوصول إلى منطقة شنغن\n✅ مناخ معتدل وجودة حياة استثنائية\n\nتواصل مع ELEVAY اليوم واحجز استشارتك المجانية 🌍",
       hashtags: ["#SpainDNV", "#إسبانيا", "#الرحّال_الرقمي", "#إقامة_أوروبا", "#ELEVAY", "#جواز_سفر_أوروبي"],
-      staticImagePrompt: "Elegant 1:1 square social media post design for Spain Digital Nomad Visa. Barcelona skyline at golden hour with Sagrada Familia. Text overlay 'Spain DNV' in bold white typography on navy blue (#1A3A5C) banner at bottom. Teal (#5BA3B8) accent lines. ELEVAY brand. No people. Ultra premium.",
+      staticImagePrompt: "Elegant 1:1 square social media post design for Spain Digital Nomad Visa. Barcelona skyline at golden hour with Sagrada Familia. Text overlay 'Spain DNV' in bold white typography on navy blue (#1A3A5C) banner at bottom. Teal (#5BA3B8) accent lines. No people. Ultra premium.",
       reelScenes: [
         { keyframePrompt: "Aerial drone shot of Barcelona coastline at sunrise, Mediterranean Sea, golden light, cinematic 9:16 vertical", videoPrompt: "Slow aerial pan over Barcelona coastline at sunrise, Mediterranean blue sea, golden hour light" },
         { keyframePrompt: "Narrow cobblestone street in Gothic Quarter Barcelona, warm afternoon light, 9:16 vertical cinematic", videoPrompt: "Walking through Barcelona Gothic Quarter, warm sunlight filtering through narrow streets" },
@@ -53,7 +53,7 @@ const SPAIN_DNV: ProgramTemplates = {
       topic: "Spain DNV: الحياة في إسبانيا — جودة لا مثيل لها",
       caption: "☀️ تخيّل صباحك في برشلونة أو مدريد...\n\nإسبانيا تحتل المرتبة الأولى عالمياً في جودة الحياة للمغتربين.\n\n🏖️ شواطئ البحر الأبيض المتوسط\n🍷 مطبخ عالمي وثقافة غنية\n🏥 رعاية صحية متقدمة\n🎓 تعليم دولي للأبناء\n\nمع ELEVAY، الإقامة الإسبانية أصبحت في متناول يدك 🌟",
       hashtags: ["#SpainLife", "#إسبانيا_للعيش", "#جودة_الحياة", "#ELEVAY", "#الإقامة_الأوروبية", "#برشلونة"],
-      staticImagePrompt: "1:1 square lifestyle post for Spain residency. Sunny Spanish plaza with orange trees, cafe terrace, Mediterranean architecture. Text 'Spain DNV' in elegant white font on dark navy overlay. ELEVAY teal accent. Premium quality, no people.",
+      staticImagePrompt: "1:1 square lifestyle post for Spain residency. Sunny Spanish plaza with orange trees, cafe terrace, Mediterranean architecture. Text 'Spain DNV' in elegant white font on dark navy overlay. teal accent. Premium quality, no people.",
       reelScenes: [
         { keyframePrompt: "Sunny Spanish plaza with orange trees and cafe terrace, 9:16 vertical, no people, cinematic", videoPrompt: "Peaceful Spanish plaza at midday, orange trees, cafe chairs, Mediterranean light" },
         { keyframePrompt: "Spanish market with fresh produce, colorful vegetables and fruits, 9:16 vertical", videoPrompt: "Vibrant Spanish market with colorful fresh produce, warm morning light" },
@@ -68,7 +68,7 @@ const SPAIN_DNV: ProgramTemplates = {
       topic: "Spain DNV: الاستثمار والعائد في إسبانيا",
       caption: "💼 إسبانيا = استثمار ذكي + إقامة أوروبية\n\nسوق العقارات الإسباني من أكثر الأسواق نمواً في أوروبا.\n\n📈 عائد إيجاري يصل إلى 7% سنوياً\n🏡 أسعار معقولة مقارنة بباقي أوروبا\n🌍 إقامة دائمة بعد 5 سنوات\n🇪🇺 جنسية أوروبية بعد 10 سنوات\n\nاستثمر بذكاء مع ELEVAY 🎯",
       hashtags: ["#SpainInvestment", "#العقارات_الإسبانية", "#استثمار_أوروبا", "#ELEVAY", "#إقامة_إسبانيا", "#عائد_الاستثمار"],
-      staticImagePrompt: "1:1 square investment-themed post for Spain. Modern luxury real estate in Madrid, glass towers and historic buildings blend. Text overlay 'Spain DNV' in white on navy gradient. ELEVAY brand colors. Professional, no people.",
+      staticImagePrompt: "1:1 square investment-themed post for Spain. Modern luxury real estate in Madrid, glass towers and historic buildings blend. Text overlay 'Spain DNV' in white on navy gradient. colors. Professional, no people.",
       reelScenes: [
         { keyframePrompt: "Madrid skyline with modern skyscrapers and historic buildings, 9:16 vertical, cinematic", videoPrompt: "Aerial view of Madrid skyline mixing modern towers with historic architecture" },
         { keyframePrompt: "Luxury Spanish villa with pool overlooking Mediterranean, 9:16 vertical", videoPrompt: "Stunning luxury villa with infinity pool overlooking Mediterranean sea, sunset" },
@@ -90,7 +90,7 @@ const GREECE_GOLDEN_VISA: ProgramTemplates = {
       topic: "Greece Golden Visa: الذهب الأوروبي",
       caption: "🏛️ اليونان تمنحك الإقامة الذهبية الأوروبية!\n\nبرنامج التأشيرة الذهبية اليونانية — الأفضل في أوروبا:\n\n💰 استثمار يبدأ من 250,000 يورو فقط\n🌍 إقامة لك ولعائلتك\n✈️ حرية التنقل في 26 دولة شنغن\n🏠 ملكية عقارية حقيقية\n\nاليونان... حيث التاريخ يلتقي بالمستقبل 🌟",
       hashtags: ["#GreeceGoldenVisa", "#اليونان", "#التأشيرة_الذهبية", "#ELEVAY", "#إقامة_أوروبا", "#استثمار_عقاري"],
-      staticImagePrompt: "1:1 square post for Greece Golden Visa. Santorini white and blue architecture at sunset, iconic domes. Text 'Greece Golden Visa' in gold and white typography on navy overlay. ELEVAY brand. Luxury, no people.",
+      staticImagePrompt: "1:1 square post for Greece Golden Visa. Santorini white and blue architecture at sunset, iconic domes. Text 'Greece Golden Visa' in gold and white typography on navy overlay. Luxury, no people.",
       reelScenes: [
         { keyframePrompt: "Santorini iconic white and blue domed churches at sunset, 9:16 vertical, cinematic", videoPrompt: "Magical Santorini sunset with iconic blue domes and white architecture, golden hour" },
         { keyframePrompt: "Aerial view of Greek islands turquoise water, 9:16 vertical", videoPrompt: "Stunning aerial drone shot of Greek islands with crystal turquoise water" },
@@ -105,7 +105,7 @@ const GREECE_GOLDEN_VISA: ProgramTemplates = {
       topic: "Greece Golden Visa: عائلتك تستحق الأفضل",
       caption: "👨‍👩‍👧‍👦 منح عائلتك الأمان الأوروبي — مع اليونان\n\nالتأشيرة الذهبية اليونانية تشمل:\n\n✅ الزوج/الزوجة\n✅ الأبناء حتى 21 سنة\n✅ والدي الزوجين\n🎓 تعليم أوروبي للأبناء\n🏥 رعاية صحية متميزة\n\nاستثمار واحد يحمي عائلتك بأكملها 💙",
       hashtags: ["#GreeceFamily", "#عائلة_أوروبا", "#اليونان_الذهبية", "#ELEVAY", "#أمان_العائلة", "#إقامة_أوروبية"],
-      staticImagePrompt: "1:1 square family-themed post for Greece. Peaceful Greek island village with colorful flowers, blue sea background. Text 'Greece Golden Visa' in white on navy. ELEVAY teal accent. Warm, no people.",
+      staticImagePrompt: "1:1 square family-themed post for Greece. Peaceful Greek island village with colorful flowers, blue sea background. Text 'Greece Golden Visa' in white on navy. teal accent. Warm, no people.",
       reelScenes: [
         { keyframePrompt: "Colorful Greek village with bougainvillea flowers, cobblestone path, 9:16 vertical", videoPrompt: "Charming Greek village with vibrant bougainvillea, peaceful cobblestone streets" },
         { keyframePrompt: "Greek beach with crystal clear water and white sand, 9:16 vertical", videoPrompt: "Pristine Greek beach, crystal clear turquoise water, white sand, paradise" },
@@ -127,7 +127,7 @@ const MALTA_PR: ProgramTemplates = {
       topic: "Malta PR: الإقامة الدائمة في قلب البحر الأبيض المتوسط",
       caption: "🇲🇹 مالطا — جوهرة البحر الأبيض المتوسط!\n\nبرنامج الإقامة الدائمة المالطي يمنحك:\n\n🌍 إقامة دائمة في دولة أوروبية\n✈️ حرية التنقل في منطقة شنغن\n💼 بيئة أعمال متطورة\n🏖️ جودة حياة استثنائية\n🗣️ اللغة الإنجليزية لغة رسمية\n\nمالطا... بوابتك الأوروبية الأصغر والأكثر تميزاً 🌟",
       hashtags: ["#MaltaPR", "#مالطا", "#الإقامة_الدائمة", "#ELEVAY", "#أوروبا", "#شنغن"],
-      staticImagePrompt: "1:1 square post for Malta Permanent Residency. Valletta harbor with historic fortifications and colorful boats at golden hour. Text 'Malta PR' in white bold typography on navy overlay. ELEVAY teal accent. No people.",
+      staticImagePrompt: "1:1 square post for Malta Permanent Residency. Valletta harbor with historic fortifications and colorful boats at golden hour. Text 'Malta PR' in white bold typography on navy overlay. teal accent. No people.",
       reelScenes: [
         { keyframePrompt: "Valletta Grand Harbour with historic fortifications at sunrise, 9:16 vertical, cinematic", videoPrompt: "Majestic Valletta Grand Harbour at sunrise, ancient fortifications, golden light" },
         { keyframePrompt: "Malta Blue Lagoon crystal clear turquoise water, 9:16 vertical", videoPrompt: "Stunning Malta Blue Lagoon, crystal turquoise water, Mediterranean paradise" },
@@ -149,7 +149,7 @@ const PORTUGAL_D7: ProgramTemplates = {
       topic: "Portugal D7: الإقامة السلبية في البرتغال",
       caption: "🇵🇹 البرتغال تستقبلك بذراعين مفتوحتين!\n\nتأشيرة D7 البرتغالية مثالية لأصحاب الدخل السلبي:\n\n💰 دخل ثابت شهري = إقامة أوروبية\n🌍 أرخص دول أوروبا الغربية\n☀️ 300 يوم مشمس في السنة\n🏖️ شواطئ المحيط الأطلسي\n🎓 تعليم دولي عالي الجودة\n\nالبرتغال... حيث تبدأ حياتك الأوروبية الجديدة 🌊",
       hashtags: ["#PortugalD7", "#البرتغال", "#الإقامة_السلبية", "#ELEVAY", "#أوروبا", "#دخل_سلبي"],
-      staticImagePrompt: "1:1 square post for Portugal D7 Visa. Lisbon colorful tram on historic streets, pastel buildings, golden light. Text 'Portugal D7' in white on navy overlay. ELEVAY brand. Vibrant, no people.",
+      staticImagePrompt: "1:1 square post for Portugal D7 Visa. Lisbon colorful tram on historic streets, pastel buildings, golden light. Text 'Portugal D7' in white on navy overlay. Vibrant, no people.",
       reelScenes: [
         { keyframePrompt: "Lisbon iconic yellow tram on historic street, colorful buildings, 9:16 vertical, cinematic", videoPrompt: "Iconic Lisbon yellow tram on historic cobblestone street, colorful facades" },
         { keyframePrompt: "Algarve dramatic cliffs and golden beach, 9:16 vertical", videoPrompt: "Stunning Algarve coastline with dramatic golden cliffs and turquoise sea" },
@@ -171,7 +171,7 @@ const PORTUGAL_D8: ProgramTemplates = {
       topic: "Portugal D8: تأشيرة الرحّال الرقمي",
       caption: "💻 اعمل من البرتغال... واعش حياة أحلامك!\n\nتأشيرة D8 البرتغالية للعمل عن بُعد:\n\n🌐 اعمل لأي شركة عالمية من البرتغال\n☀️ مناخ رائع طوال العام\n💰 تكلفة معيشة منخفضة\n🌍 بوابة أوروبا الأطلسية\n⚡ إنترنت سريع وبنية تحتية متطورة\n\nالمستقبل الرقمي يبدأ من البرتغال مع ELEVAY 🚀",
       hashtags: ["#PortugalD8", "#البرتغال_الرقمية", "#عمل_عن_بعد", "#ELEVAY", "#رحّال_رقمي", "#أوروبا"],
-      staticImagePrompt: "1:1 square post for Portugal D8 Digital Nomad Visa. Modern co-working space in Lisbon with ocean view, minimalist design. Text 'Portugal D8' in white on navy. ELEVAY teal accent. Tech-forward, no people.",
+      staticImagePrompt: "1:1 square post for Portugal D8 Digital Nomad Visa. Modern co-working space in Lisbon with ocean view, minimalist design. Text 'Portugal D8' in white on navy. teal accent. Tech-forward, no people.",
       reelScenes: [
         { keyframePrompt: "Modern Lisbon co-working space interior, minimalist, ocean view, 9:16 vertical", videoPrompt: "Stylish Lisbon co-working space with ocean view, modern minimalist design" },
         { keyframePrompt: "Cascais coastal town near Lisbon, colorful boats, 9:16 vertical", videoPrompt: "Charming Cascais coastal town, colorful fishing boats, Atlantic Ocean" },
@@ -193,7 +193,7 @@ const DOMINICA: ProgramTemplates = {
       topic: "Dominica: جواز سفر عالمي بأقل تكلفة",
       caption: "🌴 دومينيكا — أذكى استثمار في جواز سفر ثانٍ!\n\nجنسية دومينيكا بالاستثمار:\n\n💰 استثمار يبدأ من 100,000 دولار فقط\n🌍 دخول بدون تأشيرة لأكثر من 140 دولة\n✈️ المملكة المتحدة وشنغن وكندا\n👨‍👩‍👧 يشمل العائلة بأكملها\n⚡ معالجة سريعة 3-6 أشهر\n\nجواز سفر دومينيكا = حرية حقيقية مع ELEVAY 🌟",
       hashtags: ["#DominicaCitizenship", "#دومينيكا", "#جواز_سفر_ثاني", "#ELEVAY", "#الجنسية_الكاريبية", "#حرية_السفر"],
-      staticImagePrompt: "1:1 square post for Dominica Citizenship by Investment. Lush tropical rainforest with waterfall, Caribbean paradise. Text 'Dominica Citizenship' in white bold on navy overlay. ELEVAY brand. Tropical luxury, no people.",
+      staticImagePrompt: "1:1 square post for Dominica Citizenship by Investment. Lush tropical rainforest with waterfall, Caribbean paradise. Text 'Dominica Citizenship' in white bold on navy overlay. Tropical luxury, no people.",
       reelScenes: [
         { keyframePrompt: "Dominica tropical rainforest with dramatic waterfall, 9:16 vertical, cinematic", videoPrompt: "Lush Dominica rainforest with cascading waterfall, emerald green, paradise" },
         { keyframePrompt: "Dominica Caribbean coastline with volcanic mountains, 9:16 vertical", videoPrompt: "Dramatic Dominica coastline with volcanic mountains meeting Caribbean Sea" },
@@ -208,7 +208,7 @@ const DOMINICA: ProgramTemplates = {
       topic: "Dominica: الاستثمار في الجنة الكاريبية",
       caption: "🏝️ استثمر في دومينيكا واحصل على الجنسية!\n\nخيارات الاستثمار:\n\n🏨 صندوق الحكومة: 100,000 دولار\n🏡 عقارات معتمدة: 200,000 دولار\n\n✅ جواز سفر قوي لأكثر من 140 دولة\n✅ لا ضريبة على الدخل الخارجي\n✅ لا اشتراط الإقامة\n✅ جنسية مدى الحياة للأبناء\n\nالاستثمار الأذكى مع ELEVAY 💎",
       hashtags: ["#DominicaInvestment", "#استثمار_كاريبي", "#دومينيكا", "#ELEVAY", "#جنسية_بالاستثمار", "#ضريبة_صفر"],
-      staticImagePrompt: "1:1 square investment post for Dominica. Luxury Caribbean resort with infinity pool overlooking turquoise sea. Text 'Dominica Citizenship' in gold and white on navy. ELEVAY brand. Ultra luxury, no people.",
+      staticImagePrompt: "1:1 square investment post for Dominica. Luxury Caribbean resort with infinity pool overlooking turquoise sea. Text 'Dominica Citizenship' in gold and white on navy. Ultra luxury, no people.",
       reelScenes: [
         { keyframePrompt: "Luxury Caribbean resort infinity pool overlooking turquoise sea, 9:16 vertical", videoPrompt: "Exclusive Caribbean resort with infinity pool, turquoise sea panorama, ultimate luxury" },
         { keyframePrompt: "Dominica lush green mountains aerial view, 9:16 vertical", videoPrompt: "Aerial drone over Dominica lush green volcanic mountains, untouched nature" },
@@ -230,7 +230,7 @@ const GRENADA: ProgramTemplates = {
       topic: "Grenada: جواز سفر قوي وفرص استثنائية",
       caption: "🌺 غرينادا — جزيرة التوابل وجواز السفر القوي!\n\nجنسية غرينادا بالاستثمار:\n\n🇺🇸 الدخول لأمريكا بتأشيرة E-2\n🌍 دخول بدون تأشيرة لأكثر من 140 دولة\n🇬🇧 المملكة المتحدة وكندا\n💰 استثمار يبدأ من 150,000 دولار\n⚡ معالجة 4-6 أشهر\n\nغرينادا... الجزيرة التي تفتح أبواب العالم مع ELEVAY 🌟",
       hashtags: ["#GrenadaCitizenship", "#غرينادا", "#E2Visa", "#ELEVAY", "#جواز_سفر_ثاني", "#أمريكا"],
-      staticImagePrompt: "1:1 square post for Grenada Citizenship. Grenada Grand Anse Beach with turquoise water and white sand. Text 'Grenada Citizenship' in white on navy overlay. ELEVAY teal accent. Caribbean paradise, no people.",
+      staticImagePrompt: "1:1 square post for Grenada Citizenship. Grenada Grand Anse Beach with turquoise water and white sand. Text 'Grenada Citizenship' in white on navy overlay. teal accent. Caribbean paradise, no people.",
       reelScenes: [
         { keyframePrompt: "Grenada Grand Anse Beach turquoise water white sand, 9:16 vertical, cinematic", videoPrompt: "Pristine Grenada Grand Anse Beach, turquoise Caribbean water, white sand" },
         { keyframePrompt: "Grenada spice plantation with nutmeg and cinnamon, 9:16 vertical", videoPrompt: "Lush Grenada spice plantation, nutmeg trees, tropical abundance" },
@@ -252,7 +252,7 @@ const SAINT_KITTS: ProgramTemplates = {
       topic: "Saint Kitts & Nevis: أقدم برنامج جنسية بالاستثمار",
       caption: "👑 سانت كيتس ونيفيس — الرائد العالمي في الجنسية بالاستثمار!\n\nمنذ عام 1984، يقدم هذا البرنامج الأفضل:\n\n🌍 دخول بدون تأشيرة لأكثر من 157 دولة\n✈️ المملكة المتحدة وشنغن وهونغ كونغ\n💰 استثمار يبدأ من 150,000 دولار\n🏆 الأكثر موثوقية في العالم\n⚡ معالجة 45-60 يوم (Fast Track)\n\nالثقة والموثوقية مع ELEVAY 🌟",
       hashtags: ["#SaintKittsCitizenship", "#سانت_كيتس", "#جنسية_كاريبية", "#ELEVAY", "#جواز_سفر_قوي", "#157_دولة"],
-      staticImagePrompt: "1:1 square post for Saint Kitts Citizenship. Brimstone Hill Fortress with Caribbean sea view, lush green island. Text 'Saint Kitts & Nevis' in white on navy overlay. ELEVAY brand. Historic and tropical, no people.",
+      staticImagePrompt: "1:1 square post for Saint Kitts Citizenship. Brimstone Hill Fortress with Caribbean sea view, lush green island. Text 'Saint Kitts & Nevis' in white on navy overlay. Historic and tropical, no people.",
       reelScenes: [
         { keyframePrompt: "Brimstone Hill Fortress Saint Kitts with Caribbean panorama, 9:16 vertical", videoPrompt: "Historic Brimstone Hill Fortress with stunning Caribbean Sea panorama" },
         { keyframePrompt: "Saint Kitts rainforest with Mount Liamuiga volcano, 9:16 vertical", videoPrompt: "Lush Saint Kitts rainforest with dramatic Mount Liamuiga volcano" },
@@ -274,7 +274,7 @@ const CANADA: ProgramTemplates = {
       topic: "Canada Skilled Migration: الهجرة الماهرة إلى كندا",
       caption: "🍁 كندا تنتظرك!\n\nبرنامج الهجرة الماهرة الكندي:\n\n🌍 إقامة دائمة في أفضل دولة للعيش\n💼 فرص عمل لا محدودة\n🎓 تعليم عالمي مجاني للأبناء\n🏥 رعاية صحية شاملة مجانية\n🌲 جودة حياة استثنائية\n\nكندا... حيث يبدأ مستقبل أفضل مع ELEVAY 🌟",
       hashtags: ["#CanadaMigration", "#كندا", "#الهجرة_الماهرة", "#ELEVAY", "#إقامة_كندا", "#مستقبل_أفضل"],
-      staticImagePrompt: "1:1 square post for Canada Skilled Migration. Canadian Rocky Mountains with turquoise lake, dramatic peaks. Text 'Canada Skilled Migration' in white on navy overlay. ELEVAY brand. Majestic nature, no people.",
+      staticImagePrompt: "1:1 square post for Canada Skilled Migration. Canadian Rocky Mountains with turquoise lake, dramatic peaks. Text 'Canada Skilled Migration' in white on navy overlay. Majestic nature, no people.",
       reelScenes: [
         { keyframePrompt: "Canadian Rocky Mountains with turquoise Moraine Lake, 9:16 vertical, cinematic", videoPrompt: "Majestic Canadian Rockies with stunning turquoise Moraine Lake, pristine nature" },
         { keyframePrompt: "Toronto skyline at night with CN Tower, 9:16 vertical", videoPrompt: "Impressive Toronto skyline at night, CN Tower illuminated, modern city" },
@@ -296,13 +296,13 @@ const ELEVAY_BRAND: ProgramTemplates = {
       topic: "ELEVAY: خبرة 25 عاماً في خدمتك",
       caption: "🏆 ELEVAY — شريكك الموثوق منذ 1998\n\nلماذا تختار ELEVAY؟\n\n✅ أكثر من 25 عاماً من الخبرة\n✅ فريق من أفضل المستشارين الدوليين\n✅ أكثر من 1000 عميل ناجح\n✅ حلول مخصصة لكل عميل\n✅ دعم كامل من البداية للنهاية\n\nثق بالخبراء — ثق بـ ELEVAY 🌟",
       hashtags: ["#ELEVAY", "#خبرة_25_عام", "#استشارة_مجانية", "#الجنسية_والإقامة", "#موثوقية", "#نجاح_عملائنا"],
-      staticImagePrompt: "1:1 square brand post for ELEVAY. World map with highlighted countries, premium dark navy background, ELEVAY origami bird logo prominent. Text 'ELEVAY — Since 1998' in gold and white. Luxury corporate, no people.",
+      staticImagePrompt: "1:1 square brand post. World map with highlighted countries, premium dark navy background, geometric origami bird logo in corner. Text 'Since 1998' in gold and white. Luxury corporate, no people.",
       reelScenes: [
         { keyframePrompt: "World map with glowing connection lines between countries, dark background, 9:16 vertical", videoPrompt: "Animated world map with glowing connection lines, global mobility visualization" },
         { keyframePrompt: "Premium office interior with global flags, 9:16 vertical", videoPrompt: "Sophisticated premium office with international flags, professional excellence" },
         { keyframePrompt: "Luxury passport and travel documents on dark marble, 9:16 vertical", videoPrompt: "Premium passports and travel documents on dark marble surface, elegance" },
         { keyframePrompt: "Business handshake silhouette against city skyline, 9:16 vertical", videoPrompt: "Professional business agreement silhouette against international city skyline" },
-        { keyframePrompt: "ELEVAY brand visual with origami bird and global map, 9:16 vertical", videoPrompt: "ELEVAY brand identity, origami bird logo, global reach, premium brand" },
+        { keyframePrompt: "ELEVAY brand visual with origami bird and global map, 9:16 vertical", videoPrompt: "geometric origami bird logo, global reach, premium brand" },
       ],
       voiceOverScript: "ELEVAY... خبرة تمتد لأكثر من 25 عاماً في مجال الجنسية والإقامة بالاستثمار. أكثر من ألف عميل وثقوا بنا وحققوا أحلامهم. نحن هنا لنحقق حلمك أيضاً.",
       backgroundMusicSuggestion: "Premium corporate brand anthem, confident and inspiring",
@@ -311,7 +311,7 @@ const ELEVAY_BRAND: ProgramTemplates = {
       topic: "ELEVAY: التنقل العالمي — حقك الذي تستحقه",
       caption: "✈️ العالم أكبر من حدود جواز سفر واحد!\n\nمع ELEVAY، احصل على:\n\n🌍 حرية السفر بدون قيود\n💼 فرص استثمارية عالمية\n🏠 إقامة في أفضل دول العالم\n👨‍👩‍👧 مستقبل آمن لعائلتك\n🔐 حماية ثروتك وأصولك\n\nالتنقل العالمي ليس رفاهية... إنه ضرورة 🌟",
       hashtags: ["#GlobalMobility", "#التنقل_العالمي", "#ELEVAY", "#حرية_السفر", "#جواز_سفر_ثاني", "#مستقبل_عائلتك"],
-      staticImagePrompt: "1:1 square post for global mobility theme. Airplane wing view above clouds at sunset, freedom and travel. Text 'Global Mobility by ELEVAY' in white on navy. Teal accent. Aspirational, no people.",
+      staticImagePrompt: "1:1 square post for global mobility theme. Airplane wing view above clouds at sunset, freedom and travel. Text 'Global Mobility' in white on navy. Teal accent. Aspirational, no people.",
       reelScenes: [
         { keyframePrompt: "Airplane wing above clouds at sunset, freedom concept, 9:16 vertical", videoPrompt: "Airplane wing above golden clouds at sunset, freedom and possibility" },
         { keyframePrompt: "International airport terminal with multiple flags, 9:16 vertical", videoPrompt: "Modern international airport terminal, flags of many nations, global connectivity" },
@@ -333,7 +333,7 @@ const PORTUGAL_D2: ProgramTemplates = {
       topic: "Portugal D2: تأشيرة رواد الأعمال في البرتغال",
       caption: "🚀 ابنِ مشروعك في أوروبا من البرتغال!\n\nتأشيرة D2 البرتغالية لرواد الأعمال:\n\n💡 أسس شركتك في قلب أوروبا\n🌍 الوصول إلى السوق الأوروبي\n💰 حوافز ضريبية استثنائية\n🤝 بيئة أعمال داعمة ومتطورة\n🌊 جودة حياة لا مثيل لها\n\nريادة الأعمال الأوروبية تبدأ هنا مع ELEVAY 🎯",
       hashtags: ["#PortugalD2", "#ريادة_الأعمال", "#البرتغال", "#ELEVAY", "#أوروبا_للأعمال", "#مشروع_أوروبي"],
-      staticImagePrompt: "1:1 square post for Portugal D2 Entrepreneur Visa. Lisbon startup hub modern interior, innovative workspace. Text 'Portugal D2' in white on navy overlay. ELEVAY teal. Innovation theme, no people.",
+      staticImagePrompt: "1:1 square post for Portugal D2 Entrepreneur Visa. Lisbon startup hub modern interior, innovative workspace. Text 'Portugal D2' in white on navy overlay. teal. Innovation theme, no people.",
       reelScenes: [
         { keyframePrompt: "Lisbon modern startup hub interior, innovation workspace, 9:16 vertical", videoPrompt: "Dynamic Lisbon startup hub, modern innovation space, entrepreneurship" },
         { keyframePrompt: "Porto historic city center with modern business district, 9:16 vertical", videoPrompt: "Porto blending historic charm with modern business district, opportunity" },
@@ -355,7 +355,7 @@ const UK_EXPANSION: ProgramTemplates = {
       topic: "UK Expansion Worker: توسّع أعمالك إلى المملكة المتحدة",
       caption: "🇬🇧 المملكة المتحدة تفتح أبوابها لأعمالك!\n\nتأشيرة العامل التوسعي البريطانية:\n\n🏢 أسس فرعاً لشركتك في لندن\n💼 العمل القانوني في المملكة المتحدة\n🌍 الوصول إلى السوق البريطاني\n📈 توسيع نطاق أعمالك دولياً\n🎓 فرص تعليمية وثقافية استثنائية\n\nلندن تنتظرك مع ELEVAY 🌟",
       hashtags: ["#UKExpansion", "#المملكة_المتحدة", "#لندن", "#ELEVAY", "#أعمال_بريطانية", "#توسع_دولي"],
-      staticImagePrompt: "1:1 square post for UK Expansion Worker Visa. London skyline with Tower Bridge and Shard at dusk. Text 'UK Expansion Worker' in white on navy overlay. ELEVAY brand. Iconic London, no people.",
+      staticImagePrompt: "1:1 square post for UK Expansion Worker Visa. London skyline with Tower Bridge and Shard at dusk. Text 'UK Expansion Worker' in white on navy overlay. Iconic London, no people.",
       reelScenes: [
         { keyframePrompt: "London Tower Bridge at dusk with city lights, 9:16 vertical, cinematic", videoPrompt: "Iconic London Tower Bridge at dusk, city lights reflecting on Thames" },
         { keyframePrompt: "Canary Wharf financial district London, glass towers, 9:16 vertical", videoPrompt: "London Canary Wharf financial district, impressive glass towers, business power" },

@@ -244,7 +244,7 @@ export default function ElevayHome() {
       <div className="min-h-screen flex items-center justify-center bg-gray-950">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <img
-            src="https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/elevay-logo_9749d369.png"
+            src="/manus-storage/elevay-logo_2c219cd3.png"
             alt="Elevay"
             className="h-20 w-auto object-contain"
           />
@@ -280,7 +280,7 @@ export default function ElevayHome() {
       <header className="flex items-center justify-between px-8 py-5 border-b border-white/5">
         <div className="flex items-center gap-4">
           <img
-            src="https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/elevay-logo_9749d369.png"
+            src="/manus-storage/elevay-logo_2c219cd3.png"
             alt="Elevay"
             className="h-12 w-auto object-contain"
           />

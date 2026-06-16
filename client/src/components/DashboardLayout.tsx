@@ -310,7 +310,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-4">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-3xl font-bold tracking-tight text-foreground font-serif">Elevay</span>
+              <img src="/manus-storage/elevay-logo_2c219cd3.png" alt="Elevay" className="h-20 w-auto object-contain" />
             </div>
             <h2 className="text-xl font-semibold tracking-tight text-center">Sign in to continue</h2>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
@@ -409,14 +409,14 @@ function DashboardLayoutContent({
               </button>
               {!isCollapsed && (
                 <img
-                  src="https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/elevay-logo_9749d369.png"
+                  src="/manus-storage/elevay-logo_2c219cd3.png"
                   alt="Elevay"
                   className="h-16 w-auto object-contain"
                 />
               )}
               {isCollapsed && (
                 <img
-                  src="https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/elevay-logo_9749d369.png"
+                  src="/manus-storage/elevay-logo_2c219cd3.png"
                   alt="Elevay"
                   className="h-12 w-12 object-contain"
                 />
@@ -660,7 +660,7 @@ function DashboardLayoutContent({
             </div>
             <div className="flex items-center gap-2">
               <NotificationBell />
-              <span className="font-bold text-base font-serif text-primary">Elevay</span>
+              <img src="/manus-storage/elevay-logo_2c219cd3.png" alt="Elevay" className="h-8 w-auto object-contain" />
             </div>
           </div>
         )}

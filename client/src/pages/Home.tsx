@@ -56,7 +56,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img
-              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/elevay-logo_9749d369.png"
+              src="/manus-storage/elevay-logo_2c219cd3.png"
               alt="Elevay"
               className="h-16 w-auto object-contain"
             />

@@ -460,8 +460,12 @@ export const marketingRouter = router({
       const staticImageUrls: Array<{ day: string; topic: string; url: string }> = [];
       for (const sp of (staticPromptsData.staticPrompts || [])) {
         try {
-          const staticPrompt = sp.imagePrompt + ", 1:1 square format, ELEVAY brand, navy blue and teal, program name '" + sp.topic.split(":")[0].trim() + "' as text overlay, no people, no passports";
-          const result = await generateImage({ prompt: staticPrompt });
+          const programName = sp.topic.split(":")[0].trim();
+          const staticPrompt = sp.imagePrompt + ", 1:1 square format, navy blue (#1A3A5C) and teal (#5BA3B8) color scheme, program name '" + programName + "' as elegant white text overlay at the bottom, small geometric origami bird logo in bottom-right corner, NO text saying ELEVAY, NO word ELEVAY anywhere in the image, no people, no passports, ultra premium social media post";
+          const result = await generateImage({
+            prompt: staticPrompt,
+            originalImages: [{ url: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663524211981/lREaBIOduQHCnBME.png", mimeType: "image/png" }]
+          });
           if (result.url) staticImageUrls.push({ day: sp.day, topic: sp.topic, url: result.url });
         } catch (e) { console.error("Static image failed for " + sp.day, e); }
       }
