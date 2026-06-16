@@ -165,7 +165,7 @@ export default function MarketingPlan() {
     });
   };
 
-  const handleLoadPlan = (row: { id: number; title: string; startDate: string; planJson?: string | null }) => {
+  const handleLoadPlan = async (row: { id: number; title: string; startDate: string; planJson?: string | null }) => {
     if (row.planJson) {
       try {
         setPlan(JSON.parse(row.planJson) as Plan);
@@ -174,6 +174,18 @@ export default function MarketingPlan() {
         setWeekMediaResults({});
         setShowSavedPlans(false);
         toast.success("Plan loaded: " + row.title);
+        // Fetch previously generated week media for this plan
+        const weekMediaData = await utils.marketing.getWeekMedia.fetch({ planId: row.id });
+        if (weekMediaData && weekMediaData.length > 0) {
+          const restored: Record<string, WeekMediaResult> = {};
+          for (const wm of weekMediaData) {
+            if (wm.result && wm.weekLabel) {
+              restored[wm.weekLabel] = wm.result as WeekMediaResult;
+            }
+          }
+          setWeekMediaResults(restored);
+          toast.success(`Restored ${weekMediaData.length} generated week package${weekMediaData.length > 1 ? 's' : ''}`);
+        }
       } catch { toast.error("Failed to parse saved plan"); }
     }
   };

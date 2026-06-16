@@ -625,4 +625,31 @@ export const marketingRouter = router({
         .where(and(eq(marketingPlans.id, input.id), eq(marketingPlans.userId, uid)));
       return { success: true };
     }),
+
+  // Fetch all week media packages for a given plan
+  getWeekMedia: protectedProcedure
+    .input(z.object({ planId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const uid = Number(ctx.user.id);
+      // Verify the plan belongs to this user
+      const [plan] = await db
+        .select({ id: marketingPlans.id })
+        .from(marketingPlans)
+        .where(and(eq(marketingPlans.id, input.planId), eq(marketingPlans.userId, uid)));
+      if (!plan) throw new TRPCError({ code: "NOT_FOUND" });
+      const rows = await db
+        .select()
+        .from(marketingWeekMedia)
+        .where(eq(marketingWeekMedia.planId, input.planId))
+        .orderBy(marketingWeekMedia.createdAt);
+      return rows.map(r => ({
+        id: r.id,
+        weekLabel: r.weekLabel,
+        weekFocus: r.weekFocus,
+        createdAt: r.createdAt,
+        result: r.resultJson ? JSON.parse(r.resultJson) : null,
+      }));
+    }),
 });
