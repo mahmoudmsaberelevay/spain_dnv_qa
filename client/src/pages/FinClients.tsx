@@ -1,4 +1,8 @@
 import { useState, useMemo } from "react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import {
   Search, Plus, Phone, MapPin, User, TrendingDown, TrendingUp,
   ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, FileDown, PlusCircle, RefreshCw,
+  Pencil, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -53,6 +58,14 @@ export default function FinClients() {
   const [exportingCsv, setExportingCsv] = useState(false);
   const [paymentClient, setPaymentClient] = useState<{ id: number; name: string; remaining: number } | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
+  // Edit client state
+  const [editClient, setEditClient] = useState<{ id: number; name: string; phone: string } | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  // Delete client state
+  const [deleteClientId, setDeleteClientId] = useState<number | null>(null);
+  const [deleteClientName, setDeleteClientName] = useState("");
+
   const [showRateDialog, setShowRateDialog] = useState(false);
   const [rateInput, setRateInput] = useState("");
   const [showUsdRateDialog, setShowUsdRateDialog] = useState(false);
@@ -139,6 +152,26 @@ export default function FinClients() {
   });
 
   const totalPages = Math.ceil((total ?? 0) / pageSize);
+
+  const updateClientMutation = trpc.financial.clients.update.useMutation({
+    onSuccess: () => {
+      toast.success("Client updated successfully");
+      setEditClient(null);
+      utils.financial.clients.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteClientMutation = trpc.financial.clients.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Client deleted successfully");
+      setDeleteClientId(null);
+      utils.financial.clients.list.invalidate();
+      utils.financial.clients.count.invalidate();
+      utils.financial.clients.totals.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const setPaidAmountMutation = trpc.financial.clients.setPaidAmount.useMutation({
     onSuccess: (data) => {
@@ -553,18 +586,43 @@ export default function FinClients() {
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-xs gap-1 text-blue-700 border-blue-300 hover:bg-blue-50"
-                            onClick={() => {
-                              setPaymentClient({ id: c.id, name: c.name, remaining: Number(c.remainingAmountEur ?? 0) });
-                              setPaymentAmount(String(Number(c.paidAmountEgp ?? 0)));
-                            }}
-                          >
-                            <PlusCircle className="h-3 w-3" /> Edit Paid
-                          </Button>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1 justify-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs gap-1 text-blue-700 border-blue-300 hover:bg-blue-50"
+                              onClick={() => {
+                                setPaymentClient({ id: c.id, name: c.name, remaining: Number(c.remainingAmountEur ?? 0) });
+                                setPaymentAmount(String(Number(c.paidAmountEgp ?? 0)));
+                              }}
+                            >
+                              <PlusCircle className="h-3 w-3" /> Paid
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs gap-1 text-amber-700 border-amber-300 hover:bg-amber-50"
+                              onClick={() => {
+                                setEditClient({ id: c.id, name: c.name, phone: c.phone ?? "" });
+                                setEditName(c.name);
+                                setEditPhone(c.phone ?? "");
+                              }}
+                            >
+                              <Pencil className="h-3 w-3" /> Edit
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs gap-1 text-red-700 border-red-300 hover:bg-red-50"
+                              onClick={() => {
+                                setDeleteClientId(c.id);
+                                setDeleteClientName(c.name);
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -811,6 +869,78 @@ export default function FinClients() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Client Dialog */}
+      <Dialog open={!!editClient} onOpenChange={(open) => { if (!open) setEditClient(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-amber-600" />
+              Edit Client
+            </DialogTitle>
+          </DialogHeader>
+          {editClient && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-1">
+                <Label>Client Name <span className="text-red-500">*</span></Label>
+                <Input
+                  placeholder="Full name"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Phone Number</Label>
+                <Input
+                  placeholder="+20..."
+                  value={editPhone}
+                  onChange={e => setEditPhone(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditClient(null)}>Cancel</Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={!editName.trim() || updateClientMutation.isPending}
+              onClick={() => {
+                if (!editClient || !editName.trim()) return;
+                updateClientMutation.mutate({ id: editClient.id, name: editName.trim(), phone: editPhone.trim() || undefined });
+              }}
+            >
+              {updateClientMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Client Confirmation */}
+      <AlertDialog open={!!deleteClientId} onOpenChange={(open) => { if (!open) setDeleteClientId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" /> Delete Client
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete <strong>{deleteClientName}</strong>? This will remove all their data from the Client Database. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => {
+                if (!deleteClientId) return;
+                deleteClientMutation.mutate({ id: deleteClientId });
+              }}
+            >
+              {deleteClientMutation.isPending ? "Deleting..." : "Delete Client"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Edit Paid Amount Dialog */}
       <Dialog open={!!paymentClient} onOpenChange={(open) => { if (!open) { setPaymentClient(null); setPaymentAmount(""); } }}>

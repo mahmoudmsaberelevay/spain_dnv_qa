@@ -8,7 +8,7 @@ import {
   listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance, recalcAccountBalance, recalcAllAccountBalances,
   listCategories, createCategory, updateCategory, deleteCategory,
   listEmployees, createEmployee, updateEmployee, deleteEmployee,
-  listFinClients, countFinClients, getFinClientTotals, getFinClientById, createFinClient, updateFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment, setClientPaidAmount, recalcClientPaidAmount,
+  listFinClients, countFinClients, getFinClientTotals, getFinClientById, createFinClient, updateFinClient, deleteFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment, setClientPaidAmount, recalcClientPaidAmount,
   bulkDeleteTransactions,
   listCommissions, countCommissions, createCommission, updateCommission, deleteCommission,
   listTransactions, countTransactions, createTransaction, getAccountStatement,
@@ -273,6 +273,14 @@ const finClientsRouter = router({
       const result = await setClientPaidAmount(input.clientId, input.paidAmountEgp);
       if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found' });
       return { newPaidEgp: result.newPaidEgp, newPaidEur: result.newPaidEur, newRemaining: result.newRemaining };
+    }),
+  delete: finAdminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const client = await getFinClientById(input.id);
+      if (!client) throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found' });
+      await deleteFinClient(input.id);
+      return { success: true };
     }),
   exportCsv: finReadProcedure
     .input(z.object({

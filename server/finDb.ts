@@ -364,6 +364,10 @@ export async function updateFinClient(id: number, data: Partial<InsertFinClient>
   const db = await getDb(); if (!db) return;
   await db.update(finClients).set(data).where(eq(finClients.id, id));
 }
+export async function deleteFinClient(id: number) {
+  const db = await getDb(); if (!db) return;
+  await db.delete(finClients).where(eq(finClients.id, id));
+}
 export async function getFinClientByContractId(contractId: number) {
   const db = await getDb(); if (!db) return null;
   const rows = await db.select().from(finClients).where(eq(finClients.contractId, contractId));
