@@ -855,10 +855,8 @@ const contractingRouter = router({
               // Extract client code from contractCode (e.g. "26027" from "26027-001")
               const codeMatch = contract.contractCode?.match(/^(\d+)/);
               const extractedCode = codeMatch ? codeMatch[1] : undefined;
-              // Net contract value = contractValue - discountValue (discount already applied)
-              const cvEur = Number(contract.contractValue ?? 0);
-              const discountEur = Number(contract.discountValue ?? 0);
-              const netCvEur = Math.max(0, cvEur - discountEur);
+              // contractValue is already the net value (applyContractDiscount reduces it in-place)
+              const netCvEur = Number(contract.contractValue ?? 0);
               const finClient = await createFinClient({
                 name: contract.invoicingName ?? contract.clientName,
                 contractId: contract.id,
@@ -954,8 +952,8 @@ const contractingRouter = router({
         const amountEgp = convertEurToEgp(input.amountEur, rateInfo.rate);
         const invoiceCode = generateInvoiceCode();
         const totalPaid = await getTotalPaidByContractId(input.contractId);
-        // Contract value after discount (this is what the client owes)
-        const contractValue = Number(contract.contractValue) - Number(contract.discountValue ?? 0);
+        // contractValue is already net (applyContractDiscount reduces it in-place — do NOT subtract discountValue again)
+        const contractValue = Number(contract.contractValue);
         const remainingBalance = contractValue - totalPaid - input.amountEur;
         const billingName = contract.invoicingName || contract.clientName;
         const clientMobile = contract.clientMobile || "";
@@ -1146,7 +1144,8 @@ const contractingRouter = router({
         if (invoice.contractId != null) {
           // Contract receipt: use contract value minus discount
           const contract = await getContractById(invoice.contractId);
-          contractValue = Number(contract?.contractValue ?? 0) - Number(contract?.discountValue ?? 0);
+          // contractValue is already net (applyContractDiscount reduces it in-place — do NOT subtract discountValue again)
+          contractValue = Number(contract?.contractValue ?? 0);
           totalPaid = await getTotalPaidByContractId(invoice.contractId);
           remainingBalance = Math.max(0, contractValue - totalPaid);
           clientMobile = contract?.clientMobile ?? undefined;
