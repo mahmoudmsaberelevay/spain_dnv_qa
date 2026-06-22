@@ -1209,7 +1209,8 @@ const contractingRouter = router({
         if (input.contractId) {
           const contract = await getContractById(input.contractId);
           if (!contract) throw new TRPCError({ code: "NOT_FOUND", message: "Contract not found" });
-          clientName = contract.clientName;
+          // Prefer the English invoicing name; fall back to clientName if not set
+          clientName = (contract.invoicingName && contract.invoicingName.trim()) ? contract.invoicingName.trim() : contract.clientName;
           contractCode = contract.contractCode;
         } else if (input.legacyFinClientId) {
           // Look up the financial client name so the PDF shows the real name
