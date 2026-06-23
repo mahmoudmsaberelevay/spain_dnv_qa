@@ -494,6 +494,10 @@ function OverviewEditor({ page, summaryId, onChange }: { page: PageData; summary
   return (
     <div className="space-y-4">
       <div>
+        <Label className="text-gray-400 text-xs mb-2 block font-semibold text-teal-400">Headlines &amp; Bullet Points</Label>
+        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
+      </div>
+      <div className="border-t border-white/10 pt-4">
         <Label className="text-gray-400 text-xs mb-1.5 block">Right Column Photo</Label>
         <PhotoUploadButton pageId={page.id} summaryId={summaryId} currentUrl={page.photoUrl}
           onUploaded={url => onChange({ ...page, photoUrl: url })} />
@@ -518,10 +522,6 @@ function OverviewEditor({ page, summaryId, onChange }: { page: PageData; summary
         <InfoRowEditor rows={(c.infoRows || []) as InfoRow[]} onChange={rows => set("infoRows", rows)}
           labelPlaceholder="LABEL (teal)" valuePlaceholder="Value (bold navy)" />
       </div>
-      <div className="border-t border-white/10 pt-4">
-        <Label className="text-gray-400 text-xs mb-2 block">Headlines &amp; Bullet Points</Label>
-        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
-      </div>
       <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
@@ -540,6 +540,10 @@ function EligibilityEditor({ page, summaryId, onChange }: { page: PageData; summ
   return (
     <div className="space-y-4">
       <div>
+        <Label className="text-gray-400 text-xs mb-2 block font-semibold text-teal-400">Headlines &amp; Bullet Points</Label>
+        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
+      </div>
+      <div className="border-t border-white/10 pt-4">
         <Label className="text-gray-400 text-xs mb-1.5 block">Page Photo (optional)</Label>
         <PhotoUploadButton pageId={page.id} summaryId={summaryId} currentUrl={page.photoUrl}
           onUploaded={url => onChange({ ...page, photoUrl: url })} />
@@ -559,10 +563,6 @@ function EligibilityEditor({ page, summaryId, onChange }: { page: PageData; summ
           <BulletListEditor items={(c.idealCandidateBullets || []) as string[]} onChange={items => set("idealCandidateBullets", items)} />
         </div>
       </div>
-      <div className="border-t border-white/10 pt-4">
-        <Label className="text-gray-400 text-xs mb-2 block">Headlines &amp; Bullet Points</Label>
-        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
-      </div>
       <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
@@ -575,6 +575,10 @@ function ProcessEditor({ page, summaryId, onChange }: { page: PageData; summaryI
   return (
     <div className="space-y-4">
       <div>
+        <Label className="text-gray-400 text-xs mb-2 block font-semibold text-teal-400">Headlines &amp; Bullet Points</Label>
+        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
+      </div>
+      <div className="border-t border-white/10 pt-4">
         <Label className="text-gray-400 text-xs mb-1.5 block">Page Photo (optional)</Label>
         <PhotoUploadButton pageId={page.id} summaryId={summaryId} currentUrl={page.photoUrl}
           onUploaded={url => onChange({ ...page, photoUrl: url })} />
@@ -589,10 +593,6 @@ function ProcessEditor({ page, summaryId, onChange }: { page: PageData; summaryI
           className="bg-[#0f1623] border-white/10 text-white text-sm mb-2" placeholder="Fees section heading" />
         <InfoRowEditor rows={(c.feeRows || []) as InfoRow[]} onChange={rows => set("feeRows", rows)}
           labelPlaceholder="Fee type" valuePlaceholder="Amount" />
-      </div>
-      <div className="border-t border-white/10 pt-4">
-        <Label className="text-gray-400 text-xs mb-2 block">Headlines &amp; Bullet Points</Label>
-        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
       </div>
       <TypographyPanel page={page} onChange={onChange} />
     </div>
@@ -611,6 +611,10 @@ function AboutEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
   return (
     <div className="space-y-4">
       <div>
+        <Label className="text-gray-400 text-xs mb-2 block font-semibold text-teal-400">Headlines &amp; Bullet Points</Label>
+        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
+      </div>
+      <div className="border-t border-white/10 pt-4">
         <Label className="text-gray-400 text-xs mb-1.5 block">Left Column Photo</Label>
         <PhotoUploadButton pageId={page.id} summaryId={summaryId} currentUrl={page.photoUrl}
           onUploaded={url => onChange({ ...page, photoUrl: url })} />
@@ -640,10 +644,6 @@ function AboutEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
           className="bg-[#0f1623] border-white/10 text-white text-sm mb-2" />
         <BulletListEditor items={(c.memberships || []) as string[]} onChange={items => set("memberships", items)} placeholder="e.g. United Nations" />
       </div>
-      <div className="border-t border-white/10 pt-4">
-        <Label className="text-gray-400 text-xs mb-2 block">Headlines &amp; Bullet Points</Label>
-        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
-      </div>
       <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
@@ -661,6 +661,10 @@ function BlankEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
   return (
     <div className="space-y-4">
       <div>
+        <Label className="text-gray-400 text-xs mb-2 block font-semibold text-teal-400">Headlines &amp; Bullet Points</Label>
+        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
+      </div>
+      <div className="border-t border-white/10 pt-4">
         <Label className="text-gray-400 text-xs mb-1.5 block">Photo (optional)</Label>
         <PhotoUploadButton pageId={page.id} summaryId={summaryId} currentUrl={page.photoUrl}
           onUploaded={url => onChange({ ...page, photoUrl: url })} />
@@ -707,10 +711,6 @@ function BlankEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
             <Plus className="w-3 h-3" /> List
           </button>
         </div>
-      </div>
-      <div className="border-t border-white/10 pt-4">
-        <Label className="text-gray-400 text-xs mb-2 block">Headlines &amp; Bullet Points</Label>
-        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
       </div>
       <TypographyPanel page={page} onChange={onChange} />
     </div>

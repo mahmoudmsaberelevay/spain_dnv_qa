@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -591,15 +592,16 @@ export default function Invoices() {
 
               <div className="space-y-2">
                 <Label htmlFor="notes">Notes <span className="text-red-500">*</span></Label>
-                <Input
+                <Textarea
                   id="notes"
                   placeholder="e.g. First installment, Second payment..."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   required
-                  className="h-10"
+                  className="min-h-[80px] resize-none"
+                  rows={3}
                 />
-                <p className="text-xs text-muted-foreground">Required — describe the payment context (e.g. "1st installment")</p>
+                <p className="text-xs text-muted-foreground">Required — describe the payment context. Press Enter for a new line.</p>
               </div>
 
               <DialogFooter className="pt-2">
@@ -714,12 +716,13 @@ export default function Invoices() {
 
               <div className="space-y-2">
                 <Label htmlFor="legacyNotes">Notes</Label>
-                <Input
+                <Textarea
                   id="legacyNotes"
                   placeholder="e.g. 2nd installment, balance payment..."
                   value={legacyNotes}
                   onChange={(e) => setLegacyNotes(e.target.value)}
-                  className="h-10"
+                  className="min-h-[80px] resize-none"
+                  rows={3}
                 />
               </div>
 
