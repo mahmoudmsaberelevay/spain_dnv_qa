@@ -522,6 +522,7 @@ const transactionsRouter = router({
       accountId: z.number(),
       categoryId: z.number(),
       note: z.string().optional(),
+      evidenceLink: z.string().url().optional().or(z.literal("")),
       finClientId: z.number().optional(),
       amount: z.number().positive(),
       transactionDate: z.date(),
@@ -538,6 +539,7 @@ const transactionsRouter = router({
         accountId: input.accountId,
         categoryId: input.categoryId,
         note: input.note ?? null,
+        evidenceLink: input.evidenceLink || null,
         finClientId: input.finClientId ?? null,
         amount: input.amount.toString(),
         transactionDate: input.transactionDate,
@@ -560,6 +562,7 @@ const transactionsRouter = router({
       accountId: z.number(),
       categoryId: z.number(),
       note: z.string().optional(),
+      evidenceLink: z.string().url().optional().or(z.literal("")),
       employeeId: z.number().optional(),
       finClientId: z.number().optional(),
       amount: z.number().positive(),
@@ -577,6 +580,7 @@ const transactionsRouter = router({
         accountId: input.accountId,
         categoryId: input.categoryId,
         note: input.note ?? null,
+        evidenceLink: input.evidenceLink || null,
         employeeId: input.employeeId ?? null,
         finClientId: input.finClientId ?? null,
         amount: input.amount.toString(),
@@ -597,6 +601,7 @@ const transactionsRouter = router({
       id: z.number(),
       description: z.string().min(1).optional(),
       note: z.string().optional(),
+      evidenceLink: z.string().url().optional().or(z.literal("")).nullable(),
       transactionDate: z.date().optional(),
       categoryId: z.number().optional(),
       finClientId: z.number().nullable().optional(),
@@ -613,6 +618,7 @@ const transactionsRouter = router({
       const updateData: Record<string, unknown> = {};
       if (fields.description !== undefined) updateData.description = fields.description;
       if (fields.note !== undefined) updateData.note = fields.note;
+      if (fields.evidenceLink !== undefined) updateData.evidenceLink = fields.evidenceLink || null;
       if (fields.transactionDate !== undefined) updateData.transactionDate = fields.transactionDate;
       if (fields.categoryId !== undefined) updateData.categoryId = fields.categoryId;
       if (fields.finClientId !== undefined) updateData.finClientId = fields.finClientId;

@@ -117,9 +117,9 @@ export default function FinIncome() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDeleteOne, setConfirmDeleteOne] = useState<number | null>(null);
   const [editTx, setEditTx] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ description: "", note: "", transactionDate: "", categoryId: "", finClientId: "", amount: "" });
+  const [editForm, setEditForm] = useState({ description: "", note: "", evidenceLink: "", transactionDate: "", categoryId: "", finClientId: "", amount: "" });
   const [form, setForm] = useState({
-    description: "", accountId: "", categoryId: "", amount: "", note: "", finClientId: "",
+    description: "", accountId: "", categoryId: "", amount: "", note: "", evidenceLink: "", finClientId: "",
     transactionDate: new Date().toISOString().split("T")[0],
   });
 
@@ -158,6 +158,7 @@ export default function FinIncome() {
       categoryId: Number(form.categoryId),
       amount: Number(form.amount),
       note: form.note || undefined,
+      evidenceLink: form.evidenceLink || undefined,
       finClientId: form.finClientId && form.finClientId !== "none" ? Number(form.finClientId) : undefined,
       transactionDate: new Date(form.transactionDate),
     });
@@ -299,6 +300,7 @@ export default function FinIncome() {
                     <th className="text-left py-2 font-medium">Client</th>
                     <th className="text-right py-2 font-medium">Amount</th>
                     <th className="text-right py-2 font-medium">Balance After</th>
+                    <th className="text-center py-2 font-medium">Evidence</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -314,8 +316,16 @@ export default function FinIncome() {
                       <td className="py-2 text-muted-foreground text-xs">{tx.finClientId ? (clientMap.get(tx.finClientId) ?? "—") : "—"}</td>
                       <td className="py-2 text-right text-green-600 font-semibold">{fmt(Number(tx.amount))}</td>
                       <td className="py-2 text-right">{tx.balanceAfter ? fmt(Number(tx.balanceAfter)) : "—"}</td>
+                      <td className="py-2 text-center">
+                        {(tx as any).evidenceLink ? (
+                          <a href={(tx as any).evidenceLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                            View
+                          </a>
+                        ) : <span className="text-muted-foreground text-xs">—</span>}
+                      </td>
                       <td className="py-2 text-right">
-                        <Button variant="ghost" size="sm" onClick={() => { setEditTx(tx); setEditForm({ description: tx.description, note: tx.note ?? "", transactionDate: new Date(tx.transactionDate).toISOString().split("T")[0], categoryId: tx.categoryId ? String(tx.categoryId) : "", finClientId: tx.finClientId ? String(tx.finClientId) : "none", amount: String(Number(tx.amount)) }); }}>
+                        <Button variant="ghost" size="sm" onClick={() => { setEditTx(tx); setEditForm({ description: tx.description, note: tx.note ?? "", evidenceLink: (tx as any).evidenceLink ?? "", transactionDate: new Date(tx.transactionDate).toISOString().split("T")[0], categoryId: tx.categoryId ? String(tx.categoryId) : "", finClientId: tx.finClientId ? String(tx.finClientId) : "none", amount: String(Number(tx.amount)) }); }}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => setConfirmDeleteOne(tx.id)}>
@@ -425,10 +435,14 @@ export default function FinIncome() {
               <label className="text-sm font-medium">Note</label>
               <Textarea value={editForm.note} onChange={e => setEditForm(f => ({ ...f, note: e.target.value }))} rows={2} />
             </div>
+            <div>
+              <label className="text-sm font-medium">Evidence Link (optional)</label>
+              <Input value={editForm.evidenceLink} onChange={e => setEditForm(f => ({ ...f, evidenceLink: e.target.value }))} placeholder="https://drive.google.com/..." />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditTx(null)}>Cancel</Button>
-            <Button onClick={() => updateMut.mutate({ id: editTx.id, description: editForm.description || undefined, note: editForm.note || undefined, transactionDate: editForm.transactionDate ? new Date(editForm.transactionDate) : undefined, categoryId: editForm.categoryId ? Number(editForm.categoryId) : undefined, finClientId: editForm.finClientId && editForm.finClientId !== "none" ? Number(editForm.finClientId) : null, amount: editForm.amount ? Number(editForm.amount) : undefined })} disabled={updateMut.isPending}>
+            <Button onClick={() => updateMut.mutate({ id: editTx.id, description: editForm.description || undefined, note: editForm.note || undefined, evidenceLink: editForm.evidenceLink || "", transactionDate: editForm.transactionDate ? new Date(editForm.transactionDate) : undefined, categoryId: editForm.categoryId ? Number(editForm.categoryId) : undefined, finClientId: editForm.finClientId && editForm.finClientId !== "none" ? Number(editForm.finClientId) : null, amount: editForm.amount ? Number(editForm.amount) : undefined })} disabled={updateMut.isPending}>
               {updateMut.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
@@ -478,6 +492,10 @@ export default function FinIncome() {
             <div>
               <label className="text-sm font-medium">Note</label>
               <Textarea value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="Optional note" rows={2} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Evidence Link (optional)</label>
+              <Input value={form.evidenceLink} onChange={e => setForm(f => ({ ...f, evidenceLink: e.target.value }))} placeholder="https://drive.google.com/..." />
             </div>
           </div>
           <DialogFooter>

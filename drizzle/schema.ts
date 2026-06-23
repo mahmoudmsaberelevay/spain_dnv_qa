@@ -408,6 +408,7 @@ export const finTransactions = mysqlTable("finTransactions", {
   // For transfer: second account balance tracking
   balanceBefore2: decimal("balanceBefore2", { precision: 14, scale: 2 }),
   balanceAfter2: decimal("balanceAfter2", { precision: 14, scale: 2 }),
+  evidenceLink: varchar("evidenceLink", { length: 1000 }),
   createdBy: varchar("createdBy", { length: 320 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
