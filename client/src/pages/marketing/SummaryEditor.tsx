@@ -50,6 +50,11 @@ export interface Stage { heading: string; text: string; }
 export interface FeeRow { label: string; value: string; }
 export interface ContentBlock { type: "text" | "image" | "list"; text?: string; items?: string[]; imageUrl?: string; }
 
+/** A single bullet point with optional full description */
+export interface HeadlineBullet { id: string; text: string; description: string; }
+/** A headline with its own bullet points */
+export interface Headline { id: string; title: string; bullets: HeadlineBullet[]; }
+
 /** Per-page typography overrides — stored inside page.content.style */
 export interface PageStyle {
   headingFontSize?: number;
@@ -366,6 +371,83 @@ function StagesEditor({ stages, onChange }: { stages: Stage[]; onChange: (s: Sta
   );
 }
 
+// ─── Headlines & Bullets Editor ──────────────────────────────────────────────
+function HeadlinesEditor({ headlines, onChange }: { headlines: Headline[]; onChange: (h: Headline[]) => void }) {
+  const newId = () => Math.random().toString(36).slice(2, 9);
+
+  const addHeadline = () => onChange([...headlines, { id: newId(), title: "", bullets: [] }]);
+  const removeHeadline = (hid: string) => onChange(headlines.filter(h => h.id !== hid));
+  const updateTitle = (hid: string, title: string) =>
+    onChange(headlines.map(h => h.id === hid ? { ...h, title } : h));
+
+  const addBullet = (hid: string) =>
+    onChange(headlines.map(h => h.id === hid
+      ? { ...h, bullets: [...h.bullets, { id: newId(), text: "", description: "" }] }
+      : h));
+  const removeBullet = (hid: string, bid: string) =>
+    onChange(headlines.map(h => h.id === hid
+      ? { ...h, bullets: h.bullets.filter(b => b.id !== bid) }
+      : h));
+  const updateBullet = (hid: string, bid: string, field: "text" | "description", val: string) =>
+    onChange(headlines.map(h => h.id === hid
+      ? { ...h, bullets: h.bullets.map(b => b.id === bid ? { ...b, [field]: val } : b) }
+      : h));
+
+  return (
+    <div className="space-y-3">
+      {headlines.map((h, hi) => (
+        <div key={h.id} className="bg-[#0f1623] rounded-xl border border-white/10 overflow-hidden">
+          {/* Headline row */}
+          <div className="flex items-center gap-2 px-3 py-2 bg-[#141c2b]">
+            <div className="w-5 h-5 rounded flex items-center justify-center text-white text-[9px] font-bold shrink-0" style={{ background: COLORS.teal }}>{hi + 1}</div>
+            <Input
+              value={h.title}
+              onChange={e => updateTitle(h.id, e.target.value)}
+              placeholder="Headline title..."
+              className="bg-transparent border-none text-white text-xs h-6 p-0 font-semibold flex-1"
+            />
+            <button onClick={() => removeHeadline(h.id)} className="p-1 text-gray-500 hover:text-red-400 transition-colors shrink-0">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          {/* Bullets */}
+          <div className="px-3 py-2 space-y-2">
+            {h.bullets.map((b) => (
+              <div key={b.id} className="bg-[#141c2b] rounded-lg p-2.5 border border-white/5 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: COLORS.teal }} />
+                  <Input
+                    value={b.text}
+                    onChange={e => updateBullet(h.id, b.id, "text", e.target.value)}
+                    placeholder="Bullet point text..."
+                    className="bg-transparent border-none text-white text-xs h-6 p-0 flex-1"
+                  />
+                  <button onClick={() => removeBullet(h.id, b.id)} className="p-1 text-gray-500 hover:text-red-400 transition-colors shrink-0">
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+                <Textarea
+                  value={b.description}
+                  onChange={e => updateBullet(h.id, b.id, "description", e.target.value)}
+                  placeholder="Optional full description for this bullet point..."
+                  className="bg-[#0f1623] border-white/10 text-gray-400 text-xs min-h-[44px] resize-none"
+                  rows={2}
+                />
+              </div>
+            ))}
+            <button onClick={() => addBullet(h.id)} className="flex items-center gap-1.5 text-xs text-teal-500 hover:text-teal-300 transition-colors pl-0.5">
+              <Plus className="w-3 h-3" /> Add Bullet
+            </button>
+          </div>
+        </div>
+      ))}
+      <button onClick={addHeadline} className="flex items-center gap-1.5 text-xs font-medium text-teal-400 hover:text-teal-300 transition-colors border border-dashed border-teal-500/40 hover:border-teal-400/60 rounded-lg px-3 py-2 w-full justify-center">
+        <Plus className="w-3.5 h-3.5" /> Add Headline
+      </button>
+    </div>
+  );
+}
+
 // ─── Content Editors per Template ─────────────────────────────────────────────
 function CoverEditor({ page, summaryId, onChange }: { page: PageData; summaryId: number; onChange: (p: PageData) => void }) {
   const c = page.content as { countryName?: string; programLabel?: string; programSubtype?: string; summaryLabel?: string };
@@ -406,7 +488,7 @@ function CoverEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
 }
 
 function OverviewEditor({ page, summaryId, onChange }: { page: PageData; summaryId: number; onChange: (p: PageData) => void }) {
-  const c = page.content as { sectionLabel?: string; heading?: string; intro?: string; infoRows?: InfoRow[] };
+  const c = page.content as { sectionLabel?: string; heading?: string; intro?: string; infoRows?: InfoRow[]; headlines?: Headline[] };
   const set = (key: string, val: unknown) => onChange({ ...page, content: { ...page.content, [key]: val } });
 
   return (
@@ -436,6 +518,10 @@ function OverviewEditor({ page, summaryId, onChange }: { page: PageData; summary
         <InfoRowEditor rows={(c.infoRows || []) as InfoRow[]} onChange={rows => set("infoRows", rows)}
           labelPlaceholder="LABEL (teal)" valuePlaceholder="Value (bold navy)" />
       </div>
+      <div className="border-t border-white/10 pt-4">
+        <Label className="text-gray-400 text-xs mb-2 block">Headlines &amp; Bullet Points</Label>
+        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
+      </div>
       <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
@@ -447,6 +533,7 @@ function EligibilityEditor({ page, summaryId, onChange }: { page: PageData; summ
     idealCandidateHeading?: string;
     idealCandidateIntro?: string;
     idealCandidateBullets?: string[];
+    headlines?: Headline[];
   };
   const set = (key: string, val: unknown) => onChange({ ...page, content: { ...page.content, [key]: val } });
 
@@ -472,13 +559,17 @@ function EligibilityEditor({ page, summaryId, onChange }: { page: PageData; summ
           <BulletListEditor items={(c.idealCandidateBullets || []) as string[]} onChange={items => set("idealCandidateBullets", items)} />
         </div>
       </div>
+      <div className="border-t border-white/10 pt-4">
+        <Label className="text-gray-400 text-xs mb-2 block">Headlines &amp; Bullet Points</Label>
+        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
+      </div>
       <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
 }
 
 function ProcessEditor({ page, summaryId, onChange }: { page: PageData; summaryId: number; onChange: (p: PageData) => void }) {
-  const c = page.content as { stages?: Stage[]; feesHeading?: string; feeRows?: FeeRow[] };
+  const c = page.content as { stages?: Stage[]; feesHeading?: string; feeRows?: FeeRow[]; headlines?: Headline[] };
   const set = (key: string, val: unknown) => onChange({ ...page, content: { ...page.content, [key]: val } });
 
   return (
@@ -499,6 +590,10 @@ function ProcessEditor({ page, summaryId, onChange }: { page: PageData; summaryI
         <InfoRowEditor rows={(c.feeRows || []) as InfoRow[]} onChange={rows => set("feeRows", rows)}
           labelPlaceholder="Fee type" valuePlaceholder="Amount" />
       </div>
+      <div className="border-t border-white/10 pt-4">
+        <Label className="text-gray-400 text-xs mb-2 block">Headlines &amp; Bullet Points</Label>
+        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
+      </div>
       <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
@@ -509,6 +604,7 @@ function AboutEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
     heading?: string; paragraphs?: string[]; infoRows?: InfoRow[];
     rankingsHeading?: string; rankings?: string[];
     membershipsHeading?: string; memberships?: string[];
+    headlines?: Headline[];
   };
   const set = (key: string, val: unknown) => onChange({ ...page, content: { ...page.content, [key]: val } });
 
@@ -544,13 +640,17 @@ function AboutEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
           className="bg-[#0f1623] border-white/10 text-white text-sm mb-2" />
         <BulletListEditor items={(c.memberships || []) as string[]} onChange={items => set("memberships", items)} placeholder="e.g. United Nations" />
       </div>
+      <div className="border-t border-white/10 pt-4">
+        <Label className="text-gray-400 text-xs mb-2 block">Headlines &amp; Bullet Points</Label>
+        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
+      </div>
       <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
 }
 
 function BlankEditor({ page, summaryId, onChange }: { page: PageData; summaryId: number; onChange: (p: PageData) => void }) {
-  const c = page.content as { layout?: string; blocks?: ContentBlock[] };
+  const c = page.content as { layout?: string; blocks?: ContentBlock[]; headlines?: Headline[] };
   const set = (key: string, val: unknown) => onChange({ ...page, content: { ...page.content, [key]: val } });
   const blocks = (c.blocks || []) as ContentBlock[];
   const addBlock = (type: ContentBlock["type"]) => set("blocks", [...blocks, { type, text: "", items: [], imageUrl: "" }]);
@@ -607,6 +707,10 @@ function BlankEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
             <Plus className="w-3 h-3" /> List
           </button>
         </div>
+      </div>
+      <div className="border-t border-white/10 pt-4">
+        <Label className="text-gray-400 text-xs mb-2 block">Headlines &amp; Bullet Points</Label>
+        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
       </div>
       <TypographyPanel page={page} onChange={onChange} />
     </div>
@@ -678,8 +782,9 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
   }
 
   if (page.template === "overview") {
-    const c = page.content as { sectionLabel?: string; heading?: string; intro?: string; infoRows?: InfoRow[] };
+    const c = page.content as { sectionLabel?: string; heading?: string; intro?: string; infoRows?: InfoRow[]; headlines?: Headline[] };
     const rows = (c.infoRows || []) as InfoRow[];
+    const headlines = (c.headlines || []) as Headline[];
     return (
       <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
         {header}
@@ -695,6 +800,20 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
                 <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor }}>{row.value}</div>
               </div>
             ))}
+            {headlines.map((h, hi) => (
+              <div key={hi} style={{ marginTop: "5px" }}>
+                <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6.5px", fontWeight: 700, color: headingColor, marginBottom: "2px" }}>{h.title}</div>
+                {h.bullets.map((b, bi) => (
+                  <div key={bi} style={{ marginBottom: "2px" }}>
+                    <div style={{ display: "flex", gap: "3px", alignItems: "flex-start" }}>
+                      <div style={{ width: "3px", height: "3px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
+                      <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, fontWeight: 500 }}>{b.text}</div>
+                    </div>
+                    {b.description && <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5px", color: bodyColor, lineHeight: 1.4, paddingLeft: "6px", opacity: 0.8 }}>{b.description}</div>}
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
           <div style={{ width: "55%", overflow: "hidden" }}>
             {page.photoUrl ? <img src={page.photoUrl} alt="overview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -707,9 +826,10 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
   }
 
   if (page.template === "eligibility") {
-    const c = page.content as { requirements?: Requirement[]; idealCandidateHeading?: string; idealCandidateIntro?: string; idealCandidateBullets?: string[] };
+    const c = page.content as { requirements?: Requirement[]; idealCandidateHeading?: string; idealCandidateIntro?: string; idealCandidateBullets?: string[]; headlines?: Headline[] };
     const reqs = (c.requirements || []) as Requirement[];
     const bullets = (c.idealCandidateBullets || []) as string[];
+    const headlines = (c.headlines || []) as Headline[];
     return (
       <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
         {header}
@@ -735,6 +855,20 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
                   <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor }}>{b}</div>
                 </div>
               ))}
+              {headlines.map((h, hi) => (
+                <div key={hi} style={{ marginTop: "5px" }}>
+                  <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor, marginBottom: "2px" }}>{h.title}</div>
+                  {h.bullets.map((b, bi) => (
+                    <div key={bi} style={{ marginBottom: "2px" }}>
+                      <div style={{ display: "flex", gap: "3px" }}>
+                        <div style={{ width: "3px", height: "3px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
+                        <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, fontWeight: 500 }}>{b.text}</div>
+                      </div>
+                      {b.description && <div style={{ fontSize: "5px", color: bodyColor, lineHeight: 1.4, paddingLeft: "6px", opacity: 0.8 }}>{b.description}</div>}
+                    </div>
+                  ))}
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -744,9 +878,10 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
   }
 
   if (page.template === "process") {
-    const c = page.content as { stages?: Stage[]; feesHeading?: string; feeRows?: FeeRow[] };
+    const c = page.content as { stages?: Stage[]; feesHeading?: string; feeRows?: FeeRow[]; headlines?: Headline[] };
     const stages = (c.stages || []) as Stage[];
     const feeRows = (c.feeRows || []) as FeeRow[];
+    const headlines = (c.headlines || []) as Headline[];
     return (
       <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
         {header}
@@ -776,6 +911,20 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
                 </div>
               </div>
             ))}
+            {headlines.map((h, hi) => (
+              <div key={hi} style={{ marginTop: "5px" }}>
+                <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor, marginBottom: "2px" }}>{h.title}</div>
+                {h.bullets.map((b, bi) => (
+                  <div key={bi} style={{ marginBottom: "2px" }}>
+                    <div style={{ display: "flex", gap: "3px" }}>
+                      <div style={{ width: "3px", height: "3px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
+                      <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, fontWeight: 500 }}>{b.text}</div>
+                    </div>
+                    {b.description && <div style={{ fontSize: "5px", color: bodyColor, lineHeight: 1.4, paddingLeft: "6px", opacity: 0.8 }}>{b.description}</div>}
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
         {footer}
@@ -784,9 +933,10 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
   }
 
   if (page.template === "about") {
-    const c = page.content as { heading?: string; paragraphs?: string[]; infoRows?: InfoRow[]; rankingsHeading?: string; rankings?: string[] };
+    const c = page.content as { heading?: string; paragraphs?: string[]; infoRows?: InfoRow[]; rankingsHeading?: string; rankings?: string[]; headlines?: Headline[] };
     const rows = (c.infoRows || []) as InfoRow[];
     const rankings = (c.rankings || []) as string[];
+    const headlines = (c.headlines || []) as Headline[];
     return (
       <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
         {header}
@@ -815,6 +965,20 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
                 ))}
               </div>
             )}
+            {headlines.map((h, hi) => (
+              <div key={hi} style={{ marginTop: "5px" }}>
+                <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor, marginBottom: "2px" }}>{h.title}</div>
+                {h.bullets.map((b, bi) => (
+                  <div key={bi} style={{ marginBottom: "2px" }}>
+                    <div style={{ display: "flex", gap: "3px" }}>
+                      <div style={{ width: "3px", height: "3px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
+                      <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, fontWeight: 500 }}>{b.text}</div>
+                    </div>
+                    {b.description && <div style={{ fontSize: "5px", color: bodyColor, lineHeight: 1.4, paddingLeft: "6px", opacity: 0.8 }}>{b.description}</div>}
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
         {footer}
@@ -823,25 +987,44 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
   }
 
   // Blank
-  const c = page.content as { layout?: string; blocks?: ContentBlock[] };
+  const c = page.content as { layout?: string; blocks?: ContentBlock[]; headlines?: Headline[] };
   const blocks = (c.blocks || []) as ContentBlock[];
+  const headlines = (c.headlines || []) as Headline[];
   return (
     <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
       {header}
       <div style={{ flex: 1, padding: "10px 16px", overflow: "hidden" }}>
-        {blocks.length === 0
-          ? <div style={{ color: "#ccc", fontSize: "7px", textAlign: "center", marginTop: "30px" }}>Empty page — add content blocks</div>
-          : blocks.map((block, i) => (
-              <div key={i} style={{ marginBottom: "6px" }}>
-                {block.type === "text" && <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "6px", color: bodyColor, lineHeight: 1.5 }}>{block.text}</div>}
-                {block.type === "list" && (block.items || []).map((item, j) => (
-                  <div key={j} style={{ display: "flex", gap: "4px", marginBottom: "2px" }}>
-                    <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
-                    <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor }}>{item}</div>
-                  </div>
-                ))}
-              </div>
-            ))
+        {blocks.length === 0 && headlines.length === 0
+          ? <div style={{ color: "#ccc", fontSize: "7px", textAlign: "center", marginTop: "30px" }}>Empty page — add content blocks or headlines</div>
+          : (
+            <>
+              {blocks.map((block, i) => (
+                <div key={i} style={{ marginBottom: "6px" }}>
+                  {block.type === "text" && <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "6px", color: bodyColor, lineHeight: 1.5 }}>{block.text}</div>}
+                  {block.type === "list" && (block.items || []).map((item, j) => (
+                    <div key={j} style={{ display: "flex", gap: "4px", marginBottom: "2px" }}>
+                      <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
+                      <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor }}>{item}</div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              {headlines.map((h, hi) => (
+                <div key={hi} style={{ marginBottom: "6px" }}>
+                  <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "7px", fontWeight: 700, color: headingColor, marginBottom: "3px" }}>{h.title}</div>
+                  {h.bullets.map((b, bi) => (
+                    <div key={bi} style={{ marginBottom: "2px" }}>
+                      <div style={{ display: "flex", gap: "3px" }}>
+                        <div style={{ width: "3px", height: "3px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
+                        <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, fontWeight: 500 }}>{b.text}</div>
+                      </div>
+                      {b.description && <div style={{ fontSize: "5px", color: bodyColor, lineHeight: 1.4, paddingLeft: "6px", opacity: 0.8 }}>{b.description}</div>}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </>
+          )
         }
       </div>
       {footer}
@@ -1064,8 +1247,10 @@ export default function SummaryEditor() {
         }
 
         if (page.template === "overview") {
-          const c = page.content as { sectionLabel?: string; heading?: string; intro?: string; infoRows?: InfoRow[] };
+          const c = page.content as { sectionLabel?: string; heading?: string; intro?: string; infoRows?: InfoRow[]; headlines?: Headline[] };
           const rows = (c.infoRows || []) as InfoRow[];
+          const headlines = (c.headlines || []) as Headline[];
+          const headlinesHtml = headlines.map(h => `<div style="margin-top:10px;"><div style="font-size:${hFs ? hFs - 2 : 12}px;font-weight:700;color:${hColor};margin-bottom:4px;">${h.title}</div>${h.bullets.map(b => `<div style="margin-bottom:4px;"><div style="display:flex;gap:5px;align-items:flex-start;"><div style="width:5px;height:5px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};font-weight:500;">${b.text}</div></div>${b.description ? `<div style="font-size:${bFs ? bFs - 1 : 9}px;color:${bColor};line-height:1.4;padding-left:10px;opacity:0.8;">${b.description}</div>` : ""}</div>`).join("")}</div>`).join("");
           return `<div class="page" style="display:flex;flex-direction:column;font-family:'Montserrat',sans-serif;">
             ${headerHtml(doc.country, doc.programType)}
             <div style="flex:1;display:flex;overflow:hidden;">
@@ -1076,6 +1261,7 @@ export default function SummaryEditor() {
                 ${rows.map((row, i) => `${i > 0 ? `<div style="height:1px;background:${COLORS.divider};margin:8px 0;"></div>` : ""}
                   <div style="font-size:8px;letter-spacing:0.12em;color:${aColor};text-transform:uppercase;">${row.label}</div>
                   <div style="font-size:${bFs || 11}px;font-weight:700;color:${hColor};">${row.value}</div>`).join("")}
+                ${headlinesHtml}
               </div>
               <div style="width:55%;overflow:hidden;">
                 ${page.photoUrl ? `<img src="${page.photoUrl}" style="width:100%;height:100%;object-fit:cover;" />` : `<div style="width:100%;height:100%;background:#f0f4f8;display:flex;align-items:center;justify-content:center;color:#ccc;">No Photo</div>`}
@@ -1086,9 +1272,11 @@ export default function SummaryEditor() {
         }
 
         if (page.template === "eligibility") {
-          const c = page.content as { requirements?: Requirement[]; idealCandidateHeading?: string; idealCandidateIntro?: string; idealCandidateBullets?: string[] };
+          const c = page.content as { requirements?: Requirement[]; idealCandidateHeading?: string; idealCandidateIntro?: string; idealCandidateBullets?: string[]; headlines?: Headline[] };
           const reqs = (c.requirements || []) as Requirement[];
           const bullets = (c.idealCandidateBullets || []) as string[];
+          const headlines = (c.headlines || []) as Headline[];
+          const headlinesHtml = headlines.map(h => `<div style="margin-top:8px;"><div style="font-size:${hFs ? hFs - 2 : 11}px;font-weight:700;color:${hColor};margin-bottom:4px;">${h.title}</div>${h.bullets.map(b => `<div style="margin-bottom:3px;"><div style="display:flex;gap:5px;"><div style="width:5px;height:5px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};font-weight:500;">${b.text}</div></div>${b.description ? `<div style="font-size:${bFs ? bFs - 1 : 9}px;color:${bColor};line-height:1.4;padding-left:10px;opacity:0.8;">${b.description}</div>` : ""}</div>`).join("")}</div>`).join("");
           return `<div class="page" style="display:flex;flex-direction:column;font-family:'Montserrat',sans-serif;">
             ${headerHtml(doc.country, doc.programType)}
             <div style="flex:1;display:flex;overflow:hidden;">
@@ -1106,6 +1294,7 @@ export default function SummaryEditor() {
                   <div style="font-size:${hFs || 13}px;font-weight:700;color:${hColor};margin-bottom:8px;">${c.idealCandidateHeading || "Ideal Candidate"}</div>
                   <div style="font-size:${bFs || 10}px;color:${bColor};line-height:1.5;margin-bottom:8px;">${c.idealCandidateIntro || ""}</div>
                   ${bullets.map(b => `<div style="display:flex;gap:6px;margin-bottom:4px;"><div style="width:6px;height:6px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};">${b}</div></div>`).join("")}
+                  ${headlinesHtml}
                 </div>
               </div>
             </div>
@@ -1114,9 +1303,11 @@ export default function SummaryEditor() {
         }
 
         if (page.template === "process") {
-          const c = page.content as { stages?: Stage[]; feesHeading?: string; feeRows?: FeeRow[] };
+          const c = page.content as { stages?: Stage[]; feesHeading?: string; feeRows?: FeeRow[]; headlines?: Headline[] };
           const stages = (c.stages || []) as Stage[];
           const feeRows = (c.feeRows || []) as FeeRow[];
+          const headlines = (c.headlines || []) as Headline[];
+          const headlinesHtml = headlines.map(h => `<div style="margin-top:8px;"><div style="font-size:${hFs ? hFs - 2 : 11}px;font-weight:700;color:${hColor};margin-bottom:4px;">${h.title}</div>${h.bullets.map(b => `<div style="margin-bottom:3px;"><div style="display:flex;gap:5px;"><div style="width:5px;height:5px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};font-weight:500;">${b.text}</div></div>${b.description ? `<div style="font-size:${bFs ? bFs - 1 : 9}px;color:${bColor};line-height:1.4;padding-left:10px;opacity:0.8;">${b.description}</div>` : ""}</div>`).join("")}</div>`).join("");
           return `<div class="page" style="display:flex;flex-direction:column;font-family:'Montserrat',sans-serif;">
             ${headerHtml(doc.country, doc.programType)}
             <div style="flex:1;display:flex;overflow:hidden;">
@@ -1129,6 +1320,7 @@ export default function SummaryEditor() {
                       <div style="font-size:${bFs || 10}px;color:${bColor};line-height:1.5;">${stage.text}</div>
                     </div>
                   </div>`).join("")}
+                ${headlinesHtml}
               </div>
               <div style="width:45%;padding:24px 28px 20px 16px;overflow:hidden;">
                 <div style="font-size:${hFs || 13}px;font-weight:700;color:${hColor};margin-bottom:10px;">${c.feesHeading || "Programme Fees"}</div>
@@ -1144,10 +1336,12 @@ export default function SummaryEditor() {
         }
 
         if (page.template === "about") {
-          const c = page.content as { heading?: string; paragraphs?: string[]; infoRows?: InfoRow[]; rankingsHeading?: string; rankings?: string[]; membershipsHeading?: string; memberships?: string[] };
+          const c = page.content as { heading?: string; paragraphs?: string[]; infoRows?: InfoRow[]; rankingsHeading?: string; rankings?: string[]; membershipsHeading?: string; memberships?: string[]; headlines?: Headline[] };
           const rows = (c.infoRows || []) as InfoRow[];
           const rankings = (c.rankings || []) as string[];
           const memberships = (c.memberships || []) as string[];
+          const headlines = (c.headlines || []) as Headline[];
+          const headlinesHtml = headlines.map(h => `<div style="margin-top:8px;"><div style="font-size:${hFs ? hFs - 2 : 11}px;font-weight:700;color:${hColor};margin-bottom:4px;">${h.title}</div>${h.bullets.map(b => `<div style="margin-bottom:3px;"><div style="display:flex;gap:5px;"><div style="width:5px;height:5px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};font-weight:500;">${b.text}</div></div>${b.description ? `<div style="font-size:${bFs ? bFs - 1 : 9}px;color:${bColor};line-height:1.4;padding-left:10px;opacity:0.8;">${b.description}</div>` : ""}</div>`).join("")}</div>`).join("");
           return `<div class="page" style="display:flex;flex-direction:column;font-family:'Montserrat',sans-serif;">
             ${headerHtml(doc.country, doc.programType)}
             <div style="flex:1;display:flex;overflow:hidden;">
@@ -1168,6 +1362,7 @@ export default function SummaryEditor() {
                     <div style="font-size:${hFs ? hFs - 2 : 10}px;font-weight:700;color:${hColor};margin-bottom:5px;">${c.membershipsHeading || "International Memberships"}</div>
                     ${memberships.map(m => `<div style="font-size:${bFs || 9}px;color:${bColor};margin-bottom:2px;">• ${m}</div>`).join("")}
                   </div>` : ""}
+                ${headlinesHtml}
               </div>
             </div>
             ${footerHtml}
@@ -1175,8 +1370,10 @@ export default function SummaryEditor() {
         }
 
         // Blank
-        const c = page.content as { blocks?: ContentBlock[] };
+        const c = page.content as { blocks?: ContentBlock[]; headlines?: Headline[] };
         const blocks = (c.blocks || []) as ContentBlock[];
+        const headlines = (c.headlines || []) as Headline[];
+        const headlinesHtml = headlines.map(h => `<div style="margin-bottom:12px;"><div style="font-size:${hFs || 14}px;font-weight:700;color:${hColor};margin-bottom:6px;">${h.title}</div>${h.bullets.map(b => `<div style="margin-bottom:4px;"><div style="display:flex;gap:6px;align-items:flex-start;"><div style="width:6px;height:6px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};font-weight:500;">${b.text}</div></div>${b.description ? `<div style="font-size:${bFs ? bFs - 1 : 9}px;color:${bColor};line-height:1.5;padding-left:12px;opacity:0.8;margin-top:2px;">${b.description}</div>` : ""}</div>`).join("")}</div>`).join("");
         return `<div class="page" style="display:flex;flex-direction:column;font-family:'Montserrat',sans-serif;">
           ${headerHtml(doc.country, doc.programType)}
           <div style="flex:1;padding:28px;overflow:hidden;">
@@ -1185,6 +1382,7 @@ export default function SummaryEditor() {
               if (block.type === "list") return (block.items || []).map(item => `<div style="display:flex;gap:6px;margin-bottom:4px;"><div style="width:6px;height:6px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};">${item}</div></div>`).join("");
               return "";
             }).join("")}
+            ${headlinesHtml}
           </div>
           ${footerHtml}
         </div>`;
