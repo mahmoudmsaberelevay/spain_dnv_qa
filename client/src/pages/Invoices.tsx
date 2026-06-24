@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 import { ClientSearchCombobox } from "@/components/ClientSearchCombobox";
+import { ContractSearchCombobox } from "@/components/ContractSearchCombobox";
 import { usePermissions } from "@/contexts/PermissionsContext";
 
 export default function Invoices() {
@@ -467,19 +468,12 @@ export default function Invoices() {
               <p className="text-xs text-muted-foreground">Create a payment receipt for any contract.</p>
               <div className="space-y-2">
                 <Label>Contract</Label>
-                <Select value={selectedContractId} onValueChange={setSelectedContractId} required>
-                  <SelectTrigger className="h-10">
-                    <SelectValue placeholder="Select a contract..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {signedContracts.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        <span className="font-mono text-xs mr-2">{c.contractCode}</span>
-                        {c.clientName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ContractSearchCombobox
+                  value={selectedContractId}
+                  onChange={setSelectedContractId}
+                  contracts={signedContracts}
+                  placeholder="Type client name or contract code..."
+                />
               </div>
 
               {selectedContract && paymentSummary && (
