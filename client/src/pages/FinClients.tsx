@@ -590,14 +590,14 @@ export default function FinClients() {
                         </td>
                         <td className="py-3 px-4 text-center">
                           {c.contractUrl ? (
-                            <a
-                              href={c.contractUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs gap-1 text-blue-700 border-blue-300 hover:bg-blue-50"
+                              onClick={() => window.open(c.contractUrl!, "_blank", "noopener,noreferrer")}
                             >
                               <ExternalLink className="h-3 w-3" /> View
-                            </a>
+                            </Button>
                           ) : (
                             <span className="text-muted-foreground text-xs">—</span>
                           )}
