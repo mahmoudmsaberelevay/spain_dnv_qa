@@ -190,6 +190,7 @@ export async function listFinClients(opts?: { search?: string; consultant?: stri
     paidAmountEgp: finClients.paidAmountEgp,
     remainingAmountEur: finClients.remainingAmountEur,
     isLegacy: finClients.isLegacy,
+    contractUrl: finClients.contractUrl,
     totalDirectCostEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'expense'), 0)`,
     totalDirectIncomeEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'income'), 0)`,
   }).from(finClients);
