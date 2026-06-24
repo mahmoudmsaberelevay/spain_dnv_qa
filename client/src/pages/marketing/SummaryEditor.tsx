@@ -41,7 +41,7 @@ export type BlockType = "headline" | "text" | "bullets" | "numbered" | "photo" |
 export type PhotoPlacement = "left-half" | "right-half" | "top-header";
 export type TextAlign = "left" | "right" | "center";
 
-export interface TableCell { text: string; }
+export interface TableCell { text: string; align?: "left" | "center" | "right"; fontSize?: number; bold?: boolean; }
 export interface TableData { cols: number; rows: number; cells: TableCell[]; headerBg?: string; headerTextColor?: string; cellBg?: string; cellTextColor?: string; borderColor?: string; }
 
 export interface ContentBlock {
@@ -323,18 +323,26 @@ function BlockEditor({ block, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
 
   // Table helpers
   const table = block.table || { cols: 2, rows: 2, cells: Array(4).fill({ text: "" }) };
-  const getCell = (r: number, c: number) => table.cells[r * table.cols + c]?.text || "";
+  const getCellObj = (r: number, c: number): TableCell => table.cells[r * table.cols + c] || { text: "" };
+  const getCell = (r: number, c: number) => getCellObj(r, c).text || "";
   const setCell = (r: number, c: number, val: string) => {
     const cells = [...table.cells];
-    cells[r * table.cols + c] = { text: val };
+    cells[r * table.cols + c] = { ...getCellObj(r, c), text: val };
     onChange({ ...block, table: { ...table, cells } });
   };
+  const setCellProp = (r: number, c: number, prop: keyof TableCell, val: string | number | boolean | undefined) => {
+    const cells = [...table.cells];
+    cells[r * table.cols + c] = { ...getCellObj(r, c), [prop]: val };
+    onChange({ ...block, table: { ...table, cells } });
+  };
+  const [selectedCell, setSelectedCell] = React.useState<{r:number;c:number}|null>(null);
   const resizeTable = (cols: number, rows: number) => {
     const cells: TableCell[] = [];
     for (let r = 0; r < rows; r++)
       for (let c = 0; c < cols; c++)
-        cells.push({ text: r < table.rows && c < table.cols ? (table.cells[r * table.cols + c]?.text || "") : "" });
+        cells.push(r < table.rows && c < table.cols ? (table.cells[r * table.cols + c] || { text: "" }) : { text: "" });
     onChange({ ...block, table: { cols, rows, cells } });
+    setSelectedCell(null);
   };
 
   return (
@@ -516,18 +524,60 @@ function BlockEditor({ block, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
               <table className="w-full border-collapse text-xs">
                 {Array.from({ length: table.rows }).map((_, r) => (
                   <tr key={r}>
-                    {Array.from({ length: table.cols }).map((_, c) => (
-                      <td key={c} className="border border-white/10 p-0">
-                        <Input value={getCell(r, c)} onChange={e => setCell(r, c, e.target.value)}
-                          className={`bg-transparent border-none text-white text-xs h-7 rounded-none ${r === 0 ? "font-semibold" : ""}`}
-                          placeholder={r === 0 ? `Header ${c + 1}` : `Cell`} />
-                      </td>
-                    ))}
+                    {Array.from({ length: table.cols }).map((_, c) => {
+                      const isSelected = selectedCell?.r === r && selectedCell?.c === c;
+                      const cellObj = getCellObj(r, c);
+                      return (
+                        <td key={c} className={`border p-0 cursor-pointer ${isSelected ? "border-teal-400" : "border-white/10"}`}
+                          onClick={() => setSelectedCell({ r, c })}>
+                          <Input value={getCell(r, c)} onChange={e => setCell(r, c, e.target.value)}
+                            onFocus={() => setSelectedCell({ r, c })}
+                            style={{ textAlign: cellObj.align || "left", fontSize: cellObj.fontSize ? `${cellObj.fontSize}px` : undefined, fontWeight: cellObj.bold || r === 0 ? 700 : 400 }}
+                            className="bg-transparent border-none text-white text-xs h-7 rounded-none"
+                            placeholder={r === 0 ? `Header ${c + 1}` : `Cell`} />
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </table>
             </div>
-            <p className="text-[10px] text-gray-600">First row is treated as the table header</p>
+            {/* Per-cell style toolbar */}
+            {selectedCell && (() => {
+              const { r, c } = selectedCell;
+              const cellObj = getCellObj(r, c);
+              return (
+                <div className="bg-[#141c2b] border border-teal-400/30 rounded-lg p-2 space-y-2">
+                  <div className="text-[10px] text-teal-400 font-medium">Cell [{r + 1},{c + 1}] Style</div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {/* Alignment */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-gray-500">Align</span>
+                      {(["left", "center", "right"] as const).map(a => (
+                        <button key={a} onClick={() => setCellProp(r, c, "align", cellObj.align === a ? undefined : a)}
+                          className={`px-1.5 py-0.5 text-[10px] rounded ${cellObj.align === a ? "bg-teal-500 text-white" : "bg-white/5 text-gray-400 hover:bg-white/10"}`}>
+                          {a === "left" ? "←" : a === "center" ? "↔" : "→"}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Font size */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-gray-500">Size</span>
+                      <Input type="number" min={6} max={24} value={cellObj.fontSize || ""}
+                        onChange={e => setCellProp(r, c, "fontSize", e.target.value ? parseInt(e.target.value) : undefined)}
+                        placeholder="auto" className="bg-[#0f1623] border-white/10 text-white text-[10px] h-5 w-12" />
+                    </div>
+                    {/* Bold */}
+                    <button onClick={() => setCellProp(r, c, "bold", !cellObj.bold)}
+                      className={`px-2 py-0.5 text-[10px] font-bold rounded ${cellObj.bold ? "bg-teal-500 text-white" : "bg-white/5 text-gray-400 hover:bg-white/10"}`}>
+                      B
+                    </button>
+                    <button onClick={() => setSelectedCell(null)} className="ml-auto text-[10px] text-gray-600 hover:text-gray-400">✕ Close</button>
+                  </div>
+                </div>
+              );
+            })()}
+            <p className="text-[10px] text-gray-600">Click any cell to edit its text style. First row is treated as the table header.</p>
             {/* Table color controls */}
             <div className="border-t border-white/10 pt-2 mt-2">
               <div className="text-[10px] text-gray-500 font-medium mb-2 uppercase tracking-wider">Table Colors</div>
@@ -685,9 +735,14 @@ function renderBlocksHtml(blocks: ContentBlock[], ps: PageStyle, COLORS: Record<
       return `<table style="width:100%;border-collapse:collapse;margin-bottom:6px;font-size:5px;">
         ${Array.from({ length: t.rows }).map((_, r) =>
           `<tr>${Array.from({ length: t.cols }).map((_, c) => {
-            const cell = t.cells[r * t.cols + c]?.text || "";
+            const cellObj = t.cells[r * t.cols + c] || { text: "" };
+            const cell = cellObj.text || "";
             const isHeader = r === 0;
-            return `<td style="border:1px solid ${tBorder};padding:2px 3px;background:${isHeader ? tHeaderBg : tCellBg};color:${isHeader ? tHeaderText : tCellText};font-weight:${isHeader ? 700 : 400};">${cell}</td>`;
+            const cellAlign = cellObj.align || "left";
+            const cellFs = cellObj.fontSize ? `${cellObj.fontSize * 0.44}px` : undefined;
+            const cellBold = cellObj.bold || isHeader ? 700 : 400;
+            const fsStyle = cellFs ? `font-size:${cellFs};` : "";
+            return `<td style="border:1px solid ${tBorder};padding:2px 3px;background:${isHeader ? tHeaderBg : tCellBg};color:${isHeader ? tHeaderText : tCellText};font-weight:${cellBold};text-align:${cellAlign};${fsStyle}">${cell}</td>`;
           }).join("")}</tr>`
         ).join("")}
       </table>`;
@@ -843,10 +898,11 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
             {Array.from({ length: t.rows }).map((_, r) => (
               <tr key={r}>
                 {Array.from({ length: t.cols }).map((_, c) => {
-                  const cell = t.cells[r * t.cols + c]?.text || "";
+                  const cellObj = t.cells[r * t.cols + c] || { text: "" };
+                  const cell = cellObj.text || "";
                   const isHeader = r === 0;
                   return (
-                    <td key={c} style={{ border: `1px solid ${tBorder}`, padding: "2px 3px", background: isHeader ? tHeaderBg : tCellBg, color: isHeader ? tHeaderText : tCellText, fontWeight: isHeader ? 700 : 400 }}>
+                    <td key={c} style={{ border: `1px solid ${tBorder}`, padding: "2px 3px", background: isHeader ? tHeaderBg : tCellBg, color: isHeader ? tHeaderText : tCellText, fontWeight: cellObj.bold || isHeader ? 700 : 400, textAlign: cellObj.align || "left", fontSize: cellObj.fontSize ? `${cellObj.fontSize * 0.44}px` : undefined }}>
                       {cell}
                     </td>
                   );
