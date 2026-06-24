@@ -542,13 +542,32 @@ function BlockEditor({ block, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
                 ))}
               </table>
             </div>
-            {/* Per-cell style toolbar */}
-            {selectedCell && (() => {
-              const { r, c } = selectedCell;
-              const cellObj = getCellObj(r, c);
-              return (
-                <div className="bg-[#141c2b] border border-teal-400/30 rounded-lg p-2 space-y-2">
-                  <div className="text-[10px] text-teal-400 font-medium">Cell [{r + 1},{c + 1}] Style</div>
+            {/* Per-cell style toolbar — always visible */}
+            <div className="bg-[#141c2b] border border-white/10 rounded-lg p-2 space-y-2 mt-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] text-gray-500 font-medium">Cell Style:</span>
+                {/* Row selector */}
+                <select value={selectedCell?.r ?? 0}
+                  onChange={e => setSelectedCell({ r: parseInt(e.target.value), c: selectedCell?.c ?? 0 })}
+                  className="bg-[#0f1623] border border-white/10 text-white text-[10px] h-5 rounded px-1">
+                  {Array.from({ length: table.rows }).map((_, r) => (
+                    <option key={r} value={r}>Row {r + 1}{r === 0 ? " (Header)" : ""}</option>
+                  ))}
+                </select>
+                {/* Col selector */}
+                <select value={selectedCell?.c ?? 0}
+                  onChange={e => setSelectedCell({ r: selectedCell?.r ?? 0, c: parseInt(e.target.value) })}
+                  className="bg-[#0f1623] border border-white/10 text-white text-[10px] h-5 rounded px-1">
+                  {Array.from({ length: table.cols }).map((_, c) => (
+                    <option key={c} value={c}>Col {c + 1}</option>
+                  ))}
+                </select>
+              </div>
+              {(() => {
+                const r = selectedCell?.r ?? 0;
+                const c = selectedCell?.c ?? 0;
+                const cellObj = getCellObj(r, c);
+                return (
                   <div className="flex items-center gap-3 flex-wrap">
                     {/* Alignment */}
                     <div className="flex items-center gap-1">
@@ -556,28 +575,27 @@ function BlockEditor({ block, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
                       {(["left", "center", "right"] as const).map(a => (
                         <button key={a} onClick={() => setCellProp(r, c, "align", cellObj.align === a ? undefined : a)}
                           className={`px-1.5 py-0.5 text-[10px] rounded ${cellObj.align === a ? "bg-teal-500 text-white" : "bg-white/5 text-gray-400 hover:bg-white/10"}`}>
-                          {a === "left" ? "←" : a === "center" ? "↔" : "→"}
+                          {a === "left" ? "← Left" : a === "center" ? "↔ Center" : "→ Right"}
                         </button>
                       ))}
                     </div>
                     {/* Font size */}
                     <div className="flex items-center gap-1">
                       <span className="text-[10px] text-gray-500">Size</span>
-                      <Input type="number" min={6} max={24} value={cellObj.fontSize || ""}
+                      <Input type="number" min={6} max={48} value={cellObj.fontSize || ""}
                         onChange={e => setCellProp(r, c, "fontSize", e.target.value ? parseInt(e.target.value) : undefined)}
-                        placeholder="auto" className="bg-[#0f1623] border-white/10 text-white text-[10px] h-5 w-12" />
+                        placeholder="auto" className="bg-[#0f1623] border-white/10 text-white text-[10px] h-5 w-14" />
                     </div>
                     {/* Bold */}
-                    <button onClick={() => setCellProp(r, c, "bold", !cellObj.bold)}
+                    <button onClick={() => setCellProp(r, c, "bold", cellObj.bold ? undefined : true)}
                       className={`px-2 py-0.5 text-[10px] font-bold rounded ${cellObj.bold ? "bg-teal-500 text-white" : "bg-white/5 text-gray-400 hover:bg-white/10"}`}>
-                      B
+                      B Bold
                     </button>
-                    <button onClick={() => setSelectedCell(null)} className="ml-auto text-[10px] text-gray-600 hover:text-gray-400">✕ Close</button>
                   </div>
-                </div>
-              );
-            })()}
-            <p className="text-[10px] text-gray-600">Click any cell to edit its text style. First row is treated as the table header.</p>
+                );
+              })()}
+            </div>
+            <p className="text-[10px] text-gray-600">Select a row and column above to style that cell. First row is the header.</p>
             {/* Table color controls */}
             <div className="border-t border-white/10 pt-2 mt-2">
               <div className="text-[10px] text-gray-500 font-medium mb-2 uppercase tracking-wider">Table Colors</div>
