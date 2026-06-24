@@ -71,38 +71,7 @@ export const marketingRouter = router({
               programSubtype: (input.programSubtype || "RESIDENCY").toUpperCase(),
               summaryLabel: "PROGRAM SUMMARY",
             },
-          },
-          {
-            id: "overview-" + now,
-            template: "overview",
-            photoUrl: null,
-            content: {
-              sectionLabel: "PROGRAMME OVERVIEW",
-              heading: input.country + " " + input.programType,
-              intro: "",
-              infoRows: [],
-            },
-          },
-          {
-            id: "eligibility-" + now,
-            template: "eligibility",
-            photoUrl: null,
-            content: {
-              requirements: [],
-              idealCandidateHeading: "Ideal Candidate",
-              idealCandidateIntro: "",
-              idealCandidateBullets: [],
-            },
-          },
-          {
-            id: "process-" + now,
-            template: "process",
-            photoUrl: null,
-            content: {
-              stages: [],
-              feesHeading: "Programme Fees",
-              feeRows: [],
-            },
+            style: {},
           },
           {
             id: "about-" + now,
@@ -116,7 +85,9 @@ export const marketingRouter = router({
               rankings: [],
               membershipsHeading: "International Memberships",
               memberships: [],
+              headlines: [],
             },
+            style: {},
           },
         ],
       });
