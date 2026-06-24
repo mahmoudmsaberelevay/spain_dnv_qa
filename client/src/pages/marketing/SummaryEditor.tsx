@@ -115,8 +115,8 @@ function PhotoUploadButton({ pageId, summaryId, currentUrl, onUploaded }: {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const base64 = (reader.result as string).split(",")[1];
-      uploadMutation.mutate({ summaryId, pageId, base64, mimeType: file.type });
+      const fileBase64 = (reader.result as string).split(",")[1];
+      uploadMutation.mutate({ summaryId, pageId, fileBase64, fileName: file.name, mimeType: file.type });
     };
     reader.readAsDataURL(file);
   };
@@ -296,8 +296,8 @@ function BlockEditor({ block, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const base64 = (reader.result as string).split(",")[1];
-      uploadMutation.mutate({ summaryId, pageId: `${pageId}-block-${block.id}`, base64, mimeType: file.type });
+      const fileBase64 = (reader.result as string).split(",")[1];
+      uploadMutation.mutate({ summaryId, pageId: `${pageId}-block-${block.id}`, fileBase64, fileName: file.name, mimeType: file.type });
     };
     reader.readAsDataURL(file);
   };
