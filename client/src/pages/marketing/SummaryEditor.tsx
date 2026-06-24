@@ -1031,7 +1031,7 @@ export default function SummaryEditor() {
   const [, navigate] = useLocation();
   const id = params?.id ? parseInt(params.id) : 0;
 
-  const { data: summary, isLoading } = trpc.marketing.getSummary.useQuery({ id }, { enabled: !!id });
+  const { data: summary, isLoading, isError: isSummaryError } = trpc.marketing.getSummary.useQuery({ id }, { enabled: !!id, retry: false });
   const saveMutation = trpc.marketing.saveSummary.useMutation({ onError: (err) => toast.error(err.message) });
 
   const [doc, setDoc] = useState<DocumentData | null>(null);
@@ -1272,6 +1272,19 @@ export default function SummaryEditor() {
       setIsExporting(false);
     }
   };
+
+  if (isSummaryError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <div className="text-red-400 text-lg font-semibold">Summary not found</div>
+        <p className="text-gray-400 text-sm">This summary may have been deleted or the link is invalid.</p>
+        <button onClick={() => navigate("/marketing/summary-generator")}
+          className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-sm transition-colors">
+          ← Back to Summary Generator
+        </button>
+      </div>
+    );
+  }
 
   if (isLoading || !doc) {
     return (
