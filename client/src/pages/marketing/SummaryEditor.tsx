@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRoute, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import {
-  ChevronLeft, Plus, Trash2, Download, Upload, Loader2,
-  ChevronUp, ChevronDown, FileText, X, Palette, Type
+  ChevronLeft, Plus, Trash2, Download, Loader2,
+  ChevronUp, ChevronDown, X, GripVertical, Image, Type,
+  List, Table2, AlignLeft, AlignRight, AlignCenter, LayoutTemplate,
+  Palette, Hash
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,22 +13,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-  DragOverlay,
-  DragStartEvent,
+  DndContext, closestCenter, KeyboardSensor, PointerSensor,
+  useSensor, useSensors, DragEndEvent, DragOverlay, DragStartEvent,
 } from "@dnd-kit/core";
 import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
+  arrayMove, SortableContext, sortableKeyboardCoordinates,
+  useSortable, verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -42,20 +34,34 @@ const COLORS = {
 };
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-export type TemplateType = "cover" | "overview" | "eligibility" | "process" | "about" | "blank";
+export type TemplateType = "cover" | "about" | "custom";
 
-export interface InfoRow { label: string; value: string; }
-export interface Requirement { heading: string; text: string; }
-export interface Stage { heading: string; text: string; }
-export interface FeeRow { label: string; value: string; }
-export interface ContentBlock { type: "text" | "image" | "list"; text?: string; items?: string[]; imageUrl?: string; }
+/** A single content block on a custom page */
+export type BlockType = "headline" | "text" | "bullets" | "numbered" | "photo" | "table";
+export type PhotoPlacement = "left-half" | "right-half" | "top-header";
+export type TextAlign = "left" | "right" | "center";
 
-/** A single bullet point with optional full description */
-export interface HeadlineBullet { id: string; text: string; description: string; }
-/** A headline with its own bullet points */
-export interface Headline { id: string; title: string; bullets: HeadlineBullet[]; }
+export interface TableCell { text: string; }
+export interface TableData { cols: number; rows: number; cells: TableCell[]; }
 
-/** Per-page typography overrides — stored inside page.content.style */
+export interface ContentBlock {
+  id: string;
+  type: BlockType;
+  // headline / text / bullets / numbered
+  text?: string;
+  fontSize?: number;
+  color?: string;
+  bold?: boolean;
+  align?: TextAlign;
+  // bullets / numbered — list items
+  items?: string[];
+  // photo
+  photoUrl?: string | null;
+  photoPlacement?: PhotoPlacement;
+  // table
+  table?: TableData;
+}
+
 export interface PageStyle {
   headingFontSize?: number;
   headingColor?: string;
@@ -79,378 +85,119 @@ export interface DocumentData {
   pages: PageData[];
 }
 
-const TEMPLATE_LABELS: Record<TemplateType, string> = {
-  cover: "Cover Page",
-  overview: "Programme Overview",
-  eligibility: "Eligibility & Requirements",
-  process: "Process & Stages",
-  about: "About Country",
-  blank: "Custom Blank",
-};
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+const newId = () => Math.random().toString(36).slice(2, 9);
 
-const TEMPLATE_ICONS: Record<TemplateType, string> = {
-  cover: "★",
-  overview: "📋",
-  eligibility: "✓",
-  process: "⚙",
-  about: "🌍",
-  blank: "📄",
-};
-
-// ─── Style helpers ─────────────────────────────────────────────────────────────
 function getStyle(page: PageData): PageStyle {
   return ((page.content as Record<string, unknown>).style as PageStyle) || {};
 }
 
-function setStyle(page: PageData, updates: Partial<PageStyle>): PageData {
-  const current = getStyle(page);
-  return { ...page, content: { ...page.content, style: { ...current, ...updates } } };
+function getBlocks(page: PageData): ContentBlock[] {
+  return ((page.content as Record<string, unknown>).blocks as ContentBlock[]) || [];
 }
 
-// ─── Per-Page Typography Panel ─────────────────────────────────────────────────
-function TypographyPanel({ page, onChange }: { page: PageData; onChange: (p: PageData) => void }) {
-  const s = getStyle(page);
-  const [open, setOpen] = useState(false);
-
-  const colorField = (label: string, key: keyof PageStyle, defaultVal: string) => (
-    <div className="flex items-center gap-2">
-      <span className="text-[11px] text-gray-400 w-28 shrink-0">{label}</span>
-      <div className="flex items-center gap-1.5 flex-1">
-        <input
-          type="color"
-          value={(s[key] as string) || defaultVal}
-          onChange={e => onChange(setStyle(page, { [key]: e.target.value }))}
-          className="w-7 h-7 rounded cursor-pointer border border-white/20 bg-transparent"
-        />
-        <Input
-          value={(s[key] as string) || ""}
-          onChange={e => onChange(setStyle(page, { [key]: e.target.value || undefined }))}
-          className="bg-[#0f1623] border-white/10 text-white text-xs h-7 flex-1 font-mono"
-          placeholder={defaultVal}
-        />
-        <button
-          onClick={() => onChange(setStyle(page, { [key]: undefined }))}
-          className="p-1 text-gray-600 hover:text-gray-300 transition-colors"
-          title="Reset to default"
-        >
-          <X className="w-3 h-3" />
-        </button>
-      </div>
-    </div>
-  );
-
-  const sizeField = (label: string, key: keyof PageStyle, defaultVal: number) => (
-    <div className="flex items-center gap-2">
-      <span className="text-[11px] text-gray-400 w-28 shrink-0">{label}</span>
-      <div className="flex items-center gap-1.5 flex-1">
-        <Input
-          type="number"
-          value={(s[key] as number) || ""}
-          onChange={e => onChange(setStyle(page, { [key]: e.target.value ? Number(e.target.value) : undefined }))}
-          className="bg-[#0f1623] border-white/10 text-white text-xs h-7 flex-1"
-          placeholder={String(defaultVal)}
-          min={6}
-          max={72}
-        />
-        <span className="text-[11px] text-gray-500">px</span>
-        <button
-          onClick={() => onChange(setStyle(page, { [key]: undefined }))}
-          className="p-1 text-gray-600 hover:text-gray-300 transition-colors"
-          title="Reset to default"
-        >
-          <X className="w-3 h-3" />
-        </button>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="border border-white/10 rounded-xl overflow-hidden">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2 px-3 py-2.5 bg-[#1a2235] hover:bg-[#1e2840] transition-colors text-left"
-      >
-        <div className="flex items-center gap-2 flex-1">
-          <div className="w-6 h-6 rounded-lg bg-teal-900/50 flex items-center justify-center">
-            <Palette className="w-3.5 h-3.5 text-teal-400" />
-          </div>
-          <span className="text-xs font-semibold text-white">Typography & Colors</span>
-          {(s.headingColor || s.bodyColor || s.accentColor || s.headingFontSize || s.bodyFontSize) && (
-            <span className="text-[10px] bg-teal-600/30 text-teal-400 px-1.5 py-0.5 rounded-full">Custom</span>
-          )}
-        </div>
-        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && (
-        <div className="p-3 bg-[#141c2b] space-y-3">
-          <div className="text-[10px] text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-            <Type className="w-3 h-3" /> Heading
-          </div>
-          {sizeField("Font Size", "headingFontSize", page.template === "cover" ? 32 : 20)}
-          {colorField("Color", "headingColor", COLORS.navy)}
-          <div className="h-px bg-white/5" />
-          <div className="text-[10px] text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-            <Type className="w-3 h-3" /> Body Text
-          </div>
-          {sizeField("Font Size", "bodyFontSize", 11)}
-          {colorField("Color", "bodyColor", COLORS.text)}
-          <div className="h-px bg-white/5" />
-          <div className="text-[10px] text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-            <Palette className="w-3 h-3" /> Accent
-          </div>
-          {colorField("Accent Color", "accentColor", COLORS.teal)}
-          <p className="text-[10px] text-gray-600 mt-1">
-            Overrides ELEVAY brand colors for this page only. Leave blank to use defaults.
-          </p>
-        </div>
-      )}
-    </div>
-  );
+function setBlocks(page: PageData, blocks: ContentBlock[]): PageData {
+  return { ...page, content: { ...page.content, blocks } };
 }
 
 // ─── Photo Upload Button ───────────────────────────────────────────────────────
 function PhotoUploadButton({ pageId, summaryId, currentUrl, onUploaded }: {
   pageId: string; summaryId: number; currentUrl: string | null; onUploaded: (url: string) => void;
 }) {
-  const fileRef = useRef<HTMLInputElement>(null);
   const uploadMutation = trpc.marketing.uploadPagePhoto.useMutation({
     onSuccess: (data) => { onUploaded(data.url); toast.success("Photo uploaded"); },
     onError: (err) => toast.error(err.message),
   });
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { toast.error("Photo must be under 10 MB"); return; }
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = (reader.result as string).split(",")[1];
-      uploadMutation.mutate({ summaryId, pageId, fileBase64: base64, fileName: file.name, mimeType: file.type });
+      uploadMutation.mutate({ summaryId, pageId, base64, mimeType: file.type });
     };
     reader.readAsDataURL(file);
-    e.target.value = "";
   };
 
   return (
-    <div className="space-y-2">
+    <div className="flex items-center gap-2">
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
-      {currentUrl ? (
-        <div className="relative group rounded-lg overflow-hidden border border-white/10">
-          <img src={currentUrl} alt="Page photo" className="w-full h-32 object-cover" />
-          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-            <button onClick={() => fileRef.current?.click()} className="px-3 py-1.5 bg-teal-600 text-white text-xs rounded-lg">
-              Change
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          onClick={() => fileRef.current?.click()}
-          disabled={uploadMutation.isPending}
-          className="w-full flex flex-col items-center justify-center gap-2 py-6 rounded-xl border-2 border-dashed border-white/20 hover:border-teal-500/50 text-gray-400 hover:text-teal-400 transition-all"
-        >
-          {uploadMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-          <span className="text-xs">{uploadMutation.isPending ? "Uploading..." : "Upload Photo"}</span>
-        </button>
+      <button onClick={() => fileRef.current?.click()}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs transition-colors border border-white/10">
+        <Image className="w-3 h-3" />
+        {uploadMutation.isPending ? "Uploading..." : currentUrl ? "Change Photo" : "Upload Photo"}
+      </button>
+      {currentUrl && (
+        <img src={currentUrl} alt="preview" className="w-10 h-10 rounded object-cover border border-white/10" />
       )}
     </div>
   );
 }
 
-// ─── Shared sub-editors ────────────────────────────────────────────────────────
-function InfoRowEditor({ rows, onChange, labelPlaceholder = "Label", valuePlaceholder = "Value" }: {
-  rows: InfoRow[]; onChange: (rows: InfoRow[]) => void;
-  labelPlaceholder?: string; valuePlaceholder?: string;
-}) {
-  const add = () => onChange([...rows, { label: "", value: "" }]);
-  const remove = (i: number) => onChange(rows.filter((_, idx) => idx !== i));
-  const update = (i: number, field: "label" | "value", val: string) =>
-    onChange(rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
+// ─── Typography Panel ──────────────────────────────────────────────────────────
+function TypographyPanel({ page, onChange }: { page: PageData; onChange: (p: PageData) => void }) {
+  const s = getStyle(page);
+  const [open, setOpen] = useState(false);
+  const hasCustom = !!(s.headingColor || s.bodyColor || s.accentColor || s.headingFontSize || s.bodyFontSize);
+
+  const setS = (key: keyof PageStyle, val: string | number | undefined) => {
+    const cur = getStyle(page);
+    onChange({ ...page, content: { ...page.content, style: { ...cur, [key]: val } } });
+  };
 
   return (
-    <div className="space-y-2">
-      {rows.map((row, i) => (
-        <div key={i} className="flex gap-2 items-start">
-          <Input value={row.label} onChange={e => update(i, "label", e.target.value)} placeholder={labelPlaceholder}
-            className="bg-[#0f1623] border-white/10 text-white text-xs h-8 flex-1" />
-          <Input value={row.value} onChange={e => update(i, "value", e.target.value)} placeholder={valuePlaceholder}
-            className="bg-[#0f1623] border-white/10 text-white text-xs h-8 flex-1" />
-          <button onClick={() => remove(i)} className="p-1.5 text-gray-500 hover:text-red-400 transition-colors shrink-0">
-            <X className="w-3.5 h-3.5" />
-          </button>
+    <div className="border border-white/10 rounded-xl overflow-hidden">
+      <button onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-[#141c2b] hover:bg-[#1a2438] transition-colors text-xs">
+        <div className="flex items-center gap-2 text-gray-400">
+          <Palette className="w-3.5 h-3.5 text-teal-400" />
+          <span className="font-medium">Typography &amp; Colors</span>
+          {hasCustom && <span className="px-1.5 py-0.5 rounded text-[9px] bg-teal-600/30 text-teal-300 font-medium">Custom</span>}
         </div>
-      ))}
-      <button onClick={add} className="flex items-center gap-1.5 text-xs text-teal-400 hover:text-teal-300 transition-colors">
-        <Plus className="w-3 h-3" /> Add Row
+        <span className="text-gray-600">{open ? "▲" : "▼"}</span>
       </button>
-    </div>
-  );
-}
-
-function BulletListEditor({ items, onChange, placeholder = "Item..." }: {
-  items: string[]; onChange: (items: string[]) => void; placeholder?: string;
-}) {
-  const add = () => onChange([...items, ""]);
-  const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i));
-  const update = (i: number, val: string) => onChange(items.map((it, idx) => idx === i ? val : it));
-
-  return (
-    <div className="space-y-1.5">
-      {items.map((item, i) => (
-        <div key={i} className="flex gap-2 items-center">
-          <div className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
-          <Input value={item} onChange={e => update(i, e.target.value)} placeholder={placeholder}
-            className="bg-[#0f1623] border-white/10 text-white text-xs h-7 flex-1" />
-          <button onClick={() => remove(i)} className="p-1 text-gray-500 hover:text-red-400 transition-colors shrink-0">
-            <X className="w-3 h-3" />
-          </button>
-        </div>
-      ))}
-      <button onClick={add} className="flex items-center gap-1.5 text-xs text-teal-400 hover:text-teal-300 transition-colors">
-        <Plus className="w-3 h-3" /> Add Item
-      </button>
-    </div>
-  );
-}
-
-function RequirementsEditor({ reqs, onChange }: { reqs: Requirement[]; onChange: (r: Requirement[]) => void }) {
-  const add = () => onChange([...reqs, { heading: "", text: "" }]);
-  const remove = (i: number) => onChange(reqs.filter((_, idx) => idx !== i));
-  const update = (i: number, field: "heading" | "text", val: string) =>
-    onChange(reqs.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
-
-  return (
-    <div className="space-y-3">
-      {reqs.map((req, i) => (
-        <div key={i} className="bg-[#0f1623] rounded-lg p-3 border border-white/10">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ background: COLORS.red }}>{i + 1}</div>
-            <Input value={req.heading} onChange={e => update(i, "heading", e.target.value)} placeholder="Requirement heading..."
-              className="bg-transparent border-none text-white text-xs h-6 p-0 font-semibold flex-1" />
-            <button onClick={() => remove(i)} className="p-1 text-gray-500 hover:text-red-400 transition-colors shrink-0">
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-          <Textarea value={req.text} onChange={e => update(i, "text", e.target.value)} placeholder="Requirement description..."
-            className="bg-[#141c2b] border-white/10 text-gray-300 text-xs min-h-[50px] resize-none" rows={2} />
-        </div>
-      ))}
-      <button onClick={add} className="flex items-center gap-1.5 text-xs text-teal-400 hover:text-teal-300 transition-colors">
-        <Plus className="w-3 h-3" /> Add Requirement
-      </button>
-    </div>
-  );
-}
-
-function StagesEditor({ stages, onChange }: { stages: Stage[]; onChange: (s: Stage[]) => void }) {
-  const add = () => onChange([...stages, { heading: "", text: "" }]);
-  const remove = (i: number) => onChange(stages.filter((_, idx) => idx !== i));
-  const update = (i: number, field: "heading" | "text", val: string) =>
-    onChange(stages.map((s, idx) => idx === i ? { ...s, [field]: val } : s));
-
-  return (
-    <div className="space-y-2">
-      {stages.map((stage, i) => (
-        <div key={i} className="bg-[#0f1623] rounded-lg p-3 border border-white/10">
-          <div className="flex items-center gap-2 mb-1.5">
-            <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0" style={{ background: COLORS.teal }}>{i + 1}</div>
-            <Input value={stage.heading} onChange={e => update(i, "heading", e.target.value)} placeholder="Stage heading..."
-              className="bg-transparent border-none text-white text-xs h-6 p-0 font-semibold flex-1" />
-            <button onClick={() => remove(i)} className="p-1 text-gray-500 hover:text-red-400 transition-colors shrink-0">
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-          <Textarea value={stage.text} onChange={e => update(i, "text", e.target.value)} placeholder="Stage description..."
-            className="bg-[#141c2b] border-white/10 text-gray-300 text-xs min-h-[50px] resize-none" rows={2} />
-        </div>
-      ))}
-      <button onClick={add} className="flex items-center gap-1.5 text-xs text-teal-400 hover:text-teal-300 transition-colors">
-        <Plus className="w-3 h-3" /> Add Stage
-      </button>
-    </div>
-  );
-}
-
-// ─── Headlines & Bullets Editor ──────────────────────────────────────────────
-function HeadlinesEditor({ headlines, onChange }: { headlines: Headline[]; onChange: (h: Headline[]) => void }) {
-  const newId = () => Math.random().toString(36).slice(2, 9);
-
-  const addHeadline = () => onChange([...headlines, { id: newId(), title: "", bullets: [] }]);
-  const removeHeadline = (hid: string) => onChange(headlines.filter(h => h.id !== hid));
-  const updateTitle = (hid: string, title: string) =>
-    onChange(headlines.map(h => h.id === hid ? { ...h, title } : h));
-
-  const addBullet = (hid: string) =>
-    onChange(headlines.map(h => h.id === hid
-      ? { ...h, bullets: [...h.bullets, { id: newId(), text: "", description: "" }] }
-      : h));
-  const removeBullet = (hid: string, bid: string) =>
-    onChange(headlines.map(h => h.id === hid
-      ? { ...h, bullets: h.bullets.filter(b => b.id !== bid) }
-      : h));
-  const updateBullet = (hid: string, bid: string, field: "text" | "description", val: string) =>
-    onChange(headlines.map(h => h.id === hid
-      ? { ...h, bullets: h.bullets.map(b => b.id === bid ? { ...b, [field]: val } : b) }
-      : h));
-
-  return (
-    <div className="space-y-3">
-      {headlines.map((h, hi) => (
-        <div key={h.id} className="bg-[#0f1623] rounded-xl border border-white/10 overflow-hidden">
-          {/* Headline row */}
-          <div className="flex items-center gap-2 px-3 py-2 bg-[#141c2b]">
-            <div className="w-5 h-5 rounded flex items-center justify-center text-white text-[9px] font-bold shrink-0" style={{ background: COLORS.teal }}>{hi + 1}</div>
-            <Input
-              value={h.title}
-              onChange={e => updateTitle(h.id, e.target.value)}
-              placeholder="Headline title..."
-              className="bg-transparent border-none text-white text-xs h-6 p-0 font-semibold flex-1"
-            />
-            <button onClick={() => removeHeadline(h.id)} className="p-1 text-gray-500 hover:text-red-400 transition-colors shrink-0">
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          {/* Bullets */}
-          <div className="px-3 py-2 space-y-2">
-            {h.bullets.map((b) => (
-              <div key={b.id} className="bg-[#141c2b] rounded-lg p-2.5 border border-white/5 space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: COLORS.teal }} />
-                  <Input
-                    value={b.text}
-                    onChange={e => updateBullet(h.id, b.id, "text", e.target.value)}
-                    placeholder="Bullet point text..."
-                    className="bg-transparent border-none text-white text-xs h-6 p-0 flex-1"
-                  />
-                  <button onClick={() => removeBullet(h.id, b.id)} className="p-1 text-gray-500 hover:text-red-400 transition-colors shrink-0">
-                    <X className="w-3 h-3" />
-                  </button>
+      {open && (
+        <div className="p-3 space-y-2 bg-[#0f1623]">
+          {([
+            ["Heading Font Size", "headingFontSize", 14, "number"],
+            ["Heading Color", "headingColor", COLORS.navy, "color"],
+            ["Body Font Size", "bodyFontSize", 11, "number"],
+            ["Body Color", "bodyColor", COLORS.text, "color"],
+            ["Accent Color", "accentColor", COLORS.teal, "color"],
+          ] as [string, keyof PageStyle, string | number, string][]).map(([label, key, def, inputType]) => (
+            <div key={key} className="flex items-center gap-2">
+              <span className="text-[11px] text-gray-400 w-32 shrink-0">{label}</span>
+              {inputType === "color" ? (
+                <div className="flex items-center gap-1.5 flex-1">
+                  <input type="color" value={String(s[key] || def)}
+                    onChange={e => setS(key, e.target.value)}
+                    className="w-6 h-6 rounded cursor-pointer border-0 bg-transparent" />
+                  <Input value={String(s[key] || def)} onChange={e => setS(key, e.target.value)}
+                    className="bg-[#141c2b] border-white/10 text-white text-xs h-6 flex-1 font-mono" />
+                  <button onClick={() => setS(key, undefined)} className="text-[10px] text-gray-600 hover:text-gray-400 shrink-0">↺</button>
                 </div>
-                <Textarea
-                  value={b.description}
-                  onChange={e => updateBullet(h.id, b.id, "description", e.target.value)}
-                  placeholder="Optional full description for this bullet point..."
-                  className="bg-[#0f1623] border-white/10 text-gray-400 text-xs min-h-[44px] resize-none"
-                  rows={2}
-                />
-              </div>
-            ))}
-            <button onClick={() => addBullet(h.id)} className="flex items-center gap-1.5 text-xs text-teal-500 hover:text-teal-300 transition-colors pl-0.5">
-              <Plus className="w-3 h-3" /> Add Bullet
-            </button>
-          </div>
+              ) : (
+                <div className="flex items-center gap-1.5 flex-1">
+                  <Input type="number" value={Number(s[key] || def)} min={6} max={72}
+                    onChange={e => setS(key, parseInt(e.target.value))}
+                    className="bg-[#141c2b] border-white/10 text-white text-xs h-6 flex-1" />
+                  <span className="text-[10px] text-gray-600">px</span>
+                  <button onClick={() => setS(key, undefined)} className="text-[10px] text-gray-600 hover:text-gray-400 shrink-0">↺</button>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
-      ))}
-      <button onClick={addHeadline} className="flex items-center gap-1.5 text-xs font-medium text-teal-400 hover:text-teal-300 transition-colors border border-dashed border-teal-500/40 hover:border-teal-400/60 rounded-lg px-3 py-2 w-full justify-center">
-        <Plus className="w-3.5 h-3.5" /> Add Headline
-      </button>
+      )}
     </div>
   );
 }
 
-// ─── Content Editors per Template ─────────────────────────────────────────────
+// ─── Cover Editor ──────────────────────────────────────────────────────────────
 function CoverEditor({ page, summaryId, onChange }: { page: PageData; summaryId: number; onChange: (p: PageData) => void }) {
-  const c = page.content as { countryName?: string; programLabel?: string; programSubtype?: string; summaryLabel?: string };
+  const c = page.content as { countryName?: string; programLabel?: string; summaryLabel?: string };
   const set = (key: string, val: string) => onChange({ ...page, content: { ...page.content, [key]: val } });
 
   return (
@@ -462,19 +209,14 @@ function CoverEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
       </div>
       <div className="space-y-3">
         <div>
-          <Label className="text-gray-400 text-xs mb-1 block">Country Name (displayed large)</Label>
+          <Label className="text-gray-400 text-xs mb-1 block">Country Name (large)</Label>
           <Input value={String(c.countryName || "")} onChange={e => set("countryName", e.target.value)}
-            className="bg-[#0f1623] border-white/10 text-white text-sm" placeholder="e.g. DOMINICA" />
+            className="bg-[#0f1623] border-white/10 text-white text-sm" placeholder="e.g. SPAIN" />
         </div>
         <div>
           <Label className="text-gray-400 text-xs mb-1 block">Program Label</Label>
           <Input value={String(c.programLabel || "")} onChange={e => set("programLabel", e.target.value)}
-            className="bg-[#0f1623] border-white/10 text-white text-sm" placeholder="e.g. Citizenship by Investment" />
-        </div>
-        <div>
-          <Label className="text-gray-400 text-xs mb-1 block">Program Subtype</Label>
-          <Input value={String(c.programSubtype || "")} onChange={e => set("programSubtype", e.target.value)}
-            className="bg-[#0f1623] border-white/10 text-white text-sm" placeholder="e.g. CITIZENSHIP" />
+            className="bg-[#0f1623] border-white/10 text-white text-sm" placeholder="e.g. Digital Nomad Visa" />
         </div>
         <div>
           <Label className="text-gray-400 text-xs mb-1 block">Summary Label</Label>
@@ -487,134 +229,39 @@ function CoverEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
   );
 }
 
-function OverviewEditor({ page, summaryId, onChange }: { page: PageData; summaryId: number; onChange: (p: PageData) => void }) {
-  const c = page.content as { sectionLabel?: string; heading?: string; intro?: string; infoRows?: InfoRow[]; headlines?: Headline[] };
-  const set = (key: string, val: unknown) => onChange({ ...page, content: { ...page.content, [key]: val } });
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <Label className="text-gray-400 text-xs mb-2 block font-semibold text-teal-400">Headlines &amp; Bullet Points</Label>
-        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
-      </div>
-      <div className="border-t border-white/10 pt-4">
-        <Label className="text-gray-400 text-xs mb-1.5 block">Right Column Photo</Label>
-        <PhotoUploadButton pageId={page.id} summaryId={summaryId} currentUrl={page.photoUrl}
-          onUploaded={url => onChange({ ...page, photoUrl: url })} />
-      </div>
-      <div>
-        <Label className="text-gray-400 text-xs mb-1 block">Section Label</Label>
-        <Input value={String(c.sectionLabel || "")} onChange={e => set("sectionLabel", e.target.value)}
-          className="bg-[#0f1623] border-white/10 text-white text-sm" placeholder="PROGRAMME OVERVIEW" />
-      </div>
-      <div>
-        <Label className="text-gray-400 text-xs mb-1 block">Main Heading</Label>
-        <Input value={String(c.heading || "")} onChange={e => set("heading", e.target.value)}
-          className="bg-[#0f1623] border-white/10 text-white text-sm" />
-      </div>
-      <div>
-        <Label className="text-gray-400 text-xs mb-1 block">Introduction Paragraph</Label>
-        <Textarea value={String(c.intro || "")} onChange={e => set("intro", e.target.value)}
-          className="bg-[#0f1623] border-white/10 text-white text-sm min-h-[80px] resize-none" rows={3} />
-      </div>
-      <div>
-        <Label className="text-gray-400 text-xs mb-2 block">Info Rows</Label>
-        <InfoRowEditor rows={(c.infoRows || []) as InfoRow[]} onChange={rows => set("infoRows", rows)}
-          labelPlaceholder="LABEL (teal)" valuePlaceholder="Value (bold navy)" />
-      </div>
-      <TypographyPanel page={page} onChange={onChange} />
-    </div>
-  );
-}
-
-function EligibilityEditor({ page, summaryId, onChange }: { page: PageData; summaryId: number; onChange: (p: PageData) => void }) {
-  const c = page.content as {
-    requirements?: Requirement[];
-    idealCandidateHeading?: string;
-    idealCandidateIntro?: string;
-    idealCandidateBullets?: string[];
-    headlines?: Headline[];
-  };
-  const set = (key: string, val: unknown) => onChange({ ...page, content: { ...page.content, [key]: val } });
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <Label className="text-gray-400 text-xs mb-2 block font-semibold text-teal-400">Headlines &amp; Bullet Points</Label>
-        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
-      </div>
-      <div className="border-t border-white/10 pt-4">
-        <Label className="text-gray-400 text-xs mb-1.5 block">Page Photo (optional)</Label>
-        <PhotoUploadButton pageId={page.id} summaryId={summaryId} currentUrl={page.photoUrl}
-          onUploaded={url => onChange({ ...page, photoUrl: url })} />
-      </div>
-      <div>
-        <Label className="text-gray-400 text-xs mb-2 block">Requirements (numbered with red badges)</Label>
-        <RequirementsEditor reqs={(c.requirements || []) as Requirement[]} onChange={reqs => set("requirements", reqs)} />
-      </div>
-      <div className="border-t border-white/10 pt-4">
-        <Label className="text-gray-400 text-xs mb-2 block">Ideal Candidate Box</Label>
-        <div className="space-y-2">
-          <Input value={String(c.idealCandidateHeading || "Ideal Candidate")} onChange={e => set("idealCandidateHeading", e.target.value)}
-            className="bg-[#0f1623] border-white/10 text-white text-sm" placeholder="Box heading" />
-          <Textarea value={String(c.idealCandidateIntro || "")} onChange={e => set("idealCandidateIntro", e.target.value)}
-            className="bg-[#0f1623] border-white/10 text-white text-sm min-h-[60px] resize-none" rows={2} placeholder="Intro text..." />
-          <Label className="text-gray-400 text-xs mb-1 block">Bullet Points</Label>
-          <BulletListEditor items={(c.idealCandidateBullets || []) as string[]} onChange={items => set("idealCandidateBullets", items)} />
-        </div>
-      </div>
-      <TypographyPanel page={page} onChange={onChange} />
-    </div>
-  );
-}
-
-function ProcessEditor({ page, summaryId, onChange }: { page: PageData; summaryId: number; onChange: (p: PageData) => void }) {
-  const c = page.content as { stages?: Stage[]; feesHeading?: string; feeRows?: FeeRow[]; headlines?: Headline[] };
-  const set = (key: string, val: unknown) => onChange({ ...page, content: { ...page.content, [key]: val } });
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <Label className="text-gray-400 text-xs mb-2 block font-semibold text-teal-400">Headlines &amp; Bullet Points</Label>
-        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
-      </div>
-      <div className="border-t border-white/10 pt-4">
-        <Label className="text-gray-400 text-xs mb-1.5 block">Page Photo (optional)</Label>
-        <PhotoUploadButton pageId={page.id} summaryId={summaryId} currentUrl={page.photoUrl}
-          onUploaded={url => onChange({ ...page, photoUrl: url })} />
-      </div>
-      <div>
-        <Label className="text-gray-400 text-xs mb-2 block">Process Stages (left column)</Label>
-        <StagesEditor stages={(c.stages || []) as Stage[]} onChange={stages => set("stages", stages)} />
-      </div>
-      <div className="border-t border-white/10 pt-4">
-        <Label className="text-gray-400 text-xs mb-2 block">Fees Table (right column)</Label>
-        <Input value={String(c.feesHeading || "Programme Fees")} onChange={e => set("feesHeading", e.target.value)}
-          className="bg-[#0f1623] border-white/10 text-white text-sm mb-2" placeholder="Fees section heading" />
-        <InfoRowEditor rows={(c.feeRows || []) as InfoRow[]} onChange={rows => set("feeRows", rows)}
-          labelPlaceholder="Fee type" valuePlaceholder="Amount" />
-      </div>
-      <TypographyPanel page={page} onChange={onChange} />
-    </div>
-  );
-}
-
+// ─── About Editor ──────────────────────────────────────────────────────────────
 function AboutEditor({ page, summaryId, onChange }: { page: PageData; summaryId: number; onChange: (p: PageData) => void }) {
-  const c = page.content as {
-    heading?: string; paragraphs?: string[]; infoRows?: InfoRow[];
-    rankingsHeading?: string; rankings?: string[];
-    membershipsHeading?: string; memberships?: string[];
-    headlines?: Headline[];
-  };
+  const c = page.content as { heading?: string; paragraphs?: string[]; rankings?: string[]; memberships?: string[] };
   const set = (key: string, val: unknown) => onChange({ ...page, content: { ...page.content, [key]: val } });
+
+  const updateList = (key: string, items: string[], idx: number, val: string) =>
+    set(key, items.map((it, i) => i === idx ? val : it));
+  const addItem = (key: string, items: string[]) => set(key, [...items, ""]);
+  const removeItem = (key: string, items: string[], idx: number) => set(key, items.filter((_, i) => i !== idx));
+
+  const ListEditor = ({ label, itemKey, items }: { label: string; itemKey: string; items: string[] }) => (
+    <div>
+      <Label className="text-gray-400 text-xs mb-1.5 block">{label}</Label>
+      <div className="space-y-1.5">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <Input value={item} onChange={e => updateList(itemKey, items, i, e.target.value)}
+              className="bg-[#0f1623] border-white/10 text-white text-xs h-7 flex-1" />
+            <button onClick={() => removeItem(itemKey, items, i)} className="p-1 text-gray-600 hover:text-red-400 transition-colors shrink-0">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        ))}
+        <button onClick={() => addItem(itemKey, items)} className="flex items-center gap-1.5 text-xs text-teal-500 hover:text-teal-300 transition-colors">
+          <Plus className="w-3 h-3" /> Add
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
       <div>
-        <Label className="text-gray-400 text-xs mb-2 block font-semibold text-teal-400">Headlines &amp; Bullet Points</Label>
-        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
-      </div>
-      <div className="border-t border-white/10 pt-4">
         <Label className="text-gray-400 text-xs mb-1.5 block">Left Column Photo</Label>
         <PhotoUploadButton pageId={page.id} summaryId={summaryId} currentUrl={page.photoUrl}
           onUploaded={url => onChange({ ...page, photoUrl: url })} />
@@ -624,117 +271,415 @@ function AboutEditor({ page, summaryId, onChange }: { page: PageData; summaryId:
         <Input value={String(c.heading || "")} onChange={e => set("heading", e.target.value)}
           className="bg-[#0f1623] border-white/10 text-white text-sm" />
       </div>
-      <div>
-        <Label className="text-gray-400 text-xs mb-2 block">Paragraphs</Label>
-        <BulletListEditor items={(c.paragraphs || []) as string[]} onChange={items => set("paragraphs", items)} placeholder="Paragraph text..." />
-      </div>
-      <div>
-        <Label className="text-gray-400 text-xs mb-2 block">Info Rows</Label>
-        <InfoRowEditor rows={(c.infoRows || []) as InfoRow[]} onChange={rows => set("infoRows", rows)} />
-      </div>
-      <div className="border-t border-white/10 pt-3">
-        <Label className="text-gray-400 text-xs mb-1 block">Rankings Box Heading</Label>
-        <Input value={String(c.rankingsHeading || "Global Rankings")} onChange={e => set("rankingsHeading", e.target.value)}
-          className="bg-[#0f1623] border-white/10 text-white text-sm mb-2" />
-        <BulletListEditor items={(c.rankings || []) as string[]} onChange={items => set("rankings", items)} placeholder="e.g. #45 in Human Development Index" />
-      </div>
-      <div className="border-t border-white/10 pt-3">
-        <Label className="text-gray-400 text-xs mb-1 block">Memberships Box Heading</Label>
-        <Input value={String(c.membershipsHeading || "International Memberships")} onChange={e => set("membershipsHeading", e.target.value)}
-          className="bg-[#0f1623] border-white/10 text-white text-sm mb-2" />
-        <BulletListEditor items={(c.memberships || []) as string[]} onChange={items => set("memberships", items)} placeholder="e.g. United Nations" />
-      </div>
+      <ListEditor label="Paragraphs" itemKey="paragraphs" items={(c.paragraphs || []) as string[]} />
+      <ListEditor label="Global Rankings" itemKey="rankings" items={(c.rankings || []) as string[]} />
+      <ListEditor label="International Memberships" itemKey="memberships" items={(c.memberships || []) as string[]} />
       <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
 }
 
-function BlankEditor({ page, summaryId, onChange }: { page: PageData; summaryId: number; onChange: (p: PageData) => void }) {
-  const c = page.content as { layout?: string; blocks?: ContentBlock[]; headlines?: Headline[] };
-  const set = (key: string, val: unknown) => onChange({ ...page, content: { ...page.content, [key]: val } });
-  const blocks = (c.blocks || []) as ContentBlock[];
-  const addBlock = (type: ContentBlock["type"]) => set("blocks", [...blocks, { type, text: "", items: [], imageUrl: "" }]);
-  const removeBlock = (i: number) => set("blocks", blocks.filter((_, idx) => idx !== i));
-  const updateBlock = (i: number, field: string, val: unknown) =>
-    set("blocks", blocks.map((b, idx) => idx === i ? { ...b, [field]: val } : b));
+// ─── Block Editor ──────────────────────────────────────────────────────────────
+function BlockEditor({ block, onChange, onDelete, onMoveUp, onMoveDown, isFirst, isLast, summaryId, pageId }: {
+  block: ContentBlock; onChange: (b: ContentBlock) => void; onDelete: () => void;
+  onMoveUp: () => void; onMoveDown: () => void; isFirst: boolean; isLast: boolean;
+  summaryId: number; pageId: string;
+}) {
+  const uploadMutation = trpc.marketing.uploadPagePhoto.useMutation({
+    onSuccess: (data) => { onChange({ ...block, photoUrl: data.url }); toast.success("Photo uploaded"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      uploadMutation.mutate({ summaryId, pageId: `${pageId}-block-${block.id}`, base64, mimeType: file.type });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const blockTypeLabel: Record<BlockType, string> = {
+    headline: "Headline", text: "Paragraph", bullets: "Bullet List", numbered: "Numbered List",
+    photo: "Photo", table: "Table",
+  };
+
+  const blockTypeIcon: Record<BlockType, React.ReactNode> = {
+    headline: <Type className="w-3 h-3" />,
+    text: <AlignLeft className="w-3 h-3" />,
+    bullets: <List className="w-3 h-3" />,
+    numbered: <Hash className="w-3 h-3" />,
+    photo: <Image className="w-3 h-3" />,
+    table: <Table2 className="w-3 h-3" />,
+  };
+
+  const updateItem = (idx: number, val: string) =>
+    onChange({ ...block, items: (block.items || []).map((it, i) => i === idx ? val : it) });
+  const addItem = () => onChange({ ...block, items: [...(block.items || []), ""] });
+  const removeItem = (idx: number) => onChange({ ...block, items: (block.items || []).filter((_, i) => i !== idx) });
+
+  // Table helpers
+  const table = block.table || { cols: 2, rows: 2, cells: Array(4).fill({ text: "" }) };
+  const getCell = (r: number, c: number) => table.cells[r * table.cols + c]?.text || "";
+  const setCell = (r: number, c: number, val: string) => {
+    const cells = [...table.cells];
+    cells[r * table.cols + c] = { text: val };
+    onChange({ ...block, table: { ...table, cells } });
+  };
+  const resizeTable = (cols: number, rows: number) => {
+    const cells: TableCell[] = [];
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        cells.push({ text: r < table.rows && c < table.cols ? (table.cells[r * table.cols + c]?.text || "") : "" });
+    onChange({ ...block, table: { cols, rows, cells } });
+  };
+
+  return (
+    <div className="bg-[#0f1623] rounded-xl border border-white/10 overflow-hidden">
+      {/* Block header */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-[#141c2b] border-b border-white/5">
+        <div className="text-teal-400">{blockTypeIcon[block.type]}</div>
+        <span className="text-xs font-medium text-gray-300 flex-1">{blockTypeLabel[block.type]}</span>
+        <div className="flex items-center gap-0.5">
+          <button onClick={onMoveUp} disabled={isFirst} className="p-1 text-gray-600 hover:text-gray-300 disabled:opacity-20 transition-colors">
+            <ChevronUp className="w-3 h-3" />
+          </button>
+          <button onClick={onMoveDown} disabled={isLast} className="p-1 text-gray-600 hover:text-gray-300 disabled:opacity-20 transition-colors">
+            <ChevronDown className="w-3 h-3" />
+          </button>
+          <button onClick={onDelete} className="p-1 text-gray-600 hover:text-red-400 transition-colors ml-1">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+
+      {/* Block content */}
+      <div className="p-3 space-y-2">
+        {/* Headline */}
+        {block.type === "headline" && (
+          <>
+            <Input value={block.text || ""} onChange={e => onChange({ ...block, text: e.target.value })}
+              placeholder="Headline text..." className="bg-[#141c2b] border-white/10 text-white text-sm font-semibold" />
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-500">Size</span>
+                <Input type="number" value={block.fontSize || 18} min={8} max={72}
+                  onChange={e => onChange({ ...block, fontSize: parseInt(e.target.value) })}
+                  className="bg-[#141c2b] border-white/10 text-white text-xs h-6 w-16" />
+                <span className="text-[10px] text-gray-600">px</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-500">Color</span>
+                <input type="color" value={block.color || COLORS.navy}
+                  onChange={e => onChange({ ...block, color: e.target.value })}
+                  className="w-6 h-6 rounded cursor-pointer border-0 bg-transparent" />
+              </div>
+              <div className="flex items-center gap-0.5 rounded-lg overflow-hidden border border-white/10">
+                {(["left", "center", "right"] as TextAlign[]).map(a => (
+                  <button key={a} onClick={() => onChange({ ...block, align: a })}
+                    className={`p-1.5 transition-colors ${(block.align || "left") === a ? "bg-teal-600 text-white" : "bg-[#141c2b] text-gray-500 hover:text-white"}`}>
+                    {a === "left" ? <AlignLeft className="w-3 h-3" /> : a === "center" ? <AlignCenter className="w-3 h-3" /> : <AlignRight className="w-3 h-3" />}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => onChange({ ...block, bold: !block.bold })}
+                className={`px-2 py-1 rounded text-xs font-bold transition-colors ${block.bold ? "bg-teal-600 text-white" : "bg-[#141c2b] text-gray-500 hover:text-white"}`}>B</button>
+            </div>
+          </>
+        )}
+
+        {/* Paragraph */}
+        {block.type === "text" && (
+          <>
+            <Textarea value={block.text || ""} onChange={e => onChange({ ...block, text: e.target.value })}
+              placeholder="Paragraph text... (press Enter for new line)" rows={4}
+              className="bg-[#141c2b] border-white/10 text-white text-xs resize-y min-h-[80px]" />
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-500">Size</span>
+                <Input type="number" value={block.fontSize || 11} min={6} max={48}
+                  onChange={e => onChange({ ...block, fontSize: parseInt(e.target.value) })}
+                  className="bg-[#141c2b] border-white/10 text-white text-xs h-6 w-16" />
+                <span className="text-[10px] text-gray-600">px</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-500">Color</span>
+                <input type="color" value={block.color || COLORS.text}
+                  onChange={e => onChange({ ...block, color: e.target.value })}
+                  className="w-6 h-6 rounded cursor-pointer border-0 bg-transparent" />
+              </div>
+              <div className="flex items-center gap-0.5 rounded-lg overflow-hidden border border-white/10">
+                {(["left", "center", "right"] as TextAlign[]).map(a => (
+                  <button key={a} onClick={() => onChange({ ...block, align: a })}
+                    className={`p-1.5 transition-colors ${(block.align || "left") === a ? "bg-teal-600 text-white" : "bg-[#141c2b] text-gray-500 hover:text-white"}`}>
+                    {a === "left" ? <AlignLeft className="w-3 h-3" /> : a === "center" ? <AlignCenter className="w-3 h-3" /> : <AlignRight className="w-3 h-3" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Bullet / Numbered list */}
+        {(block.type === "bullets" || block.type === "numbered") && (
+          <>
+            <div className="space-y-1.5">
+              {(block.items || []).map((item, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-gray-500 w-4 shrink-0 text-right">
+                    {block.type === "numbered" ? `${i + 1}.` : "•"}
+                  </span>
+                  <Input value={item} onChange={e => updateItem(i, e.target.value)}
+                    className="bg-[#141c2b] border-white/10 text-white text-xs h-7 flex-1" placeholder="List item..." />
+                  <button onClick={() => removeItem(i)} className="p-1 text-gray-600 hover:text-red-400 transition-colors shrink-0">
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+              <button onClick={addItem} className="flex items-center gap-1.5 text-xs text-teal-500 hover:text-teal-300 transition-colors pl-5">
+                <Plus className="w-3 h-3" /> Add Item
+              </button>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-500">Size</span>
+                <Input type="number" value={block.fontSize || 11} min={6} max={48}
+                  onChange={e => onChange({ ...block, fontSize: parseInt(e.target.value) })}
+                  className="bg-[#141c2b] border-white/10 text-white text-xs h-6 w-16" />
+                <span className="text-[10px] text-gray-600">px</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-500">Color</span>
+                <input type="color" value={block.color || COLORS.text}
+                  onChange={e => onChange({ ...block, color: e.target.value })}
+                  className="w-6 h-6 rounded cursor-pointer border-0 bg-transparent" />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Photo */}
+        {block.type === "photo" && (
+          <>
+            <div>
+              <Label className="text-gray-400 text-xs mb-1.5 block">Photo Placement</Label>
+              <div className="flex gap-2 flex-wrap">
+                {([
+                  ["left-half", "Left Half"],
+                  ["right-half", "Right Half"],
+                  ["top-header", "Top Header"],
+                ] as [PhotoPlacement, string][]).map(([val, label]) => (
+                  <button key={val} onClick={() => onChange({ ...block, photoPlacement: val })}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      (block.photoPlacement || "left-half") === val ? "bg-teal-600 text-white" : "bg-white/5 text-gray-400 hover:bg-white/10"
+                    }`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+              <button onClick={() => fileRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs transition-colors border border-white/10">
+                <Image className="w-3 h-3" />
+                {uploadMutation.isPending ? "Uploading..." : block.photoUrl ? "Change Photo" : "Upload Photo"}
+              </button>
+              {block.photoUrl && (
+                <img src={block.photoUrl} alt="preview" className="mt-2 w-full max-h-32 object-cover rounded border border-white/10" />
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Table */}
+        {block.type === "table" && (
+          <>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-500">Columns</span>
+                <Input type="number" value={table.cols} min={1} max={8}
+                  onChange={e => resizeTable(parseInt(e.target.value) || 1, table.rows)}
+                  className="bg-[#141c2b] border-white/10 text-white text-xs h-6 w-14" />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-500">Rows</span>
+                <Input type="number" value={table.rows} min={1} max={20}
+                  onChange={e => resizeTable(table.cols, parseInt(e.target.value) || 1)}
+                  className="bg-[#141c2b] border-white/10 text-white text-xs h-6 w-14" />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-xs">
+                {Array.from({ length: table.rows }).map((_, r) => (
+                  <tr key={r}>
+                    {Array.from({ length: table.cols }).map((_, c) => (
+                      <td key={c} className="border border-white/10 p-0">
+                        <Input value={getCell(r, c)} onChange={e => setCell(r, c, e.target.value)}
+                          className={`bg-transparent border-none text-white text-xs h-7 rounded-none ${r === 0 ? "font-semibold" : ""}`}
+                          placeholder={r === 0 ? `Header ${c + 1}` : `Cell`} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </table>
+            </div>
+            <p className="text-[10px] text-gray-600">First row is treated as the table header</p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Custom Page Editor ────────────────────────────────────────────────────────
+function CustomEditor({ page, summaryId, onChange }: { page: PageData; summaryId: number; onChange: (p: PageData) => void }) {
+  const blocks = getBlocks(page);
+
+  const addBlock = (type: BlockType) => {
+    const newBlock: ContentBlock = { id: newId(), type };
+    if (type === "bullets" || type === "numbered") newBlock.items = [];
+    if (type === "photo") { newBlock.photoPlacement = "left-half"; newBlock.photoUrl = null; }
+    if (type === "table") newBlock.table = { cols: 2, rows: 3, cells: Array(6).fill({ text: "" }) };
+    onChange(setBlocks(page, [...blocks, newBlock]));
+  };
+
+  const updateBlock = (idx: number, b: ContentBlock) =>
+    onChange(setBlocks(page, blocks.map((bl, i) => i === idx ? b : bl)));
+  const deleteBlock = (idx: number) =>
+    onChange(setBlocks(page, blocks.filter((_, i) => i !== idx)));
+  const moveBlock = (idx: number, dir: -1 | 1) => {
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= blocks.length) return;
+    const arr = [...blocks];
+    [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+    onChange(setBlocks(page, arr));
+  };
+
+  const blockButtons: [BlockType, string, React.ReactNode][] = [
+    ["headline", "Headline", <Type className="w-3 h-3" />],
+    ["text", "Paragraph", <AlignLeft className="w-3 h-3" />],
+    ["bullets", "Bullets", <List className="w-3 h-3" />],
+    ["numbered", "Numbered", <Hash className="w-3 h-3" />],
+    ["photo", "Photo", <Image className="w-3 h-3" />],
+    ["table", "Table", <Table2 className="w-3 h-3" />],
+  ];
 
   return (
     <div className="space-y-4">
+      {/* Add block toolbar */}
       <div>
-        <Label className="text-gray-400 text-xs mb-2 block font-semibold text-teal-400">Headlines &amp; Bullet Points</Label>
-        <HeadlinesEditor headlines={(c.headlines || []) as Headline[]} onChange={h => set("headlines", h)} />
-      </div>
-      <div className="border-t border-white/10 pt-4">
-        <Label className="text-gray-400 text-xs mb-1.5 block">Photo (optional)</Label>
-        <PhotoUploadButton pageId={page.id} summaryId={summaryId} currentUrl={page.photoUrl}
-          onUploaded={url => onChange({ ...page, photoUrl: url })} />
-      </div>
-      <div>
-        <Label className="text-gray-400 text-xs mb-1.5 block">Layout</Label>
-        <div className="flex gap-2">
-          {["single", "two-col", "full-width"].map(layout => (
-            <button key={layout} onClick={() => set("layout", layout)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                (c.layout || "single") === layout ? "bg-teal-600 text-white" : "bg-white/5 text-gray-400 hover:bg-white/10"
-              }`}>
-              {layout === "single" ? "Single" : layout === "two-col" ? "Two Column" : "Full Width"}
+        <Label className="text-gray-400 text-xs mb-2 block font-semibold">Add Content Block</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {blockButtons.map(([type, label, icon]) => (
+            <button key={type} onClick={() => addBlock(type)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-teal-600/30 hover:text-teal-300 text-gray-400 text-xs transition-colors border border-white/10 hover:border-teal-500/40">
+              {icon} {label}
             </button>
           ))}
         </div>
       </div>
-      <div>
-        <Label className="text-gray-400 text-xs mb-2 block">Content Blocks</Label>
-        <div className="space-y-2">
-          {blocks.map((block, i) => (
-            <div key={i} className="bg-[#0f1623] rounded-lg p-3 border border-white/10">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-400 font-medium capitalize">{block.type} block</span>
-                <button onClick={() => removeBlock(i)} className="p-1 text-gray-500 hover:text-red-400 transition-colors">
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-              {block.type === "text" && (
-                <Textarea value={block.text || ""} onChange={e => updateBlock(i, "text", e.target.value)}
-                  className="bg-[#141c2b] border-white/10 text-white text-xs min-h-[60px] resize-none" rows={3} placeholder="Text content..." />
-              )}
-              {block.type === "list" && (
-                <BulletListEditor items={block.items || []} onChange={items => updateBlock(i, "items", items)} />
-              )}
-            </div>
+
+      {/* Blocks */}
+      {blocks.length === 0 ? (
+        <div className="text-center py-8 text-gray-600 text-xs border border-dashed border-white/10 rounded-xl">
+          No content yet — add blocks above
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {blocks.map((block, idx) => (
+            <BlockEditor
+              key={block.id}
+              block={block}
+              onChange={b => updateBlock(idx, b)}
+              onDelete={() => deleteBlock(idx)}
+              onMoveUp={() => moveBlock(idx, -1)}
+              onMoveDown={() => moveBlock(idx, 1)}
+              isFirst={idx === 0}
+              isLast={idx === blocks.length - 1}
+              summaryId={summaryId}
+              pageId={page.id}
+            />
           ))}
         </div>
-        <div className="flex gap-2 mt-2">
-          <button onClick={() => addBlock("text")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs transition-colors">
-            <Plus className="w-3 h-3" /> Text
-          </button>
-          <button onClick={() => addBlock("list")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs transition-colors">
-            <Plus className="w-3 h-3" /> List
-          </button>
-        </div>
-      </div>
+      )}
+
       <TypographyPanel page={page} onChange={onChange} />
     </div>
   );
 }
 
 // ─── Page Preview ──────────────────────────────────────────────────────────────
+function renderBlocksHtml(blocks: ContentBlock[], ps: PageStyle, COLORS: Record<string, string>): string {
+  const hColor = ps.headingColor || COLORS.navy;
+  const bColor = ps.bodyColor || COLORS.text;
+  const aColor = ps.accentColor || COLORS.teal;
+
+  return blocks.map(block => {
+    if (block.type === "headline") {
+      const fs = block.fontSize || 18;
+      const color = block.color || hColor;
+      const align = block.align || "left";
+      const weight = block.bold !== false ? "700" : "400";
+      return `<div style="font-size:${fs * 0.44}px;font-weight:${weight};color:${color};text-align:${align};margin-bottom:4px;line-height:1.2;">${block.text || ""}</div>`;
+    }
+    if (block.type === "text") {
+      const fs = block.fontSize || 11;
+      const color = block.color || bColor;
+      const align = block.align || "left";
+      return `<div style="font-size:${fs * 0.44}px;color:${color};text-align:${align};line-height:1.5;margin-bottom:5px;white-space:pre-wrap;">${block.text || ""}</div>`;
+    }
+    if (block.type === "bullets") {
+      const fs = block.fontSize || 11;
+      const color = block.color || bColor;
+      return `<div style="margin-bottom:5px;">${(block.items || []).map(item =>
+        `<div style="display:flex;gap:4px;align-items:flex-start;margin-bottom:2px;">
+          <div style="width:4px;height:4px;border-radius:50%;background:${aColor};margin-top:${fs * 0.44 * 0.35}px;flex-shrink:0;"></div>
+          <div style="font-size:${fs * 0.44}px;color:${color};line-height:1.4;">${item}</div>
+        </div>`).join("")}</div>`;
+    }
+    if (block.type === "numbered") {
+      const fs = block.fontSize || 11;
+      const color = block.color || bColor;
+      return `<div style="margin-bottom:5px;">${(block.items || []).map((item, i) =>
+        `<div style="display:flex;gap:4px;align-items:flex-start;margin-bottom:2px;">
+          <div style="font-size:${fs * 0.44}px;color:${aColor};font-weight:700;flex-shrink:0;min-width:10px;">${i + 1}.</div>
+          <div style="font-size:${fs * 0.44}px;color:${color};line-height:1.4;">${item}</div>
+        </div>`).join("")}</div>`;
+    }
+    if (block.type === "table") {
+      const t = block.table;
+      if (!t) return "";
+      return `<table style="width:100%;border-collapse:collapse;margin-bottom:6px;font-size:5px;">
+        ${Array.from({ length: t.rows }).map((_, r) =>
+          `<tr>${Array.from({ length: t.cols }).map((_, c) => {
+            const cell = t.cells[r * t.cols + c]?.text || "";
+            const isHeader = r === 0;
+            return `<td style="border:1px solid ${COLORS.divider};padding:2px 3px;${isHeader ? `background:${COLORS.navy};color:white;font-weight:700;` : `color:${bColor};`}">${cell}</td>`;
+          }).join("")}</tr>`
+        ).join("")}
+      </table>`;
+    }
+    // photo blocks are handled separately in the page layout
+    return "";
+  }).join("");
+}
+
 function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
   const monthYear = new Date(doc.createdAt).toLocaleString("en-US", { month: "long", year: "numeric" });
-  const s = getStyle(page);
-  const headingColor = s.headingColor || COLORS.navy;
-  const bodyColor = s.bodyColor || COLORS.text;
-  const accentColor = s.accentColor || COLORS.teal;
-  const headingFs = s.headingFontSize;
-  const bodyFs = s.bodyFontSize;
+  const ps = getStyle(page);
+  const hColor = ps.headingColor || COLORS.navy;
+  const bColor = ps.bodyColor || COLORS.text;
+  const aColor = ps.accentColor || COLORS.teal;
+  const hFs = ps.headingFontSize;
+  const bFs = ps.bodyFontSize;
 
   const wrapperStyle: React.CSSProperties = {
-    width: "100%",
-    aspectRatio: "210/297",
-    fontFamily: "'Montserrat', sans-serif",
-    overflow: "hidden",
-    position: "relative",
-    background: "white",
-    fontSize: "7px",
+    width: "100%", aspectRatio: "210/297", fontFamily: "'Montserrat', sans-serif",
+    overflow: "hidden", position: "relative", background: "white", fontSize: "7px",
   };
 
   const header = (
@@ -754,7 +699,7 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
   );
 
   if (page.template === "cover") {
-    const c = page.content as { countryName?: string; programLabel?: string; programSubtype?: string; summaryLabel?: string };
+    const c = page.content as { countryName?: string; programLabel?: string; summaryLabel?: string };
     return (
       <div style={{ ...wrapperStyle, display: "flex" }}>
         <div style={{ width: "50%", height: "100%", background: COLORS.navy, overflow: "hidden", flexShrink: 0 }}>
@@ -764,15 +709,11 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
         <div style={{ width: "50%", height: "100%", background: "white", display: "flex", flexDirection: "column", padding: "16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "auto" }}>
             <img src={ELEVAY_LOGO} alt="ELEVAY" style={{ height: "20px", width: "auto", objectFit: "contain" }} />
-            <div>
-              <div style={{ fontSize: "6px", fontWeight: 700, color: headingColor, letterSpacing: "0.1em" }}>ELEVAY</div>
-              <div style={{ fontSize: "5px", color: accentColor, letterSpacing: "0.08em" }}>CITIZENSHIP & RESIDENCY</div>
-            </div>
           </div>
           <div style={{ flex: 1 }} />
-          <div style={{ background: accentColor, padding: "10px 12px", marginLeft: "-16px", marginRight: "-16px" }}>
-            <div style={{ color: "white", fontSize: headingFs ? `${headingFs * 0.44}px` : "14px", fontWeight: 700, letterSpacing: "0.05em" }}>{c.countryName || doc.country.toUpperCase()}</div>
-            <div style={{ color: "rgba(255,255,255,0.85)", fontSize: bodyFs ? `${bodyFs * 0.44}px` : "7px", marginTop: "3px" }}>{c.programLabel || doc.programType}</div>
+          <div style={{ background: aColor, padding: "10px 12px", marginLeft: "-16px", marginRight: "-16px" }}>
+            <div style={{ color: "white", fontSize: hFs ? `${hFs * 0.44}px` : "14px", fontWeight: 700, letterSpacing: "0.05em" }}>{c.countryName || doc.country.toUpperCase()}</div>
+            <div style={{ color: "rgba(255,255,255,0.85)", fontSize: bFs ? `${bFs * 0.44}px` : "7px", marginTop: "3px" }}>{c.programLabel || doc.programType}</div>
             <div style={{ color: "rgba(255,255,255,0.7)", fontSize: "6px", letterSpacing: "0.15em", textTransform: "uppercase", marginTop: "2px" }}>{c.summaryLabel || "PROGRAM SUMMARY"}</div>
             <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "5px", marginTop: "6px" }}>Last updated: {monthYear}</div>
           </div>
@@ -781,162 +722,8 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
     );
   }
 
-  if (page.template === "overview") {
-    const c = page.content as { sectionLabel?: string; heading?: string; intro?: string; infoRows?: InfoRow[]; headlines?: Headline[] };
-    const rows = (c.infoRows || []) as InfoRow[];
-    const headlines = (c.headlines || []) as Headline[];
-    return (
-      <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
-        {header}
-        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-          <div style={{ width: "45%", padding: "10px 10px 10px 12px", borderRight: `1px solid ${COLORS.divider}`, overflow: "hidden" }}>
-            <div style={{ fontSize: "5px", letterSpacing: "0.15em", color: accentColor, textTransform: "uppercase", marginBottom: "4px" }}>{c.sectionLabel || "PROGRAMME OVERVIEW"}</div>
-            <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "9px", fontWeight: 700, color: headingColor, marginBottom: "4px", lineHeight: 1.2 }}>{c.heading || ""}</div>
-            <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "6px", color: bodyColor, lineHeight: 1.5, marginBottom: "6px" }}>{c.intro || ""}</div>
-            {rows.map((row, i) => (
-              <div key={i}>
-                {i > 0 && <div style={{ height: "1px", background: COLORS.divider, margin: "4px 0" }} />}
-                <div style={{ fontSize: "5px", letterSpacing: "0.1em", color: accentColor, textTransform: "uppercase" }}>{row.label}</div>
-                <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor }}>{row.value}</div>
-              </div>
-            ))}
-            {headlines.map((h, hi) => (
-              <div key={hi} style={{ marginTop: "5px" }}>
-                <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6.5px", fontWeight: 700, color: headingColor, marginBottom: "2px" }}>{h.title}</div>
-                {h.bullets.map((b, bi) => (
-                  <div key={bi} style={{ marginBottom: "2px" }}>
-                    <div style={{ display: "flex", gap: "3px", alignItems: "flex-start" }}>
-                      <div style={{ width: "3px", height: "3px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
-                      <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, fontWeight: 500 }}>{b.text}</div>
-                    </div>
-                    {b.description && <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5px", color: bodyColor, lineHeight: 1.4, paddingLeft: "6px", opacity: 0.8 }}>{b.description}</div>}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-          <div style={{ width: "55%", overflow: "hidden" }}>
-            {page.photoUrl ? <img src={page.photoUrl} alt="overview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              : <div style={{ width: "100%", height: "100%", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: "7px" }}>Upload Photo</div>}
-          </div>
-        </div>
-        {footer}
-      </div>
-    );
-  }
-
-  if (page.template === "eligibility") {
-    const c = page.content as { requirements?: Requirement[]; idealCandidateHeading?: string; idealCandidateIntro?: string; idealCandidateBullets?: string[]; headlines?: Headline[] };
-    const reqs = (c.requirements || []) as Requirement[];
-    const bullets = (c.idealCandidateBullets || []) as string[];
-    const headlines = (c.headlines || []) as Headline[];
-    return (
-      <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
-        {header}
-        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-          <div style={{ width: "50%", padding: "10px 8px 10px 12px", borderRight: `1px solid ${COLORS.divider}`, overflow: "hidden" }}>
-            {reqs.map((req, i) => (
-              <div key={i} style={{ marginBottom: "6px" }}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: "4px", marginBottom: "2px" }}>
-                  <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: COLORS.red, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: "5px", fontWeight: 700, flexShrink: 0 }}>{i + 1}</div>
-                  <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor, lineHeight: 1.3 }}>{req.heading}</div>
-                </div>
-                <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, lineHeight: 1.4, paddingLeft: "16px" }}>{req.text}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ width: "50%", padding: "10px 12px 10px 8px", overflow: "hidden" }}>
-            <div style={{ border: `1px solid ${accentColor}`, borderRadius: "4px", padding: "8px", background: COLORS.lightTeal }}>
-              <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "7px", fontWeight: 700, color: headingColor, marginBottom: "4px" }}>{c.idealCandidateHeading || "Ideal Candidate"}</div>
-              <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, lineHeight: 1.5, marginBottom: "4px" }}>{c.idealCandidateIntro || ""}</div>
-              {bullets.map((b, i) => (
-                <div key={i} style={{ display: "flex", gap: "4px", marginBottom: "2px" }}>
-                  <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
-                  <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor }}>{b}</div>
-                </div>
-              ))}
-              {headlines.map((h, hi) => (
-                <div key={hi} style={{ marginTop: "5px" }}>
-                  <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor, marginBottom: "2px" }}>{h.title}</div>
-                  {h.bullets.map((b, bi) => (
-                    <div key={bi} style={{ marginBottom: "2px" }}>
-                      <div style={{ display: "flex", gap: "3px" }}>
-                        <div style={{ width: "3px", height: "3px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
-                        <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, fontWeight: 500 }}>{b.text}</div>
-                      </div>
-                      {b.description && <div style={{ fontSize: "5px", color: bodyColor, lineHeight: 1.4, paddingLeft: "6px", opacity: 0.8 }}>{b.description}</div>}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        {footer}
-      </div>
-    );
-  }
-
-  if (page.template === "process") {
-    const c = page.content as { stages?: Stage[]; feesHeading?: string; feeRows?: FeeRow[]; headlines?: Headline[] };
-    const stages = (c.stages || []) as Stage[];
-    const feeRows = (c.feeRows || []) as FeeRow[];
-    const headlines = (c.headlines || []) as Headline[];
-    return (
-      <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
-        {header}
-        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-          <div style={{ width: "55%", padding: "10px 8px 10px 12px", borderRight: `1px solid ${COLORS.divider}`, overflow: "hidden" }}>
-            {stages.map((stage, i) => (
-              <div key={i}>
-                {i > 0 && <div style={{ height: "1px", background: COLORS.divider, margin: "5px 0" }} />}
-                <div style={{ display: "flex", gap: "4px", alignItems: "flex-start" }}>
-                  <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: accentColor, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: "5px", fontWeight: 700, flexShrink: 0, marginTop: "1px" }}>{i + 1}</div>
-                  <div>
-                    <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor, marginBottom: "1px" }}>{stage.heading}</div>
-                    <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, lineHeight: 1.4 }}>{stage.text}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{ width: "45%", padding: "10px 12px 10px 8px", overflow: "hidden" }}>
-            <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "7px", fontWeight: 700, color: headingColor, marginBottom: "6px" }}>{c.feesHeading || "Programme Fees"}</div>
-            {feeRows.map((row, i) => (
-              <div key={i}>
-                {i > 0 && <div style={{ height: "1px", background: COLORS.divider, margin: "3px 0" }} />}
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor }}>{row.label}</div>
-                  <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", fontWeight: 700, color: headingColor }}>{row.value}</div>
-                </div>
-              </div>
-            ))}
-            {headlines.map((h, hi) => (
-              <div key={hi} style={{ marginTop: "5px" }}>
-                <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor, marginBottom: "2px" }}>{h.title}</div>
-                {h.bullets.map((b, bi) => (
-                  <div key={bi} style={{ marginBottom: "2px" }}>
-                    <div style={{ display: "flex", gap: "3px" }}>
-                      <div style={{ width: "3px", height: "3px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
-                      <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, fontWeight: 500 }}>{b.text}</div>
-                    </div>
-                    {b.description && <div style={{ fontSize: "5px", color: bodyColor, lineHeight: 1.4, paddingLeft: "6px", opacity: 0.8 }}>{b.description}</div>}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-        {footer}
-      </div>
-    );
-  }
-
   if (page.template === "about") {
-    const c = page.content as { heading?: string; paragraphs?: string[]; infoRows?: InfoRow[]; rankingsHeading?: string; rankings?: string[]; headlines?: Headline[] };
-    const rows = (c.infoRows || []) as InfoRow[];
-    const rankings = (c.rankings || []) as string[];
-    const headlines = (c.headlines || []) as Headline[];
+    const c = page.content as { heading?: string; paragraphs?: string[]; rankings?: string[]; memberships?: string[] };
     return (
       <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
         {header}
@@ -946,39 +733,18 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
               : <div style={{ width: "100%", height: "100%", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: "7px" }}>Upload Photo</div>}
           </div>
           <div style={{ width: "55%", padding: "10px 12px 10px 8px", borderLeft: `1px solid ${COLORS.divider}`, overflow: "hidden" }}>
-            <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "9px", fontWeight: 700, color: headingColor, marginBottom: "5px" }}>{c.heading || ""}</div>
+            <div style={{ fontSize: hFs ? `${hFs * 0.44}px` : "9px", fontWeight: 700, color: hColor, marginBottom: "5px" }}>{c.heading || ""}</div>
             {(c.paragraphs || []).slice(0, 2).map((p, i) => (
-              <div key={i} style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, lineHeight: 1.5, marginBottom: "4px" }}>{p}</div>
+              <div key={i} style={{ fontSize: bFs ? `${bFs * 0.44}px` : "5.5px", color: bColor, lineHeight: 1.5, marginBottom: "4px" }}>{p}</div>
             ))}
-            {rows.slice(0, 3).map((row, i) => (
-              <div key={i}>
-                {i > 0 && <div style={{ height: "1px", background: COLORS.divider, margin: "3px 0" }} />}
-                <div style={{ fontSize: "5px", letterSpacing: "0.1em", color: accentColor, textTransform: "uppercase" }}>{row.label}</div>
-                <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor }}>{row.value}</div>
-              </div>
-            ))}
-            {rankings.length > 0 && (
+            {(c.rankings || []).length > 0 && (
               <div style={{ border: `1px solid ${COLORS.divider}`, borderRadius: "3px", padding: "5px", marginTop: "5px" }}>
-                <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor, marginBottom: "3px" }}>{c.rankingsHeading || "Global Rankings"}</div>
-                {rankings.slice(0, 3).map((r, i) => (
-                  <div key={i} style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5px", color: bodyColor, marginBottom: "1px" }}>• {r}</div>
+                <div style={{ fontSize: "6px", fontWeight: 700, color: hColor, marginBottom: "3px" }}>Global Rankings</div>
+                {(c.rankings || []).slice(0, 3).map((r, i) => (
+                  <div key={i} style={{ fontSize: "5px", color: bColor, marginBottom: "1px" }}>• {r}</div>
                 ))}
               </div>
             )}
-            {headlines.map((h, hi) => (
-              <div key={hi} style={{ marginTop: "5px" }}>
-                <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "6px", fontWeight: 700, color: headingColor, marginBottom: "2px" }}>{h.title}</div>
-                {h.bullets.map((b, bi) => (
-                  <div key={bi} style={{ marginBottom: "2px" }}>
-                    <div style={{ display: "flex", gap: "3px" }}>
-                      <div style={{ width: "3px", height: "3px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
-                      <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, fontWeight: 500 }}>{b.text}</div>
-                    </div>
-                    {b.description && <div style={{ fontSize: "5px", color: bodyColor, lineHeight: 1.4, paddingLeft: "6px", opacity: 0.8 }}>{b.description}</div>}
-                  </div>
-                ))}
-              </div>
-            ))}
           </div>
         </div>
         {footer}
@@ -986,45 +752,126 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
     );
   }
 
-  // Blank
-  const c = page.content as { layout?: string; blocks?: ContentBlock[]; headlines?: Headline[] };
-  const blocks = (c.blocks || []) as ContentBlock[];
-  const headlines = (c.headlines || []) as Headline[];
+  // Custom page
+  const blocks = getBlocks(page);
+  const photoBlock = blocks.find(b => b.type === "photo" && b.photoUrl);
+  const contentBlocks = blocks.filter(b => b.type !== "photo");
+  const placement = photoBlock?.photoPlacement || "left-half";
+
+  const contentHtml = contentBlocks.map(block => {
+    if (block.type === "headline") {
+      const fs = (block.fontSize || 18) * 0.44;
+      const color = block.color || hColor;
+      const align = block.align || "left";
+      const weight = block.bold !== false ? "700" : "400";
+      return <div key={block.id} style={{ fontSize: `${fs}px`, fontWeight: weight, color, textAlign: align, marginBottom: "4px", lineHeight: 1.2 }}>{block.text || ""}</div>;
+    }
+    if (block.type === "text") {
+      const fs = (block.fontSize || 11) * 0.44;
+      const color = block.color || bColor;
+      const align = block.align || "left";
+      return <div key={block.id} style={{ fontSize: `${fs}px`, color, textAlign: align, lineHeight: 1.5, marginBottom: "5px", whiteSpace: "pre-wrap" }}>{block.text || ""}</div>;
+    }
+    if (block.type === "bullets") {
+      const fs = (block.fontSize || 11) * 0.44;
+      const color = block.color || bColor;
+      return (
+        <div key={block.id} style={{ marginBottom: "5px" }}>
+          {(block.items || []).map((item, i) => (
+            <div key={i} style={{ display: "flex", gap: "4px", alignItems: "flex-start", marginBottom: "2px" }}>
+              <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: aColor, marginTop: `${fs * 0.35}px`, flexShrink: 0 }} />
+              <div style={{ fontSize: `${fs}px`, color, lineHeight: 1.4 }}>{item}</div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (block.type === "numbered") {
+      const fs = (block.fontSize || 11) * 0.44;
+      const color = block.color || bColor;
+      return (
+        <div key={block.id} style={{ marginBottom: "5px" }}>
+          {(block.items || []).map((item, i) => (
+            <div key={i} style={{ display: "flex", gap: "4px", alignItems: "flex-start", marginBottom: "2px" }}>
+              <div style={{ fontSize: `${fs}px`, color: aColor, fontWeight: 700, flexShrink: 0, minWidth: "10px" }}>{i + 1}.</div>
+              <div style={{ fontSize: `${fs}px`, color, lineHeight: 1.4 }}>{item}</div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (block.type === "table") {
+      const t = block.table;
+      if (!t) return null;
+      return (
+        <table key={block.id} style={{ width: "100%", borderCollapse: "collapse", marginBottom: "6px", fontSize: "5px" }}>
+          <tbody>
+            {Array.from({ length: t.rows }).map((_, r) => (
+              <tr key={r}>
+                {Array.from({ length: t.cols }).map((_, c) => {
+                  const cell = t.cells[r * t.cols + c]?.text || "";
+                  const isHeader = r === 0;
+                  return (
+                    <td key={c} style={{ border: `1px solid ${COLORS.divider}`, padding: "2px 3px", background: isHeader ? COLORS.navy : "transparent", color: isHeader ? "white" : bColor, fontWeight: isHeader ? 700 : 400 }}>
+                      {cell}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );
+    }
+    return null;
+  });
+
+  if (photoBlock && placement === "top-header") {
+    return (
+      <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
+        {header}
+        <div style={{ height: "28%", overflow: "hidden", flexShrink: 0 }}>
+          <img src={photoBlock.photoUrl!} alt="page" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        </div>
+        <div style={{ flex: 1, padding: "8px 12px", overflow: "hidden" }}>{contentHtml}</div>
+        {footer}
+      </div>
+    );
+  }
+
+  if (photoBlock && (placement === "left-half" || placement === "right-half")) {
+    const photoLeft = placement === "left-half";
+    return (
+      <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
+        {header}
+        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+          {photoLeft && (
+            <div style={{ width: "45%", overflow: "hidden", flexShrink: 0 }}>
+              <img src={photoBlock.photoUrl!} alt="page" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </div>
+          )}
+          <div style={{ flex: 1, padding: "8px 12px", overflow: "hidden", borderLeft: photoLeft ? `1px solid ${COLORS.divider}` : undefined, borderRight: !photoLeft ? `1px solid ${COLORS.divider}` : undefined }}>
+            {contentHtml}
+          </div>
+          {!photoLeft && (
+            <div style={{ width: "45%", overflow: "hidden", flexShrink: 0 }}>
+              <img src={photoBlock.photoUrl!} alt="page" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </div>
+          )}
+        </div>
+        {footer}
+      </div>
+    );
+  }
+
+  // Text only
   return (
     <div style={{ ...wrapperStyle, display: "flex", flexDirection: "column" }}>
       {header}
-      <div style={{ flex: 1, padding: "10px 16px", overflow: "hidden" }}>
-        {blocks.length === 0 && headlines.length === 0
-          ? <div style={{ color: "#ccc", fontSize: "7px", textAlign: "center", marginTop: "30px" }}>Empty page — add content blocks or headlines</div>
-          : (
-            <>
-              {blocks.map((block, i) => (
-                <div key={i} style={{ marginBottom: "6px" }}>
-                  {block.type === "text" && <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "6px", color: bodyColor, lineHeight: 1.5 }}>{block.text}</div>}
-                  {block.type === "list" && (block.items || []).map((item, j) => (
-                    <div key={j} style={{ display: "flex", gap: "4px", marginBottom: "2px" }}>
-                      <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
-                      <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor }}>{item}</div>
-                    </div>
-                  ))}
-                </div>
-              ))}
-              {headlines.map((h, hi) => (
-                <div key={hi} style={{ marginBottom: "6px" }}>
-                  <div style={{ fontSize: headingFs ? `${headingFs * 0.44}px` : "7px", fontWeight: 700, color: headingColor, marginBottom: "3px" }}>{h.title}</div>
-                  {h.bullets.map((b, bi) => (
-                    <div key={bi} style={{ marginBottom: "2px" }}>
-                      <div style={{ display: "flex", gap: "3px" }}>
-                        <div style={{ width: "3px", height: "3px", borderRadius: "50%", background: accentColor, marginTop: "2px", flexShrink: 0 }} />
-                        <div style={{ fontSize: bodyFs ? `${bodyFs * 0.44}px` : "5.5px", color: bodyColor, fontWeight: 500 }}>{b.text}</div>
-                      </div>
-                      {b.description && <div style={{ fontSize: "5px", color: bodyColor, lineHeight: 1.4, paddingLeft: "6px", opacity: 0.8 }}>{b.description}</div>}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </>
-          )
+      <div style={{ flex: 1, padding: "10px 14px", overflow: "hidden" }}>
+        {blocks.length === 0
+          ? <div style={{ color: "#ccc", fontSize: "7px", textAlign: "center", marginTop: "30px" }}>Empty page — add content blocks</div>
+          : contentHtml
         }
       </div>
       {footer}
@@ -1033,45 +880,36 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
 }
 
 // ─── Sortable Page Item ────────────────────────────────────────────────────────
+const TEMPLATE_LABELS: Record<TemplateType, string> = {
+  cover: "Cover Page",
+  about: "About Country",
+  custom: "Custom Page",
+};
+const TEMPLATE_ICONS: Record<TemplateType, string> = { cover: "★", about: "🌍", custom: "📄" };
+
 function SortablePageItem({ page, idx, selectedPageIdx, onSelect }: {
   page: PageData; idx: number; selectedPageIdx: number; onSelect: (idx: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  };
+  const style: React.CSSProperties = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
 
   return (
     <div ref={setNodeRef} style={style}>
-      <button
-        onClick={() => onSelect(idx)}
+      <button onClick={() => onSelect(idx)}
         className={`w-full flex items-center gap-1.5 px-2 py-2 rounded-lg text-left transition-all text-xs ${
           selectedPageIdx === idx ? "bg-teal-600/30 border border-teal-500/50 text-white" : "hover:bg-white/5 text-gray-400 border border-transparent"
-        }`}
-      >
-        {/* Drag handle */}
-        <div
-          {...attributes}
-          {...listeners}
+        }`}>
+        <div {...attributes} {...listeners}
           className="cursor-grab active:cursor-grabbing p-0.5 text-gray-600 hover:text-gray-400 shrink-0"
-          onClick={e => e.stopPropagation()}
-          title="Drag to reorder"
-        >
-          <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
-            <circle cx="3" cy="2" r="1.2" /><circle cx="7" cy="2" r="1.2" />
-            <circle cx="3" cy="6" r="1.2" /><circle cx="7" cy="6" r="1.2" />
-            <circle cx="3" cy="10" r="1.2" /><circle cx="7" cy="10" r="1.2" />
-          </svg>
+          onClick={e => e.stopPropagation()} title="Drag to reorder">
+          <GripVertical className="w-3 h-3" />
         </div>
         <div className="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-white/10 text-xs">
           {TEMPLATE_ICONS[page.template]}
         </div>
         <div className="flex-1 min-w-0">
           <div className="truncate font-medium text-[11px]">{TEMPLATE_LABELS[page.template]}</div>
-          <div className="text-[10px] text-gray-600">{page.photoUrl ? "📷 Photo" : "No photo"}</div>
+          <div className="text-[10px] text-gray-600">{getBlocks(page).length} blocks</div>
         </div>
         <span className="text-[10px] text-gray-600 shrink-0">{idx + 1}</span>
       </button>
@@ -1086,16 +924,13 @@ export default function SummaryEditor() {
   const id = params?.id ? parseInt(params.id) : 0;
 
   const { data: summary, isLoading } = trpc.marketing.getSummary.useQuery({ id }, { enabled: !!id });
-  const saveMutation = trpc.marketing.saveSummary.useMutation({
-    onError: (err) => toast.error(err.message),
-  });
+  const saveMutation = trpc.marketing.saveSummary.useMutation({ onError: (err) => toast.error(err.message) });
 
   const [doc, setDoc] = useState<DocumentData | null>(null);
   const [selectedPageIdx, setSelectedPageIdx] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedRef = useRef<string>("");
-  const [showAddPage, setShowAddPage] = useState(false);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -1108,7 +943,14 @@ export default function SummaryEditor() {
     try {
       const parsed = JSON.parse(summary.documentJson || "{}");
       if (parsed.pages && Array.isArray(parsed.pages)) {
-        setDoc(parsed as DocumentData);
+        // Migrate old templates to custom
+        const migratedPages = parsed.pages.map((p: PageData) => {
+          if (p.template !== "cover" && p.template !== "about" && p.template !== "custom") {
+            return { ...p, template: "custom" as TemplateType };
+          }
+          return p;
+        });
+        setDoc({ ...parsed, pages: migratedPages } as DocumentData);
         lastSavedRef.current = summary.documentJson;
         return;
       }
@@ -1120,16 +962,12 @@ export default function SummaryEditor() {
       programSubtype: summary.programSubtype || "RESIDENCY",
       createdAt: now,
       pages: [
-        { id: `cover-${now}`, template: "cover", photoUrl: null, content: { countryName: summary.country.toUpperCase(), programLabel: summary.programType, programSubtype: (summary.programSubtype || "RESIDENCY").toUpperCase(), summaryLabel: "PROGRAM SUMMARY" } },
-        { id: `overview-${now}`, template: "overview", photoUrl: null, content: { sectionLabel: "PROGRAMME OVERVIEW", heading: `${summary.country} ${summary.programType}`, intro: "", infoRows: [] } },
-        { id: `eligibility-${now}`, template: "eligibility", photoUrl: null, content: { requirements: [], idealCandidateHeading: "Ideal Candidate", idealCandidateIntro: "", idealCandidateBullets: [] } },
-        { id: `process-${now}`, template: "process", photoUrl: null, content: { stages: [], feesHeading: "Programme Fees", feeRows: [] } },
-        { id: `about-${now}`, template: "about", photoUrl: null, content: { heading: `About ${summary.country}`, paragraphs: [], infoRows: [], rankingsHeading: "Global Rankings", rankings: [], membershipsHeading: "International Memberships", memberships: [] } },
+        { id: `cover-${now}`, template: "cover", photoUrl: null, content: { countryName: summary.country.toUpperCase(), programLabel: summary.programType, summaryLabel: "PROGRAM SUMMARY" } },
+        { id: `about-${now}`, template: "about", photoUrl: null, content: { heading: `About ${summary.country}`, paragraphs: [], rankings: [], memberships: [] } },
       ],
     });
   }, [summary]);
 
-  // Auto-save
   useEffect(() => {
     if (!doc) return;
     const json = JSON.stringify(doc);
@@ -1146,18 +984,21 @@ export default function SummaryEditor() {
     setDoc(prev => prev ? { ...prev, pages: prev.pages.map(p => p.id === updatedPage.id ? updatedPage : p) } : prev);
   }, []);
 
-  const addPage = (template: TemplateType) => {
+  const addPage = () => {
     if (!doc) return;
-    const newPage: PageData = { id: `${template}-${Date.now()}`, template, photoUrl: null, content: {} };
+    const newPage: PageData = { id: `custom-${Date.now()}`, template: "custom", photoUrl: null, content: { blocks: [] } };
     const pages = [...doc.pages];
-    pages.splice(selectedPageIdx + 1, 0, newPage);
+    // Insert before the last page (About Country) if it's the last
+    const insertAt = selectedPageIdx + 1;
+    pages.splice(insertAt, 0, newPage);
     setDoc({ ...doc, pages });
-    setSelectedPageIdx(selectedPageIdx + 1);
-    setShowAddPage(false);
+    setSelectedPageIdx(insertAt);
   };
 
   const deletePage = (idx: number) => {
-    if (!doc || doc.pages.length <= 1) return;
+    if (!doc) return;
+    const page = doc.pages[idx];
+    if (page.template === "cover") { toast.error("Cannot delete the cover page"); return; }
     if (!confirm("Delete this page?")) return;
     const pages = doc.pages.filter((_, i) => i !== idx);
     setDoc({ ...doc, pages });
@@ -1174,10 +1015,7 @@ export default function SummaryEditor() {
     setSelectedPageIdx(newIdx);
   };
 
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveDragId(event.active.id as string);
-  };
-
+  const handleDragStart = (event: DragStartEvent) => setActiveDragId(event.active.id as string);
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveDragId(null);
     if (!doc) return;
@@ -1193,7 +1031,7 @@ export default function SummaryEditor() {
     toast.success(`Page moved to position ${newIdx + 1}`);
   };
 
-  // PDF Export with per-page style overrides
+  // ─── PDF Export ───────────────────────────────────────────────────────────────
   const handleExportPdf = async () => {
     if (!doc) return;
     setIsExporting(true);
@@ -1202,16 +1040,14 @@ export default function SummaryEditor() {
       const printWindow = window.open("", "_blank");
       if (!printWindow) { toast.error("Allow popups to export PDF"); setIsExporting(false); return; }
 
-      const headerHtml = (country: string, programType: string) => `
-        <div style="background:${COLORS.navy};height:50px;display:flex;align-items:center;padding:0 28px;gap:12px;flex-shrink:0;">
-          <img src="${ELEVAY_LOGO}" style="height:28px;width:auto;object-fit:contain;" />
-          <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);"></div>
-          <div style="color:white;font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;">${country} — ${programType}</div>
-        </div>`;
-      const footerHtml = `
-        <div style="height:28px;border-top:1px solid ${COLORS.divider};display:flex;align-items:center;padding:0 28px;flex-shrink:0;">
-          <div style="font-size:7px;color:#999;text-transform:uppercase;letter-spacing:0.08em;">ELEVAY — Citizenship & Residency by Investment</div>
-        </div>`;
+      const headerHtml = `<div style="background:${COLORS.navy};height:50px;display:flex;align-items:center;padding:0 28px;gap:12px;flex-shrink:0;">
+        <img src="${ELEVAY_LOGO}" style="height:28px;width:auto;object-fit:contain;" />
+        <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);"></div>
+        <div style="color:white;font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;">${doc.country} — ${doc.programType}</div>
+      </div>`;
+      const footerHtml = `<div style="height:28px;border-top:1px solid ${COLORS.divider};display:flex;align-items:center;padding:0 28px;flex-shrink:0;">
+        <div style="font-size:7px;color:#999;text-transform:uppercase;letter-spacing:0.08em;">ELEVAY — Citizenship & Residency by Investment</div>
+      </div>`;
 
       const pagesHtml = doc.pages.map((page) => {
         const ps = getStyle(page);
@@ -1222,19 +1058,13 @@ export default function SummaryEditor() {
         const bFs = ps.bodyFontSize;
 
         if (page.template === "cover") {
-          const c = page.content as { countryName?: string; programLabel?: string; programSubtype?: string; summaryLabel?: string };
+          const c = page.content as { countryName?: string; programLabel?: string; summaryLabel?: string };
           return `<div class="page" style="display:flex;font-family:'Montserrat',sans-serif;">
             <div style="width:50%;height:100%;background:${COLORS.navy};overflow:hidden;flex-shrink:0;">
               ${page.photoUrl ? `<img src="${page.photoUrl}" style="width:100%;height:100%;object-fit:cover;" />` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.2);font-size:14px;">No Photo</div>`}
             </div>
             <div style="width:50%;height:100%;background:white;display:flex;flex-direction:column;padding:40px;">
-              <div style="display:flex;align-items:center;gap:12px;margin-bottom:auto;">
-                <img src="${ELEVAY_LOGO}" style="height:40px;width:auto;object-fit:contain;" />
-                <div>
-                  <div style="font-size:11px;font-weight:700;color:${hColor};letter-spacing:0.1em;">ELEVAY</div>
-                  <div style="font-size:9px;color:${aColor};letter-spacing:0.08em;">CITIZENSHIP & RESIDENCY</div>
-                </div>
-              </div>
+              <img src="${ELEVAY_LOGO}" style="height:36px;width:auto;object-fit:contain;margin-bottom:auto;" />
               <div style="flex:1;"></div>
               <div style="background:${aColor};padding:24px 28px;margin:0 -40px -40px -40px;">
                 <div style="color:white;font-size:${hFs || 32}px;font-weight:700;letter-spacing:0.05em;margin-bottom:6px;">${c.countryName || doc.country.toUpperCase()}</div>
@@ -1246,144 +1076,69 @@ export default function SummaryEditor() {
           </div>`;
         }
 
-        if (page.template === "overview") {
-          const c = page.content as { sectionLabel?: string; heading?: string; intro?: string; infoRows?: InfoRow[]; headlines?: Headline[] };
-          const rows = (c.infoRows || []) as InfoRow[];
-          const headlines = (c.headlines || []) as Headline[];
-          const headlinesHtml = headlines.map(h => `<div style="margin-top:10px;"><div style="font-size:${hFs ? hFs - 2 : 12}px;font-weight:700;color:${hColor};margin-bottom:4px;">${h.title}</div>${h.bullets.map(b => `<div style="margin-bottom:4px;"><div style="display:flex;gap:5px;align-items:flex-start;"><div style="width:5px;height:5px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};font-weight:500;">${b.text}</div></div>${b.description ? `<div style="font-size:${bFs ? bFs - 1 : 9}px;color:${bColor};line-height:1.4;padding-left:10px;opacity:0.8;">${b.description}</div>` : ""}</div>`).join("")}</div>`).join("");
-          return `<div class="page" style="display:flex;flex-direction:column;font-family:'Montserrat',sans-serif;">
-            ${headerHtml(doc.country, doc.programType)}
-            <div style="flex:1;display:flex;overflow:hidden;">
-              <div style="width:45%;padding:28px 20px 20px 28px;border-right:1px solid ${COLORS.divider};overflow:hidden;">
-                <div style="font-size:9px;letter-spacing:0.15em;color:${aColor};text-transform:uppercase;margin-bottom:8px;">${c.sectionLabel || "PROGRAMME OVERVIEW"}</div>
-                <div style="font-size:${hFs || 20}px;font-weight:700;color:${hColor};margin-bottom:10px;line-height:1.2;">${c.heading || ""}</div>
-                <div style="font-size:${bFs || 11}px;color:${bColor};line-height:1.6;margin-bottom:16px;">${c.intro || ""}</div>
-                ${rows.map((row, i) => `${i > 0 ? `<div style="height:1px;background:${COLORS.divider};margin:8px 0;"></div>` : ""}
-                  <div style="font-size:8px;letter-spacing:0.12em;color:${aColor};text-transform:uppercase;">${row.label}</div>
-                  <div style="font-size:${bFs || 11}px;font-weight:700;color:${hColor};">${row.value}</div>`).join("")}
-                ${headlinesHtml}
-              </div>
-              <div style="width:55%;overflow:hidden;">
-                ${page.photoUrl ? `<img src="${page.photoUrl}" style="width:100%;height:100%;object-fit:cover;" />` : `<div style="width:100%;height:100%;background:#f0f4f8;display:flex;align-items:center;justify-content:center;color:#ccc;">No Photo</div>`}
-              </div>
-            </div>
-            ${footerHtml}
-          </div>`;
-        }
-
-        if (page.template === "eligibility") {
-          const c = page.content as { requirements?: Requirement[]; idealCandidateHeading?: string; idealCandidateIntro?: string; idealCandidateBullets?: string[]; headlines?: Headline[] };
-          const reqs = (c.requirements || []) as Requirement[];
-          const bullets = (c.idealCandidateBullets || []) as string[];
-          const headlines = (c.headlines || []) as Headline[];
-          const headlinesHtml = headlines.map(h => `<div style="margin-top:8px;"><div style="font-size:${hFs ? hFs - 2 : 11}px;font-weight:700;color:${hColor};margin-bottom:4px;">${h.title}</div>${h.bullets.map(b => `<div style="margin-bottom:3px;"><div style="display:flex;gap:5px;"><div style="width:5px;height:5px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};font-weight:500;">${b.text}</div></div>${b.description ? `<div style="font-size:${bFs ? bFs - 1 : 9}px;color:${bColor};line-height:1.4;padding-left:10px;opacity:0.8;">${b.description}</div>` : ""}</div>`).join("")}</div>`).join("");
-          return `<div class="page" style="display:flex;flex-direction:column;font-family:'Montserrat',sans-serif;">
-            ${headerHtml(doc.country, doc.programType)}
-            <div style="flex:1;display:flex;overflow:hidden;">
-              <div style="width:50%;padding:24px 16px 20px 28px;border-right:1px solid ${COLORS.divider};overflow:hidden;">
-                ${reqs.map((req, i) => `<div style="margin-bottom:14px;">
-                    <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:4px;">
-                      <div style="width:22px;height:22px;border-radius:50%;background:${COLORS.red};display:flex;align-items:center;justify-content:center;color:white;font-size:9px;font-weight:700;flex-shrink:0;">${i + 1}</div>
-                      <div style="font-size:${hFs || 11}px;font-weight:700;color:${hColor};line-height:1.3;">${req.heading}</div>
-                    </div>
-                    <div style="font-size:${bFs || 10}px;color:${bColor};line-height:1.5;padding-left:30px;">${req.text}</div>
-                  </div>`).join("")}
-              </div>
-              <div style="width:50%;padding:24px 28px 20px 16px;overflow:hidden;">
-                <div style="border:1.5px solid ${aColor};border-radius:6px;padding:16px;background:${COLORS.lightTeal};">
-                  <div style="font-size:${hFs || 13}px;font-weight:700;color:${hColor};margin-bottom:8px;">${c.idealCandidateHeading || "Ideal Candidate"}</div>
-                  <div style="font-size:${bFs || 10}px;color:${bColor};line-height:1.5;margin-bottom:8px;">${c.idealCandidateIntro || ""}</div>
-                  ${bullets.map(b => `<div style="display:flex;gap:6px;margin-bottom:4px;"><div style="width:6px;height:6px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};">${b}</div></div>`).join("")}
-                  ${headlinesHtml}
-                </div>
-              </div>
-            </div>
-            ${footerHtml}
-          </div>`;
-        }
-
-        if (page.template === "process") {
-          const c = page.content as { stages?: Stage[]; feesHeading?: string; feeRows?: FeeRow[]; headlines?: Headline[] };
-          const stages = (c.stages || []) as Stage[];
-          const feeRows = (c.feeRows || []) as FeeRow[];
-          const headlines = (c.headlines || []) as Headline[];
-          const headlinesHtml = headlines.map(h => `<div style="margin-top:8px;"><div style="font-size:${hFs ? hFs - 2 : 11}px;font-weight:700;color:${hColor};margin-bottom:4px;">${h.title}</div>${h.bullets.map(b => `<div style="margin-bottom:3px;"><div style="display:flex;gap:5px;"><div style="width:5px;height:5px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};font-weight:500;">${b.text}</div></div>${b.description ? `<div style="font-size:${bFs ? bFs - 1 : 9}px;color:${bColor};line-height:1.4;padding-left:10px;opacity:0.8;">${b.description}</div>` : ""}</div>`).join("")}</div>`).join("");
-          return `<div class="page" style="display:flex;flex-direction:column;font-family:'Montserrat',sans-serif;">
-            ${headerHtml(doc.country, doc.programType)}
-            <div style="flex:1;display:flex;overflow:hidden;">
-              <div style="width:55%;padding:24px 16px 20px 28px;border-right:1px solid ${COLORS.divider};overflow:hidden;">
-                ${stages.map((stage, i) => `${i > 0 ? `<div style="height:1px;background:${COLORS.divider};margin:10px 0;"></div>` : ""}
-                  <div style="display:flex;gap:8px;align-items:flex-start;">
-                    <div style="width:18px;height:18px;border-radius:50%;background:${aColor};display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:700;flex-shrink:0;margin-top:1px;">${i + 1}</div>
-                    <div>
-                      <div style="font-size:${hFs || 11}px;font-weight:700;color:${hColor};margin-bottom:3px;">${stage.heading}</div>
-                      <div style="font-size:${bFs || 10}px;color:${bColor};line-height:1.5;">${stage.text}</div>
-                    </div>
-                  </div>`).join("")}
-                ${headlinesHtml}
-              </div>
-              <div style="width:45%;padding:24px 28px 20px 16px;overflow:hidden;">
-                <div style="font-size:${hFs || 13}px;font-weight:700;color:${hColor};margin-bottom:10px;">${c.feesHeading || "Programme Fees"}</div>
-                ${feeRows.map((row, i) => `${i > 0 ? `<div style="height:1px;background:${COLORS.divider};margin:6px 0;"></div>` : ""}
-                  <div style="display:flex;justify-content:space-between;">
-                    <div style="font-size:${bFs || 10}px;color:${bColor};">${row.label}</div>
-                    <div style="font-size:${bFs || 10}px;font-weight:700;color:${hColor};">${row.value}</div>
-                  </div>`).join("")}
-              </div>
-            </div>
-            ${footerHtml}
-          </div>`;
-        }
-
         if (page.template === "about") {
-          const c = page.content as { heading?: string; paragraphs?: string[]; infoRows?: InfoRow[]; rankingsHeading?: string; rankings?: string[]; membershipsHeading?: string; memberships?: string[]; headlines?: Headline[] };
-          const rows = (c.infoRows || []) as InfoRow[];
+          const c = page.content as { heading?: string; paragraphs?: string[]; rankings?: string[]; memberships?: string[] };
+          const paragraphs = (c.paragraphs || []) as string[];
           const rankings = (c.rankings || []) as string[];
           const memberships = (c.memberships || []) as string[];
-          const headlines = (c.headlines || []) as Headline[];
-          const headlinesHtml = headlines.map(h => `<div style="margin-top:8px;"><div style="font-size:${hFs ? hFs - 2 : 11}px;font-weight:700;color:${hColor};margin-bottom:4px;">${h.title}</div>${h.bullets.map(b => `<div style="margin-bottom:3px;"><div style="display:flex;gap:5px;"><div style="width:5px;height:5px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};font-weight:500;">${b.text}</div></div>${b.description ? `<div style="font-size:${bFs ? bFs - 1 : 9}px;color:${bColor};line-height:1.4;padding-left:10px;opacity:0.8;">${b.description}</div>` : ""}</div>`).join("")}</div>`).join("");
           return `<div class="page" style="display:flex;flex-direction:column;font-family:'Montserrat',sans-serif;">
-            ${headerHtml(doc.country, doc.programType)}
+            ${headerHtml}
             <div style="flex:1;display:flex;overflow:hidden;">
               <div style="width:45%;overflow:hidden;">
                 ${page.photoUrl ? `<img src="${page.photoUrl}" style="width:100%;height:100%;object-fit:cover;" />` : `<div style="width:100%;height:100%;background:#f0f4f8;display:flex;align-items:center;justify-content:center;color:#ccc;">No Photo</div>`}
               </div>
               <div style="width:55%;padding:24px 28px 20px 16px;border-left:1px solid ${COLORS.divider};overflow:hidden;">
                 <div style="font-size:${hFs || 20}px;font-weight:700;color:${hColor};margin-bottom:10px;">${c.heading || ""}</div>
-                ${((c.paragraphs || []) as string[]).map(p => `<div style="font-size:${bFs || 10}px;color:${bColor};line-height:1.6;margin-bottom:8px;">${p}</div>`).join("")}
-                ${rows.map((row, i) => `${i > 0 ? `<div style="height:1px;background:${COLORS.divider};margin:6px 0;"></div>` : ""}
-                  <div style="font-size:8px;letter-spacing:0.1em;color:${aColor};text-transform:uppercase;">${row.label}</div>
-                  <div style="font-size:${bFs || 10}px;font-weight:700;color:${hColor};">${row.value}</div>`).join("")}
+                ${paragraphs.map(p => `<div style="font-size:${bFs || 10}px;color:${bColor};line-height:1.6;margin-bottom:8px;">${p}</div>`).join("")}
                 ${rankings.length > 0 ? `<div style="border:1px solid ${COLORS.divider};border-radius:4px;padding:10px;margin-top:10px;">
-                    <div style="font-size:${hFs ? hFs - 2 : 10}px;font-weight:700;color:${hColor};margin-bottom:5px;">${c.rankingsHeading || "Global Rankings"}</div>
-                    ${rankings.map(r => `<div style="font-size:${bFs || 9}px;color:${bColor};margin-bottom:2px;">• ${r}</div>`).join("")}
-                  </div>` : ""}
+                  <div style="font-size:11px;font-weight:700;color:${hColor};margin-bottom:5px;">Global Rankings</div>
+                  ${rankings.map(r => `<div style="font-size:${bFs || 9}px;color:${bColor};margin-bottom:2px;">• ${r}</div>`).join("")}
+                </div>` : ""}
                 ${memberships.length > 0 ? `<div style="border:1px solid ${COLORS.divider};border-radius:4px;padding:10px;margin-top:8px;">
-                    <div style="font-size:${hFs ? hFs - 2 : 10}px;font-weight:700;color:${hColor};margin-bottom:5px;">${c.membershipsHeading || "International Memberships"}</div>
-                    ${memberships.map(m => `<div style="font-size:${bFs || 9}px;color:${bColor};margin-bottom:2px;">• ${m}</div>`).join("")}
-                  </div>` : ""}
-                ${headlinesHtml}
+                  <div style="font-size:11px;font-weight:700;color:${hColor};margin-bottom:5px;">International Memberships</div>
+                  ${memberships.map(m => `<div style="font-size:${bFs || 9}px;color:${bColor};margin-bottom:2px;">• ${m}</div>`).join("")}
+                </div>` : ""}
               </div>
             </div>
             ${footerHtml}
           </div>`;
         }
 
-        // Blank
-        const c = page.content as { blocks?: ContentBlock[]; headlines?: Headline[] };
-        const blocks = (c.blocks || []) as ContentBlock[];
-        const headlines = (c.headlines || []) as Headline[];
-        const headlinesHtml = headlines.map(h => `<div style="margin-bottom:12px;"><div style="font-size:${hFs || 14}px;font-weight:700;color:${hColor};margin-bottom:6px;">${h.title}</div>${h.bullets.map(b => `<div style="margin-bottom:4px;"><div style="display:flex;gap:6px;align-items:flex-start;"><div style="width:6px;height:6px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};font-weight:500;">${b.text}</div></div>${b.description ? `<div style="font-size:${bFs ? bFs - 1 : 9}px;color:${bColor};line-height:1.5;padding-left:12px;opacity:0.8;margin-top:2px;">${b.description}</div>` : ""}</div>`).join("")}</div>`).join("");
+        // Custom page
+        const blocks = getBlocks(page);
+        const photoBlock = blocks.find(b => b.type === "photo" && b.photoUrl);
+        const contentBlocks = blocks.filter(b => b.type !== "photo");
+        const placement = photoBlock?.photoPlacement || "left-half";
+        const contentHtml = renderBlocksHtml(contentBlocks, ps, COLORS);
+
+        if (photoBlock && placement === "top-header") {
+          return `<div class="page" style="display:flex;flex-direction:column;font-family:'Montserrat',sans-serif;">
+            ${headerHtml}
+            <div style="height:35%;overflow:hidden;flex-shrink:0;">
+              <img src="${photoBlock.photoUrl}" style="width:100%;height:100%;object-fit:cover;" />
+            </div>
+            <div style="flex:1;padding:20px 28px;overflow:hidden;">${contentHtml}</div>
+            ${footerHtml}
+          </div>`;
+        }
+
+        if (photoBlock && (placement === "left-half" || placement === "right-half")) {
+          const photoLeft = placement === "left-half";
+          return `<div class="page" style="display:flex;flex-direction:column;font-family:'Montserrat',sans-serif;">
+            ${headerHtml}
+            <div style="flex:1;display:flex;overflow:hidden;">
+              ${photoLeft ? `<div style="width:45%;overflow:hidden;flex-shrink:0;"><img src="${photoBlock.photoUrl}" style="width:100%;height:100%;object-fit:cover;" /></div>` : ""}
+              <div style="flex:1;padding:20px 24px;overflow:hidden;${photoLeft ? `border-left:1px solid ${COLORS.divider};` : `border-right:1px solid ${COLORS.divider};`}">${contentHtml}</div>
+              ${!photoLeft ? `<div style="width:45%;overflow:hidden;flex-shrink:0;"><img src="${photoBlock.photoUrl}" style="width:100%;height:100%;object-fit:cover;" /></div>` : ""}
+            </div>
+            ${footerHtml}
+          </div>`;
+        }
+
+        // Text only
         return `<div class="page" style="display:flex;flex-direction:column;font-family:'Montserrat',sans-serif;">
-          ${headerHtml(doc.country, doc.programType)}
-          <div style="flex:1;padding:28px;overflow:hidden;">
-            ${blocks.map(block => {
-              if (block.type === "text") return `<div style="font-size:${bFs || 11}px;color:${bColor};line-height:1.6;margin-bottom:10px;">${block.text}</div>`;
-              if (block.type === "list") return (block.items || []).map(item => `<div style="display:flex;gap:6px;margin-bottom:4px;"><div style="width:6px;height:6px;border-radius:50%;background:${aColor};margin-top:3px;flex-shrink:0;"></div><div style="font-size:${bFs || 10}px;color:${bColor};">${item}</div></div>`).join("");
-              return "";
-            }).join("")}
-            ${headlinesHtml}
-          </div>
+          ${headerHtml}
+          <div style="flex:1;padding:24px 28px;overflow:hidden;">${contentHtml}</div>
           ${footerHtml}
         </div>`;
       }).join("");
@@ -1442,36 +1197,23 @@ export default function SummaryEditor() {
 
       {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: Page list with drag-and-drop */}
+        {/* Left: Page list */}
         <div className="w-48 border-r border-white/10 bg-[#141c2e] flex flex-col overflow-hidden shrink-0">
           <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
             <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Pages</span>
             <span className="text-xs text-gray-600">{doc.pages.length}</span>
           </div>
           <div className="flex-1 overflow-y-auto py-2 space-y-0.5 px-2">
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-            >
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
               <SortableContext items={doc.pages.map(p => p.id)} strategy={verticalListSortingStrategy}>
                 {doc.pages.map((page, idx) => (
-                  <SortablePageItem
-                    key={page.id}
-                    page={page}
-                    idx={idx}
-                    selectedPageIdx={selectedPageIdx}
-                    onSelect={setSelectedPageIdx}
-                  />
+                  <SortablePageItem key={page.id} page={page} idx={idx} selectedPageIdx={selectedPageIdx} onSelect={setSelectedPageIdx} />
                 ))}
               </SortableContext>
               <DragOverlay>
                 {activeDragPage ? (
                   <div className="flex items-center gap-2 px-2 py-2 rounded-lg bg-teal-600/40 border border-teal-500/60 text-white text-xs shadow-2xl">
-                    <div className="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-white/20 text-xs">
-                      {TEMPLATE_ICONS[activeDragPage.template]}
-                    </div>
+                    <div className="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-white/20 text-xs">{TEMPLATE_ICONS[activeDragPage.template]}</div>
                     <span className="font-medium text-[11px] truncate">{TEMPLATE_LABELS[activeDragPage.template]}</span>
                   </div>
                 ) : null}
@@ -1479,30 +1221,23 @@ export default function SummaryEditor() {
             </DndContext>
           </div>
           <div className="p-2 border-t border-white/10">
-            <p className="text-[10px] text-gray-600 text-center mb-1.5">Drag ⠿ handle to reorder</p>
-            <button onClick={() => setShowAddPage(!showAddPage)}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs transition-colors">
-              <Plus className="w-3 h-3" /> Add Page
+            <p className="text-[10px] text-gray-600 text-center mb-1.5">Drag ⠿ to reorder</p>
+            <button onClick={addPage}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg bg-teal-600/20 hover:bg-teal-600/40 text-teal-400 hover:text-teal-300 text-xs transition-colors border border-teal-500/30">
+              <Plus className="w-3 h-3" /> Add Custom Page
             </button>
-            {showAddPage && (
-              <div className="mt-1 space-y-0.5">
-                {(Object.entries(TEMPLATE_LABELS) as [TemplateType, string][]).map(([key, label]) => (
-                  <button key={key} onClick={() => addPage(key)}
-                    className="w-full text-left px-2 py-1.5 rounded text-xs text-gray-400 hover:bg-white/10 hover:text-white transition-colors">
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         </div>
 
         {/* Center: Editor */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#141c2e] shrink-0">
-            <span className="text-xs font-semibold text-white">
-              Page {selectedPageIdx + 1} — {TEMPLATE_LABELS[currentPage.template]}
-            </span>
+            <div className="flex items-center gap-2">
+              <LayoutTemplate className="w-3.5 h-3.5 text-teal-400" />
+              <span className="text-xs font-semibold text-white">
+                Page {selectedPageIdx + 1} — {TEMPLATE_LABELS[currentPage.template]}
+              </span>
+            </div>
             <div className="flex items-center gap-1">
               <button onClick={() => movePage(selectedPageIdx, -1)} disabled={selectedPageIdx === 0}
                 className="p-1.5 rounded hover:bg-white/10 text-gray-500 hover:text-white disabled:opacity-30 transition-colors" title="Move up">
@@ -1522,11 +1257,8 @@ export default function SummaryEditor() {
           </div>
           <div className="flex-1 overflow-y-auto p-4">
             {currentPage.template === "cover" && <CoverEditor page={currentPage} summaryId={id} onChange={updatePage} />}
-            {currentPage.template === "overview" && <OverviewEditor page={currentPage} summaryId={id} onChange={updatePage} />}
-            {currentPage.template === "eligibility" && <EligibilityEditor page={currentPage} summaryId={id} onChange={updatePage} />}
-            {currentPage.template === "process" && <ProcessEditor page={currentPage} summaryId={id} onChange={updatePage} />}
             {currentPage.template === "about" && <AboutEditor page={currentPage} summaryId={id} onChange={updatePage} />}
-            {currentPage.template === "blank" && <BlankEditor page={currentPage} summaryId={id} onChange={updatePage} />}
+            {currentPage.template === "custom" && <CustomEditor page={currentPage} summaryId={id} onChange={updatePage} />}
           </div>
         </div>
 
@@ -1535,19 +1267,20 @@ export default function SummaryEditor() {
           <div className="px-3 py-2 border-b border-white/10">
             <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Live Preview</span>
           </div>
-          <div className="flex-1 overflow-y-auto p-3">
-            <div className="rounded-lg overflow-hidden shadow-2xl border border-white/10">
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            <div className="w-full shadow-lg rounded overflow-hidden">
               <PagePreview page={currentPage} doc={doc} />
             </div>
-            <div className="mt-3 text-[10px] text-gray-600 text-center">Page {selectedPageIdx + 1} of {doc.pages.length}</div>
-            <div className="mt-4 space-y-2">
-              <div className="text-[10px] text-gray-600 uppercase tracking-wider">All Pages</div>
-              {doc.pages.map((page, idx) => (
-                <button key={page.id} onClick={() => setSelectedPageIdx(idx)}
-                  className={`w-full rounded overflow-hidden border-2 transition-all ${idx === selectedPageIdx ? "border-teal-500" : "border-transparent opacity-50 hover:opacity-80"}`}>
-                  <PagePreview page={page} doc={doc} />
-                </button>
-              ))}
+            <div className="border-t border-white/10 pt-3">
+              <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-2">All Pages</div>
+              <div className="space-y-2">
+                {doc.pages.map((page, idx) => (
+                  <button key={page.id} onClick={() => setSelectedPageIdx(idx)}
+                    className={`w-full rounded overflow-hidden border-2 transition-all ${selectedPageIdx === idx ? "border-teal-500" : "border-transparent hover:border-white/20"}`}>
+                    <PagePreview page={page} doc={doc} />
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
