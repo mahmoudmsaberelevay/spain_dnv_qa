@@ -1413,7 +1413,7 @@ const clientDocsRouter = router({
         childrenData: childrenData as any,
         spouseName: input.spouseName ?? null,
         schengenVisaValid: input.schengenVisaValid ?? false,
-        schengenExpiryDate: input.schengenExpiryDate ?? null,
+        schengenExpiryDate: (input.schengenExpiryDate ? new Date(input.schengenExpiryDate) : null) as any,
       });
       const insertId = (result as any).insertId as number;
       const checklist = getDocChecklist(input.applicationType, input.maritalStatus, childrenData);
@@ -1813,7 +1813,7 @@ const clientDocsRouter = router({
       if (!c) throw new TRPCError({ code: "NOT_FOUND" });
       await updateClientCase(input.id, {
         schengenVisaValid: input.schengenVisaValid,
-        schengenExpiryDate: input.schengenExpiryDate ?? null,
+        schengenExpiryDate: (input.schengenExpiryDate ? new Date(input.schengenExpiryDate) : null) as any,
       } as any);
       return { success: true };
     }),
