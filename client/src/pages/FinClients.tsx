@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import {
   Search, Plus, Phone, MapPin, User, TrendingDown, TrendingUp,
   ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, FileDown, PlusCircle, RefreshCw,
-  Pencil, Trash2,
+  Pencil, Trash2, ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -59,9 +59,10 @@ export default function FinClients() {
   const [paymentClient, setPaymentClient] = useState<{ id: number; name: string; remaining: number } | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
   // Edit client state
-  const [editClient, setEditClient] = useState<{ id: number; name: string; phone: string } | null>(null);
+  const [editClient, setEditClient] = useState<{ id: number; name: string; phone: string; contractUrl: string } | null>(null);
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editContractUrl, setEditContractUrl] = useState("");
   // Delete client state
   const [deleteClientId, setDeleteClientId] = useState<number | null>(null);
   const [deleteClientName, setDeleteClientName] = useState("");
@@ -498,6 +499,7 @@ export default function FinClients() {
                     <th className="text-right py-3 px-4 font-semibold text-muted-foreground">Direct Cost</th>
                     <th className="text-right py-3 px-4 font-semibold text-muted-foreground">Profit</th>
                     <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Contact</th>
+                    <th className="text-center py-3 px-4 font-semibold text-muted-foreground">Contract</th>
                     <th className="text-center py-3 px-4 font-semibold text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
@@ -586,6 +588,20 @@ export default function FinClients() {
                             )}
                           </div>
                         </td>
+                        <td className="py-3 px-4 text-center">
+                          {c.contractUrl ? (
+                            <a
+                              href={c.contractUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              <ExternalLink className="h-3 w-3" /> View
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-1 justify-center">
                             <Button
@@ -604,9 +620,10 @@ export default function FinClients() {
                               variant="outline"
                               className="h-7 px-2 text-xs gap-1 text-amber-700 border-amber-300 hover:bg-amber-50"
                               onClick={() => {
-                                setEditClient({ id: c.id, name: c.name, phone: c.phone ?? "" });
+                                setEditClient({ id: c.id, name: c.name, phone: c.phone ?? "", contractUrl: c.contractUrl ?? "" });
                                 setEditName(c.name);
                                 setEditPhone(c.phone ?? "");
+                                setEditContractUrl(c.contractUrl ?? "");
                               }}
                             >
                               <Pencil className="h-3 w-3" /> Edit
@@ -898,6 +915,14 @@ export default function FinClients() {
                   onChange={e => setEditPhone(e.target.value)}
                 />
               </div>
+              <div className="space-y-1">
+                <Label>Contract URL (Google Drive)</Label>
+                <Input
+                  placeholder="https://drive.google.com/..."
+                  value={editContractUrl}
+                  onChange={e => setEditContractUrl(e.target.value)}
+                />
+              </div>
             </div>
           )}
           <DialogFooter>
@@ -907,7 +932,7 @@ export default function FinClients() {
               disabled={!editName.trim() || updateClientMutation.isPending}
               onClick={() => {
                 if (!editClient || !editName.trim()) return;
-                updateClientMutation.mutate({ id: editClient.id, name: editName.trim(), phone: editPhone.trim() || undefined });
+                updateClientMutation.mutate({ id: editClient.id, name: editName.trim(), phone: editPhone.trim() || undefined, contractUrl: editContractUrl.trim() || undefined });
               }}
             >
               {updateClientMutation.isPending ? "Saving..." : "Save Changes"}

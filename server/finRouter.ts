@@ -251,6 +251,7 @@ const finClientsRouter = router({
       consultant: z.string().optional(),
       contractValueEur: z.number().optional(),
       remainingAmountEur: z.number().optional(),
+      contractUrl: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       const { id, contractValueEur, remainingAmountEur, ...rest } = input;

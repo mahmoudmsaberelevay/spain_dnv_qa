@@ -322,6 +322,7 @@ export const finClients = mysqlTable("finClients", {
   // Legacy flag: true = imported from old DB, remainingAmountEur is the starting balance
   isLegacy: boolean("isLegacy").default(false).notNull(),
   stage: mysqlEnum("stage", ["not_yet", "started"]).default("not_yet").notNull(),
+  contractUrl: varchar("contractUrl", { length: 2048 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
