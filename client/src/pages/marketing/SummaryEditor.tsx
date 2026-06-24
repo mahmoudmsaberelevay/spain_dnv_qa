@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRoute, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import {
@@ -335,7 +335,7 @@ function BlockEditor({ block, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
     cells[r * table.cols + c] = { ...getCellObj(r, c), [prop]: val };
     onChange({ ...block, table: { ...table, cells } });
   };
-  const [selectedCell, setSelectedCell] = React.useState<{r:number;c:number}|null>(null);
+  const [selectedCell, setSelectedCell] = useState<{r:number;c:number}|null>(null);
   const resizeTable = (cols: number, rows: number) => {
     const cells: TableCell[] = [];
     for (let r = 0; r < rows; r++)

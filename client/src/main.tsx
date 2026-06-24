@@ -10,7 +10,17 @@ import { MessagingProvider } from "./contexts/MessagingContext";
 import { PermissionsProvider } from "./contexts/PermissionsContext";
 import "./index.css";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      throwOnError: false,
+      retry: false,
+    },
+    mutations: {
+      throwOnError: false,
+    },
+  },
+});
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
