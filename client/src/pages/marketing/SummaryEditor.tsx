@@ -42,7 +42,7 @@ export type PhotoPlacement = "left-half" | "right-half" | "top-header";
 export type TextAlign = "left" | "right" | "center";
 
 export interface TableCell { text: string; }
-export interface TableData { cols: number; rows: number; cells: TableCell[]; }
+export interface TableData { cols: number; rows: number; cells: TableCell[]; headerBg?: string; headerTextColor?: string; cellBg?: string; cellTextColor?: string; borderColor?: string; }
 
 export interface ContentBlock {
   id: string;
@@ -528,6 +528,30 @@ function BlockEditor({ block, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
               </table>
             </div>
             <p className="text-[10px] text-gray-600">First row is treated as the table header</p>
+            {/* Table color controls */}
+            <div className="border-t border-white/10 pt-2 mt-2">
+              <div className="text-[10px] text-gray-500 font-medium mb-2 uppercase tracking-wider">Table Colors</div>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  ["Header Background", "headerBg", COLORS.navy],
+                  ["Header Text", "headerTextColor", "#ffffff"],
+                  ["Cell Background", "cellBg", "#ffffff"],
+                  ["Cell Text", "cellTextColor", COLORS.text],
+                  ["Border Color", "borderColor", COLORS.divider],
+                ] as [string, keyof TableData, string][]).map(([label, key, def]) => (
+                  <div key={key} className="flex items-center gap-1.5">
+                    <input type="color" value={String(table[key] || def)}
+                      onChange={e => onChange({ ...block, table: { ...table, [key]: e.target.value } })}
+                      className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent shrink-0" />
+                    <span className="text-[10px] text-gray-400 truncate">{label}</span>
+                    {table[key] && (
+                      <button onClick={() => { const t = { ...table }; delete (t as Record<string, unknown>)[key]; onChange({ ...block, table: t }); }}
+                        className="text-[9px] text-gray-600 hover:text-gray-400 shrink-0">↺</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           </>
         )}
       </div>
@@ -653,12 +677,17 @@ function renderBlocksHtml(blocks: ContentBlock[], ps: PageStyle, COLORS: Record<
     if (block.type === "table") {
       const t = block.table;
       if (!t) return "";
+      const tHeaderBg = t.headerBg || COLORS.navy;
+      const tHeaderText = t.headerTextColor || "#ffffff";
+      const tCellBg = t.cellBg || "transparent";
+      const tCellText = t.cellTextColor || bColor;
+      const tBorder = t.borderColor || COLORS.divider;
       return `<table style="width:100%;border-collapse:collapse;margin-bottom:6px;font-size:5px;">
         ${Array.from({ length: t.rows }).map((_, r) =>
           `<tr>${Array.from({ length: t.cols }).map((_, c) => {
             const cell = t.cells[r * t.cols + c]?.text || "";
             const isHeader = r === 0;
-            return `<td style="border:1px solid ${COLORS.divider};padding:2px 3px;${isHeader ? `background:${COLORS.navy};color:white;font-weight:700;` : `color:${bColor};`}">${cell}</td>`;
+            return `<td style="border:1px solid ${tBorder};padding:2px 3px;background:${isHeader ? tHeaderBg : tCellBg};color:${isHeader ? tHeaderText : tCellText};font-weight:${isHeader ? 700 : 400};">${cell}</td>`;
           }).join("")}</tr>`
         ).join("")}
       </table>`;
@@ -803,6 +832,11 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
     if (block.type === "table") {
       const t = block.table;
       if (!t) return null;
+      const tHeaderBg = t.headerBg || COLORS.navy;
+      const tHeaderText = t.headerTextColor || "#ffffff";
+      const tCellBg = t.cellBg || "transparent";
+      const tCellText = t.cellTextColor || bColor;
+      const tBorder = t.borderColor || COLORS.divider;
       return (
         <table key={block.id} style={{ width: "100%", borderCollapse: "collapse", marginBottom: "6px", fontSize: "5px" }}>
           <tbody>
@@ -812,7 +846,7 @@ function PagePreview({ page, doc }: { page: PageData; doc: DocumentData }) {
                   const cell = t.cells[r * t.cols + c]?.text || "";
                   const isHeader = r === 0;
                   return (
-                    <td key={c} style={{ border: `1px solid ${COLORS.divider}`, padding: "2px 3px", background: isHeader ? COLORS.navy : "transparent", color: isHeader ? "white" : bColor, fontWeight: isHeader ? 700 : 400 }}>
+                    <td key={c} style={{ border: `1px solid ${tBorder}`, padding: "2px 3px", background: isHeader ? tHeaderBg : tCellBg, color: isHeader ? tHeaderText : tCellText, fontWeight: isHeader ? 700 : 400 }}>
                       {cell}
                     </td>
                   );
