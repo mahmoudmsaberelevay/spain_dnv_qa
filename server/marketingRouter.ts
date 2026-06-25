@@ -743,7 +743,10 @@ Return ONLY this JSON (no extra text):
         generatedWeeks.push(weekData);
       }
 
-      return {
+      // Return as a plain JSON string to prevent superjson from mangling
+      // ISO date strings (e.g. "2026-06-25") inside the LLM-generated content.
+      // The frontend will JSON.parse this string back into an object.
+      const planObject = {
         planTitle: `ELEVAY 12-Week Marketing Strategy — ${input.startDate} to ${end.toISOString().slice(0, 10)}`,
         dateRange: { start: input.startDate, end: end.toISOString().slice(0, 10) },
         strategyOverview: `A comprehensive 12-week social media content strategy for ELEVAY covering Spain Digital Nomad Visa (30%), Malta Permanent Residency (20%), Greece Golden Visa (20%), Portugal D7/D8/Golden Visa (15%), and Sao Tome Citizenship (15%). Each week includes 5 static posts and 5 reels with Arabic captions and voice-overs, plus ready-to-use Manus prompts.`,
@@ -756,5 +759,6 @@ Return ONLY this JSON (no extra text):
         ],
         weeks: generatedWeeks,
       };
+      return { planJson: JSON.stringify(planObject) };
     }),
 });

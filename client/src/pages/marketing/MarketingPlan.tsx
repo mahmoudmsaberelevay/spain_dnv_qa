@@ -446,7 +446,14 @@ export default function MarketingPlan() {
 
   const generateMutation = trpc.marketing.generateStrategyPlan.useMutation({
     onSuccess: (data) => {
-      const p = data as unknown as StrategyPlan;
+      // Server returns { planJson: string } to prevent superjson from mangling ISO date strings
+      const raw = (data as unknown as { planJson?: string });
+      let p: StrategyPlan;
+      if (raw.planJson) {
+        p = JSON.parse(raw.planJson) as StrategyPlan;
+      } else {
+        p = data as unknown as StrategyPlan;
+      }
       setPlan(p);
       setSavedPlanId(null);
       setPlanTitle(p.planTitle || "");
