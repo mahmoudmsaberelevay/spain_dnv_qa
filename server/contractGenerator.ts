@@ -167,7 +167,8 @@ function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
 // the project's own S3 bucket via manus-upload-file --webdev.
 const TEMPLATE_REGISTRY: Record<string, { url?: string; storageKey?: string; label: string }> = {
   spain: {
-    url: "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/kN35iJC3mTAPmbEMAFkqBd/12K-Spain-NewContract_6b0097ff.docx",
+    // New Spain Nomad contract template (includes appendix built-in)
+    storageKey: "SpainNomadContract_20055b7b.docx",
     label: "Spain Digital Nomad Visa",
   },
   egypt: {
@@ -203,7 +204,11 @@ async function getTemplate(country: string): Promise<Buffer> {
 
   let buffer: Buffer;
 
-  if (entry.url) {
+  if (entry.storageKey) {
+    const { url } = await storageGet(entry.storageKey);
+    const response = await axios.get(url, { responseType: "arraybuffer", timeout: 30000 });
+    buffer = Buffer.from(response.data);
+  } else if (entry.url) {
     const response = await axios.get(entry.url, { responseType: "arraybuffer", timeout: 30000 });
     buffer = Buffer.from(response.data);
   } else {
@@ -299,29 +304,20 @@ export async function generateContractDoc(
   docXml = docXml.replace(/\d{1,2}\/\d{1,2}\/20\d{2}/, todayDate);
 
   // ── Client name ───────────────────────────────────────────────────────────
-  // Spain template uses "XXXXXXXXXXXXXXXXXXXX"
-  // Citizenship templates (Egypt, Dominica, St Kitts, Grenada) use "Inset The Client Name"
-  docXml = replaceAndClean(docXml, "XXXXXXXXXXXXXXXXXXXX", clientName);
-  docXml = replaceAndClean(docXml, "Inset The Client Name", clientName);
+  if (country === "spain") {
+    // New Spain template has client name hardcoded as the sample client name
+    docXml = docXml.replace(/محمود ابراهيم محمد عبدالغني/g, escapeXml(clientName));
+  } else {
+    // Citizenship templates (Egypt, Dominica, St Kitts, Grenada) use "Inset The Client Name"
+    docXml = replaceAndClean(docXml, "Inset The Client Name", clientName);
+  }
 
   // ── Family members & contract value (Spain only) ──────────────────────────
-  if (country === "spain") {
-    const contractValueFormatted = `${contractValue.toLocaleString("en-US")} EUR`;
-    docXml = replaceAndClean(docXml, "………………..", String(familyMembers));
-    docXml = replaceAndClean(docXml, "………………..", contractValueFormatted);
-  }
-  // For citizenship programs the fee section is left as-is in the template
-  // (no placeholder to replace — the template body already describes the program fees).
+  // The new Spain template has fixed fee tiers described in the text.
+  // No family/value placeholder replacement needed — the template already
+  // shows the full pricing table. The appendix is also built into the template.
 
   zip.file("word/document.xml", docXml);
-
-  // ── Append the Spain appendix (ملحق) for Spain contracts ──────────────────
-  if (country === "spain") {
-    const appendixBuf = await getSpainAppendix();
-    if (appendixBuf) {
-      mergeAppendixIntoContract(zip, appendixBuf);
-    }
-  }
 
   const outputBuffer = Buffer.from(
     zip.generate({ type: "nodebuffer", compression: "DEFLATE" })
