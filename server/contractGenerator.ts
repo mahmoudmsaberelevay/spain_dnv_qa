@@ -167,8 +167,8 @@ function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
 // the project's own S3 bucket via manus-upload-file --webdev.
 const TEMPLATE_REGISTRY: Record<string, { url?: string; storageKey?: string; label: string }> = {
   spain: {
-    // New Spain Nomad contract template (includes appendix built-in)
-    url: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663524211981/JSJzOgTHvJAjUFee.docx",
+    // New Spain Nomad contract template (NewSpainContract.docx) — only client name is inserted
+    url: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663524211981/enBIbSgwwLytpbid.docx",
     label: "Spain Digital Nomad Visa",
   },
   egypt: {
@@ -299,14 +299,20 @@ export async function generateContractDoc(
 
   const todayDate = getCairoDateString();
 
-  // ── Date replacement ──────────────────────────────────────────────────────
-  // Replace the first date pattern (D/M/YYYY or DD/MM/YYYY) in the document.
-  docXml = docXml.replace(/\d{1,2}\/\d{1,2}\/20\d{2}/, todayDate);
+  // ── Date replacement (non-Spain only) ────────────────────────────────────
+  // For Spain the contract text is kept exactly as written; no date substitution.
+  if (country !== "spain") {
+    docXml = docXml.replace(/\d{1,2}\/\d{1,2}\/20\d{2}/, todayDate);
+  }
 
   // ── Client name ───────────────────────────────────────────────────────────
   if (country === "spain") {
-    // New Spain template has client name hardcoded as the sample client name
-    docXml = docXml.replace(/محمود ابراهيم محمد عبدالغني/g, escapeXml(clientName));
+    // The new Spain template (NewSpainContract.docx) has the client name slot as
+    // 'السيد/ ' followed by 18 spaces in a separate run.
+    // We replace that 18-space run with the actual client name.
+    // Everything else in the document is left completely unchanged.
+    const SPACE_PLACEHOLDER = "                  "; // 18 spaces
+    docXml = docXml.replace(SPACE_PLACEHOLDER, escapeXml(clientName));
   } else {
     // Citizenship templates (Egypt, Dominica, St Kitts, Grenada) use "Inset The Client Name"
     docXml = replaceAndClean(docXml, "Inset The Client Name", clientName);
