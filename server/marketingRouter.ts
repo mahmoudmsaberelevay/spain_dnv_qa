@@ -655,75 +655,96 @@ export const marketingRouter = router({
       const end = new Date(start);
       end.setDate(end.getDate() + 83);
 
-      const weeks: Array<{ weekNumber: number; startDate: string; endDate: string }> = [];
+      const WEEK_PROGRAMS: Record<number, string> = {
+        1: "Spain Digital Nomad Visa", 2: "Malta Permanent Residency", 3: "Greece Golden Visa",
+        4: "Spain Digital Nomad Visa & Sao Tome Citizenship", 5: "Portugal D7/D8/Golden Visa",
+        6: "Malta Permanent Residency", 7: "Spain Digital Nomad Visa", 8: "Greece Golden Visa",
+        9: "Portugal D7/D8/Golden Visa", 10: "Spain Digital Nomad Visa & Sao Tome Citizenship",
+        11: "Malta Permanent Residency", 12: "Greece Golden Visa",
+      };
+
+      const allWeeks: Array<{ weekNumber: number; startDate: string; endDate: string; program: string }> = [];
       for (let w = 0; w < 12; w++) {
-        const ws = new Date(start);
-        ws.setDate(ws.getDate() + w * 7);
-        const we = new Date(ws);
-        we.setDate(we.getDate() + 6);
-        weeks.push({ weekNumber: w + 1, startDate: ws.toISOString().slice(0, 10), endDate: we.toISOString().slice(0, 10) });
+        const ws = new Date(start); ws.setDate(ws.getDate() + w * 7);
+        const we = new Date(ws); we.setDate(we.getDate() + 6);
+        allWeeks.push({ weekNumber: w + 1, startDate: ws.toISOString().slice(0, 10), endDate: we.toISOString().slice(0, 10), program: WEEK_PROGRAMS[w + 1] });
       }
 
-      const systemPrompt = `You are a senior digital marketing strategist for ELEVAY, an Egyptian citizenship and residency consultancy.
-You create detailed, actionable 12-week social media content strategies.
-All captions and voice-overs must be in Arabic.
-Do NOT generate images, videos, or designs — only strategy text and Manus task prompts.`;
+      // Generate one week at a time to stay within LLM token limits
+      async function generateOneWeek(wk: { weekNumber: number; startDate: string; endDate: string; program: string }): Promise<unknown> {
+        const prompt = `You are a senior social media strategist for ELEVAY (Egyptian citizenship & residency consultancy).
+Generate the marketing content plan for ONE week. All captions and voice-overs MUST be in Arabic.
 
-      const userPrompt = `Create a 12-week marketing strategy for ELEVAY starting ${input.startDate}.
+Week ${wk.weekNumber} of 12 | Dates: ${wk.startDate} to ${wk.endDate} | Program: ${wk.program}
 
-Program allocation:
-- Spain Digital Nomad Visa: 30% (weeks 1, 4, 7, 10)
-- Malta Permanent Residency: 20% (weeks 2, 6, 11)
-- Greece Golden Visa: 20% (weeks 3, 8, 12)
-- Portugal (D7, D8, Golden Visa): 15% (weeks 5, 9)
-- Sao Tome Citizenship: 15% (weeks 4 and 10 share with Spain)
-
-For EACH of the 12 weeks provide:
-- weekNumber (1-12)
-- startDate and endDate (YYYY-MM-DD)
-- program: the main program for this week
-- theme: the weekly content theme
-- weeklyStrategy: 2-3 sentence strategic approach
-- contentPillars: array of 4 objects { pillar, description } covering:
-  1. Program details, requirements, investment cost, processing time
-  2. Pros and cons vs alternatives
-  3. Benefits of living/doing business in that country
-  4. Lifestyle (food, culture, weather, education, healthcare) and how to maximize residency/citizenship benefits (tax, travel, business)
-- posts: array of exactly 5 static posts, each with:
-  { postNumber, topic, angle, keyMessageAr (Arabic, 1 sentence), captionAr (Arabic, 150-200 chars), hashtags (8-10 tags) }
-- reels: array of exactly 5 reels, each with:
-  { reelNumber, topic, concept, voiceOverAr (Arabic, 25 seconds), backgroundMusicStyle,
-    scenes: 5 objects { sceneNumber, visualDescription (no text in video, no passports, 9:16 vertical), manusPrompt (complete ready-to-paste prompt for Manus to generate this 5-second clip) },
-    manusWeekPrompt: single comprehensive Manus task prompt to produce all 5 clips + combine + add music }
-- wordDocPrompt: Manus task prompt to generate a Word doc with all captions and voice-over scripts for this week
-
-Week dates:
-${weeks.map(w => `Week ${w.weekNumber}: ${w.startDate} to ${w.endDate}`).join('\n')}
-
-Return valid JSON:
+Return ONLY this JSON (no extra text):
 {
-  "planTitle": "ELEVAY 12-Week Marketing Strategy — ${input.startDate} to ${end.toISOString().slice(0, 10)}",
-  "dateRange": { "start": "${input.startDate}", "end": "${end.toISOString().slice(0, 10)}" },
-  "strategyOverview": "...",
-  "programAllocation": [{"program":"...","percentage":30,"weeks":[1,4,7,10]},...],
-  "weeks": [ ...12 week objects... ]
+  "weekNumber": ${wk.weekNumber},
+  "startDate": "${wk.startDate}",
+  "endDate": "${wk.endDate}",
+  "program": "${wk.program}",
+  "theme": "<catchy weekly theme>",
+  "weeklyStrategy": "<2-3 sentence strategy>",
+  "contentPillars": [
+    {"pillar": "Program Details", "description": "<requirements, cost, timeline>"},
+    {"pillar": "Pros & Cons", "description": "<vs alternatives>"},
+    {"pillar": "Business & Living Benefits", "description": "<economic, lifestyle, tax>"},
+    {"pillar": "Lifestyle & Maximizing Benefits", "description": "<culture, travel, business setup>"}
+  ],
+  "posts": [
+    {"postNumber": 1, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic 1 sentence>", "captionAr": "<Arabic 150-200 chars>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"]},
+    {"postNumber": 2, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"]},
+    {"postNumber": 3, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"]},
+    {"postNumber": 4, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"]},
+    {"postNumber": 5, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"]}
+  ],
+  "reels": [
+    {"reelNumber": 1, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic 25-sec script>", "backgroundMusicStyle": "<style>",
+      "scenes": [
+        {"sceneNumber": 1, "visualDescription": "<9:16 vertical, no text, no passports>", "manusPrompt": "<full Manus task prompt for this 5-sec clip>"},
+        {"sceneNumber": 2, "visualDescription": "<desc>", "manusPrompt": "<prompt>"},
+        {"sceneNumber": 3, "visualDescription": "<desc>", "manusPrompt": "<prompt>"},
+        {"sceneNumber": 4, "visualDescription": "<desc>", "manusPrompt": "<prompt>"},
+        {"sceneNumber": 5, "visualDescription": "<desc>", "manusPrompt": "<prompt>"}
+      ],
+      "manusWeekPrompt": "<single Manus prompt to produce all 5 clips + combine + add music>"
+    },
+    {"reelNumber": 2, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic>", "backgroundMusicStyle": "<style>", "scenes": [{"sceneNumber":1,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":2,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":3,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":4,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":5,"visualDescription":"<desc>","manusPrompt":"<prompt>"}], "manusWeekPrompt": "<prompt>"},
+    {"reelNumber": 3, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic>", "backgroundMusicStyle": "<style>", "scenes": [{"sceneNumber":1,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":2,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":3,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":4,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":5,"visualDescription":"<desc>","manusPrompt":"<prompt>"}], "manusWeekPrompt": "<prompt>"},
+    {"reelNumber": 4, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic>", "backgroundMusicStyle": "<style>", "scenes": [{"sceneNumber":1,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":2,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":3,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":4,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":5,"visualDescription":"<desc>","manusPrompt":"<prompt>"}], "manusWeekPrompt": "<prompt>"},
+    {"reelNumber": 5, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic>", "backgroundMusicStyle": "<style>", "scenes": [{"sceneNumber":1,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":2,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":3,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":4,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":5,"visualDescription":"<desc>","manusPrompt":"<prompt>"}], "manusWeekPrompt": "<prompt>"}
+  ],
+  "wordDocPrompt": "<Manus task prompt to generate a Word doc with all captions and voice-over scripts for this week>"
 }`;
 
-      const response = await invokeLLM({
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
+        const response = await invokeLLM({
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+        });
+        const content = response.choices?.[0]?.message?.content;
+        if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `AI response empty for week ${wk.weekNumber}` });
+        return JSON.parse(content as string);
+      }
+
+      // Generate all 12 weeks sequentially (one at a time)
+      const generatedWeeks: unknown[] = [];
+      for (const wk of allWeeks) {
+        const weekData = await generateOneWeek(wk);
+        generatedWeeks.push(weekData);
+      }
+
+      return {
+        planTitle: `ELEVAY 12-Week Marketing Strategy — ${input.startDate} to ${end.toISOString().slice(0, 10)}`,
+        dateRange: { start: input.startDate, end: end.toISOString().slice(0, 10) },
+        strategyOverview: `A comprehensive 12-week social media content strategy for ELEVAY covering Spain Digital Nomad Visa (30%), Malta Permanent Residency (20%), Greece Golden Visa (20%), Portugal D7/D8/Golden Visa (15%), and Sao Tome Citizenship (15%). Each week includes 5 static posts and 5 reels with Arabic captions and voice-overs, plus ready-to-use Manus prompts.`,
+        programAllocation: [
+          { program: "Spain Digital Nomad Visa", percentage: 30, weeks: [1, 4, 7, 10] },
+          { program: "Malta Permanent Residency", percentage: 20, weeks: [2, 6, 11] },
+          { program: "Greece Golden Visa", percentage: 20, weeks: [3, 8, 12] },
+          { program: "Portugal (D7, D8, Golden Visa)", percentage: 15, weeks: [5, 9] },
+          { program: "Sao Tome Citizenship", percentage: 15, weeks: [4, 10] },
         ],
-        response_format: { type: "json_object" },
-      });
-
-      const content = response.choices?.[0]?.message?.content;
-      if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI response empty" });
-
-      let plan: Record<string, unknown>;
-      try { plan = JSON.parse(content as string); }
-      catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to parse AI response" }); }
-
-      return plan;
+        weeks: generatedWeeks,
+      };
     }),
 });
