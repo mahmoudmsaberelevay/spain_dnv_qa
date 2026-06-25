@@ -628,16 +628,11 @@ export default function MarketingPlan() {
 
             <div className="space-y-1">
               <Label>Start Date</Label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(normalizeDate(e.target.value))}
-                className="max-w-xs"
-              />
+              <p className="text-sm font-medium">{startDate}</p>
               <p className="text-xs text-muted-foreground">
                 Plan covers 12 weeks ({startDate} to{" "}
                 {(() => {
-                  const d = new Date(startDate);
+                  const d = new Date(startDate + "T00:00:00");
                   d.setDate(d.getDate() + 83);
                   return d.toISOString().slice(0, 10);
                 })()})
@@ -645,7 +640,13 @@ export default function MarketingPlan() {
             </div>
 
             <Button
-              onClick={() => generateMutation.mutate({ startDate: normalizeDate(startDate) })}
+              onClick={() => {
+                // Always use today's date in strict ISO format to avoid browser locale issues
+                const today = new Date();
+                const iso = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+                setStartDate(iso);
+                generateMutation.mutate({ startDate: iso });
+              }}
               disabled={isGenerating}
               className="gap-2"
               size="lg"
