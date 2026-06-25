@@ -426,6 +426,17 @@ export default function MarketingPlan() {
   const [savedPlanId, setSavedPlanId] = useState<number | null>(null);
   const [planTitle, setPlanTitle] = useState("");
   const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  // Normalize any date string to YYYY-MM-DD regardless of browser/locale format
+  function normalizeDate(val: string): string {
+    if (!val) return new Date().toISOString().slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+    // DD/MM/YYYY
+    const dm = val.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+    if (dm) return `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`;
+    try { const d = new Date(val); if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10); } catch {}
+    return new Date().toISOString().slice(0, 10);
+  }
   const [showSavedPlans, setShowSavedPlans] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [editingWeek, setEditingWeek] = useState<Week | null>(null);
@@ -620,7 +631,7 @@ export default function MarketingPlan() {
               <Input
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => setStartDate(normalizeDate(e.target.value))}
                 className="max-w-xs"
               />
               <p className="text-xs text-muted-foreground">
@@ -634,7 +645,7 @@ export default function MarketingPlan() {
             </div>
 
             <Button
-              onClick={() => generateMutation.mutate({ startDate })}
+              onClick={() => generateMutation.mutate({ startDate: normalizeDate(startDate) })}
               disabled={isGenerating}
               className="gap-2"
               size="lg"

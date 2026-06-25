@@ -651,7 +651,17 @@ export const marketingRouter = router({
   generateStrategyPlan: protectedProcedure
     .input(z.object({ startDate: z.string() }))
     .mutation(async ({ input }) => {
-      const start = new Date(input.startDate);
+      // Normalize date: handle YYYY-MM-DD, DD/MM/YYYY, and other formats
+      function normalizeInputDate(val: string): string {
+        if (!val) return new Date().toISOString().slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+        const dm = val.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+        if (dm) return `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`;
+        try { const d = new Date(val); if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10); } catch {}
+        return new Date().toISOString().slice(0, 10);
+      }
+      const normalizedDate = normalizeInputDate(input.startDate);
+      const start = new Date(normalizedDate);
       const end = new Date(start);
       end.setDate(end.getDate() + 83);
 
