@@ -22,26 +22,123 @@ async function getSpainAppendix(): Promise<Buffer | null> {
 }
 
 /**
- * Merge appendix body content into the main contract DOCX.
- * Extracts the <w:body> inner content from the appendix (excluding the final
- * <w:sectPr>) and inserts it before the closing </w:body> of the main contract,
- * preceded by a page-break paragraph.
+ * Merge appendix DOCX into the main contract DOCX.
+ * Handles:
+ *  1. Body content merge (with page break separator)
+ *  2. Numbering definitions merge (remapped IDs to avoid conflicts)
+ *  3. Missing style definitions merge
  */
 function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
   try {
     const appendixZip = new PizZip(appendixBuf.toString("binary"), { base64: false });
-    const appendixXml = appendixZip.file("word/document.xml")!.asText();
+    const appendixDocXml = appendixZip.file("word/document.xml")!.asText();
 
-    // Extract inner body content (everything between <w:body> and </w:body>)
-    const bodyStart = appendixXml.indexOf("<w:body>");
-    const bodyEnd = appendixXml.lastIndexOf("</w:body>");
+    // ── Step 1: Merge numbering definitions ──────────────────────────────────
+    // Find all numId values used in the appendix body
+    const appendixNumIds = new Set<number>();
+    const numIdMatches = appendixDocXml.matchAll(/<w:numId w:val="(\d+)"/g);
+    for (const m of numIdMatches) appendixNumIds.add(parseInt(m[1]));
+
+    let numIdOffset = 0;
+    if (appendixNumIds.size > 0) {
+      const appendixNumXmlFile = appendixZip.file("word/numbering.xml");
+      const mainNumXmlFile = mainZip.file("word/numbering.xml");
+
+      if (appendixNumXmlFile && mainNumXmlFile) {
+        let mainNumXml = mainNumXmlFile.asText();
+        const appendixNumXml = appendixNumXmlFile.asText();
+
+        // Find the highest abstractNumId and numId in the main document
+        const mainAbstractIds = [...mainNumXml.matchAll(/w:abstractNumId="(\d+)"/g)].map(m => parseInt(m[1]));
+        const mainNumIds = [...mainNumXml.matchAll(/<w:num w:numId="(\d+)"/g)].map(m => parseInt(m[1]));
+        const maxAbstractId = mainAbstractIds.length > 0 ? Math.max(...mainAbstractIds) : 0;
+        const maxNumId = mainNumIds.length > 0 ? Math.max(...mainNumIds) : 0;
+        numIdOffset = maxNumId;
+
+        // Extract abstractNum definitions from appendix and remap their IDs
+        const appendixAbstractNums = [...appendixNumXml.matchAll(/<w:abstractNum w:abstractNumId="(\d+)"[\s\S]*?<\/w:abstractNum>/g)];
+        const appendixNums = [...appendixNumXml.matchAll(/<w:num w:numId="(\d+)"[\s\S]*?<\/w:num>/g)];
+
+        // Build a map: old abstractNumId -> new abstractNumId
+        const abstractIdMap = new Map<number, number>();
+        let nextAbstractId = maxAbstractId + 1;
+        for (const m of appendixAbstractNums) {
+          abstractIdMap.set(parseInt(m[1]), nextAbstractId++);
+        }
+
+        // Remap and append abstractNum definitions
+        for (const m of appendixAbstractNums) {
+          const oldId = parseInt(m[1]);
+          const newId = abstractIdMap.get(oldId)!;
+          let def = m[0].replace(`w:abstractNumId="${oldId}"`, `w:abstractNumId="${newId}"`);
+          // Also remap any w:abstractNumId references inside the definition
+          def = def.replace(/<w:abstractNumId w:val="(\d+)"/, (_, v) => {
+            const mapped = abstractIdMap.get(parseInt(v));
+            return `<w:abstractNumId w:val="${mapped !== undefined ? mapped : v}"`;
+          });
+          mainNumXml = mainNumXml.replace("</w:numbering>", def + "</w:numbering>");
+        }
+
+        // Remap and append num definitions (only those used in appendix body)
+        for (const m of appendixNums) {
+          const oldNumId = parseInt(m[1]);
+          if (!appendixNumIds.has(oldNumId)) continue;
+          const newNumId = oldNumId + numIdOffset;
+          let def = m[0]
+            .replace(`w:numId="${oldNumId}"`, `w:numId="${newNumId}"`)
+            .replace(/<w:abstractNumId w:val="(\d+)"/, (_, v) => {
+              const mapped = abstractIdMap.get(parseInt(v));
+              return `<w:abstractNumId w:val="${mapped !== undefined ? mapped : v}"`;
+            });
+          mainNumXml = mainNumXml.replace("</w:numbering>", def + "</w:numbering>");
+        }
+
+        mainZip.file("word/numbering.xml", mainNumXml);
+      }
+    }
+
+    // ── Step 2: Merge missing styles ─────────────────────────────────────────
+    const appendixStyleFile = appendixZip.file("word/styles.xml");
+    const mainStyleFile = mainZip.file("word/styles.xml");
+    if (appendixStyleFile && mainStyleFile) {
+      let mainStylesXml = mainStyleFile.asText();
+      const appendixStylesXml = appendixStyleFile.asText();
+      // Find styles used in appendix body
+      const usedStyles = new Set([...appendixDocXml.matchAll(/<w:pStyle w:val="([^"]+)"/g)].map(m => m[1]));
+      for (const styleId of usedStyles) {
+        // Only add if not already in main
+        if (!mainStylesXml.includes(`w:styleId="${styleId}"`)) {
+          const styleMatch = appendixStylesXml.match(
+            new RegExp(`<w:style[^>]*w:styleId="${styleId}"[\\s\\S]*?<\/w:style>`)
+          );
+          if (styleMatch) {
+            mainStylesXml = mainStylesXml.replace("</w:styles>", styleMatch[0] + "</w:styles>");
+          }
+        }
+      }
+      mainZip.file("word/styles.xml", mainStylesXml);
+    }
+
+    // ── Step 3: Merge body content ────────────────────────────────────────────
+    const bodyStart = appendixDocXml.indexOf("<w:body>");
+    const bodyEnd = appendixDocXml.lastIndexOf("</w:body>");
     if (bodyStart === -1 || bodyEnd === -1) return;
 
-    let appendixBody = appendixXml.slice(bodyStart + "<w:body>".length, bodyEnd);
+    let appendixBody = appendixDocXml.slice(bodyStart + "<w:body>".length, bodyEnd);
 
     // Remove the final <w:sectPr> from the appendix body so it doesn't override
     // the main contract's page settings
     appendixBody = appendixBody.replace(/<w:sectPr[\s\S]*?<\/w:sectPr>\s*$/, "");
+
+    // Remap numId references in the appendix body to the new IDs
+    if (numIdOffset > 0) {
+      appendixBody = appendixBody.replace(/<w:numId w:val="(\d+)"/g, (_, v) => {
+        const oldId = parseInt(v);
+        return appendixNumIds.has(oldId)
+          ? `<w:numId w:val="${oldId + numIdOffset}"`
+          : `<w:numId w:val="${v}"`;
+      });
+    }
 
     // Build a page-break paragraph to separate the main contract from the appendix
     const pageBreakPara = `<w:p><w:r><w:rPr><w:rtl/></w:rPr><w:br w:type="page"/></w:r></w:p>`;
