@@ -1,6 +1,68 @@
 import axios from "axios";
-import { storagePut } from "./storage";
+import { storagePut, storageGet } from "./storage";
 import PizZip from "pizzip";
+
+// ── Appendix ───────────────────────────────────────────────────────────────
+// The Spain contract appendix (ملحق) is stored in S3 and appended after the
+// main 14-page contract body for every Spain DNV contract generated.
+const SPAIN_APPENDIX_KEY = "spain_appendix_03c86694.docx";
+let appendixCache: Buffer | null = null;
+
+async function getSpainAppendix(): Promise<Buffer | null> {
+  if (appendixCache) return appendixCache;
+  try {
+    const { url } = await storageGet(SPAIN_APPENDIX_KEY);
+    const resp = await axios.get(url, { responseType: "arraybuffer", timeout: 30000 });
+    appendixCache = Buffer.from(resp.data);
+    return appendixCache;
+  } catch (err) {
+    console.error("[ContractGenerator] Failed to load Spain appendix:", err);
+    return null;
+  }
+}
+
+/**
+ * Merge appendix body content into the main contract DOCX.
+ * Extracts the <w:body> inner content from the appendix (excluding the final
+ * <w:sectPr>) and inserts it before the closing </w:body> of the main contract,
+ * preceded by a page-break paragraph.
+ */
+function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
+  try {
+    const appendixZip = new PizZip(appendixBuf.toString("binary"), { base64: false });
+    const appendixXml = appendixZip.file("word/document.xml")!.asText();
+
+    // Extract inner body content (everything between <w:body> and </w:body>)
+    const bodyStart = appendixXml.indexOf("<w:body>");
+    const bodyEnd = appendixXml.lastIndexOf("</w:body>");
+    if (bodyStart === -1 || bodyEnd === -1) return;
+
+    let appendixBody = appendixXml.slice(bodyStart + "<w:body>".length, bodyEnd);
+
+    // Remove the final <w:sectPr> from the appendix body so it doesn't override
+    // the main contract's page settings
+    appendixBody = appendixBody.replace(/<w:sectPr[\s\S]*?<\/w:sectPr>\s*$/, "");
+
+    // Build a page-break paragraph to separate the main contract from the appendix
+    const pageBreakPara = `<w:p><w:r><w:rPr><w:rtl/></w:rPr><w:br w:type="page"/></w:r></w:p>`;
+
+    // Insert before the closing </w:body> of the main contract
+    let mainXml = mainZip.file("word/document.xml")!.asText();
+    const mainBodyEnd = mainXml.lastIndexOf("</w:body>");
+    if (mainBodyEnd === -1) return;
+
+    mainXml =
+      mainXml.slice(0, mainBodyEnd) +
+      pageBreakPara +
+      appendixBody +
+      mainXml.slice(mainBodyEnd);
+
+    mainZip.file("word/document.xml", mainXml);
+  } catch (err) {
+    console.error("[ContractGenerator] Failed to merge appendix:", err);
+    // Non-fatal: contract is still generated without appendix
+  }
+}
 
 // ── Template registry ──────────────────────────────────────────────────────
 // Keys match the `country` field stored in the contracts table.
@@ -155,6 +217,14 @@ export async function generateContractDoc(
   // (no placeholder to replace — the template body already describes the program fees).
 
   zip.file("word/document.xml", docXml);
+
+  // ── Append the Spain appendix (ملحق) for Spain contracts ──────────────────
+  if (country === "spain") {
+    const appendixBuf = await getSpainAppendix();
+    if (appendixBuf) {
+      mergeAppendixIntoContract(zip, appendixBuf);
+    }
+  }
 
   const outputBuffer = Buffer.from(
     zip.generate({ type: "nodebuffer", compression: "DEFLATE" })
