@@ -727,13 +727,50 @@ Return ONLY this JSON (no extra text):
   "wordDocPrompt": "<Manus task prompt to generate a Word doc with all captions and voice-over scripts for this week>"
 }`;
 
-        const response = await invokeLLM({
-          messages: [{ role: "user", content: prompt }],
-          response_format: { type: "json_object" },
-        });
-        const content = response.choices?.[0]?.message?.content;
-        if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `AI response empty for week ${wk.weekNumber}` });
-        return JSON.parse(content as string);
+        // Robustly extract JSON from LLM response (handles markdown fences, extra text)
+        function extractJson(raw: string): unknown {
+          if (!raw || !raw.trim()) throw new Error("Empty LLM response");
+          let cleaned = raw.trim();
+          // Strip markdown code fences if present
+          const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
+          if (fenceMatch) cleaned = fenceMatch[1].trim();
+          // Find the outermost JSON object
+          const start = cleaned.indexOf("{");
+          const end = cleaned.lastIndexOf("}");
+          if (start !== -1 && end !== -1 && end > start) {
+            cleaned = cleaned.slice(start, end + 1);
+          }
+          return JSON.parse(cleaned);
+        }
+
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const response = await invokeLLM({
+              messages: [{ role: "user", content: prompt }],
+              response_format: { type: "json_object" },
+            });
+            const content = response.choices?.[0]?.message?.content;
+            if (!content) throw new Error(`Empty AI response for week ${wk.weekNumber}`);
+            return extractJson(content as string);
+          } catch (err) {
+            console.error(`[MarketingPlan] Week ${wk.weekNumber} attempt ${attempt + 1} failed:`, String(err));
+            if (attempt === 2) {
+              // Return a minimal fallback so the whole plan doesn't fail on one bad week
+              return {
+                weekNumber: wk.weekNumber,
+                startDate: wk.startDate,
+                endDate: wk.endDate,
+                program: wk.program,
+                pillars: [],
+                posts: [],
+                reels: [],
+                wordDocPrompt: "",
+                generationError: `Week ${wk.weekNumber} could not be generated. Please try regenerating.`,
+              };
+            }
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        }
       }
 
       // Generate all 12 weeks sequentially (one at a time)
