@@ -224,8 +224,10 @@ export default function MarketingPlan() {
       try {
         const parsed: Plan = JSON.parse(data.planJson);
         setActivePlan(parsed);
+        // Use DD/MM/YYYY format so superjson does NOT coerce this string to a Date object.
+        // The savePlan Zod schema accepts any string for startDate.
         const today = new Date();
-        const startDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+        const startDate = `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
         saveMutation.mutate({ title: parsed.planTitle, startDate, planJson: data.planJson });
         toast.success("12-week plan generated and saved!");
       } catch {
@@ -244,8 +246,9 @@ export default function MarketingPlan() {
 
   const handleGenerate = () => {
     setGenerating(true);
+    // Use DD/MM/YYYY format so superjson does NOT coerce this to a Date object
     const today = new Date();
-    const startDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const startDate = `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
     generateMutation.mutate({ startDate });
   };
 

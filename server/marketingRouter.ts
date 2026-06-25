@@ -780,13 +780,13 @@ Return ONLY this JSON (no extra text):
         generatedWeeks.push(weekData);
       }
 
-      // Return as a plain JSON string to prevent superjson from mangling
-      // ISO date strings (e.g. "2026-06-25") inside the LLM-generated content.
-      // The frontend will JSON.parse this string back into an object.
+      // Build the plan object — avoid putting ISO date strings directly in the
+      // top-level return value because superjson will try to coerce them to Dates.
+      // We JSON.stringify the whole thing and return it as a plain string.
       const planObject = {
-        planTitle: `ELEVAY 12-Week Marketing Strategy — ${input.startDate} to ${end.toISOString().slice(0, 10)}`,
-        dateRange: { start: input.startDate, end: end.toISOString().slice(0, 10) },
-        strategyOverview: `A comprehensive 12-week social media content strategy for ELEVAY covering Spain Digital Nomad Visa (30%), Malta Permanent Residency (20%), Greece Golden Visa (20%), Portugal D7/D8/Golden Visa (15%), and Sao Tome Citizenship (15%). Each week includes 5 static posts and 5 reels with Arabic captions and voice-overs, plus ready-to-use Manus prompts.`,
+        planTitle: "ELEVAY 12-Week Marketing Strategy Plan",
+        weekCount: 12,
+        strategyOverview: "A comprehensive 12-week social media content strategy for ELEVAY covering Spain Digital Nomad Visa (30%), Malta Permanent Residency (20%), Greece Golden Visa (20%), Portugal D7/D8/Golden Visa (15%), and Sao Tome Citizenship (15%). Each week includes 5 static posts and 5 reels with Arabic captions and voice-overs, plus ready-to-use Manus prompts.",
         programAllocation: [
           { program: "Spain Digital Nomad Visa", percentage: 30, weeks: [1, 4, 7, 10] },
           { program: "Malta Permanent Residency", percentage: 20, weeks: [2, 6, 11] },
@@ -796,6 +796,8 @@ Return ONLY this JSON (no extra text):
         ],
         weeks: generatedWeeks,
       };
+      // Return as a plain JSON string — this prevents superjson from scanning
+      // the object and misidentifying ISO date strings inside LLM content as Date objects.
       return { planJson: JSON.stringify(planObject) };
     }),
 });
