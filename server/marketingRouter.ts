@@ -646,4 +646,84 @@ export const marketingRouter = router({
         result: r.resultJson ? JSON.parse(r.resultJson) : null,
       }));
     }),
+
+  // ── Strategy Plan Generator ────────────────────────────────────────────────
+  generateStrategyPlan: protectedProcedure
+    .input(z.object({ startDate: z.string() }))
+    .mutation(async ({ input }) => {
+      const start = new Date(input.startDate);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 83);
+
+      const weeks: Array<{ weekNumber: number; startDate: string; endDate: string }> = [];
+      for (let w = 0; w < 12; w++) {
+        const ws = new Date(start);
+        ws.setDate(ws.getDate() + w * 7);
+        const we = new Date(ws);
+        we.setDate(we.getDate() + 6);
+        weeks.push({ weekNumber: w + 1, startDate: ws.toISOString().slice(0, 10), endDate: we.toISOString().slice(0, 10) });
+      }
+
+      const systemPrompt = `You are a senior digital marketing strategist for ELEVAY, an Egyptian citizenship and residency consultancy.
+You create detailed, actionable 12-week social media content strategies.
+All captions and voice-overs must be in Arabic.
+Do NOT generate images, videos, or designs — only strategy text and Manus task prompts.`;
+
+      const userPrompt = `Create a 12-week marketing strategy for ELEVAY starting ${input.startDate}.
+
+Program allocation:
+- Spain Digital Nomad Visa: 30% (weeks 1, 4, 7, 10)
+- Malta Permanent Residency: 20% (weeks 2, 6, 11)
+- Greece Golden Visa: 20% (weeks 3, 8, 12)
+- Portugal (D7, D8, Golden Visa): 15% (weeks 5, 9)
+- Sao Tome Citizenship: 15% (weeks 4 and 10 share with Spain)
+
+For EACH of the 12 weeks provide:
+- weekNumber (1-12)
+- startDate and endDate (YYYY-MM-DD)
+- program: the main program for this week
+- theme: the weekly content theme
+- weeklyStrategy: 2-3 sentence strategic approach
+- contentPillars: array of 4 objects { pillar, description } covering:
+  1. Program details, requirements, investment cost, processing time
+  2. Pros and cons vs alternatives
+  3. Benefits of living/doing business in that country
+  4. Lifestyle (food, culture, weather, education, healthcare) and how to maximize residency/citizenship benefits (tax, travel, business)
+- posts: array of exactly 5 static posts, each with:
+  { postNumber, topic, angle, keyMessageAr (Arabic, 1 sentence), captionAr (Arabic, 150-200 chars), hashtags (8-10 tags) }
+- reels: array of exactly 5 reels, each with:
+  { reelNumber, topic, concept, voiceOverAr (Arabic, 25 seconds), backgroundMusicStyle,
+    scenes: 5 objects { sceneNumber, visualDescription (no text in video, no passports, 9:16 vertical), manusPrompt (complete ready-to-paste prompt for Manus to generate this 5-second clip) },
+    manusWeekPrompt: single comprehensive Manus task prompt to produce all 5 clips + combine + add music }
+- wordDocPrompt: Manus task prompt to generate a Word doc with all captions and voice-over scripts for this week
+
+Week dates:
+${weeks.map(w => `Week ${w.weekNumber}: ${w.startDate} to ${w.endDate}`).join('\n')}
+
+Return valid JSON:
+{
+  "planTitle": "ELEVAY 12-Week Marketing Strategy — ${input.startDate} to ${end.toISOString().slice(0, 10)}",
+  "dateRange": { "start": "${input.startDate}", "end": "${end.toISOString().slice(0, 10)}" },
+  "strategyOverview": "...",
+  "programAllocation": [{"program":"...","percentage":30,"weeks":[1,4,7,10]},...],
+  "weeks": [ ...12 week objects... ]
+}`;
+
+      const response = await invokeLLM({
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const content = response.choices?.[0]?.message?.content;
+      if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI response empty" });
+
+      let plan: Record<string, unknown>;
+      try { plan = JSON.parse(content as string); }
+      catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to parse AI response" }); }
+
+      return plan;
+    }),
 });
