@@ -168,7 +168,7 @@ function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
 const TEMPLATE_REGISTRY: Record<string, { url?: string; storageKey?: string; label: string }> = {
   spain: {
     // New Spain Nomad contract template (includes appendix built-in)
-    storageKey: "SpainNomadContract_20055b7b.docx",
+    url: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663524211981/JSJzOgTHvJAjUFee.docx",
     label: "Spain Digital Nomad Visa",
   },
   egypt: {
