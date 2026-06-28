@@ -702,11 +702,11 @@ Return ONLY this JSON (no extra text):
     {"pillar": "Lifestyle & Maximizing Benefits", "description": "<culture, travel, business setup>"}
   ],
   "posts": [
-    {"postNumber": 1, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic 1 sentence>", "captionAr": "<Arabic 150-200 chars>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"]},
-    {"postNumber": 2, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"]},
-    {"postNumber": 3, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"]},
-    {"postNumber": 4, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"]},
-    {"postNumber": 5, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"]}
+    {"postNumber": 1, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic 1 sentence>", "captionAr": "<Arabic 150-200 chars>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<full Manus task prompt to generate a 1080x1080 static Instagram post design for this topic — include visual style, background, text overlay in Arabic, ELEVAY brand colors (navy #1A3A5C + gold #C9A84C), no passport images>"},
+    {"postNumber": 2, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<full Manus image prompt>"},
+    {"postNumber": 3, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<full Manus image prompt>"},
+    {"postNumber": 4, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<full Manus image prompt>"},
+    {"postNumber": 5, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<full Manus image prompt>"}
   ],
   "reels": [
     {"reelNumber": 1, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic 25-sec script>", "backgroundMusicStyle": "<style>",

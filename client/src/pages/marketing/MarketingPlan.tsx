@@ -8,7 +8,7 @@ import { toast } from "sonner";
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Scene { sceneNumber: number; visualDescription: string; manusPrompt: string; }
 interface Reel { reelNumber: number; topic: string; concept: string; voiceOverAr: string; backgroundMusicStyle: string; scenes: Scene[]; manusWeekPrompt: string; }
-interface Post { postNumber: number; topic: string; angle: string; keyMessageAr: string; captionAr: string; hashtags: string[]; manusPrompt: string; }
+interface Post { postNumber: number; topic: string; angle: string; keyMessageAr: string; captionAr: string; hashtags: string[]; manusPrompt?: string; manusImagePrompt?: string; }
 interface Week { weekNumber: number; startDate: string; endDate: string; program: string; pillars?: string[]; posts: Post[]; reels: Reel[]; wordDocPrompt: string; generationError?: string; }
 interface Plan { planTitle: string; dateRange: { start: string; end: string }; strategyOverview: string; programAllocation: { program: string; percentage: number; weeks: number[] }[]; weeks: Week[]; }
 
@@ -87,6 +87,15 @@ function WeekCard({ week }: { week: Week }) {
                         {post.captionAr && <p className="text-gray-400 text-xs">{post.captionAr}</p>}
                         {post.hashtags?.length > 0 && <p className="text-gray-500 text-xs mt-1">{post.hashtags.map(h => `#${h.replace(/^#/, "")}`).join(" ")}</p>}
                       </div>
+                      {(post as Post).manusImagePrompt && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-amber-400 font-semibold">🎨 Static Design Prompt</p>
+                          <div className="flex items-start gap-2">
+                            <div className="flex-1 bg-gray-800 border border-amber-900/40 rounded p-2 text-xs text-gray-300 font-mono break-all">{(post as Post).manusImagePrompt}</div>
+                            <CopyButton text={(post as Post).manusImagePrompt!} />
+                          </div>
+                        </div>
+                      )}
                       {post.manusPrompt && (
                         <div className="flex items-start gap-2">
                           <div className="flex-1 bg-gray-800 rounded p-2 text-xs text-gray-400 font-mono break-all">{post.manusPrompt}</div>
@@ -159,6 +168,16 @@ function WeekCard({ week }: { week: Week }) {
                       <div className="bg-gray-800 rounded p-3 text-xs text-gray-300 font-mono break-all">{week.wordDocPrompt}</div>
                     </div>
                   )}
+                  <div className="space-y-2">
+                    <p className="text-xs text-amber-400 font-semibold">🎨 Static Post Design Prompts (copy each to a Manus image task):</p>
+                    {week.posts?.map((post, i) => (post as Post).manusImagePrompt ? (
+                      <div key={i} className="bg-gray-800 border border-amber-900/40 rounded p-3 flex items-start gap-2">
+                        <span className="text-xs text-gray-500 shrink-0 mt-0.5">Post {post.postNumber}</span>
+                        <p className="text-xs text-gray-300 font-mono break-all flex-1">{(post as Post).manusImagePrompt}</p>
+                        <CopyButton text={(post as Post).manusImagePrompt!} />
+                      </div>
+                    ) : null)}
+                  </div>
                   <div className="space-y-2">
                     <p className="text-xs text-gray-500 font-medium">Individual Reel Prompts (copy each to a separate Manus task):</p>
                     {week.reels?.map((reel, i) => reel.manusWeekPrompt ? (
