@@ -773,12 +773,11 @@ Return ONLY this JSON (no extra text):
         }
       }
 
-      // Generate all 12 weeks sequentially (one at a time)
-      const generatedWeeks: unknown[] = [];
-      for (const wk of allWeeks) {
-        const weekData = await generateOneWeek(wk);
-        generatedWeeks.push(weekData);
-      }
+      // Generate all 12 weeks in PARALLEL to avoid proxy/request timeout.
+      // Sequential generation took 6-12 minutes (12 × 30-60s per LLM call),
+      // which exceeded the proxy timeout and caused a network abort error.
+      // Parallel generation completes in ~60s (one LLM call duration).
+      const generatedWeeks = await Promise.all(allWeeks.map(wk => generateOneWeek(wk)));
 
       // Build the plan object — avoid putting ISO date strings directly in the
       // top-level return value because superjson will try to coerce them to Dates.
