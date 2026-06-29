@@ -98,12 +98,19 @@ export const leadsRouter = router({
         });
       }
       // Fire CAPI Lead event (non-blocking)
+      // Split fullName into first/last for better Meta event match quality
+      const _nameParts = (input.fullName || "").trim().split(/\s+/);
+      const _capiFirstName = _nameParts[0] || undefined;
+      const _capiLastName = _nameParts.length > 1 ? _nameParts.slice(1).join(" ") : undefined;
       sendCapiEvent({
         eventName: "Lead",
         leadId: id,
         email: input.email || undefined,
         phone: input.phone || input.whatsapp || undefined,
+        firstName: _capiFirstName,
+        lastName: _capiLastName,
         country: input.nationality || undefined,
+        city: input.countryOfResidence || undefined,
       }).catch(() => {});
       return { id };
     }),
@@ -240,13 +247,17 @@ export const leadsRouter = router({
       // Fire CAPI event for the new stage (non-blocking)
       const capiEventName = stageToCapiEvent(input.stage);
       if (capiEventName) {
+        const _stageNameParts = (lead.fullName || "").trim().split(/\s+/);
         sendCapiEvent({
           eventName: capiEventName,
           customEventName: capiEventName === "CustomEvent" ? input.stage : undefined,
           leadId: input.id,
           email: lead.email || undefined,
           phone: lead.phone || lead.whatsapp || undefined,
+          firstName: _stageNameParts[0] || undefined,
+          lastName: _stageNameParts.length > 1 ? _stageNameParts.slice(1).join(" ") : undefined,
           country: lead.nationality || undefined,
+          city: (lead as any).countryOfResidence || undefined,
         }).catch(() => {});
       }
       return { success: true };

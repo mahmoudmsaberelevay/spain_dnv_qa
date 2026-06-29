@@ -474,12 +474,16 @@ async function syncOneIntegration(integration: {
 
           // Fire CAPI Lead event for the newly synced lead (non-blocking)
           if (newLeadId) {
+            const _syncNameParts = (mapped.fullName || "").trim().split(/\s+/);
             sendCapiEvent({
               eventName: "Lead",
               leadId: newLeadId,
               email: email,
               phone: phone,
+              firstName: mapped.firstName || _syncNameParts[0] || undefined,
+              lastName: mapped.lastName || (_syncNameParts.length > 1 ? _syncNameParts.slice(1).join(" ") : undefined),
               country: mapped.nationality || undefined,
+              city: mapped.city || undefined,
             }).catch(() => {});
           }
 

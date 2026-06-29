@@ -33,7 +33,10 @@ export interface CapiEventPayload {
   phone?: string;
   firstName?: string;
   lastName?: string;
-  country?: string;
+  country?: string;          // nationality / country of origin
+  city?: string;             // city of residence
+  state?: string;            // state / region
+  zip?: string;              // postal code
   externalId?: string;       // your internal lead ID as string
   sourceUrl?: string;
   testEventCode?: string;    // set during testing to see events in Test Events tab
@@ -61,6 +64,9 @@ export async function sendCapiEvent(payload: CapiEventPayload): Promise<void> {
   if (payload.firstName) userData.fn = hash(payload.firstName);
   if (payload.lastName) userData.ln = hash(payload.lastName);
   if (payload.country) userData.country = hash(payload.country.toLowerCase());
+  if (payload.city) userData.ct = hash(payload.city.trim().toLowerCase());
+  if (payload.state) userData.st = hash(payload.state.trim().toLowerCase());
+  if (payload.zip) userData.zp = hash(payload.zip.trim().toLowerCase());
   if (payload.externalId || payload.leadId) {
     userData.external_id = hash(String(payload.externalId ?? payload.leadId));
   }
