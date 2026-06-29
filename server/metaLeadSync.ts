@@ -473,6 +473,8 @@ async function syncOneIntegration(integration: {
           }
 
           // Fire CAPI Lead event for the newly synced lead (non-blocking)
+          // Meta Lead Ads don't have browser-side fbc/fbp available, but we send
+          // all available PII fields to maximize event match quality.
           if (newLeadId) {
             const _syncNameParts = (mapped.fullName || "").trim().split(/\s+/);
             sendCapiEvent({
@@ -484,6 +486,8 @@ async function syncOneIntegration(integration: {
               lastName: mapped.lastName || (_syncNameParts.length > 1 ? _syncNameParts.slice(1).join(" ") : undefined),
               country: mapped.nationality || undefined,
               city: mapped.city || undefined,
+              // Meta Lead Ads forms don't expose fbc/fbp — these come from browser cookies
+              // which are not available server-side for form submissions
             }).catch(() => {});
           }
 

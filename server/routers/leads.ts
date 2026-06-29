@@ -20,7 +20,7 @@ import { listActivityPresets, listLeadIntegrations } from "../leadsSettingsDb";
 import { syncOneIntegrationById } from "../metaLeadSync";
 import { writeAuditLog, auditCtxFromTrpc } from "../auditLog";
 import { sendLeadAssignmentNotification, TEAM_EMAIL_MAP } from "../emailService";
-import { sendCapiEvent, stageToCapiEvent } from "../metaCapi";
+import { sendCapiEvent, stageToCapiEvent, extractCapiParamsFromRequest } from "../metaCapi";
 
 const STAGES = [
   "fresh", "contacted", "qualified", "prospect", "client", "dormant", "resubmit",
@@ -102,6 +102,8 @@ export const leadsRouter = router({
       const _nameParts = (input.fullName || "").trim().split(/\s+/);
       const _capiFirstName = _nameParts[0] || undefined;
       const _capiLastName = _nameParts.length > 1 ? _nameParts.slice(1).join(" ") : undefined;
+      // Extract browser-side params (fbc, fbp, IP, user-agent) using Meta param builder SDK
+      const _capiParams = extractCapiParamsFromRequest(ctx.req);
       sendCapiEvent({
         eventName: "Lead",
         leadId: id,
@@ -111,6 +113,7 @@ export const leadsRouter = router({
         lastName: _capiLastName,
         country: input.nationality || undefined,
         city: input.countryOfResidence || undefined,
+        ..._capiParams,
       }).catch(() => {});
       return { id };
     }),
@@ -248,6 +251,7 @@ export const leadsRouter = router({
       const capiEventName = stageToCapiEvent(input.stage);
       if (capiEventName) {
         const _stageNameParts = (lead.fullName || "").trim().split(/\s+/);
+        const _stageCapi = extractCapiParamsFromRequest(ctx.req);
         sendCapiEvent({
           eventName: capiEventName,
           customEventName: capiEventName === "CustomEvent" ? input.stage : undefined,
@@ -258,6 +262,11 @@ export const leadsRouter = router({
           lastName: _stageNameParts.length > 1 ? _stageNameParts.slice(1).join(" ") : undefined,
           country: lead.nationality || undefined,
           city: (lead as any).countryOfResidence || undefined,
+          // Use stored fbc/fbp from DB if available, otherwise from current request
+          fbc: lead.fbcCookie || _stageCapi.fbc,
+          fbp: lead.fbpCookie || _stageCapi.fbp,
+          clientIpAddress: _stageCapi.clientIpAddress,
+          clientUserAgent: _stageCapi.clientUserAgent,
         }).catch(() => {});
       }
       return { success: true };

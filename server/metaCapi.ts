@@ -4,6 +4,7 @@
  * to help Meta optimize ad delivery and find higher-quality leads.
  *
  * Docs: https://developers.facebook.com/docs/marketing-api/conversions-api
+ * Parameter Builder SDK: https://github.com/facebook/capi-param-builder
  */
 import { ENV } from "./_core/env";
 import crypto from "crypto";
@@ -40,6 +41,52 @@ export interface CapiEventPayload {
   externalId?: string;       // your internal lead ID as string
   sourceUrl?: string;
   testEventCode?: string;    // set during testing to see events in Test Events tab
+  // Browser-side parameters from Meta capi-param-builder SDK
+  fbc?: string;              // _fbc cookie — Meta click ID (format: fb.1.timestamp.fbclid)
+  fbp?: string;              // _fbp cookie — Meta browser ID
+  clientIpAddress?: string;  // client IP address (IPv4 or IPv6, NOT hashed)
+  clientUserAgent?: string;  // browser user agent string (NOT hashed)
+  referrerUrl?: string;      // HTTP Referer of the page that triggered the event
+}
+
+/**
+ * Build CAPI params from an Express request using the Meta param builder SDK.
+ * Returns fbc, fbp, clientIpAddress, clientUserAgent, sourceUrl, referrerUrl.
+ * Call this inside a tRPC procedure where ctx.req is available.
+ */
+export function extractCapiParamsFromRequest(req: any): Pick<
+  CapiEventPayload,
+  "fbc" | "fbp" | "clientIpAddress" | "clientUserAgent" | "sourceUrl" | "referrerUrl"
+> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ParamBuilder } = require("capi-param-builder-nodejs");
+    const builder = new ParamBuilder(["elevay.vip", "localhost"]);
+    builder.processRequestFromContext(req);
+
+    return {
+      fbc: builder.getFbc() || undefined,
+      fbp: builder.getFbp() || undefined,
+      clientIpAddress: builder.getClientIpAddress() || undefined,
+      clientUserAgent: (req.headers?.["user-agent"] as string) || undefined,
+      sourceUrl: builder.getEventSourceUrl() || undefined,
+      referrerUrl: builder.getReferrerUrl() || undefined,
+    };
+  } catch (err) {
+    // Param builder failure must never break the CRM
+    console.warn("[MetaCAPI] extractCapiParamsFromRequest failed:", err);
+    // Fallback: extract what we can manually
+    const ip =
+      (req.headers?.["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+      req.socket?.remoteAddress ||
+      undefined;
+    return {
+      clientIpAddress: ip,
+      clientUserAgent: (req.headers?.["user-agent"] as string) || undefined,
+      sourceUrl: req.headers?.["referer"] as string | undefined,
+      referrerUrl: req.headers?.["referer"] as string | undefined,
+    };
+  }
 }
 
 /**
@@ -70,12 +117,17 @@ export async function sendCapiEvent(payload: CapiEventPayload): Promise<void> {
   if (payload.externalId || payload.leadId) {
     userData.external_id = hash(String(payload.externalId ?? payload.leadId));
   }
-  // client_user_agent and fbc/fbp are browser-side — not available server-side
+
+  // Browser-side parameters from Meta param builder SDK (NOT hashed per Meta spec)
+  if (payload.fbc) userData.fbc = payload.fbc;
+  if (payload.fbp) userData.fbp = payload.fbp;
+  if (payload.clientIpAddress) userData.client_ip_address = payload.clientIpAddress;
+  if (payload.clientUserAgent) userData.client_user_agent = payload.clientUserAgent;
 
   const event: Record<string, unknown> = {
     event_name: payload.eventName,
     event_time: eventTime,
-    action_source: "crm",
+    action_source: "website",  // upgraded from "crm" since we now have browser context
     user_data: userData,
   };
 
@@ -85,6 +137,9 @@ export async function sendCapiEvent(payload: CapiEventPayload): Promise<void> {
 
   if (payload.sourceUrl) {
     event.event_source_url = payload.sourceUrl;
+  }
+  if (payload.referrerUrl) {
+    event.referrer_url = payload.referrerUrl;
   }
 
   const body: Record<string, unknown> = {
