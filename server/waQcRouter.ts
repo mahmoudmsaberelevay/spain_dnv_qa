@@ -39,6 +39,16 @@ export const waQcRouter = router({
       .query(async ({ input }) => {
         return getWaMessages(input);
       }),
+    listForConversation: waQcProcedure
+      .input(z.object({
+        groupId: z.string().min(1),
+        search: z.string().optional(),
+        limit: z.number().min(1).max(200).default(150),
+        offset: z.number().min(0).default(0),
+      }))
+      .query(async ({ input }) => {
+        return getWaMessages({ groupId: input.groupId, search: input.search, limit: input.limit, offset: input.offset });
+      }),
   }),
 
   // Conversations
