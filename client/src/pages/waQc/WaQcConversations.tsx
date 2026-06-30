@@ -45,6 +45,30 @@ function formatMsgTime(ts: number | null | undefined, fallback: Date | string) {
 
 // Outgoing messages are detected via the fromMe field set by the Baileys bridge
 
+// ─── Retry Transcript Button ─────────────────────────────────────────────────
+function RetryTranscriptButton({ messageId }: { messageId: string }) {
+  const utils = trpc.useUtils();
+  const retryMutation = trpc.waQc.messages.retranscribeAudio.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Transcript ready: ${data.transcript?.slice(0, 60) || 'Done'}`);
+      utils.waQc.messages.listForConversation.invalidate();
+    },
+    onError: (err) => {
+      toast.error(`Transcription failed: ${err.message}`);
+    },
+  });
+  return (
+    <button
+      onClick={() => retryMutation.mutate({ messageId })}
+      disabled={retryMutation.isPending}
+      className="flex items-center gap-1.5 text-xs text-amber-600 hover:text-amber-700 bg-amber-500/10 hover:bg-amber-500/20 rounded px-2 py-1 w-fit"
+    >
+      {retryMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+      {retryMutation.isPending ? 'Transcribing...' : 'Retry transcription'}
+    </button>
+  );
+}
+
 // ─── Media Bubble ─────────────────────────────────────────────────────────────
 function MediaBubble({ msg }: { msg: any }) {
   const [imgOpen, setImgOpen] = useState(false);
@@ -202,7 +226,7 @@ function MediaBubble({ msg }: { msg: any }) {
           </div>
         )}
         {!msg.transcript && msg.mediaUrl && (
-          <p className="text-xs text-muted-foreground italic">Transcription in progress...</p>
+          <RetryTranscriptButton messageId={msg.messageId} />
         )}
       </div>
     );

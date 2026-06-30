@@ -49,6 +49,33 @@ export const waQcRouter = router({
       .query(async ({ input }) => {
         return getWaMessages({ groupId: input.groupId, search: input.search, limit: input.limit, offset: input.offset });
       }),
+    // Retry transcription for a stuck audio message that has a mediaUrl but no transcript
+    retranscribeAudio: waQcProcedure
+      .input(z.object({ messageId: z.string().min(1) }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { updateWaMessageMedia } = await import("./db");
+        const conn = await getDb();
+        if (!conn) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+        const { waMessages } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const rows = await conn.select().from(waMessages).where(eq(waMessages.messageId, input.messageId)).limit(1);
+        const msg = rows[0];
+        if (!msg) throw new TRPCError({ code: "NOT_FOUND", message: "Message not found" });
+        if (msg.messageType !== "audio") throw new TRPCError({ code: "BAD_REQUEST", message: "Not an audio message" });
+        if (!msg.mediaUrl) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No media URL — audio not yet downloaded" });
+        try {
+          const { transcribeAudio } = await import("./_core/voiceTranscription");
+          const result = await transcribeAudio({ audioUrl: msg.mediaUrl, language: "ar", prompt: "WhatsApp voice note. Transcribe accurately in the original language." });
+          if ('error' in result) throw new Error(result.error || 'Transcription failed');
+          const transcript = (result as any).text || null;
+          const transcriptLang = (result as any).language || "ar";
+          await updateWaMessageMedia(msg.messageId, msg.mediaUrl, msg.mediaMimeType || "audio/ogg", transcript, transcriptLang);
+          return { success: true, transcript, transcriptLang };
+        } catch (err: any) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Transcription failed: ${err.message}` });
+        }
+      }),
   }),
 
   // Conversations
