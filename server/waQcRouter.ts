@@ -190,34 +190,28 @@ ${contextText}`;
     return { renamed, total: groups.length };
   }),
 
-  // Send a free-form text reply to a contact
+  // Send a free-form text reply via the Baileys bridge
   sendReply: waQcProcedure
     .input(z.object({
       toPhone: z.string().min(7),
       message: z.string().min(1),
     }))
     .mutation(async ({ input }) => {
-      const config = await getActiveConfig();
-      if (!config) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No active WhatsApp configuration found. Please configure it in Settings." });
-      if (!config.accessToken) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Access token is missing. Please update it in Settings." });
-      if (!config.phoneNumberId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Phone Number ID is missing. Please update it in Settings." });
-      const to = input.toPhone.replace(/[^0-9]/g, "");
+      const BRIDGE_URL = "http://35.231.217.0:3001/send";
+      const BRIDGE_SECRET = "elevay-bridge-2024";
       const axiosLib = (await import("axios")).default;
-      const url = `https://graph.facebook.com/v22.0/${config.phoneNumberId}/messages`;
       try {
-        const response = await axiosLib.post(url, {
-          messaging_product: "whatsapp",
-          to,
-          type: "text",
-          text: { body: input.message },
+        const response = await axiosLib.post(BRIDGE_URL, {
+          to: input.toPhone,
+          message: input.message,
         }, {
-          headers: { Authorization: `Bearer ${config.accessToken}`, "Content-Type": "application/json" },
+          headers: { "x-bridge-secret": BRIDGE_SECRET, "Content-Type": "application/json" },
           timeout: 15000,
         });
-        return { success: true, messageId: response.data?.messages?.[0]?.id, to };
+        return { success: true, to: response.data?.to ?? input.toPhone };
       } catch (err: any) {
-        const metaError = err?.response?.data?.error;
-        const msg = metaError ? `Meta API error ${metaError.code}: ${metaError.message}` : err.message;
+        const bridgeError = err?.response?.data?.error;
+        const msg = bridgeError ?? err.message ?? "Failed to send via WhatsApp bridge";
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: msg });
       }
     }),

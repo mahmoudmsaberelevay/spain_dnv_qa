@@ -276,10 +276,8 @@ const modules = [
     icon: MessageSquare,
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "/wa-qc" },
-      { icon: MessageSquare, label: "Chats", path: "/wa-qc/chats" },
       { icon: MessagesSquare, label: "Conversations", path: "/wa-qc/conversations" },
       { icon: Bot, label: "AI Query", path: "/wa-qc/ai-query" },
-      { icon: Users, label: "Groups", path: "/wa-qc/groups" },
       { icon: Image, label: "Media", path: "/wa-qc/media" },
       { icon: SettingsIcon, label: "Settings", path: "/wa-qc/settings" },
     ],
