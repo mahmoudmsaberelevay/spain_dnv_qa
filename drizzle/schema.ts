@@ -670,6 +670,7 @@ export const waMessages = mysqlTable("wa_messages", {
   reactionEmoji: varchar("reactionEmoji", { length: 16 }),
   reactedToMessageId: varchar("reactedToMessageId", { length: 256 }),
   rawPayload: json("rawPayload"),
+  fromMe: boolean("fromMe").default(false).notNull(),
   whatsappTimestamp: bigint("whatsappTimestamp", { mode: "number" }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

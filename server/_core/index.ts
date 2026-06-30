@@ -38,6 +38,9 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
+  // Trust the first proxy (Manus reverse proxy / load balancer)
+  app.set("trust proxy", 1);
+
   // ── Rate limiting ──────────────────────────────────────────────────────────
   // General API limiter: 200 requests per minute per IP
   const apiLimiter = rateLimit({
@@ -105,6 +108,7 @@ async function startServer() {
       await insertWaMessage({
         messageId: body.messageId,
         groupId: body.groupId,
+        senderId: body.senderPhone || (body.fromMe ? "me" : "unknown"),
         senderPhone: body.senderPhone || null,
         senderName: body.senderName || null,
         textContent: body.textContent || null,

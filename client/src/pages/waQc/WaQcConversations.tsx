@@ -43,8 +43,7 @@ function formatMsgTime(ts: number | null | undefined, fallback: Date | string) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-// Business phone number ID — messages sent from this number are "outgoing"
-const BUSINESS_PHONE_ID = "998041256728259";
+// Outgoing messages are detected via the fromMe field set by the Baileys bridge
 
 // ─── Media Bubble ─────────────────────────────────────────────────────────────
 function MediaBubble({ msg }: { msg: any }) {
@@ -461,8 +460,8 @@ export default function WaQcConversations() {
                   ) : (
                     <>
                       {sortedMessages.map((msg, idx) => {
-                        // Determine if this is an outgoing message (sent by the business)
-                        const isOutgoing = msg.senderId === BUSINESS_PHONE_ID || msg.senderPhone === BUSINESS_PHONE_ID;
+                        // Determine if this is an outgoing message (sent by us)
+                        const isOutgoing = msg.fromMe === true || msg.fromMe === 1;
                         const showSender = !isOutgoing && (idx === 0 || sortedMessages[idx - 1]?.senderId !== msg.senderId);
 
                         return (
