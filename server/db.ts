@@ -820,3 +820,19 @@ export async function markAllNotificationsRead() {
     .set({ isRead: true })
     .where(eq(systemNotifications.isRead, false));
 }
+
+// ─── WhatsApp Media Update ────────────────────────────────────────────────────
+export async function updateWaMessageMedia(
+  messageId: string,
+  mediaUrl: string,
+  mediaMimeType: string,
+  transcript: string | null,
+  transcriptLang: string | null
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(waMessages)
+    .set({ mediaUrl, mediaMimeType, transcript, transcriptLang })
+    .where(eq(waMessages.messageId, messageId));
+}

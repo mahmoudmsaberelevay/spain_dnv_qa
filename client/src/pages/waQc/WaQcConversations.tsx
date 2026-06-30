@@ -47,7 +47,31 @@ function formatMsgTime(ts: number | null | undefined, fallback: Date | string) {
 
 // ─── Media Bubble ─────────────────────────────────────────────────────────────
 function MediaBubble({ msg }: { msg: any }) {
-  if (msg.messageType === "image" && msg.mediaId) {
+  const [imgOpen, setImgOpen] = useState(false);
+
+  // Image — show thumbnail that opens full-screen on click
+  if (msg.messageType === "image") {
+    if (msg.mediaUrl) {
+      return (
+        <div className="flex flex-col gap-1">
+          <div
+            className="rounded-lg overflow-hidden max-w-[240px] cursor-pointer"
+            onClick={() => setImgOpen(true)}
+          >
+            <img src={msg.mediaUrl} alt="Image" className="w-full object-contain rounded-lg max-h-48" />
+          </div>
+          {msg.caption && <p className="text-xs text-muted-foreground">{msg.caption}</p>}
+          {imgOpen && (
+            <div
+              className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center"
+              onClick={() => setImgOpen(false)}
+            >
+              <img src={msg.mediaUrl} alt="Full" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" />
+            </div>
+          )}
+        </div>
+      );
+    }
     return (
       <div className="rounded-lg overflow-hidden max-w-[240px]">
         <div className="bg-accent/30 flex items-center justify-center h-32 rounded-lg">
@@ -57,7 +81,19 @@ function MediaBubble({ msg }: { msg: any }) {
       </div>
     );
   }
-  if (msg.messageType === "video" && msg.mediaId) {
+
+  // Video — show native video player
+  if (msg.messageType === "video") {
+    if (msg.mediaUrl) {
+      return (
+        <div className="flex flex-col gap-1 max-w-[280px]">
+          <video controls className="rounded-lg w-full max-h-48 bg-black">
+            <source src={msg.mediaUrl} type={msg.mediaMimeType || "video/mp4"} />
+          </video>
+          {msg.caption && <p className="text-xs text-muted-foreground">{msg.caption}</p>}
+        </div>
+      );
+    }
     return (
       <div className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2">
         <Video className="h-5 w-5 text-purple-400 shrink-0" />
@@ -65,15 +101,54 @@ function MediaBubble({ msg }: { msg: any }) {
       </div>
     );
   }
-  if (msg.messageType === "audio" && msg.mediaId) {
+
+  // Audio — show native audio player + transcript
+  if (msg.messageType === "audio") {
     return (
-      <div className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2">
-        <Music className="h-5 w-5 text-green-400 shrink-0" />
-        <span className="text-sm">Voice / Audio</span>
+      <div className="flex flex-col gap-2 min-w-[220px]">
+        {msg.mediaUrl ? (
+          <div className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2">
+            <Music className="h-4 w-4 text-green-400 shrink-0" />
+            <audio controls className="h-8 flex-1" style={{ minWidth: 0 }}>
+              <source src={msg.mediaUrl} type={msg.mediaMimeType || "audio/ogg"} />
+              <source src={msg.mediaUrl} type="audio/mpeg" />
+            </audio>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2">
+            <Music className="h-5 w-5 text-green-400 shrink-0" />
+            <span className="text-sm text-muted-foreground">Voice note (downloading...)</span>
+          </div>
+        )}
+        {msg.transcript && (
+          <div className="bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-2">
+            <p className="text-xs font-medium text-green-600 mb-1">📝 Transcript ({msg.transcriptLang || "ar"})</p>
+            <p className="text-sm break-words whitespace-pre-wrap" dir="auto">{msg.transcript}</p>
+          </div>
+        )}
+        {!msg.transcript && msg.mediaUrl && (
+          <p className="text-xs text-muted-foreground italic">Transcription in progress...</p>
+        )}
       </div>
     );
   }
-  if (msg.messageType === "document" && msg.mediaId) {
+
+  // Document — download link
+  if (msg.messageType === "document") {
+    if (msg.mediaUrl) {
+      return (
+        <a
+          href={msg.mediaUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2 hover:bg-accent/50 transition-colors"
+        >
+          <FileText className="h-5 w-5 text-orange-400 shrink-0" />
+          <span className="text-sm underline">{msg.fileName || msg.caption || "Document"}</span>
+          <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        </a>
+      );
+    }
     return (
       <div className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2">
         <FileText className="h-5 w-5 text-orange-400 shrink-0" />
@@ -81,12 +156,18 @@ function MediaBubble({ msg }: { msg: any }) {
       </div>
     );
   }
+
   if (msg.messageType === "location") {
     return (
-      <div className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2">
+      <a
+        href={`https://maps.google.com/?q=${msg.latitude},${msg.longitude}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2 hover:bg-accent/50 transition-colors"
+      >
         <MapPin className="h-5 w-5 text-red-400 shrink-0" />
-        <span className="text-sm">{msg.locationName || `${msg.latitude}, ${msg.longitude}`}</span>
-      </div>
+        <span className="text-sm underline">{msg.locationName || `${msg.latitude}, ${msg.longitude}`}</span>
+      </a>
     );
   }
   if (msg.messageType === "reaction") {
@@ -94,7 +175,7 @@ function MediaBubble({ msg }: { msg: any }) {
   }
   return (
     <span className="text-sm break-words whitespace-pre-wrap">
-      {msg.textContent || msg.caption || `[${msg.messageType}]`}
+      {msg.textContent || msg.caption || (msg.messageType !== "text" ? `[${msg.messageType}]` : "")}
     </span>
   );
 }

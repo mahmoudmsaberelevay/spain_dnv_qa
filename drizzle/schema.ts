@@ -671,6 +671,10 @@ export const waMessages = mysqlTable("wa_messages", {
   reactedToMessageId: varchar("reactedToMessageId", { length: 256 }),
   rawPayload: json("rawPayload"),
   fromMe: boolean("fromMe").default(false).notNull(),
+  mediaUrl: text("mediaUrl"),
+  mediaMimeType: varchar("mediaMimeType", { length: 100 }),
+  transcript: text("transcript"),
+  transcriptLang: varchar("transcriptLang", { length: 10 }),
   whatsappTimestamp: bigint("whatsappTimestamp", { mode: "number" }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

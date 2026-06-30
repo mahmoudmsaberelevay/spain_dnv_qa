@@ -728,3 +728,13 @@
 - [x] Fix sendReply to use Baileys bridge /send endpoint instead of deleted Meta API
 - [x] Add POST /send endpoint to Baileys bridge for outgoing messages
 - [x] Verified end-to-end: incoming (fromMe=false) and outgoing (fromMe=true) messages both stored correctly
+
+## WhatsApp Media & Voice Transcription (Round 94)
+- [ ] Bridge: download media (audio/image/video) using downloadMediaMessage and send as base64 in webhook payload
+- [ ] DB schema: add mediaUrl (TEXT), mediaMimeType (VARCHAR), transcript (TEXT), transcriptLang (VARCHAR) columns to wa_messages
+- [ ] Backend: receive base64 media in webhook, upload to S3, store mediaUrl in wa_messages
+- [ ] Backend: for audio messages, call Whisper transcription API and save transcript + sender + timestamp
+- [ ] Frontend: show audio player for audio messages with transcript below (sender name, time, full transcript)
+- [ ] Frontend: show image viewer (click to expand) for image messages
+- [ ] Frontend: show video player for video messages
+- [ ] Frontend: show document download link for document messages

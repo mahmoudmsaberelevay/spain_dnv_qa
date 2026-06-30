@@ -87,7 +87,7 @@ async function startServer() {
     }
   });
   // Baileys WhatsApp Bridge Webhook
-  app.post("/api/webhook/baileys", async (req, res) => {
+  app.post("/api/webhook/baileys", express.json({ limit: "50mb" }), async (req, res) => {
     const secret = req.headers["x-bridge-secret"];
     if (secret !== "elevay-bridge-2024") return res.status(403).send("Forbidden");
     // Respond immediately so the bridge never times out
@@ -96,14 +96,15 @@ async function startServer() {
       messageId?: string; groupId?: string; groupName?: string | null;
       senderPhone?: string; senderName?: string | null; fromMe?: boolean;
       isGroup?: boolean; textContent?: string | null; messageType?: string; timestamp?: string;
+      mediaBase64?: string; mediaMimeType?: string; mediaSize?: number;
     };
     // Validate required fields — log and drop if missing
     if (!body?.messageId || !body?.groupId) {
-      console.error("[Baileys Webhook] ❌ Missing required fields. Payload:", JSON.stringify(body));
+      console.error("[Baileys Webhook] ❌ Missing required fields. Payload:", JSON.stringify(body).slice(0, 200));
       return;
     }
     try {
-      const { upsertGroup, insertWaMessage, updateGroupStats } = await import("../db");
+      const { upsertGroup, insertWaMessage, updateGroupStats, updateWaMessageMedia } = await import("../db");
       // Step 1: Upsert the group/contact record
       await upsertGroup({
         groupId: body.groupId,
@@ -130,6 +131,38 @@ async function startServer() {
       // Step 3: Update group message count and last message time
       await updateGroupStats(body.groupId);
       console.log(`[Baileys Webhook] ✅ Stored msg ${body.messageId} | group=${body.groupId} | from=${body.fromMe ? 'ELEVAY' : (body.senderName || body.senderPhone || 'unknown')} | type=${msgType}`);
+
+      // Step 4: Handle media — upload to S3 and transcribe audio
+      if (body.mediaBase64 && body.mediaMimeType) {
+        (async () => {
+          try {
+            const { storagePut } = await import("../storage");
+            const mediaBuffer = Buffer.from(body.mediaBase64!, "base64");
+            const ext = body.mediaMimeType!.split("/")[1]?.split(";")[0] || "bin";
+            const safeExt = ext === "ogg" ? "ogg" : ext === "opus" ? "ogg" : ext;
+            const fileKey = `wa-media/${body.groupId}/${body.messageId}.${safeExt}`;
+            const { url: mediaUrl } = await storagePut(fileKey, mediaBuffer, body.mediaMimeType!.split(";")[0]);
+            let transcript: string | null = null;
+            let transcriptLang: string | null = null;
+            // Transcribe audio messages using Whisper
+            if (msgType === "audio") {
+              try {
+                const { transcribeAudio } = await import("./voiceTranscription");
+                const result = await transcribeAudio({ audioUrl: mediaUrl, language: "ar", prompt: "This is a WhatsApp voice note. Transcribe accurately in the original language." });
+                transcript = result.text || null;
+                transcriptLang = result.language || "ar";
+                console.log(`[Baileys Webhook] 🎙️ Transcribed audio ${body.messageId}: ${transcript?.slice(0, 80)}`);
+              } catch (tErr: any) {
+                console.error(`[Baileys Webhook] ⚠️ Transcription failed for ${body.messageId}:`, tErr.message);
+              }
+            }
+            await updateWaMessageMedia(body.messageId!, mediaUrl, body.mediaMimeType!.split(";")[0], transcript, transcriptLang);
+            console.log(`[Baileys Webhook] 📎 Media stored for ${body.messageId}: ${mediaUrl}`);
+          } catch (mediaErr: any) {
+            console.error(`[Baileys Webhook] ❌ Media upload failed for ${body.messageId}:`, mediaErr.message);
+          }
+        })();
+      }
     } catch (err: any) {
       console.error(`[Baileys Webhook] ❌ Failed to store message ${body.messageId}: ${err?.message || err}`);
       if (err?.stack) console.error(err.stack);
