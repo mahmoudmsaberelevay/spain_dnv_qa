@@ -711,3 +711,9 @@
 - [x] Custom Blank template: user-selectable layout (1-col, 2-col, 3-col, full-width) with content blocks
 - [x] Backend: S3 upload procedure for summary page photos (uploadPagePhoto mutation)
 - [x] PDF export: print-ready output matching exact template designs (browser print dialog, A4 format)
+
+## WhatsApp QC Improvements (Round 92)
+- [x] Delete old Meta API config (phoneNumberId 998041256728259) — only Baileys bridge config remains
+- [x] Add Load More pagination to Conversations view (50 msgs per page, "Load older messages" button at top)
+- [x] fromMe column added to wa_messages — outgoing messages align to right side in chat view
+- [x] Delete all previous WhatsApp chat history except Test group (120363411143913384)

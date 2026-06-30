@@ -217,8 +217,12 @@ export default function WaQcConversations() {
   const [replyText, setReplyText] = useState("");
   const [showAi, setShowAi] = useState(false);
   const [showMsgSearch, setShowMsgSearch] = useState(false);
+  const [msgOffset, setMsgOffset] = useState(0);
+  const [allMessages, setAllMessages] = useState<any[]>([]);
+  const [hasMore, setHasMore] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const msgSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const MSG_PAGE_SIZE = 50;
 
   // Parse groupId from URL query
   useEffect(() => {
@@ -227,9 +231,16 @@ export default function WaQcConversations() {
     if (gid) setSelectedGroupId(gid);
   }, [location]);
 
-  // Scroll to bottom when messages load
+  // Reset pagination when conversation changes
   useEffect(() => {
-    if (messagesEndRef.current) {
+    setMsgOffset(0);
+    setAllMessages([]);
+    setHasMore(false);
+  }, [selectedGroupId, debouncedMsgSearch]);
+
+  // Scroll to bottom on first load of a conversation
+  useEffect(() => {
+    if (msgOffset === 0 && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [selectedGroupId]);
@@ -237,9 +248,24 @@ export default function WaQcConversations() {
   const { data: conversations, isLoading: convsLoading, refetch: refetchConvs } = trpc.waQc.conversations.list.useQuery();
 
   const { data: messages, isLoading: msgsLoading, refetch: refetchMsgs } = trpc.waQc.messages.listForConversation.useQuery(
-    { groupId: selectedGroupId || "", search: debouncedMsgSearch || undefined, limit: 150, offset: 0 },
+    { groupId: selectedGroupId || "", search: debouncedMsgSearch || undefined, limit: MSG_PAGE_SIZE, offset: msgOffset },
     { enabled: !!selectedGroupId }
   );
+
+  // Accumulate messages as pages load
+  useEffect(() => {
+    if (!messages) return;
+    if (msgOffset === 0) {
+      setAllMessages(messages.rows ?? []);
+    } else {
+      setAllMessages(prev => {
+        const existingIds = new Set(prev.map((m: any) => m.id));
+        const newMsgs = (messages.rows ?? []).filter((m: any) => !existingIds.has(m.id));
+        return [...newMsgs, ...prev];
+      });
+    }
+    setHasMore((messages.rows?.length ?? 0) === MSG_PAGE_SIZE);
+  }, [messages, msgOffset]);
 
   const sendReplyMutation = trpc.waQc.sendReply.useMutation({
     onSuccess: () => {
@@ -272,11 +298,11 @@ export default function WaQcConversations() {
     msgSearchTimer.current = setTimeout(() => setDebouncedMsgSearch(v), 400);
   }, []);
 
-  const sortedMessages = messages?.rows ? [...messages.rows].sort((a, b) => {
+  const sortedMessages = [...allMessages].sort((a, b) => {
     const ta = a.whatsappTimestamp ?? new Date(a.createdAt).getTime();
     const tb = b.whatsappTimestamp ?? new Date(b.createdAt).getTime();
     return ta - tb;
-  }) : [];
+  });
 
   return (
     <div className="p-4 space-y-3 h-[calc(100vh-64px)] flex flex-col">
@@ -446,7 +472,26 @@ export default function WaQcConversations() {
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                  {msgsLoading ? (
+                  {/* Load More button at top */}
+                  {hasMore && !msgsLoading && (
+                    <div className="flex justify-center pb-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs gap-1.5"
+                        onClick={() => setMsgOffset(prev => prev + MSG_PAGE_SIZE)}
+                      >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                        Load older messages
+                      </Button>
+                    </div>
+                  )}
+                  {msgsLoading && msgOffset > 0 && (
+                    <div className="flex justify-center pb-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                  )}
+                  {msgsLoading && msgOffset === 0 ? (
                     <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
                       <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading messages...
                     </div>
