@@ -220,9 +220,12 @@ export default function WaQcConversations() {
   const [msgOffset, setMsgOffset] = useState(0);
   const [allMessages, setAllMessages] = useState<any[]>([]);
   const [hasMore, setHasMore] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [autoRefreshCountdown, setAutoRefreshCountdown] = useState(7200);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const msgSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MSG_PAGE_SIZE = 50;
+  const AUTO_REFRESH_INTERVAL = 7200; // 2 hours in seconds
 
   // Parse groupId from URL query
   useEffect(() => {
@@ -245,12 +248,40 @@ export default function WaQcConversations() {
     }
   }, [selectedGroupId]);
 
-  const { data: conversations, isLoading: convsLoading, refetch: refetchConvs } = trpc.waQc.conversations.list.useQuery();
+  const { data: conversations, isLoading: convsLoading, refetch: refetchConvs } = trpc.waQc.conversations.list.useQuery(
+    undefined,
+    { refetchInterval: AUTO_REFRESH_INTERVAL * 1000 }
+  );
 
   const { data: messages, isLoading: msgsLoading, refetch: refetchMsgs } = trpc.waQc.messages.listForConversation.useQuery(
     { groupId: selectedGroupId || "", search: debouncedMsgSearch || undefined, limit: MSG_PAGE_SIZE, offset: msgOffset },
-    { enabled: !!selectedGroupId }
+    {
+      enabled: !!selectedGroupId,
+      refetchInterval: msgOffset === 0 ? AUTO_REFRESH_INTERVAL * 1000 : false,
+    }
   );
+
+  // Auto-refresh countdown timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setAutoRefreshCountdown(prev => {
+        if (prev <= 1) {
+          setLastRefreshed(new Date());
+          return AUTO_REFRESH_INTERVAL; // reset to 2 hours
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Manual refresh handler
+  const handleManualRefresh = useCallback(() => {
+    refetchConvs();
+    if (selectedGroupId) refetchMsgs();
+    setLastRefreshed(new Date());
+    setAutoRefreshCountdown(AUTO_REFRESH_INTERVAL);
+  }, [refetchConvs, refetchMsgs, selectedGroupId]);
 
   // Accumulate messages as pages load
   useEffect(() => {
