@@ -717,3 +717,14 @@
 - [x] Add Load More pagination to Conversations view (50 msgs per page, "Load older messages" button at top)
 - [x] fromMe column added to wa_messages — outgoing messages align to right side in chat view
 - [x] Delete all previous WhatsApp chat history except Test group (120363411143913384)
+
+## WhatsApp Pipeline Permanent Fixes (Round 93)
+- [x] Harden Baileys webhook handler: validate required fields, log every success/failure with emoji markers
+- [x] Fix senderId fallback so messages never fail on NOT NULL constraint
+- [x] Fix messageType validation to map unknown types to "unknown" enum value
+- [x] Fix Refresh button (top-right) to call handleManualRefresh — refreshes both conversations list AND messages
+- [x] Fix in-chat reload button to call handleManualRefresh with spinning animation while loading
+- [x] Remove Chats and Groups tabs from sidebar (only Conversations, AI Query, Media, Settings remain)
+- [x] Fix sendReply to use Baileys bridge /send endpoint instead of deleted Meta API
+- [x] Add POST /send endpoint to Baileys bridge for outgoing messages
+- [x] Verified end-to-end: incoming (fromMe=false) and outgoing (fromMe=true) messages both stored correctly

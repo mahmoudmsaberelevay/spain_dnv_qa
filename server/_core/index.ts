@@ -90,21 +90,31 @@ async function startServer() {
   app.post("/api/webhook/baileys", async (req, res) => {
     const secret = req.headers["x-bridge-secret"];
     if (secret !== "elevay-bridge-2024") return res.status(403).send("Forbidden");
+    // Respond immediately so the bridge never times out
     res.status(200).send("OK");
+    const body = req.body as {
+      messageId?: string; groupId?: string; groupName?: string | null;
+      senderPhone?: string; senderName?: string | null; fromMe?: boolean;
+      isGroup?: boolean; textContent?: string | null; messageType?: string; timestamp?: string;
+    };
+    // Validate required fields — log and drop if missing
+    if (!body?.messageId || !body?.groupId) {
+      console.error("[Baileys Webhook] ❌ Missing required fields. Payload:", JSON.stringify(body));
+      return;
+    }
     try {
-      const body = req.body as {
-        messageId: string; groupId: string; groupName: string | null;
-        senderPhone: string; senderName: string | null; fromMe: boolean;
-        isGroup: boolean; textContent: string | null; messageType: string; timestamp: string;
-      };
       const { upsertGroup, insertWaMessage, updateGroupStats } = await import("../db");
+      // Step 1: Upsert the group/contact record
       await upsertGroup({
         groupId: body.groupId,
         name: body.groupName || body.senderName || body.senderPhone || body.groupId,
-        isGroup: body.isGroup,
+        isGroup: body.isGroup ?? body.groupId.includes("@g.us"),
         lastSender: body.fromMe ? "ELEVAY" : (body.senderName || body.senderPhone || null),
         messageCount: 0,
       });
+      // Step 2: Insert the message (deduplicated by messageId)
+      const validMessageTypes = ["text","image","video","audio","document","sticker","location","reaction","contacts","unknown"];
+      const msgType = validMessageTypes.includes(body.messageType || "") ? body.messageType! : "unknown";
       await insertWaMessage({
         messageId: body.messageId,
         groupId: body.groupId,
@@ -112,13 +122,17 @@ async function startServer() {
         senderPhone: body.senderPhone || null,
         senderName: body.senderName || null,
         textContent: body.textContent || null,
-        messageType: body.messageType || "text",
-        fromMe: body.fromMe,
+        messageType: msgType as any,
+        fromMe: body.fromMe ?? false,
+        whatsappTimestamp: body.timestamp ? Math.floor(new Date(body.timestamp).getTime() / 1000) : null,
         createdAt: body.timestamp ? new Date(body.timestamp) : new Date(),
       });
+      // Step 3: Update group message count and last message time
       await updateGroupStats(body.groupId);
-    } catch (err) {
-      console.error("[Baileys Webhook] Error:", err);
+      console.log(`[Baileys Webhook] ✅ Stored msg ${body.messageId} | group=${body.groupId} | from=${body.fromMe ? 'ELEVAY' : (body.senderName || body.senderPhone || 'unknown')} | type=${msgType}`);
+    } catch (err: any) {
+      console.error(`[Baileys Webhook] ❌ Failed to store message ${body.messageId}: ${err?.message || err}`);
+      if (err?.stack) console.error(err.stack);
     }
   });
 

@@ -342,9 +342,9 @@ export default function WaQcConversations() {
           <h1 className="text-xl font-bold text-foreground">Conversations</h1>
           <p className="text-sm text-muted-foreground">Browse, reply, and analyze WhatsApp conversations</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetchConvs()} className="gap-1.5">
-          <RefreshCw className="h-3.5 w-3.5" />
-          Refresh
+        <Button variant="outline" size="sm" onClick={handleManualRefresh} className="gap-1.5" disabled={convsLoading || msgsLoading}>
+          <RefreshCw className={`h-3.5 w-3.5 ${convsLoading || msgsLoading ? 'animate-spin' : ''}`} />
+          {convsLoading || msgsLoading ? 'Loading...' : 'Refresh'}
         </Button>
       </div>
 
@@ -464,10 +464,11 @@ export default function WaQcConversations() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => refetchMsgs()}
+                      onClick={handleManualRefresh}
                       title="Refresh messages"
+                      disabled={msgsLoading}
                     >
-                      <RefreshCw className="h-4 w-4" />
+                      <RefreshCw className={`h-4 w-4 ${msgsLoading ? 'animate-spin' : ''}`} />
                     </Button>
                   </div>
                 </div>
