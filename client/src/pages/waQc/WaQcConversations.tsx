@@ -44,7 +44,7 @@ function formatMsgTime(ts: number | null | undefined, fallback: Date | string) {
 }
 
 // Business phone number ID — messages sent from this number are "outgoing"
-const BUSINESS_PHONE_ID = "1107700702429603";
+const BUSINESS_PHONE_ID = "998041256728259";
 
 // ─── Media Bubble ─────────────────────────────────────────────────────────────
 function MediaBubble({ msg }: { msg: any }) {
