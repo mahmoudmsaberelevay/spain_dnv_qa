@@ -575,7 +575,12 @@ export async function getWaMessages(filter: { groupId?: string; limit?: number; 
   if (!db) return { rows: [], total: 0 };
   const conditions: any[] = [];
   if (filter.groupId) conditions.push(_eq(waMessages.groupId, filter.groupId));
-  if (filter.search) conditions.push(_like(waMessages.textContent, `%${filter.search}%`));
+  if (filter.search) conditions.push(
+    _or(
+      _like(waMessages.textContent, `%${filter.search}%`),
+      _like(waMessages.transcript, `%${filter.search}%`)
+    )!
+  );
   const whereClause = conditions.length > 0 ? _and(...conditions) : undefined;
   const limit = filter.limit ?? 50;
   const offset = filter.offset ?? 0;

@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import {
   MessageSquare, Users, Search, Image, Video, Music, FileText, MapPin,
   Smile, Send, Bot, Sparkles, X, ChevronDown, Download, Loader2,
-  Phone, RefreshCw,
+  Phone, RefreshCw, Copy, Check, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { Streamdown } from "streamdown";
 
@@ -48,25 +48,88 @@ function formatMsgTime(ts: number | null | undefined, fallback: Date | string) {
 // ─── Media Bubble ─────────────────────────────────────────────────────────────
 function MediaBubble({ msg }: { msg: any }) {
   const [imgOpen, setImgOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [copied, setCopied] = useState(false);
 
-  // Image — show thumbnail that opens full-screen on click
+  const handleCopyTranscript = () => {
+    if (!msg.transcript) return;
+    navigator.clipboard.writeText(msg.transcript).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleDownloadImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const a = document.createElement("a");
+    a.href = msg.mediaUrl;
+    a.download = `image-${msg.messageId || Date.now()}.jpg`;
+    a.target = "_blank";
+    a.click();
+  };
+
+  // Image — thumbnail + full-screen overlay with zoom & download
   if (msg.messageType === "image") {
     if (msg.mediaUrl) {
       return (
         <div className="flex flex-col gap-1">
           <div
             className="rounded-lg overflow-hidden max-w-[240px] cursor-pointer"
-            onClick={() => setImgOpen(true)}
+            onClick={() => { setImgOpen(true); setZoom(1); }}
           >
             <img src={msg.mediaUrl} alt="Image" className="w-full object-contain rounded-lg max-h-48" />
           </div>
           {msg.caption && <p className="text-xs text-muted-foreground">{msg.caption}</p>}
           {imgOpen && (
             <div
-              className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center"
+              className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center"
               onClick={() => setImgOpen(false)}
             >
-              <img src={msg.mediaUrl} alt="Full" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" />
+              {/* Controls bar */}
+              <div
+                className="absolute top-4 right-4 flex items-center gap-2"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => setZoom(z => Math.max(0.5, z - 0.25))}
+                  className="bg-white/10 hover:bg-white/20 text-white rounded-lg p-2"
+                  title="Zoom out"
+                >
+                  <ZoomOut className="h-4 w-4" />
+                </button>
+                <span className="text-white text-sm font-mono bg-white/10 rounded px-2 py-1">{Math.round(zoom * 100)}%</span>
+                <button
+                  onClick={() => setZoom(z => Math.min(4, z + 0.25))}
+                  className="bg-white/10 hover:bg-white/20 text-white rounded-lg p-2"
+                  title="Zoom in"
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={handleDownloadImage}
+                  className="bg-white/10 hover:bg-white/20 text-white rounded-lg p-2"
+                  title="Download"
+                >
+                  <Download className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setImgOpen(false)}
+                  className="bg-white/10 hover:bg-white/20 text-white rounded-lg p-2"
+                  title="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              {/* Image */}
+              <div className="overflow-auto max-w-full max-h-full" onClick={(e) => e.stopPropagation()}>
+                <img
+                  src={msg.mediaUrl}
+                  alt="Full"
+                  style={{ transform: `scale(${zoom})`, transformOrigin: "center", transition: "transform 0.2s" }}
+                  className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg"
+                />
+              </div>
+              <p className="text-white/40 text-xs mt-4">Click outside to close</p>
             </div>
           )}
         </div>
@@ -87,7 +150,7 @@ function MediaBubble({ msg }: { msg: any }) {
     if (msg.mediaUrl) {
       return (
         <div className="flex flex-col gap-1 max-w-[280px]">
-          <video controls className="rounded-lg w-full max-h-48 bg-black">
+          <video controls preload="metadata" className="rounded-lg w-full max-h-48 bg-black">
             <source src={msg.mediaUrl} type={msg.mediaMimeType || "video/mp4"} />
           </video>
           {msg.caption && <p className="text-xs text-muted-foreground">{msg.caption}</p>}
@@ -102,27 +165,39 @@ function MediaBubble({ msg }: { msg: any }) {
     );
   }
 
-  // Audio — show native audio player + transcript
+  // Audio — native audio player with preload="none" for fast rendering + transcript with copy
   if (msg.messageType === "audio") {
     return (
       <div className="flex flex-col gap-2 min-w-[220px]">
         {msg.mediaUrl ? (
           <div className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2">
             <Music className="h-4 w-4 text-green-400 shrink-0" />
-            <audio controls className="h-8 flex-1" style={{ minWidth: 0 }}>
-              <source src={msg.mediaUrl} type={msg.mediaMimeType || "audio/ogg"} />
+            {/* preload="none" so the player renders instantly without downloading */}
+            <audio controls preload="none" className="h-8 flex-1" style={{ minWidth: 0 }}>
+              <source src={msg.mediaUrl} type={msg.mediaMimeType || "audio/ogg; codecs=opus"} />
+              <source src={msg.mediaUrl} type="audio/ogg" />
               <source src={msg.mediaUrl} type="audio/mpeg" />
             </audio>
           </div>
         ) : (
           <div className="flex items-center gap-2 bg-accent/30 rounded-lg px-3 py-2">
             <Music className="h-5 w-5 text-green-400 shrink-0" />
-            <span className="text-sm text-muted-foreground">Voice note (downloading...)</span>
+            <span className="text-sm text-muted-foreground">Voice note (processing...)</span>
           </div>
         )}
         {msg.transcript && (
           <div className="bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-2">
-            <p className="text-xs font-medium text-green-600 mb-1">📝 Transcript ({msg.transcriptLang || "ar"})</p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-medium text-green-600">📝 Transcript ({msg.transcriptLang || "ar"})</p>
+              <button
+                onClick={handleCopyTranscript}
+                className="flex items-center gap-1 text-xs text-green-600 hover:text-green-700 bg-green-500/10 hover:bg-green-500/20 rounded px-2 py-0.5"
+                title="Copy transcript"
+              >
+                {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            </div>
             <p className="text-sm break-words whitespace-pre-wrap" dir="auto">{msg.transcript}</p>
           </div>
         )}
