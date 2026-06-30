@@ -143,6 +143,43 @@ ${contextText}`;
       }),
   }),
 
+  // Auto-rename groups that still show as phone numbers using stored message sender names
+  autoRenameGroups: waQcProcedure.mutation(async () => {
+    const db = await (await import("./db")).getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+    const { waMessages, whatsappGroups } = await import("../drizzle/schema");
+    const { eq, sql, and, isNotNull } = await import("drizzle-orm");
+    // Get all groups
+    const groups = await db.select().from(whatsappGroups);
+    let renamed = 0;
+    for (const group of groups) {
+      // Only rename if the current name looks like a phone number (all digits/+/spaces)
+      const looksLikePhone = /^[\d\s\+\-\(\)]+$/.test(group.name || "");
+      if (!looksLikePhone) continue;
+      // Find the most common non-null senderName in messages for this group (excluding the business number)
+      const rows = await db.select({
+        senderName: waMessages.senderName,
+        cnt: sql<number>`COUNT(*)`
+      })
+        .from(waMessages)
+        .where(and(
+          eq(waMessages.groupId, group.groupId),
+          isNotNull(waMessages.senderName)
+        ))
+        .groupBy(waMessages.senderName)
+        .orderBy(sql`COUNT(*) DESC`)
+        .limit(1);
+      const bestName = rows[0]?.senderName;
+      if (bestName && bestName.trim()) {
+        await db.update(whatsappGroups)
+          .set({ name: bestName.trim(), updatedAt: new Date() })
+          .where(eq(whatsappGroups.groupId, group.groupId));
+        renamed++;
+      }
+    }
+    return { renamed, total: groups.length };
+  }),
+
   // Send a free-form text reply to a contact
   sendReply: waQcProcedure
     .input(z.object({

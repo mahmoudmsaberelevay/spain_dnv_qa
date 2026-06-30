@@ -83,6 +83,41 @@ async function startServer() {
       console.error("[WA Webhook] Processing error:", err);
     }
   });
+  // Baileys WhatsApp Bridge Webhook
+  app.post("/api/webhook/baileys", async (req, res) => {
+    const secret = req.headers["x-bridge-secret"];
+    if (secret !== "elevay-bridge-2024") return res.status(403).send("Forbidden");
+    res.status(200).send("OK");
+    try {
+      const body = req.body as {
+        messageId: string; groupId: string; groupName: string | null;
+        senderPhone: string; senderName: string | null; fromMe: boolean;
+        isGroup: boolean; textContent: string | null; messageType: string; timestamp: string;
+      };
+      const { upsertGroup, insertWaMessage, updateGroupStats } = await import("../db");
+      await upsertGroup({
+        groupId: body.groupId,
+        name: body.groupName || body.senderName || body.senderPhone || body.groupId,
+        isGroup: body.isGroup,
+        lastSender: body.fromMe ? "ELEVAY" : (body.senderName || body.senderPhone || null),
+        messageCount: 0,
+      });
+      await insertWaMessage({
+        messageId: body.messageId,
+        groupId: body.groupId,
+        senderPhone: body.senderPhone || null,
+        senderName: body.senderName || null,
+        textContent: body.textContent || null,
+        messageType: body.messageType || "text",
+        fromMe: body.fromMe,
+        createdAt: body.timestamp ? new Date(body.timestamp) : new Date(),
+      });
+      await updateGroupStats(body.groupId);
+    } catch (err) {
+      console.error("[Baileys Webhook] Error:", err);
+    }
+  });
+
   // Meta Ads Lead Gen Webhook
   const { verifyMetaWebhook, processMetaLeadEvent } = await import("../metaAdsWebhook");
   app.get("/api/webhook/meta-leads", verifyMetaWebhook);
