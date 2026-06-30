@@ -156,7 +156,33 @@ async function startServer() {
                 console.error(`[Baileys Webhook] ⚠️ Transcription failed for ${body.messageId}:`, tErr.message);
               }
             }
-            await updateWaMessageMedia(body.messageId!, mediaUrl, body.mediaMimeType!.split(";")[0], transcript, transcriptLang);
+            // Extract text from PDF and Word documents
+            let docText: string | null = null;
+            const mimeClean = body.mediaMimeType!.split(";")[0].toLowerCase();
+            const fileNameLower = (body.fileName || "").toLowerCase();
+            const isPdf = mimeClean === "application/pdf" || fileNameLower.endsWith(".pdf");
+            const isWord = mimeClean.includes("wordprocessingml") || mimeClean === "application/msword" ||
+              fileNameLower.endsWith(".docx") || fileNameLower.endsWith(".doc");
+            if (isPdf) {
+              try {
+                const pdfParse = (await import("pdf-parse")).default;
+                const pdfData = await pdfParse(mediaBuffer);
+                docText = pdfData.text?.trim() || null;
+                console.log(`[Baileys Webhook] 📄 PDF extracted for ${body.messageId}: ${docText?.slice(0, 100)}`);
+              } catch (pdfErr: any) {
+                console.error(`[Baileys Webhook] ⚠️ PDF extraction failed for ${body.messageId}:`, pdfErr.message);
+              }
+            } else if (isWord) {
+              try {
+                const mammoth = await import("mammoth");
+                const result = await mammoth.extractRawText({ buffer: mediaBuffer });
+                docText = result.value?.trim() || null;
+                console.log(`[Baileys Webhook] 📝 Word extracted for ${body.messageId}: ${docText?.slice(0, 100)}`);
+              } catch (wordErr: any) {
+                console.error(`[Baileys Webhook] ⚠️ Word extraction failed for ${body.messageId}:`, wordErr.message);
+              }
+            }
+            await updateWaMessageMedia(body.messageId!, mediaUrl, body.mediaMimeType!.split(";")[0], transcript, transcriptLang, docText);
             console.log(`[Baileys Webhook] 📎 Media stored for ${body.messageId}: ${mediaUrl}`);
           } catch (mediaErr: any) {
             console.error(`[Baileys Webhook] ❌ Media upload failed for ${body.messageId}:`, mediaErr.message);
@@ -217,6 +243,10 @@ async function startServer() {
       return res.status(500).json({ error: "Internal server error" });
     }
   });
+  // WhatsApp Weekly Backup (Heartbeat cron + manual trigger)
+  const { waBackupHandler } = await import("../waBackupHandler");
+  app.post("/api/scheduled/waBackup", waBackupHandler);
+
   // tRPC API
   app.use(
     "/api/trpc",

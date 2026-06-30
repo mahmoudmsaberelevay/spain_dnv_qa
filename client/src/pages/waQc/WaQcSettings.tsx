@@ -5,8 +5,54 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Settings, Webhook, Key, Copy, CheckCircle, AlertCircle, Loader2, Send, Trash2 } from "lucide-react";
+import { Settings, Webhook, Key, Copy, CheckCircle, AlertCircle, Loader2, Send, Trash2, CloudUpload, Calendar } from "lucide-react";
 import { toast } from "sonner";
+
+function BackupSection() {
+  const backupMutation = trpc.waQc.runBackup.useMutation({
+    onSuccess: (data: { ok?: boolean; fileName?: string; messageCount?: number; webViewLink?: string; skipped?: string }) => {
+      if (data.skipped) {
+        toast.warning(`Backup skipped: ${data.skipped}`);
+      } else {
+        toast.success(`Backup complete! ${data.messageCount} messages saved to Google Drive`);
+      }
+    },
+    onError: (e: { message: string }) => toast.error(`Backup failed: ${e.message}`),
+  });
+
+  return (
+    <Card className="border-border/50">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <CloudUpload className="h-4 w-4 text-blue-400" />
+          Google Drive Backup
+        </CardTitle>
+        <CardDescription className="text-xs">All WhatsApp messages, voice transcripts, and document text are backed up automatically</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-accent/20 border border-border/30">
+          <Calendar className="h-4 w-4 text-green-400 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Automatic Schedule</p>
+            <p className="text-xs text-muted-foreground">Every Thursday at 5:00 PM Cairo time — uploads to "ELEVAY WhatsApp Backups" folder in Google Drive</p>
+          </div>
+        </div>
+        <Button
+          onClick={() => backupMutation.mutate()}
+          disabled={backupMutation.isPending}
+          variant="outline"
+          className="w-full"
+        >
+          {backupMutation.isPending ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Running backup...</>
+          ) : (
+            <><CloudUpload className="h-4 w-4 mr-2" />Run Backup Now</>
+          )}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function WaQcSettings() {
   const { data: configs, isLoading } = trpc.waQc.config.list.useQuery();
@@ -229,6 +275,9 @@ export default function WaQcSettings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Google Drive Backup */}
+      <BackupSection />
 
       {/* Status */}
       <Card className="border-border/50">

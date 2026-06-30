@@ -11,4 +11,8 @@ export const ENV = {
   metaPixelId: process.env.META_PIXEL_ID ?? "",
   metaCapiToken: process.env.META_CAPI_TOKEN ?? "",
   metaCapiTestCode: process.env.META_CAPI_TEST_CODE ?? "",
+  // Google Drive backup
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+  googleRefreshToken: process.env.GOOGLE_REFRESH_TOKEN ?? "",
 };

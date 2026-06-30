@@ -675,6 +675,7 @@ export const waMessages = mysqlTable("wa_messages", {
   mediaMimeType: varchar("mediaMimeType", { length: 100 }),
   transcript: text("transcript"),
   transcriptLang: varchar("transcriptLang", { length: 10 }),
+  docText: text("docText"),
   whatsappTimestamp: bigint("whatsappTimestamp", { mode: "number" }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

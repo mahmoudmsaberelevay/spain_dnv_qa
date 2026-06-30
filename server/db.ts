@@ -832,12 +832,13 @@ export async function updateWaMessageMedia(
   mediaUrl: string,
   mediaMimeType: string,
   transcript: string | null,
-  transcriptLang: string | null
+  transcriptLang: string | null,
+  docText: string | null = null
 ) {
   const db = await getDb();
   if (!db) return;
   await db
     .update(waMessages)
-    .set({ mediaUrl, mediaMimeType, transcript, transcriptLang })
+    .set({ mediaUrl, mediaMimeType, transcript, transcriptLang, docText })
     .where(eq(waMessages.messageId, messageId));
 }

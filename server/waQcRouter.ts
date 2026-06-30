@@ -138,12 +138,21 @@ export const waQcRouter = router({
 
         const contextText = allMessages
           .slice(0, 100)
-          .map((m) => {
+          .map((m: any) => {
             const sender = m.senderName || m.senderPhone || "Unknown";
             const time = m.whatsappTimestamp
               ? new Date(m.whatsappTimestamp).toLocaleString()
               : new Date(m.createdAt).toLocaleString();
-            const content = m.textContent || m.caption || `[${m.messageType}]`;
+            let content = m.textContent || m.caption || `[${m.messageType}]`;
+            // Include voice note transcript if available
+            if (m.messageType === "audio" && m.transcript) {
+              content = `[Voice Note Transcript (${m.transcriptLang || "ar"}): ${m.transcript}]`;
+            }
+            // Include extracted document text if available
+            if (m.messageType === "document" && m.docText) {
+              const fileName = m.fileName || "document";
+              content = `[Document: ${fileName}]\n${m.docText.slice(0, 2000)}`;
+            }
             return `[${time}] ${sender}: ${content}`;
           })
           .join("\n");
@@ -242,6 +251,19 @@ ${contextText}`;
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: msg });
       }
     }),
+
+  // Manual backup trigger
+  runBackup: waQcProcedure.mutation(async ({ ctx }) => {
+    const axiosLib = (await import("axios")).default;
+    const host = (ctx.req.headers["x-forwarded-host"] || ctx.req.headers.host || "localhost:3000") as string;
+    const protocol = (ctx.req.headers["x-forwarded-proto"] || "http") as string;
+    const backupUrl = `${protocol}://${host}/api/scheduled/waBackup`;
+    const response = await axiosLib.post(backupUrl, {}, {
+      headers: { "x-manual-backup": "true", "Content-Type": "application/json" },
+      timeout: 120000,
+    });
+    return response.data;
+  }),
 
   // Config
   config: router({
