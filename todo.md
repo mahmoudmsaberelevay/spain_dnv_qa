@@ -730,11 +730,24 @@
 - [x] Verified end-to-end: incoming (fromMe=false) and outgoing (fromMe=true) messages both stored correctly
 
 ## WhatsApp Media & Voice Transcription (Round 94)
-- [ ] Bridge: download media (audio/image/video) using downloadMediaMessage and send as base64 in webhook payload
-- [ ] DB schema: add mediaUrl (TEXT), mediaMimeType (VARCHAR), transcript (TEXT), transcriptLang (VARCHAR) columns to wa_messages
-- [ ] Backend: receive base64 media in webhook, upload to S3, store mediaUrl in wa_messages
-- [ ] Backend: for audio messages, call Whisper transcription API and save transcript + sender + timestamp
-- [ ] Frontend: show audio player for audio messages with transcript below (sender name, time, full transcript)
-- [ ] Frontend: show image viewer (click to expand) for image messages
-- [ ] Frontend: show video player for video messages
-- [ ] Frontend: show document download link for document messages
+- [x] Bridge: download media (audio/image/video) using downloadMediaMessage and send as base64 in webhook payload
+- [x] DB schema: add mediaUrl (TEXT), mediaMimeType (VARCHAR), transcript (TEXT), transcriptLang (VARCHAR) columns to wa_messages
+- [x] Backend: receive base64 media in webhook, upload to S3, store mediaUrl in wa_messages
+- [x] Backend: for audio messages, call Whisper transcription API and save transcript + sender + timestamp
+- [x] Frontend: show audio player for audio messages with transcript below (sender name, time, full transcript)
+- [x] Frontend: show image viewer (click to expand) for image messages
+- [x] Frontend: show video player for video messages
+- [x] Frontend: show document download link for document messages
+
+## WhatsApp QC Hardening (Round 95)
+- [x] System messages (protocolMessage, senderKeyDistributionMessage) skipped and never stored
+- [x] documentWithCaptionMessage (PDF in quoted reply) properly unwrapped to extract document + download media
+- [x] Reaction messages show "Reacted: [emoji]" instead of [unknown]
+- [x] fileName extracted from document messages and forwarded to server
+- [x] Retry Transcription button added for stuck audio messages
+- [x] PDF/Word document text extraction (pdf-parse + mammoth) with docText column
+- [x] Google Drive weekly backup handler at /api/scheduled/waBackup
+- [x] Manual "Run Backup Now" button in WaQcSettings
+- [x] Auto-refresh set to 2 hours; manual Refresh button available
+- [x] Message search searches both text content and transcript text
+- [x] Copy button on transcripts
