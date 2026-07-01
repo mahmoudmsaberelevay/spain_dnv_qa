@@ -98,11 +98,16 @@ async function startServer() {
       isGroup?: boolean; textContent?: string | null; messageType?: string; timestamp?: string;
       mediaBase64?: string; mediaMimeType?: string; mediaSize?: number;
     };
-    // Validate required fields — log and drop if missing
-    if (!body?.messageId || !body?.groupId) {
-      console.error("[Baileys Webhook] ❌ Missing required fields. Payload:", JSON.stringify(body).slice(0, 200));
-      return;
-    }
+      // Validate required fields — log and drop if missing
+      if (!body?.messageId || !body?.groupId) {
+        console.error("[Baileys Webhook] ❌ Missing required fields. Payload:", JSON.stringify(body).slice(0, 200));
+        return;
+      }
+      // Skip internal WhatsApp system messages — never store these
+      if (body.messageType === 'system') {
+        console.log(`[Baileys Webhook] ⏭️ Skipping system message ${body.messageId}`);
+        return;
+      }
     try {
       const { upsertGroup, insertWaMessage, updateGroupStats, updateWaMessageMedia } = await import("../db");
       // Step 1: Upsert the group/contact record
