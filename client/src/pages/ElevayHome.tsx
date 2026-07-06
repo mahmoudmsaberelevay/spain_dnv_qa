@@ -25,6 +25,7 @@ import {
   Megaphone,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -220,11 +221,53 @@ function AlertsWidget() {
   );
 }
 
+// ─── Sign In Button with server warm-up ─────────────────────────────────────
+function SignInButton() {
+  const [warming, setWarming] = useState(false);
+
+  const handleSignIn = async () => {
+    setWarming(true);
+    try {
+      // Ping the server to wake it up from cold-start before initiating OAuth.
+      // This ensures the server is ready to handle the callback before the
+      // OAuth code expires (~60 seconds).
+      await fetch("/api/ping", { cache: "no-store" });
+    } catch {
+      // Ignore ping errors — proceed to login regardless
+    }
+    window.location.href = getLoginUrl();
+  };
+
+  return (
+    <Button
+      onClick={handleSignIn}
+      disabled={warming}
+      size="lg"
+      className="w-full bg-white text-gray-900 hover:bg-white/90 font-semibold"
+    >
+      {warming ? "Connecting..." : "Sign in"}
+    </Button>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ElevayHome() {
   const { loading, user } = useAuth();
   const [, setLocation] = useLocation();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+
+  // Show error toast if redirected back from a failed OAuth attempt
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get("error");
+    if (error === "session_expired") {
+      toast.error("Login session expired — please try signing in again.");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (error === "auth_failed") {
+      toast.error("Authentication failed — please try again.");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   // Fetch permissions to conditionally show restricted modules (e.g. waQc)
   const { data: permsData } = trpc.permissions.getMyPermissions.useQuery(undefined, {
@@ -252,13 +295,7 @@ export default function ElevayHome() {
             <h2 className="text-xl font-semibold text-white">Sign in to continue</h2>
             <p className="text-sm text-white/50 mt-2">Access to Elevay requires authentication.</p>
           </div>
-          <Button
-            onClick={() => { window.location.href = getLoginUrl(); }}
-            size="lg"
-            className="w-full bg-white text-gray-900 hover:bg-white/90 font-semibold"
-          >
-            Sign in
-          </Button>
+          <SignInButton />
         </div>
       </div>
     );

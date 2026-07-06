@@ -1,8 +1,9 @@
-import { COOKIE_NAME, ONE_YEAR_MS, SESSION_EXPIRY_MS } from "@shared/const";
+import { COOKIE_NAME, SESSION_EXPIRY_MS } from "@shared/const";
 import type { Express, Request, Response } from "express";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
+import { ENV } from "./env";
 
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
@@ -52,9 +53,12 @@ export function registerOAuthRoutes(app: Express) {
       return;
     }
 
-    try {
-      const { redirectUri, origin, returnPath } = parseState(state);
+    // Parse state early so we can redirect back to login on any error
+    const { redirectUri, origin, returnPath } = parseState(state);
+    const loginUrl = `${ENV.oAuthPortalUrl}/app-auth?appId=${ENV.appId}&redirectUri=${encodeURIComponent(redirectUri)}&type=signIn`;
+    const fallbackOrigin = origin || "https://elevay.vip";
 
+    try {
       // Re-encode state as legacy format (just the redirectUri) for the SDK
       // because the SDK's decodeState() expects btoa(redirectUri)
       const sdkState = btoa(redirectUri);
@@ -62,20 +66,8 @@ export function registerOAuthRoutes(app: Express) {
       const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
 
       if (!userInfo.openId) {
-        res.status(400).json({ error: "openId missing from user info" });
-        return;
-      }
-
-      // ── Domain restriction: only @elevay.com + the owner gmail are allowed ──
-      const userEmail = userInfo.email ?? "";
-      const ALLOWED_EMAILS = ["mahmoud.saberelevay@gmail.com", "walid.mammdouh@gmail.com"];
-      const isElevayDomain = userEmail.endsWith("@elevay.com");
-      const isExempted = ALLOWED_EMAILS.includes(userEmail);
-      if (!isElevayDomain && !isExempted) {
-        const deniedOrigin = origin || redirectUri;
-        const deniedUrl = `${deniedOrigin}/access-denied?reason=domain`;
-        console.warn(`[OAuth] Login blocked for non-elevay email: ${userEmail}`);
-        res.redirect(302, deniedUrl);
+        console.error("[OAuth] openId missing from user info");
+        res.redirect(302, `${fallbackOrigin}/login?error=auth_failed`);
         return;
       }
 
@@ -95,15 +87,19 @@ export function registerOAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: SESSION_EXPIRY_MS });
 
-      // Redirect to the frontend origin + returnPath so the app loads correctly
-      // regardless of which domain (elevay.vip, manus.space, localhost) was used
+      // Redirect to the frontend origin + returnPath
       const safeReturnPath = returnPath && returnPath.startsWith("/") ? returnPath : "/";
       const redirectTarget = origin ? `${origin}${safeReturnPath}` : safeReturnPath;
       console.log(`[OAuth] Login success for ${userInfo.openId}, redirecting to ${redirectTarget}`);
       res.redirect(302, redirectTarget);
     } catch (error) {
-      console.error("[OAuth] Callback failed", error);
-      res.status(500).json({ error: "OAuth callback failed" });
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error("[OAuth] Callback failed:", errMsg);
+
+      // Instead of showing a raw JSON error, redirect back to the home page
+      // so the user can try again. The OAuth code may have expired due to
+      // server cold-start delay — retrying will generate a fresh code.
+      res.redirect(302, `${fallbackOrigin}/?error=session_expired`);
     }
   });
 }

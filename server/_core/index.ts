@@ -67,6 +67,8 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // Storage proxy for webdev-uploaded assets
   registerStorageProxy(app);
+  // Health/warm-up endpoint — used by the frontend to wake the server before OAuth login
+  app.get("/api/ping", (_req, res) => res.json({ ok: true, ts: Date.now() }));
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // WhatsApp webhook
