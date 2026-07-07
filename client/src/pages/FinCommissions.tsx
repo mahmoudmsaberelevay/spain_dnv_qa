@@ -213,13 +213,23 @@ export default function FinCommissions() {
   const [form, setForm] = useState<CommissionForm>(EMPTY_FORM);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
-  // Employee lists by role
-  const csList = employees?.filter(e => e.role === "CS" || e.role === "CS TL") ?? [];
-  const csTlList = employees?.filter(e => e.role === "CS TL") ?? [];
-  const paralegalList = employees?.filter(e => e.role === "Paralegal" || e.role === "Operation TL" || e.role === "Operation Manager") ?? [];
-  const consultantList = employees?.filter(e =>
-    e.role === "Consultant" || e.role === "S Consultant" || e.role === "Country Manager" || e.role === "CEO"
-  ) ?? [];
+  // Employee lists by role — matches actual role names stored in finEmployees table
+  const csList = employees?.filter(e => {
+    const r = (e.role ?? "").trim();
+    return r === "CS" || r === "CS TL" || r === "Qualifier" || r === "Qualifier TL";
+  }) ?? [];
+  const csTlList = employees?.filter(e => {
+    const r = (e.role ?? "").trim();
+    return r === "CS TL" || r === "Qualifier TL";
+  }) ?? [];
+  const paralegalList = employees?.filter(e => {
+    const r = (e.role ?? "").trim();
+    return r === "Paralegal" || r === "Operation TL" || r === "Operation Manager";
+  }) ?? [];
+  const consultantList = employees?.filter(e => {
+    const r = (e.role ?? "").trim();
+    return r === "Consultant" || r === "S Consultant" || r === "Country Manager" || r === "CEO";
+  }) ?? [];
 
   function openCreate() {
     setEditingId(null);
