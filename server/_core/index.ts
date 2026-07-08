@@ -4,6 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
+import { registerAuthRoutes } from "./auth-routes";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -71,6 +72,8 @@ async function startServer() {
   app.get("/api/ping", (_req, res) => res.json({ ok: true, ts: Date.now() }));
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+  // Email/password authentication routes
+  registerAuthRoutes(app);
   // WhatsApp webhook
   app.get("/api/webhook/whatsapp", async (req, res) => {
     const { "hub.mode": mode, "hub.verify_token": token, "hub.challenge": challenge } = req.query as Record<string, string>;

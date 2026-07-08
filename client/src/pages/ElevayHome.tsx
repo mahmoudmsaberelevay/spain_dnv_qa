@@ -7,7 +7,6 @@
  * APP STATE   : Clicking a card navigates to that module (DashboardLayout takes over).
  */
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
@@ -221,31 +220,21 @@ function AlertsWidget() {
   );
 }
 
-// ─── Sign In Button with server warm-up ─────────────────────────────────────
+// ─── Sign In Button ─────────────────────────────────────────────────────────
 function SignInButton() {
-  const [warming, setWarming] = useState(false);
+  const [, setLocation] = useLocation();
 
-  const handleSignIn = async () => {
-    setWarming(true);
-    try {
-      // Ping the server to wake it up from cold-start before initiating OAuth.
-      // This ensures the server is ready to handle the callback before the
-      // OAuth code expires (~60 seconds).
-      await fetch("/api/ping", { cache: "no-store" });
-    } catch {
-      // Ignore ping errors — proceed to login regardless
-    }
-    window.location.href = getLoginUrl();
+  const handleSignIn = () => {
+    setLocation("/login");
   };
 
   return (
     <Button
       onClick={handleSignIn}
-      disabled={warming}
       size="lg"
       className="w-full bg-white text-gray-900 hover:bg-white/90 font-semibold"
     >
-      {warming ? "Connecting..." : "Sign in"}
+      Sign in
     </Button>
   );
 }

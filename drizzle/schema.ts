@@ -15,10 +15,13 @@ import {
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
+  openId: varchar("openId", { length: 64 }).unique(), // Optional for email/password auth
   name: text("name"),
-  email: varchar("email", { length: 320 }),
-  loginMethod: varchar("loginMethod", { length: 64 }),
+  email: varchar("email", { length: 320 }).unique(), // Required for email/password login
+  loginMethod: varchar("loginMethod", { length: 64 }), // 'oauth' or 'email'
+  password: varchar("password", { length: 255 }), // Hashed password for email/password auth
+  passwordResetToken: varchar("passwordResetToken", { length: 255 }), // Token for password reset
+  passwordResetExpiry: timestamp("passwordResetExpiry"), // Expiry time for reset token
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   groupId: int("groupId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

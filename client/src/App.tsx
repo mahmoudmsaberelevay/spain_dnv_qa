@@ -6,6 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import DashboardLayout from "./components/DashboardLayout";
 import ElevayHome from "./pages/ElevayHome";
+import Login from "./pages/Login";
 import TeamChat from "./pages/TeamChat";
 import BroadcastCenter from "./pages/BroadcastCenter";
 import Settings from "./pages/Settings";
@@ -83,6 +84,11 @@ import WaQcSettings from "./pages/waQc/WaQcSettings";
 function Router() {
   return (
     <Switch>
+      {/* Login page */}
+      <Route path="/login">
+        <Login />
+      </Route>
+
       {/* Root — Elevay Home (dual-state landing page) */}
       <Route path="/">
         <ElevayHome />
