@@ -1,13 +1,16 @@
 import type { Express, Request, Response } from "express";
 import * as db from "../db";
+import { getDb } from "../db";
+import { users } from "../../drizzle/schema";
+import { eq } from "drizzle-orm";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
 import { ENV } from "./env";
 import { hashPassword, verifyPassword, generateResetToken, getResetTokenExpiry, isResetTokenValid } from "./auth-email";
 import { COOKIE_NAME, SESSION_EXPIRY_MS } from "@shared/const";
 
-function getQueryParam(req: Request, key: string): string | undefined {
-  const value = req.query[key];
+function getQueryParam(req: any, key: string): string | undefined {
+  const value = req?.query?.[key];
   return typeof value === "string" ? value : undefined;
 }
 
@@ -25,9 +28,17 @@ export function registerAuthRoutes(app: Express) {
       }
 
       // Find user by email
-      const user = await db.db.query.users.findFirst({
-        where: (users, { eq }) => eq(users.email, email),
-      });
+      const database = await db.getDb();
+      if (!database) {
+        res.status(500).json({ error: "Database connection failed" });
+        return;
+      }
+      const userResults = await database
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      const user = userResults.length > 0 ? userResults[0] : null;
 
       if (!user || !user.password) {
         res.status(401).json({ error: "Invalid email or password" });
@@ -35,33 +46,44 @@ export function registerAuthRoutes(app: Express) {
       }
 
       // Verify password
+      console.log("[Auth] Verifying password for user:", user.email);
       const isPasswordValid = await verifyPassword(password, user.password);
+      console.log("[Auth] Password valid:", isPasswordValid);
       if (!isPasswordValid) {
         res.status(401).json({ error: "Invalid email or password" });
         return;
       }
 
       // Create session token
+      console.log("[Auth] Creating session token for user:", user.id);
       const sessionToken = await sdk.createSessionToken(String(user.id), {
         name: user.name || user.email || "",
         expiresInMs: SESSION_EXPIRY_MS,
       });
+      console.log("[Auth] Session token created:", !!sessionToken);
 
       // Set session cookie
-      const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: SESSION_EXPIRY_MS });
+      res.cookie(COOKIE_NAME, sessionToken, {
+        httpOnly: true,
+        path: "/",
+        sameSite: "none",
+        secure: req.protocol === "https" || req.headers["x-forwarded-proto"] === "https",
+        maxAge: SESSION_EXPIRY_MS,
+      });
 
       // Update last signed in
-      await db.db
-        .update(db.users)
+      await database
+        .update(users)
         .set({ lastSignedIn: new Date() })
-        .where((users) => db.eq(users.id, user.id));
+        .where(eq(users.id, user.id));
 
       res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : "";
       console.error("[Auth] Login failed:", errMsg);
-      res.status(500).json({ error: "Login failed" });
+      console.error("[Auth] Stack:", stack);
+      res.status(500).json({ error: "Login failed", details: errMsg });
     }
   });
 
