@@ -271,21 +271,12 @@ export default function ElevayHome() {
     );
   }
 
+  // Redirect to login if not authenticated
   if (!user) {
+    setLocation("/login");
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-950">
-        <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
-          <img
-            src="/manus-storage/elevay-logo_2c219cd3.png"
-            alt="Elevay"
-            className="h-20 w-auto object-contain"
-          />
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-white">Sign in to continue</h2>
-            <p className="text-sm text-white/50 mt-2">Access to Elevay requires authentication.</p>
-          </div>
-          <SignInButton />
-        </div>
+        <div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-white animate-spin" />
       </div>
     );
   }
