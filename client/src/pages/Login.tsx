@@ -32,8 +32,10 @@ export default function Login() {
       }
 
       toast.success("Logged in successfully!");
-      // Redirect to home page
-      setLocation("/");
+      // Wait a moment for the session cookie to be set, then redirect
+      setTimeout(() => {
+        setLocation("/");
+      }, 500);
     } catch (error) {
       toast.error("Login failed. Please try again.");
       setIsLoading(false);
