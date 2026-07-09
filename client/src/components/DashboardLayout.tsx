@@ -525,8 +525,8 @@ function DashboardLayoutContent({
                 )}
               </button>
             </div>
-            {/* Settings — only for mahmoud.saberelevay@gmail.com */}
-            {user?.email === "mahmoud.saberelevay@gmail.com" && (
+            {/* Settings — owner only */}
+            {(user?.email === "mahmoud.saberelevay@gmail.com" || user?.email === "mahmoud.saber@elevay.com") && (
               <button
                 onClick={() => setLocation("/settings")}
                 className={cn(
