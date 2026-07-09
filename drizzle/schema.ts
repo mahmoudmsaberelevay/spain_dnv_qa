@@ -521,16 +521,22 @@ export type GroupPermission = typeof groupPermissions.$inferSelect;
 export type InsertGroupPermission = typeof groupPermissions.$inferInsert;
 
 // ─── Module Permissions (simplified 4-module access control) ────────────────────
-// One row per user per module. accessLevel: 'none' | 'viewer' | 'full'
-// Modules: contracting, clientDocs, appAnalysis, financial
-// 'full' = can view + create + edit + delete
-// 'viewer' = can only view (no create/edit/delete)
-// 'none' = blocked (PageGuard shows 403)
+// One row per user per module. accessLevel varies by module
+// Modules: contracting, clientDocs, appAnalysis, financial, marketing, leads, waQc
+// contracting: 'none' | 'full'
+// clientDocs: 'none' | 'full'
+// appAnalysis: 'none' | 'full'
+// financial: 'none' | 'level1' | 'full'
+//   - 'level1' = Create expense/income, view accounts/expenses/income/upcoming payments/client database
+//   - 'full' = full financial access
+// marketing: 'none' | 'full'
+// leads: 'none' | 'full'
+// waQc: 'none' | 'full' (only owner can have 'full')
 export const modulePermissions = mysqlTable("modulePermissions", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
-  module: varchar("module", { length: 50 }).notNull(), // 'contracting' | 'clientDocs' | 'appAnalysis' | 'financial'
-  accessLevel: mysqlEnum("accessLevel", ["none", "viewer", "full"]).default("none").notNull(),
+  module: varchar("module", { length: 50 }).notNull(),
+  accessLevel: varchar("accessLevel", { length: 20 }).default("none").notNull(), // 'none' | 'level1' | 'full'
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type ModulePermission = typeof modulePermissions.$inferSelect;

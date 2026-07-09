@@ -40,7 +40,7 @@ import { financialRouter } from "./finRouter";
 import { settlementRouter } from "./settlementRouter";
 import { chatRouter, broadcastRouter } from "./chatRouter";
 import { permissionsRouter } from "./permissionsRouter";
-import { adminRouter } from "./adminRouter";
+import { adminRouter } from "./routers/admin";
 import { waQcRouter } from "./waQcRouter";
 import { marketingRouter } from "./marketingRouter";
 

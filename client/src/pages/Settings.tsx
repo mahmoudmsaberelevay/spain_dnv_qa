@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
+import { AdminPermissionsPanel } from "@/components/AdminPermissionsPanel";
 
 const OWNER_EMAIL = "mahmoud.saberelevay@gmail.com";
 const SUPER_ADMIN_EMAILS = ["mahmoud.saberelevay@gmail.com", "mahmoud.saber@elevay.com"];
@@ -398,7 +399,7 @@ export default function Settings() {
   const { user } = useAuth();
   const isOwner = user?.email === OWNER_EMAIL || SUPER_ADMIN_EMAILS.includes((user?.email ?? "").toLowerCase());
 
-  const [tab, setTab] = useState<"users" | "invites">("users");
+  const [tab, setTab] = useState<"users" | "invites" | "permissions">("users");
   const [search, setSearch] = useState("");
   const [showAddUser, setShowAddUser] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
@@ -483,6 +484,7 @@ export default function Settings() {
           {[
             { key: "users" as const, label: "Users", icon: <Users className="h-3.5 w-3.5" /> },
             { key: "invites" as const, label: "Pending Invites", icon: <Mail className="h-3.5 w-3.5" /> },
+            { key: "permissions" as const, label: "Module Permissions", icon: <Shield className="h-3.5 w-3.5" /> },
           ].map(t => (
             <button
               key={t.key}
@@ -518,6 +520,11 @@ export default function Settings() {
               </div>
             )}
           </div>
+        )}
+
+        {/* Module Permissions Tab */}
+        {tab === "permissions" && (
+          <AdminPermissionsPanel />
         )}
 
         {/* Invites Tab */}
