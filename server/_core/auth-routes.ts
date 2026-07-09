@@ -33,19 +33,7 @@ export function registerAuthRoutes(app: Express) {
         res.status(500).json({ error: "Database connection failed" });
         return;
       }
-      // Domain restriction: only @elevay.com allowed, except for specific external users
-      const ALLOWED_EXTERNAL_EMAILS = [
-        "mahmoud.saberelevay@gmail.com",
-        "waleed.mamdouh@elevay.com" // Waleed can use elevay email
-      ];
-      const isElevayDomain = email.toLowerCase().endsWith("@elevay.com");
-      const isAllowedExternal = ALLOWED_EXTERNAL_EMAILS.includes(email.toLowerCase());
-      
-      if (!isElevayDomain && !isAllowedExternal) {
-        res.status(403).json({ error: "Access denied: only @elevay.com emails are allowed" });
-        return;
-      }
-
+      // Find user by email
       const userResults = await database
         .select()
         .from(users)
