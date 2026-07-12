@@ -395,11 +395,147 @@ function InviteDialog({ open, onClose }: { open: boolean; onClose: () => void })
 }
 
 // ─── Main Settings Page ───────────────────────────────────────────────────────
+// Change Password Panel Component
+function ChangePasswordPanel() {
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPasswords, setShowPasswords] = useState(false);
+
+  const changePasswordMutation = trpc.system.changePassword.useMutation({
+    onSuccess: () => {
+      toast.success("Password changed successfully!");
+      setOldPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to change password");
+    },
+  });
+
+  const handleChangePassword = () => {
+    if (!oldPassword) {
+      toast.error("Please enter your current password");
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      toast.error("New password must be at least 6 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    if (oldPassword === newPassword) {
+      toast.error("New password must be different from current password");
+      return;
+    }
+
+    changePasswordMutation.mutate({
+      oldPassword,
+      newPassword,
+    });
+  };
+
+  return (
+    <div className="max-w-md mx-auto space-y-6 p-6 bg-card rounded-lg border border-border">
+      <div className="space-y-2">
+        <h3 className="text-lg font-semibold text-foreground">Change Your Password</h3>
+        <p className="text-sm text-muted-foreground">Update your password to keep your account secure</p>
+      </div>
+
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="current-password" className="text-sm font-medium">Current Password</Label>
+          <Input
+            id="current-password"
+            type={showPasswords ? "text" : "password"}
+            placeholder="Enter your current password"
+            value={oldPassword}
+            onChange={(e) => setOldPassword(e.target.value)}
+            disabled={changePasswordMutation.isPending}
+            className="text-sm"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="new-password" className="text-sm font-medium">New Password</Label>
+          <Input
+            id="new-password"
+            type={showPasswords ? "text" : "password"}
+            placeholder="Enter new password (min 6 characters)"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            disabled={changePasswordMutation.isPending}
+            className="text-sm"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="confirm-password" className="text-sm font-medium">Confirm New Password</Label>
+          <Input
+            id="confirm-password"
+            type={showPasswords ? "text" : "password"}
+            placeholder="Re-enter new password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            disabled={changePasswordMutation.isPending}
+            className="text-sm"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="show-passwords"
+            checked={showPasswords}
+            onChange={(e) => setShowPasswords(e.target.checked)}
+            className="rounded border border-input"
+          />
+          <Label htmlFor="show-passwords" className="text-xs font-medium cursor-pointer">Show passwords</Label>
+        </div>
+      </div>
+
+      <div className="p-3 bg-muted/40 rounded-lg border border-border space-y-2">
+        <p className="text-xs font-semibold text-foreground">Password Requirements:</p>
+        <ul className="text-xs text-muted-foreground space-y-1">
+          <li>✓ At least 6 characters long</li>
+          <li>✓ Different from your current password</li>
+          <li>✓ Passwords must match</li>
+        </ul>
+      </div>
+
+      <div className="flex gap-3 pt-4">
+        <Button
+          variant="outline"
+          className="flex-1"
+          onClick={() => {
+            setOldPassword("");
+            setNewPassword("");
+            setConfirmPassword("");
+          }}
+          disabled={changePasswordMutation.isPending}
+        >
+          Clear
+        </Button>
+        <Button
+          className="flex-1"
+          onClick={handleChangePassword}
+          disabled={changePasswordMutation.isPending || !oldPassword || !newPassword || !confirmPassword}
+        >
+          {changePasswordMutation.isPending ? "Updating..." : "Update Password"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   const { user } = useAuth();
   const isOwner = user?.email === OWNER_EMAIL || SUPER_ADMIN_EMAILS.includes((user?.email ?? "").toLowerCase());
 
-  const [tab, setTab] = useState<"users" | "invites" | "permissions">("users");
+  const [tab, setTab] = useState<"users" | "invites" | "permissions" | "changePassword">("users");
   const [search, setSearch] = useState("");
   const [showAddUser, setShowAddUser] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
@@ -485,6 +621,7 @@ export default function Settings() {
             { key: "users" as const, label: "Users", icon: <Users className="h-3.5 w-3.5" /> },
             { key: "invites" as const, label: "Pending Invites", icon: <Mail className="h-3.5 w-3.5" /> },
             { key: "permissions" as const, label: "Module Permissions", icon: <Shield className="h-3.5 w-3.5" /> },
+            { key: "changePassword" as const, label: "Change Password", icon: <SettingsIcon className="h-3.5 w-3.5" /> },
           ].map(t => (
             <button
               key={t.key}
@@ -525,6 +662,11 @@ export default function Settings() {
         {/* Module Permissions Tab */}
         {tab === "permissions" && (
           <AdminPermissionsPanel />
+        )}
+
+        {/* Change Password Tab */}
+        {tab === "changePassword" && (
+          <ChangePasswordPanel />
         )}
 
         {/* Invites Tab */}

@@ -108,4 +108,50 @@ export const systemRouter = router({
 
       return { success: true, message: "Password reset successfully" };
     }),
+
+  changePassword: protectedProcedure
+    .input(
+      z.object({
+        oldPassword: z.string().min(1, "Old password is required"),
+        newPassword: z.string().min(6, "Password must be at least 6 characters"),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (!ctx.user) {
+        throw new Error("Unauthorized: User not authenticated");
+      }
+
+      const db = await getDb();
+      if (!db) throw new Error("Database connection failed");
+
+      // Get current user
+      const currentUser = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, ctx.user.id))
+        .limit(1);
+
+      if (currentUser.length === 0) {
+        throw new Error("User not found");
+      }
+
+      const user = currentUser[0];
+
+      // Verify old password
+      const isPasswordValid = await bcryptjs.compare(input.oldPassword, user.password || "");
+      if (!isPasswordValid) {
+        throw new Error("Old password is incorrect");
+      }
+
+      // Hash the new password
+      const hashedPassword = await bcryptjs.hash(input.newPassword, 10);
+
+      // Update user password
+      await db
+        .update(users)
+        .set({ password: hashedPassword })
+        .where(eq(users.id, ctx.user.id));
+
+      return { success: true, message: "Password changed successfully" };
+    }),
 });
