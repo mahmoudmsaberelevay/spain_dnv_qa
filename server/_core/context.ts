@@ -23,8 +23,8 @@ async function verifySessionToken(token: string): Promise<User | null> {
     }
     
     const decoded = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-    const userId = decoded.openId || decoded.userId;
-    console.log('[Auth] Token decoded, userId:', userId);
+    const userId = decoded.userId || decoded.openId;
+    console.log('[Auth] Token decoded, userId:', userId, 'type:', typeof userId);
     
     if (!userId) {
       console.log('[Auth] No userId in token');
@@ -37,11 +37,27 @@ async function verifySessionToken(token: string): Promise<User | null> {
       return null;
     }
     
-    const userResults = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, parseInt(userId)))
-      .limit(1);
+    let userResults;
+    
+    // Check if userId is numeric (from email/password auth) or string (from OAuth)
+    if (typeof userId === 'number' || (typeof userId === 'string' && /^\d+$/.test(userId))) {
+      // Numeric ID - query by users.id
+      const numericId = typeof userId === 'number' ? userId : parseInt(userId, 10);
+      console.log('[Auth] Querying by numeric ID:', numericId);
+      userResults = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, numericId))
+        .limit(1);
+    } else {
+      // String openId - query by users.openId
+      console.log('[Auth] Querying by openId:', userId);
+      userResults = await db
+        .select()
+        .from(users)
+        .where(eq(users.openId, userId))
+        .limit(1);
+    }
     
     console.log('[Auth] User query result:', userResults.length > 0 ? 'found' : 'not found');
     return userResults.length > 0 ? userResults[0] : null;

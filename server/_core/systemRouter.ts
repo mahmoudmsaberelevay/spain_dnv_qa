@@ -61,8 +61,8 @@ export const systemRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      if (ctx.user?.id !== 120001) {
-        throw new Error("Unauthorized");
+      if (ctx.user?.role !== 'admin') {
+        throw new Error("Unauthorized: Only admins can update permissions");
       }
 
       const db = await getDb();
@@ -89,9 +89,9 @@ export const systemRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      // Only owner (Mahmoud) can reset passwords
-      if (ctx.user?.id !== 120001) {
-        throw new Error("Unauthorized: Only owner can reset passwords");
+      // Only admins can reset passwords
+      if (ctx.user?.role !== 'admin') {
+        throw new Error("Unauthorized: Only admins can reset passwords");
       }
 
       const db = await getDb();

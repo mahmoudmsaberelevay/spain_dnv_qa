@@ -757,4 +757,7 @@
 - [x] Add password reset UI to AdminPermissionsPanel (password input field + Reset button)
 - [x] Add password reset success/error toast notifications
 - [x] Test password reset with multiple users
-- [x] Save checkpoint with password reset feature complete
+- [x] Fix context.ts to handle both numeric IDs and string openIds from session tokens
+- [x] Replace hardcoded 120001 owner ID checks with role-based authorization (ctx.user.role === 'admin')
+- [x] Verify all 13 staff members are correctly displayed with correct emails
+- [x] Save checkpoint with password reset feature and authentication fixes complete
