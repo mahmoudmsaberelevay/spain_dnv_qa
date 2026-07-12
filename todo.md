@@ -751,3 +751,10 @@
 - [x] Auto-refresh set to 2 hours; manual Refresh button available
 - [x] Message search searches both text content and transcript text
 - [x] Copy button on transcripts
+
+## Authentication & User Management (Round 96)
+- [x] Add resetUserPassword tRPC procedure to systemRouter (input: userId, newPassword)
+- [x] Add password reset UI to AdminPermissionsPanel (password input field + Reset button)
+- [x] Add password reset success/error toast notifications
+- [x] Test password reset with multiple users
+- [x] Save checkpoint with password reset feature complete

@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
 type ModuleType = "contracting" | "clientDocs" | "appAnalysis" | "financial" | "marketing" | "leads" | "waQc";
@@ -31,6 +32,8 @@ export function AdminPermissionsPanel() {
     leads: "none",
     waQc: "none",
   });
+  const [newPassword, setNewPassword] = useState<string>("");
+  const [showPasswordReset, setShowPasswordReset] = useState<boolean>(false);
 
   const { data: users } = trpc.system.getAllUsers.useQuery();
   const { data: currentPermissions } = trpc.system.getUserPermissions.useQuery(
@@ -38,6 +41,7 @@ export function AdminPermissionsPanel() {
     { enabled: !!selectedUserId }
   );
   const updatePermissions = trpc.system.updateUserPermissions.useMutation();
+  const resetPassword = trpc.system.resetUserPassword.useMutation();
 
   // Load permissions when user is selected
   useEffect(() => {
@@ -81,6 +85,32 @@ export function AdminPermissionsPanel() {
       toast.error("Failed to update permissions");
     }
   };
+
+  const handleResetPassword = async () => {
+    if (!selectedUserId) {
+      toast.error("Please select a user");
+      return;
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+
+    try {
+      await resetPassword.mutateAsync({
+        userId: parseInt(selectedUserId),
+        newPassword,
+      });
+      toast.success("Password reset successfully");
+      setNewPassword("");
+      setShowPasswordReset(false);
+    } catch (error) {
+      toast.error("Failed to reset password");
+    }
+  };
+
+  const selectedUser = users?.find((u) => u.id === parseInt(selectedUserId));
 
   return (
     <div className="space-y-6">
@@ -195,7 +225,7 @@ export function AdminPermissionsPanel() {
                 </div>
               </div>
 
-              {/* Save Button */}
+              {/* Save Permissions Button */}
               <Button
                 onClick={handleSave}
                 disabled={updatePermissions.isPending}
@@ -203,6 +233,51 @@ export function AdminPermissionsPanel() {
               >
                 {updatePermissions.isPending ? "Saving..." : "Save Permissions"}
               </Button>
+
+              {/* Password Reset Section */}
+              <div className="border-t pt-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold">Reset Password</h3>
+                      <p className="text-sm text-gray-500">Set a new password for {selectedUser?.name}</p>
+                    </div>
+                    <Button
+                      variant={showPasswordReset ? "destructive" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        setShowPasswordReset(!showPasswordReset);
+                        setNewPassword("");
+                      }}
+                    >
+                      {showPasswordReset ? "Cancel" : "Reset Password"}
+                    </Button>
+                  </div>
+
+                  {showPasswordReset && (
+                    <div className="space-y-3 bg-gray-50 p-4 rounded-lg">
+                      <div className="space-y-2">
+                        <Label htmlFor="new-password">New Password</Label>
+                        <Input
+                          id="new-password"
+                          type="password"
+                          placeholder="Enter new password (min 6 characters)"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                        />
+                      </div>
+                      <Button
+                        onClick={handleResetPassword}
+                        disabled={resetPassword.isPending || !newPassword || newPassword.length < 6}
+                        className="w-full"
+                        variant="destructive"
+                      >
+                        {resetPassword.isPending ? "Resetting..." : "Confirm Reset Password"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </>
           )}
         </CardContent>
