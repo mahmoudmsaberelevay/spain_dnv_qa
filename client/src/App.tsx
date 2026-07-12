@@ -10,6 +10,7 @@ import Login from "./pages/Login";
 import TeamChat from "./pages/TeamChat";
 import BroadcastCenter from "./pages/BroadcastCenter";
 import Settings from "./pages/Settings";
+import Profile from "./pages/Profile";
 import PageGuard from "./components/PageGuard";
 
 // ─── Application Analysis Module ─────────────────────────────────────────────
@@ -92,6 +93,11 @@ function Router() {
       {/* Root — Elevay Home (dual-state landing page) */}
       <Route path="/">
         <ElevayHome />
+      </Route>
+
+      {/* Profile — User profile and password change */}
+      <Route path="/profile">
+        <DashboardLayout><Profile /></DashboardLayout>
       </Route>
 
       {/* ── Contracting Module ── */}

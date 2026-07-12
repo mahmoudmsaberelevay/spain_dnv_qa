@@ -761,3 +761,9 @@
 - [x] Replace hardcoded 120001 owner ID checks with role-based authorization (ctx.user.role === 'admin')
 - [x] Verify all 13 staff members are correctly displayed with correct emails
 - [x] Save checkpoint with password reset feature and authentication fixes complete
+- [x] Add changePassword tRPC procedure for users to change their own password
+- [x] Create Profile page accessible to all users (/profile route)
+- [x] Add "My Profile" option to user dropdown menu in DashboardLayout
+- [x] Add Change Password form to Profile page with validation
+- [x] Test password change feature with all users
+- [x] Save checkpoint with Profile page and password change feature complete
