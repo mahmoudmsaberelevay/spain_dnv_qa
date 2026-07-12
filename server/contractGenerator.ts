@@ -167,8 +167,9 @@ function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
 // the project's own S3 bucket via manus-upload-file --webdev.
 const TEMPLATE_REGISTRY: Record<string, { url?: string; storageKey?: string; label: string }> = {
   spain: {
-    // New Spain Nomad contract template (NewSpainContract.docx) — only client name is inserted
-    url: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663524211981/enBIbSgwwLytpbid.docx",
+    // Modified Spain Nomad contract template with {{FAMILY_MEMBERS}} and {{CONTRACT_VALUE}} placeholders
+    // These placeholders are replaced dynamically based on actual family count and calculated fees
+    storageKey: "/manus-storage/spain_template_modified_3def59d7.docx",
     label: "Spain Digital Nomad Visa",
   },
   egypt: {
@@ -319,9 +320,11 @@ export async function generateContractDoc(
   }
 
   // ── Family members & contract value (Spain only) ──────────────────────────
-  // The new Spain template has fixed fee tiers described in the text.
-  // No family/value placeholder replacement needed — the template already
-  // shows the full pricing table. The appendix is also built into the template.
+  // Replace the placeholders with actual values
+  if (country === "spain") {
+    docXml = docXml.replace("{{FAMILY_MEMBERS}}", familyMembers.toString());
+    docXml = docXml.replace("{{CONTRACT_VALUE}}", contractValue.toLocaleString("en-US"));
+  }
 
   zip.file("word/document.xml", docXml);
 

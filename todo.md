@@ -767,3 +767,11 @@
 - [x] Add Change Password form to Profile page with validation
 - [x] Test password change feature with all users
 - [x] Save checkpoint with Profile page and password change feature complete
+
+## Contract Dynamic Family Members & Fees (Round 97)
+- [x] Modify Spain contract template to add {{FAMILY_MEMBERS}} and {{CONTRACT_VALUE}} placeholders
+- [x] Upload modified template to S3 storage
+- [x] Update contractGenerator.ts to replace placeholders with actual values
+- [x] Verify calculateContractValue() implements correct fee tiers (12000/13000/14000/15000)
+- [x] Test contract generation with different family sizes
+- [x] Save checkpoint with dynamic contract fees complete
