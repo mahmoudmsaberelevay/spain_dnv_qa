@@ -507,7 +507,7 @@ export default function FinClients() {
                   {sortedClients.map((c) => {
                     const remaining = Number(c.remainingAmountEur ?? 0);
                     const paid = Number(c.paidAmountEur ?? 0);
-                    const contractVal = Number(c.contractValueEur ?? 0);
+                    const contractVal = Number(c.finalContractValueEur ?? c.contractValueEur ?? 0);
                     const isNegative = remaining < 0;
                     return (
                       <tr key={c.id} className="border-b border-muted/40 hover:bg-muted/20 transition-colors">
@@ -531,7 +531,14 @@ export default function FinClients() {
                         </td>
                         <td className="py-3 px-4 text-muted-foreground">{c.consultant || "—"}</td>
                         <td className="py-3 px-4 text-right font-medium">
-                          {contractVal > 0 ? `€ ${fmtEur(contractVal)}` : "—"}
+                          <div>
+                            {contractVal > 0 ? `€ ${fmtEur(contractVal)}` : "—"}
+                            {c.discountValue && Number(c.discountValue) > 0 && (
+                              <div className="text-xs text-muted-foreground">
+                                (- € {fmtEur(c.discountValue)})
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-right text-green-700 font-medium">
                           {paid > 0 ? `€ ${fmtEur(paid)}` : "—"}
