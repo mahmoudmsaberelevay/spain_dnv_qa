@@ -136,21 +136,40 @@ export async function runReminderCheck(): Promise<void> {
       // ── 4. Submission deadline reminder (12 days before) ─────────────────
       const daysToSubmission = daysUntil(c.expectedSubmissionDate);
       if (daysToSubmission !== null && daysToSubmission === 12) {
-        const subject = `📅 Submission Deadline in 12 Days — ${clientName}`;
+        const subject = `📅 Submission Deadline in 12 Days — ${clientName} (${(c as any).clientCode})`;
         const html = `
           <table style="width:100%; border-collapse:collapse; font-size:14px;">
             <tr><td style="padding:6px 0; color:#8A9499;">Client</td><td style="padding:6px 0; color:#2C3A40; font-weight:bold;">${clientName}</td></tr>
+            <tr><td style="padding:6px 0; color:#8A9499;">Client Code</td><td style="padding:6px 0; color:#2C3A40;">${(c as any).clientCode}</td></tr>
             <tr><td style="padding:6px 0; color:#8A9499;">Submission Date</td><td style="padding:6px 0; color:#C0392B; font-weight:bold;">${formatDate(c.expectedSubmissionDate)}</td></tr>
             <tr><td style="padding:6px 0; color:#8A9499;">Days Remaining</td><td style="padding:6px 0; color:#C0392B; font-weight:bold;">12 days</td></tr>
             <tr><td style="padding:6px 0; color:#8A9499;">Paralegal</td><td style="padding:6px 0; color:#2C3A40;">${paralegal ?? "—"}</td></tr>
             <tr><td style="padding:6px 0; color:#8A9499;">Consultant</td><td style="padding:6px 0; color:#2C3A40;">${consultant ?? "—"}</td></tr>
           </table>
-          <p style="color:#C0392B; margin-top:16px; font-size:13px;">📅 The application submission deadline is approaching. Please ensure all documents are ready.</p>`;
-        const plain = `Submission Deadline Reminder\n\nClient: ${clientName}\nSubmission Date: ${formatDate(c.expectedSubmissionDate)}\nDays Remaining: 12\nParalegal: ${paralegal ?? "—"}\nConsultant: ${consultant ?? "—"}`;
+          <p style="color:#C0392B; margin-top:16px; font-size:13px;">📅 The application submission deadline is approaching. Please ensure all documents are ready and outstanding payments are collected.</p>`;
+        const plain = `Submission Deadline Reminder\n\nClient: ${clientName}\nClient Code: ${(c as any).clientCode}\nSubmission Date: ${formatDate(c.expectedSubmissionDate)}\nDays Remaining: 12\nParalegal: ${paralegal ?? "—"}\nConsultant: ${consultant ?? "—"}`;
         await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html, plain);
       }
 
-      // ── 5. Document expiry reminders (30 days before each doc expires) ────
+      // ── 5. Submission date update reminder (when submissionDate is updated) ──
+      const submissionDate = (c as any).submissionDate;
+      if (submissionDate && !c.expectedSubmissionDate) {
+        // Send reminder when submission date is set (first reminder)
+        const subject = `✅ Submission Confirmed — ${clientName} (${(c as any).clientCode})`;
+        const html = `
+          <table style="width:100%; border-collapse:collapse; font-size:14px;">
+            <tr><td style="padding:6px 0; color:#8A9499;">Client</td><td style="padding:6px 0; color:#2C3A40; font-weight:bold;">${clientName}</td></tr>
+            <tr><td style="padding:6px 0; color:#8A9499;">Client Code</td><td style="padding:6px 0; color:#2C3A40;">${(c as any).clientCode}</td></tr>
+            <tr><td style="padding:6px 0; color:#8A9499;">Submission Date</td><td style="padding:6px 0; color:#27AE60; font-weight:bold;">${formatDate(submissionDate)}</td></tr>
+            <tr><td style="padding:6px 0; color:#8A9499;">Paralegal</td><td style="padding:6px 0; color:#2C3A40;">${paralegal ?? "—"}</td></tr>
+            <tr><td style="padding:6px 0; color:#8A9499;">Consultant</td><td style="padding:6px 0; color:#2C3A40;">${consultant ?? "—"}</td></tr>
+          </table>
+          <p style="color:#27AE60; margin-top:16px; font-size:13px;">✅ The client's application has been submitted. Please ensure all outstanding payments are collected and follow up on approval status.</p>`;
+        const plain = `Submission Confirmed Reminder\n\nClient: ${clientName}\nClient Code: ${(c as any).clientCode}\nSubmission Date: ${formatDate(submissionDate)}\nParalegal: ${paralegal ?? "—"}\nConsultant: ${consultant ?? "—"}`;
+        await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html, plain);
+      }
+
+      // ── 6. Document expiry reminders (30 days before each doc expires) ────
       const clientDocs = allDocs.filter(d => d.clientCaseId === (c as any).id);
       for (const doc of clientDocs) {
         if (!doc.receivedDate || !doc.expirationMonths) continue;
