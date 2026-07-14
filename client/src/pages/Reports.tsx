@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import QualificationsReports from "./QualificationsReports";
-import ParalegalReports from "./ParalegalReports";
+import ParalegalReportsPage from "./ParalegalReports";
 import FinancialReports from "./FinancialReports";
 import VisasReports from "./VisasReports";
 import AttestationReports from "./AttestationReports";
@@ -30,7 +30,7 @@ export default function Reports() {
         </TabsContent>
 
         <TabsContent value="paralegal" className="mt-6">
-          <ParalegalReports />
+          <ParalegalReportsPage />
         </TabsContent>
 
         <TabsContent value="financial" className="mt-6">

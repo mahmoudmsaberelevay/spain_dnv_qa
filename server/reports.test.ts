@@ -8,14 +8,19 @@ import {
 } from "./reportsDb";
 
 describe("Reports Database Functions", () => {
-  const testDate = new Date("2026-07-14");
-  const tomorrow = new Date("2026-07-15");
-  const yesterday = new Date("2026-07-13");
+  const testDate = new Date();
+  testDate.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(testDate);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const yesterday = new Date(testDate);
+  yesterday.setDate(yesterday.getDate() - 1);
 
   describe("Qualification Reports", () => {
     it("should create a qualification report", async () => {
+      const uniqueDate = new Date(testDate);
+      uniqueDate.setHours(Math.random() * 24, Math.random() * 60, Math.random() * 60);
       const result = await createQualificationReport({
-        reportDate: testDate,
+        reportDate: uniqueDate,
         totalLeads: 10,
         totalQualified: 7,
         notQualified: 2,
@@ -49,8 +54,10 @@ describe("Reports Database Functions", () => {
 
   describe("Paralegal Reports", () => {
     it("should create a paralegal report", async () => {
+      const uniqueDate = new Date(testDate);
+      uniqueDate.setHours(Math.random() * 24, Math.random() * 60, Math.random() * 60);
       const result = await createParalegalReport({
-        reportDate: testDate,
+        reportDate: uniqueDate,
         documentsReceived: 5,
         documentsReviewed: 4,
         issuesFound: 1,
@@ -70,8 +77,10 @@ describe("Reports Database Functions", () => {
 
   describe("Financial Reports", () => {
     it("should create a financial report", async () => {
+      const uniqueDate = new Date(testDate);
+      uniqueDate.setHours(Math.random() * 24, Math.random() * 60, Math.random() * 60);
       const result = await createFinancialReport({
-        reportDate: testDate,
+        reportDate: uniqueDate,
         invoicesCreated: 3,
         invoiceAmount: "5000",
         paymentsReceived: 2,
@@ -93,8 +102,10 @@ describe("Reports Database Functions", () => {
 
   describe("Visas Reports", () => {
     it("should create a visas report", async () => {
+      const uniqueDate = new Date(testDate);
+      uniqueDate.setHours(Math.random() * 24, Math.random() * 60, Math.random() * 60);
       const result = await createVisasReport({
-        reportDate: testDate,
+        reportDate: uniqueDate,
         applicationsSubmitted: 5,
         applicationsApproved: 3,
         applicationsRejected: 1,
@@ -114,8 +125,10 @@ describe("Reports Database Functions", () => {
 
   describe("Attestation Reports", () => {
     it("should create an attestation report", async () => {
+      const uniqueDate = new Date(testDate);
+      uniqueDate.setHours(Math.random() * 24, Math.random() * 60, Math.random() * 60);
       const result = await createAttestationReport({
-        reportDate: testDate,
+        reportDate: uniqueDate,
         documentsSubmitted: 8,
         documentsAttested: 6,
         attestationsPending: 2,

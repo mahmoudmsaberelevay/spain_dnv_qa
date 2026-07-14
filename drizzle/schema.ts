@@ -1095,6 +1095,20 @@ export const dailyQualificationReports = mysqlTable("dailyQualificationReports",
 export type DailyQualificationReport = typeof dailyQualificationReports.$inferSelect;
 export type InsertDailyQualificationReport = typeof dailyQualificationReports.$inferInsert;
 
+export const paralegalClientRecords = mysqlTable("paralegalClientRecords", {
+  id: int("id").autoincrement().primaryKey(),
+  recordDate: date("recordDate").notNull(),
+  finClientId: int("finClientId").notNull(), // Reference to finClients table
+  clientName: varchar("clientName", { length: 255 }).notNull(),
+  clientCode: varchar("clientCode", { length: 50 }),
+  stage: mysqlEnum("stage", ["Submitted", "Approved"]).notNull(),
+  fileType: mysqlEnum("fileType", ["Family", "Single"]).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ParalegalClientRecord = typeof paralegalClientRecords.$inferSelect;
+export type InsertParalegalClientRecord = typeof paralegalClientRecords.$inferInsert;
+
 export const dailyParalegalReports = mysqlTable("dailyParalegalReports", {
   id: int("id").autoincrement().primaryKey(),
   reportDate: date("reportDate").notNull(),
