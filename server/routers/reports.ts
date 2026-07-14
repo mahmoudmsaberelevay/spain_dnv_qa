@@ -10,6 +10,7 @@ import {
 import { listParalegalClientRecords, getParalegalClientRecord, createParalegalClientRecord, updateParalegalClientRecord, deleteParalegalClientRecord, listFinancialClients } from "../paralegalDb";
 import { listAttestationClientRecords, getAttestationClientRecord, createAttestationClientRecord, updateAttestationClientRecord, deleteAttestationClientRecord, listFinancialClientsForAttestation } from "../attestationDb";
 import { listVisaClientRecords, getVisaClientRecord, createVisaClientRecord, updateVisaClientRecord, deleteVisaClientRecord, listFinancialClientsForVisa } from "../visaDb";
+import { listFinancialSummaries, getFinancialSummary, createFinancialSummary, updateFinancialSummary, deleteFinancialSummary, convertCurrency } from "../financialDb";
 
 // ─── Qualification Reports ────────────────────────────────────────────────────
 const qualificationReportsRouter = router({
@@ -433,6 +434,129 @@ const visaFinancialClientsRouter = router({
     }),
 });
 
+// ─── Financial Monthly Summary ──────────────────────────────────────────────────
+const financialMonthlySummaryRouter = router({
+  list: protectedProcedure
+    .input(z.object({
+      dateFrom: z.date().optional(),
+      dateTo: z.date().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      return await listFinancialSummaries(input);
+    }),
+
+  get: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      return await getFinancialSummary(input.id);
+    }),
+
+  create: protectedProcedure
+    .input(z.object({
+      summaryDate: z.date(),
+      totalSalesEgp: z.number().optional(),
+      totalSalesUsd: z.number().optional(),
+      totalSalesEur: z.number().optional(),
+      totalIncomeEgp: z.number().optional(),
+      totalIncomeUsd: z.number().optional(),
+      totalIncomeEur: z.number().optional(),
+      totalExpensesEgp: z.number().optional(),
+      totalExpensesUsd: z.number().optional(),
+      totalExpensesEur: z.number().optional(),
+      salariesEgp: z.number().optional(),
+      salariesUsd: z.number().optional(),
+      salariesEur: z.number().optional(),
+      commissionsEgp: z.number().optional(),
+      commissionsUsd: z.number().optional(),
+      commissionsEur: z.number().optional(),
+      mofaEgp: z.number().optional(),
+      mofaUsd: z.number().optional(),
+      mofaEur: z.number().optional(),
+      embassyEgp: z.number().optional(),
+      embassyUsd: z.number().optional(),
+      embassyEur: z.number().optional(),
+      translationFeesEgp: z.number().optional(),
+      translationFeesUsd: z.number().optional(),
+      translationFeesEur: z.number().optional(),
+      lawyerFeesEgp: z.number().optional(),
+      lawyerFeesUsd: z.number().optional(),
+      lawyerFeesEur: z.number().optional(),
+      officeExpensesEgp: z.number().optional(),
+      officeExpensesUsd: z.number().optional(),
+      officeExpensesEur: z.number().optional(),
+      officeRentEgp: z.number().optional(),
+      officeRentUsd: z.number().optional(),
+      officeRentEur: z.number().optional(),
+      miscEgp: z.number().optional(),
+      miscUsd: z.number().optional(),
+      miscEur: z.number().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      return await createFinancialSummary(input);
+    }),
+
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      totalSalesEgp: z.number().optional(),
+      totalSalesUsd: z.number().optional(),
+      totalSalesEur: z.number().optional(),
+      totalIncomeEgp: z.number().optional(),
+      totalIncomeUsd: z.number().optional(),
+      totalIncomeEur: z.number().optional(),
+      totalExpensesEgp: z.number().optional(),
+      totalExpensesUsd: z.number().optional(),
+      totalExpensesEur: z.number().optional(),
+      salariesEgp: z.number().optional(),
+      salariesUsd: z.number().optional(),
+      salariesEur: z.number().optional(),
+      commissionsEgp: z.number().optional(),
+      commissionsUsd: z.number().optional(),
+      commissionsEur: z.number().optional(),
+      mofaEgp: z.number().optional(),
+      mofaUsd: z.number().optional(),
+      mofaEur: z.number().optional(),
+      embassyEgp: z.number().optional(),
+      embassyUsd: z.number().optional(),
+      embassyEur: z.number().optional(),
+      translationFeesEgp: z.number().optional(),
+      translationFeesUsd: z.number().optional(),
+      translationFeesEur: z.number().optional(),
+      lawyerFeesEgp: z.number().optional(),
+      lawyerFeesUsd: z.number().optional(),
+      lawyerFeesEur: z.number().optional(),
+      officeExpensesEgp: z.number().optional(),
+      officeExpensesUsd: z.number().optional(),
+      officeExpensesEur: z.number().optional(),
+      officeRentEgp: z.number().optional(),
+      officeRentUsd: z.number().optional(),
+      officeRentEur: z.number().optional(),
+      miscEgp: z.number().optional(),
+      miscUsd: z.number().optional(),
+      miscEur: z.number().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      return await updateFinancialSummary(id, data);
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      return await deleteFinancialSummary(input.id);
+    }),
+
+  convert: protectedProcedure
+    .input(z.object({
+      amount: z.number(),
+      from: z.enum(["EGP", "USD", "EUR"]),
+      to: z.enum(["EGP", "USD", "EUR"]),
+    }))
+    .query(async ({ input }) => {
+      return convertCurrency(input.amount, input.from, input.to);
+    }),
+});
+
 // ─── Main Reports Router ──────────────────────────────────────────────────────
 export const reportsRouter = router({
   qualifications: qualificationReportsRouter,
@@ -443,6 +567,7 @@ export const reportsRouter = router({
   attestationFinancialClients: attestationFinancialClientsRouter,
   visaClients: visaClientRecordsRouter,
   visaFinancialClients: visaFinancialClientsRouter,
+  financialMonthlySummary: financialMonthlySummaryRouter,
   financial: financialReportsRouter,
   visas: visasReportsRouter,
   attestation: attestationReportsRouter,
