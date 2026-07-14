@@ -340,6 +340,6 @@ export const reportsRouter = router({
   paralegalClients: paralegalClientsRouter,
   attestationClients: attestationClientsRouter,
   visaClients: visaClientsRouter,
-  financialSummaries: financialSummariesRouter,
+  financialMonthlySummary: financialSummariesRouter,
   clientSearch: clientSearchRouter,
 });
