@@ -4,7 +4,7 @@ import QualificationsReports from "./QualificationsReports";
 import ParalegalReportsPage from "./ParalegalReports";
 import FinancialReports from "./FinancialReports";
 import VisasReports from "./VisasReports";
-import AttestationReports from "./AttestationReports";
+import AttestationReportsPage from "./AttestationReportsPage";
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState("qualifications");
@@ -42,7 +42,7 @@ export default function Reports() {
         </TabsContent>
 
         <TabsContent value="attestation" className="mt-6">
-          <AttestationReports />
+          <AttestationReportsPage />
         </TabsContent>
       </Tabs>
     </div>

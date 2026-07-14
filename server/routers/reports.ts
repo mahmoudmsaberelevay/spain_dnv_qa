@@ -8,6 +8,7 @@ import {
   listAttestationReports, getAttestationReport, createAttestationReport, updateAttestationReport, deleteAttestationReport,
 } from "../reportsDb";
 import { listParalegalClientRecords, getParalegalClientRecord, createParalegalClientRecord, updateParalegalClientRecord, deleteParalegalClientRecord, listFinancialClients } from "../paralegalDb";
+import { listAttestationClientRecords, getAttestationClientRecord, createAttestationClientRecord, updateAttestationClientRecord, deleteAttestationClientRecord, listFinancialClientsForAttestation } from "../attestationDb";
 
 // ─── Qualification Reports ────────────────────────────────────────────────────
 const qualificationReportsRouter = router({
@@ -315,12 +316,71 @@ const financialClientsRouter = router({
     }),
 });
 
+// ─── Attestation Client Records Lookup ──────────────────────────────────────
+const attestationClientRecordsRouter = router({
+  list: protectedProcedure
+    .input(z.object({
+      dateFrom: z.date().optional(),
+      dateTo: z.date().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      return await listAttestationClientRecords(input);
+    }),
+
+  get: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      return await getAttestationClientRecord(input.id);
+    }),
+
+  create: protectedProcedure
+    .input(z.object({
+      recordDate: z.date(),
+      finClientId: z.number().int(),
+      clientName: z.string().min(1),
+      clientCode: z.string().optional(),
+      type: z.enum(["Submitted", "Finished"]),
+      provider: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      return await createAttestationClientRecord(input);
+    }),
+
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      recordDate: z.date().optional(),
+      type: z.enum(["Submitted", "Finished"]).optional(),
+      provider: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      return await updateAttestationClientRecord(id, data);
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      return await deleteAttestationClientRecord(input.id);
+    }),
+});
+
+const attestationFinancialClientsRouter = router({
+  search: protectedProcedure
+    .input(z.object({ searchTerm: z.string().optional() }))
+    .query(async ({ input }) => {
+      return await listFinancialClientsForAttestation(input.searchTerm);
+    }),
+});
+
 // ─── Main Reports Router ──────────────────────────────────────────────────────
 export const reportsRouter = router({
   qualifications: qualificationReportsRouter,
   paralegal: paralegalReportsRouter,
   paralegalClients: paralegalClientRecordsRouter,
   financialClients: financialClientsRouter,
+  attestationClients: attestationClientRecordsRouter,
+  attestationFinancialClients: attestationFinancialClientsRouter,
   financial: financialReportsRouter,
   visas: visasReportsRouter,
   attestation: attestationReportsRouter,
