@@ -312,7 +312,7 @@ function Router() {
       </Route>
 
       <Route path="/reports">
-        <PageGuard>
+        <PageGuard pageKey="reports">
           <DashboardLayout><Reports /></DashboardLayout>
         </PageGuard>
       </Route>

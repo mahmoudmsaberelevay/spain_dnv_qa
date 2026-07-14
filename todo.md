@@ -891,3 +891,6 @@
 
 ## Bug Fix (Round 57)
 - [x] Remove UNIQUE constraint on summaryDate in financialMonthlySummary table — was silently blocking second report entries on the same date
+
+## Bug Fix (Round 58)
+- [x] Fix Reports route PageGuard missing pageKey prop — was passing undefined to canAccess() causing all non-owner users to get "Access Restricted" even with full permissions in DB
