@@ -369,12 +369,19 @@ export default function FinancialReportsPage() {
             <Card key={record.id}>
               <CardHeader>
                 <CardTitle className="text-lg">
-                  {new Date(record.summaryDate).toLocaleDateString("en-US", {
-                    weekday: "long",
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}
+                  {(() => {
+                    try {
+                      const date = new Date(record.summaryDate);
+                      return isNaN(date.getTime()) ? "Invalid Date" : date.toLocaleDateString("en-US", {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      });
+                    } catch {
+                      return "Invalid Date";
+                    }
+                  })()}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -479,7 +486,14 @@ export default function FinancialReportsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleDelete(record.id)}
+                              onClick={() => {
+                                if (!record.id) {
+                                  console.error("Record ID is missing", record);
+                                  toast.error("Cannot delete: Record ID is missing");
+                                  return;
+                                }
+                                handleDelete(record.id);
+                              }}
                               className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
                             >
                               <Trash2 className="h-4 w-4" />
