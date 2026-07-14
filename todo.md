@@ -877,3 +877,9 @@
 ## Change Requests (Round 54)
 - [x] Add Reports module card to ElevayHome page (module selection grid)
 - [x] Update Spain contract template: add "او من ينوب عنه (السيدة/ مادونا عادل مرجان واصف)" after first party representative line
+
+## Change Requests (Round 55)
+- [x] Financial Reports tab: change default date range to "All Time" so all records show by default
+- [x] Financial Reports tab: add "All Time" option to date range dropdown
+- [x] Financial Reports tab: fix query to always be enabled when "All Time" is selected (no date filter passed)
+- [x] Financial Reports tab: update empty state message for "All Time" mode
