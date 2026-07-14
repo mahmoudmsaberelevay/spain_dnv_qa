@@ -315,12 +315,19 @@ export default function AttestationReportsPage() {
                   {records.map((record: any) => (
                     <tr key={record.id} className="border-b hover:bg-muted/50 transition-colors">
                       <td className="py-3 px-4">
-                        {new Date(record.recordDate).toLocaleDateString("en-US", {
-                          weekday: "short",
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        {(() => {
+                          try {
+                            const date = new Date(record.recordDate);
+                            return isNaN(date.getTime()) ? "Invalid Date" : date.toLocaleDateString("en-US", {
+                              weekday: "short",
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            });
+                          } catch {
+                            return "Invalid Date";
+                          }
+                        })()}
                       </td>
                       <td className="py-3 px-4">
                         <div className="font-medium">{record.clientName}</div>
@@ -347,7 +354,13 @@ export default function AttestationReportsPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleDelete(record.id)}
+                            onClick={() => {
+                              if (!record.id) {
+                                console.error("Record ID is missing", record);
+                                return;
+                              }
+                              handleDelete(record.id);
+                            }}
                             className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
                           >
                             <Trash2 className="h-4 w-4" />
