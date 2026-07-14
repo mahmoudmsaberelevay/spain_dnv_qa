@@ -894,3 +894,6 @@
 
 ## Bug Fix (Round 58)
 - [x] Fix Reports route PageGuard missing pageKey prop — was passing undefined to canAccess() causing all non-owner users to get "Access Restricted" even with full permissions in DB
+
+## Bug Fix (Round 59)
+- [x] WhatsApp Control showing no messages/conversations — all users had waQc module access = "none" in DB, blocking all API calls with FORBIDDEN. Granted all users full access and changed default from "none" to "full" so new users get access automatically.

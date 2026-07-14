@@ -49,7 +49,7 @@ export const DEFAULT_MODULE_ACCESS: Record<ModuleName, AccessLevel> = {
   clientDocs: "full",
   appAnalysis: "none",
   financial: "none",
-  waQc: "none",
+  waQc: "full",
   reports: "full",
 };
 
