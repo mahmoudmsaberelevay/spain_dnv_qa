@@ -88,8 +88,8 @@ export default function VisasReportsPage() {
   );
 
   // Search for clients
-  const { data: clients = [] } = trpc.reports.visaFinancialClients.search.useQuery(
-    { searchTerm },
+  const { data: clients = [] } = trpc.reports.clientSearch.search.useQuery(
+    { query: searchTerm },
     { enabled: searchTerm.length > 0 }
   );
 
@@ -416,12 +416,12 @@ export default function VisasReportsPage() {
                     <button
                       key={client.id}
                       onClick={() => {
-                        setSelectedClient({ id: client.id, name: client.clientName, code: client.clientCode });
+                        setSelectedClient({ id: client.id, name: client.name, code: client.clientCode });
                         setSearchTerm("");
                       }}
                       className="w-full text-left px-3 py-2 hover:bg-muted transition-colors border-b last:border-b-0"
                     >
-                      <div className="font-medium">{client.clientName}</div>
+                      <div className="font-medium">{client.name}</div>
                       {client.clientCode && <div className="text-sm text-muted-foreground">{client.clientCode}</div>}
                     </button>
                   ))}

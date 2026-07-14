@@ -11,6 +11,7 @@ import { listParalegalClientRecords, getParalegalClientRecord, createParalegalCl
 import { listAttestationClientRecords, getAttestationClientRecord, createAttestationClientRecord, updateAttestationClientRecord, deleteAttestationClientRecord, listFinancialClientsForAttestation } from "../attestationDb";
 import { listVisaClientRecords, getVisaClientRecord, createVisaClientRecord, updateVisaClientRecord, deleteVisaClientRecord, listFinancialClientsForVisa } from "../visaDb";
 import { listFinancialSummaries, getFinancialSummary, createFinancialSummary, updateFinancialSummary, deleteFinancialSummary, convertCurrency } from "../financialDb";
+import { searchFinClientsForDropdown } from "../clientSearchHelper";
 
 // ─── Qualification Reports ────────────────────────────────────────────────────
 const qualificationReportsRouter = router({
@@ -608,6 +609,15 @@ const financialSummariesRouter = router({
     }),
 });
 
+// ─── Client Search Helper ─────────────────────────────────────────────────────
+const clientSearchRouter = router({
+  search: protectedProcedure
+    .input(z.object({ query: z.string().optional() }))
+    .query(async ({ input }) => {
+      return await searchFinClientsForDropdown(input.query);
+    }),
+});
+
 // ─── Main Reports Router ──────────────────────────────────────────────────────
 export const reportsRouter = router({
   qualifications: qualificationReportsRouter,
@@ -619,4 +629,5 @@ export const reportsRouter = router({
   attestationClients: attestationClientRecordsRouter,
   visaClients: visaClientRecordsRouter,
   financialSummaries: financialSummariesRouter,
+  clientSearch: clientSearchRouter,
 });
