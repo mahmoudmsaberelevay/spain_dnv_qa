@@ -17,7 +17,7 @@ export async function listAttestationClientRecords(opts?: { dateFrom?: Date; dat
   
   try {
     const result = await db.execute(query as any);
-    return result as any[];
+    return (result as any)[0] as any[];
   } catch (error) {
     console.error("Error fetching attestation records:", error);
     return [];
@@ -30,7 +30,8 @@ export async function getAttestationClientRecord(id: number) {
   const query = `SELECT * FROM attestationClientRecords WHERE id = ${id}`;
   try {
     const result = await db.execute(query as any);
-    return (result as any[])[0] || null;
+    const rows = (result as any)[0] as any[];
+    return rows[0] || null;
   } catch (error) {
     console.error("Error fetching attestation record:", error);
     return null;

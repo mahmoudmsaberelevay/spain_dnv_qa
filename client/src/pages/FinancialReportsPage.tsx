@@ -63,7 +63,7 @@ function getDateRange(range: DateRange): { from: Date; to: Date } | null {
 }
 
 export default function FinancialReportsPage() {
-  const [dateRange, setDateRange] = useState<DateRange>("last_month");
+  const [dateRange, setDateRange] = useState<DateRange>("today");
   const [customFrom, setCustomFrom] = useState<string>("");
   const [customTo, setCustomTo] = useState<string>("");
   const [showForm, setShowForm] = useState(false);
@@ -159,10 +159,7 @@ export default function FinancialReportsPage() {
     },
   });
 
-  const convertMutation = trpc.reports.financialMonthlySummary.convert.useQuery(
-    { amount: 1, from: currencyInput, to: "USD" },
-    { enabled: false }
-  );
+  // Currency conversion is handled client-side via the convertCurrency utility
 
   const handleSubmit = () => {
     if (!formData.summaryDate) {

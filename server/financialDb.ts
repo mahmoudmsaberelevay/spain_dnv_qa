@@ -54,7 +54,7 @@ export async function listFinancialSummaries(opts?: { dateFrom?: Date; dateTo?: 
   
   try {
     const result = await db.execute(query as any);
-    return result as any[];
+    return (result as any)[0] as any[];
   } catch (error) {
     console.error("Error fetching financial summaries:", error);
     return [];
@@ -67,7 +67,8 @@ export async function getFinancialSummary(id: number) {
   const query = `SELECT * FROM financialMonthlySummary WHERE id = ${id}`;
   try {
     const result = await db.execute(query as any);
-    return (result as any[])[0] || null;
+    const rows = (result as any)[0] as any[];
+    return rows[0] || null;
   } catch (error) {
     console.error("Error fetching financial summary:", error);
     return null;

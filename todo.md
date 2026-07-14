@@ -860,3 +860,16 @@
 - [x] Updated Paralegal, Attestation, and Visas tabs to use new client search
 - [x] Fixed field name references (clientName → name) to match database schema
 - [x] All tabs now properly sync with Financial module client database
+
+## Bug Fixes (Round 53)
+### Critical DB Helper Return Value Fixes
+- [x] Fix financialDb.ts listFinancialSummaries: return result[0] (rows array) instead of raw execute tuple
+- [x] Fix financialDb.ts getFinancialSummary: return rows[0] instead of tuple[0]
+- [x] Fix attestationDb.ts listAttestationClientRecords: return result[0] (rows array) instead of raw execute tuple
+- [x] Fix attestationDb.ts getAttestationClientRecord: return rows[0] instead of tuple[0]
+- [x] Fix visaDb.ts listVisaClientRecords: return result[0] (rows array) instead of raw execute tuple
+- [x] Fix visaDb.ts getVisaClientRecord: return rows[0] instead of tuple[0]
+- [x] Remove non-existent trpc.reports.financialMonthlySummary.convert.useQuery call from FinancialReportsPage
+- [x] Change Financial tab default date range from "last_month" to "today" for consistency
+- [x] Remove old reports-old.ts file that was causing TypeScript errors
+- [x] Add reportsDbFix.test.ts with 12 tests verifying proper row/id/date return values (all passing)
