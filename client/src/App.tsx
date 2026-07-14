@@ -73,6 +73,9 @@ import ProgramComparison from "./pages/marketing/ProgramComparison";
 import ProgramProposal from "./pages/marketing/ProgramProposal";
 import MarketingPlan from "./pages/marketing/MarketingPlan";
 
+// ─── Reports Module ─────────────────────────────────────────────────────────────
+import Reports from "./pages/Reports";
+
 // ─── WhatsApp Quality Control Module ─────────────────────────────────────────
 import WaQcDashboard from "./pages/waQc/WaQcDashboard";
 import WaQcChats from "./pages/waQc/WaQcChats";
@@ -306,6 +309,12 @@ function Router() {
       </Route>
       <Route path="/marketing/marketing-plan">
         <DashboardLayout><MarketingPlan /></DashboardLayout>
+      </Route>
+
+      <Route path="/reports">
+        <PageGuard>
+          <DashboardLayout><Reports /></DashboardLayout>
+        </PageGuard>
       </Route>
 
       <Route path="/access-denied">

@@ -1079,3 +1079,72 @@ export const marketingWeekMedia = mysqlTable("marketing_week_media", {
 });
 export type MarketingWeekMedia = typeof marketingWeekMedia.$inferSelect;
 export type InsertMarketingWeekMedia = typeof marketingWeekMedia.$inferInsert;
+
+
+// ─── Daily Reports Tables ─────────────────────────────────────────────────────
+export const dailyQualificationReports = mysqlTable("dailyQualificationReports", {
+  id: int("id").autoincrement().primaryKey(),
+  reportDate: date("reportDate").notNull(),
+  totalLeads: int("totalLeads").notNull().default(0),
+  totalQualified: int("totalQualified").notNull().default(0),
+  notQualified: int("notQualified").notNull().default(0),
+  noAnswer: int("noAnswer").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type DailyQualificationReport = typeof dailyQualificationReports.$inferSelect;
+export type InsertDailyQualificationReport = typeof dailyQualificationReports.$inferInsert;
+
+export const dailyParalegalReports = mysqlTable("dailyParalegalReports", {
+  id: int("id").autoincrement().primaryKey(),
+  reportDate: date("reportDate").notNull(),
+  documentsReceived: int("documentsReceived").notNull().default(0),
+  documentsReviewed: int("documentsReviewed").notNull().default(0),
+  issuesFound: int("issuesFound").notNull().default(0),
+  clientsContacted: int("clientsContacted").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type DailyParalegalReport = typeof dailyParalegalReports.$inferSelect;
+export type InsertDailyParalegalReport = typeof dailyParalegalReports.$inferInsert;
+
+export const dailyFinancialReports = mysqlTable("dailyFinancialReports", {
+  id: int("id").autoincrement().primaryKey(),
+  reportDate: date("reportDate").notNull(),
+  invoicesCreated: int("invoicesCreated").notNull().default(0),
+  invoiceAmount: decimal("invoiceAmount", { precision: 12, scale: 2 }).default("0"),
+  paymentsReceived: int("paymentsReceived").notNull().default(0),
+  paymentAmount: decimal("paymentAmount", { precision: 12, scale: 2 }).default("0"),
+  expensesRecorded: int("expensesRecorded").notNull().default(0),
+  expenseAmount: decimal("expenseAmount", { precision: 12, scale: 2 }).default("0"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type DailyFinancialReport = typeof dailyFinancialReports.$inferSelect;
+export type InsertDailyFinancialReport = typeof dailyFinancialReports.$inferInsert;
+
+export const dailyVisasReports = mysqlTable("dailyVisasReports", {
+  id: int("id").autoincrement().primaryKey(),
+  reportDate: date("reportDate").notNull(),
+  applicationsSubmitted: int("applicationsSubmitted").notNull().default(0),
+  applicationsApproved: int("applicationsApproved").notNull().default(0),
+  applicationsRejected: int("applicationsRejected").notNull().default(0),
+  visasIssued: int("visasIssued").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type DailyVisasReport = typeof dailyVisasReports.$inferSelect;
+export type InsertDailyVisasReport = typeof dailyVisasReports.$inferInsert;
+
+export const dailyAttestationReports = mysqlTable("dailyAttestationReports", {
+  id: int("id").autoincrement().primaryKey(),
+  reportDate: date("reportDate").notNull(),
+  documentsSubmitted: int("documentsSubmitted").notNull().default(0),
+  documentsAttested: int("documentsAttested").notNull().default(0),
+  attestationsPending: int("attestationsPending").notNull().default(0),
+  attestationsCompleted: int("attestationsCompleted").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type DailyAttestationReport = typeof dailyAttestationReports.$inferSelect;
+export type InsertDailyAttestationReport = typeof dailyAttestationReports.$inferInsert;

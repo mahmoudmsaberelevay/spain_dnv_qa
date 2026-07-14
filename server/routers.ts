@@ -43,6 +43,7 @@ import { permissionsRouter } from "./permissionsRouter";
 import { adminRouter } from "./routers/admin";
 import { waQcRouter } from "./waQcRouter";
 import { marketingRouter } from "./marketingRouter";
+import { reportsRouter } from "./routers/reports";
 
 const MOFA_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/mofa_stamp_a1afffba.png";
 const SPAIN_EMBASSY_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/spain_embassy_stamp_cf83213b.png";
@@ -2107,6 +2108,7 @@ export const appRouter = router({
   leads: leadsRouter,
   leadsSettings: leadsSettingsRouter,
   marketing: marketingRouter,
+  reports: reportsRouter,
   admin: adminRouter,
 });
 export type AppRouter = typeof appRouter;
