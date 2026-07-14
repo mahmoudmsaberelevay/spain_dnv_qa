@@ -38,10 +38,10 @@ import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-export type ModuleName = "contracting" | "clientDocs" | "appAnalysis" | "financial" | "waQc";
+export type ModuleName = "contracting" | "clientDocs" | "appAnalysis" | "financial" | "waQc" | "reports";
 export type AccessLevel = "none" | "viewer" | "full";
 
-export const ALL_MODULES: ModuleName[] = ["contracting", "clientDocs", "appAnalysis", "financial", "waQc"];
+export const ALL_MODULES: ModuleName[] = ["contracting", "clientDocs", "appAnalysis", "financial", "waQc", "reports"];
 
 // Default access for new / existing users
 export const DEFAULT_MODULE_ACCESS: Record<ModuleName, AccessLevel> = {
@@ -50,6 +50,7 @@ export const DEFAULT_MODULE_ACCESS: Record<ModuleName, AccessLevel> = {
   appAnalysis: "none",
   financial: "none",
   waQc: "none",
+  reports: "full",
 };
 
 // Maps module → page keys used by PageGuard
@@ -64,6 +65,7 @@ export const MODULE_PAGE_KEYS: Record<ModuleName, string[]> = {
     "fin_upcoming", "fin_salary_receipts", "fin_commission_receipts",
   ],
   waQc: ["wa_qc"],
+  reports: ["reports"],
 };
 
 // All page keys (for backward compat)
@@ -76,6 +78,7 @@ export const ALL_PAGE_KEYS = [
   "fin_commissions", "fin_clients", "fin_bulk_upload", "fin_settlement", "fin_upcoming",
   "fin_salary_receipts", "fin_commission_receipts",
   "wa_qc",
+  "reports",
   "settings", "chat", "broadcast",
 ] as const;
 export type PageKey = (typeof ALL_PAGE_KEYS)[number];
@@ -231,7 +234,7 @@ export const permissionsRouter = router({
   setModuleAccess: ownerProcedure
     .input(z.object({
       userId: z.number(),
-      module: z.enum(["contracting", "clientDocs", "appAnalysis", "financial", "waQc"]),
+      module: z.enum(["contracting", "clientDocs", "appAnalysis", "financial", "waQc", "reports"]),
       accessLevel: z.enum(["none", "viewer", "full"]),
     }))
     .mutation(async ({ input }) => {
@@ -292,6 +295,7 @@ export const permissionsRouter = router({
         appAnalysis: z.enum(["none", "viewer", "full"]),
         financial: z.enum(["none", "viewer", "full"]),
         waQc: z.enum(["none", "viewer", "full"]).optional(),
+        reports: z.enum(["none", "viewer", "full"]).optional(),
       }),
     }))
     .mutation(async ({ input }) => {

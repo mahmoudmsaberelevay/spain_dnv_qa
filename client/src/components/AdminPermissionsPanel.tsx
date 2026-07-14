@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
-type ModuleType = "contracting" | "clientDocs" | "appAnalysis" | "financial" | "marketing" | "leads" | "waQc";
+type ModuleType = "contracting" | "clientDocs" | "appAnalysis" | "financial" | "marketing" | "leads" | "waQc" | "reports";
 type AccessLevel = "none" | "level1" | "full";
 
 const MODULES: { id: ModuleType; label: string; description: string }[] = [
@@ -16,6 +16,7 @@ const MODULES: { id: ModuleType; label: string; description: string }[] = [
   { id: "clientDocs", label: "Client Documentation", description: "Track documents and submissions" },
   { id: "appAnalysis", label: "Application Analysis", description: "AI-powered visa application QA" },
   { id: "financial", label: "Financial", description: "Income, expenses, and accounting" },
+  { id: "reports", label: "Reports", description: "Financial, attestation, visa, and paralegal reports" },
   { id: "marketing", label: "Marketing", description: "Program summaries and content" },
   { id: "leads", label: "Leads", description: "Lead management and pipeline" },
   { id: "waQc", label: "WhatsApp QC", description: "WhatsApp message monitoring" },
@@ -31,6 +32,7 @@ export function AdminPermissionsPanel() {
     marketing: "none",
     leads: "none",
     waQc: "none",
+    reports: "none",
   });
   const [newPassword, setNewPassword] = useState<string>("");
   const [showPasswordReset, setShowPasswordReset] = useState<boolean>(false);
@@ -54,6 +56,7 @@ export function AdminPermissionsPanel() {
         marketing: "none",
         leads: "none",
         waQc: "none",
+        reports: "none",
       };
       currentPermissions.forEach((p) => {
         perms[p.module as ModuleType] = p.accessLevel as AccessLevel;

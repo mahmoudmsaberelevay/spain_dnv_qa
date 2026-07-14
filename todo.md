@@ -883,3 +883,8 @@
 - [x] Financial Reports tab: add "All Time" option to date range dropdown
 - [x] Financial Reports tab: fix query to always be enabled when "All Time" is selected (no date filter passed)
 - [x] Financial Reports tab: update empty state message for "All Time" mode
+
+## Change Requests (Round 56)
+- [x] Add Reports module to permissionsRouter.ts (ModuleName, ALL_MODULES, DEFAULT_MODULE_ACCESS=full, MODULE_PAGE_KEYS, ALL_PAGE_KEYS, setModuleAccess enum)
+- [x] Add Reports module to AdminPermissionsPanel.tsx UI (MODULES list, initial state, load state)
+- [x] Grant all 19 existing users full access to reports module via SQL (modulePermissions + userPermissions tables)
