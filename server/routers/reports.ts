@@ -9,6 +9,7 @@ import {
 } from "../reportsDb";
 import { listParalegalClientRecords, getParalegalClientRecord, createParalegalClientRecord, updateParalegalClientRecord, deleteParalegalClientRecord, listFinancialClients } from "../paralegalDb";
 import { listAttestationClientRecords, getAttestationClientRecord, createAttestationClientRecord, updateAttestationClientRecord, deleteAttestationClientRecord, listFinancialClientsForAttestation } from "../attestationDb";
+import { listVisaClientRecords, getVisaClientRecord, createVisaClientRecord, updateVisaClientRecord, deleteVisaClientRecord, listFinancialClientsForVisa } from "../visaDb";
 
 // ─── Qualification Reports ────────────────────────────────────────────────────
 const qualificationReportsRouter = router({
@@ -373,6 +374,65 @@ const attestationFinancialClientsRouter = router({
     }),
 });
 
+// ─── Visa Client Records Lookup ────────────────────────────────────────────────
+const visaClientRecordsRouter = router({
+  list: protectedProcedure
+    .input(z.object({
+      dateFrom: z.date().optional(),
+      dateTo: z.date().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      return await listVisaClientRecords(input);
+    }),
+
+  get: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      return await getVisaClientRecord(input.id);
+    }),
+
+  create: protectedProcedure
+    .input(z.object({
+      recordDate: z.date(),
+      finClientId: z.number().int(),
+      clientName: z.string().min(1),
+      clientCode: z.string().optional(),
+      visaType: z.enum(["Schengen", "National"]),
+      status: z.enum(["Submitted", "Finished"]),
+      provider: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      return await createVisaClientRecord(input);
+    }),
+
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      recordDate: z.date().optional(),
+      visaType: z.enum(["Schengen", "National"]).optional(),
+      status: z.enum(["Submitted", "Finished"]).optional(),
+      provider: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      return await updateVisaClientRecord(id, data);
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      return await deleteVisaClientRecord(input.id);
+    }),
+});
+
+const visaFinancialClientsRouter = router({
+  search: protectedProcedure
+    .input(z.object({ searchTerm: z.string().optional() }))
+    .query(async ({ input }) => {
+      return await listFinancialClientsForVisa(input.searchTerm);
+    }),
+});
+
 // ─── Main Reports Router ──────────────────────────────────────────────────────
 export const reportsRouter = router({
   qualifications: qualificationReportsRouter,
@@ -381,6 +441,8 @@ export const reportsRouter = router({
   financialClients: financialClientsRouter,
   attestationClients: attestationClientRecordsRouter,
   attestationFinancialClients: attestationFinancialClientsRouter,
+  visaClients: visaClientRecordsRouter,
+  visaFinancialClients: visaFinancialClientsRouter,
   financial: financialReportsRouter,
   visas: visasReportsRouter,
   attestation: attestationReportsRouter,

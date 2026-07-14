@@ -817,10 +817,18 @@
 - [x] Add tRPC procedures for attestation client records
 - [x] Add financial clients lookup procedure for attestation
 
-### Phase 5: Integration & Testing
+### Phase 5: Visas Tab Implementation
+- [x] Create visaClientRecords table with client references
+- [x] Build VisasReports component with client search and form
+- [x] Implement date filtering for visa records
+- [x] Implement PDF export for visa reports
+- [x] Add tRPC procedures for visa client records
+- [x] Add financial clients lookup procedure for visas
+
+### Phase 6: Integration & Testing
 - [x] Create Reports module shell with tab navigation
 - [x] Add Reports to main dashboard navigation
 - [x] Write comprehensive tests for all report types (62 tests, all passing)
 - [x] Verify PDF export works for all report types
 - [x] Fix test data isolation issues
-- [ ] Save checkpoint with all tabs complete
+- [ ] Save final checkpoint with all tabs complete

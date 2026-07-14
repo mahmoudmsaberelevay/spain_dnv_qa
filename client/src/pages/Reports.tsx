@@ -3,7 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import QualificationsReports from "./QualificationsReports";
 import ParalegalReportsPage from "./ParalegalReports";
 import FinancialReports from "./FinancialReports";
-import VisasReports from "./VisasReports";
+import VisasReportsPage from "./VisasReportsPage";
 import AttestationReportsPage from "./AttestationReportsPage";
 
 export default function Reports() {
@@ -38,7 +38,7 @@ export default function Reports() {
         </TabsContent>
 
         <TabsContent value="visas" className="mt-6">
-          <VisasReports />
+          <VisasReportsPage />
         </TabsContent>
 
         <TabsContent value="attestation" className="mt-6">
