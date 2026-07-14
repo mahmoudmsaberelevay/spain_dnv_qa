@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Plus, Download, Search } from "lucide-react";
+import { Plus, Download, Search, Edit2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
 
 type DateRange = "today" | "yesterday" | "this_week" | "last_week" | "last_month" | "last_year" | "custom";
 
@@ -68,6 +69,7 @@ export default function ParalegalReportsPage() {
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClient, setSelectedClient] = useState<{ id: number; name: string; code?: string } | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     recordDate: new Date().toISOString().split("T")[0],
     stage: "Submitted" as "Submitted" | "Approved",
@@ -107,20 +109,75 @@ export default function ParalegalReportsPage() {
     },
   });
 
+  const updateMutation = trpc.reports.paralegalClients.update.useMutation({
+    onSuccess: () => {
+      toast.success("Client record updated successfully");
+      setShowForm(false);
+      setEditingId(null);
+      setSelectedClient(null);
+      setFormData({
+        recordDate: new Date().toISOString().split("T")[0],
+        stage: "Submitted",
+        fileType: "Family",
+      });
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to update record");
+    },
+  });
+
+  const deleteMutation = trpc.reports.paralegalClients.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Client record deleted successfully");
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete record");
+    },
+  });
+
   const handleSubmit = () => {
-    if (!formData.recordDate || !selectedClient) {
-      toast.error("Please fill in all required fields");
+    if (!selectedClient) {
+      toast.error("Please select a client");
       return;
     }
 
-    createMutation.mutate({
+    const data = {
       recordDate: new Date(formData.recordDate),
       finClientId: selectedClient.id,
       clientName: selectedClient.name,
       clientCode: selectedClient.code,
       stage: formData.stage,
       fileType: formData.fileType,
+    };
+
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, ...data });
+    } else {
+      createMutation.mutate(data);
+    }
+  };
+
+  const handleEdit = (record: any) => {
+    setEditingId(record.id);
+    setFormData({
+      recordDate: new Date(record.recordDate).toISOString().split("T")[0],
+      stage: record.stage,
+      fileType: record.fileType,
     });
+    setSelectedClient({
+      id: record.finClientId,
+      name: record.clientName,
+      code: record.clientCode,
+    });
+    setShowForm(true);
+  };
+
+  const handleDelete = (id: number) => {
+    if (confirm("Are you sure you want to delete this record?")) {
+      deleteMutation.mutate({ id });
+    }
   };
 
   const handleExportPdf = () => {
@@ -129,34 +186,28 @@ export default function ParalegalReportsPage() {
       return;
     }
 
-    const jsPDFLib = (window as any).jsPDF;
-    if (!jsPDFLib) {
-      toast.error("PDF export not available");
-      return;
-    }
-    const doc = new jsPDFLib.jsPDF();
-
-    doc.text("Paralegal Client Records", 14, 10);
-    doc.text(`Date Range: ${range?.from?.toLocaleDateString() || ""} - ${range?.to?.toLocaleDateString() || ""}`, 14, 20);
-
-    let y = 30;
-    doc.setFontSize(10);
-    doc.text("Date", 14, y);
-    doc.text("Client Name", 50, y);
-    doc.text("Stage", 130, y);
-    doc.text("File Type", 170, y);
-    y += 10;
-
-    records.forEach((record) => {
-      const date = new Date(record.recordDate).toLocaleDateString();
-      doc.text(date, 14, y);
-      doc.text(record.clientName.substring(0, 30), 50, y);
-      doc.text(record.stage, 130, y);
-      doc.text(record.fileType, 170, y);
-      y += 10;
-    });
-
     try {
+      const doc = new jsPDF();
+      doc.text("Paralegal Client Records", 14, 10);
+      doc.text(`Date Range: ${range?.from?.toLocaleDateString() || ""} - ${range?.to?.toLocaleDateString() || ""}`, 14, 20);
+
+      let y = 30;
+      doc.setFontSize(9);
+      doc.text("Date", 14, y);
+      doc.text("Client Name", 50, y);
+      doc.text("Stage", 130, y);
+      doc.text("File Type", 170, y);
+      y += 10;
+
+      records.forEach((record: any) => {
+        const date = new Date(record.recordDate).toLocaleDateString();
+        doc.text(date, 14, y);
+        doc.text(record.clientName.substring(0, 30), 50, y);
+        doc.text(record.stage, 130, y);
+        doc.text(record.fileType, 170, y);
+        y += 10;
+      });
+
       doc.save("paralegal-report.pdf");
       toast.success("PDF exported successfully");
     } catch (error) {
@@ -217,7 +268,17 @@ export default function ParalegalReportsPage() {
           </Button>
           <Button
             size="sm"
-            onClick={() => setShowForm(true)}
+            onClick={() => {
+              setEditingId(null);
+              setSelectedClient(null);
+              setSearchTerm("");
+              setFormData({
+                recordDate: new Date().toISOString().split("T")[0],
+                stage: "Submitted",
+                fileType: "Family",
+              });
+              setShowForm(true);
+            }}
             className="gap-2"
           >
             <Plus className="h-4 w-4" />
@@ -245,31 +306,46 @@ export default function ParalegalReportsPage() {
                     <th className="text-left py-3 px-4 font-semibold">Client Name</th>
                     <th className="text-left py-3 px-4 font-semibold">Stage</th>
                     <th className="text-left py-3 px-4 font-semibold">File Type</th>
+                    <th className="text-center py-3 px-4 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map((record) => (
+                  {records.map((record: any) => (
                     <tr key={record.id} className="border-b hover:bg-muted/50 transition-colors">
                       <td className="py-3 px-4">
-                        {new Date(record.recordDate).toLocaleDateString("en-US", {
-                          weekday: "short",
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        {new Date(record.recordDate).toLocaleDateString()}
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="font-medium">{record.clientName}</div>
-                        {record.clientCode && <div className="text-sm text-muted-foreground">{record.clientCode}</div>}
-                      </td>
+                      <td className="py-3 px-4">{record.clientName}</td>
                       <td className="py-3 px-4">
                         <span className={`px-2 py-1 rounded text-sm font-medium ${
-                          record.stage === "Approved" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                          record.stage === "Approved"
+                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                            : "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
                         }`}>
                           {record.stage}
                         </span>
                       </td>
                       <td className="py-3 px-4">{record.fileType}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(record)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(record.id)}
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -283,7 +359,7 @@ export default function ParalegalReportsPage() {
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Enter New Client Stage</DialogTitle>
+            <DialogTitle>{editingId ? "Edit Client Stage" : "Enter New Client Stage"}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -367,8 +443,8 @@ export default function ParalegalReportsPage() {
             <Button variant="outline" onClick={() => setShowForm(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Creating..." : "Create Record"}
+            <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}>
+              {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingId ? "Update Record" : "Create Record"}
             </Button>
           </DialogFooter>
         </DialogContent>

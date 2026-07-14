@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Download, ArrowRightLeft } from "lucide-react";
+import { Plus, Download, ArrowRightLeft, Edit2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
 
 type DateRange = "today" | "yesterday" | "this_week" | "last_week" | "last_month" | "last_year" | "custom";
 
@@ -66,6 +67,7 @@ export default function FinancialReportsPage() {
   const [customFrom, setCustomFrom] = useState<string>("");
   const [customTo, setCustomTo] = useState<string>("");
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     summaryDate: new Date().toISOString().split("T")[0],
     totalSalesEgp: "",
@@ -97,6 +99,7 @@ export default function FinancialReportsPage() {
     onSuccess: () => {
       toast.success("Financial summary created successfully");
       setShowForm(false);
+      setEditingId(null);
       setFormData({
         summaryDate: new Date().toISOString().split("T")[0],
         totalSalesEgp: "",
@@ -116,6 +119,43 @@ export default function FinancialReportsPage() {
     },
     onError: (error) => {
       toast.error(error.message || "Failed to create summary");
+    },
+  });
+
+  const updateMutation = trpc.reports.financialMonthlySummary.update.useMutation({
+    onSuccess: () => {
+      toast.success("Financial summary updated successfully");
+      setShowForm(false);
+      setEditingId(null);
+      setFormData({
+        summaryDate: new Date().toISOString().split("T")[0],
+        totalSalesEgp: "",
+        totalIncomeEgp: "",
+        totalExpensesEgp: "",
+        salariesEgp: "",
+        commissionsEgp: "",
+        mofaEgp: "",
+        embassyEgp: "",
+        translationFeesEgp: "",
+        lawyerFeesEgp: "",
+        officeExpensesEgp: "",
+        officeRentEgp: "",
+        miscEgp: "",
+      });
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to update summary");
+    },
+  });
+
+  const deleteMutation = trpc.reports.financialMonthlySummary.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Financial summary deleted successfully");
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete summary");
     },
   });
 
@@ -148,7 +188,37 @@ export default function FinancialReportsPage() {
     if (formData.officeRentEgp) data.officeRentEgp = parseFloat(formData.officeRentEgp);
     if (formData.miscEgp) data.miscEgp = parseFloat(formData.miscEgp);
 
-    createMutation.mutate(data);
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, ...data });
+    } else {
+      createMutation.mutate(data);
+    }
+  };
+
+  const handleEdit = (record: any) => {
+    setEditingId(record.id);
+    setFormData({
+      summaryDate: new Date(record.summaryDate).toISOString().split("T")[0],
+      totalSalesEgp: record.totalSalesEgp?.toString() || "",
+      totalIncomeEgp: record.totalIncomeEgp?.toString() || "",
+      totalExpensesEgp: record.totalExpensesEgp?.toString() || "",
+      salariesEgp: record.salariesEgp?.toString() || "",
+      commissionsEgp: record.commissionsEgp?.toString() || "",
+      mofaEgp: record.mofaEgp?.toString() || "",
+      embassyEgp: record.embassyEgp?.toString() || "",
+      translationFeesEgp: record.translationFeesEgp?.toString() || "",
+      lawyerFeesEgp: record.lawyerFeesEgp?.toString() || "",
+      officeExpensesEgp: record.officeExpensesEgp?.toString() || "",
+      officeRentEgp: record.officeRentEgp?.toString() || "",
+      miscEgp: record.miscEgp?.toString() || "",
+    });
+    setShowForm(true);
+  };
+
+  const handleDelete = (id: number) => {
+    if (confirm("Are you sure you want to delete this summary?")) {
+      deleteMutation.mutate({ id });
+    }
   };
 
   const handleExportPdf = () => {
@@ -157,13 +227,8 @@ export default function FinancialReportsPage() {
       return;
     }
 
-    const jsPDFLib = (window as any).jsPDF;
-    if (!jsPDFLib) {
-      toast.error("PDF export not available");
-      return;
-    }
-
-    const doc = new jsPDFLib.jsPDF();
+    try {
+      const doc = new jsPDF();
     doc.text("Financial Monthly Summary Report", 14, 10);
     doc.text(`Date Range: ${range?.from?.toLocaleDateString() || ""} - ${range?.to?.toLocaleDateString() || ""}`, 14, 20);
 
@@ -206,7 +271,6 @@ export default function FinancialReportsPage() {
       y += 4;
     });
 
-    try {
       doc.save("financial-report.pdf");
       toast.success("PDF exported successfully");
     } catch (error) {
@@ -267,7 +331,25 @@ export default function FinancialReportsPage() {
           </Button>
           <Button
             size="sm"
-            onClick={() => setShowForm(true)}
+            onClick={() => {
+              setEditingId(null);
+              setFormData({
+                summaryDate: new Date().toISOString().split("T")[0],
+                totalSalesEgp: "",
+                totalIncomeEgp: "",
+                totalExpensesEgp: "",
+                salariesEgp: "",
+                commissionsEgp: "",
+                mofaEgp: "",
+                embassyEgp: "",
+                translationFeesEgp: "",
+                lawyerFeesEgp: "",
+                officeExpensesEgp: "",
+                officeRentEgp: "",
+                miscEgp: "",
+              });
+              setShowForm(true);
+            }}
             className="gap-2"
           >
             <Plus className="h-4 w-4" />
@@ -379,6 +461,32 @@ export default function FinancialReportsPage() {
                         <td className="text-right py-2 px-2">{record.miscUsd || 0}</td>
                         <td className="text-right py-2 px-2">{record.miscEur || 0}</td>
                       </tr>
+                      <tr className="border-b bg-gray-50 dark:bg-gray-900/20">
+                        <td className="py-2 px-2"></td>
+                        <td className="py-2 px-2"></td>
+                        <td className="py-2 px-2"></td>
+                        <td className="py-2 px-2"></td>
+                        <td className="py-2 px-2">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEdit(record)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete(record.id)}
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -392,7 +500,7 @@ export default function FinancialReportsPage() {
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Enter New Financial Summary</DialogTitle>
+            <DialogTitle>{editingId ? "Edit Financial Summary" : "Enter New Financial Summary"}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -552,8 +660,8 @@ export default function FinancialReportsPage() {
             <Button variant="outline" onClick={() => setShowForm(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Creating..." : "Create Summary"}
+            <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}>
+              {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingId ? "Update Summary" : "Create Summary"}
             </Button>
           </DialogFooter>
         </DialogContent>

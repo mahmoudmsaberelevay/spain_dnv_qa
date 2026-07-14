@@ -10,8 +10,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Plus, Download, Calendar } from "lucide-react";
+import { Plus, Download, Edit2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
 
 type DateRange = "today" | "yesterday" | "this_week" | "last_week" | "last_month" | "last_year" | "custom";
 
@@ -66,6 +67,7 @@ export default function QualificationsReports() {
   const [customFrom, setCustomFrom] = useState<string>("");
   const [customTo, setCustomTo] = useState<string>("");
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     reportDate: new Date().toISOString().split("T")[0],
     totalLeads: "",
@@ -85,8 +87,9 @@ export default function QualificationsReports() {
 
   const createMutation = trpc.reports.qualifications.create.useMutation({
     onSuccess: () => {
-      toast.success("Daily report created successfully");
+      toast.success(editingId ? "Report updated successfully" : "Report created successfully");
       setShowForm(false);
+      setEditingId(null);
       setFormData({
         reportDate: new Date().toISOString().split("T")[0],
         totalLeads: "",
@@ -97,7 +100,36 @@ export default function QualificationsReports() {
       refetch();
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to create report");
+      toast.error(error.message || "Failed to save report");
+    },
+  });
+
+  const updateMutation = trpc.reports.qualifications.update.useMutation({
+    onSuccess: () => {
+      toast.success("Report updated successfully");
+      setShowForm(false);
+      setEditingId(null);
+      setFormData({
+        reportDate: new Date().toISOString().split("T")[0],
+        totalLeads: "",
+        totalQualified: "",
+        notQualified: "",
+        noAnswer: "",
+      });
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to update report");
+    },
+  });
+
+  const deleteMutation = trpc.reports.qualifications.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Report deleted successfully");
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete report");
     },
   });
 
@@ -107,13 +139,37 @@ export default function QualificationsReports() {
       return;
     }
 
-    createMutation.mutate({
+    const data = {
       reportDate: new Date(formData.reportDate),
       totalLeads: parseInt(formData.totalLeads),
       totalQualified: parseInt(formData.totalQualified),
       notQualified: parseInt(formData.notQualified),
       noAnswer: parseInt(formData.noAnswer),
+    };
+
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, ...data });
+    } else {
+      createMutation.mutate(data);
+    }
+  };
+
+  const handleEdit = (report: any) => {
+    setEditingId(report.id);
+    setFormData({
+      reportDate: new Date(report.reportDate).toISOString().split("T")[0],
+      totalLeads: report.totalLeads.toString(),
+      totalQualified: report.totalQualified.toString(),
+      notQualified: report.notQualified.toString(),
+      noAnswer: report.noAnswer.toString(),
     });
+    setShowForm(true);
+  };
+
+  const handleDelete = (id: number) => {
+    if (confirm("Are you sure you want to delete this report?")) {
+      deleteMutation.mutate({ id });
+    }
   };
 
   const handleExportPdf = () => {
@@ -122,37 +178,31 @@ export default function QualificationsReports() {
       return;
     }
 
-    // Simple PDF generation using browser API
-    const jsPDFLib = (window as any).jsPDF;
-    if (!jsPDFLib) {
-      toast.error("PDF export not available");
-      return;
-    }
-    const doc = new jsPDFLib.jsPDF();
-
-    doc.text("Qualifications Daily Reports", 14, 10);
-    doc.text(`Date Range: ${range?.from?.toLocaleDateString() || ""} - ${range?.to?.toLocaleDateString() || ""}`, 14, 20);
-
-    let y = 30;
-    doc.setFontSize(10);
-    doc.text("Date", 14, y);
-    doc.text("Total Leads", 50, y);
-    doc.text("Qualified", 90, y);
-    doc.text("Not Qualified", 130, y);
-    doc.text("No Answer", 170, y);
-    y += 10;
-
-    reports.forEach((report) => {
-      const date = new Date(report.reportDate).toLocaleDateString();
-      doc.text(date, 14, y);
-      doc.text(report.totalLeads.toString(), 50, y);
-      doc.text(report.totalQualified.toString(), 90, y);
-      doc.text(report.notQualified.toString(), 130, y);
-      doc.text(report.noAnswer.toString(), 170, y);
-      y += 10;
-    });
-
     try {
+      const doc = new jsPDF();
+
+      doc.text("Qualifications Daily Reports", 14, 10);
+      doc.text(`Date Range: ${range?.from?.toLocaleDateString() || ""} - ${range?.to?.toLocaleDateString() || ""}`, 14, 20);
+
+      let y = 30;
+      doc.setFontSize(10);
+      doc.text("Date", 14, y);
+      doc.text("Total Leads", 50, y);
+      doc.text("Qualified", 90, y);
+      doc.text("Not Qualified", 130, y);
+      doc.text("No Answer", 170, y);
+      y += 10;
+
+      reports.forEach((report: any) => {
+        const date = new Date(report.reportDate).toLocaleDateString();
+        doc.text(date, 14, y);
+        doc.text(report.totalLeads.toString(), 50, y);
+        doc.text(report.totalQualified.toString(), 90, y);
+        doc.text(report.notQualified.toString(), 130, y);
+        doc.text(report.noAnswer.toString(), 170, y);
+        y += 10;
+      });
+
       doc.save("qualifications-report.pdf");
       toast.success("PDF exported successfully");
     } catch (error) {
@@ -213,11 +263,21 @@ export default function QualificationsReports() {
           </Button>
           <Button
             size="sm"
-            onClick={() => setShowForm(true)}
+            onClick={() => {
+              setEditingId(null);
+              setFormData({
+                reportDate: new Date().toISOString().split("T")[0],
+                totalLeads: "",
+                totalQualified: "",
+                notQualified: "",
+                noAnswer: "",
+              });
+              setShowForm(true);
+            }}
             className="gap-2"
           >
             <Plus className="h-4 w-4" />
-            Enter new Daily Report
+            Enter New Daily Report
           </Button>
         </div>
       </div>
@@ -242,10 +302,11 @@ export default function QualificationsReports() {
                     <th className="text-right py-3 px-4 font-semibold">Total Qualified</th>
                     <th className="text-right py-3 px-4 font-semibold">Not Qualified</th>
                     <th className="text-right py-3 px-4 font-semibold">No Answer</th>
+                    <th className="text-center py-3 px-4 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {reports.map((report) => (
+                  {reports.map((report: any) => (
                     <tr key={report.id} className="border-b hover:bg-muted/50 transition-colors">
                       <td className="py-3 px-4">
                         {new Date(report.reportDate).toLocaleDateString("en-US", {
@@ -259,6 +320,26 @@ export default function QualificationsReports() {
                       <td className="text-right py-3 px-4 text-green-600 font-medium">{report.totalQualified}</td>
                       <td className="text-right py-3 px-4 text-red-600 font-medium">{report.notQualified}</td>
                       <td className="text-right py-3 px-4 text-amber-600 font-medium">{report.noAnswer}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(report)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(report.id)}
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -272,7 +353,7 @@ export default function QualificationsReports() {
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Enter New Daily Report</DialogTitle>
+            <DialogTitle>{editingId ? "Edit Daily Report" : "Enter New Daily Report"}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -339,8 +420,8 @@ export default function QualificationsReports() {
             <Button variant="outline" onClick={() => setShowForm(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Creating..." : "Create Report"}
+            <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}>
+              {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingId ? "Update Report" : "Create Report"}
             </Button>
           </DialogFooter>
         </DialogContent>

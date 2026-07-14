@@ -10,8 +10,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Plus, Download, Search } from "lucide-react";
+import { Plus, Download, Search, Edit2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
 
 type DateRange = "today" | "yesterday" | "this_week" | "last_week" | "last_month" | "last_year" | "custom";
 
@@ -68,6 +69,7 @@ export default function AttestationReportsPage() {
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClient, setSelectedClient] = useState<{ id: number; name: string; code?: string } | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     recordDate: new Date().toISOString().split("T")[0],
     type: "Submitted" as "Submitted" | "Finished",
@@ -94,6 +96,7 @@ export default function AttestationReportsPage() {
     onSuccess: () => {
       toast.success("Attestation record created successfully");
       setShowForm(false);
+      setEditingId(null);
       setSelectedClient(null);
       setFormData({
         recordDate: new Date().toISOString().split("T")[0],
@@ -107,20 +110,75 @@ export default function AttestationReportsPage() {
     },
   });
 
+  const updateMutation = trpc.reports.attestationClients.update.useMutation({
+    onSuccess: () => {
+      toast.success("Attestation record updated successfully");
+      setShowForm(false);
+      setEditingId(null);
+      setSelectedClient(null);
+      setFormData({
+        recordDate: new Date().toISOString().split("T")[0],
+        type: "Submitted",
+        provider: "",
+      });
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to update record");
+    },
+  });
+
+  const deleteMutation = trpc.reports.attestationClients.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Attestation record deleted successfully");
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete record");
+    },
+  });
+
   const handleSubmit = () => {
     if (!formData.recordDate || !selectedClient || !formData.provider) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    createMutation.mutate({
+    const data = {
       recordDate: new Date(formData.recordDate),
       finClientId: selectedClient.id,
       clientName: selectedClient.name,
       clientCode: selectedClient.code,
       type: formData.type,
       provider: formData.provider,
+    };
+
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, ...data });
+    } else {
+      createMutation.mutate(data);
+    }
+  };
+
+  const handleEdit = (record: any) => {
+    setEditingId(record.id);
+    setFormData({
+      recordDate: new Date(record.recordDate).toISOString().split("T")[0],
+      type: record.type,
+      provider: record.provider,
     });
+    setSelectedClient({
+      id: record.finClientId,
+      name: record.clientName,
+      code: record.clientCode,
+    });
+    setShowForm(true);
+  };
+
+  const handleDelete = (id: number) => {
+    if (confirm("Are you sure you want to delete this record?")) {
+      deleteMutation.mutate({ id });
+    }
   };
 
   const handleExportPdf = () => {
@@ -129,12 +187,8 @@ export default function AttestationReportsPage() {
       return;
     }
 
-    const jsPDFLib = (window as any).jsPDF;
-    if (!jsPDFLib) {
-      toast.error("PDF export not available");
-      return;
-    }
-    const doc = new jsPDFLib.jsPDF();
+    try {
+      const doc = new jsPDF();
 
     doc.text("Attestation Client Records", 14, 10);
     doc.text(`Date Range: ${range?.from?.toLocaleDateString() || ""} - ${range?.to?.toLocaleDateString() || ""}`, 14, 20);
@@ -156,7 +210,6 @@ export default function AttestationReportsPage() {
       y += 10;
     });
 
-    try {
       doc.save("attestation-report.pdf");
       toast.success("PDF exported successfully");
     } catch (error) {
@@ -217,7 +270,17 @@ export default function AttestationReportsPage() {
           </Button>
           <Button
             size="sm"
-            onClick={() => setShowForm(true)}
+            onClick={() => {
+              setEditingId(null);
+              setSelectedClient(null);
+              setSearchTerm("");
+              setFormData({
+                recordDate: new Date().toISOString().split("T")[0],
+                type: "Submitted",
+                provider: "",
+              });
+              setShowForm(true);
+            }}
             className="gap-2"
           >
             <Plus className="h-4 w-4" />
@@ -245,6 +308,7 @@ export default function AttestationReportsPage() {
                     <th className="text-left py-3 px-4 font-semibold">Client Name</th>
                     <th className="text-left py-3 px-4 font-semibold">Type</th>
                     <th className="text-left py-3 px-4 font-semibold">Provider</th>
+                    <th className="text-center py-3 px-4 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -270,6 +334,26 @@ export default function AttestationReportsPage() {
                         </span>
                       </td>
                       <td className="py-3 px-4">{record.provider}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(record)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(record.id)}
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -283,7 +367,7 @@ export default function AttestationReportsPage() {
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Enter New Attestation Stage</DialogTitle>
+            <DialogTitle>{editingId ? "Edit Attestation Stage" : "Enter New Attestation Stage"}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -364,8 +448,8 @@ export default function AttestationReportsPage() {
             <Button variant="outline" onClick={() => setShowForm(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Creating..." : "Create Record"}
+            <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}>
+              {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingId ? "Update Record" : "Create Record"}
             </Button>
           </DialogFooter>
         </DialogContent>
