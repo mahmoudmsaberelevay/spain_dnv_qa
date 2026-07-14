@@ -1,4 +1,4 @@
-import { eq, gte, lte, and, desc, or, like } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import {
   dailyQualificationReports, dailyParalegalReports, dailyFinancialReports,
@@ -19,10 +19,10 @@ export async function listQualificationReports(opts?: { dateFrom?: Date; dateTo?
   return await query.orderBy(desc(dailyQualificationReports.reportDate));
 }
 
-export async function getQualificationReport(id: number) {
+export async function getQualificationReport(reportDate: Date) {
   const db = await getDb(); if (!db) return null;
   const result = await db.select().from(dailyQualificationReports)
-    .where(eq(dailyQualificationReports.id, id));
+    .where(eq(dailyQualificationReports.reportDate, reportDate));
   return result[0] || null;
 }
 
@@ -32,17 +32,17 @@ export async function createQualificationReport(data: InsertDailyQualificationRe
   return result;
 }
 
-export async function updateQualificationReport(id: number, data: Partial<InsertDailyQualificationReport>) {
+export async function updateQualificationReport(reportDate: Date, data: Partial<InsertDailyQualificationReport>) {
   const db = await getDb(); if (!db) return null;
   return await db.update(dailyQualificationReports)
     .set(data)
-    .where(eq(dailyQualificationReports.id, id));
+    .where(eq(dailyQualificationReports.reportDate, reportDate));
 }
 
-export async function deleteQualificationReport(id: number) {
+export async function deleteQualificationReport(reportDate: Date) {
   const db = await getDb(); if (!db) return null;
   return await db.delete(dailyQualificationReports)
-    .where(eq(dailyQualificationReports.id, id));
+    .where(eq(dailyQualificationReports.reportDate, reportDate));
 }
 
 // ─── Paralegal Reports ────────────────────────────────────────────────────────
@@ -57,10 +57,10 @@ export async function listParalegalReports(opts?: { dateFrom?: Date; dateTo?: Da
   return await query.orderBy(desc(dailyParalegalReports.reportDate));
 }
 
-export async function getParalegalReport(id: number) {
+export async function getParalegalReport(reportDate: Date) {
   const db = await getDb(); if (!db) return null;
   const result = await db.select().from(dailyParalegalReports)
-    .where(eq(dailyParalegalReports.id, id));
+    .where(eq(dailyParalegalReports.reportDate, reportDate));
   return result[0] || null;
 }
 
@@ -69,17 +69,17 @@ export async function createParalegalReport(data: InsertDailyParalegalReport) {
   return await db.insert(dailyParalegalReports).values(data);
 }
 
-export async function updateParalegalReport(id: number, data: Partial<InsertDailyParalegalReport>) {
+export async function updateParalegalReport(reportDate: Date, data: Partial<InsertDailyParalegalReport>) {
   const db = await getDb(); if (!db) return null;
   return await db.update(dailyParalegalReports)
     .set(data)
-    .where(eq(dailyParalegalReports.id, id));
+    .where(eq(dailyParalegalReports.reportDate, reportDate));
 }
 
-export async function deleteParalegalReport(id: number) {
+export async function deleteParalegalReport(reportDate: Date) {
   const db = await getDb(); if (!db) return null;
   return await db.delete(dailyParalegalReports)
-    .where(eq(dailyParalegalReports.id, id));
+    .where(eq(dailyParalegalReports.reportDate, reportDate));
 }
 
 // ─── Financial Reports ────────────────────────────────────────────────────────
@@ -94,10 +94,10 @@ export async function listFinancialReports(opts?: { dateFrom?: Date; dateTo?: Da
   return await query.orderBy(desc(dailyFinancialReports.reportDate));
 }
 
-export async function getFinancialReport(id: number) {
+export async function getFinancialReport(reportDate: Date) {
   const db = await getDb(); if (!db) return null;
   const result = await db.select().from(dailyFinancialReports)
-    .where(eq(dailyFinancialReports.id, id));
+    .where(eq(dailyFinancialReports.reportDate, reportDate));
   return result[0] || null;
 }
 
@@ -106,17 +106,17 @@ export async function createFinancialReport(data: InsertDailyFinancialReport) {
   return await db.insert(dailyFinancialReports).values(data);
 }
 
-export async function updateFinancialReport(id: number, data: Partial<InsertDailyFinancialReport>) {
+export async function updateFinancialReport(reportDate: Date, data: Partial<InsertDailyFinancialReport>) {
   const db = await getDb(); if (!db) return null;
   return await db.update(dailyFinancialReports)
     .set(data)
-    .where(eq(dailyFinancialReports.id, id));
+    .where(eq(dailyFinancialReports.reportDate, reportDate));
 }
 
-export async function deleteFinancialReport(id: number) {
+export async function deleteFinancialReport(reportDate: Date) {
   const db = await getDb(); if (!db) return null;
   return await db.delete(dailyFinancialReports)
-    .where(eq(dailyFinancialReports.id, id));
+    .where(eq(dailyFinancialReports.reportDate, reportDate));
 }
 
 // ─── Visas Reports ────────────────────────────────────────────────────────────
@@ -131,10 +131,10 @@ export async function listVisasReports(opts?: { dateFrom?: Date; dateTo?: Date }
   return await query.orderBy(desc(dailyVisasReports.reportDate));
 }
 
-export async function getVisasReport(id: number) {
+export async function getVisasReport(reportDate: Date) {
   const db = await getDb(); if (!db) return null;
   const result = await db.select().from(dailyVisasReports)
-    .where(eq(dailyVisasReports.id, id));
+    .where(eq(dailyVisasReports.reportDate, reportDate));
   return result[0] || null;
 }
 
@@ -143,17 +143,17 @@ export async function createVisasReport(data: InsertDailyVisasReport) {
   return await db.insert(dailyVisasReports).values(data);
 }
 
-export async function updateVisasReport(id: number, data: Partial<InsertDailyVisasReport>) {
+export async function updateVisasReport(reportDate: Date, data: Partial<InsertDailyVisasReport>) {
   const db = await getDb(); if (!db) return null;
   return await db.update(dailyVisasReports)
     .set(data)
-    .where(eq(dailyVisasReports.id, id));
+    .where(eq(dailyVisasReports.reportDate, reportDate));
 }
 
-export async function deleteVisasReport(id: number) {
+export async function deleteVisasReport(reportDate: Date) {
   const db = await getDb(); if (!db) return null;
   return await db.delete(dailyVisasReports)
-    .where(eq(dailyVisasReports.id, id));
+    .where(eq(dailyVisasReports.reportDate, reportDate));
 }
 
 // ─── Attestation Reports ──────────────────────────────────────────────────────
@@ -168,10 +168,10 @@ export async function listAttestationReports(opts?: { dateFrom?: Date; dateTo?: 
   return await query.orderBy(desc(dailyAttestationReports.reportDate));
 }
 
-export async function getAttestationReport(id: number) {
+export async function getAttestationReport(reportDate: Date) {
   const db = await getDb(); if (!db) return null;
   const result = await db.select().from(dailyAttestationReports)
-    .where(eq(dailyAttestationReports.id, id));
+    .where(eq(dailyAttestationReports.reportDate, reportDate));
   return result[0] || null;
 }
 
@@ -180,15 +180,15 @@ export async function createAttestationReport(data: InsertDailyAttestationReport
   return await db.insert(dailyAttestationReports).values(data);
 }
 
-export async function updateAttestationReport(id: number, data: Partial<InsertDailyAttestationReport>) {
+export async function updateAttestationReport(reportDate: Date, data: Partial<InsertDailyAttestationReport>) {
   const db = await getDb(); if (!db) return null;
   return await db.update(dailyAttestationReports)
     .set(data)
-    .where(eq(dailyAttestationReports.id, id));
+    .where(eq(dailyAttestationReports.reportDate, reportDate));
 }
 
-export async function deleteAttestationReport(id: number) {
+export async function deleteAttestationReport(reportDate: Date) {
   const db = await getDb(); if (!db) return null;
   return await db.delete(dailyAttestationReports)
-    .where(eq(dailyAttestationReports.id, id));
+    .where(eq(dailyAttestationReports.reportDate, reportDate));
 }

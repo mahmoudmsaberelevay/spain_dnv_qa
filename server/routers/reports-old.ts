@@ -1,4 +1,4 @@
-import z from "zod";
+import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import {
   listQualificationReports, getQualificationReport, createQualificationReport, updateQualificationReport, deleteQualificationReport,
@@ -24,9 +24,9 @@ const qualificationReportsRouter = router({
     }),
 
   get: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ reportDate: z.date() }))
     .query(async ({ input }) => {
-      return await getQualificationReport(input.id);
+      return await getQualificationReport(input.reportDate);
     }),
 
   create: protectedProcedure
@@ -43,22 +43,21 @@ const qualificationReportsRouter = router({
 
   update: protectedProcedure
     .input(z.object({
-      id: z.number(),
-      reportDate: z.date().optional(),
+      reportDate: z.date(),
       totalLeads: z.number().int().min(0).optional(),
       totalQualified: z.number().int().min(0).optional(),
       notQualified: z.number().int().min(0).optional(),
       noAnswer: z.number().int().min(0).optional(),
     }))
     .mutation(async ({ input }) => {
-      const { id, ...data } = input;
-      return await updateQualificationReport(id, data);
+      const { reportDate, ...data } = input;
+      return await updateQualificationReport(reportDate, data);
     }),
 
   delete: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ reportDate: z.date() }))
     .mutation(async ({ input }) => {
-      return await deleteQualificationReport(input.id);
+      return await deleteQualificationReport(input.reportDate);
     }),
 });
 
@@ -74,9 +73,9 @@ const paralegalReportsRouter = router({
     }),
 
   get: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ reportDate: z.date() }))
     .query(async ({ input }) => {
-      return await getParalegalReport(input.id);
+      return await getParalegalReport(input.reportDate);
     }),
 
   create: protectedProcedure
@@ -93,22 +92,21 @@ const paralegalReportsRouter = router({
 
   update: protectedProcedure
     .input(z.object({
-      id: z.number(),
-      reportDate: z.date().optional(),
+      reportDate: z.date(),
       documentsReceived: z.number().int().min(0).optional(),
       documentsReviewed: z.number().int().min(0).optional(),
       issuesFound: z.number().int().min(0).optional(),
       clientsContacted: z.number().int().min(0).optional(),
     }))
     .mutation(async ({ input }) => {
-      const { id, ...data } = input;
-      return await updateParalegalReport(id, data);
+      const { reportDate, ...data } = input;
+      return await updateParalegalReport(reportDate, data);
     }),
 
   delete: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ reportDate: z.date() }))
     .mutation(async ({ input }) => {
-      return await deleteParalegalReport(input.id);
+      return await deleteParalegalReport(input.reportDate);
     }),
 });
 
@@ -124,50 +122,20 @@ const financialReportsRouter = router({
     }),
 
   get: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ reportDate: z.date() }))
     .query(async ({ input }) => {
-      return await getFinancialReport(input.id);
+      return await getFinancialReport(input.reportDate);
     }),
 
   create: protectedProcedure
     .input(z.object({
       reportDate: z.date(),
-      totalSalesEgp: z.number().optional(),
-      totalSalesUsd: z.number().optional(),
-      totalSalesEur: z.number().optional(),
-      totalIncomeEgp: z.number().optional(),
-      totalIncomeUsd: z.number().optional(),
-      totalIncomeEur: z.number().optional(),
-      totalExpensesEgp: z.number().optional(),
-      totalExpensesUsd: z.number().optional(),
-      totalExpensesEur: z.number().optional(),
-      salariesEgp: z.number().optional(),
-      salariesUsd: z.number().optional(),
-      salariesEur: z.number().optional(),
-      commissionsEgp: z.number().optional(),
-      commissionsUsd: z.number().optional(),
-      commissionsEur: z.number().optional(),
-      mofaEgp: z.number().optional(),
-      mofaUsd: z.number().optional(),
-      mofaEur: z.number().optional(),
-      embassyEgp: z.number().optional(),
-      embassyUsd: z.number().optional(),
-      embassyEur: z.number().optional(),
-      translationFeesEgp: z.number().optional(),
-      translationFeesUsd: z.number().optional(),
-      translationFeesEur: z.number().optional(),
-      lawyerFeesEgp: z.number().optional(),
-      lawyerFeesUsd: z.number().optional(),
-      lawyerFeesEur: z.number().optional(),
-      officeExpensesEgp: z.number().optional(),
-      officeExpensesUsd: z.number().optional(),
-      officeExpensesEur: z.number().optional(),
-      officeRentEgp: z.number().optional(),
-      officeRentUsd: z.number().optional(),
-      officeRentEur: z.number().optional(),
-      miscEgp: z.number().optional(),
-      miscUsd: z.number().optional(),
-      miscEur: z.number().optional(),
+      invoicesCreated: z.number().int().min(0),
+      invoiceAmount: z.string().min(0),
+      paymentsReceived: z.number().int().min(0),
+      paymentAmount: z.string().min(0),
+      expensesRecorded: z.number().int().min(0),
+      expenseAmount: z.string().min(0),
     }))
     .mutation(async ({ input }) => {
       return await createFinancialReport(input);
@@ -175,54 +143,23 @@ const financialReportsRouter = router({
 
   update: protectedProcedure
     .input(z.object({
-      id: z.number(),
-      reportDate: z.date().optional(),
-      totalSalesEgp: z.number().optional(),
-      totalSalesUsd: z.number().optional(),
-      totalSalesEur: z.number().optional(),
-      totalIncomeEgp: z.number().optional(),
-      totalIncomeUsd: z.number().optional(),
-      totalIncomeEur: z.number().optional(),
-      totalExpensesEgp: z.number().optional(),
-      totalExpensesUsd: z.number().optional(),
-      totalExpensesEur: z.number().optional(),
-      salariesEgp: z.number().optional(),
-      salariesUsd: z.number().optional(),
-      salariesEur: z.number().optional(),
-      commissionsEgp: z.number().optional(),
-      commissionsUsd: z.number().optional(),
-      commissionsEur: z.number().optional(),
-      mofaEgp: z.number().optional(),
-      mofaUsd: z.number().optional(),
-      mofaEur: z.number().optional(),
-      embassyEgp: z.number().optional(),
-      embassyUsd: z.number().optional(),
-      embassyEur: z.number().optional(),
-      translationFeesEgp: z.number().optional(),
-      translationFeesUsd: z.number().optional(),
-      translationFeesEur: z.number().optional(),
-      lawyerFeesEgp: z.number().optional(),
-      lawyerFeesUsd: z.number().optional(),
-      lawyerFeesEur: z.number().optional(),
-      officeExpensesEgp: z.number().optional(),
-      officeExpensesUsd: z.number().optional(),
-      officeExpensesEur: z.number().optional(),
-      officeRentEgp: z.number().optional(),
-      officeRentUsd: z.number().optional(),
-      officeRentEur: z.number().optional(),
-      miscEgp: z.number().optional(),
-      miscUsd: z.number().optional(),
-      miscEur: z.number().optional(),
+      reportDate: z.date(),
+      invoicesCreated: z.number().int().min(0).optional(),
+      invoiceAmount: z.string().min(0).optional(),
+      paymentsReceived: z.number().int().min(0).optional(),
+      paymentAmount: z.string().min(0).optional(),
+      expensesRecorded: z.number().int().min(0).optional(),
+      expenseAmount: z.string().min(0).optional(),
     }))
     .mutation(async ({ input }) => {
-      const { id, ...data } = input;
-      return await updateFinancialReport(id, data);
+      const { reportDate, ...data } = input;
+      return await updateFinancialReport(reportDate, data);
     }),
 
   delete: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ reportDate: z.date() }))
     .mutation(async ({ input }) => {
-      return await deleteFinancialReport(input.id);
+      return await deleteFinancialReport(input.reportDate);
     }),
 });
 
@@ -238,17 +175,18 @@ const visasReportsRouter = router({
     }),
 
   get: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ reportDate: z.date() }))
     .query(async ({ input }) => {
-      return await getVisasReport(input.id);
+      return await getVisasReport(input.reportDate);
     }),
 
   create: protectedProcedure
     .input(z.object({
       reportDate: z.date(),
-      visaType: z.enum(["Schengen", "National"]),
-      status: z.enum(["Submitted", "Finished"]),
-      provider: z.string(),
+      applicationsSubmitted: z.number().int().min(0),
+      applicationsApproved: z.number().int().min(0),
+      applicationsRejected: z.number().int().min(0),
+      visasIssued: z.number().int().min(0),
     }))
     .mutation(async ({ input }) => {
       return await createVisasReport(input);
@@ -256,21 +194,21 @@ const visasReportsRouter = router({
 
   update: protectedProcedure
     .input(z.object({
-      id: z.number(),
-      reportDate: z.date().optional(),
-      visaType: z.enum(["Schengen", "National"]).optional(),
-      status: z.enum(["Submitted", "Finished"]).optional(),
-      provider: z.string().optional(),
+      reportDate: z.date(),
+      applicationsSubmitted: z.number().int().min(0).optional(),
+      applicationsApproved: z.number().int().min(0).optional(),
+      applicationsRejected: z.number().int().min(0).optional(),
+      visasIssued: z.number().int().min(0).optional(),
     }))
     .mutation(async ({ input }) => {
-      const { id, ...data } = input;
-      return await updateVisasReport(id, data);
+      const { reportDate, ...data } = input;
+      return await updateVisasReport(reportDate, data);
     }),
 
   delete: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ reportDate: z.date() }))
     .mutation(async ({ input }) => {
-      return await deleteVisasReport(input.id);
+      return await deleteVisasReport(input.reportDate);
     }),
 });
 
@@ -286,16 +224,18 @@ const attestationReportsRouter = router({
     }),
 
   get: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ reportDate: z.date() }))
     .query(async ({ input }) => {
-      return await getAttestationReport(input.id);
+      return await getAttestationReport(input.reportDate);
     }),
 
   create: protectedProcedure
     .input(z.object({
       reportDate: z.date(),
-      type: z.enum(["Submitted", "Finished"]),
-      provider: z.string(),
+      documentsSubmitted: z.number().int().min(0),
+      documentsAttested: z.number().int().min(0),
+      attestationsPending: z.number().int().min(0),
+      attestationsCompleted: z.number().int().min(0),
     }))
     .mutation(async ({ input }) => {
       return await createAttestationReport(input);
@@ -303,24 +243,25 @@ const attestationReportsRouter = router({
 
   update: protectedProcedure
     .input(z.object({
-      id: z.number(),
-      reportDate: z.date().optional(),
-      type: z.enum(["Submitted", "Finished"]).optional(),
-      provider: z.string().optional(),
+      reportDate: z.date(),
+      documentsSubmitted: z.number().int().min(0).optional(),
+      documentsAttested: z.number().int().min(0).optional(),
+      attestationsPending: z.number().int().min(0).optional(),
+      attestationsCompleted: z.number().int().min(0).optional(),
     }))
     .mutation(async ({ input }) => {
-      const { id, ...data } = input;
-      return await updateAttestationReport(id, data);
+      const { reportDate, ...data } = input;
+      return await updateAttestationReport(reportDate, data);
     }),
 
   delete: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ reportDate: z.date() }))
     .mutation(async ({ input }) => {
-      return await deleteAttestationReport(input.id);
+      return await deleteAttestationReport(input.reportDate);
     }),
 });
 
-// ─── Paralegal Client Records ─────────────────────────────────────────────────
+// ─── Paralegal Client Records Lookup ────────────────────────────────────────────
 const paralegalClientRecordsRouter = router({
   list: protectedProcedure
     .input(z.object({
@@ -339,8 +280,10 @@ const paralegalClientRecordsRouter = router({
 
   create: protectedProcedure
     .input(z.object({
-      reportDate: z.date(),
-      clientName: z.string(),
+      recordDate: z.date(),
+      finClientId: z.number().int(),
+      clientName: z.string().min(1),
+      clientCode: z.string().optional(),
       stage: z.enum(["Submitted", "Approved"]),
       fileType: z.enum(["Family", "Single"]),
     }))
@@ -351,8 +294,7 @@ const paralegalClientRecordsRouter = router({
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
-      reportDate: z.date().optional(),
-      clientName: z.string().optional(),
+      recordDate: z.date().optional(),
       stage: z.enum(["Submitted", "Approved"]).optional(),
       fileType: z.enum(["Family", "Single"]).optional(),
     }))
@@ -366,15 +308,17 @@ const paralegalClientRecordsRouter = router({
     .mutation(async ({ input }) => {
       return await deleteParalegalClientRecord(input.id);
     }),
+});
 
-  searchClients: protectedProcedure
-    .input(z.object({ query: z.string().optional() }))
+const financialClientsRouter = router({
+  search: protectedProcedure
+    .input(z.object({ searchTerm: z.string().optional() }))
     .query(async ({ input }) => {
-      return await listFinancialClients(input.query);
+      return await listFinancialClients(input.searchTerm);
     }),
 });
 
-// ─── Attestation Client Records ───────────────────────────────────────────────
+// ─── Attestation Client Records Lookup ──────────────────────────────────────
 const attestationClientRecordsRouter = router({
   list: protectedProcedure
     .input(z.object({
@@ -393,10 +337,12 @@ const attestationClientRecordsRouter = router({
 
   create: protectedProcedure
     .input(z.object({
-      reportDate: z.date(),
-      clientName: z.string(),
+      recordDate: z.date(),
+      finClientId: z.number().int(),
+      clientName: z.string().min(1),
+      clientCode: z.string().optional(),
       type: z.enum(["Submitted", "Finished"]),
-      provider: z.string(),
+      provider: z.string().min(1),
     }))
     .mutation(async ({ input }) => {
       return await createAttestationClientRecord(input);
@@ -405,8 +351,7 @@ const attestationClientRecordsRouter = router({
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
-      reportDate: z.date().optional(),
-      clientName: z.string().optional(),
+      recordDate: z.date().optional(),
       type: z.enum(["Submitted", "Finished"]).optional(),
       provider: z.string().optional(),
     }))
@@ -420,15 +365,17 @@ const attestationClientRecordsRouter = router({
     .mutation(async ({ input }) => {
       return await deleteAttestationClientRecord(input.id);
     }),
+});
 
-  searchClients: protectedProcedure
-    .input(z.object({ query: z.string().optional() }))
+const attestationFinancialClientsRouter = router({
+  search: protectedProcedure
+    .input(z.object({ searchTerm: z.string().optional() }))
     .query(async ({ input }) => {
-      return await listFinancialClientsForAttestation(input.query);
+      return await listFinancialClientsForAttestation(input.searchTerm);
     }),
 });
 
-// ─── Visa Client Records ──────────────────────────────────────────────────────
+// ─── Visa Client Records Lookup ────────────────────────────────────────────────
 const visaClientRecordsRouter = router({
   list: protectedProcedure
     .input(z.object({
@@ -447,11 +394,13 @@ const visaClientRecordsRouter = router({
 
   create: protectedProcedure
     .input(z.object({
-      reportDate: z.date(),
-      clientName: z.string(),
+      recordDate: z.date(),
+      finClientId: z.number().int(),
+      clientName: z.string().min(1),
+      clientCode: z.string().optional(),
       visaType: z.enum(["Schengen", "National"]),
       status: z.enum(["Submitted", "Finished"]),
-      provider: z.string(),
+      provider: z.string().min(1),
     }))
     .mutation(async ({ input }) => {
       return await createVisaClientRecord(input);
@@ -460,8 +409,7 @@ const visaClientRecordsRouter = router({
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
-      reportDate: z.date().optional(),
-      clientName: z.string().optional(),
+      recordDate: z.date().optional(),
       visaType: z.enum(["Schengen", "National"]).optional(),
       status: z.enum(["Submitted", "Finished"]).optional(),
       provider: z.string().optional(),
@@ -476,16 +424,18 @@ const visaClientRecordsRouter = router({
     .mutation(async ({ input }) => {
       return await deleteVisaClientRecord(input.id);
     }),
+});
 
-  searchClients: protectedProcedure
-    .input(z.object({ query: z.string().optional() }))
+const visaFinancialClientsRouter = router({
+  search: protectedProcedure
+    .input(z.object({ searchTerm: z.string().optional() }))
     .query(async ({ input }) => {
-      return await listFinancialClientsForVisa(input.query);
+      return await listFinancialClientsForVisa(input.searchTerm);
     }),
 });
 
-// ─── Financial Monthly Summaries ──────────────────────────────────────────────
-const financialSummariesRouter = router({
+// ─── Financial Monthly Summary ──────────────────────────────────────────────────
+const financialMonthlySummaryRouter = router({
   list: protectedProcedure
     .input(z.object({
       dateFrom: z.date().optional(),
@@ -503,7 +453,7 @@ const financialSummariesRouter = router({
 
   create: protectedProcedure
     .input(z.object({
-      reportDate: z.date(),
+      summaryDate: z.date(),
       totalSalesEgp: z.number().optional(),
       totalSalesUsd: z.number().optional(),
       totalSalesEur: z.number().optional(),
@@ -548,7 +498,6 @@ const financialSummariesRouter = router({
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
-      reportDate: z.date().optional(),
       totalSalesEgp: z.number().optional(),
       totalSalesUsd: z.number().optional(),
       totalSalesEur: z.number().optional(),
@@ -597,14 +546,14 @@ const financialSummariesRouter = router({
       return await deleteFinancialSummary(input.id);
     }),
 
-  convertCurrency: protectedProcedure
+  convert: protectedProcedure
     .input(z.object({
       amount: z.number(),
-      fromCurrency: z.enum(["EGP", "USD", "EUR"]),
-      toCurrency: z.enum(["EGP", "USD", "EUR"]),
+      from: z.enum(["EGP", "USD", "EUR"]),
+      to: z.enum(["EGP", "USD", "EUR"]),
     }))
     .query(async ({ input }) => {
-      return await convertCurrency(input.amount, input.fromCurrency, input.toCurrency);
+      return convertCurrency(input.amount, input.from, input.to);
     }),
 });
 
@@ -612,11 +561,14 @@ const financialSummariesRouter = router({
 export const reportsRouter = router({
   qualifications: qualificationReportsRouter,
   paralegal: paralegalReportsRouter,
+  paralegalClients: paralegalClientRecordsRouter,
+  financialClients: financialClientsRouter,
+  attestationClients: attestationClientRecordsRouter,
+  attestationFinancialClients: attestationFinancialClientsRouter,
+  visaClients: visaClientRecordsRouter,
+  visaFinancialClients: visaFinancialClientsRouter,
+  financialMonthlySummary: financialMonthlySummaryRouter,
   financial: financialReportsRouter,
   visas: visasReportsRouter,
   attestation: attestationReportsRouter,
-  paralegalClients: paralegalClientRecordsRouter,
-  attestationClients: attestationClientRecordsRouter,
-  visaClients: visaClientRecordsRouter,
-  financialSummaries: financialSummariesRouter,
 });
