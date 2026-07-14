@@ -888,3 +888,6 @@
 - [x] Add Reports module to permissionsRouter.ts (ModuleName, ALL_MODULES, DEFAULT_MODULE_ACCESS=full, MODULE_PAGE_KEYS, ALL_PAGE_KEYS, setModuleAccess enum)
 - [x] Add Reports module to AdminPermissionsPanel.tsx UI (MODULES list, initial state, load state)
 - [x] Grant all 19 existing users full access to reports module via SQL (modulePermissions + userPermissions tables)
+
+## Bug Fix (Round 57)
+- [x] Remove UNIQUE constraint on summaryDate in financialMonthlySummary table — was silently blocking second report entries on the same date
