@@ -876,3 +876,4 @@
 
 ## Change Requests (Round 54)
 - [x] Add Reports module card to ElevayHome page (module selection grid)
+- [x] Update Spain contract template: add "او من ينوب عنه (السيدة/ مادونا عادل مرجان واصف)" after first party representative line

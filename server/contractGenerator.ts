@@ -169,7 +169,8 @@ const TEMPLATE_REGISTRY: Record<string, { url?: string; storageKey?: string; lab
   spain: {
     // Modified Spain Nomad contract template with {{FAMILY_MEMBERS}} and {{CONTRACT_VALUE}} placeholders
     // These placeholders are replaced dynamically based on actual family count and calculated fees
-    url: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663524211981/AWnGEkcIuIsVbCku.docx",
+    // Updated: added "او من ينوب عنه (السيدة/ مادونا عادل مرجان واصف)" after first party representative line
+    url: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663524211981/RybaXAffROyxLEPs.docx",
     label: "Spain Digital Nomad Visa",
   },
   egypt: {
