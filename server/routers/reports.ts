@@ -82,34 +82,34 @@ const paralegalReportsRouter = router({
 
   create: protectedProcedure
     .input(z.object({
-      reportDate: z.date(),
-      documentsReceived: z.number().int().min(0),
-      documentsReviewed: z.number().int().min(0),
-      issuesFound: z.number().int().min(0),
-      clientsContacted: z.number().int().min(0),
+      recordDate: z.date(),
+      finClientId: z.number(),
+      clientName: z.string(),
+      stage: z.enum(["Submitted", "Approved"]),
+      fileType: z.enum(["Family", "Single"]),
     }))
     .mutation(async ({ input }) => {
-      return await createParalegalReport(input);
+      return await createParalegalClientRecord(input);
     }),
 
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
-      reportDate: z.date().optional(),
-      documentsReceived: z.number().int().min(0).optional(),
-      documentsReviewed: z.number().int().min(0).optional(),
-      issuesFound: z.number().int().min(0).optional(),
-      clientsContacted: z.number().int().min(0).optional(),
+      recordDate: z.date().optional(),
+      finClientId: z.number().optional(),
+      clientName: z.string().optional(),
+      stage: z.enum(["Submitted", "Approved"]).optional(),
+      fileType: z.enum(["Family", "Single"]).optional(),
     }))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
-      return await updateParalegalReport(id, data);
+      return await updateParalegalClientRecord(id, data);
     }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
-      return await deleteParalegalReport(input.id);
+      return await deleteParalegalClientRecord(input.id);
     }),
 });
 
@@ -246,32 +246,36 @@ const visasReportsRouter = router({
 
   create: protectedProcedure
     .input(z.object({
-      reportDate: z.date(),
+      recordDate: z.date(),
+      finClientId: z.number(),
+      clientName: z.string(),
       visaType: z.enum(["Schengen", "National"]),
       status: z.enum(["Submitted", "Finished"]),
       provider: z.string(),
     }))
     .mutation(async ({ input }) => {
-      return await createVisasReport(input);
+      return await createVisaClientRecord(input);
     }),
 
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
-      reportDate: z.date().optional(),
+      recordDate: z.date().optional(),
+      finClientId: z.number().optional(),
+      clientName: z.string().optional(),
       visaType: z.enum(["Schengen", "National"]).optional(),
       status: z.enum(["Submitted", "Finished"]).optional(),
       provider: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
-      return await updateVisasReport(id, data);
+      return await updateVisaClientRecord(id, data);
     }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
-      return await deleteVisasReport(input.id);
+      return await deleteVisaClientRecord(input.id);
     }),
 });
 
