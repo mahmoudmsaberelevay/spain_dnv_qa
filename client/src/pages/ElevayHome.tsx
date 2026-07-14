@@ -108,6 +108,17 @@ const BASE_MODULE_CARDS = [
     glow: "shadow-purple-500/20",
     pageKey: null, // always visible
   },
+  {
+    id: "reports",
+    label: "Reports",
+    description: "Financial, attestation, visa, and paralegal reports",
+    path: "/reports",
+    icon: BarChart3,
+    gradient: "from-cyan-600 to-cyan-800",
+    iconBg: "bg-cyan-500/30",
+    glow: "shadow-cyan-500/20",
+    pageKey: null, // always visible
+  },
 ];
 
 // ─── Alert Widget ─────────────────────────────────────────────────────────────

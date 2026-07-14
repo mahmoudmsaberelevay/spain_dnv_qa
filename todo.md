@@ -873,3 +873,6 @@
 - [x] Change Financial tab default date range from "last_month" to "today" for consistency
 - [x] Remove old reports-old.ts file that was causing TypeScript errors
 - [x] Add reportsDbFix.test.ts with 12 tests verifying proper row/id/date return values (all passing)
+
+## Change Requests (Round 54)
+- [x] Add Reports module card to ElevayHome page (module selection grid)
