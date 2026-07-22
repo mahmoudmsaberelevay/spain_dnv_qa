@@ -910,3 +910,9 @@
 - [x] Frontend: stageMatrix parsing fixed to use new fromStage/toStage fields from backend (was using old regex)
 - [x] Frontend: STAGE_LABELS updated to include resubmit
 - [x] Frontend: TODAY_ACTIVITY_LABELS constant added with emoji/color per activity type
+
+## Feature Update (Round 62)
+- [x] Update Marketing Plan Generator with new ELEVAY Marketing Guidelines PDF:
+  - [x] marketingTemplates.ts: Updated all 17 staticImagePrompt strings — removed navy (#1A3A5C), gold (#C9A84C), old teal (#5BA3B8); replaced with baby blue (#B3CFD4), sage (#CCDBD5), deep teal (#809CA1); changed layout from "banner at bottom" to editorial/floating/diagonal-cut layouts; removed Arabic text from image prompts
+  - [x] marketingRouter.ts: Updated staticPrompt builder (line 458) with new brand colors and editorial layout rules
+  - [x] marketingRouter.ts: Updated LLM JSON schema (lines 705-709) — all 5 post manusImagePrompt templates now use new palette, English-only text in images, no gold, no dark navy, creative editorial layouts
