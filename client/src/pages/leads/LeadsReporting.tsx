@@ -154,7 +154,7 @@ export default function LeadsReporting() {
   const activityTypesFilter = selectedActivityTypes.length > 0 ? selectedActivityTypes : undefined;
 
   // Queries
-  const { data: usersData } = trpc.admin.listUsers.useQuery();
+  const { data: usersData } = trpc.admin.getAllUsers.useQuery();
   const usersList: any[] = (usersData as any) ?? [];
 
   const newLeadsQ = trpc.leads.reporting.newLeads.useQuery(

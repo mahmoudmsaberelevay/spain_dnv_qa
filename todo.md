@@ -897,3 +897,6 @@
 
 ## Bug Fix (Round 59)
 - [x] WhatsApp Control showing no messages/conversations — all users had waQc module access = "none" in DB, blocking all API calls with FORBIDDEN. Granted all users full access and changed default from "none" to "full" so new users get access automatically.
+
+## Bug Fix (Round 60)
+- [x] Leads Report Team Activity showing "User #ID" instead of names — wrong procedure name `trpc.admin.listUsers` (doesn't exist), fixed to `trpc.admin.getAllUsers`
