@@ -900,3 +900,13 @@
 
 ## Bug Fix (Round 60)
 - [x] Leads Report Team Activity showing "User #ID" instead of names — wrong procedure name `trpc.admin.listUsers` (doesn't exist), fixed to `trpc.admin.getAllUsers`
+
+## Feature Requests (Round 61)
+- [x] Leads Reports: Add "Stage Changed From" and "Stage Changed To" filter dropdowns to Stage Changes tab (with "All" option for each)
+- [x] Leads Reports: Add "Today Activity" tab showing: (a) count of leads with each activity type today (call, whatsapp, sms, email, meeting, note, status update), (b) today's stage changes breakdown by from→to pair with lead counts
+- [x] Backend: getTodayActivityReport() function in leadsDb.ts — counts distinct leads per activity type today, aggregates stage change pairs
+- [x] Backend: getStageChangeReport() updated to accept fromStage/toStage filters and return parsed fromStage/toStage fields
+- [x] Backend: todayActivity procedure added to leads.reporting router
+- [x] Frontend: stageMatrix parsing fixed to use new fromStage/toStage fields from backend (was using old regex)
+- [x] Frontend: STAGE_LABELS updated to include resubmit
+- [x] Frontend: TODAY_ACTIVITY_LABELS constant added with emoji/color per activity type

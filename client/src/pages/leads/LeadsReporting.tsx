@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { BarChart3, Users, TrendingUp, ArrowRightLeft, Download, RefreshCw, Filter, Save, Trash2, ChevronDown } from "lucide-react";
+import { BarChart3, Users, TrendingUp, ArrowRightLeft, Download, RefreshCw, Filter, Save, Trash2, ChevronDown, CalendarDays } from "lucide-react";
 
 // ─── Date range helpers ───────────────────────────────────────────────────────
 
@@ -90,11 +90,22 @@ const STAGE_LABELS: Record<string, string> = {
   prospect: "Prospect",
   client: "Client",
   dormant: "Dormant",
+  resubmit: "Resubmit",
   not_qualified_budget: "NQ — Budget",
   not_qualified_work: "NQ — Work",
   not_qualified_study: "NQ — Study",
   not_qualified_criminal: "NQ — Criminal",
   not_qualified_other: "NQ — Other",
+};
+
+const TODAY_ACTIVITY_LABELS: Record<string, { label: string; emoji: string; color: string }> = {
+  call: { label: "Calls", emoji: "📞", color: "bg-blue-50 border-blue-200 text-blue-700" },
+  whatsapp: { label: "WhatsApp", emoji: "💬", color: "bg-green-50 border-green-200 text-green-700" },
+  sms: { label: "SMS", emoji: "📱", color: "bg-purple-50 border-purple-200 text-purple-700" },
+  email: { label: "Email", emoji: "📧", color: "bg-amber-50 border-amber-200 text-amber-700" },
+  meeting: { label: "Meetings", emoji: "🤝", color: "bg-cyan-50 border-cyan-200 text-cyan-700" },
+  note_added: { label: "Notes", emoji: "📝", color: "bg-gray-50 border-gray-200 text-gray-700" },
+  stage_changed: { label: "Status Updates", emoji: "🔄", color: "bg-rose-50 border-rose-200 text-rose-700" },
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -104,7 +115,9 @@ export default function LeadsReporting() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState<"activity" | "newLeads" | "stageChanges">("newLeads");
+  const [activeTab, setActiveTab] = useState<"activity" | "newLeads" | "stageChanges" | "todayActivity">("newLeads");
+  const [fromStageFilter, setFromStageFilter] = useState<string>("all");
+  const [toStageFilter, setToStageFilter] = useState<string>("all");
   const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
   const [savePresetName, setSavePresetName] = useState("");
   const [showSavePreset, setShowSavePreset] = useState(false);
@@ -162,23 +175,26 @@ export default function LeadsReporting() {
     { enabled: activeTab === "newLeads" }
   );
   const stageChangesQ = trpc.leads.reporting.stageChanges.useQuery(
-    { dateFrom, dateTo, userId },
+    { dateFrom, dateTo, userId, fromStage: fromStageFilter !== "all" ? fromStageFilter : undefined, toStage: toStageFilter !== "all" ? toStageFilter : undefined },
     { enabled: activeTab === "stageChanges" }
+  );
+  const todayActivityQ = trpc.leads.reporting.todayActivity.useQuery(
+    undefined,
+    { enabled: activeTab === "todayActivity" }
   );
   const userActivityQ = trpc.leads.reporting.userActivity.useQuery(
     { dateFrom, dateTo, userId, activityTypes: activityTypesFilter },
     { enabled: activeTab === "activity" }
   );
 
-  // Stage change parsing — description format: "Stage changed: Fresh → Contacted"
+  // Stage change data — backend now returns fromStage/toStage parsed fields
   const stageChanges: any[] = (stageChangesQ.data as any) ?? [];
   const stageMatrix = useMemo(() => {
     const matrix: Record<string, Record<string, number>> = {};
     for (const row of stageChanges) {
-      const match = (row.description ?? "").match(/Stage changed:\s*(.+?)\s*→\s*(.+)/i);
-      if (match) {
-        const from = match[1].trim().toLowerCase().replace(/\s+/g, "_");
-        const to = match[2].trim().toLowerCase().replace(/\s+/g, "_");
+      const from = row.fromStage ?? null;
+      const to = row.toStage ?? null;
+      if (from && to) {
         if (!matrix[from]) matrix[from] = {};
         matrix[from][to] = (matrix[from][to] ?? 0) + 1;
       }
@@ -186,7 +202,11 @@ export default function LeadsReporting() {
     return matrix;
   }, [stageChanges]);
 
-  const stageFromKeys = Object.keys(stageMatrix);
+  const stageFromKeys = useMemo(() => {
+    const allStages = new Set<string>();
+    stageChanges.forEach(r => { if (r.fromStage) allStages.add(r.fromStage); if (r.toStage) allStages.add(r.toStage); });
+    return Array.from(allStages).sort();
+  }, [stageChanges]);
 
   // User activity data
   const activityData = userActivityQ.data as any;
@@ -327,6 +347,40 @@ export default function LeadsReporting() {
           </Select>
         </div>
 
+        {/* From/To Stage filters (shown on Stage Changes tab) */}
+        {activeTab === "stageChanges" && (
+          <>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground font-medium">Changed From</span>
+              <Select value={fromStageFilter} onValueChange={setFromStageFilter}>
+                <SelectTrigger className="w-44 h-9">
+                  <SelectValue placeholder="All stages" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All stages</SelectItem>
+                  {["fresh","contacted","qualified","prospect","client","dormant","resubmit","not_qualified_budget","not_qualified_work","not_qualified_study","not_qualified_criminal","not_qualified_other"].map(s => (
+                    <SelectItem key={s} value={s}>{STAGE_LABELS[s] ?? s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground font-medium">Changed To</span>
+              <Select value={toStageFilter} onValueChange={setToStageFilter}>
+                <SelectTrigger className="w-44 h-9">
+                  <SelectValue placeholder="All stages" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All stages</SelectItem>
+                  {["fresh","contacted","qualified","prospect","client","dormant","resubmit","not_qualified_budget","not_qualified_work","not_qualified_study","not_qualified_criminal","not_qualified_other"].map(s => (
+                    <SelectItem key={s} value={s}>{STAGE_LABELS[s] ?? s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        )}
+
         {/* Activity type multi-select (shown on Team Activity tab) */}
         {activeTab === "activity" && (
           <div className="flex flex-col gap-1">
@@ -421,8 +475,9 @@ export default function LeadsReporting() {
       </div>
 
       {/* Tab buttons */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         {[
+          { key: "todayActivity", label: "Today Activity", icon: CalendarDays },
           { key: "newLeads", label: "New Leads", icon: TrendingUp },
           { key: "stageChanges", label: "Stage Changes", icon: ArrowRightLeft },
           { key: "activity", label: "Team Activity", icon: Users },
@@ -619,6 +674,99 @@ export default function LeadsReporting() {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* ── Today Activity Tab ──────────────────────────────────────────────── */}
+      {activeTab === "todayActivity" && (
+        <div className="space-y-6">
+          {todayActivityQ.isLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground py-12 justify-center">
+              <RefreshCw className="w-4 h-4 animate-spin" /> Loading today's activity…
+            </div>
+          ) : (() => {
+            const todayData = todayActivityQ.data as any;
+            const activityCounts: any[] = todayData?.activityCounts ?? [];
+            const stageChangePairs: any[] = todayData?.stageChangePairs ?? [];
+            const todayDate = todayData?.date ?? new Date().toISOString().split("T")[0];
+            const totalLeads = activityCounts.reduce((s: number, r: any) => s + Number(r.leadCount), 0);
+            return (
+              <>
+                {/* Header */}
+                <div className="flex items-center gap-3">
+                  <CalendarDays className="w-5 h-5 text-rose-500" />
+                  <div>
+                    <p className="text-base font-semibold">Today's Activity — {todayDate}</p>
+                    <p className="text-xs text-muted-foreground">Number of leads with each activity type created today</p>
+                  </div>
+                </div>
+
+                {/* Activity cards grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {activityCounts.map((item: any) => {
+                    const meta = TODAY_ACTIVITY_LABELS[item.activityType];
+                    if (!meta) return null;
+                    return (
+                      <div key={item.activityType} className={`p-4 rounded-xl border ${meta.color} flex flex-col gap-1`}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">{meta.emoji}</span>
+                          <span className="text-sm font-medium">{meta.label}</span>
+                        </div>
+                        <p className="text-3xl font-bold mt-1">{Number(item.leadCount).toLocaleString()}</p>
+                        <p className="text-xs opacity-70">leads</p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Stage Changes Breakdown */}
+                <div className="rounded-xl border overflow-hidden">
+                  <div className="p-4 border-b bg-muted/20 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold">Today's Stage Changes</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Number of leads moved between stages today</p>
+                    </div>
+                    <Badge variant="secondary" className="text-sm px-3 py-1">
+                      {stageChangePairs.reduce((s: number, r: any) => s + r.leadCount, 0)} total
+                    </Badge>
+                  </div>
+                  {stageChangePairs.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <ArrowRightLeft className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">No stage changes today</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y">
+                      {stageChangePairs.map((pair: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between px-4 py-3 hover:bg-muted/20">
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
+                              {STAGE_LABELS[pair.fromStage] ?? pair.fromStage}
+                            </span>
+                            <ArrowRightLeft className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-xs font-medium">
+                              {STAGE_LABELS[pair.toStage] ?? pair.toStage}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-bold text-foreground">{pair.leadCount}</span>
+                            <span className="text-xs text-muted-foreground">leads</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {totalLeads === 0 && stageChangePairs.length === 0 && (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <CalendarDays className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p>No activities recorded today yet</p>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 

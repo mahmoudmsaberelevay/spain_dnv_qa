@@ -352,8 +352,15 @@ export async function getNewLeadsReport(dateFrom: number, dateTo: number) {
   return { total: Number(total), byDay };
 }
 
-/** Get stage change activities within a date range, optionally filtered by user */
-export async function getStageChangeReport(dateFrom: number, dateTo: number, userId?: number) {
+/** Parse from/to stages from a stage_changed description string */
+function parseStageFromDescription(description: string): { fromStage: string | null; toStage: string | null } {
+  const match = description.match(/Stage changed from "([^"]+)" to "([^"]+)"/);
+  if (match) return { fromStage: match[1], toStage: match[2] };
+  return { fromStage: null, toStage: null };
+}
+
+/** Get stage change activities within a date range, optionally filtered by user, fromStage, toStage */
+export async function getStageChangeReport(dateFrom: number, dateTo: number, userId?: number, fromStage?: string, toStage?: string) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   const conditions: any[] = [
@@ -362,6 +369,9 @@ export async function getStageChangeReport(dateFrom: number, dateTo: number, use
     sql`${leadActivities.createdAt} <= ${dateTo}`,
   ];
   if (userId) conditions.push(eq(leadActivities.userId, userId));
+  // Filter by fromStage/toStage using LIKE on description
+  if (fromStage) conditions.push(sql`${leadActivities.description} LIKE ${`Stage changed from "${fromStage}"%`}`);
+  if (toStage) conditions.push(sql`${leadActivities.description} LIKE ${`%to "${toStage}"%`}`);
   const rows = await db
     .select({
       id: leadActivities.id,
@@ -374,7 +384,8 @@ export async function getStageChangeReport(dateFrom: number, dateTo: number, use
     .where(and(...conditions))
     .orderBy(desc(leadActivities.createdAt))
     .limit(500);
-  return rows;
+  // Parse from/to stages for each row
+  return rows.map(r => ({ ...r, ...parseStageFromDescription(r.description) }));
 }
 
 /** Get activity counts per user within a date range */
@@ -411,6 +422,64 @@ export async function getUserActivityReport(dateFrom: number, dateTo: number, us
     .groupBy(leadActivities.userId, leadActivities.activityType)
     .orderBy(leadActivities.userId, desc(sql`COUNT(*)`));
   return { summary, breakdown };
+}
+
+/** Get today's activity summary: counts per activity type (unique leads), and stage change breakdown */
+export async function getTodayActivityReport() {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  // Today's date range in UTC ms
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const todayEnd = todayStart + 86400000; // +24h
+
+  // Count of DISTINCT leads with each activity type today
+  const activityTypes = ["call", "whatsapp", "sms", "email", "meeting", "note_added", "stage_changed"];
+  const activityCounts = await Promise.all(
+    activityTypes.map(async (type) => {
+      const [{ count }] = await db
+        .select({ count: sql<number>`COUNT(DISTINCT ${leadActivities.leadId})` })
+        .from(leadActivities)
+        .where(and(
+          eq(leadActivities.activityType as any, type),
+          sql`${leadActivities.createdAt} >= ${todayStart}`,
+          sql`${leadActivities.createdAt} < ${todayEnd}`,
+        ));
+      return { activityType: type, leadCount: Number(count) };
+    })
+  );
+
+  // Stage changes today: group by from→to pair, count distinct leads
+  const stageRows = await db
+    .select({
+      description: leadActivities.description,
+      leadId: leadActivities.leadId,
+    })
+    .from(leadActivities)
+    .where(and(
+      eq(leadActivities.activityType, "stage_changed"),
+      sql`${leadActivities.createdAt} >= ${todayStart}`,
+      sql`${leadActivities.createdAt} < ${todayEnd}`,
+    ));
+
+  // Parse and aggregate from→to pairs
+  const pairMap: Record<string, Set<number>> = {};
+  for (const row of stageRows) {
+    const { fromStage, toStage } = parseStageFromDescription(row.description);
+    if (fromStage && toStage) {
+      const key = `${fromStage}→${toStage}`;
+      if (!pairMap[key]) pairMap[key] = new Set();
+      pairMap[key].add(row.leadId);
+    }
+  }
+  const stageChangePairs = Object.entries(pairMap)
+    .map(([pair, leads]) => {
+      const [fromStage, toStage] = pair.split("→");
+      return { fromStage, toStage, leadCount: leads.size };
+    })
+    .sort((a, b) => b.leadCount - a.leadCount);
+
+  return { activityCounts, stageChangePairs, date: new Date(todayStart).toISOString().split("T")[0] };
 }
 
 // ─── All Tasks (for Tasks page) ───────────────────────────────────────────────

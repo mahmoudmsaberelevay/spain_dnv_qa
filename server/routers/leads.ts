@@ -14,7 +14,7 @@ import {
   getLeadCampaignCounts, getLeadFormCounts,
   bulkDeleteLeads, getLeadsByIds,
   bulkUpdateLeadsStage, bulkUpdateLeadsOwner,
-  getNewLeadsReport, getStageChangeReport, getUserActivityReport,
+  getNewLeadsReport, getStageChangeReport, getUserActivityReport, getTodayActivityReport,
 } from "../leadsDb";
 import { listActivityPresets, listLeadIntegrations } from "../leadsSettingsDb";
 import { syncOneIntegrationById } from "../metaLeadSync";
@@ -786,8 +786,11 @@ export const leadsRouter = router({
       .query(async ({ input }) => getNewLeadsReport(input.dateFrom, input.dateTo)),
 
     stageChanges: protectedProcedure
-      .input(z.object({ dateFrom: z.number(), dateTo: z.number(), userId: z.number().optional() }))
-      .query(async ({ input }) => getStageChangeReport(input.dateFrom, input.dateTo, input.userId)),
+      .input(z.object({ dateFrom: z.number(), dateTo: z.number(), userId: z.number().optional(), fromStage: z.string().optional(), toStage: z.string().optional() }))
+      .query(async ({ input }) => getStageChangeReport(input.dateFrom, input.dateTo, input.userId, input.fromStage, input.toStage)),
+
+    todayActivity: protectedProcedure
+      .query(async () => getTodayActivityReport()),
 
     userActivity: protectedProcedure
       .input(z.object({
