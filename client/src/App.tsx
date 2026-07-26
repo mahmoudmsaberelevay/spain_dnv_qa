@@ -77,7 +77,8 @@ import MarketingPlan from "./pages/marketing/MarketingPlan";
 import Reports from "./pages/Reports";
 
 // ─── Backup Module ─────────────────────────────────────────────────────────────
-import { BackupDownload } from "./pages/BackupDownload";
+import { BackupDownloadPublic } from "./pages/BackupDownloadPublic";
+import BackupPreview from "./pages/BackupPreview";
 
 // ─── WhatsApp Quality Control Module ─────────────────────────────────────────
 import WaQcDashboard from "./pages/waQc/WaQcDashboard";
@@ -320,8 +321,17 @@ function Router() {
         </PageGuard>
       </Route>
 
+      {/* ── Backup & Recovery Module ── */}
       <Route path="/backup">
-        <DashboardLayout><BackupDownload /></DashboardLayout>
+        <PageGuard pageKey="backup_dashboard">
+          <DashboardLayout><BackupDownloadPublic /></DashboardLayout>
+        </PageGuard>
+      </Route>
+
+      <Route path="/backup-preview">
+        <PageGuard pageKey="backup_preview">
+          <DashboardLayout><BackupPreview /></DashboardLayout>
+        </PageGuard>
       </Route>
 
       <Route path="/access-denied">

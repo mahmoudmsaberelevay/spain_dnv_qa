@@ -38,10 +38,10 @@ import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-export type ModuleName = "contracting" | "clientDocs" | "appAnalysis" | "financial" | "waQc" | "reports";
+export type ModuleName = "contracting" | "clientDocs" | "appAnalysis" | "financial" | "waQc" | "reports" | "backup";
 export type AccessLevel = "none" | "viewer" | "full";
 
-export const ALL_MODULES: ModuleName[] = ["contracting", "clientDocs", "appAnalysis", "financial", "waQc", "reports"];
+export const ALL_MODULES: ModuleName[] = ["contracting", "clientDocs", "appAnalysis", "financial", "waQc", "reports", "backup"];
 
 // Default access for new / existing users
 export const DEFAULT_MODULE_ACCESS: Record<ModuleName, AccessLevel> = {
@@ -51,6 +51,7 @@ export const DEFAULT_MODULE_ACCESS: Record<ModuleName, AccessLevel> = {
   financial: "none",
   waQc: "full",
   reports: "full",
+  backup: "none",
 };
 
 // Maps module → page keys used by PageGuard
@@ -66,6 +67,7 @@ export const MODULE_PAGE_KEYS: Record<ModuleName, string[]> = {
   ],
   waQc: ["wa_qc"],
   reports: ["reports"],
+  backup: ["backup_dashboard", "backup_preview"],
 };
 
 // All page keys (for backward compat)
@@ -79,6 +81,7 @@ export const ALL_PAGE_KEYS = [
   "fin_salary_receipts", "fin_commission_receipts",
   "wa_qc",
   "reports",
+  "backup_dashboard", "backup_preview",
   "settings", "chat", "broadcast",
 ] as const;
 export type PageKey = (typeof ALL_PAGE_KEYS)[number];

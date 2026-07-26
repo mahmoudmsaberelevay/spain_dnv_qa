@@ -70,6 +70,7 @@ import {
   GitCompare,
   FileSignature,
   Calendar,
+  HardDrive,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -189,6 +190,7 @@ const MODULE_COLORS: Record<string, { bg: string; text: string; dot: string }> =
   leads:        { bg: "bg-rose-500/20",   text: "text-rose-300",   dot: "bg-rose-400" },
   marketing:    { bg: "bg-purple-500/20", text: "text-purple-300", dot: "bg-purple-400" },
   reports:      { bg: "bg-cyan-500/20",   text: "text-cyan-300",   dot: "bg-cyan-400" },
+  backup:       { bg: "bg-slate-500/20",  text: "text-slate-300",  dot: "bg-slate-400" },
 };
 
 // ─── Module Definitions ────────────────────────────────────────────────────────
@@ -292,6 +294,15 @@ const modules = [
       { icon: SettingsIcon, label: "Settings", path: "/wa-qc/settings" },
     ],
   },
+  {
+    id: "backup",
+    label: "Backup & Recovery",
+    icon: HardDrive,
+    items: [
+      { icon: LayoutDashboard, label: "Dashboard", path: "/backup" },
+      { icon: Upload, label: "Preview & Restore", path: "/backup-preview" },
+    ],
+  },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -363,7 +374,7 @@ function DashboardLayoutContent({
   const isMobile = useIsMobile();
 
   // Determine active module from current path
-  const activeModuleId = location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : location.startsWith("/wa-qc") ? "waQc" : location.startsWith("/leads") ? "leads" : location.startsWith("/marketing") ? "marketing" : location.startsWith("/reports") ? "reports" : "contracting";
+  const activeModuleId = location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : location.startsWith("/wa-qc") ? "waQc" : location.startsWith("/leads") ? "leads" : location.startsWith("/marketing") ? "marketing" : location.startsWith("/reports") ? "reports" : location.startsWith("/backup") ? "backup" : "contracting";
   const [expandedModule, setExpandedModule] = useState<string>(activeModuleId);
 
   // Sync expanded module with navigation
@@ -373,7 +384,7 @@ function DashboardLayoutContent({
 
   // Active page label for mobile header
   const allItems = modules.flatMap(m => m.items);
-  const activeItem = allItems.find(item => item.path === location) ?? allItems.find(item => location.startsWith(item.path) && item.path !== "/contracting" && item.path !== "/reports");
+  const activeItem = allItems.find(item => item.path === location) ?? allItems.find(item => location.startsWith(item.path) && item.path !== "/contracting" && item.path !== "/reports" && item.path !== "/backup");
 
   useEffect(() => {
     if (isCollapsed) setIsResizing(false);

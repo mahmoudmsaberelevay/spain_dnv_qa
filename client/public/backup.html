@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Backups - ELEVAY</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%); }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen p-6">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-slate-900 mb-2">Database Backups</h1>
+            <p class="text-slate-600">Download and manage your encrypted database backups</p>
+        </div>
+
+        <!-- Stats Cards -->
+        <div id="stats-container" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white rounded-lg p-4 border border-slate-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-slate-600 mb-1">Total Backups</p>
+                        <p id="total-backups" class="text-2xl font-bold text-slate-900">-</p>
+                    </div>
+                    <i class="fas fa-database text-blue-500 text-2xl"></i>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-slate-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-slate-600 mb-1">Total Size</p>
+                        <p id="total-size" class="text-2xl font-bold text-slate-900">-</p>
+                    </div>
+                    <i class="fas fa-hard-drive text-green-500 text-2xl"></i>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-slate-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-slate-600 mb-1">Encryption</p>
+                        <p class="text-sm font-bold text-slate-900">AES-256</p>
+                    </div>
+                    <i class="fas fa-lock text-amber-500 text-2xl"></i>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-slate-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-slate-600 mb-1">Retention</p>
+                        <p class="text-sm font-bold text-slate-900">10 days</p>
+                    </div>
+                    <i class="fas fa-calendar text-purple-500 text-2xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info Box -->
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8 flex items-start gap-3">
+            <i class="fas fa-info-circle text-blue-600 mt-1 flex-shrink-0"></i>
+            <div>
+                <p class="font-semibold text-blue-900">Backup Information</p>
+                <p class="text-sm text-blue-800 mt-1">
+                    All backups are encrypted with AES-256. Password: <code class="bg-blue-100 px-2 py-1 rounded">3488</code>
+                </p>
+                <p class="text-sm text-blue-800 mt-1">
+                    Schedule: <strong>Monday-Thursday at 18:00 Cairo Time</strong>
+                </p>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div id="loading" class="text-center py-12">
+            <p class="text-slate-600"><i class="fas fa-spinner fa-spin mr-2"></i>Loading backups...</p>
+        </div>
+
+        <div id="content" style="display: none;" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Backups List -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-lg border border-slate-200">
+                    <div class="p-6 border-b border-slate-200">
+                        <h2 class="text-xl font-bold text-slate-900">Available Backups</h2>
+                    </div>
+                    <div id="backups-list" class="divide-y divide-slate-200">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Details Panel -->
+            <div>
+                <div class="bg-white rounded-lg border border-slate-200 sticky top-6">
+                    <div class="p-6 border-b border-slate-200">
+                        <h3 class="font-bold text-slate-900">Backup Details</h3>
+                    </div>
+                    <div id="details-panel" class="p-6 text-center text-slate-500">
+                        Select a backup to view details
+                    </div>
+                </div>
+
+                <!-- Instructions -->
+                <div class="bg-slate-50 border border-slate-200 rounded-lg mt-6 p-4">
+                    <h4 class="font-semibold text-slate-900 mb-3 text-sm">Restore Instructions</h4>
+                    <ol class="text-xs text-slate-700 space-y-2 list-decimal list-inside">
+                        <li>Download the backup file</li>
+                        <li>Decrypt: <code class="bg-white px-1 text-xs">openssl enc -aes-256-cbc -d -in file.enc -out backup.sql.gz -k 3488</code></li>
+                        <li>Decompress: <code class="bg-white px-1 text-xs">gunzip backup.sql.gz</code></li>
+                        <li>Restore: <code class="bg-white px-1 text-xs">mysql -u root -p &lt; backup.sql</code></li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <div id="error" style="display: none;" class="bg-red-50 border border-red-200 rounded-lg p-6">
+            <p class="text-red-800"><i class="fas fa-exclamation-circle mr-2"></i><span id="error-text"></span></p>
+        </div>
+    </div>
+
+    <script>
+        let selectedBackup = null;
+
+        async function loadBackups() {
+            try {
+                const response = await fetch('/api/backup/list');
+                if (!response.ok) throw new Error('Failed to fetch backups');
+                const data = await response.json();
+
+                if (!data.success || !data.backups) {
+                    throw new Error('Invalid response format');
+                }
+
+                const backups = data.backups;
+                document.getElementById('total-backups').textContent = backups.length;
+                document.getElementById('total-size').textContent = formatBytes(backups.reduce((sum, b) => sum + b.size, 0));
+
+                const backupsList = document.getElementById('backups-list');
+                backupsList.innerHTML = '';
+
+                backups.forEach((backup, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'p-4 cursor-pointer hover:bg-slate-50 transition-colors';
+                    div.innerHTML = `
+                        <div class="flex items-start justify-between mb-2">
+                            <div class="flex-1">
+                                <p class="font-mono text-sm text-slate-900 break-all">${backup.filename}</p>
+                                <p class="text-xs text-slate-500 mt-1">${backup.createdAtFormatted}</p>
+                            </div>
+                            <span class="text-sm font-semibold text-slate-600 whitespace-nowrap ml-4">${backup.sizeFormatted}</span>
+                        </div>
+                    `;
+                    div.onclick = () => selectBackup(backup);
+                    backupsList.appendChild(div);
+                });
+
+                if (backups.length > 0) {
+                    selectBackup(backups[0]);
+                }
+
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'grid';
+            } catch (error) {
+                console.error('Error loading backups:', error);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error-text').textContent = error.message;
+            }
+        }
+
+        function selectBackup(backup) {
+            selectedBackup = backup;
+            const detailsPanel = document.getElementById('details-panel');
+            detailsPanel.innerHTML = `
+                <div class="space-y-4 text-left">
+                    <div>
+                        <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">File Name</p>
+                        <p class="font-mono text-sm text-slate-900 break-all">${backup.filename}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">File Size</p>
+                        <p class="text-sm font-semibold text-slate-900">${backup.sizeFormatted}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Created</p>
+                        <p class="text-sm text-slate-900">${backup.createdAtFormatted}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Encryption</p>
+                        <p class="text-sm text-slate-900">AES-256-CBC</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Password</p>
+                        <code class="text-sm bg-slate-100 px-2 py-1 rounded block text-slate-900">3488</code>
+                    </div>
+                    <button onclick="downloadBackup('${backup.filename}')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded mt-4">
+                        <i class="fas fa-download mr-2"></i>Download
+                    </button>
+                </div>
+            `;
+        }
+
+        function downloadBackup(filename) {
+            const link = document.createElement('a');
+            link.href = `/api/backup/download/${encodeURIComponent(filename)}`;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        // Load backups on page load
+        loadBackups();
+    </script>
+</body>
+</html>

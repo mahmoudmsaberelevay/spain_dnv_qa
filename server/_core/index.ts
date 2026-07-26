@@ -9,7 +9,10 @@ import { registerAuthRoutes } from "./auth-routes";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import { serveStatic, setupVite } from "./vite";
+import { serveStatic, setupVite, registerBackupRoutes } from "./vite";
+import { getBackupDownloadHTML } from "../backupDownloadPage";
+import fs from "fs";
+import path from "path";
 import { startReminderScheduler } from "../reminderScheduler";
 import { startMonthlyReportScheduler } from "../monthlyReportScheduler";
 import { startRateScheduler } from "../rateScheduler";
@@ -36,12 +39,73 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
+}
+
 async function startServer() {
   const app = express();
   const server = createServer(app);
 
   // Trust the first proxy (Manus reverse proxy / load balancer)
   app.set("trust proxy", 1);
+
+  // Backup download page (register FIRST to bypass all middleware)
+  app.get("/backup", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(getBackupDownloadHTML());
+  });
+
+  // Backup download API
+  app.get("/api/backup/download/:filename", (req, res) => {
+    try {
+      const filename = decodeURIComponent(req.params.filename);
+      const BACKUP_DIR = "/home/ubuntu/backups";
+
+      if (!filename.endsWith(".sql.gz.enc")) {
+        return res.status(400).json({ error: "Invalid file type" });
+      }
+
+      if (filename.includes("..") || filename.includes("/")) {
+        return res.status(400).json({ error: "Invalid filename" });
+      }
+
+      const filePath = path.join(BACKUP_DIR, filename);
+
+      if (!filePath.startsWith(BACKUP_DIR)) {
+        return res.status(400).json({ error: "Invalid path" });
+      }
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "Backup file not found" });
+      }
+
+      const stats = fs.statSync(filePath);
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Content-Length", stats.size);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+
+      fileStream.on("error", (err) => {
+        console.error("File stream error:", err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Download failed" });
+        }
+      });
+    } catch (error) {
+      console.error("Download error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Internal server error" });
+      }
+    }
+  });
 
   // ── Rate limiting ──────────────────────────────────────────────────────────
   // General API limiter: 200 requests per minute per IP
@@ -260,6 +324,111 @@ async function startServer() {
   const { waBackupHandler } = await import("../waBackupHandler");
   app.post("/api/scheduled/waBackup", waBackupHandler);
 
+  // Backup list endpoint
+  app.get("/api/backup/list", (req, res) => {
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const BACKUP_DIR = "/home/ubuntu/backups";
+
+      if (!fs.existsSync(BACKUP_DIR)) {
+        return res.json({ success: true, backups: [] });
+      }
+
+      const files = fs.readdirSync(BACKUP_DIR)
+        .filter((f) => f.endsWith(".sql.gz.enc"))
+        .sort()
+        .reverse();
+
+      const backups = files.map((filename) => {
+        const filePath = path.join(BACKUP_DIR, filename);
+        const stats = fs.statSync(filePath);
+        const createdAt = stats.mtime.getTime();
+        
+        return {
+          filename,
+          size: stats.size,
+          sizeFormatted: formatBytes(stats.size),
+          createdAt,
+          createdAtFormatted: new Date(createdAt).toLocaleString(),
+          hasManifest: fs.existsSync(path.join(BACKUP_DIR, filename + ".manifest")),
+          downloadUrl: `/api/backup/download/${encodeURIComponent(filename)}`,
+        };
+      });
+
+      res.json({ success: true, backups });
+    } catch (error) {
+      console.error("Backup list error:", error);
+      res.status(500).json({ success: false, error: "Failed to list backups" });
+    }
+  });
+
+  // Backup stats endpoint
+  app.get("/api/backup/stats", (req, res) => {
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const BACKUP_DIR = "/home/ubuntu/backups";
+
+      if (!fs.existsSync(BACKUP_DIR)) {
+        return res.json({
+          success: true,
+          stats: {
+            totalBackups: 0,
+            totalSize: 0,
+            totalSizeFormatted: "0 B",
+            averageSize: 0,
+            averageSizeFormatted: "0 B",
+            oldestBackup: null,
+            newestBackup: null,
+            encryption: "AES-256-CBC",
+            password: "3488",
+            retention: "10 days",
+            schedule: "Mon-Thu 18:00 Cairo",
+          },
+        });
+      }
+
+      const files = fs.readdirSync(BACKUP_DIR)
+        .filter((f) => f.endsWith(".sql.gz.enc"))
+        .sort()
+        .reverse();
+
+      let totalSize = 0;
+      const backupDates = [];
+
+      files.forEach((filename) => {
+        const filePath = path.join(BACKUP_DIR, filename);
+        const stats = fs.statSync(filePath);
+        totalSize += stats.size;
+        backupDates.push(stats.mtime.getTime());
+      });
+
+      const oldestDate = backupDates.length > 0 ? Math.min(...backupDates) : null;
+      const newestDate = backupDates.length > 0 ? Math.max(...backupDates) : null;
+
+      res.json({
+        success: true,
+        stats: {
+          totalBackups: files.length,
+          totalSize,
+          totalSizeFormatted: formatBytes(totalSize),
+          averageSize: files.length > 0 ? totalSize / files.length : 0,
+          averageSizeFormatted: files.length > 0 ? formatBytes(totalSize / files.length) : "0 B",
+          oldestBackup: oldestDate ? { filename: files[files.length - 1], date: oldestDate, dateFormatted: new Date(oldestDate).toLocaleString() } : null,
+          newestBackup: newestDate ? { filename: files[0], date: newestDate, dateFormatted: new Date(newestDate).toLocaleString() } : null,
+          encryption: "AES-256-CBC",
+          password: "3488",
+          retention: "10 days",
+          schedule: "Mon-Thu 18:00 Cairo",
+        },
+      });
+    } catch (error) {
+      console.error("Backup stats error:", error);
+      res.status(500).json({ success: false, error: "Failed to get stats" });
+    }
+  });
+
   // Backup download endpoints
   app.get("/api/backup/download/:filename", (req, res) => {
     try {
@@ -309,6 +478,9 @@ async function startServer() {
     }
   });
 
+  // Register backup routes BEFORE Vite (to avoid catch-all)
+  registerBackupRoutes(app);
+
   // tRPC API
   app.use(
     "/api/trpc",
@@ -317,6 +489,7 @@ async function startServer() {
       createContext,
     })
   );
+
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
