@@ -174,7 +174,7 @@ export async function sendBackupNotification(backupName: string, downloadUrl: st
     <p><a href="${downloadUrl}">Download Backup</a></p>
     <p style="color: #999; font-size: 12px;">This backup will be available for 30 days.</p>
   `;
-  return sendEmail("mahmoud.saberelevay@gmail.com", "Database Backup Complete", html);
+  return sendEmail(["mahmoud.saberelevay@gmail.com", "mahmoud.saber@elevay.com"], "Database Backup Complete", html);
 }
 
 // Weekly financial report
