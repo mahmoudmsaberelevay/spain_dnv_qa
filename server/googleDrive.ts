@@ -8,16 +8,18 @@ let driveClient: ReturnType<typeof google.drive> | null = null;
 let rootFolderId: string | null = null;
 
 function getOAuth2Client() {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const clientId = process.env.GDRIVE_CLIENT_ID;
+  const clientSecret = process.env.GDRIVE_CLIENT_SECRET;
   const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
 
-  if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error("Google Drive credentials not configured. Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN.");
+  if (!clientId || !clientSecret) {
+    throw new Error("Google Drive credentials not configured. Please set GDRIVE_CLIENT_ID and GDRIVE_CLIENT_SECRET.");
   }
 
   const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, "urn:ietf:wg:oauth:2.0:oob");
-  oauth2Client.setCredentials({ refresh_token: refreshToken });
+  if (refreshToken) {
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+  }
   return oauth2Client;
 }
 
@@ -30,7 +32,7 @@ function getDriveClient() {
 }
 
 export function isDriveConfigured(): boolean {
-  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN);
+  return !!(process.env.GDRIVE_CLIENT_ID && process.env.GDRIVE_CLIENT_SECRET);
 }
 
 async function getOrCreateFolder(name: string, parentId?: string): Promise<string> {
@@ -61,7 +63,12 @@ async function getOrCreateFolder(name: string, parentId?: string): Promise<strin
 
 async function getRootFolder(): Promise<string> {
   if (rootFolderId) return rootFolderId;
-  rootFolderId = await getOrCreateFolder("ELEVAY Contracts");
+  const customFolderId = process.env.GDRIVE_FOLDER_ID;
+  if (customFolderId) {
+    rootFolderId = customFolderId;
+  } else {
+    rootFolderId = await getOrCreateFolder("ELEVAY Contracts");
+  }
   return rootFolderId;
 }
 
@@ -143,8 +150,15 @@ export async function uploadBackupToDrive(
   filename: string
 ): Promise<DriveUploadResult> {
   const drive = getDriveClient();
-  // Get or create dedicated ELEVAY Backups folder at root level
-  const backupFolderId = await getOrCreateFolder("ELEVAY Backups");
+  let backupFolderId: string;
+  const customFolderId = process.env.GDRIVE_FOLDER_ID;
+  
+  if (customFolderId) {
+    backupFolderId = customFolderId;
+  } else {
+    backupFolderId = await getOrCreateFolder("ELEVAY Backups");
+  }
+  
   const stream = Readable.from(buffer);
   const res = await drive.files.create({
     requestBody: {
@@ -153,7 +167,7 @@ export async function uploadBackupToDrive(
       description: `ELEVAY system backup — ${filename}`,
     },
     media: {
-      mimeType: "application/json",
+      mimeType: "application/gzip",
       body: stream,
     },
     fields: "id, webViewLink",
@@ -164,19 +178,19 @@ export async function uploadBackupToDrive(
   };
 }
 
-export async function getDriveStatus(): Promise<{ configured: boolean; connected: boolean; rootFolderUrl?: string }> {
+export async function getDriveStatus(): Promise<{ configured: boolean; connected: boolean; backupFolderUrl?: string }> {
   if (!isDriveConfigured()) {
     return { configured: false, connected: false };
   }
 
   try {
     const drive = getDriveClient();
-    const rootId = await getRootFolder();
-    await drive.files.get({ fileId: rootId, fields: "id, name" });
+    const backupFolderId = process.env.GDRIVE_FOLDER_ID || await getOrCreateFolder("ELEVAY Backups");
+    await drive.files.get({ fileId: backupFolderId, fields: "id, name" });
     return {
       configured: true,
       connected: true,
-      rootFolderUrl: `https://drive.google.com/drive/folders/${rootId}`,
+      backupFolderUrl: `https://drive.google.com/drive/folders/${backupFolderId}`,
     };
   } catch (error) {
     return { configured: true, connected: false };

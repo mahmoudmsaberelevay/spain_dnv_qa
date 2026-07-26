@@ -926,6 +926,9 @@
 - [x] Add password encryption (3488) to all backup files using 7zip
 - [x] Fix TiDB Cloud SAVEPOINT error (removed --single-transaction, added --skip-lock-tables --no-tablespaces)
 - [x] Update email notifications to both mahmoud.saberelevay@gmail.com and mahmoud.saber@elevay.com
+- [x] Set up Google Drive OAuth credentials and folder integration for automatic backup uploads
+- [x] Update backup script to automatically upload encrypted backups to Google Drive
+- [x] Update googleDrive.ts helper to use GDRIVE_FOLDER_ID for backup uploads
 - [ ] Set up cron jobs on cloud computer for 4 weekly backups (Mon-Thu 18:00 Cairo)
 - [ ] Add backup history page to admin panel to show all backups and restore options
 
