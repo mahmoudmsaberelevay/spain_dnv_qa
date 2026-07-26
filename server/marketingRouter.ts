@@ -650,6 +650,7 @@ export const marketingRouter = router({
   // ── Strategy Plan Generator ────────────────────────────────────────────────
   generateStrategyPlan: protectedProcedure
     .input(z.object({ startDate: z.string() }))
+    .output(z.object({ planJson: z.string() }))
     .mutation(async ({ input }) => {
       // Normalize date: handle YYYY-MM-DD, DD/MM/YYYY, and other formats
       function normalizeInputDate(val: string): string {
@@ -747,11 +748,11 @@ Return ONLY this JSON (no extra text):
           try {
             const response = await invokeLLM({
               messages: [
-                { role: "system", content: "You are a senior social media strategist for ELEVAY (Egyptian citizenship & residency consultancy). Generate marketing content plans in valid JSON format only. All captions and voice-overs must be in Arabic. Follow the exact JSON schema provided." },
+                { role: "system", content: "You are a senior social media strategist for ELEVAY (Egyptian citizenship & residency consultancy). Generate marketing content plans in valid JSON format only. All captions and voice-overs must be in Arabic. Follow the exact JSON schema provided. Return ONLY valid JSON, no markdown, no code fences, no extra text." },
                 { role: "user", content: prompt }
-              ],
-              response_format: { type: "json_object" },
+              ]
             });
+            console.log(`[MarketingPlan] Week ${wk.weekNumber} LLM response:`, { choicesLen: response.choices?.length, firstMsg: response.choices?.[0]?.message });
             const content = response.choices?.[0]?.message?.content;
             if (!content) throw new Error(`Empty AI response for week ${wk.weekNumber}`);
             return extractJson(content as string);
@@ -800,6 +801,8 @@ Return ONLY this JSON (no extra text):
       };
       // Return as a plain JSON string — this prevents superjson from scanning
       // the object and misidentifying ISO date strings inside LLM content as Date objects.
-      return { planJson: JSON.stringify(planObject) };
+      const planJson = JSON.stringify(planObject);
+      console.log(`[MarketingPlan] Generated plan JSON length: ${planJson.length} bytes`);
+      return { planJson };
     }),
 });
