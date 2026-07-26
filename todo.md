@@ -923,6 +923,9 @@
 - [x] Script uploads compressed backup to S3
 - [x] Email notification sent to mahmoud.saberelevay@gmail.com with download link
 - [x] Backup script location: /home/ubuntu/backup_database.sh
+- [x] Add password encryption (3488) to all backup files using 7zip
+- [x] Fix TiDB Cloud SAVEPOINT error (removed --single-transaction, added --skip-lock-tables --no-tablespaces)
+- [x] Update email notifications to both mahmoud.saberelevay@gmail.com and mahmoud.saber@elevay.com
 - [ ] Set up cron jobs on cloud computer for 4 weekly backups (Mon-Thu 18:00 Cairo)
 - [ ] Add backup history page to admin panel to show all backups and restore options
 
