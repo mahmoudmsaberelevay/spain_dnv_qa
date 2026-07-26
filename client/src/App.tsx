@@ -76,6 +76,9 @@ import MarketingPlan from "./pages/marketing/MarketingPlan";
 // ─── Reports Module ─────────────────────────────────────────────────────────────
 import Reports from "./pages/Reports";
 
+// ─── Backup Module ─────────────────────────────────────────────────────────────
+import { BackupDownload } from "./pages/BackupDownload";
+
 // ─── WhatsApp Quality Control Module ─────────────────────────────────────────
 import WaQcDashboard from "./pages/waQc/WaQcDashboard";
 import WaQcChats from "./pages/waQc/WaQcChats";
@@ -315,6 +318,10 @@ function Router() {
         <PageGuard pageKey="reports">
           <DashboardLayout><Reports /></DashboardLayout>
         </PageGuard>
+      </Route>
+
+      <Route path="/backup">
+        <DashboardLayout><BackupDownload /></DashboardLayout>
       </Route>
 
       <Route path="/access-denied">

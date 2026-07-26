@@ -260,6 +260,55 @@ async function startServer() {
   const { waBackupHandler } = await import("../waBackupHandler");
   app.post("/api/scheduled/waBackup", waBackupHandler);
 
+  // Backup download endpoints
+  app.get("/api/backup/download/:filename", (req, res) => {
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const filename = decodeURIComponent(req.params.filename);
+      const BACKUP_DIR = "/home/ubuntu/backups";
+
+      if (!filename.endsWith(".sql.gz.enc")) {
+        return res.status(400).json({ error: "Invalid file type" });
+      }
+
+      if (filename.includes("..") || filename.includes("/")) {
+        return res.status(400).json({ error: "Invalid filename" });
+      }
+
+      const filePath = path.join(BACKUP_DIR, filename);
+
+      if (!filePath.startsWith(BACKUP_DIR)) {
+        return res.status(400).json({ error: "Invalid path" });
+      }
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "Backup file not found" });
+      }
+
+      const stats = fs.statSync(filePath);
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Content-Length", stats.size);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+
+      fileStream.on("error", (err) => {
+        console.error("File stream error:", err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Download failed" });
+        }
+      });
+    } catch (error) {
+      console.error("Download error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Internal server error" });
+      }
+    }
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",
