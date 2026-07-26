@@ -929,8 +929,8 @@
 - [x] Set up Google Drive OAuth credentials and folder integration for automatic backup uploads
 - [x] Update backup script to automatically upload encrypted backups to Google Drive
 - [x] Update googleDrive.ts helper to use GDRIVE_FOLDER_ID for backup uploads
-- [ ] Set up cron jobs on cloud computer for 4 weekly backups (Mon-Thu 18:00 Cairo)
-- [ ] Add backup history page to admin panel to show all backups and restore options
+- [x] Set up cron jobs on cloud computer for 4 weekly backups (Mon-Thu 18:00 Cairo)
+- [x] Add backup history page to admin panel to show all backups and restore options
 
 **Manual Backup Instructions:**
 Run anytime: `bash /home/ubuntu/backup_database.sh`

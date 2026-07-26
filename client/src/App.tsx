@@ -79,6 +79,7 @@ import Reports from "./pages/Reports";
 // ─── Backup Module ─────────────────────────────────────────────────────────────
 import { BackupDownloadPublic } from "./pages/BackupDownloadPublic";
 import BackupPreview from "./pages/BackupPreview";
+import BackupHistory from "./pages/BackupHistory";
 
 // ─── WhatsApp Quality Control Module ─────────────────────────────────────────
 import WaQcDashboard from "./pages/waQc/WaQcDashboard";
@@ -331,6 +332,12 @@ function Router() {
       <Route path="/backup-preview">
         <PageGuard pageKey="backup_preview">
           <DashboardLayout><BackupPreview /></DashboardLayout>
+        </PageGuard>
+      </Route>
+
+      <Route path="/backup-history">
+        <PageGuard pageKey="backup_dashboard">
+          <DashboardLayout><BackupHistory /></DashboardLayout>
         </PageGuard>
       </Route>
 

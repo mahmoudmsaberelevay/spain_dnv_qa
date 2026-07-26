@@ -301,6 +301,7 @@ const modules = [
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "/backup" },
       { icon: Upload, label: "Preview & Restore", path: "/backup-preview" },
+      { icon: Database, label: "Backup History", path: "/backup-history" },
     ],
   },
 ];
