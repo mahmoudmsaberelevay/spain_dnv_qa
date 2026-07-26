@@ -27,6 +27,7 @@ import { getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
 import { generateAndUploadInvoicePdf } from "./invoiceGenerator";
 import { generateAndUploadProformaPdf } from "./proformaGenerator";
 import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient, notifyNewInvoice, notifyFinClientAdded, notifyNewClientAssigned } from "./emailService";
+import { sendEmail } from "./backupEmailService";
 import { generateInvoicePdfBuffer } from "./invoiceGenerator";
 import {
   createClientCase, listClientCases, getClientCase, updateClientCase, deleteClientCase,
@@ -44,6 +45,7 @@ import { adminRouter } from "./routers/admin";
 import { waQcRouter } from "./waQcRouter";
 import { marketingRouter } from "./marketingRouter";
 import { reportsRouter } from "./routers/reports";
+import { backupsRouter } from "./routers/backups";
 
 const MOFA_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/mofa_stamp_a1afffba.png";
 const SPAIN_EMBASSY_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/spain_embassy_stamp_cf83213b.png";
@@ -2109,6 +2111,7 @@ export const appRouter = router({
   leadsSettings: leadsSettingsRouter,
   marketing: marketingRouter,
   reports: reportsRouter,
+  backups: backupsRouter,
   admin: adminRouter,
 });
 export type AppRouter = typeof appRouter;

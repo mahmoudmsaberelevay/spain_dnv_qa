@@ -916,3 +916,21 @@
   - [x] marketingTemplates.ts: Updated all 17 staticImagePrompt strings — removed navy (#1A3A5C), gold (#C9A84C), old teal (#5BA3B8); replaced with baby blue (#B3CFD4), sage (#CCDBD5), deep teal (#809CA1); changed layout from "banner at bottom" to editorial/floating/diagonal-cut layouts; removed Arabic text from image prompts
   - [x] marketingRouter.ts: Updated staticPrompt builder (line 458) with new brand colors and editorial layout rules
   - [x] marketingRouter.ts: Updated LLM JSON schema (lines 705-709) — all 5 post manusImagePrompt templates now use new palette, English-only text in images, no gold, no dark navy, creative editorial layouts
+
+
+## Feature: Automated Weekly Database Backups (Round 63)
+- [x] Create complete database backup script using mysqldump
+- [x] Script uploads compressed backup to S3
+- [x] Email notification sent to mahmoud.saberelevay@gmail.com with download link
+- [x] Backup script location: /home/ubuntu/backup_database.sh
+- [ ] Set up cron jobs on cloud computer for 4 weekly backups (Mon-Thu 18:00 Cairo)
+- [ ] Add backup history page to admin panel to show all backups and restore options
+
+**Manual Backup Instructions:**
+Run anytime: `bash /home/ubuntu/backup_database.sh`
+Check email for download link within 5 minutes
+
+**To Restore a Backup:**
+1. Download the backup file from email link
+2. Run: `mysql -u root -p < elevay-full-backup-YYYY-MM-DD_HH-MM-SS.sql`
+3. System will be restored to that point in time with all data intact
