@@ -746,7 +746,10 @@ Return ONLY this JSON (no extra text):
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
             const response = await invokeLLM({
-              messages: [{ role: "user", content: prompt }],
+              messages: [
+                { role: "system", content: "You are a senior social media strategist for ELEVAY (Egyptian citizenship & residency consultancy). Generate marketing content plans in valid JSON format only. All captions and voice-overs must be in Arabic. Follow the exact JSON schema provided." },
+                { role: "user", content: prompt }
+              ],
               response_format: { type: "json_object" },
             });
             const content = response.choices?.[0]?.message?.content;
