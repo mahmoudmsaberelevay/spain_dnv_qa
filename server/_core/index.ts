@@ -478,6 +478,130 @@ async function startServer() {
     }
   });
 
+  // Backup preview upload endpoint
+  const multerMod = await import("multer");
+  const multerUpload = multerMod.default({ dest: "/tmp/backup-uploads/", limits: { fileSize: 50 * 1024 * 1024 } });
+  const { execSync } = await import("child_process");
+  const zlib = await import("zlib");
+
+  app.post("/api/backup/preview/upload", multerUpload.single("file"), async (req: any, res: any) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const uploadedPath = req.file.path;
+      const originalName = req.file.originalname || "backup.sql.gz.enc";
+
+      // Step 1: Decrypt the file
+      const decryptedPath = uploadedPath + ".gz";
+      try {
+        execSync(`openssl enc -aes-256-cbc -d -in "${uploadedPath}" -out "${decryptedPath}" -k 3488`, { timeout: 30000 });
+      } catch (decryptErr: any) {
+        // Try with -md md5 for older openssl versions
+        try {
+          execSync(`openssl enc -aes-256-cbc -d -md md5 -in "${uploadedPath}" -out "${decryptedPath}" -k 3488`, { timeout: 30000 });
+        } catch (e) {
+          fs.unlinkSync(uploadedPath);
+          return res.status(400).json({ error: "Failed to decrypt file. Wrong password or corrupted file." });
+        }
+      }
+
+      // Step 2: Decompress gzip
+      const sqlPath = uploadedPath + ".sql";
+      try {
+        const compressed = fs.readFileSync(decryptedPath);
+        const decompressed = zlib.gunzipSync(compressed);
+        fs.writeFileSync(sqlPath, decompressed);
+      } catch (gzipErr) {
+        fs.unlinkSync(uploadedPath);
+        fs.existsSync(decryptedPath) && fs.unlinkSync(decryptedPath);
+        return res.status(400).json({ error: "Failed to decompress file. File may be corrupted." });
+      }
+
+      // Step 3: Parse SQL to extract table info
+      const sqlContent = fs.readFileSync(sqlPath, "utf-8");
+      const tables: any[] = [];
+      
+      // Find CREATE TABLE statements
+      const createTableRegex = /CREATE TABLE[^`]*`([^`]+)`\s*\(([^;]+?)\)\s*(?:ENGINE|;)/gs;
+      let match;
+      while ((match = createTableRegex.exec(sqlContent)) !== null) {
+        const tableName = match[1];
+        const columnsBlock = match[2];
+        
+        // Extract column names
+        const columns: string[] = [];
+        const colRegex = /^\s*`([^`]+)`/gm;
+        let colMatch;
+        while ((colMatch = colRegex.exec(columnsBlock)) !== null) {
+          columns.push(colMatch[1]);
+        }
+
+        // Count INSERT rows for this table
+        const insertRegex = new RegExp(`INSERT INTO \`${tableName}\`.*?VALUES\s*(.+?)(?:;|$)`, "gs");
+        let rowCount = 0;
+        let sampleData: any[] = [];
+        let insertMatch;
+        while ((insertMatch = insertRegex.exec(sqlContent)) !== null) {
+          const valuesStr = insertMatch[1];
+          // Count rows by counting opening parens at value start
+          const rows = valuesStr.split(/\),\s*\(/);
+          rowCount += rows.length;
+          
+          // Extract first 3 rows as sample data
+          if (sampleData.length < 3) {
+            for (let i = 0; i < Math.min(3 - sampleData.length, rows.length); i++) {
+              const row = rows[i].replace(/^\(|\)$/g, "");
+              const values = row.split(/,(?=(?:[^']*'[^']*')*[^']*$)/).map(v => v.trim().replace(/^'|'$/g, ""));
+              const rowObj: any = {};
+              columns.forEach((col, idx) => {
+                rowObj[col] = values[idx] || null;
+              });
+              sampleData.push(rowObj);
+            }
+          }
+        }
+
+        tables.push({
+          name: tableName,
+          rowCount,
+          columns: columns.slice(0, 20), // Limit to 20 columns
+          sampleData: sampleData.slice(0, 3),
+        });
+      }
+
+      // Get file stats
+      const stats = fs.statSync(uploadedPath);
+      const totalSize = formatBytes(stats.size);
+
+      // Extract date from filename
+      const dateMatch = originalName.match(/(\d{4}-\d{2}-\d{2}[_T]\d{2}[-:]\d{2}[-:]\d{2})/);
+      const backupDate = dateMatch ? dateMatch[1].replace(/_/g, " ").replace(/-/g, ":") : new Date().toLocaleString();
+
+      // Cleanup temp files
+      fs.existsSync(uploadedPath) && fs.unlinkSync(uploadedPath);
+      fs.existsSync(decryptedPath) && fs.unlinkSync(decryptedPath);
+      fs.existsSync(sqlPath) && fs.unlinkSync(sqlPath);
+
+      res.json({
+        fileName: originalName,
+        backupDate,
+        totalSize,
+        tables: tables.sort((a, b) => b.rowCount - a.rowCount),
+      });
+    } catch (error: any) {
+      console.error("Backup preview error:", error);
+      // Cleanup on error
+      if (req.file?.path) {
+        fs.existsSync(req.file.path) && fs.unlinkSync(req.file.path);
+        fs.existsSync(req.file.path + ".gz") && fs.unlinkSync(req.file.path + ".gz");
+        fs.existsSync(req.file.path + ".sql") && fs.unlinkSync(req.file.path + ".sql");
+      }
+      res.status(500).json({ error: error.message || "Failed to preview backup" });
+    }
+  });
+
   // Register backup routes BEFORE Vite (to avoid catch-all)
   registerBackupRoutes(app);
 

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Upload, Eye, AlertCircle, CheckCircle2, Table2, Download } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
@@ -28,10 +27,7 @@ export default function BackupPreview() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      if (!selectedFile.name.endsWith('.sql.gz.enc')) {
-        setError('Please select a valid encrypted backup file (.sql.gz.enc)');
-        return;
-      }
+      // Accept any .enc file - backend will validate
       setFile(selectedFile);
       setError(null);
     }
@@ -101,12 +97,11 @@ export default function BackupPreview() {
           )}
 
           <div className="flex gap-4">
-            <Input
+            <input
               type="file"
-              accept=".enc,.sql.gz.enc"
               onChange={handleFileSelect}
               disabled={loading}
-              className="flex-1"
+              className="flex-1 file:text-foreground placeholder:text-muted-foreground border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium"
             />
             <Button
               onClick={handleUpload}
