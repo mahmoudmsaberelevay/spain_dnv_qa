@@ -103,7 +103,7 @@ export default function BackupPreview() {
           <div className="flex gap-4">
             <Input
               type="file"
-              accept=".enc"
+              accept=".enc,.sql.gz.enc"
               onChange={handleFileSelect}
               disabled={loading}
               className="flex-1"
