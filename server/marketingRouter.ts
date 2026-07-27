@@ -455,10 +455,11 @@ export const marketingRouter = router({
             "ELEVAY": "Since 1998",
           };
           const programName = PROGRAM_NAME_MAP[rawProgramKey] || rawProgramKey;
-          const staticPrompt = sp.imagePrompt + ", 1:1 square format, baby blue (#B3CFD4) and sage (#CCDBD5) ELEVAY brand color scheme, program name '" + programName + "' as elegant white (#FFFFFF) floating text integrated into the image with NO banner or box at the bottom, small geometric minimal silhouette in olive sage (#A6B5A3) in bottom-right corner, NO text saying ELEVAY, NO word ELEVAY anywhere in the image, NO Arabic text in the image, NO gold colors, NO dark navy (#1A3A5C), no people, no passports, creative editorial layout (diagonal cut or full-bleed or asymmetric), ultra premium social media post";
+          // v2 Editorial Luxury: Use the full detailed prompt from templates directly
+          // The imagePrompt already contains the complete 400+ word editorial luxury prompt
+          const staticPrompt = sp.imagePrompt;
           const result = await generateImage({
             prompt: staticPrompt,
-            originalImages: [{ url: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663524211981/lREaBIOduQHCnBME.png", mimeType: "image/png" }]
           });
           if (result.url) staticImageUrls.push({ day: sp.day, topic: sp.topic, url: result.url });
         } catch (e) { console.error("Static image failed for " + sp.day, e); }
@@ -471,7 +472,8 @@ export const marketingRouter = router({
         // Generate all 5 scenes for this reel in parallel (only 5 at a time)
         await Promise.all((reel.scenes || []).map(async (scene) => {
           try {
-            const reelPrompt = scene.keyframePrompt + ", 9:16 vertical portrait, cinematic, destination photography, no people, no faces, NO text, NO captions, NO words, no passports, ultra-realistic";
+            // v2 Editorial Luxury: Use the full detailed keyframe prompt from templates directly
+            const reelPrompt = scene.keyframePrompt;
             const result = await generateImage({ prompt: reelPrompt });
             sceneResults.push({ sceneNumber: scene.sceneNumber, duration: scene.duration, videoPrompt: scene.videoPrompt, keyframeUrl: result.url || "" });
           } catch (e) {
@@ -703,27 +705,24 @@ Return ONLY this JSON (no extra text):
     {"pillar": "Lifestyle & Maximizing Benefits", "description": "<culture, travel, business setup>"}
   ],
   "posts": [
-    {"postNumber": 1, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic 1 sentence>", "captionAr": "<Arabic 150-200 chars>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<1080x1080 Instagram post: visual composition with English text overlay. Use baby blue (#B3CFD4), sage (#CCDBD5), deep teal (#809CA1). No Arabic text, no passports, no gold, no dark navy. Editorial layout, luxury feel>"},
-    {"postNumber": 2, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<1080x1080 Instagram post: visual composition with English text overlay. Use baby blue (#B3CFD4), sage (#CCDBD5), deep teal (#809CA1). No Arabic text, no passports, no gold, no dark navy. Editorial layout, luxury feel>"},
-    {"postNumber": 3, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<1080x1080 Instagram post: visual composition with English text overlay. Use baby blue (#B3CFD4), sage (#CCDBD5), deep teal (#809CA1). No Arabic text, no passports, no gold, no dark navy. Editorial layout, luxury feel>"},
-    {"postNumber": 4, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<1080x1080 Instagram post: visual composition with English text overlay. Use baby blue (#B3CFD4), sage (#CCDBD5), deep teal (#809CA1). No Arabic text, no passports, no gold, no dark navy. Editorial layout, luxury feel>"},
-    {"postNumber": 5, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<1080x1080 Instagram post: visual composition with English text overlay. Use baby blue (#B3CFD4), sage (#CCDBD5), deep teal (#809CA1). No Arabic text, no passports, no gold, no dark navy. Editorial layout, luxury feel>"
+    {"postNumber": 1, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic 1 sentence>", "captionAr": "<Arabic 150-200 chars>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<DETAILED 400+ word editorial luxury prompt. Structure: 1) PROJECT intro (1080x1350, 4:5 aspect ratio, ELEVAY premium consultancy). 2) CREATIVE CONCEPT (choose from: architectural sculpture, portal, luxury still life, aerial model, natural integration, light installation, water reflection, geological cross-section). 3) SCENE DESCRIPTIONS (4 integrated scenes blending into architecture, NOT separate images). 4) MATERIALS & ENVIRONMENT (physical materials like terracotta/marble/limestone/coral stone, lighting direction, atmosphere). 5) TYPOGRAPHY & COMPOSITION (luxury serif headline in English, refined sans-serif subtitle, body copy with key benefits). 6) COLOR PALETTE (warm white #F8F5F0 background, Baby Blue #B3CFD4, Sage #CCDBD5, Deep Teal #809CA1). 7) BRANDING (small ELEVAY origami bird bottom-right in Deep Teal). 8) ANTI-PATTERNS (no Canva, no templates, no passports, no people, no flags, no dark navy, no gold borders, no infographics, no collages). Style references: Apple, Monocle Magazine, Aman Resorts, Bentley Motors, Architectural Digest.>"},
+    {"postNumber": 2, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<DETAILED 400+ word editorial luxury prompt following same 8-section structure as post 1>"},
+    {"postNumber": 3, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<DETAILED 400+ word editorial luxury prompt following same 8-section structure as post 1>"},
+    {"postNumber": 4, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<DETAILED 400+ word editorial luxury prompt following same 8-section structure as post 1>"},
+    {"postNumber": 5, "topic": "<topic>", "angle": "<angle>", "keyMessageAr": "<Arabic>", "captionAr": "<Arabic>", "hashtags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"], "manusImagePrompt": "<DETAILED 400+ word editorial luxury prompt following same 8-section structure as post 1>"
   ],
   "reels": [
-    {"reelNumber": 1, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic 25-sec script>", "backgroundMusicStyle": "<style>",
+    {"reelNumber": 1, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic 25-sec script>", "backgroundMusicStyle": "<cinematic style suggestion>",
       "scenes": [
-        {"sceneNumber": 1, "visualDescription": "<9:16 vertical, no text, no passports>", "manusPrompt": "<full Manus task prompt for this 5-sec clip>"},
-        {"sceneNumber": 2, "visualDescription": "<desc>", "manusPrompt": "<prompt>"},
-        {"sceneNumber": 3, "visualDescription": "<desc>", "manusPrompt": "<prompt>"},
-        {"sceneNumber": 4, "visualDescription": "<desc>", "manusPrompt": "<prompt>"},
-        {"sceneNumber": 5, "visualDescription": "<desc>", "manusPrompt": "<prompt>"}
+        {"sceneNumber": 1, "visualDescription": "<detailed cinematic keyframe: 9:16 vertical, specific camera angle (aerial/close-up/medium), exact subject, lighting direction, color temperature, atmosphere, Kodak Portra 400 color science, no people, no text>", "manusPrompt": "<full detailed prompt for 5-sec video clip>"},
+        {"sceneNumber": 2, "visualDescription": "<detailed cinematic keyframe: extreme close-up of tactile material/texture, shallow DOF, warm light direction, sensory>", "manusPrompt": "<prompt>"},
+        {"sceneNumber": 3, "visualDescription": "<detailed cinematic keyframe: architectural/landscape medium shot, atmospheric depth, contemplative>", "manusPrompt": "<prompt>"},
+        {"sceneNumber": 4, "visualDescription": "<ELEVAY origami bird logo reveal: bird in Deep Teal (#809CA1) emerging from soft warm light against cream background (#F8F5F0), minimal, elegant, museum-gallery atmosphere>", "manusPrompt": "<prompt>"}
       ],
-      "manusWeekPrompt": "<single Manus prompt to produce all 5 clips + combine + add music>"
+      "manusWeekPrompt": "<single Manus prompt to produce all 4 clips + combine + add music>"
     },
-    {"reelNumber": 2, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic>", "backgroundMusicStyle": "<style>", "scenes": [{"sceneNumber":1,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":2,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":3,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":4,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":5,"visualDescription":"<desc>","manusPrompt":"<prompt>"}], "manusWeekPrompt": "<prompt>"},
-    {"reelNumber": 3, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic>", "backgroundMusicStyle": "<style>", "scenes": [{"sceneNumber":1,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":2,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":3,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":4,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":5,"visualDescription":"<desc>","manusPrompt":"<prompt>"}], "manusWeekPrompt": "<prompt>"},
-    {"reelNumber": 4, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic>", "backgroundMusicStyle": "<style>", "scenes": [{"sceneNumber":1,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":2,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":3,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":4,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":5,"visualDescription":"<desc>","manusPrompt":"<prompt>"}], "manusWeekPrompt": "<prompt>"},
-    {"reelNumber": 5, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic>", "backgroundMusicStyle": "<style>", "scenes": [{"sceneNumber":1,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":2,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":3,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":4,"visualDescription":"<desc>","manusPrompt":"<prompt>"},{"sceneNumber":5,"visualDescription":"<desc>","manusPrompt":"<prompt>"}], "manusWeekPrompt": "<prompt>"}
+    {"reelNumber": 2, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic>", "backgroundMusicStyle": "<style>", "scenes": [{"sceneNumber":1,"visualDescription":"<detailed cinematic>","manusPrompt":"<prompt>"},{"sceneNumber":2,"visualDescription":"<detailed tactile close-up>","manusPrompt":"<prompt>"},{"sceneNumber":3,"visualDescription":"<detailed architectural>","manusPrompt":"<prompt>"},{"sceneNumber":4,"visualDescription":"<ELEVAY bird logo reveal>","manusPrompt":"<prompt>"}], "manusWeekPrompt": "<prompt>"},
+    {"reelNumber": 3, "topic": "<topic>", "concept": "<concept>", "voiceOverAr": "<Arabic>", "backgroundMusicStyle": "<style>", "scenes": [{"sceneNumber":1,"visualDescription":"<detailed cinematic>","manusPrompt":"<prompt>"},{"sceneNumber":2,"visualDescription":"<detailed tactile close-up>","manusPrompt":"<prompt>"},{"sceneNumber":3,"visualDescription":"<detailed architectural>","manusPrompt":"<prompt>"},{"sceneNumber":4,"visualDescription":"<ELEVAY bird logo reveal>","manusPrompt":"<prompt>"}], "manusWeekPrompt": "<prompt>"}
   ],
   "wordDocPrompt": "<Manus task prompt to generate a Word doc with all captions and voice-over scripts for this week>"
 }`;
