@@ -192,7 +192,7 @@ export async function listFinClients(opts?: { search?: string; consultant?: stri
     isLegacy: finClients.isLegacy,
     contractUrl: finClients.contractUrl,
     discountValue: sql<number>`COALESCE((SELECT CAST(discountValue AS DECIMAL(10,2)) FROM contracts WHERE id = ${finClients.contractId}), 0)`,
-    finalContractValueEur: sql<number>`CAST(${finClients.contractValueEur} AS DECIMAL(12,2)) - COALESCE((SELECT CAST(discountValue AS DECIMAL(10,2)) FROM contracts WHERE id = ${finClients.contractId}), 0)`,
+    finalContractValueEur: finClients.contractValueEur,
     totalDirectCostEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'expense'), 0)`,
     totalDirectIncomeEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'income'), 0)`,
   }).from(finClients);
