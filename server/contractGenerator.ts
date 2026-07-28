@@ -167,10 +167,10 @@ function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
 // the project's own S3 bucket via manus-upload-file --webdev.
 const TEMPLATE_REGISTRY: Record<string, { url?: string; storageKey?: string; label: string }> = {
   spain: {
-    // Modified Spain Nomad contract template with {{FAMILY_MEMBERS}} and {{CONTRACT_VALUE}} placeholders
-    // These placeholders are replaced dynamically based on actual family count and calculated fees
-    // Updated 2026-07-27: Minor edit to ملحق تعاقد for Spain Digital Nomad
-    url: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663524211981/qmnDdITCjNkCDrEs.docx",
+    // Modified Spain Nomad contract template with client name and contract value placeholders
+    // Placeholders replaced dynamically: فيفيان نوناي بشاي جرجس -> client name, 13,000 -> calculated value
+    // Updated 2026-07-28: Removed discount line (يطبق خصم اجمالي ٢٠٠٠ يورو)
+    url: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663524211981/ByrNqlUpsWvEhVkR.docx",
     label: "Spain Digital Nomad Visa",
   },
   egypt: {
