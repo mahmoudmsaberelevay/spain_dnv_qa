@@ -949,3 +949,11 @@ Check email for download link within 5 minutes
 - [x] Update contracts.contractValue to match finClients.contractValueEur (ORIGINAL) for all 15 discounted clients with code >= 26035
 - [x] Verify remainingAmountEur is correct for all fixed clients
 - [x] Method applied to ALL clients with code starting from 26035
+
+## Change Requests (Round 59) — Meta Lead Alert Fix
+
+- [x] Fix Meta Lead Alert email showing [object Object] — sendMetaLeadAlert was accepting a string but being called with an object
+- [x] Rewrite sendMetaLeadAlert to accept structured data (integrationName, formResults, totalNew) and render proper HTML
+- [x] Rewrite sendLeadSyncSummaryEmail to accept structured data and render a formatted table
+- [x] Rewrite sendLeadAssignmentNotification to accept an options object matching how it's called in leads.ts
+- [x] Verify Meta sync is working: 14 forms discovered, leads syncing correctly every 4 hours
