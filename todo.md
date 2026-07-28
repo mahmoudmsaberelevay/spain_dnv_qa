@@ -957,3 +957,8 @@ Check email for download link within 5 minutes
 - [x] Rewrite sendLeadSyncSummaryEmail to accept structured data and render a formatted table
 - [x] Rewrite sendLeadAssignmentNotification to accept an options object matching how it's called in leads.ts
 - [x] Verify Meta sync is working: 14 forms discovered, leads syncing correctly every 4 hours
+
+## Change Requests (Round 60) — Enhanced Meta Lead Alert
+
+- [x] Include lead name and phone number in the Meta Lead Alert email for immediate action
+- [x] Send Meta Lead Alert to the assigned consultant (from integration config) in addition to Mahmoud

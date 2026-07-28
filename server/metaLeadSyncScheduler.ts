@@ -95,8 +95,13 @@ async function runSync(): Promise<void> {
       if (r.newLeads > 0) {
         sendMetaLeadAlert({
           integrationName: r.integrationName,
-          formResults: (r.formResults ?? []).map(f => ({ formName: f.formName, newLeads: f.newLeads })),
+          formResults: (r.formResults ?? []).map(f => ({
+            formName: f.formName,
+            newLeads: f.newLeads,
+            leadDetails: f.leadDetails ?? [],
+          })),
           totalNew: r.newLeads,
+          assignedTo: r.assignedTo ?? null,
         }).catch(err => console.error('[MetaLeadSync] Failed to send lead alert email:', err));
       }
     }

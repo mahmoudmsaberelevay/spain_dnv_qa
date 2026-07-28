@@ -222,7 +222,8 @@ export interface SyncResult {
   skippedDuplicates: number;
   formsDiscovered: number;
   errors: string[];
-  formResults?: Array<{ formName: string; newLeads: number; errors: string[] }>;
+  assignedTo?: string | null;
+  formResults?: Array<{ formName: string; newLeads: number; errors: string[]; leadDetails: Array<{ name: string; phone?: string; program?: string }> }>;
 }
 
 /** Sync one Meta integration — auto-discovers all forms on the page */
@@ -251,6 +252,7 @@ async function syncOneIntegration(integration: {
   }
 
   const { page_access_token: accessToken, lead_source: leadSource, assigned_to: assignedTo } = config;
+  result.assignedTo = assignedTo || null;
   const perFormSources: Record<string, string> = (config.form_sources && typeof config.form_sources === "object") ? config.form_sources as Record<string, string> : {};
 
   // page_id can be in config or auto-detected — we always auto-detect from /me/accounts
@@ -322,6 +324,7 @@ async function syncOneIntegration(integration: {
     let afterCursor: string | undefined;
     let formNewLeads = 0;
     const formErrors: string[] = [];
+    const formLeadDetails: Array<{ name: string; phone?: string; program?: string }> = [];
 
     try {
       do {
@@ -493,6 +496,8 @@ async function syncOneIntegration(integration: {
 
           result.newLeads++;
           formNewLeads++;
+          // Capture lead details for the alert email
+          formLeadDetails.push({ name: mapped.fullName || "Unknown", phone: phone, program: mapped.interestedProgram });
         }
 
         // Pagination
@@ -507,7 +512,7 @@ async function syncOneIntegration(integration: {
     }
 
     // Record per-form breakdown for daily summary
-    result.formResults!.push({ formName: form.name, newLeads: formNewLeads, errors: formErrors });
+    result.formResults!.push({ formName: form.name, newLeads: formNewLeads, errors: formErrors, leadDetails: formLeadDetails });
   }
 
   // Update lastSyncAt and lastSyncCount

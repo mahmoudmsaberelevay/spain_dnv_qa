@@ -188,20 +188,42 @@ export async function sendLeadSyncSummaryEmail(summary: {
 
 export async function sendMetaLeadAlert(data: {
   integrationName: string;
-  formResults: Array<{ formName: string; newLeads: number }>;
+  formResults: Array<{ formName: string; newLeads: number; leadDetails?: Array<{ name: string; phone?: string; program?: string }> }>;
   totalNew: number;
+  assignedTo?: string | null;
 }) {
+  // Build lead details table
+  const allLeads = data.formResults.flatMap(f =>
+    (f.leadDetails ?? []).map(l => ({ ...l, formName: f.formName }))
+  );
+  const leadRows = allLeads
+    .map(l => `<tr><td style="padding:6px 10px;border:1px solid #ddd;">${l.name}</td><td style="padding:6px 10px;border:1px solid #ddd;">${l.phone || '—'}</td><td style="padding:6px 10px;border:1px solid #ddd;">${l.program || '—'}</td><td style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">${l.formName}</td></tr>`)
+    .join('');
+
   const formLines = data.formResults
     .filter(f => f.newLeads > 0)
     .map(f => `<li><strong>${f.formName}:</strong> ${f.newLeads} new lead${f.newLeads > 1 ? 's' : ''}</li>`)
     .join('');
+
   const html = `
-    <h2>🚀 Meta Lead Alert</h2>
+    <h2>\uD83D\uDE80 Meta Lead Alert</h2>
     <p><strong>${data.totalNew} new lead${data.totalNew > 1 ? 's' : ''}</strong> just synced from <strong>${data.integrationName}</strong>!</p>
-    ${formLines ? `<ul>${formLines}</ul>` : ''}
-    <p style="margin-top:12px;"><a href="https://elevay.vip/leads">View Leads →</a></p>
+    ${formLines ? `<ul style="margin-bottom:16px;">${formLines}</ul>` : ''}
+    ${leadRows ? `
+    <table style="border-collapse:collapse;width:100%;margin-top:12px;">
+      <tr style="background:#1a3a5c;color:#fff;"><th style="padding:8px 10px;border:1px solid #ddd;text-align:left;">Name</th><th style="padding:8px 10px;border:1px solid #ddd;text-align:left;">Phone</th><th style="padding:8px 10px;border:1px solid #ddd;text-align:left;">Program</th><th style="padding:8px 10px;border:1px solid #ddd;text-align:left;">Form</th></tr>
+      ${leadRows}
+    </table>` : ''}
+    <p style="margin-top:16px;"><a href="https://elevay.vip/leads" style="background:#1a3a5c;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;">View Leads \u2192</a></p>
   `;
-  return sendEmail(MAHMOUD_EMAILS, "Meta Lead Alert", html);
+
+  // Determine recipients: always Mahmoud + assigned consultant if configured
+  const recipients = [...MAHMOUD_EMAILS];
+  if (data.assignedTo && TEAM_EMAIL_MAP[data.assignedTo] && !recipients.includes(TEAM_EMAIL_MAP[data.assignedTo])) {
+    recipients.push(TEAM_EMAIL_MAP[data.assignedTo]);
+  }
+
+  return sendEmail(recipients, "Meta Lead Alert", html);
 }
 
 // Backup notifications
