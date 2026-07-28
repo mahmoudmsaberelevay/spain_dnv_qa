@@ -489,6 +489,7 @@ export default function FinClients() {
                     <th className={`${thClass} text-right`} onClick={() => handleSort("contractValueEur")}>
                       <span className="flex items-center justify-end">Contract Value <SortIcon field="contractValueEur" sortField={sortField} sortDir={sortDir} /></span>
                     </th>
+                    <th className="text-right py-3 px-4 font-semibold text-muted-foreground">After Discount</th>
                     <th className={`${thClass} text-right`} onClick={() => handleSort("paidAmountEur")}>
                       <span className="flex items-center justify-end">Paid (€) <SortIcon field="paidAmountEur" sortField={sortField} sortDir={sortDir} /></span>
                     </th>
@@ -539,6 +540,11 @@ export default function FinClients() {
                               </div>
                             )}
                           </div>
+                        </td>
+                        <td className="py-3 px-4 text-right font-semibold text-blue-700">
+                          {c.discountValue && Number(c.discountValue) > 0
+                            ? `€ ${fmtEur(contractVal - Number(c.discountValue))}`
+                            : contractVal > 0 ? `€ ${fmtEur(contractVal)}` : "—"}
                         </td>
                         <td className="py-3 px-4 text-right text-green-700 font-medium">
                           {paid > 0 ? `€ ${fmtEur(paid)}` : "—"}

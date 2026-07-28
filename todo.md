@@ -940,3 +940,12 @@ Check email for download link within 5 minutes
 1. Download the backup file from email link
 2. Run: `mysql -u root -p < elevay-full-backup-YYYY-MM-DD_HH-MM-SS.sql`
 3. System will be restored to that point in time with all data intact
+
+## Change Requests (Round 58) — After Discount Column
+
+- [x] Add "After Discount" column to FinClients table (between Contract Value and Paid EUR columns)
+- [x] After Discount shows net value: contractValueEur - discountValue (from contracts table)
+- [x] Fix 3 clients (26079/26080/26081) where contractValueEur stored NET value instead of ORIGINAL
+- [x] Update contracts.contractValue to match finClients.contractValueEur (ORIGINAL) for all 15 discounted clients with code >= 26035
+- [x] Verify remainingAmountEur is correct for all fixed clients
+- [x] Method applied to ALL clients with code starting from 26035
