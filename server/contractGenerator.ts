@@ -307,24 +307,31 @@ export async function generateContractDoc(
     docXml = docXml.replace(/\d{1,2}\/\d{1,2}\/20\d{2}/, todayDate);
   }
 
-  // ── Client name ───────────────────────────────────────────────────────────
+    // ── Client name ───────────────────────────────────────────────────────────
   if (country === "spain") {
-    // The new Spain template (NewSpainContract.docx) has the client name slot as
-    // 'السيد/ ' followed by 18 spaces in a separate run.
-    // We replace that 18-space run with the actual client name.
-    // Everything else in the document is left completely unchanged.
+    // The Spain template has the placeholder client name "فيفيان نوناي بشاي جرجس"
+    // in the الطرف الثاني section. Replace it with the actual client name in Arabic.
+    const CLIENT_NAME_PLACEHOLDER = "\u0641\u064a\u0641\u064a\u0627\u0646 \u0646\u0648\u0646\u0627\u064a \u0628\u0634\u0627\u064a \u062c\u0631\u062c\u0633";
+    docXml = docXml.replace(new RegExp(CLIENT_NAME_PLACEHOLDER, "g"), escapeXml(clientName));
+    // Fallback: also try the 18-space placeholder in case older template is cached
     const SPACE_PLACEHOLDER = "                  "; // 18 spaces
     docXml = docXml.replace(SPACE_PLACEHOLDER, escapeXml(clientName));
   } else {
     // Citizenship templates (Egypt, Dominica, St Kitts, Grenada) use "Inset The Client Name"
     docXml = replaceAndClean(docXml, "Inset The Client Name", clientName);
   }
-
   // ── Family members & contract value (Spain only) ──────────────────────────
-  // Replace the placeholders with actual values
+  // Replace the contract total amount based on family size.
+  // Pricing: 1 member = 12,000 | 2 members = 13,000 | 3-4 = 14,000 | 5+ = 15,000
+  // Template has "13,000" as placeholder. Replace with calculated amount.
   if (country === "spain") {
+    // Replace {{FAMILY_MEMBERS}} if present (newer templates)
     docXml = docXml.replace("{{FAMILY_MEMBERS}}", familyMembers.toString());
+    // Replace {{CONTRACT_VALUE}} if present (newer templates)
     docXml = docXml.replace("{{CONTRACT_VALUE}}", contractValue.toLocaleString("en-US"));
+    // Replace the hardcoded "13,000" in the contract value section
+    // This handles the template that has "13,000 EUR" as the placeholder amount
+    docXml = docXml.replace("13,000", contractValue.toLocaleString("en-US"));
   }
 
   zip.file("word/document.xml", docXml);
