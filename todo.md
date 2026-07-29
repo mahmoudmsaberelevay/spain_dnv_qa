@@ -958,3 +958,8 @@ Check email for download link within 5 minutes
 - [x] Add "All Time" filter option to Attestation Reports (was missing, defaulted to Today)
 - [x] Set default filter to "All Time" across all report tabs so all previously added reports appear immediately
 - [x] Financial Reports already had "All Time" — confirmed working correctly
+
+## Change Requests (Round 62) — Qualification Report Auto-Calculated Columns
+
+- [x] Add "Qualification %" column = (Total Qualified / Total Leads) × 100
+- [x] Add "Net Qualify %" column = (Total Qualified / (Total Leads - No Answer)) × 100

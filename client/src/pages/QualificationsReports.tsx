@@ -305,6 +305,8 @@ export default function QualificationsReports() {
                     <th className="text-right py-3 px-4 font-semibold">Total Qualified</th>
                     <th className="text-right py-3 px-4 font-semibold">Not Qualified</th>
                     <th className="text-right py-3 px-4 font-semibold">No Answer</th>
+                    <th className="text-right py-3 px-4 font-semibold">Qualification %</th>
+                    <th className="text-right py-3 px-4 font-semibold">Net Qualify %</th>
                     <th className="text-center py-3 px-4 font-semibold">Actions</th>
                   </tr>
                 </thead>
@@ -323,6 +325,12 @@ export default function QualificationsReports() {
                       <td className="text-right py-3 px-4 text-green-600 font-medium">{report.totalQualified}</td>
                       <td className="text-right py-3 px-4 text-red-600 font-medium">{report.notQualified}</td>
                       <td className="text-right py-3 px-4 text-amber-600 font-medium">{report.noAnswer}</td>
+                      <td className="text-right py-3 px-4 text-blue-600 font-medium">
+                        {report.totalLeads > 0 ? ((report.totalQualified / report.totalLeads) * 100).toFixed(1) + "%" : "—"}
+                      </td>
+                      <td className="text-right py-3 px-4 text-purple-600 font-medium">
+                        {(report.totalLeads - report.noAnswer) > 0 ? ((report.totalQualified / (report.totalLeads - report.noAnswer)) * 100).toFixed(1) + "%" : "—"}
+                      </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center justify-center gap-2">
                           <Button
