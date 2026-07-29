@@ -950,15 +950,11 @@ Check email for download link within 5 minutes
 - [x] Verify remainingAmountEur is correct for all fixed clients
 - [x] Method applied to ALL clients with code starting from 26035
 
-## Change Requests (Round 59) — Meta Lead Alert Fix
+## Change Requests (Round 61) — Reporting Module All Time Filter
 
-- [x] Fix Meta Lead Alert email showing [object Object] — sendMetaLeadAlert was accepting a string but being called with an object
-- [x] Rewrite sendMetaLeadAlert to accept structured data (integrationName, formResults, totalNew) and render proper HTML
-- [x] Rewrite sendLeadSyncSummaryEmail to accept structured data and render a formatted table
-- [x] Rewrite sendLeadAssignmentNotification to accept an options object matching how it's called in leads.ts
-- [x] Verify Meta sync is working: 14 forms discovered, leads syncing correctly every 4 hours
-
-## Change Requests (Round 60) — Enhanced Meta Lead Alert
-
-- [x] Include lead name and phone number in the Meta Lead Alert email for immediate action
-- [x] Send Meta Lead Alert to the assigned consultant (from integration config) in addition to Mahmoud
+- [x] Add "All Time" filter option to Qualifications Reports (was missing, defaulted to Today)
+- [x] Add "All Time" filter option to Paralegal Reports (was missing, defaulted to Today)
+- [x] Add "All Time" filter option to Visas Reports (was missing, defaulted to Today)
+- [x] Add "All Time" filter option to Attestation Reports (was missing, defaulted to Today)
+- [x] Set default filter to "All Time" across all report tabs so all previously added reports appear immediately
+- [x] Financial Reports already had "All Time" — confirmed working correctly

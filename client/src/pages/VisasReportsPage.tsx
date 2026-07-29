@@ -14,7 +14,7 @@ import { Plus, Download, Search, Edit2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 
-type DateRange = "today" | "yesterday" | "this_week" | "last_week" | "last_month" | "last_year" | "custom";
+type DateRange = "all_time" | "today" | "yesterday" | "this_week" | "last_week" | "last_month" | "last_year" | "custom";
 
 function getDateRange(range: DateRange): { from: Date; to: Date } | null {
   const today = new Date();
@@ -63,7 +63,7 @@ function getDateRange(range: DateRange): { from: Date; to: Date } | null {
 }
 
 export default function VisasReportsPage() {
-  const [dateRange, setDateRange] = useState<DateRange>("today");
+  const [dateRange, setDateRange] = useState<DateRange>("all_time");
   const [customFrom, setCustomFrom] = useState<string>("");
   const [customTo, setCustomTo] = useState<string>("");
   const [showForm, setShowForm] = useState(false);
@@ -77,14 +77,16 @@ export default function VisasReportsPage() {
     provider: "",
   });
 
-  const range = dateRange === "custom" && customFrom && customTo
+  const range = dateRange === "all_time"
+    ? null
+    : dateRange === "custom" && customFrom && customTo
     ? { from: new Date(customFrom), to: new Date(customTo) }
     : getDateRange(dateRange);
 
   // Fetch visa records
   const { data: records = [], isLoading, refetch } = trpc.reports.visaClients.list.useQuery(
     range ? { dateFrom: range.from, dateTo: range.to } : undefined,
-    { enabled: !!range }
+    { enabled: dateRange === "all_time" || !!range }
   );
 
   // Search for clients
@@ -234,6 +236,7 @@ export default function VisasReportsPage() {
               <SelectValue placeholder="Select date range" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all_time">All Time</SelectItem>
               <SelectItem value="today">Today</SelectItem>
               <SelectItem value="yesterday">Yesterday</SelectItem>
               <SelectItem value="this_week">This Week</SelectItem>

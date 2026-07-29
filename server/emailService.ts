@@ -139,128 +139,42 @@ export async function sendDocReminderToAssignedTeam(
 }
 
 // Lead notifications
-export async function sendLeadAssignmentNotification(opts: {
-  ownerName: string;
-  ownerEmail: string;
-  leadId: number;
-  leadName: string;
-  leadPhone?: string | null;
-  leadProgram?: string | null;
-  origin?: string;
-}) {
-  const { ownerName, ownerEmail, leadId, leadName, leadPhone, leadProgram, origin } = opts;
-  const leadUrl = origin ? `${origin}/leads?id=${leadId}` : '';
+export async function sendLeadAssignmentNotification(leadName: string, assignedTo: string, assignedEmail: string) {
   const html = `
-    <h2>New Lead Assigned to You</h2>
+    <h2>New Lead Assigned</h2>
     <p><strong>Lead:</strong> ${leadName}</p>
-    ${leadPhone ? `<p><strong>Phone:</strong> ${leadPhone}</p>` : ''}
-    ${leadProgram ? `<p><strong>Program:</strong> ${leadProgram}</p>` : ''}
-    <p><strong>Assigned To:</strong> ${ownerName}</p>
-    ${leadUrl ? `<p><a href="${leadUrl}">View Lead</a></p>` : ''}
+    <p><strong>Assigned To:</strong> ${assignedTo}</p>
   `;
-  return sendEmail(ownerEmail, "New Lead Assigned", html);
+  return sendEmail(assignedEmail, "New Lead Assigned", html);
 }
 
 // Meta lead sync notifications
-export async function sendLeadSyncSummaryEmail(summary: {
-  date: string;
-  totalNew: number;
-  totalSkipped: number;
-  byForm: Array<{ formName: string; newLeads: number; errors: string[] }>;
-  errors: string[];
-}) {
-  const formRows = summary.byForm
-    .map(f => `<tr><td style="padding:4px 8px;border:1px solid #ddd;">${f.formName}</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${f.newLeads}</td><td style="padding:4px 8px;border:1px solid #ddd;">${f.errors.length ? f.errors.join('<br>') : '—'}</td></tr>`)
-    .join('');
+export async function sendLeadSyncSummaryEmail(summary: string) {
   const html = `
-    <h2>Meta Lead Sync — Daily Summary</h2>
-    <p><strong>Date:</strong> ${summary.date}</p>
-    <p><strong>New Leads:</strong> ${summary.totalNew} | <strong>Duplicates Skipped:</strong> ${summary.totalSkipped}</p>
-    ${summary.byForm.length ? `
-    <table style="border-collapse:collapse;margin-top:12px;">
-      <tr style="background:#f5f5f5;"><th style="padding:4px 8px;border:1px solid #ddd;">Form</th><th style="padding:4px 8px;border:1px solid #ddd;">New Leads</th><th style="padding:4px 8px;border:1px solid #ddd;">Errors</th></tr>
-      ${formRows}
-    </table>` : ''}
-    ${summary.errors.length ? `<p style="color:red;margin-top:12px;"><strong>Errors:</strong><br>${summary.errors.join('<br>')}</p>` : ''}
+    <h2>Meta Lead Sync Summary</h2>
+    <pre>${summary}</pre>
   `;
   return sendEmail(MAHMOUD_EMAILS, "Meta Lead Sync Summary", html);
 }
 
-export async function sendMetaLeadAlert(data: {
-  integrationName: string;
-  formResults: Array<{ formName: string; newLeads: number; leadDetails?: Array<{ name: string; phone?: string; program?: string }> }>;
-  totalNew: number;
-  assignedTo?: string | null;
-}) {
-  // Build lead details table
-  const allLeads = data.formResults.flatMap(f =>
-    (f.leadDetails ?? []).map(l => ({ ...l, formName: f.formName }))
-  );
-  const leadRows = allLeads
-    .map(l => `<tr><td style="padding:6px 10px;border:1px solid #ddd;">${l.name}</td><td style="padding:6px 10px;border:1px solid #ddd;">${l.phone || '—'}</td><td style="padding:6px 10px;border:1px solid #ddd;">${l.program || '—'}</td><td style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">${l.formName}</td></tr>`)
-    .join('');
-
-  const formLines = data.formResults
-    .filter(f => f.newLeads > 0)
-    .map(f => `<li><strong>${f.formName}:</strong> ${f.newLeads} new lead${f.newLeads > 1 ? 's' : ''}</li>`)
-    .join('');
-
+export async function sendMetaLeadAlert(alertMessage: string) {
   const html = `
-    <h2>\uD83D\uDE80 Meta Lead Alert</h2>
-    <p><strong>${data.totalNew} new lead${data.totalNew > 1 ? 's' : ''}</strong> just synced from <strong>${data.integrationName}</strong>!</p>
-    ${formLines ? `<ul style="margin-bottom:16px;">${formLines}</ul>` : ''}
-    ${leadRows ? `
-    <table style="border-collapse:collapse;width:100%;margin-top:12px;">
-      <tr style="background:#1a3a5c;color:#fff;"><th style="padding:8px 10px;border:1px solid #ddd;text-align:left;">Name</th><th style="padding:8px 10px;border:1px solid #ddd;text-align:left;">Phone</th><th style="padding:8px 10px;border:1px solid #ddd;text-align:left;">Program</th><th style="padding:8px 10px;border:1px solid #ddd;text-align:left;">Form</th></tr>
-      ${leadRows}
-    </table>` : ''}
-    <p style="margin-top:16px;"><a href="https://elevay.vip/leads" style="background:#1a3a5c;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;">View Leads \u2192</a></p>
+    <h2>Meta Lead Alert</h2>
+    <p>${alertMessage}</p>
   `;
-
-  // Determine recipients: always Mahmoud + assigned consultant if configured
-  const recipients = [...MAHMOUD_EMAILS];
-  if (data.assignedTo && TEAM_EMAIL_MAP[data.assignedTo] && !recipients.includes(TEAM_EMAIL_MAP[data.assignedTo])) {
-    recipients.push(TEAM_EMAIL_MAP[data.assignedTo]);
-  }
-
-  return sendEmail(recipients, "Meta Lead Alert", html);
+  return sendEmail(MAHMOUD_EMAILS, "Meta Lead Alert", html);
 }
 
 // Backup notifications
-export async function sendBackupNotification(data: {
-  date: string;
-  filename: string;
-  driveLink: string;
-  sizeKb: number;
-  tables: Array<{ name: string; rows: number }>;
-  success: boolean;
-  error?: string;
-}) {
-  const { date, filename, driveLink, sizeKb, tables, success, error } = data;
-  const totalRows = tables.reduce((s, t) => s + t.rows, 0);
-  const tableRows = tables
-    .map(t => `<tr><td style="padding:4px 8px;border:1px solid #ddd;">${t.name}</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${t.rows.toLocaleString()}</td></tr>`)
-    .join('');
-  const html = success
-    ? `
-      <h2>✅ Database Backup Complete</h2>
-      <p><strong>Date:</strong> ${date}</p>
-      <p><strong>File:</strong> ${filename}</p>
-      <p><strong>Size:</strong> ${sizeKb} KB</p>
-      <p><strong>Total Records:</strong> ${totalRows.toLocaleString()}</p>
-      ${driveLink ? `<p><a href="${driveLink}">View on Google Drive</a></p>` : ''}
-      ${tables.length ? `
-      <table style="border-collapse:collapse;margin-top:12px;">
-        <tr style="background:#f5f5f5;"><th style="padding:4px 8px;border:1px solid #ddd;">Table</th><th style="padding:4px 8px;border:1px solid #ddd;">Rows</th></tr>
-        ${tableRows}
-      </table>` : ''}
-    `
-    : `
-      <h2>❌ Database Backup Failed</h2>
-      <p><strong>Date:</strong> ${date}</p>
-      <p><strong>Error:</strong> ${error || 'Unknown error'}</p>
-    `;
-  return sendEmail(["mahmoud.saberelevay@gmail.com", "mahmoud.saber@elevay.com"], success ? "Database Backup Complete" : "Database Backup Failed", html);
+export async function sendBackupNotification(backupName: string, downloadUrl: string, backupSize: string) {
+  const html = `
+    <h2>Database Backup Complete</h2>
+    <p><strong>Backup:</strong> ${backupName}</p>
+    <p><strong>Size:</strong> ${backupSize}</p>
+    <p><a href="${downloadUrl}">Download Backup</a></p>
+    <p style="color: #999; font-size: 12px;">This backup will be available for 30 days.</p>
+  `;
+  return sendEmail(["mahmoud.saberelevay@gmail.com", "mahmoud.saber@elevay.com"], "Database Backup Complete", html);
 }
 
 // Weekly financial report
