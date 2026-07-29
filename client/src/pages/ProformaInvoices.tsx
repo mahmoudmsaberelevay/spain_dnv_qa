@@ -23,7 +23,7 @@ import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 import { ClientSearchCombobox } from "@/components/ClientSearchCombobox";
 import { ContractSearchCombobox } from "@/components/ContractSearchCombobox";
 import { usePermissions } from "@/contexts/PermissionsContext";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 export default function ProformaInvoices() {
   const { canEdit } = usePermissions();

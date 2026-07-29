@@ -19,7 +19,7 @@ import NewContractDialog from "@/components/NewContractDialog";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { usePermissions } from "@/contexts/PermissionsContext";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Trash2 } from "lucide-react";
 
 const CONSULTANTS = ["Ziad El Shurafa", "Mahmoud Saber", "Fouad Abdo", "Kirolos Nabil"];
