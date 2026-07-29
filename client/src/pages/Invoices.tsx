@@ -24,9 +24,12 @@ import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 import { ClientSearchCombobox } from "@/components/ClientSearchCombobox";
 import { ContractSearchCombobox } from "@/components/ContractSearchCombobox";
 import { usePermissions } from "@/contexts/PermissionsContext";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Invoices() {
   const { canEdit } = usePermissions();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -401,7 +404,7 @@ export default function Invoices() {
                               : <RefreshCw className="h-3.5 w-3.5" />}
                             Regen
                           </Button>
-                          {canEdit && (
+                          {isAdmin && (
                             <Button
                               variant="ghost"
                               size="sm"

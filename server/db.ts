@@ -279,6 +279,22 @@ export async function deleteInvoice(id: number) {
   await db.delete(invoices).where(eq(invoices.id, id));
 }
 
+export async function deleteContract(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Delete related invoices and payments first
+  await db.delete(invoices).where(eq(invoices.contractId, id));
+  await db.delete(payments).where(eq(payments.contractId, id));
+  await db.delete(proformaInvoices).where(eq(proformaInvoices.contractId, id));
+  await db.delete(contracts).where(eq(contracts.id, id));
+}
+
+export async function deleteProformaInvoice(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(proformaInvoices).where(eq(proformaInvoices.id, id));
+}
+
 export async function markInvoicePaid(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

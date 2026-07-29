@@ -17,15 +17,19 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Download, Search, Receipt, FileText, Calendar, CheckCircle, Loader2, TrendingDown, Mail, ExternalLink,
+  Plus, Download, Search, Receipt, FileText, Calendar, CheckCircle, Loader2, TrendingDown, Mail, ExternalLink, Trash2,
 } from "lucide-react";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 import { ClientSearchCombobox } from "@/components/ClientSearchCombobox";
 import { ContractSearchCombobox } from "@/components/ContractSearchCombobox";
 import { usePermissions } from "@/contexts/PermissionsContext";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function ProformaInvoices() {
   const { canEdit } = usePermissions();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; proformaCode: string; clientName: string } | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -152,6 +156,18 @@ export default function ProformaInvoices() {
     },
     onError: (err) => {
       toast.error(`Failed to send proforma invoice: ${err.message}`);
+    },
+  });
+
+  const deleteProformaMutation = trpc.contracting.proformaInvoices.delete.useMutation({
+    onSuccess: () => {
+      utils.contracting.proformaInvoices.list.invalidate();
+      toast.success("Proforma invoice deleted successfully");
+      setConfirmDelete(null);
+    },
+    onError: (err) => {
+      toast.error(`Failed to delete: ${err.message}`);
+      setConfirmDelete(null);
     },
   });
 
@@ -358,6 +374,18 @@ export default function ProformaInvoices() {
                             >
                               <CheckCircle className="h-3.5 w-3.5" />
                               Mark Paid
+                            </Button>
+                          )}
+                          {isAdmin && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 gap-1 text-xs text-red-600 hover:text-red-800 hover:bg-red-50"
+                              onClick={() => setConfirmDelete({ id: proforma.id, proformaCode: proforma.proformaCode, clientName: proforma.clientName })}
+                              title="Delete proforma invoice (admin only)"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
                             </Button>
                           )}
                         </div>
@@ -629,6 +657,30 @@ export default function ProformaInvoices() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Proforma Confirmation (Admin Only) */}
+      <AlertDialog open={!!confirmDelete} onOpenChange={() => setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Proforma Invoice</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete proforma invoice <strong>{confirmDelete?.proformaCode}</strong> for{" "}
+              <strong>{confirmDelete?.clientName}</strong>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (confirmDelete) deleteProformaMutation.mutate({ id: confirmDelete.id });
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Confirm Mark Paid */}
       <AlertDialog open={!!confirmPaid} onOpenChange={() => setConfirmPaid(null)}>

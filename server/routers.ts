@@ -4,7 +4,7 @@ import { leadsRouter } from "./routers/leads";
 import { leadsSettingsRouter } from "./routers/leadsSettings";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { invokeLLM } from "./_core/llm";
 import { storagePut } from "./storage";
@@ -21,6 +21,7 @@ import {
   getMonthlyRevenue,
   getFilteredContracts,
   createProformaInvoice, getAllProformaInvoices, getProformaInvoiceById, markProformaInvoicePaid, updateProformaInvoicePdfUrl,
+  deleteContract, deleteProformaInvoice,
 } from "./db";
 import { generateContractDoc, uploadContractToStorage, calculateContractValue, CONTRACT_COUNTRIES } from "./contractGenerator";
 import { getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
@@ -917,6 +918,14 @@ const contractingRouter = router({
         const contractValue = Number(contract.contractValue);
         return { contractValue, totalPaid, remainingBalance: contractValue - totalPaid };
       }),
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const contract = await getContractById(input.id);
+        if (!contract) throw new TRPCError({ code: "NOT_FOUND", message: "Contract not found" });
+        await deleteContract(input.id);
+        return { success: true };
+      }),
   }),
   invoices: router({
     list: protectedProcedure.query(async () => getAllInvoices()),
@@ -1114,7 +1123,7 @@ const contractingRouter = router({
         ).catch(() => {});
         return invoice;
       }),
-    delete: protectedProcedure
+    delete: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const invoice = await getInvoiceById(input.id);
@@ -1324,6 +1333,14 @@ const contractingRouter = router({
         });
         notifyNewInvoice(invoiceCode, contract.contractCode, billingName, amountEur, remainingBalance).catch(() => {});
         return { invoiceCode, invoiceId: invoice.id, pdfUrl };
+      }),
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const inv = await getProformaInvoiceById(input.id);
+        if (!inv) throw new TRPCError({ code: "NOT_FOUND", message: "Proforma invoice not found" });
+        await deleteProformaInvoice(input.id);
+        return { success: true };
       }),
   }),
   exchangeRate: router({

@@ -972,3 +972,10 @@ Check email for download link within 5 minutes
 - [x] Visa Reports: Add filter by status (Submitted/Finished) and visa type (Schengen/National)
 - [x] Attestation Reports: Add filter by client name or code (shortlist/autocomplete as you type)
 - [x] Attestation Reports: Add filter by type (Submitted/Finished)
+
+## Change Requests (Round 64)
+
+- [x] Add admin-only delete for contracts (only owner/admin can delete)
+- [x] Add admin-only delete for invoices/receipts (restrict existing delete to admin only)
+- [x] Add admin-only delete for proforma invoices (only owner/admin can delete)
+- [x] Show delete buttons in frontend only for admin users
