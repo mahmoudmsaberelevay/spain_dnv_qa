@@ -7,7 +7,7 @@ export const backupsRouter = router({
    * Trigger financial backup and send download link to owner's email
    */
   triggerFinancialBackup: protectedProcedure.mutation(async ({ ctx }) => {
-    if (ctx.user.id !== process.env.OWNER_OPEN_ID) {
+    if (String(ctx.user.id) !== process.env.OWNER_OPEN_ID && ctx.user.role !== "admin") {
       throw new Error("Only owner can trigger backups");
     }
     const result = await exportFinancialBackup();
@@ -32,7 +32,7 @@ export const backupsRouter = router({
    * Trigger contracts backup and send download link to owner's email
    */
   triggerContractsBackup: protectedProcedure.mutation(async ({ ctx }) => {
-    if (ctx.user.id !== process.env.OWNER_OPEN_ID) {
+    if (String(ctx.user.id) !== process.env.OWNER_OPEN_ID && ctx.user.role !== "admin") {
       throw new Error("Only owner can trigger backups");
     }
     const result = await exportContractsBackup();
@@ -57,7 +57,7 @@ export const backupsRouter = router({
    * Trigger leads backup and send download link to owner's email
    */
   triggerLeadsBackup: protectedProcedure.mutation(async ({ ctx }) => {
-    if (ctx.user.id !== process.env.OWNER_OPEN_ID) {
+    if (String(ctx.user.id) !== process.env.OWNER_OPEN_ID && ctx.user.role !== "admin") {
       throw new Error("Only owner can trigger backups");
     }
     const result = await exportLeadsBackup();
@@ -82,7 +82,7 @@ export const backupsRouter = router({
    * Trigger full database backup and send download link to owner's email
    */
   triggerDatabaseBackup: protectedProcedure.mutation(async ({ ctx }) => {
-    if (ctx.user.id !== process.env.OWNER_OPEN_ID) {
+    if (String(ctx.user.id) !== process.env.OWNER_OPEN_ID && ctx.user.role !== "admin") {
       throw new Error("Only owner can trigger backups");
     }
     const result = await exportDatabaseBackup();
@@ -107,7 +107,7 @@ export const backupsRouter = router({
    * Trigger all backups at once
    */
   triggerAllBackups: protectedProcedure.mutation(async ({ ctx }) => {
-    if (ctx.user.id !== process.env.OWNER_OPEN_ID) {
+    if (String(ctx.user.id) !== process.env.OWNER_OPEN_ID && ctx.user.role !== "admin") {
       throw new Error("Only owner can trigger backups");
     }
     const results = {

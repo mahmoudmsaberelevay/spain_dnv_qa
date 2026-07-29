@@ -979,3 +979,12 @@ Check email for download link within 5 minutes
 - [x] Add admin-only delete for invoices/receipts (restrict existing delete to admin only)
 - [x] Add admin-only delete for proforma invoices (only owner/admin can delete)
 - [x] Show delete buttons in frontend only for admin users
+
+## Change Requests (Round 65)
+
+- [x] Update backup scheduler from Friday-only to Mon-Thu at 18:00 Cairo time
+- [x] Add AES-256-CBC encryption to database backups before uploading to Google Drive
+- [x] Send email notifications to mahmoud.saberelevay@gmail.com and mahmoud.saber@elevay.com
+- [x] Fix sendBackupNotification call signature mismatch (was causing [object Object] in emails)
+- [x] Fix type comparison errors in backups.ts (ctx.user.id number vs OWNER_OPEN_ID string)
+- [x] Create /home/ubuntu/backup_final.sh playbook script

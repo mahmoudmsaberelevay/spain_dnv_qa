@@ -1,20 +1,31 @@
 /**
- * Weekly Google Drive Backup Scheduler
+ * Automatic Database Backup Scheduler
  *
- * Runs every Friday at 08:00 Cairo time (UTC+3).
- * Exports all database tables as a JSON file and uploads it to
- * the "ELEVAY Backups" folder in Google Drive.
- * Sends a confirmation email to Mahmoud with a direct link.
+ * Runs Monday–Thursday at 18:00 Cairo time (UTC+3).
+ * Exports all database tables as a JSON file, encrypts with AES-256-CBC,
+ * uploads to Google Drive, and sends email notifications to
+ * mahmoud.saberelevay@gmail.com and mahmoud.saber@elevay.com.
  */
 
+import crypto from "crypto";
 import { getDb } from "./db";
 import { uploadBackupToDrive, isDriveConfigured } from "./googleDrive";
 import { sendBackupNotification } from "./emailService";
 import * as schema from "../drizzle/schema";
 
 const ONE_MINUTE_MS = 60 * 1000;
+const ENCRYPTION_KEY = crypto.scryptSync(process.env.JWT_SECRET || "elevay-backup-key-2026", "salt", 32);
+const IV_LENGTH = 16;
 
-/** Get current day of week in Cairo timezone (0=Sun, 5=Fri) */
+/** Encrypt data with AES-256-CBC */
+function encryptAES256(data: Buffer): { encrypted: Buffer; iv: string } {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
+  const encrypted = Buffer.concat([cipher.update(data), cipher.final()]);
+  return { encrypted, iv: iv.toString("hex") };
+}
+
+/** Get current day of week in Cairo timezone (0=Sun, 1=Mon, ..., 4=Thu, 5=Fri, 6=Sat) */
 function getCairoDay(): number {
   const day = new Date().toLocaleDateString("en-US", { weekday: "short", timeZone: "Africa/Cairo" });
   const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
@@ -72,7 +83,7 @@ async function exportAllTables(): Promise<{ json: string; tables: { name: string
         backup[name] = rows ?? [];
       }
     } catch (err) {
-      console.warn(`[WeeklyBackup] Could not export table "${name}":`, err);
+      console.warn(`[DailyBackup] Could not export table "${name}":`, err);
       backup[name] = [];
     }
   }
@@ -83,49 +94,66 @@ async function exportAllTables(): Promise<{ json: string; tables: { name: string
 }
 
 
-
-async function runWeeklyBackup(): Promise<void> {
+async function runBackup(): Promise<void> {
   const dateStr = new Date().toLocaleDateString("en-GB", {
     day: "2-digit", month: "long", year: "numeric", timeZone: "Africa/Cairo",
   });
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const filename = `ELEVAY-Backup-${timestamp}.json`;
+  const filename = `ELEVAY-Backup-${timestamp}.enc.json`;
 
-  console.log(`[WeeklyBackup] Starting weekly backup: ${filename}`);
+  console.log(`[DailyBackup] Starting backup: ${filename}`);
 
   try {
     // 1. Export all tables
     const { json, tables } = await exportAllTables();
-    const buffer = Buffer.from(json, "utf-8");
-    const sizeKb = Math.round(buffer.length / 1024);
+    const rawBuffer = Buffer.from(json, "utf-8");
+    const rawSizeKb = Math.round(rawBuffer.length / 1024);
 
-    // 2. Upload to Google Drive
+    // 2. Encrypt with AES-256-CBC
+    const { encrypted, iv } = encryptAES256(rawBuffer);
+    // Prepend IV to encrypted data for decryption later
+    const encryptedWithIv = Buffer.concat([Buffer.from(iv, "utf-8"), Buffer.from("|"), encrypted]);
+    const encSizeKb = Math.round(encryptedWithIv.length / 1024);
+
+    console.log(`[DailyBackup] Encrypted: ${rawSizeKb} KB → ${encSizeKb} KB (AES-256-CBC)`);
+
+    // 3. Upload to Google Drive
     if (!isDriveConfigured()) {
       throw new Error("Google Drive is not configured. Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN.");
     }
 
-    const { webViewLink } = await uploadBackupToDrive(buffer, filename);
+    const { webViewLink } = await uploadBackupToDrive(encryptedWithIv, filename);
 
-    console.log(`[WeeklyBackup] Uploaded to Google Drive: ${webViewLink} (${sizeKb} KB)`);
+    console.log(`[DailyBackup] Uploaded to Google Drive: ${webViewLink} (${encSizeKb} KB)`);
 
-    // 3. Send confirmation email
+    // 4. Send confirmation email
+    const totalRecords = tables.reduce((s, t) => s + t.rows, 0);
+    const tablesSummary = tables.map(t => `${t.name}: ${t.rows}`).join(", ");
     try {
-      await sendBackupNotification({ date: dateStr, filename, driveLink: webViewLink, sizeKb, tables, success: true });
+      await sendBackupNotification(
+        filename,
+        webViewLink,
+        `${encSizeKb} KB (encrypted) | ${totalRecords.toLocaleString()} records | AES-256-CBC | Tables: ${tablesSummary}`
+      );
     } catch (emailErr) {
-      console.warn("[WeeklyBackup] Email notification failed (non-critical):", emailErr);
+      console.warn("[DailyBackup] Email notification failed (non-critical):", emailErr);
     }
 
     lastBackupStatus = "success";
     lastBackupTimestamp = Date.now();
     lastBackupDriveLink = webViewLink;
-    console.log(`[WeeklyBackup] ✅ Backup complete. ${tables.reduce((s, t) => s + t.rows, 0).toLocaleString()} total records backed up.`);
+    console.log(`[DailyBackup] ✅ Backup complete. ${totalRecords.toLocaleString()} total records backed up and encrypted.`);
   } catch (err) {
     lastBackupStatus = "failed";
     lastBackupTimestamp = Date.now();
     lastBackupDriveLink = "";
-    console.error("[WeeklyBackup] ❌ Backup failed:", err);
+    console.error("[DailyBackup] ❌ Backup failed:", err);
     try {
-      await sendBackupNotification({ date: dateStr, filename, driveLink: "", sizeKb: 0, tables: [], success: false, error: String(err) });
+      await sendBackupNotification(
+        filename,
+        "",
+        `FAILED: ${String(err)}`
+      );
     } catch { /* ignore email error */ }
   }
 }
@@ -143,15 +171,35 @@ export function getLastBackupStatus(): {
   lastBackupDriveLink: string;
   nextBackupInfo: string;
 } {
-  // Calculate next Friday 08:00 Cairo
+  // Calculate next backup day (Mon-Thu at 18:00 Cairo)
   const now = new Date();
   const cairoNow = new Date(now.toLocaleString("en-US", { timeZone: "Africa/Cairo" }));
-  const dayOfWeek = cairoNow.getDay(); // 0=Sun, 5=Fri
-  const daysUntilFriday = dayOfWeek <= 5 ? 5 - dayOfWeek : 6;
-  const nextFriday = new Date(cairoNow);
-  nextFriday.setDate(cairoNow.getDate() + (daysUntilFriday === 0 ? 7 : daysUntilFriday));
-  nextFriday.setHours(8, 0, 0, 0);
-  const nextBackupInfo = nextFriday.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }) + " at 08:00 Cairo";
+  const dayOfWeek = cairoNow.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const hour = cairoNow.getHours();
+
+  let daysUntilNext = 0;
+  if (dayOfWeek >= 1 && dayOfWeek <= 4) {
+    // Mon-Thu: if before 18:00, next is today; otherwise next weekday
+    if (hour < 18) {
+      daysUntilNext = 0;
+    } else if (dayOfWeek < 4) {
+      daysUntilNext = 1; // next day (still Mon-Thu)
+    } else {
+      daysUntilNext = 4; // Thu after 18:00 → next Monday
+    }
+  } else if (dayOfWeek === 5) {
+    daysUntilNext = 3; // Fri → Mon
+  } else if (dayOfWeek === 6) {
+    daysUntilNext = 2; // Sat → Mon
+  } else {
+    daysUntilNext = 1; // Sun → Mon
+  }
+
+  const nextBackup = new Date(cairoNow);
+  nextBackup.setDate(cairoNow.getDate() + daysUntilNext);
+  nextBackup.setHours(18, 0, 0, 0);
+  const nextBackupInfo = nextBackup.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }) + " at 18:00 Cairo";
+
   return {
     lastBackupDate,
     lastBackupStatus,
@@ -161,22 +209,22 @@ export function getLastBackupStatus(): {
   };
 }
 
-async function checkAndRunWeeklyBackup(): Promise<void> {
+async function checkAndRunBackup(): Promise<void> {
   const today = getCairoDateString();
   const day = getCairoDay();
   const hour = getCairoHour();
 
-  // Run on Friday at 08:00 Cairo time, once per day
-  if (day === 5 && hour === 8 && lastBackupDate !== today) {
+  // Run Mon-Thu (day 1-4) at 18:00 Cairo time, once per day
+  if (day >= 1 && day <= 4 && hour === 18 && lastBackupDate !== today) {
     lastBackupDate = today;
-    await runWeeklyBackup();
+    await runBackup();
   }
 }
 
 export function startWeeklyBackupScheduler(): void {
-  console.log("[WeeklyBackup] Scheduler initialized. Will run every Friday at 08:00 Cairo time.");
+  console.log("[DailyBackup] Scheduler initialized. Will run Mon-Thu at 18:00 Cairo time with AES-256 encryption.");
   // Check every minute
   setInterval(() => {
-    checkAndRunWeeklyBackup().catch(err => console.error("[WeeklyBackup] Scheduler error:", err));
+    checkAndRunBackup().catch(err => console.error("[DailyBackup] Scheduler error:", err));
   }, ONE_MINUTE_MS);
 }
