@@ -70,6 +70,8 @@ export default function ParalegalReportsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClient, setSelectedClient] = useState<{ id: number; name: string; code?: string } | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [filterClient, setFilterClient] = useState("");
+  const [filterStage, setFilterStage] = useState<"all" | "Submitted" | "Approved">("all");
   const [formData, setFormData] = useState({
     recordDate: new Date().toISOString().split("T")[0],
     stage: "Submitted" as "Submitted" | "Approved",
@@ -290,6 +292,29 @@ export default function ParalegalReportsPage() {
         </div>
       </div>
 
+      {/* Filters Row */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Filter by client name or code..."
+            value={filterClient}
+            onChange={(e) => setFilterClient(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={filterStage} onValueChange={(v) => setFilterStage(v as any)}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Stage" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Stages</SelectItem>
+            <SelectItem value="Submitted">Submitted</SelectItem>
+            <SelectItem value="Approved">Approved</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Paralegal Records Table */}
       <Card>
         <CardHeader>
@@ -300,7 +325,17 @@ export default function ParalegalReportsPage() {
             <div className="text-center py-8 text-muted-foreground">Loading records...</div>
           ) : records.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">No records found for the selected date range</div>
-          ) : (
+          ) : (() => {
+            const filtered = records.filter((r: any) => {
+              const matchClient = !filterClient || 
+                (r.clientName && r.clientName.toLowerCase().includes(filterClient.toLowerCase())) ||
+                (r.clientCode && r.clientCode.toLowerCase().includes(filterClient.toLowerCase()));
+              const matchStage = filterStage === "all" || r.stage === filterStage;
+              return matchClient && matchStage;
+            });
+            return filtered.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">No records match the current filters</div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -313,7 +348,7 @@ export default function ParalegalReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map((record: any) => (
+                  {filtered.map((record: any) => (
                     <tr key={record.id} className="border-b hover:bg-muted/50 transition-colors">
                       <td className="py-3 px-4">
                         {new Date(record.recordDate).toLocaleDateString()}
@@ -354,7 +389,8 @@ export default function ParalegalReportsPage() {
                 </tbody>
               </table>
             </div>
-          )}
+            );
+          })()}
         </CardContent>
       </Card>
 

@@ -963,3 +963,12 @@ Check email for download link within 5 minutes
 
 - [x] Add "Qualification %" column = (Total Qualified / Total Leads) × 100
 - [x] Add "Net Qualify %" column = (Total Qualified / (Total Leads - No Answer)) × 100
+
+## Change Requests (Round 63) — Report Filters by Client Name/Code and Status
+
+- [x] Paralegal Reports: Add filter by client name or code (shortlist/autocomplete as you type)
+- [x] Paralegal Reports: Add filter by stage (Submitted/Approved)
+- [x] Visa Reports: Add filter by client name or code (shortlist/autocomplete as you type)
+- [x] Visa Reports: Add filter by status (Submitted/Finished) and visa type (Schengen/National)
+- [x] Attestation Reports: Add filter by client name or code (shortlist/autocomplete as you type)
+- [x] Attestation Reports: Add filter by type (Submitted/Finished)

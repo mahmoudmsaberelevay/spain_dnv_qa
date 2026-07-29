@@ -70,6 +70,9 @@ export default function VisasReportsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClient, setSelectedClient] = useState<{ id: number; name: string; code?: string } | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [filterClient, setFilterClient] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"all" | "Submitted" | "Finished">("all");
+  const [filterVisaType, setFilterVisaType] = useState<"all" | "Schengen" | "National">("all");
   const [formData, setFormData] = useState({
     recordDate: new Date().toISOString().split("T")[0],
     visaType: "Schengen" as "Schengen" | "National",
@@ -300,6 +303,39 @@ export default function VisasReportsPage() {
         </div>
       </div>
 
+      {/* Filters Row */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Filter by client name or code..."
+            value={filterClient}
+            onChange={(e) => setFilterClient(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as any)}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="Submitted">Submitted</SelectItem>
+            <SelectItem value="Finished">Finished</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterVisaType} onValueChange={(v) => setFilterVisaType(v as any)}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Visa Type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="Schengen">Schengen</SelectItem>
+            <SelectItem value="National">National</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Visa Records Table */}
       <Card>
         <CardHeader>
@@ -310,7 +346,18 @@ export default function VisasReportsPage() {
             <div className="text-center py-8 text-muted-foreground">Loading records...</div>
           ) : records.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">No records found for the selected date range</div>
-          ) : (
+          ) : (() => {
+            const filtered = records.filter((r: any) => {
+              const matchClient = !filterClient || 
+                (r.clientName && r.clientName.toLowerCase().includes(filterClient.toLowerCase())) ||
+                (r.clientCode && r.clientCode.toLowerCase().includes(filterClient.toLowerCase()));
+              const matchStatus = filterStatus === "all" || r.status === filterStatus;
+              const matchType = filterVisaType === "all" || r.visaType === filterVisaType;
+              return matchClient && matchStatus && matchType;
+            });
+            return filtered.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">No records match the current filters</div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -324,7 +371,7 @@ export default function VisasReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map((record: any) => (
+                  {filtered.map((record: any) => (
                     <tr key={record.id} className="border-b hover:bg-muted/50 transition-colors">
                       <td className="py-3 px-4">
                         {new Date(record.recordDate).toLocaleDateString("en-US", {
@@ -378,7 +425,8 @@ export default function VisasReportsPage() {
                 </tbody>
               </table>
             </div>
-          )}
+            );
+          })()}
         </CardContent>
       </Card>
 
