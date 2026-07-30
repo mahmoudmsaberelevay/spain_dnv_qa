@@ -995,3 +995,11 @@ Check email for download link within 5 minutes
 - [x] Changed all 5 days from "Reel/Static Design" alternating to "Static Design + Reel" for each day
 - [x] Updated AI prompt template to include 5 reel examples (was 3)
 - [x] Updated overview postsPerWeek to 10 (5 static + 5 reels)
+
+## Change Requests (Round 67)
+
+- [x] Upgrade all 9 reel templates from 4 scenes to 5 cinematic scenes (added emotional climax scene)
+- [x] Rewrite all 9 static image prompts: remove sculptural/portal approach, replace with clean marketing designs (split layout + hero photo + clear typography)
+- [x] Update AI prompt template in marketingRouter.ts to instruct clean marketing design instead of sculptural concepts
+- [x] Update ANTI_PATTERNS to explicitly ban sculptures, portals, museum installations, abstract art
+- [x] Update visualStyle label from "Editorial Luxury v2" to "Clean Marketing Design v3"
