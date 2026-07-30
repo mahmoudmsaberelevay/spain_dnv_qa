@@ -988,3 +988,10 @@ Check email for download link within 5 minutes
 - [x] Fix sendBackupNotification call signature mismatch (was causing [object Object] in emails)
 - [x] Fix type comparison errors in backups.ts (ctx.user.id number vs OWNER_OPEN_ID string)
 - [x] Create /home/ubuntu/backup_final.sh playbook script
+
+## Change Requests (Round 66)
+
+- [x] Fix marketing plan generator to produce 5 reels per week instead of 3
+- [x] Changed all 5 days from "Reel/Static Design" alternating to "Static Design + Reel" for each day
+- [x] Updated AI prompt template to include 5 reel examples (was 3)
+- [x] Updated overview postsPerWeek to 10 (5 static + 5 reels)

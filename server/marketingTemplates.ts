@@ -650,11 +650,11 @@ export function generatePlanRuleBased(startDate: string) {
 
     const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"];
     const posts = [
-      { day: DAYS[0], type: "Reel", topic: `${program}: ${post.topic.split(":")[1]?.trim() || post.topic}` },
-      { day: DAYS[1], type: "Static Design", topic: `${program}: ${post.topic.split(":")[1]?.trim() || post.topic}` },
-      { day: DAYS[2], type: "Reel", topic: `${program}: ${post.topic.split(":")[1]?.trim() || post.topic}` },
-      { day: DAYS[3], type: "Static Design", topic: `${program}: ${post.topic.split(":")[1]?.trim() || post.topic}` },
-      { day: DAYS[4], type: "Reel", topic: `${program}: ${post.topic.split(":")[1]?.trim() || post.topic}` },
+      { day: DAYS[0], type: "Static Design + Reel", topic: `${program}: ${post.topic.split(":")[1]?.trim() || post.topic}` },
+      { day: DAYS[1], type: "Static Design + Reel", topic: `${program}: ${post.topic.split(":")[1]?.trim() || post.topic}` },
+      { day: DAYS[2], type: "Static Design + Reel", topic: `${program}: ${post.topic.split(":")[1]?.trim() || post.topic}` },
+      { day: DAYS[3], type: "Static Design + Reel", topic: `${program}: ${post.topic.split(":")[1]?.trim() || post.topic}` },
+      { day: DAYS[4], type: "Static Design + Reel", topic: `${program}: ${post.topic.split(":")[1]?.trim() || post.topic}` },
     ];
 
     months[months.length - 1].weeks.push({
@@ -670,7 +670,7 @@ export function generatePlanRuleBased(startDate: string) {
     planTitle: "ELEVAY 12-Week Marketing Strategy Plan (v2 Editorial Luxury)",
     overview: {
       totalWeeks: 12,
-      postsPerWeek: 5,
+      postsPerWeek: 10, // 5 static posts + 5 reels per week
       contentMix: [
         { name: "الإقامة الأوروبية (إسبانيا، البرتغال، اليونان، مالطا)", percentage: "60%", description: "برامج الإقامة الأوروبية مع التركيز على إسبانيا" },
         { name: "الجنسية الكاريبية", percentage: "15%", description: "عرض برامج الجنسية الكاريبية" },
