@@ -1003,3 +1003,7 @@ Check email for download link within 5 minutes
 - [x] Update AI prompt template in marketingRouter.ts to instruct clean marketing design instead of sculptural concepts
 - [x] Update ANTI_PATTERNS to explicitly ban sculptures, portals, museum installations, abstract art
 - [x] Update visualStyle label from "Editorial Luxury v2" to "Clean Marketing Design v3"
+
+## Change Requests (Round 68)
+
+- [x] Fix Consultant Yearly Signing on Financial Dashboard: query finClients.salesPerson + signingDate instead of clientCases.consultant + createdAt
