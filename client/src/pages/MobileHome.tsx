@@ -19,20 +19,32 @@ import {
   DollarSign,
 } from "lucide-react";
 import { useLocation } from "wouter";
+import { getLoginUrl } from "@/const";
 
 export default function MobileHome() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const firstName = user?.name?.split(" ")[0] ?? "User";
 
-  // Fetch quick stats
+  // Navigate to module or redirect to login if not authenticated
+  const handleNav = (path: string) => {
+    if (!user) {
+      window.location.href = getLoginUrl(path);
+      return;
+    }
+    setLocation(path);
+  };
+
+  // Fetch quick stats (only when authenticated)
   const { data: finSummary } = trpc.financial.dashboard.summary.useQuery({ year: new Date().getFullYear() }, {
     retry: false,
     staleTime: 60000,
+    enabled: !!user,
   });
   const { data: leadStats } = trpc.leads.analytics.overview.useQuery(undefined, {
     retry: false,
     staleTime: 60000,
+    enabled: !!user,
   });
 
   const quickModules = [
@@ -48,8 +60,8 @@ export default function MobileHome() {
     <div className="px-4 py-5 space-y-6">
       {/* Greeting */}
       <div>
-        <p className="text-muted-foreground text-sm">Welcome back</p>
-        <h1 className="text-2xl font-bold text-foreground">Hello, {firstName}</h1>
+        <p className="text-muted-foreground text-sm">{user ? "Welcome back" : "Welcome to"}</p>
+        <h1 className="text-2xl font-bold text-foreground">{user ? `Hello, ${firstName}` : "ELEVAY"}</h1>
       </div>
 
       {/* Quick Stats Cards */}
@@ -89,7 +101,7 @@ export default function MobileHome() {
             return (
               <button
                 key={mod.id}
-                onClick={() => setLocation(mod.path)}
+                onClick={() => handleNav(mod.path)}
                 className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-card border border-border hover:border-primary/30 transition-all active:scale-95"
               >
                 <div className={cn("h-11 w-11 rounded-xl flex items-center justify-center", mod.color)}>
@@ -110,25 +122,25 @@ export default function MobileHome() {
             label="Create New Contract"
             description="Issue a new client contract"
             icon={FileText}
-            onClick={() => setLocation("/contracting/contracts")}
+            onClick={() => handleNav("/contracting/contracts")}
           />
           <QuickAction
             label="Add New Lead"
             description="Register a new prospect"
             icon={Target}
-            onClick={() => setLocation("/leads")}
+            onClick={() => handleNav("/leads")}
           />
           <QuickAction
             label="Record Income"
             description="Log a new payment received"
             icon={DollarSign}
-            onClick={() => setLocation("/finance/income")}
+            onClick={() => handleNav("/finance/income")}
           />
           <QuickAction
             label="Upload Documents"
             description="Add client documentation"
             icon={FolderCheck}
-            onClick={() => setLocation("/docs")}
+            onClick={() => handleNav("/docs")}
           />
         </div>
       </div>

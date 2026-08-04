@@ -22,6 +22,8 @@ const queryClient = new QueryClient({
   },
 });
 
+const PUBLIC_PATHS = ["/", "/privacy-policy", "/terms", "/support", "/account-deletion", "/login"];
+
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;
@@ -30,7 +32,11 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
 
   if (!isUnauthorized) return;
 
-  window.location.href = getLoginUrl();
+  // Don't redirect on public pages — let them render without auth
+  const currentPath = window.location.pathname;
+  if (PUBLIC_PATHS.includes(currentPath)) return;
+
+  window.location.href = getLoginUrl(currentPath);
 };
 
 queryClient.getQueryCache().subscribe(event => {

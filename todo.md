@@ -1065,3 +1065,13 @@ Check email for download link within 5 minutes
 - [x] Add small footer links on the home page below "8 Modules, Unlimited Possibilities"
 - [x] Keep server-rendered publicPagesHandler as fallback + SPA routes as primary
 - [x] Add legal page links to mobile "More" menu (Privacy Policy, Terms, Support, Account Deletion)
+## Auth-Deferred Home Page (Round 75c)
+- [x] Make ElevayHome render without authentication (show module cards to everyone)
+- [x] When unauthenticated user clicks a module, redirect to login instead of navigating
+- [x] Show "Sign In" button in header for unauthenticated users (instead of user avatar)
+- [x] Public pages (/privacy-policy, /terms, /support, /account-deletion) now load naturally since SPA loads without auth gate
+- [x] MobileLayout: bypass auth gate on public paths (/, /privacy-policy, /terms, /support, /account-deletion)
+- [x] MobileHome: guard protected queries with enabled: !!user, add handleNav login redirect
+- [x] main.tsx: skip global login redirect on PUBLIC_PATHS
+- [x] MobileNotificationBell: guard query with enabled: !!user
+- [x] Hide bottom tab bar for unauthenticated mobile users

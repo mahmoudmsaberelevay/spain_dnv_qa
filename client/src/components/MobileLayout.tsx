@@ -74,6 +74,10 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
 
   const activeTab = getActiveTab(location);
 
+  // Public paths that don't require authentication
+  const PUBLIC_PATHS = ["/", "/privacy-policy", "/terms", "/support", "/account-deletion"];
+  const isPublicPage = PUBLIC_PATHS.includes(location);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -82,14 +86,15 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
     );
   }
 
-  if (!user) {
+  // Only block unauthenticated access on non-public pages
+  if (!user && !isPublicPage) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-950 px-6">
         <img src="/manus-storage/elevay-logo_2c219cd3.png" alt="Elevay" className="h-20 w-auto object-contain mb-8" />
         <h2 className="text-xl font-semibold text-white mb-2">Sign in to continue</h2>
         <p className="text-sm text-white/50 text-center mb-8">Access to the Elevay platform requires authentication.</p>
         <Button
-          onClick={() => { window.location.href = getLoginUrl(); }}
+          onClick={() => { window.location.href = getLoginUrl(location); }}
           size="lg"
           className="w-full max-w-xs"
         >
@@ -108,10 +113,21 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
           <span className="text-sm font-semibold text-foreground">ELEVAY</span>
         </div>
         <div className="flex items-center gap-2">
-          <MobileNotificationBell />
-          <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
-            <span className="text-xs font-bold text-primary">{user.name?.charAt(0).toUpperCase() ?? "U"}</span>
-          </div>
+          {user ? (
+            <>
+              <MobileNotificationBell />
+              <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
+                <span className="text-xs font-bold text-primary">{user.name?.charAt(0).toUpperCase() ?? "U"}</span>
+              </div>
+            </>
+          ) : (
+            <a
+              href={getLoginUrl("/")}
+              className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold"
+            >
+              Sign In
+            </a>
+          )}
         </div>
       </header>
 
@@ -192,8 +208,8 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
         </div>
       )}
 
-      {/* Bottom Tab Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur border-t safe-area-bottom">
+      {/* Bottom Tab Bar — only show for authenticated users */}
+      {user && <nav className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur border-t safe-area-bottom">
         <div className="flex items-center justify-around h-16 px-2">
           {TABS.map((tab) => {
             const Icon = tab.icon;
@@ -222,15 +238,17 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
             );
           })}
         </div>
-      </nav>
+      </nav>}
     </div>
   );
 }
 
 // ─── Mobile Notification Bell ─────────────────────────────────────────────────
 function MobileNotificationBell() {
+  const { user } = useAuth();
   const { data: notifications = [] } = trpc.notifications.list.useQuery(undefined, {
     refetchInterval: 30000,
+    enabled: !!user,
   });
   const unread = (notifications as any[]).filter((n: any) => !n.isRead).length;
 

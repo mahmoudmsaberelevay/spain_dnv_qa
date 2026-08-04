@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { getLoginUrl } from "@/const";
 
 // ─── Module card definitions ──────────────────────────────────────────────────
 const BASE_MODULE_CARDS = [
@@ -123,11 +124,13 @@ const BASE_MODULE_CARDS = [
 
 // ─── Alert Widget ─────────────────────────────────────────────────────────────
 function AlertsWidget() {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
 
   // Query for urgent alerts: overdue clients (schengen/submission within 14 days)
   const { data: docsData } = trpc.clientDocs.dashboard.useQuery(undefined, {
     refetchInterval: 60_000,
+    enabled: !!user,
   });
 
   const alerts: { label: string; level: "red" | "amber" }[] = [];
@@ -282,25 +285,26 @@ export default function ElevayHome() {
     );
   }
 
-  // Redirect to login if not authenticated
-  if (!user) {
-    setLocation("/login");
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-950">
-        <div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-      </div>
-    );
-  }
+  const firstName = user ? (user.name?.split(" ")[0] ?? "there") : "there";
 
-  const firstName = user.name?.split(" ")[0] ?? "there";
-
-  // Filter module cards based on permissions
-  const visibleCards = BASE_MODULE_CARDS.filter(card => {
-    if (!card.pageKey) return true; // always visible
-    return permsData?.permissions?.[card.pageKey] === true;
-  });
+  // Filter module cards based on permissions (show all if not logged in)
+  const visibleCards = user
+    ? BASE_MODULE_CARDS.filter(card => {
+        if (!card.pageKey) return true;
+        return permsData?.permissions?.[card.pageKey] === true;
+      })
+    : BASE_MODULE_CARDS;
 
   const moduleCount = visibleCards.length;
+
+  // Handle module click — redirect to login if not authenticated
+  const handleModuleClick = (path: string) => {
+    if (!user) {
+      window.location.href = getLoginUrl(path);
+      return;
+    }
+    setLocation(path);
+  };
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
@@ -314,18 +318,27 @@ export default function ElevayHome() {
           />
           <div className="h-6 w-px bg-white/10" />
           <div>
-            <p className="text-white/50 text-xs uppercase tracking-widest font-medium">Welcome back</p>
-            <h1 className="text-lg font-bold text-white leading-tight">Hello, {firstName}</h1>
+            <p className="text-white/50 text-xs uppercase tracking-widest font-medium">{user ? "Welcome back" : "Welcome to"}</p>
+            <h1 className="text-lg font-bold text-white leading-tight">{user ? `Hello, ${firstName}` : "ELEVAY"}</h1>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <AlertsWidget />
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10">
-            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-blue-400 to-violet-500 flex items-center justify-center text-white text-xs font-bold">
-              {user.name?.charAt(0).toUpperCase() ?? "U"}
+          {user && <AlertsWidget />}
+          {user ? (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10">
+              <div className="h-7 w-7 rounded-full bg-gradient-to-br from-blue-400 to-violet-500 flex items-center justify-center text-white text-xs font-bold">
+                {user.name?.charAt(0).toUpperCase() ?? "U"}
+              </div>
+              <span className="text-sm font-medium text-white/80">{user.name}</span>
             </div>
-            <span className="text-sm font-medium text-white/80">{user.name}</span>
-          </div>
+          ) : (
+            <a
+              href={getLoginUrl("/")}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-gray-900 font-semibold text-sm hover:bg-white/90 transition-colors"
+            >
+              Sign In
+            </a>
+          )}
         </div>
       </header>
 
@@ -346,7 +359,7 @@ export default function ElevayHome() {
               return (
                 <button
                   key={card.id}
-                  onClick={() => setLocation(card.path)}
+                  onClick={() => handleModuleClick(card.path)}
                   onMouseEnter={() => setHoveredCard(card.id)}
                   onMouseLeave={() => setHoveredCard(null)}
                   className={cn(
