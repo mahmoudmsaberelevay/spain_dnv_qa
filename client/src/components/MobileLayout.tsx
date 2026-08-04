@@ -23,6 +23,7 @@ import {
   Bell,
   ChevronRight,
   X,
+  Scale,
 } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -149,6 +150,31 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
                   </button>
                 );
               })}
+              {/* Legal / Public Pages */}
+              <div className="mt-3 pt-3 border-t border-border/50">
+                <p className="px-4 pb-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Legal</p>
+                {[
+                  { id: "privacy", label: "Privacy Policy", icon: Scale, path: "/privacy-policy" },
+                  { id: "terms", label: "Terms & Conditions", icon: FileText, path: "/terms" },
+                  { id: "support", label: "Support", icon: MessageSquare, path: "/support" },
+                  { id: "deletion", label: "Account Deletion", icon: User, path: "/account-deletion" },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => { setLocation(item.path); setShowMore(false); }}
+                      className="w-full flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-accent transition-colors"
+                    >
+                      <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center">
+                        <Icon className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <span className="flex-1 text-left text-sm font-medium text-muted-foreground">{item.label}</span>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+                    </button>
+                  );
+                })}
+              </div>
               {/* Logout */}
               <button
                 onClick={() => logoutMut.mutate()}

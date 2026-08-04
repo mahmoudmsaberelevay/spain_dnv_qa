@@ -1064,3 +1064,4 @@ Check email for download link within 5 minutes
 - [x] Add these 4 pages as sidebar links at the bottom (like Settings)
 - [x] Add small footer links on the home page below "8 Modules, Unlimited Possibilities"
 - [x] Keep server-rendered publicPagesHandler as fallback + SPA routes as primary
+- [x] Add legal page links to mobile "More" menu (Privacy Policy, Terms, Support, Account Deletion)
