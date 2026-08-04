@@ -71,6 +71,7 @@ import {
   FileSignature,
   Calendar,
   HardDrive,
+  Scale,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -611,6 +612,61 @@ function DashboardLayoutContent({
                 {!isCollapsed && <span>Broadcast Center</span>}
               </button>
             )}
+            {/* Legal / Public Pages */}
+            <div className="border-t border-border/30 pt-2 mt-1">
+              <button
+                onClick={() => setLocation("/privacy-policy")}
+                className={cn(
+                  "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  location === "/privacy-policy"
+                    ? "bg-white/10 text-white"
+                    : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                )}
+                title="Privacy Policy"
+              >
+                <Scale className="h-3 w-3 shrink-0" />
+                {!isCollapsed && <span>Privacy Policy</span>}
+              </button>
+              <button
+                onClick={() => setLocation("/terms")}
+                className={cn(
+                  "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  location === "/terms"
+                    ? "bg-white/10 text-white"
+                    : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                )}
+                title="Terms & Conditions"
+              >
+                <FileText className="h-3 w-3 shrink-0" />
+                {!isCollapsed && <span>Terms & Conditions</span>}
+              </button>
+              <button
+                onClick={() => setLocation("/support")}
+                className={cn(
+                  "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  location === "/support"
+                    ? "bg-white/10 text-white"
+                    : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                )}
+                title="Support"
+              >
+                <MessageSquare className="h-3 w-3 shrink-0" />
+                {!isCollapsed && <span>Support</span>}
+              </button>
+              <button
+                onClick={() => setLocation("/account-deletion")}
+                className={cn(
+                  "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  location === "/account-deletion"
+                    ? "bg-white/10 text-white"
+                    : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                )}
+                title="Account Deletion"
+              >
+                <User className="h-3 w-3 shrink-0" />
+                {!isCollapsed && <span>Account Deletion</span>}
+              </button>
+            </div>
             {/* Active module badge (collapsed: dot only; expanded: full label) */}
             {(() => {
               const colors = MODULE_COLORS[activeModuleId] ?? MODULE_COLORS.contracting;

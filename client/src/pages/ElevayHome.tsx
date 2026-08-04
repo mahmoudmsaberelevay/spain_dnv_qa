@@ -410,6 +410,17 @@ export default function ElevayHome() {
               <p className="text-xs text-white/40 uppercase tracking-wide">Possibilities</p>
             </div>
           </div>
+
+          {/* Legal / Public page links */}
+          <div className="mt-6 flex items-center justify-center gap-4 flex-wrap">
+            <a href="/privacy-policy" className="text-xs text-white/30 hover:text-white/60 transition-colors">Privacy Policy</a>
+            <span className="text-white/15">·</span>
+            <a href="/terms" className="text-xs text-white/30 hover:text-white/60 transition-colors">Terms & Conditions</a>
+            <span className="text-white/15">·</span>
+            <a href="/support" className="text-xs text-white/30 hover:text-white/60 transition-colors">Support</a>
+            <span className="text-white/15">·</span>
+            <a href="/account-deletion" className="text-xs text-white/30 hover:text-white/60 transition-colors">Account Deletion</a>
+          </div>
         </div>
       </main>
     </div>
