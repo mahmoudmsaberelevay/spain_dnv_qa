@@ -1007,3 +1007,15 @@ Check email for download link within 5 minutes
 ## Change Requests (Round 68)
 
 - [x] Fix Consultant Yearly Signing on Financial Dashboard: query finClients.salesPerson + signingDate instead of clientCases.consultant + createdAt
+## Change Requests (Round 69)
+- [x] Update marketingRouter.ts AI prompt template with full ELEVAY brand system spec
+- [x] Add brand identity section: 5 messaging pillars (Family Security, Global Mobility, Long-term Planning, Premium Service, Ethical Advisory)
+- [x] Add strict color usage rules: Off-White #FFEBDA dominant, Baby Blue #5BA3B8 primary accent, Dark Navy ≤5%, Gold ≤5% CTA only
+- [x] Add typography rules: Apex Sans, sentence case, editorial asymmetric layouts
+- [x] Add photography direction: warm natural-light editorial, Arab/Middle Eastern subjects
+- [x] Add motion rules for reels: no on-screen text overlays, logo on pure white static 3s ending
+- [x] Update posts JSON schema: add day, messagingPillar, format, headlineEn, supportingCopyEn, complianceLine fields
+- [x] Update reels JSON schema: add day, messagingPillar, targetProgram, captionAr, complianceLine, clipDuration fields
+- [x] Remove voiceOverAr from reels (background music only per brand spec)
+- [x] Update contentPillars from generic 4 to brand-aligned 5 messaging pillars
+- [x] Update reel scene 5 to mandatory ELEVAY logo on pure white, static, no animation
