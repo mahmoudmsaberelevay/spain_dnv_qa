@@ -1,0 +1,19 @@
+{
+  "name": "ELEVAY CRM",
+  "short_name": "ELEVAY",
+  "description": "ELEVAY Citizenship & Residency - Internal CRM System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#1a3a5c",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "en"
+}

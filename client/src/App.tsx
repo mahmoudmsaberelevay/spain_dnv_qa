@@ -80,6 +80,10 @@ import Reports from "./pages/Reports";
 import { BackupDownloadPublic } from "./pages/BackupDownloadPublic";
 import BackupPreview from "./pages/BackupPreview";
 import BackupHistory from "./pages/BackupHistory";
+// ─── Mobile App ─────────────────────────────────────────────────────────────
+import MobileLayout from "./components/MobileLayout";
+import MobileHome from "./pages/MobileHome";
+import { useIsMobile } from "./hooks/useMobile";
 
 // ─── WhatsApp Quality Control Module ─────────────────────────────────────────
 import WaQcDashboard from "./pages/waQc/WaQcDashboard";
@@ -100,46 +104,46 @@ function Router() {
 
       {/* Root — Elevay Home (dual-state landing page) */}
       <Route path="/">
-        <ElevayHome />
+        <ResponsiveHome />
       </Route>
 
       {/* Profile — User profile and password change */}
       <Route path="/profile">
-        <DashboardLayout><Profile /></DashboardLayout>
+        <MobileRoute><Profile /></MobileRoute>
       </Route>
 
       {/* ── Contracting Module ── */}
       <Route path="/contracting">
-        <PageGuard pageKey="contracts"><DashboardLayout><ContractingDashboard /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="contracts"><MobileRoute><ContractingDashboard /></MobileRoute></PageGuard>
       </Route>
       <Route path="/contracting/contracts">
-        <PageGuard pageKey="contracts"><DashboardLayout><Contracts /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="contracts"><MobileRoute><Contracts /></MobileRoute></PageGuard>
       </Route>
       <Route path="/contracting/invoices">
-        <PageGuard pageKey="receipts"><DashboardLayout><Invoices /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="receipts"><MobileRoute><Invoices /></MobileRoute></PageGuard>
       </Route>
       <Route path="/contracting/proforma">
-        <PageGuard pageKey="receipts"><DashboardLayout><ProformaInvoices /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="receipts"><MobileRoute><ProformaInvoices /></MobileRoute></PageGuard>
       </Route>
       <Route path="/contracting/analytics">
-        <PageGuard pageKey="contracts"><DashboardLayout><Analytics /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="contracts"><MobileRoute><Analytics /></MobileRoute></PageGuard>
       </Route>
 
       {/* ── Application Analysis Module ── */}
       <Route path="/analysis/dashboard">
-        <PageGuard pageKey="analysis_dashboard"><DashboardLayout><AnalysisDashboard /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="analysis_dashboard"><MobileRoute><AnalysisDashboard /></MobileRoute></PageGuard>
       </Route>
       <Route path="/analysis">
-        <PageGuard pageKey="cases"><DashboardLayout><Cases /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="cases"><MobileRoute><Cases /></MobileRoute></PageGuard>
       </Route>
       <Route path="/analysis/cases/:id">
-        <PageGuard pageKey="cases"><DashboardLayout><CaseDetail /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="cases"><MobileRoute><CaseDetail /></MobileRoute></PageGuard>
       </Route>
       <Route path="/analysis/cases/:id/upload">
-        <PageGuard pageKey="cases"><DashboardLayout><UploadWizard /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="cases"><MobileRoute><UploadWizard /></MobileRoute></PageGuard>
       </Route>
       <Route path="/analysis/cases/:id/report">
-        <PageGuard pageKey="cases"><DashboardLayout><AnalysisReport /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="cases"><MobileRoute><AnalysisReport /></MobileRoute></PageGuard>
       </Route>
 
       {/* Legacy redirects for old /cases routes */}
@@ -158,49 +162,49 @@ function Router() {
 
       {/* ── Financial Module ── */}
       <Route path="/finance">
-        <PageGuard pageKey="fin_dashboard"><DashboardLayout><FinancialDashboard /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_dashboard"><MobileRoute><FinancialDashboard /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/accounts">
-        <PageGuard pageKey="fin_accounts"><DashboardLayout><FinAccounts /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_accounts"><MobileRoute><FinAccounts /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/income">
-        <PageGuard pageKey="fin_income"><DashboardLayout><FinIncome /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_income"><MobileRoute><FinIncome /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/expenses">
-        <PageGuard pageKey="fin_expenses"><DashboardLayout><FinExpenses /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_expenses"><MobileRoute><FinExpenses /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/transfers">
-        <PageGuard pageKey="fin_transfers"><DashboardLayout><FinTransfers /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_transfers"><MobileRoute><FinTransfers /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/reports">
-        <PageGuard pageKey="fin_reports"><DashboardLayout><FinReports /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_reports"><MobileRoute><FinReports /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/employees">
-        <PageGuard pageKey="fin_employees"><DashboardLayout><FinEmployees /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_employees"><MobileRoute><FinEmployees /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/categories">
-        <PageGuard pageKey="fin_categories"><DashboardLayout><FinCategories /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_categories"><MobileRoute><FinCategories /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/commissions">
-        <PageGuard pageKey="fin_commissions"><DashboardLayout><FinCommissions /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_commissions"><MobileRoute><FinCommissions /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/bulk-upload">
-        <PageGuard pageKey="fin_bulk_upload"><DashboardLayout><FinBulkUpload /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_bulk_upload"><MobileRoute><FinBulkUpload /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/clients">
-        <PageGuard pageKey="fin_clients"><DashboardLayout><FinClients /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_clients"><MobileRoute><FinClients /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/settlement">
-        <PageGuard pageKey="fin_settlement"><DashboardLayout><FinSettlement /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_settlement"><MobileRoute><FinSettlement /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/upcoming">
-        <PageGuard pageKey="fin_upcoming"><DashboardLayout><UpcomingPayments /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_upcoming"><MobileRoute><UpcomingPayments /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/salary-receipts">
-        <PageGuard pageKey="fin_salary_receipts"><SalaryReceipts /></PageGuard>
+        <PageGuard pageKey="fin_salary_receipts"><MobileRoute><SalaryReceipts /></MobileRoute></PageGuard>
       </Route>
       <Route path="/finance/commission-receipts">
-        <PageGuard pageKey="fin_commission_receipts"><DashboardLayout><CommissionReceipts /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="fin_commission_receipts"><MobileRoute><CommissionReceipts /></MobileRoute></PageGuard>
       </Route>
 
       {/* ── Client Documentation Module ── */}
@@ -208,26 +212,26 @@ function Router() {
         <PageGuard pageKey="client_docs"><ClientDocsDashboard /></PageGuard>
       </Route>
       <Route path="/docs">
-        <PageGuard pageKey="client_docs"><DashboardLayout><ClientDocs /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="client_docs"><MobileRoute><ClientDocs /></MobileRoute></PageGuard>
       </Route>
       <Route path="/docs/clients/:id">
-        <PageGuard pageKey="client_docs"><DashboardLayout><ClientDocDetail /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="client_docs"><MobileRoute><ClientDocDetail /></MobileRoute></PageGuard>
       </Route>
       <Route path="/docs/workflow">
-        <PageGuard pageKey="client_docs"><DashboardLayout><WorkflowPage /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="client_docs"><MobileRoute><WorkflowPage /></MobileRoute></PageGuard>
       </Route>
       <Route path="/docs/national-visa">
-        <PageGuard pageKey="client_docs"><DashboardLayout><NationalVisaPage /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="client_docs"><MobileRoute><NationalVisaPage /></MobileRoute></PageGuard>
       </Route>
 
       {/* ── Broadcast Center ── */}
       <Route path="/broadcast">
-        <PageGuard pageKey="broadcast"><DashboardLayout><BroadcastCenter /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="broadcast"><MobileRoute><BroadcastCenter /></MobileRoute></PageGuard>
       </Route>
 
       {/* ── Team Chat ── */}
       <Route path="/chat">
-        <PageGuard pageKey="chat"><DashboardLayout><TeamChat /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="chat"><MobileRoute><TeamChat /></MobileRoute></PageGuard>
       </Route>
 
       {/* ── Settings ── */}
@@ -239,105 +243,105 @@ function Router() {
 
       {/* ── Permissions Manager (owner only) ── */}
       <Route path="/admin/permissions">
-        <DashboardLayout><PermissionsManager /></DashboardLayout>
+        <MobileRoute><PermissionsManager /></MobileRoute>
       </Route>
 
       {/* ── Admin Security & Audit ── */}
       <Route path="/admin/security">
-        <DashboardLayout><AdminSecurity /></DashboardLayout>
+        <MobileRoute><AdminSecurity /></MobileRoute>
       </Route>
 
       {/* ── WhatsApp Quality Control Module ── */}
       <Route path="/wa-qc">
-        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcDashboard /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="wa_qc"><MobileRoute><WaQcDashboard /></MobileRoute></PageGuard>
       </Route>
       <Route path="/wa-qc/chats">
-        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcChats /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="wa_qc"><MobileRoute><WaQcChats /></MobileRoute></PageGuard>
       </Route>
       <Route path="/wa-qc/conversations">
-        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcConversations /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="wa_qc"><MobileRoute><WaQcConversations /></MobileRoute></PageGuard>
       </Route>
       <Route path="/wa-qc/ai-query">
-        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcAIQuery /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="wa_qc"><MobileRoute><WaQcAIQuery /></MobileRoute></PageGuard>
       </Route>
       <Route path="/wa-qc/groups">
-        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcGroups /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="wa_qc"><MobileRoute><WaQcGroups /></MobileRoute></PageGuard>
       </Route>
       <Route path="/wa-qc/media">
-        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcMedia /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="wa_qc"><MobileRoute><WaQcMedia /></MobileRoute></PageGuard>
       </Route>
       <Route path="/wa-qc/settings">
-        <PageGuard pageKey="wa_qc"><DashboardLayout><WaQcSettings /></DashboardLayout></PageGuard>
+        <PageGuard pageKey="wa_qc"><MobileRoute><WaQcSettings /></MobileRoute></PageGuard>
       </Route>
 
       {/* ── Leads CRM Module ── */}
       <Route path="/leads">
-        <DashboardLayout><LeadsList /></DashboardLayout>
+        <MobileRoute><LeadsList /></MobileRoute>
       </Route>
       <Route path="/leads/dashboard">
-        <DashboardLayout><LeadsDashboard /></DashboardLayout>
+        <MobileRoute><LeadsDashboard /></MobileRoute>
       </Route>
       <Route path="/leads/pipeline">
-        <DashboardLayout><LeadsPipeline /></DashboardLayout>
+        <MobileRoute><LeadsPipeline /></MobileRoute>
       </Route>
       <Route path="/leads/settings">
-        <DashboardLayout><LeadsSettings /></DashboardLayout>
+        <MobileRoute><LeadsSettings /></MobileRoute>
       </Route>
       <Route path="/leads/meta-export">
-        <DashboardLayout><LeadsMetaExport /></DashboardLayout>
+        <MobileRoute><LeadsMetaExport /></MobileRoute>
       </Route>
       <Route path="/leads/reporting">
-        <DashboardLayout><LeadsReporting /></DashboardLayout>
+        <MobileRoute><LeadsReporting /></MobileRoute>
       </Route>
       <Route path="/leads/tasks">
-        <DashboardLayout><TasksPage /></DashboardLayout>
+        <MobileRoute><TasksPage /></MobileRoute>
       </Route>
       <Route path="/leads/:id">
-        <DashboardLayout><LeadProfile /></DashboardLayout>
+        <MobileRoute><LeadProfile /></MobileRoute>
       </Route>
 
       {/* ── Marketing Module ── */}
       <Route path="/marketing">
-        <DashboardLayout><MarketingDashboard /></DashboardLayout>
+        <MobileRoute><MarketingDashboard /></MobileRoute>
       </Route>
       <Route path="/marketing/summary-generator">
-        <DashboardLayout><SummaryGenerator /></DashboardLayout>
+        <MobileRoute><SummaryGenerator /></MobileRoute>
       </Route>
       <Route path="/marketing/summary-generator/:id">
-        <DashboardLayout><SummaryEditor /></DashboardLayout>
+        <MobileRoute><SummaryEditor /></MobileRoute>
       </Route>
       <Route path="/marketing/program-comparison">
-        <DashboardLayout><ProgramComparison /></DashboardLayout>
+        <MobileRoute><ProgramComparison /></MobileRoute>
       </Route>
       <Route path="/marketing/program-proposal">
-        <DashboardLayout><ProgramProposal /></DashboardLayout>
+        <MobileRoute><ProgramProposal /></MobileRoute>
       </Route>
       <Route path="/marketing/marketing-plan">
-        <DashboardLayout><MarketingPlan /></DashboardLayout>
+        <MobileRoute><MarketingPlan /></MobileRoute>
       </Route>
 
       <Route path="/reports">
         <PageGuard pageKey="reports">
-          <DashboardLayout><Reports /></DashboardLayout>
+          <MobileRoute><Reports /></MobileRoute>
         </PageGuard>
       </Route>
 
       {/* ── Backup & Recovery Module ── */}
       <Route path="/backup">
         <PageGuard pageKey="backup_dashboard">
-          <DashboardLayout><BackupDownloadPublic /></DashboardLayout>
+          <MobileRoute><BackupDownloadPublic /></MobileRoute>
         </PageGuard>
       </Route>
 
       <Route path="/backup-preview">
         <PageGuard pageKey="backup_preview">
-          <DashboardLayout><BackupPreview /></DashboardLayout>
+          <MobileRoute><BackupPreview /></MobileRoute>
         </PageGuard>
       </Route>
 
       <Route path="/backup-history">
         <PageGuard pageKey="backup_dashboard">
-          <DashboardLayout><BackupHistory /></DashboardLayout>
+          <MobileRoute><BackupHistory /></MobileRoute>
         </PageGuard>
       </Route>
 
@@ -348,6 +352,28 @@ function Router() {
       <Route component={NotFound} />
     </Switch>
   );
+}
+
+/**
+ * ResponsiveHome — Shows MobileHome with MobileLayout on mobile, ElevayHome on desktop.
+ */
+function ResponsiveHome() {
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return <MobileLayout><MobileHome /></MobileLayout>;
+  }
+  return <ElevayHome />;
+}
+
+/**
+ * MobileRoute — Wraps a page with MobileLayout on mobile, DashboardLayout on desktop.
+ */
+function MobileRoute({ children }: { children: React.ReactNode }) {
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return <MobileLayout>{children}</MobileLayout>;
+  }
+  return <DashboardLayout>{children}</DashboardLayout>;
 }
 
 function App() {
@@ -362,5 +388,4 @@ function App() {
     </ErrorBoundary>
   );
 }
-
 export default App;
