@@ -1053,3 +1053,9 @@ Check email for download link within 5 minutes
 - [x] Support form: Backend endpoint + email to support@elevay.com
 - [x] Footer: Add legal links to all public pages
 - [x] Apple App Review Instructions document (APPLE_REVIEW_INSTRUCTIONS.md)
+## Public Pages Fix (Round 75)
+- [x] Fix public pages (Privacy Policy, Terms, Support, Account Deletion) showing 404 on mobile
+- [x] Convert public pages from SPA client-side routes to server-rendered HTML via Express
+- [x] Register publicPagesHandler.ts routes BEFORE tRPC middleware and SPA fallback
+- [x] Pages now serve full HTML with inline CSS — no JS bundle dependency
+- [x] Verified all 4 pages return HTTP 200 with correct content

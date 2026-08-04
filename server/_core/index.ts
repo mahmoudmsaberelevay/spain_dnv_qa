@@ -609,6 +609,10 @@ async function startServer() {
   // Register backup routes BEFORE Vite (to avoid catch-all)
   registerBackupRoutes(app);
 
+  // Server-rendered public legal pages (no JS bundle needed, always accessible)
+  const { registerPublicPages } = await import("../publicPagesHandler.js");
+  registerPublicPages(app);
+
   // tRPC API
   app.use(
     "/api/trpc",
