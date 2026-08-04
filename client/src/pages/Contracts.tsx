@@ -217,7 +217,7 @@ export default function Contracts() {
               <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">{filtered.length}</Badge>
             )}
           </Button>
-          {canEdit("contracting") && (
+          {canEdit("contracts") && (
             <Button
               onClick={() => setShowNewContract(true)}
               className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
@@ -435,7 +435,7 @@ export default function Contracts() {
                               Word
                             </Button>
                           )}
-                          {canEdit("contracting") && (
+                          {canEdit("contracts") && (
                             <Button
                               variant="ghost"
                               size="sm"

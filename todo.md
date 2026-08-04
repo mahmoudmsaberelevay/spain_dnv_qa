@@ -1019,3 +1019,6 @@ Check email for download link within 5 minutes
 - [x] Remove voiceOverAr from reels (background music only per brand spec)
 - [x] Update contentPillars from generic 4 to brand-aligned 5 messaging pillars
 - [x] Update reel scene 5 to mandatory ELEVAY logo on pure white, static, no animation
+## Change Requests (Round 70)
+- [x] Ensure all team members have full access to Contracting module (create contracts, receipts, invoices)
+- [x] Keep delete functionality restricted to admin only
