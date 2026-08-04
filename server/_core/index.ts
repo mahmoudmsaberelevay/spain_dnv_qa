@@ -324,6 +324,10 @@ async function startServer() {
   const { waBackupHandler } = await import("../waBackupHandler");
   app.post("/api/scheduled/waBackup", waBackupHandler);
 
+  // Scheduled Database Backup (Heartbeat cron Mon-Thu 18:00 Cairo + manual trigger)
+  const { scheduledDbBackupHandler } = await import("../scheduledDbBackupHandler");
+  app.post("/api/scheduled/dbBackup", scheduledDbBackupHandler);
+
   // Backup list endpoint
   app.get("/api/backup/list", (req, res) => {
     try {

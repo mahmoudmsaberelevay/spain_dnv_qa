@@ -1024,3 +1024,5 @@ Check email for download link within 5 minutes
 - [x] Keep delete functionality restricted to admin only
 ## Bug Fixes (Round 71)
 - [x] Fix Consultant Yearly Signing (2026) showing 0 for all consultants - should count from financial clients by consultant and signing date in 2026
+## Change Requests (Round 72)
+- [x] Create scheduled database backup with AES-256 encryption, email to mahmoud.saberelevay@gmail.com and mahmoud.saber@elevay.com, Mon-Thu 18:00 Cairo
