@@ -78,9 +78,12 @@ export default function FinancialDashboard() {
   const usdAccounts = accounts?.filter(a => a.currency === "USD" && Number(a.balance) !== 0) ?? [];
   const eurAccounts = accounts?.filter(a => a.currency === "EUR" && Number(a.balance) !== 0) ?? [];
 
-  // Consultant signing map
+  // Consultant signing map — aggregate by first name to handle both short ("Mahmoud") and full ("Mahmoud Saber") entries
   const signingMap = new Map<string, number>();
-  summary.consultantSigning?.forEach(s => signingMap.set(s.consultant, s.count));
+  summary.consultantSigning?.forEach(s => {
+    const firstName = s.consultant.split(" ")[0];
+    signingMap.set(firstName, (signingMap.get(firstName) ?? 0) + s.count);
+  });
   const totalSignings = CONSULTANTS.reduce((sum, c) => sum + (signingMap.get(c) ?? 0), 0);
 
   return (

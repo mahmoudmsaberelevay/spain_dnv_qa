@@ -668,9 +668,9 @@ export async function getFinancialSummary(year: number) {
   );
   const monthlyProfit = (monthlyProfitRows as unknown as any[]).map(r => ({ month: String(r.month), type: r.type as string, total: String(r.total) }));
 
-  // Consultant Yearly Signing — clients from finClients grouped by salesPerson with signingDate in current year
+  // Consultant Yearly Signing — clients from finClients grouped by consultant with signingDate in current year
   const [consultantSigningRows] = await db.execute(
-    sql`SELECT ${finClients.salesPerson} AS consultant, COUNT(*) AS count FROM ${finClients} WHERE ${finClients.salesPerson} IS NOT NULL AND ${finClients.salesPerson} != '' AND ${finClients.signingDate} >= ${startOfYear} AND ${finClients.signingDate} <= ${endOfYear} GROUP BY 1`
+    sql`SELECT ${finClients.consultant} AS consultant, COUNT(*) AS count FROM ${finClients} WHERE ${finClients.consultant} IS NOT NULL AND ${finClients.consultant} != '' AND ${finClients.signingDate} >= ${startOfYear} AND ${finClients.signingDate} < ${endOfYear} GROUP BY 1`
   );
   const consultantSigning = (consultantSigningRows as unknown as any[]).map(r => ({
     consultant: r.consultant as string,

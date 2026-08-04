@@ -1022,3 +1022,5 @@ Check email for download link within 5 minutes
 ## Change Requests (Round 70)
 - [x] Ensure all team members have full access to Contracting module (create contracts, receipts, invoices)
 - [x] Keep delete functionality restricted to admin only
+## Bug Fixes (Round 71)
+- [x] Fix Consultant Yearly Signing (2026) showing 0 for all consultants - should count from financial clients by consultant and signing date in 2026
