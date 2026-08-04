@@ -1036,3 +1036,20 @@ Check email for download link within 5 minutes
 - [x] Mobile Client Documentation module
 - [x] Mobile Application Analysis module
 - [x] Mobile Marketing module
+## Apple App Store Compliance (Round 74)
+- [x] DB: Create deletionRequests table (id, userId, fullName, email, phone, company, reason, status, adminNotes, createdAt, completedAt, deletedData, retainedData, retainedReason)
+- [x] DB: Create supportTickets table (id, name, email, category, subject, description, attachmentUrl, status, createdAt)
+- [x] DB: Create consentRecords table (id, userId, policyVersion, termsVersion, consentTimestamp)
+- [x] DB: Create auditLogs table (id, userId, action, details, ipAddress, createdAt)
+- [x] Public page: /privacy-policy (no login required, responsive, ELEVAY branded)
+- [x] Public page: /terms (Terms & Conditions, no login required)
+- [x] Public page: /support (contact form, FAQ, no login required)
+- [x] Public page: /account-deletion (deletion request form, no login required)
+- [x] In-app: Account Deletion flow (Profile → Delete Account with warnings, confirmation, email)
+- [x] In-app: Privacy & Data settings page (Settings → Privacy and Data)
+- [x] Admin: Privacy & Deletion Requests management page (view, verify, process, export)
+- [x] Apple Review account: Create dedicated login (apple.review@elevay.com / AppleReview2026!)
+- [x] Apple Review account: Populate with sample data (full module access granted)
+- [x] Support form: Backend endpoint + email to support@elevay.com
+- [x] Footer: Add legal links to all public pages
+- [x] Apple App Review Instructions document (APPLE_REVIEW_INSTRUCTIONS.md)

@@ -2101,6 +2101,8 @@ const notificationsRouter = router({
   }),
 });
 
+import { supportRouter } from "./supportRouter";
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -2132,5 +2134,6 @@ export const appRouter = router({
   backups: backupsRouter,
   backupDownload: backupDownloadRouter,
   admin: adminRouter,
+  support: supportRouter,
 });
 export type AppRouter = typeof appRouter;

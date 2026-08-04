@@ -7,6 +7,10 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import DashboardLayout from "./components/DashboardLayout";
 import ElevayHome from "./pages/ElevayHome";
 import Login from "./pages/Login";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsConditions from "./pages/TermsConditions";
+import SupportPage from "./pages/SupportPage";
+import AccountDeletion from "./pages/AccountDeletion";
 import TeamChat from "./pages/TeamChat";
 import BroadcastCenter from "./pages/BroadcastCenter";
 import Settings from "./pages/Settings";
@@ -64,6 +68,7 @@ import LeadsReporting from "./pages/leads/LeadsReporting";
 import TasksPage from "./pages/leads/TasksPage";
 
 import AdminSecurity from "@/pages/AdminSecurity";
+import AdminPrivacy from "@/pages/AdminPrivacy";
 
 // ─── Marketing Module ─────────────────────────────────────────────────────────
 import MarketingDashboard from "./pages/marketing/MarketingDashboard";
@@ -97,6 +102,19 @@ import WaQcSettings from "./pages/waQc/WaQcSettings";
 function Router() {
   return (
     <Switch>
+      {/* ── Public Legal Pages (no auth required) ── */}
+      <Route path="/privacy-policy">
+        <PrivacyPolicy />
+      </Route>
+      <Route path="/terms">
+        <TermsConditions />
+      </Route>
+      <Route path="/support">
+        <SupportPage />
+      </Route>
+      <Route path="/account-deletion">
+        <AccountDeletion />
+      </Route>
       {/* Login page */}
       <Route path="/login">
         <Login />
@@ -249,6 +267,11 @@ function Router() {
       {/* ── Admin Security & Audit ── */}
       <Route path="/admin/security">
         <MobileRoute><AdminSecurity /></MobileRoute>
+      </Route>
+
+      {/* ── Admin Privacy & Deletion Requests ── */}
+      <Route path="/admin/privacy">
+        <MobileRoute><AdminPrivacy /></MobileRoute>
       </Route>
 
       {/* ── WhatsApp Quality Control Module ── */}

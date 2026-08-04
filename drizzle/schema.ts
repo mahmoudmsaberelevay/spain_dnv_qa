@@ -1162,3 +1162,58 @@ export const dailyAttestationReports = mysqlTable("dailyAttestationReports", {
 });
 export type DailyAttestationReport = typeof dailyAttestationReports.$inferSelect;
 export type InsertDailyAttestationReport = typeof dailyAttestationReports.$inferInsert;
+
+// ─── App Store Compliance Tables ─────────────────────────────────────────────
+
+export const deletionRequests = mysqlTable("deletionRequests", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"), // null if submitted via public form
+  fullName: varchar("fullName", { length: 255 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  phone: varchar("phone", { length: 50 }),
+  company: varchar("company", { length: 255 }),
+  reason: text("reason"),
+  status: mysqlEnum("status", [
+    "new", "identity_verification", "under_review", "approved", "processing", "completed", "rejected", "cancelled"
+  ]).default("new").notNull(),
+  adminNotes: text("adminNotes"),
+  deletedData: text("deletedData"),
+  retainedData: text("retainedData"),
+  retainedReason: text("retainedReason"),
+  processedBy: int("processedBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+});
+export type DeletionRequest = typeof deletionRequests.$inferSelect;
+export type InsertDeletionRequest = typeof deletionRequests.$inferInsert;
+
+export const supportTickets = mysqlTable("supportTickets", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  category: mysqlEnum("category", [
+    "login_issue", "technical_bug", "account_deletion", "feature_request", "billing", "general", "other"
+  ]).default("general").notNull(),
+  subject: varchar("subject", { length: 500 }).notNull(),
+  description: text("description").notNull(),
+  attachmentUrl: text("attachmentUrl"),
+  status: mysqlEnum("status", ["open", "in_progress", "resolved", "closed"]).default("open").notNull(),
+  adminNotes: text("adminNotes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  resolvedAt: timestamp("resolvedAt"),
+});
+export type SupportTicket = typeof supportTickets.$inferSelect;
+export type InsertSupportTicket = typeof supportTickets.$inferInsert;
+
+export const consentRecords = mysqlTable("consentRecords", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  privacyPolicyVersion: varchar("privacyPolicyVersion", { length: 50 }).notNull(),
+  termsVersion: varchar("termsVersion", { length: 50 }).notNull(),
+  consentTimestamp: timestamp("consentTimestamp").defaultNow().notNull(),
+  ipAddress: varchar("ipAddress", { length: 45 }),
+});
+export type ConsentRecord = typeof consentRecords.$inferSelect;
+export type InsertConsentRecord = typeof consentRecords.$inferInsert;
+
+// auditLogs table already defined above (line ~1005)
