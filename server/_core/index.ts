@@ -74,6 +74,24 @@ async function startServer() {
     res.json(aasaContent);
   });
 
+  // Android App Links — Digital Asset Links
+  app.get("/.well-known/assetlinks.json", (_req, res) => {
+    const assetlinks = [
+      {
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: {
+          namespace: "android_app",
+          package_name: "com.app.elevaymobile",
+          sha256_cert_fingerprints: [
+            "D7:1E:11:BB:98:F3:2A:6F:FB:AC:12:F2:A7:86:E8:C7:16:FE:E5:D6:F1:AC:99:E8:B1:9D:BD:B5:31:37:DE:E7"
+          ]
+        }
+      }
+    ];
+    res.setHeader("Content-Type", "application/json");
+    res.json(assetlinks);
+  });
+
   // Backup download page (register FIRST to bypass all middleware)
   app.get("/backup", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
