@@ -1075,3 +1075,11 @@ Check email for download link within 5 minutes
 - [x] main.tsx: skip global login redirect on PUBLIC_PATHS
 - [x] MobileNotificationBell: guard query with enabled: !!user
 - [x] Hide bottom tab bar for unauthenticated mobile users
+## Database Backup Heartbeat Cron (Round 76)
+- [x] Register Heartbeat cron job "db-backup-daily" — Mon-Thu 18:00 Cairo (15:00 UTC)
+- [x] Task UID: 35xAWZJMQcb3whajGuJ6qL
+- [x] Handler: /api/scheduled/dbBackup (already deployed)
+- [x] Features: AES-256 encryption, email to mahmoud.saberelevay@gmail.com + mahmoud.saber@elevay.com, S3 upload, download link
+## Apple App Site Association (Round 76b)
+- [x] Add /.well-known/apple-app-site-association endpoint (application/json, Team ID: 8M53HJ223G, Bundle: com.app.elevaymobile)
+- [x] Serves universal links (applinks) and web credentials (webcredentials)

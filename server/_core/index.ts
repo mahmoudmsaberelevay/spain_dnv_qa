@@ -54,6 +54,26 @@ async function startServer() {
   // Trust the first proxy (Manus reverse proxy / load balancer)
   app.set("trust proxy", 1);
 
+  // Apple App Site Association — must be served with application/json content-type
+  app.get("/.well-known/apple-app-site-association", (_req, res) => {
+    const aasaContent = {
+      applinks: {
+        apps: [],
+        details: [
+          {
+            appIDs: ["8M53HJ223G.com.app.elevaymobile"],
+            components: [{ "/": "/*" }]
+          }
+        ]
+      },
+      webcredentials: {
+        apps: ["8M53HJ223G.com.app.elevaymobile"]
+      }
+    };
+    res.setHeader("Content-Type", "application/json");
+    res.json(aasaContent);
+  });
+
   // Backup download page (register FIRST to bypass all middleware)
   app.get("/backup", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
