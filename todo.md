@@ -1089,3 +1089,8 @@ Check email for download link within 5 minutes
 - [x] Show current page name next to the sidebar icon (e.g. "Dashboard", "Financial", "Leads")
 - [x] Sidebar includes user info footer with Sign Out button
 - [x] Available on all mobile pages, highlights active module
+## Commission DB Client Search Autocomplete (Round 78)
+- [x] Replace plain text input with searchable autocomplete for client name in Commission DB form
+- [x] Searches by both client name and client code (e.g. typing "260" shows clients with code starting with 260)
+- [x] Dropdown shows matching clients with name and code, click to select
+- [x] Close dropdown on outside click

@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { useState, useMemo } from "react";
+import { useRef, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -212,6 +213,25 @@ export default function FinCommissions() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<CommissionForm>(EMPTY_FORM);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  // Client search autocomplete state
+  const [clientSearch, setClientSearch] = useState("");
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const clientDropdownRef = useRef<HTMLDivElement>(null);
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!showClientDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (clientDropdownRef.current && !clientDropdownRef.current.contains(e.target as Node)) {
+        setShowClientDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showClientDropdown]);
+  const { data: clientSuggestions } = trpc.financial.upcomingPayments.searchClients.useQuery(
+    { q: clientSearch },
+    { enabled: clientSearch.length >= 1 && showClientDropdown }
+  );
 
   // Employee lists by role
   const csList = employees?.filter(e => e.role === "CS" || e.role === "CS TL") ?? [];
@@ -470,9 +490,41 @@ export default function FinCommissions() {
 
             {/* Basic Info */}
             <FormSection title="Client & Contract">
-              <FormRow>
+            <FormRow>
                 <FormField label="Client Name *">
-                  <Input value={form.clientName} onChange={f("clientName")} placeholder="Client full name" />
+                  <div className="relative" ref={clientDropdownRef}>
+                    <Input
+                      value={form.clientName}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setForm(prev => ({ ...prev, clientName: val }));
+                        setClientSearch(val);
+                        setShowClientDropdown(true);
+                      }}
+                      onFocus={() => { if (form.clientName) { setClientSearch(form.clientName); setShowClientDropdown(true); } }}
+                      placeholder="Type client name or code..."
+                      autoComplete="off"
+                    />
+                    {showClientDropdown && clientSuggestions && clientSuggestions.length > 0 && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-popover border border-border rounded-md shadow-lg">
+                        {clientSuggestions.map((client) => (
+                          <button
+                            key={client.id}
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors flex items-center justify-between"
+                            onClick={() => {
+                              setForm(prev => ({ ...prev, clientName: client.name ?? "" }));
+                              setShowClientDropdown(false);
+                              setClientSearch("");
+                            }}
+                          >
+                            <span className="font-medium">{client.name}</span>
+                            {client.clientCode && <span className="text-xs text-muted-foreground ml-2">{client.clientCode}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </FormField>
                 <FormField label="Seq. Number">
                   <Input type="number" value={form.seqNumber} onChange={f("seqNumber")} placeholder="1" />
