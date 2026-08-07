@@ -1083,3 +1083,9 @@ Check email for download link within 5 minutes
 ## Apple App Site Association (Round 76b)
 - [x] Add /.well-known/apple-app-site-association endpoint (application/json, Team ID: 8M53HJ223G, Bundle: com.app.elevaymobile)
 - [x] Serves universal links (applinks) and web credentials (webcredentials)
+## Mobile Sidebar Toggle (Round 77)
+- [x] Add sidebar toggle button in mobile header (top-left, PanelLeft icon like screenshot)
+- [x] Slide-out left navigation panel with all 12 modules when tapped
+- [x] Show current page name next to the sidebar icon (e.g. "Dashboard", "Financial", "Leads")
+- [x] Sidebar includes user info footer with Sign Out button
+- [x] Available on all mobile pages, highlights active module

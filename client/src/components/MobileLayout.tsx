@@ -1,7 +1,7 @@
 /**
  * MobileLayout — Bottom tab navigation layout for mobile devices.
  * Shows a native-feeling bottom tab bar with 5 main modules.
- * Only renders on mobile screens (< 768px).
+ * Includes a slide-out sidebar accessible from every page via the header toggle.
  */
 import { useAuth } from "@/_core/hooks/useAuth";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,7 @@ import {
   ChevronRight,
   X,
   Scale,
+  PanelLeft,
 } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -40,15 +41,19 @@ const TABS = [
   { id: "more", label: "More", icon: MoreHorizontal, path: "__more__" },
 ] as const;
 
-// "More" menu items
-const MORE_ITEMS = [
-  { id: "docs", label: "Client Documentation", icon: FolderCheck, path: "/docs/dashboard" },
-  { id: "analysis", label: "Application Analysis", icon: Search, path: "/analysis/dashboard" },
+// All navigation items for the sidebar
+const SIDEBAR_ITEMS = [
+  { id: "home", label: "Home", icon: Home, path: "/" },
+  { id: "finance", label: "Financial", icon: Wallet, path: "/finance" },
+  { id: "leads", label: "Leads", icon: Target, path: "/leads/dashboard" },
+  { id: "contracts", label: "Contracting", icon: FileText, path: "/contracting" },
+  { id: "docs", label: "Client Docs", icon: FolderCheck, path: "/docs/dashboard" },
+  { id: "analysis", label: "Analysis", icon: Search, path: "/analysis/dashboard" },
   { id: "marketing", label: "Marketing", icon: Megaphone, path: "/marketing" },
   { id: "reports", label: "Reports", icon: BarChart3, path: "/reports" },
   { id: "wa-qc", label: "WhatsApp QC", icon: MessageSquare, path: "/wa-qc" },
   { id: "backup", label: "Backup", icon: HardDrive, path: "/backup" },
-  { id: "admin", label: "Admin & Security", icon: Shield, path: "/admin/permissions" },
+  { id: "admin", label: "Admin", icon: Shield, path: "/admin/permissions" },
   { id: "profile", label: "Profile", icon: User, path: "/profile" },
 ];
 
@@ -60,6 +65,26 @@ function getActiveTab(location: string): string {
   return "more";
 }
 
+function getPageName(location: string): string {
+  if (location === "/") return "Dashboard";
+  if (location.startsWith("/finance")) return "Financial";
+  if (location.startsWith("/leads")) return "Leads";
+  if (location.startsWith("/contracting")) return "Contracting";
+  if (location.startsWith("/docs")) return "Client Docs";
+  if (location.startsWith("/analysis")) return "Analysis";
+  if (location.startsWith("/marketing")) return "Marketing";
+  if (location.startsWith("/reports")) return "Reports";
+  if (location.startsWith("/wa-qc")) return "WhatsApp QC";
+  if (location.startsWith("/backup")) return "Backup";
+  if (location.startsWith("/admin")) return "Admin";
+  if (location.startsWith("/profile")) return "Profile";
+  if (location.startsWith("/privacy")) return "Privacy Policy";
+  if (location.startsWith("/terms")) return "Terms";
+  if (location.startsWith("/support")) return "Support";
+  if (location.startsWith("/account-deletion")) return "Account Deletion";
+  return "Dashboard";
+}
+
 interface MobileLayoutProps {
   children: React.ReactNode;
 }
@@ -68,6 +93,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
   const { user, loading } = useAuth();
   const [location, setLocation] = useLocation();
   const [showMore, setShowMore] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
   const logoutMut = trpc.auth.logout.useMutation({
     onSuccess: () => { window.location.href = "/"; },
   });
@@ -106,11 +132,79 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      {/* Slide-out Sidebar */}
+      {showSidebar && (
+        <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm" onClick={() => setShowSidebar(false)}>
+          <div
+            className="absolute top-0 left-0 bottom-0 w-72 bg-background border-r shadow-2xl animate-in slide-in-from-left duration-200 overflow-y-auto flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Sidebar Header */}
+            <div className="flex items-center gap-3 px-5 py-4 border-b">
+              <img src="/manus-storage/elevay-logo_2c219cd3.png" alt="Elevay" className="h-9 w-auto object-contain" />
+              <div>
+                <p className="text-sm font-bold text-foreground">ELEVAY</p>
+                <p className="text-[11px] text-muted-foreground">CRM System</p>
+              </div>
+              <button onClick={() => setShowSidebar(false)} className="ml-auto h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {/* Sidebar Navigation */}
+            <div className="flex-1 p-3 overflow-y-auto">
+              {SIDEBAR_ITEMS.map((item) => {
+                const Icon = item.icon;
+                const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path.split("/").slice(0, 2).join("/")));
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => { setLocation(item.path); setShowSidebar(false); }}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors",
+                      isActive ? "bg-primary/10 text-primary" : "hover:bg-accent text-foreground"
+                    )}
+                  >
+                    <Icon className={cn("h-5 w-5", isActive && "text-primary")} strokeWidth={isActive ? 2.5 : 1.5} />
+                    <span className={cn("text-sm", isActive ? "font-semibold" : "font-medium")}>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {/* Sidebar Footer */}
+            {user && (
+              <div className="border-t p-3">
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className="h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center">
+                    <span className="text-xs font-bold text-primary">{user.name?.charAt(0).toUpperCase() ?? "U"}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => logoutMut.mutate()}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-destructive/10 transition-colors"
+                >
+                  <LogOut className="h-4 w-4 text-destructive" />
+                  <span className="text-sm font-medium text-destructive">Sign Out</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Mobile Header */}
       <header className="sticky top-0 z-50 flex items-center justify-between h-14 px-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:backdrop-blur">
         <div className="flex items-center gap-2">
-          <img src="/manus-storage/elevay-logo_2c219cd3.png" alt="Elevay" className="h-8 w-auto object-contain" />
-          <span className="text-sm font-semibold text-foreground">ELEVAY</span>
+          <button
+            onClick={() => setShowSidebar(true)}
+            className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-accent transition-colors -ml-1"
+          >
+            <PanelLeft className="h-5 w-5 text-foreground" />
+          </button>
+          <span className="text-sm font-semibold text-foreground">{getPageName(location)}</span>
         </div>
         <div className="flex items-center gap-2">
           {user ? (
@@ -150,7 +244,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
               </button>
             </div>
             <div className="p-3">
-              {MORE_ITEMS.map((item) => {
+              {SIDEBAR_ITEMS.filter(i => !["home","finance","leads","contracts"].includes(i.id)).map((item) => {
                 const Icon = item.icon;
                 return (
                   <button
