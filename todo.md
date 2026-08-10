@@ -1096,3 +1096,9 @@ Check email for download link within 5 minutes
 - [x] Close dropdown on outside click
 ## Commission Receipt Access Fix (Round 79)
 - [x] Add madonna.adel@elevay.com to READONLY_EMAILS in finRouter.ts so she can access employees list and clients list for commission receipts
+## Signing Date = First Receipt Paid Date (Round 80)
+- [x] Change auto-sync: when contract is signed, set signingDate to undefined (not new Date())
+- [x] When receipt is marked as paid and finClient has no signingDate, set it to current date
+- [x] When receipt creates a new finClient (no existing), set signingDate to current date (paid date)
+- [x] Backfill all existing finClients: signingDate = MIN(invoices.paidAt) for their contractId
+- [x] Backfill finCommissions signingDate to match their linked finClient signingDate

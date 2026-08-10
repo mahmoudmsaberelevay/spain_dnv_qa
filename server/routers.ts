@@ -871,7 +871,7 @@ const contractingRouter = router({
                 clientCode: extractedCode,
                 phone: contract.clientMobile ?? undefined,
                 program: "Spain Nomad",
-                signingDate: new Date(),
+                signingDate: undefined, // Will be set when first receipt is marked as paid
                 contractValueEur: netCvEur.toFixed(2),
                 paidAmountEur: "0.00",
                 remainingAmountEur: netCvEur.toFixed(2),
@@ -888,7 +888,7 @@ const contractingRouter = router({
                   contractValue: contract.contractValue,
                   seqNumber: existingCount + 1,
                   status: "Pending",
-                  signingDate: new Date(),
+                  signingDate: undefined, // Will be set when first receipt is marked as paid
                   leaderName: "Mahmoud Saber",
                 });
               }
@@ -1031,7 +1031,7 @@ const contractingRouter = router({
               clientCode: invoice.contractCode ?? undefined,
               name: invoice.clientName,
               phone: contract.clientMobile ?? undefined,
-              signingDate: contract.createdAt ? new Date(contract.createdAt) : undefined,
+              signingDate: new Date(), // Signing date = date first receipt is marked as paid
               consultant: contract.consultantName ?? undefined,
               salesPerson: contract.consultantName ?? undefined,
               contractValueEur: contractValueEur.toFixed(2),
@@ -1048,6 +1048,10 @@ const contractingRouter = router({
               contractValueEur,
               "auto"
             ).catch(() => {});
+          } else if (existing && !existing.signingDate) {
+            // If finClient exists but has no signing date, set it now (first receipt paid)
+            const { updateFinClient } = await import("./finDb");
+            await updateFinClient(existing.id, { signingDate: new Date() });
           }
         }
         await notifyReceiptPaid(invoice.invoiceCode, invoice.contractCode ?? "—", invoice.clientName, Number(invoice.amountEur), remainingBalance);
