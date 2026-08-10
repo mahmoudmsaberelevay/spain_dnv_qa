@@ -1094,3 +1094,5 @@ Check email for download link within 5 minutes
 - [x] Searches by both client name and client code (e.g. typing "260" shows clients with code starting with 260)
 - [x] Dropdown shows matching clients with name and code, click to select
 - [x] Close dropdown on outside click
+## Commission Receipt Access Fix (Round 79)
+- [x] Add madonna.adel@elevay.com to READONLY_EMAILS in finRouter.ts so she can access employees list and clients list for commission receipts

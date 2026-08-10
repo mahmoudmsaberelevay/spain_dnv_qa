@@ -27,6 +27,7 @@ const READONLY_EMAILS = [
   "ziad.elshurafa@elevay.com",
   "fouad.abdo@elevay.com",
   "kirlos.nabil@elevay.com",
+  "madonna.adel@elevay.com",
 ];
 const LIMITED_EMAILS = [
   "mohamed.abdelfatah@elevay.com",
