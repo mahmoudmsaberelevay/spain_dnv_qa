@@ -1102,3 +1102,8 @@ Check email for download link within 5 minutes
 - [x] When receipt creates a new finClient (no existing), set signingDate to current date (paid date)
 - [x] Backfill all existing finClients: signingDate = MIN(invoices.paidAt) for their contractId
 - [x] Backfill finCommissions signingDate to match their linked finClient signingDate
+## Receipt Payment EUR Fix (Round 81)
+- [x] Fix markPaid: when actualPaidAmountEgp exists, record EUR equivalent (actualPaidEgp / exchangeRate) in payments table instead of full receipt amountEur
+- [x] Fix receipt creation: use actual paid EUR equivalent for remaining balance calculation and PDF
+- [x] Fix legacy receipt creation: use actual paid EUR equivalent for finTotalPaid calculation
+- [x] Fix finClient auto-creation on markPaid: use actual paid EUR for paidAmountEur

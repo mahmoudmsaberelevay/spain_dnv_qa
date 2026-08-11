@@ -967,16 +967,19 @@ const contractingRouter = router({
         const totalPaid = await getTotalPaidByContractId(input.contractId);
         // contractValue is already net (applyContractDiscount reduces it in-place — do NOT subtract discountValue again)
         const contractValue = Number(contract.contractValue);
-        const remainingBalance = contractValue - totalPaid - input.amountEur;
-        const billingName = contract.invoicingName || contract.clientName;
-        const clientMobile = contract.clientMobile || "";
-        // EGP partial payment
+        // Calculate the EUR equivalent of this payment (if partial EGP payment, use that)
         const actualPaidEgp = input.actualPaidAmountEgp ?? undefined;
         const remainingEgp = actualPaidEgp != null ? Math.max(0, amountEgp - actualPaidEgp) : undefined;
+        const thisPaymentEur = (actualPaidEgp != null && rateInfo.rate > 0)
+          ? Math.round((actualPaidEgp / rateInfo.rate) * 100) / 100
+          : input.amountEur;
+        const remainingBalance = contractValue - totalPaid - thisPaymentEur;
+        const billingName = contract.invoicingName || contract.clientName;
+        const clientMobile = contract.clientMobile || "";
         const pdfUrl = await generateAndUploadInvoicePdf({
           invoiceCode, contractCode: contract.contractCode, clientName: billingName, clientMobile,
           amountEur: input.amountEur, amountEgp, exchangeRate: rateInfo.rate,
-          contractValue, totalPaid: totalPaid + input.amountEur, remainingBalance,
+          contractValue, totalPaid: totalPaid + thisPaymentEur, remainingBalance,
           createdAt: new Date(), notes: input.notes,
           actualPaidAmountEgp: actualPaidEgp,
           remainingAmountEgp: remainingEgp,
@@ -1008,11 +1011,22 @@ const contractingRouter = router({
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
         if (invoice.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Invoice already paid" });
         await markInvoicePaid(input.id);
+        // Calculate actual paid EUR: if client paid partial EGP, convert to EUR equivalent
+        const invoiceExchangeRate = Number(invoice.exchangeRate ?? 0);
+        const actualPaidEgp = invoice.actualPaidAmountEgp ? Number(invoice.actualPaidAmountEgp) : null;
+        let actualPaidEur: number;
+        if (actualPaidEgp != null && invoiceExchangeRate > 0) {
+          // Client paid partial EGP → convert to EUR equivalent
+          actualPaidEur = Math.round((actualPaidEgp / invoiceExchangeRate) * 100) / 100;
+        } else {
+          // No partial payment → full receipt EUR amount was paid
+          actualPaidEur = Number(invoice.amountEur ?? 0);
+        }
         // For legacy receipts: skip contract-based logic
         if (!invoice.isLegacyReceipt && invoice.contractId != null) {
           await createPayment({
             contractId: invoice.contractId, invoiceId: invoice.id,
-            amountEur: invoice.amountEur, amountEgp: invoice.amountEgp ?? undefined,
+            amountEur: actualPaidEur.toFixed(2), amountEgp: actualPaidEgp != null ? actualPaidEgp.toString() : (invoice.amountEgp ?? undefined),
             exchangeRate: invoice.exchangeRate ?? undefined, paidAt: new Date(),
           });
         }
@@ -1025,7 +1039,7 @@ const contractingRouter = router({
           const existing = await getFinClientByContractId(contract.id);
           if (!existing) {
             const contractValueEur = Number(contract.contractValue ?? 0);
-            const paidEur = Number(invoice.amountEur ?? 0);
+            const paidEur = actualPaidEur;
             await createFinClient({
               contractId: contract.id,
               clientCode: invoice.contractCode ?? undefined,
@@ -1085,8 +1099,11 @@ const contractingRouter = router({
         const remainingEgp = actualPaidEgp != null ? Math.max(0, amountEgp - actualPaidEgp) : undefined;
         // Use finClient financial data for the PDF summary table
         const finContractValue = Number(client.contractValueEur ?? 0);
-        // Total paid = existing paidAmountEur + this new payment
-        const finTotalPaid = Number(client.paidAmountEur ?? 0) + input.amountEur;
+        // Total paid = existing paidAmountEur + actual EUR equivalent of this payment
+        const thisPaymentEur = (actualPaidEgp != null && rateInfo.rate > 0)
+          ? Math.round((actualPaidEgp / rateInfo.rate) * 100) / 100
+          : input.amountEur;
+        const finTotalPaid = Number(client.paidAmountEur ?? 0) + thisPaymentEur;
         const finRemainingBalance = Math.max(0, finContractValue - finTotalPaid);
         const pdfUrl = await generateAndUploadInvoicePdf({
           invoiceCode,
