@@ -8,6 +8,52 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Trash2, Download, CheckCircle, Pencil, X } from "lucide-react";
+import { Calendar } from "lucide-react";
+
+// ─── Date Range Filter ────────────────────────────────────────────────────────
+type DateRangePreset = "all" | "today" | "this_week" | "this_month" | "this_year" | "custom";
+
+const DATE_RANGE_LABELS: Record<DateRangePreset, string> = {
+  all: "All Time",
+  today: "Today",
+  this_week: "This Week",
+  this_month: "This Month",
+  this_year: "This Year",
+  custom: "Custom Range",
+};
+
+function computeDateRange(preset: DateRangePreset): { dateFrom?: Date; dateTo?: Date } {
+  const now = new Date();
+  if (preset === "all") return {};
+  if (preset === "today") {
+    return {
+      dateFrom: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0),
+      dateTo: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999),
+    };
+  }
+  if (preset === "this_week") {
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday start
+    const monday = new Date(now.getFullYear(), now.getMonth(), diff, 0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+    return { dateFrom: monday, dateTo: sunday };
+  }
+  if (preset === "this_month") {
+    return {
+      dateFrom: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0),
+      dateTo: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999),
+    };
+  }
+  if (preset === "this_year") {
+    return {
+      dateFrom: new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0),
+      dateTo: new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999),
+    };
+  }
+  return {};
+}
 
 const COMMISSION_FOR_OPTIONS = [
   "Paralegal First", "Paralegal Second", "Paralegal Third",
@@ -59,6 +105,36 @@ export default function CommissionReceipts() {
   const { data: receipts = [], refetch } = trpc.financial.commissionReceipts.list.useQuery();
   const { data: employees = [] } = trpc.financial.employees.list.useQuery();
   const { data: clients = [] } = trpc.financial.clients.list.useQuery();
+
+  // Date range filter state
+  const [datePreset, setDatePreset] = useState<DateRangePreset>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
+  // Filter receipts by date range
+  const filteredReceipts = useMemo(() => {
+    const allReceipts = receipts as ReceiptWithItems[];
+    let dateFrom: Date | undefined;
+    let dateTo: Date | undefined;
+    if (datePreset === "custom") {
+      dateFrom = customFrom ? new Date(customFrom + "T00:00:00") : undefined;
+      dateTo = customTo ? new Date(customTo + "T23:59:59.999") : undefined;
+    } else {
+      const range = computeDateRange(datePreset);
+      dateFrom = range.dateFrom;
+      dateTo = range.dateTo;
+    }
+    return allReceipts.filter(r => {
+      const rd = new Date(r.receiptDate);
+      if (dateFrom && rd < dateFrom) return false;
+      if (dateTo && rd > dateTo) return false;
+      return true;
+    });
+  }, [receipts, datePreset, customFrom, customTo]);
+
+  // Sum totals for filtered view
+  const filteredTotalEur = useMemo(() => filteredReceipts.reduce((s, r) => s + Number(r.totalAmountEur), 0), [filteredReceipts]);
+  const filteredTotalEgp = useMemo(() => filteredReceipts.reduce((s, r) => s + Number(r.totalAmountEgp), 0), [filteredReceipts]);
 
   const createMutation = trpc.financial.commissionReceipts.create.useMutation({
     onSuccess: () => { toast.success("Receipt created"); refetch(); setShowCreate(false); resetForm(); },
@@ -252,6 +328,33 @@ export default function CommissionReceipts() {
         </Button>
       </div>
 
+      {/* Date Range Filter */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-muted-foreground" />
+          <Select value={datePreset} onValueChange={(v) => setDatePreset(v as DateRangePreset)}>
+            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(DATE_RANGE_LABELS).map(([key, label]) => (
+                <SelectItem key={key} value={key}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {datePreset === "custom" && (
+          <div className="flex items-center gap-2">
+            <Input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="w-[150px]" />
+            <span className="text-muted-foreground text-sm">to</span>
+            <Input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="w-[150px]" />
+          </div>
+        )}
+        <div className="ml-auto flex items-center gap-4 text-sm">
+          <span className="text-muted-foreground">{filteredReceipts.length} receipt{filteredReceipts.length !== 1 ? "s" : ""}</span>
+          <span className="font-semibold text-blue-400">€{filteredTotalEur.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+          <span className="font-semibold text-amber-400">EGP {filteredTotalEgp.toLocaleString("en-US", { minimumFractionDigits: 0 })}</span>
+        </div>
+      </div>
+
       {/* Receipts Table */}
       <div className="rounded-lg border bg-card overflow-hidden">
         <table className="w-full text-sm">
@@ -267,10 +370,10 @@ export default function CommissionReceipts() {
             </tr>
           </thead>
           <tbody>
-            {(receipts as ReceiptWithItems[]).length === 0 && (
+            {filteredReceipts.length === 0 && (
               <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">No commission receipts yet</td></tr>
             )}
-            {(receipts as ReceiptWithItems[]).map(r => (
+            {filteredReceipts.map(r => (
               <tr key={r.id} className="border-b hover:bg-muted/30 transition-colors">
                 <td className="px-4 py-3 font-medium">{r.employeeName}</td>
                 <td className="px-4 py-3">{r.forMonth}</td>

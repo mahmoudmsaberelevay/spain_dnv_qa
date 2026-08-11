@@ -1107,3 +1107,7 @@ Check email for download link within 5 minutes
 - [x] Fix receipt creation: use actual paid EUR equivalent for remaining balance calculation and PDF
 - [x] Fix legacy receipt creation: use actual paid EUR equivalent for finTotalPaid calculation
 - [x] Fix finClient auto-creation on markPaid: use actual paid EUR for paidAmountEur
+## Commission Receipt Date Filters (Round 82)
+- [x] Add date range filter to Commission Receipts: Today, This Week, This Month, This Year, Custom Range, All Time
+- [x] Add sum total EUR and EGP for the filtered view
+- [x] Show receipt count for current filter
