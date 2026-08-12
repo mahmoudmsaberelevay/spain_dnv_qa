@@ -70,6 +70,7 @@ import {
   GitCompare,
   FileSignature,
   Calendar,
+  Mic2,
   HardDrive,
   Scale,
 } from "lucide-react";
@@ -271,6 +272,7 @@ const modules = [
     icon: Megaphone,
     items: [
       { icon: Sparkles, label: "Summary Generator", path: "/marketing/summary-generator" },
+      { icon: Mic2, label: "Arabic Voice-over", path: "/marketing/voice-over" },
       { icon: GitCompare, label: "Program Comparison", path: "/marketing/program-comparison" },
       { icon: FileSignature, label: "Program Proposal", path: "/marketing/program-proposal" },
       { icon: Calendar, label: "Marketing Plan", path: "/marketing/marketing-plan" },

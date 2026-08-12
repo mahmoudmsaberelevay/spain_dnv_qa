@@ -8,6 +8,7 @@ import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import { invokeLLM } from "./_core/llm";
 import { generatePlanRuleBased, generateWeekMediaPrompts } from "./marketingTemplates";
+import { ELEVAY_ARABIC_VOICE_DEFAULTS, generateElevayArabicVoiceOver } from "./elevenLabsTts";
 
 export const marketingRouter = router({
   // List all summaries for the current user
@@ -181,6 +182,41 @@ export const marketingRouter = router({
         .where(and(eq(marketingSummaries.id, input.id), eq(marketingSummaries.userId, ctx.user.id)));
       if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Summary not found" });
       return { url: "#", message: "Use the Export PDF button in the editor" };
+    }),
+
+  // Arabic voice-over generation using the shared ELEVAY ElevenLabs configuration
+  generateArabicVoiceOver: protectedProcedure
+    .input(z.object({
+      text: z.string().trim().min(1, "Enter an Arabic script before generating audio.").max(4800, "Eleven v3 supports up to 5,000 characters per generation."),
+    }))
+    .mutation(async ({ input }) => {
+      try {
+        const result = await generateElevayArabicVoiceOver(input.text);
+        return {
+          ...result,
+          settings: {
+            model: "Eleven v3",
+            language: "Arabic",
+            stability: ELEVAY_ARABIC_VOICE_DEFAULTS.stability,
+            output: "MP3 44.1 kHz / 128 kbps",
+          },
+        };
+      } catch (error) {
+        if (error instanceof Error && error.message === "ELEVENLABS_NOT_CONFIGURED") {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "The ElevenLabs credential has not been configured for this application. Please contact an administrator.",
+          });
+        }
+        if (error instanceof Error && error.name === "ElevenLabsError") {
+          throw new TRPCError({ code: "BAD_GATEWAY", message: error.message });
+        }
+        console.error("[Marketing] Arabic voice-over generation failed", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "The voice-over could not be generated. Please try again.",
+        });
+      }
     }),
 
   // AI-powered program comparison

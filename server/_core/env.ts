@@ -8,6 +8,8 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  // ElevenLabs text-to-speech — server-side only
+  elevenLabsApiKey: process.env.ELEVENLABS_API_KEY ?? "",
   // Meta Pixel & Conversions API
   metaPixelId: process.env.META_PIXEL_ID ?? "",
   metaCapiToken: process.env.META_CAPI_TOKEN ?? "",

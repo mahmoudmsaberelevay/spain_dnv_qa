@@ -1,7 +1,15 @@
 import { useLocation } from "wouter";
-import { FileText, BarChart2, Send, ArrowRight, Sparkles } from "lucide-react";
+import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2 } from "lucide-react";
 
 const tools = [
+  {
+    icon: Mic2,
+    title: "Arabic Voice-over",
+    description: "Convert Arabic marketing scripts into polished MP3 voice-overs using ELEVAY’s approved Eleven v3 voice settings.",
+    href: "/marketing/voice-over",
+    color: "from-[#5BA3B8] to-[#1A3A5C]",
+    badge: "Eleven v3",
+  },
   {
     icon: FileText,
     title: "Summary Generator",
@@ -44,10 +52,11 @@ export default function MarketingDashboard() {
       </div>
 
       {/* Tool Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
         {tools.map((tool) => {
           const Icon = tool.icon;
-          const isComingSoon = tool.badge === "Coming Soon";
+                        const isComingSoon = tool.badge === "Coming Soon";
+
           return (
             <div
               key={tool.href}
