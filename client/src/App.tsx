@@ -98,6 +98,7 @@ import WaQcAIQuery from "./pages/waQc/WaQcAIQuery";
 import WaQcGroups from "./pages/waQc/WaQcGroups";
 import WaQcMedia from "./pages/waQc/WaQcMedia";
 import WaQcSettings from "./pages/waQc/WaQcSettings";
+import AiCouncil from "./pages/AiCouncil";
 
 function Router() {
   return (
@@ -347,6 +348,11 @@ function Router() {
         <PageGuard pageKey="reports">
           <MobileRoute><Reports /></MobileRoute>
         </PageGuard>
+      </Route>
+
+      {/* ── Administrative AI Council ── */}
+      <Route path="/ai-council">
+        <PageGuard pageKey="ai_council"><MobileRoute><AiCouncil /></MobileRoute></PageGuard>
       </Route>
 
       {/* ── Backup & Recovery Module ── */}

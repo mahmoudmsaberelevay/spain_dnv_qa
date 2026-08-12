@@ -166,6 +166,13 @@ async function startServer() {
   app.use("/api/trpc", apiLimiter);
   app.use("/api/oauth", oauthLimiter);
 
+  // Manus signs council-task callbacks over the raw request body, so this route
+  // must be registered before the global JSON parser consumes that body.
+  app.post("/api/webhook/manus-ai-council", express.raw({ type: "application/json", limit: "2mb" }), async (req, res) => {
+    const { handleManusCouncilWebhook } = await import("../aiCouncilWebhook");
+    await handleManusCouncilWebhook(req, res);
+  });
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));

@@ -1217,3 +1217,66 @@ export type ConsentRecord = typeof consentRecords.$inferSelect;
 export type InsertConsentRecord = typeof consentRecords.$inferInsert;
 
 // auditLogs table already defined above (line ~1005)
+
+// ─── Administrative AI Council ───────────────────────────────────────────────
+// Cases, specialist opinions, and decisions are stored separately so provider
+// outputs remain attributable and a finalized chairperson decision is preserved.
+export const aiCouncilCases = mysqlTable("aiCouncilCases", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  brief: mediumtext("brief").notNull(),
+  language: varchar("language", { length: 12 }).default("en").notNull(),
+  financialAssumptions: mediumtext("financialAssumptions"),
+  status: mysqlEnum("status", [
+    "draft", "running", "awaiting_manus", "ready_for_decision", "finalized", "failed"
+  ]).default("draft").notNull(),
+  createdByUserId: int("createdByUserId").notNull(),
+  startedAt: timestamp("startedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type AiCouncilCase = typeof aiCouncilCases.$inferSelect;
+export type InsertAiCouncilCase = typeof aiCouncilCases.$inferInsert;
+
+export const aiCouncilOpinions = mysqlTable("aiCouncilOpinions", {
+  id: int("id").autoincrement().primaryKey(),
+  councilCaseId: int("councilCaseId").notNull(),
+  role: mysqlEnum("role", [
+    "strategy", "critical_review", "research_execution", "financial", "opposition", "chairperson"
+  ]).notNull(),
+  provider: varchar("provider", { length: 64 }).notNull(),
+  status: mysqlEnum("status", ["queued", "running", "completed", "needs_input", "failed", "unavailable"])
+    .default("queued").notNull(),
+  attempt: int("attempt").default(1).notNull(),
+  externalTaskId: varchar("externalTaskId", { length: 255 }),
+  externalTaskUrl: text("externalTaskUrl"),
+  content: mediumtext("content"),
+  structuredContent: json("structuredContent"),
+  sourceLinks: json("sourceLinks"),
+  errorCode: varchar("errorCode", { length: 100 }),
+  errorMessage: text("errorMessage"),
+  startedAt: timestamp("startedAt"),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type AiCouncilOpinion = typeof aiCouncilOpinions.$inferSelect;
+export type InsertAiCouncilOpinion = typeof aiCouncilOpinions.$inferInsert;
+
+export const aiCouncilDecisions = mysqlTable("aiCouncilDecisions", {
+  id: int("id").autoincrement().primaryKey(),
+  councilCaseId: int("councilCaseId").notNull().unique(),
+  chairOpinionId: int("chairOpinionId"),
+  decision: mysqlEnum("decision", ["proceed", "proceed_with_conditions", "defer", "do_not_proceed"]).notNull(),
+  confidence: int("confidence").notNull(),
+  summary: mediumtext("summary").notNull(),
+  rationale: mediumtext("rationale").notNull(),
+  conditions: json("conditions"),
+  nextSteps: json("nextSteps"),
+  unresolvedConflicts: mediumtext("unresolvedConflicts"),
+  finalizedByUserId: int("finalizedByUserId").notNull(),
+  finalizedAt: timestamp("finalizedAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type AiCouncilDecision = typeof aiCouncilDecisions.$inferSelect;
+export type InsertAiCouncilDecision = typeof aiCouncilDecisions.$inferInsert;

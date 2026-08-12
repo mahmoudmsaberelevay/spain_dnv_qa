@@ -38,10 +38,10 @@ import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-export type ModuleName = "contracting" | "clientDocs" | "appAnalysis" | "financial" | "waQc" | "reports" | "backup";
+export type ModuleName = "contracting" | "clientDocs" | "appAnalysis" | "financial" | "waQc" | "reports" | "backup" | "aiCouncil";
 export type AccessLevel = "none" | "viewer" | "full";
 
-export const ALL_MODULES: ModuleName[] = ["contracting", "clientDocs", "appAnalysis", "financial", "waQc", "reports", "backup"];
+export const ALL_MODULES: ModuleName[] = ["contracting", "clientDocs", "appAnalysis", "financial", "waQc", "reports", "backup", "aiCouncil"];
 
 // Default access for new / existing users
 export const DEFAULT_MODULE_ACCESS: Record<ModuleName, AccessLevel> = {
@@ -52,6 +52,7 @@ export const DEFAULT_MODULE_ACCESS: Record<ModuleName, AccessLevel> = {
   waQc: "full",
   reports: "full",
   backup: "none",
+  aiCouncil: "none",
 };
 
 // Maps module → page keys used by PageGuard
@@ -68,6 +69,7 @@ export const MODULE_PAGE_KEYS: Record<ModuleName, string[]> = {
   waQc: ["wa_qc"],
   reports: ["reports"],
   backup: ["backup_dashboard", "backup_preview"],
+  aiCouncil: ["ai_council"],
 };
 
 // All page keys (for backward compat)
@@ -82,6 +84,7 @@ export const ALL_PAGE_KEYS = [
   "wa_qc",
   "reports",
   "backup_dashboard", "backup_preview",
+  "ai_council",
   "settings", "chat", "broadcast",
 ] as const;
 export type PageKey = (typeof ALL_PAGE_KEYS)[number];
@@ -92,7 +95,7 @@ const SUPER_ADMIN_EMAILS = [
   "mahmoud.saber@elevay.com",
 ];
 
-function isOwner(user: { openId: string; email?: string | null }): boolean {
+export function isOwner(user: { openId: string | null; email?: string | null }): boolean {
   return user.openId === ENV.ownerOpenId || SUPER_ADMIN_EMAILS.includes((user.email ?? "").toLowerCase());
 }
 
@@ -237,7 +240,7 @@ export const permissionsRouter = router({
   setModuleAccess: ownerProcedure
     .input(z.object({
       userId: z.number(),
-      module: z.enum(["contracting", "clientDocs", "appAnalysis", "financial", "waQc", "reports"]),
+      module: z.enum(["contracting", "clientDocs", "appAnalysis", "financial", "waQc", "reports", "backup", "aiCouncil"]),
       accessLevel: z.enum(["none", "viewer", "full"]),
     }))
     .mutation(async ({ input }) => {
@@ -299,6 +302,8 @@ export const permissionsRouter = router({
         financial: z.enum(["none", "viewer", "full"]),
         waQc: z.enum(["none", "viewer", "full"]).optional(),
         reports: z.enum(["none", "viewer", "full"]).optional(),
+        backup: z.enum(["none", "viewer", "full"]).optional(),
+        aiCouncil: z.enum(["none", "viewer", "full"]).optional(),
       }),
     }))
     .mutation(async ({ input }) => {

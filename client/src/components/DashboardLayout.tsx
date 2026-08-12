@@ -192,6 +192,7 @@ const MODULE_COLORS: Record<string, { bg: string; text: string; dot: string }> =
   marketing:    { bg: "bg-purple-500/20", text: "text-purple-300", dot: "bg-purple-400" },
   reports:      { bg: "bg-cyan-500/20",   text: "text-cyan-300",   dot: "bg-cyan-400" },
   backup:       { bg: "bg-slate-500/20",  text: "text-slate-300",  dot: "bg-slate-400" },
+  aiCouncil:    { bg: "bg-cyan-500/20",   text: "text-cyan-300",   dot: "bg-cyan-400" },
 };
 
 // ─── Module Definitions ────────────────────────────────────────────────────────
@@ -296,6 +297,14 @@ const modules = [
     ],
   },
   {
+    id: "aiCouncil",
+    label: "Administrative AI Council",
+    icon: Bot,
+    items: [
+      { icon: Bot, label: "Council Cases", path: "/ai-council" },
+    ],
+  },
+  {
     id: "backup",
     label: "Backup & Recovery",
     icon: HardDrive,
@@ -376,7 +385,7 @@ function DashboardLayoutContent({
   const isMobile = useIsMobile();
 
   // Determine active module from current path
-  const activeModuleId = location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : location.startsWith("/wa-qc") ? "waQc" : location.startsWith("/leads") ? "leads" : location.startsWith("/marketing") ? "marketing" : location.startsWith("/reports") ? "reports" : location.startsWith("/backup") ? "backup" : "contracting";
+  const activeModuleId = location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : location.startsWith("/wa-qc") ? "waQc" : location.startsWith("/leads") ? "leads" : location.startsWith("/marketing") ? "marketing" : location.startsWith("/reports") ? "reports" : location.startsWith("/ai-council") ? "aiCouncil" : location.startsWith("/backup") ? "backup" : "contracting";
   const [expandedModule, setExpandedModule] = useState<string>(activeModuleId);
 
   // Sync expanded module with navigation

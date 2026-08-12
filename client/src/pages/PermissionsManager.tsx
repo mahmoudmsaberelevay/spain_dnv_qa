@@ -12,13 +12,14 @@ import { Shield, Users, CheckCircle2, XCircle, Eye, Save, RefreshCw } from "luci
 import { cn } from "@/lib/utils";
 
 type AccessLevel = "none" | "viewer" | "full";
-type ModuleName = "contracting" | "clientDocs" | "appAnalysis" | "financial";
+type ModuleName = "contracting" | "clientDocs" | "appAnalysis" | "financial" | "aiCouncil";
 
 const MODULES: { key: ModuleName; label: string; description: string; color: string }[] = [
   { key: "contracting", label: "Contracting", description: "Contracts, receipts, proforma invoices", color: "text-blue-400" },
   { key: "clientDocs", label: "Client Docs", description: "Client documentation & attestations", color: "text-green-400" },
   { key: "appAnalysis", label: "App Analysis", description: "AI-powered visa application QA", color: "text-purple-400" },
   { key: "financial", label: "Financial", description: "Income, expenses, accounts, reports", color: "text-amber-400" },
+  { key: "aiCouncil", label: "AI Council", description: "Connected-provider administrative decisions", color: "text-cyan-400" },
 ];
 
 const ACCESS_LEVELS: { value: AccessLevel; label: string; icon: React.ReactNode; badge: string }[] = [
@@ -58,7 +59,7 @@ function UserPermissionRow({ user }: { user: { id: number; name: string | null; 
   });
 
   const [localAccess, setLocalAccess] = useState<Record<ModuleName, AccessLevel> | null>(null);
-  const effectiveAccess = localAccess ?? moduleAccess ?? { contracting: "none", clientDocs: "none", appAnalysis: "none", financial: "none" };
+  const effectiveAccess = localAccess ?? moduleAccess ?? { contracting: "none", clientDocs: "none", appAnalysis: "none", financial: "none", aiCouncil: "none" };
 
   const handleChange = (mod: ModuleName, level: AccessLevel) => {
     setLocalAccess(prev => ({ ...(prev ?? effectiveAccess), [mod]: level }));
@@ -115,11 +116,11 @@ function UserPermissionRow({ user }: { user: { id: number; name: string | null; 
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           {MODULES.map(m => <Skeleton key={m.key} className="h-16 rounded-md" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           {MODULES.map(mod => (
             <div key={mod.key} className="space-y-1.5">
               <p className={cn("text-xs font-medium", mod.color)}>{mod.label}</p>
