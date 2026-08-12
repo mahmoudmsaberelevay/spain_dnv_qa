@@ -16,3 +16,8 @@
 - [x] Add orchestration and decision-persistence tests covering status transitions, Manus pending flows, decision creation, duplicate-decision prevention, and opinion-decision separation.
 - [x] Add a service test for Manus needs-input synchronization and resulting opinion and case status updates.
 - [x] Add a finalization test proving a separate decision record is created without overwriting any specialist opinion record.
+- [x] Investigate why the Administrative AI Council is absent from the actual mobile navigation shown at elevay.vip.
+- [x] Add an Administrative AI Council entry to the mobile navigation with the correct route, access condition, and ELEVAY visual style.
+- [ ] Verify the menu entry and direct Council route on the actual mobile navigation layout, then publish the fix.
+- [ ] Verify the CEO AI Council item is visible in the running mobile sidebar or More menu and that selecting it opens `/ai-council`.
+- [ ] Save and publish a checkpoint containing the mobile navigation fix.

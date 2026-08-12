@@ -172,6 +172,14 @@ const SIDEBAR_MODULES = [
     ],
   },
   {
+    id: "aiCouncil",
+    label: "CEO AI Council",
+    icon: Bot,
+    items: [
+      { icon: Bot, label: "Council Cases", path: "/ai-council" },
+    ],
+  },
+  {
     id: "backup",
     label: "Backup & Recovery",
     icon: HardDrive,
@@ -200,6 +208,7 @@ function getActiveModuleId(location: string): string {
   if (location.startsWith("/marketing")) return "marketing";
   if (location.startsWith("/reports")) return "reports";
   if (location.startsWith("/backup")) return "backup";
+  if (location.startsWith("/ai-council")) return "aiCouncil";
   if (location.startsWith("/contracting")) return "contracting";
   return "";
 }
@@ -222,6 +231,7 @@ function getPageName(location: string): string {
   if (location.startsWith("/reports")) return "Reports";
   if (location.startsWith("/wa-qc")) return "WhatsApp QC";
   if (location.startsWith("/backup")) return "Backup";
+  if (location.startsWith("/ai-council")) return "CEO AI Council";
   if (location.startsWith("/admin")) return "Admin";
   if (location.startsWith("/profile")) return "Profile";
   if (location.startsWith("/privacy")) return "Privacy Policy";
@@ -241,11 +251,15 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
   const [showMore, setShowMore] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const [expandedModule, setExpandedModule] = useState<string>(getActiveModuleId(location));
+  const { data: myPermissions } = trpc.permissions.getMyPermissions.useQuery(undefined, { enabled: !!user });
   const logoutMut = trpc.auth.logout.useMutation({
     onSuccess: () => { window.location.href = "/"; },
   });
 
   const activeTab = getActiveTab(location);
+  const visibleSidebarModules = SIDEBAR_MODULES.filter((module) =>
+    module.id !== "aiCouncil" || myPermissions?.isOwner || myPermissions?.moduleAccess?.aiCouncil !== "none"
+  );
 
   // Sync expanded module with navigation
   useEffect(() => {
@@ -305,7 +319,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
 
             {/* Sidebar Navigation — Scrollable */}
             <div className="flex-1 overflow-y-auto py-2">
-              {SIDEBAR_MODULES.map((mod) => {
+              {visibleSidebarModules.map((mod) => {
                 const ModIcon = mod.icon;
                 const isExpanded = expandedModule === mod.id;
                 const isActiveModule = getActiveModuleId(location) === mod.id;
@@ -450,7 +464,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
               </button>
             </div>
             <div className="p-3">
-              {SIDEBAR_MODULES.filter(i => !["contracting","financial","leads"].includes(i.id)).map((item) => {
+              {visibleSidebarModules.filter(i => !["contracting","financial","leads"].includes(i.id)).map((item) => {
                 const Icon = item.icon;
                 return (
                   <button
