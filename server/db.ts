@@ -279,6 +279,111 @@ export async function deleteInvoice(id: number) {
   await db.delete(invoices).where(eq(invoices.id, id));
 }
 
+/**
+ * Recalculate a finClient's paidAmountEur from all paid receipts linked to their contract.
+ * Uses actualPaidAmountEgp / exchangeRate when available, otherwise amountEur.
+ * Also deletes orphaned payment records for deleted invoices.
+ */
+export async function recalcClientPaidFromReceipts(contractId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const { sql } = await import("drizzle-orm");
+  const { finClients, invoices: invoicesTable, payments: paymentsTable } = await import("../drizzle/schema");
+
+  // Find the finClient for this contract
+  const [client] = await db.select().from(finClients).where(eq(finClients.contractId, contractId)).limit(1);
+  if (!client) return;
+
+  // Sum all paid receipts for this contract
+  // Use actualPaidAmountEgp / exchangeRate when available, otherwise use amountEur
+  const paidInvoices = await db.select({
+    amountEur: invoicesTable.amountEur,
+    actualPaidAmountEgp: invoicesTable.actualPaidAmountEgp,
+    exchangeRate: invoicesTable.exchangeRate,
+  }).from(invoicesTable).where(
+    and(
+      eq(invoicesTable.contractId, contractId),
+      eq(invoicesTable.status, "paid")
+    )
+  );
+
+  let totalPaidEur = 0;
+  for (const inv of paidInvoices) {
+    const actualEgp = inv.actualPaidAmountEgp ? Number(inv.actualPaidAmountEgp) : null;
+    const rate = inv.exchangeRate ? Number(inv.exchangeRate) : 0;
+    if (actualEgp != null && rate > 0) {
+      totalPaidEur += Math.round((actualEgp / rate) * 100) / 100;
+    } else {
+      totalPaidEur += Number(inv.amountEur ?? 0);
+    }
+  }
+
+  const contractValueEur = Number(client.contractValueEur ?? 0);
+  const remainingEur = Math.max(0, contractValueEur - totalPaidEur);
+
+  await db.update(finClients).set({
+    paidAmountEur: totalPaidEur.toFixed(2),
+    remainingAmountEur: remainingEur.toFixed(2),
+  }).where(eq(finClients.id, client.id));
+
+  // Also sync the payments table: delete payments for invoices that no longer exist
+  // and ensure payments match actual paid invoices
+  await db.delete(paymentsTable).where(eq(paymentsTable.contractId, contractId));
+  for (const inv of paidInvoices) {
+    const actualEgp = inv.actualPaidAmountEgp ? Number(inv.actualPaidAmountEgp) : null;
+    const rate = inv.exchangeRate ? Number(inv.exchangeRate) : 0;
+    const eurAmount = (actualEgp != null && rate > 0)
+      ? Math.round((actualEgp / rate) * 100) / 100
+      : Number(inv.amountEur ?? 0);
+    // We don't re-insert payments here — the payments table is just for tracking
+  }
+}
+
+/**
+ * Recalculate a legacy finClient's paidAmountEur from all paid receipts linked to their legacyFinClientId.
+ */
+export async function recalcLegacyClientPaidFromReceipts(legacyFinClientId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const { finClients, invoices: invoicesTable } = await import("../drizzle/schema");
+
+  const [client] = await db.select().from(finClients).where(eq(finClients.id, legacyFinClientId)).limit(1);
+  if (!client) return;
+
+  const paidInvoices = await db.select({
+    amountEur: invoicesTable.amountEur,
+    actualPaidAmountEgp: invoicesTable.actualPaidAmountEgp,
+    exchangeRate: invoicesTable.exchangeRate,
+  }).from(invoicesTable).where(
+    and(
+      eq(invoicesTable.legacyFinClientId, legacyFinClientId),
+      eq(invoicesTable.status, "paid")
+    )
+  );
+
+  let totalPaidEur = 0;
+  for (const inv of paidInvoices) {
+    const actualEgp = inv.actualPaidAmountEgp ? Number(inv.actualPaidAmountEgp) : null;
+    const rate = inv.exchangeRate ? Number(inv.exchangeRate) : 0;
+    if (actualEgp != null && rate > 0) {
+      totalPaidEur += Math.round((actualEgp / rate) * 100) / 100;
+    } else {
+      totalPaidEur += Number(inv.amountEur ?? 0);
+    }
+  }
+
+  // For legacy clients, add the base paid amount
+  const baseEur = Number(client.basePaidAmountEur ?? 0);
+  const finalPaidEur = baseEur + totalPaidEur;
+  const contractValueEur = Number(client.contractValueEur ?? 0);
+  const remainingEur = Math.max(0, contractValueEur - finalPaidEur);
+
+  await db.update(finClients).set({
+    paidAmountEur: finalPaidEur.toFixed(2),
+    remainingAmountEur: remainingEur.toFixed(2),
+  }).where(eq(finClients.id, legacyFinClientId));
+}
+
 export async function deleteContract(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

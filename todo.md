@@ -1111,3 +1111,10 @@ Check email for download link within 5 minutes
 - [x] Add date range filter to Commission Receipts: Today, This Week, This Month, This Year, Custom Range, All Time
 - [x] Add sum total EUR and EGP for the filtered view
 - [x] Show receipt count for current filter
+## Client Paid Amount = Sum of Paid Receipts (Round 83)
+- [x] Create recalcClientPaidFromReceipts helper: sums all paid receipts for a contract, uses actualPaidEgp/rate when available
+- [x] Create recalcLegacyClientPaidFromReceipts helper for legacy clients
+- [x] After markPaid: call recalcClientPaidFromReceipts to update finClient
+- [x] After deleteInvoice: delete payment record + recalculate client paid amount
+- [x] Backfill all non-legacy clients: paidAmountEur = sum of paid receipts (actual EUR equivalent)
+- [x] Clients with no paid receipts set to paidAmountEur = 0, remainingAmountEur = contractValueEur

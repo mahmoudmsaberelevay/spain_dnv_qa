@@ -22,6 +22,7 @@ import {
   getFilteredContracts,
   createProformaInvoice, getAllProformaInvoices, getProformaInvoiceById, markProformaInvoicePaid, updateProformaInvoicePdfUrl,
   deleteContract, deleteProformaInvoice,
+  recalcClientPaidFromReceipts, recalcLegacyClientPaidFromReceipts,
 } from "./db";
 import { generateContractDoc, uploadContractToStorage, calculateContractValue, CONTRACT_COUNTRIES } from "./contractGenerator";
 import { getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
@@ -1071,6 +1072,10 @@ const contractingRouter = router({
         await notifyReceiptPaid(invoice.invoiceCode, invoice.contractCode ?? "—", invoice.clientName, Number(invoice.amountEur), remainingBalance);
         const { createNotification: cnPaid } = await import("./db");
         await cnPaid({ type: "receipt_paid", title: "✅ إيصال مدفوع", body: `تم تسجيل دفع الإيصال ${invoice.invoiceCode} لـ ${invoice.clientName} بمبلغ €${Number(invoice.amountEur).toFixed(2)}`, entityId: invoice.id, entityType: "invoice" });
+        // Recalculate client paid amount from all paid receipts (single source of truth)
+        if (!invoice.isLegacyReceipt && invoice.contractId != null) {
+          await recalcClientPaidFromReceipts(invoice.contractId);
+        }
         return getInvoiceById(input.id);
       }),
     createLegacy: protectedProcedure
@@ -1149,7 +1154,25 @@ const contractingRouter = router({
       .mutation(async ({ input }) => {
         const invoice = await getInvoiceById(input.id);
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+        const contractId = invoice.contractId;
+        const legacyFinClientId = invoice.legacyFinClientId;
+        // If this was a paid invoice, also delete its payment record
+        if (invoice.status === "paid" && contractId != null) {
+          const { getDb } = await import("./db");
+          const db2 = await getDb();
+          if (db2) {
+            const { payments } = await import("../drizzle/schema");
+            const { eq: eqOp } = await import("drizzle-orm");
+            await db2.delete(payments).where(eqOp(payments.invoiceId, input.id));
+          }
+        }
         await deleteInvoice(input.id);
+        // Recalculate client paid amount after deletion
+        if (contractId != null) {
+          await recalcClientPaidFromReceipts(contractId);
+        } else if (legacyFinClientId != null) {
+          await recalcLegacyClientPaidFromReceipts(legacyFinClientId);
+        }
         return { success: true };
       }),
     sendReceiptByEmail: protectedProcedure
