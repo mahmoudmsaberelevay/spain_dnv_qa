@@ -72,7 +72,7 @@ const TABS = [
 ] as const;
 
 // Full sidebar modules with subpages (mirrors DashboardLayout)
-const SIDEBAR_MODULES = [
+export const MOBILE_SIDEBAR_MODULES = [
   {
     id: "contracting",
     label: "Contracting",
@@ -193,6 +193,12 @@ const SIDEBAR_MODULES = [
   },
 ];
 
+export function getVisibleMobileSidebarModules(moduleAccess?: Record<string, string>, isOwner = false) {
+  return MOBILE_SIDEBAR_MODULES.filter((module) =>
+    module.id !== "aiCouncil" || isOwner || moduleAccess?.aiCouncil !== "none"
+  );
+}
+
 function getActiveTab(location: string): string {
   if (location === "/") return "home";
   if (location.startsWith("/finance")) return "finance";
@@ -218,7 +224,7 @@ function getActiveModuleId(location: string): string {
 function getPageName(location: string): string {
   if (location === "/") return "Dashboard";
   // Find the matching subpage label
-  for (const mod of SIDEBAR_MODULES) {
+  for (const mod of MOBILE_SIDEBAR_MODULES) {
     for (const item of mod.items) {
       if (item.path === location) return item.label;
     }
@@ -259,8 +265,9 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
   });
 
   const activeTab = getActiveTab(location);
-  const visibleSidebarModules = SIDEBAR_MODULES.filter((module) =>
-    module.id !== "aiCouncil" || myPermissions?.isOwner || myPermissions?.moduleAccess?.aiCouncil !== "none"
+  const visibleSidebarModules = getVisibleMobileSidebarModules(
+    myPermissions?.moduleAccess,
+    Boolean(myPermissions?.isOwner)
   );
 
   // Sync expanded module with navigation
