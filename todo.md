@@ -1118,3 +1118,5 @@ Check email for download link within 5 minutes
 - [x] After deleteInvoice: delete payment record + recalculate client paid amount
 - [x] Backfill all non-legacy clients: paidAmountEur = sum of paid receipts (actual EUR equivalent)
 - [x] Clients with no paid receipts set to paidAmountEur = 0, remainingAmountEur = contractValueEur
+## Login Session Token in Response Body (Round 84)
+- [x] Add sessionToken to POST /api/auth/login JSON response body for React Native iOS compatibility

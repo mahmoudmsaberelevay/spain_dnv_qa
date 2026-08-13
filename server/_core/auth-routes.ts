@@ -78,7 +78,7 @@ export function registerAuthRoutes(app: Express) {
         .set({ lastSignedIn: new Date() })
         .where(eq(users.id, user.id));
 
-      res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+      res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role }, sessionToken });
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       const stack = error instanceof Error ? error.stack : "";
