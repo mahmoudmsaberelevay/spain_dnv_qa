@@ -1120,3 +1120,9 @@ Check email for download link within 5 minutes
 - [x] Clients with no paid receipts set to paidAmountEur = 0, remainingAmountEur = contractValueEur
 ## Login Session Token in Response Body (Round 84)
 - [x] Add sessionToken to POST /api/auth/login JSON response body for React Native iOS compatibility
+## MCP Server for AI Agent Integration (Round 85)
+- [x] Install mcp-handler package
+- [x] Create mcpServer.ts with 7 CRM tools (search_clients, list_contracts, list_receipts, get_financial_summary, search_leads, get_client_details, get_dashboard_stats)
+- [x] Register MCP server at /api/mcp endpoint
+- [x] Fix Zod v4 compatibility for schema serialization
+- [x] Test all tools working with MCP protocol (Streamable HTTP transport)

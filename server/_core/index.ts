@@ -658,6 +658,10 @@ async function startServer() {
   const { registerPublicPages } = await import("../publicPagesHandler.js");
   registerPublicPages(app);
 
+  // MCP Server for AI agent integration (Claude, Manus, ChatGPT, Cursor)
+  const { registerMcpServer } = await import("../mcpServer.js");
+  registerMcpServer(app);
+
   // tRPC API
   app.use(
     "/api/trpc",
