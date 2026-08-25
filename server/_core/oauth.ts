@@ -84,8 +84,11 @@ export function registerOAuthRoutes(app: Express) {
         expiresInMs: SESSION_EXPIRY_MS,
       });
 
+      // Use a browser session cookie so OAuth users also sign in again after
+      // closing their browser. The signed token itself retains its configured
+      // lifetime for non-browser clients that supply it explicitly.
       const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: SESSION_EXPIRY_MS });
+      res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
 
       // Redirect to the frontend origin + returnPath
       const safeReturnPath = returnPath && returnPath.startsWith("/") ? returnPath : "/";

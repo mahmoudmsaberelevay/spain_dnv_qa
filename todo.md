@@ -1131,3 +1131,8 @@ Check email for download link within 5 minutes
 - [x] Add best-effort autocomplete and browser credential-saving prevention attributes to the login form without changing authentication behavior
 - [x] Add no-store response headers for the login page and authentication response where appropriate
 - [x] Verify login still works and document that browsers/password managers cannot be universally forced to forget credentials
+
+## Require Password on Each New Browser Session
+- [x] Make web login cookies session-only so users must sign in again after closing the browser
+- [x] Preserve explicit token-based authentication for the React Native mobile app
+- [x] Verify login, logout, and session expiry behavior

@@ -67,14 +67,10 @@ export function registerAuthRoutes(app: Express) {
       });
       console.log("[Auth] Session token created:", !!sessionToken);
 
-      // Set session cookie
-      res.cookie(COOKIE_NAME, sessionToken, {
-        httpOnly: true,
-        path: "/",
-        sameSite: "none",
-        secure: req.protocol === "https" || req.headers["x-forwarded-proto"] === "https",
-        maxAge: SESSION_EXPIRY_MS,
-      });
+      // Browser sessions end when the browser session ends, requiring a fresh
+      // password on the next launch. The returned sessionToken remains valid
+      // for eight hours so the React Native app can use its explicit Cookie header.
+      res.cookie(COOKIE_NAME, sessionToken, getSessionCookieOptions(req));
 
       // Update last signed in
       await database

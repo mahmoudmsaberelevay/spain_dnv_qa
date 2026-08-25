@@ -28,6 +28,16 @@ describe("authentication credential privacy safeguards", () => {
     expect(serverSource).toContain('app.use("/login"');
     expect(serverSource).toContain('res.setHeader("Expires", "0")');
   });
+
+  it("uses session-only browser cookies without changing token validity for mobile clients", () => {
+    const authRoutesSource = readProjectFile("server/_core/auth-routes.ts");
+    const oauthSource = readProjectFile("server/_core/oauth.ts");
+
+    expect(authRoutesSource).toContain("res.cookie(COOKIE_NAME, sessionToken, getSessionCookieOptions(req));");
+    expect(authRoutesSource).toContain("expiresInMs: SESSION_EXPIRY_MS");
+    expect(oauthSource).toContain("res.cookie(COOKIE_NAME, sessionToken, cookieOptions);");
+    expect(oauthSource).toContain("expiresInMs: SESSION_EXPIRY_MS");
+  });
 });
 
 // Browser password managers remain user-controlled; these assertions only protect
