@@ -1126,3 +1126,8 @@ Check email for download link within 5 minutes
 - [x] Register MCP server at /api/mcp endpoint
 - [x] Fix Zod v4 compatibility for schema serialization
 - [x] Test all tools working with MCP protocol (Streamable HTTP transport)
+
+## Browser Credential-Saving Prevention
+- [x] Add best-effort autocomplete and browser credential-saving prevention attributes to the login form without changing authentication behavior
+- [x] Add no-store response headers for the login page and authentication response where appropriate
+- [x] Verify login still works and document that browsers/password managers cannot be universally forced to forget credentials

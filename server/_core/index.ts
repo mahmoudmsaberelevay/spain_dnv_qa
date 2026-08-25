@@ -671,6 +671,15 @@ async function startServer() {
     })
   );
 
+  // The login shell must not be cached by browsers or shared proxies.
+  // This does not control password-manager behavior, but prevents stale auth UI from being reused.
+  app.use("/login", (_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    next();
+  });
+
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);

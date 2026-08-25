@@ -83,11 +83,18 @@ export default function Login() {
         </CardHeader>
         <CardContent>
           {!showForgotPassword ? (
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4" autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">Email</label>
                 <Input
                   type="email"
+                  name="login_email"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-bwignore="true"
                   placeholder="your@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -100,6 +107,11 @@ export default function Login() {
                 <label className="text-sm font-medium text-slate-300">Password</label>
                 <Input
                   type="password"
+                  name="login_password"
+                  autoComplete="new-password"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-bwignore="true"
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -131,11 +143,18 @@ export default function Login() {
               </button>
             </form>
           ) : (
-            <form onSubmit={handleForgotPassword} className="space-y-4">
+            <form onSubmit={handleForgotPassword} className="space-y-4" autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">Email</label>
                 <Input
                   type="email"
+                  name="login_email"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-bwignore="true"
                   placeholder="your@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}

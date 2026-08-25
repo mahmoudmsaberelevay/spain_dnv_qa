@@ -19,6 +19,10 @@ export function registerAuthRoutes(app: Express) {
    * POST /api/auth/login - Email/password login
    */
   app.post("/api/auth/login", async (req: Request, res: Response) => {
+    // Never allow browsers, proxies, or shared caches to store authentication responses.
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     try {
       const { email, password } = req.body;
 
