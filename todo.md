@@ -1154,3 +1154,8 @@ Check email for download link within 5 minutes
 - [x] Normalize existing consultant values to Mahmoud Saber, Fouad Abdo, Ziad El Shurafa, and Kirolos Nabil
 - [x] Update the Financial Client consultant filter to use the exact full names from contract creation
 - [x] Verify consultant editing and filtering without changing contract or financial amounts
+
+## Client Signing-Date Corrections
+- [x] Set client 26091 signing date to 20 August 2026
+- [x] Set client 26085 signing date to 30 July 2026
+- [x] Synchronize linked Commission signing dates and verify both records
