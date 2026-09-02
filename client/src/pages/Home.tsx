@@ -1,6 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { getLoginUrl } from "@/const";
+import { startLogin } from "@/const";
 import { useLocation } from "wouter";
 import { Shield, FileSearch, CheckCircle, BarChart3, ArrowRight, Stamp, Globe } from "lucide-react";
 
@@ -12,7 +12,7 @@ export default function Home() {
     if (isAuthenticated) {
       navigate("/cases");
     } else {
-      window.location.href = getLoginUrl();
+      startLogin("/cases");
     }
   };
 

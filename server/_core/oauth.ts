@@ -1,46 +1,18 @@
-import { COOKIE_NAME, SESSION_EXPIRY_MS } from "@shared/const";
+import {
+  COOKIE_NAME,
+  OAUTH_STATE_COOKIE,
+  SESSION_EXPIRY_MS,
+  decodeOAuthState,
+} from "@shared/const";
+import { parse as parseCookieHeader } from "cookie";
 import type { Express, Request, Response } from "express";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
-import { ENV } from "./env";
 
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
   return typeof value === "string" ? value : undefined;
-}
-
-/**
- * Parse the state parameter which may be:
- * 1. New format: base64-encoded JSON { redirectUri, origin, returnPath }
- * 2. Legacy format: base64-encoded plain redirectUri string
- */
-function parseState(state: string): { redirectUri: string; origin: string; returnPath: string } {
-  try {
-    const decoded = atob(state);
-    // Try JSON first (new format)
-    try {
-      const parsed = JSON.parse(decoded);
-      if (parsed && typeof parsed.redirectUri === "string") {
-        return {
-          redirectUri: parsed.redirectUri,
-          origin: parsed.origin ?? "",
-          returnPath: parsed.returnPath ?? "/",
-        };
-      }
-    } catch {
-      // Not JSON — legacy format: decoded string IS the redirectUri
-    }
-    // Legacy: the decoded string is the redirectUri itself
-    const url = new URL(decoded);
-    return {
-      redirectUri: decoded,
-      origin: url.origin,
-      returnPath: "/",
-    };
-  } catch {
-    return { redirectUri: "", origin: "", returnPath: "/" };
-  }
 }
 
 export function registerOAuthRoutes(app: Express) {
@@ -53,16 +25,37 @@ export function registerOAuthRoutes(app: Express) {
       return;
     }
 
-    // Parse state early so we can redirect back to login on any error
-    const { redirectUri, origin, returnPath } = parseState(state);
-    const loginUrl = `${ENV.oAuthPortalUrl}/app-auth?appId=${ENV.appId}&redirectUri=${encodeURIComponent(redirectUri)}&type=signIn`;
-    const fallbackOrigin = origin || "https://elevay.vip";
+    const { redirectUri, origin, returnPath, nonce } = decodeOAuthState(state);
+    const expectedNonce = parseCookieHeader(req.headers.cookie ?? "")[OAUTH_STATE_COOKIE];
+
+    if (!redirectUri || !origin || !nonce || nonce !== expectedNonce) {
+      res.status(403).json({ error: "invalid oauth state" });
+      return;
+    }
+
+    let expectedRedirectUri: string;
+    try {
+      expectedRedirectUri = `${new URL(origin).origin}/api/oauth/callback`;
+    } catch {
+      res.status(403).json({ error: "invalid oauth origin" });
+      return;
+    }
+
+    if (redirectUri !== expectedRedirectUri) {
+      res.status(403).json({ error: "invalid oauth redirect" });
+      return;
+    }
+
+    res.clearCookie(OAUTH_STATE_COOKIE, {
+      path: "/",
+      sameSite: "none",
+      secure: true,
+    });
+
+    const fallbackOrigin = origin;
 
     try {
-      // Re-encode state as legacy format (just the redirectUri) for the SDK
-      // because the SDK's decodeState() expects btoa(redirectUri)
-      const sdkState = btoa(redirectUri);
-      const tokenResponse = await sdk.exchangeCodeForToken(code, sdkState);
+      const tokenResponse = await sdk.exchangeCodeForToken(code, state);
       const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
 
       if (!userInfo.openId) {
@@ -91,8 +84,8 @@ export function registerOAuthRoutes(app: Express) {
       res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
 
       // Redirect to the frontend origin + returnPath
-      const safeReturnPath = returnPath && returnPath.startsWith("/") ? returnPath : "/";
-      const redirectTarget = origin ? `${origin}${safeReturnPath}` : safeReturnPath;
+      const safeReturnPath = returnPath?.startsWith("/") && !returnPath.startsWith("//") ? returnPath : "/";
+      const redirectTarget = `${origin}${safeReturnPath}`;
       console.log(`[OAuth] Login success for ${userInfo.openId}, redirecting to ${redirectTarget}`);
       res.redirect(302, redirectTarget);
     } catch (error) {

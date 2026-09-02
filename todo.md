@@ -1136,3 +1136,8 @@ Check email for download link within 5 minutes
 - [x] Make web login cookies session-only so users must sign in again after closing the browser
 - [x] Preserve explicit token-based authentication for the React Native mobile app
 - [x] Verify login, logout, and session expiry behavior
+
+## Manus OAuth Login Error
+- [x] Reproduce and identify the cause of the “Authorize params not found” response
+- [x] Correct the OAuth authorization initiation without weakening session-only browser authentication
+- [x] Verify email/password login, Manus OAuth initiation, callback routing, and mobile token compatibility

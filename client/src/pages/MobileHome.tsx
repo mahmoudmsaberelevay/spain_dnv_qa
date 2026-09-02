@@ -19,7 +19,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { useLocation } from "wouter";
-import { getLoginUrl } from "@/const";
+import { startLogin } from "@/const";
 
 export default function MobileHome() {
   const { user } = useAuth();
@@ -29,7 +29,7 @@ export default function MobileHome() {
   // Navigate to module or redirect to login if not authenticated
   const handleNav = (path: string) => {
     if (!user) {
-      window.location.href = getLoginUrl(path);
+      startLogin(path);
       return;
     }
     setLocation(path);

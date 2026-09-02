@@ -28,7 +28,7 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { getLoginUrl } from "@/const";
+import { startLogin } from "@/const";
 
 // ─── Module card definitions ──────────────────────────────────────────────────
 const BASE_MODULE_CARDS = [
@@ -300,7 +300,7 @@ export default function ElevayHome() {
   // Handle module click — redirect to login if not authenticated
   const handleModuleClick = (path: string) => {
     if (!user) {
-      window.location.href = getLoginUrl(path);
+      startLogin(path);
       return;
     }
     setLocation(path);
@@ -332,12 +332,13 @@ export default function ElevayHome() {
               <span className="text-sm font-medium text-white/80">{user.name}</span>
             </div>
           ) : (
-            <a
-              href={getLoginUrl("/")}
+            <button
+              type="button"
+              onClick={() => startLogin("/")}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-gray-900 font-semibold text-sm hover:bg-white/90 transition-colors"
             >
               Sign In
-            </a>
+            </button>
           )}
         </div>
       </header>

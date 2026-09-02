@@ -58,7 +58,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { getLoginUrl } from "@/const";
+import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 
@@ -295,7 +295,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
         <h2 className="text-xl font-semibold text-white mb-2">Sign in to continue</h2>
         <p className="text-sm text-white/50 text-center mb-8">Access to the Elevay platform requires authentication.</p>
         <Button
-          onClick={() => { window.location.href = getLoginUrl(location); }}
+          onClick={() => startLogin(location)}
           size="lg"
           className="w-full max-w-xs"
         >
@@ -444,12 +444,13 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
               </div>
             </>
           ) : (
-            <a
-              href={getLoginUrl("/")}
+            <button
+              type="button"
+              onClick={() => startLogin("/")}
               className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold"
             >
               Sign In
-            </a>
+            </button>
           )}
         </div>
       </header>

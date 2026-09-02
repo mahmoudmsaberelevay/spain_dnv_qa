@@ -14,7 +14,7 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { getLoginUrl } from "@/const";
+import { startLogin } from "@/const";
 import { format } from "date-fns";
 
 const STATUS_CONFIG = {
@@ -58,7 +58,7 @@ export default function Cases() {
           <Shield className="w-12 h-12 text-primary mx-auto mb-4" />
           <h2 className="font-serif text-2xl font-semibold mb-2">Sign In Required</h2>
           <p className="text-muted-foreground mb-6">Please sign in to access your cases.</p>
-          <Button onClick={() => window.location.href = getLoginUrl()}>Sign In</Button>
+          <Button onClick={() => startLogin("/cases")}>Sign In</Button>
         </div>
       </div>
     );
