@@ -257,13 +257,13 @@ export async function createInvoice(data: InsertInvoice) {
 export async function getAllInvoices() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(invoices).orderBy(desc(invoices.createdAt));
+  return db.select().from(invoices).orderBy(desc(invoices.receiptDate), desc(invoices.createdAt));
 }
 
 export async function getInvoicesByContractId(contractId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(invoices).where(eq(invoices.contractId, contractId)).orderBy(desc(invoices.createdAt));
+  return db.select().from(invoices).where(eq(invoices.contractId, contractId)).orderBy(desc(invoices.receiptDate), desc(invoices.createdAt));
 }
 
 export async function getInvoiceById(id: number) {
@@ -406,10 +406,19 @@ export async function markInvoicePaid(id: number) {
   await db.update(invoices).set({ status: "paid", paidAt: new Date() }).where(eq(invoices.id, id));
 }
 
-export async function updateInvoicePdfUrl(id: number, pdfUrl: string, driveFileId?: string, driveLink?: string) {
+export async function updateInvoiceReceiptDate(id: number, receiptDate: Date) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(invoices).set({ pdfUrl, driveFileId: driveFileId ?? null, driveLink: driveLink ?? null }).where(eq(invoices.id, id));
+  await db.update(invoices).set({ receiptDate }).where(eq(invoices.id, id));
+}
+
+export async function updateInvoicePdfUrl(id: number, pdfUrl: string, driveFileId?: string | null, driveLink?: string | null) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const updates: { pdfUrl: string; driveFileId?: string | null; driveLink?: string | null } = { pdfUrl };
+  if (driveFileId !== undefined) updates.driveFileId = driveFileId;
+  if (driveLink !== undefined) updates.driveLink = driveLink;
+  await db.update(invoices).set(updates).where(eq(invoices.id, id));
 }
 
 // ─── Proforma Invoices ───────────────────────────────────────────────────────

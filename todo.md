@@ -1141,3 +1141,9 @@ Check email for download link within 5 minutes
 - [x] Reproduce and identify the cause of the “Authorize params not found” response
 - [x] Correct the OAuth authorization initiation without weakening session-only browser authentication
 - [x] Verify email/password login, Manus OAuth initiation, callback routing, and mobile token compatibility
+
+## Contracting Receipt Date Management
+- [x] Add a user-selectable receipt date when creating contract and legacy receipts
+- [x] Allow authorized users to edit the date of existing receipts
+- [x] Regenerate receipt PDFs after receipt-date changes while preserving the separate paid-at/payment date
+- [x] Verify new and existing receipt date flows without changing financial amounts

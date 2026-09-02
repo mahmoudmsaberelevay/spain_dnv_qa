@@ -18,13 +18,19 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Download, Search, Receipt, Calendar, CheckCircle, Loader2, TrendingDown, Mail, ExternalLink, Trash2, RefreshCw,
+  Plus, Download, Search, Receipt, Calendar, CheckCircle, Loader2, TrendingDown, Mail, ExternalLink, Trash2, RefreshCw, Pencil,
 } from "lucide-react";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 import { ClientSearchCombobox } from "@/components/ClientSearchCombobox";
 import { ContractSearchCombobox } from "@/components/ContractSearchCombobox";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import { useAuth } from "@/_core/hooks/useAuth";
+
+function getTodayDateInput(): string {
+  const now = new Date();
+  const localTime = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return localTime.toISOString().slice(0, 10);
+}
 
 export default function Invoices() {
   const { canEdit } = usePermissions();
@@ -36,6 +42,9 @@ export default function Invoices() {
   const [confirmPaid, setConfirmPaid] = useState<{ id: number; invoiceCode: string; clientName: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; invoiceCode: string; clientName: string } | null>(null);
   const [regenId, setRegenId] = useState<number | null>(null);
+  const [receiptDate, setReceiptDate] = useState(getTodayDateInput);
+  const [editDateDialog, setEditDateDialog] = useState<{ id: number; invoiceCode: string; clientName: string } | null>(null);
+  const [editReceiptDate, setEditReceiptDate] = useState("");
 
   // Send-by-email dialog state
   const [sendEmailDialog, setSendEmailDialog] = useState<{ id: number; invoiceCode: string; clientName: string } | null>(null);
@@ -103,6 +112,7 @@ export default function Invoices() {
       setNotes("");
       setDiscountValue("");
       setActualPaidEgp("");
+      setReceiptDate(getTodayDateInput());
     },
     onError: (err) => {
       toast.error(`Failed to create receipt: ${err.message}`);
@@ -119,6 +129,7 @@ export default function Invoices() {
       setLegacyAmountEgp("");
       setLegacyNotes("");
       setLegacyActualPaidEgp("");
+      setReceiptDate(getTodayDateInput());
     },
     onError: (err) => toast.error(`Failed to create legacy receipt: ${err.message}`),
   });
@@ -132,6 +143,7 @@ export default function Invoices() {
       amountEgp: legacyAmountEgp ? Number(legacyAmountEgp) : undefined,
       notes: legacyNotes.trim() || undefined,
       actualPaidAmountEgp: legacyActualPaidEgp ? Number(legacyActualPaidEgp) : undefined,
+      receiptDate,
     });
   };
 
@@ -153,6 +165,16 @@ export default function Invoices() {
       if (data.pdfUrl) window.open(data.pdfUrl, "_blank");
     },
     onError: (err) => { toast.error(`Failed to regenerate PDF: ${err.message}`); setRegenId(null); },
+  });
+
+  const updateDateMutation = trpc.contracting.invoices.updateDate.useMutation({
+    onSuccess: () => {
+      utils.contracting.invoices.list.invalidate();
+      toast.success("Receipt date and PDF updated successfully!");
+      setEditDateDialog(null);
+      setEditReceiptDate("");
+    },
+    onError: (err) => toast.error(`Failed to update receipt date: ${err.message}`),
   });
 
   const markPaidMutation = trpc.contracting.invoices.markPaid.useMutation({
@@ -200,6 +222,7 @@ export default function Invoices() {
       notes: notes.trim(),
       discountValue: discountValue ? Number(discountValue) : undefined,
       actualPaidAmountEgp: actualPaidEgp ? Number(actualPaidEgp) : undefined,
+      receiptDate,
     });
   };
 
@@ -342,7 +365,7 @@ export default function Invoices() {
                       <td className="px-4 py-4 text-center">
                         <div className="flex items-center justify-center gap-1 text-muted-foreground">
                           <Calendar className="h-3.5 w-3.5" />
-                          <span className="text-xs">{formatDate(invoice.createdAt)}</span>
+                          <span className="text-xs">{formatDate(invoice.receiptDate ?? invoice.createdAt)}</span>
                         </div>
                       </td>
                       <td className="px-4 py-4 text-center">
@@ -378,6 +401,21 @@ export default function Invoices() {
                             >
                               <Mail className="h-3.5 w-3.5" />
                               Email
+                            </Button>
+                          )}
+                          {canEdit("receipts") && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 gap-1 text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50"
+                              onClick={() => {
+                                setEditDateDialog({ id: invoice.id, invoiceCode: invoice.invoiceCode, clientName: invoice.clientName });
+                                setEditReceiptDate(new Date(invoice.receiptDate ?? invoice.createdAt).toISOString().slice(0, 10));
+                              }}
+                              title="Edit receipt date"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Date
                             </Button>
                           )}
                           {invoice.status === "unpaid" && (
@@ -476,6 +514,18 @@ export default function Invoices() {
                   onChange={setSelectedContractId}
                   contracts={signedContracts}
                   placeholder="Type client name or contract code..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="receiptDate">Receipt Date <span className="text-red-500">*</span></Label>
+                <Input
+                  id="receiptDate"
+                  type="date"
+                  value={receiptDate}
+                  onChange={(event) => setReceiptDate(event.target.value)}
+                  required
+                  className="h-10"
                 />
               </div>
 
@@ -636,6 +686,18 @@ export default function Invoices() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="legacyReceiptDate">Receipt Date <span className="text-red-500">*</span></Label>
+                <Input
+                  id="legacyReceiptDate"
+                  type="date"
+                  value={receiptDate}
+                  onChange={(event) => setReceiptDate(event.target.value)}
+                  required
+                  className="h-10"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="legacyAmountEur">Amount (EUR) <span className="text-red-500">*</span></Label>
@@ -741,6 +803,63 @@ export default function Invoices() {
               </DialogFooter>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Receipt Date Dialog */}
+      <Dialog open={!!editDateDialog} onOpenChange={(open) => {
+        if (!open) {
+          setEditDateDialog(null);
+          setEditReceiptDate("");
+        }
+      }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-primary" />
+              Edit Receipt Date
+            </DialogTitle>
+            <DialogDescription>
+              Update <strong>{editDateDialog?.invoiceCode}</strong> for <strong>{editDateDialog?.clientName}</strong>. The receipt PDF will be regenerated automatically. Its payment date and financial amounts will not change.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4 py-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!editDateDialog || !editReceiptDate) return;
+              updateDateMutation.mutate({ id: editDateDialog.id, receiptDate: editReceiptDate });
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="editReceiptDate">Receipt Date</Label>
+              <Input
+                id="editReceiptDate"
+                type="date"
+                value={editReceiptDate}
+                onChange={(event) => setEditReceiptDate(event.target.value)}
+                required
+                className="h-10"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setEditDateDialog(null);
+                  setEditReceiptDate("");
+                }}
+                disabled={updateDateMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={updateDateMutation.isPending || !editReceiptDate} className="gap-2">
+                {updateDateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
+                Save Date
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

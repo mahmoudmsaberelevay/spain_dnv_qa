@@ -156,6 +156,7 @@ export const invoices = mysqlTable("invoices", {
   driveFileId: varchar("driveFileId", { length: 255 }),
   driveLink: text("driveLink"),
   notes: text("notes"),
+  receiptDate: timestamp("receiptDate").defaultNow().notNull(),
   paidAt: timestamp("paidAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

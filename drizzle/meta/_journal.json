@@ -351,6 +351,13 @@
       "when": 1786532074773,
       "tag": "0049_ai_council",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "5",
+      "when": 1788363064814,
+      "tag": "0050_add_receipt_date",
+      "breakpoints": true
     }
   ]
 }
