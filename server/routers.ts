@@ -13,7 +13,7 @@ import {
   createCase, getCasesByUserId, getCaseById, updateCase, deleteCase,
   createDocument, getDocumentsByCaseId, getDocumentById, updateDocument, deleteDocument,
   upsertAnalysisResult, getAnalysisResultByCaseId,
-  createContract, getAllContracts, getContractById, updateContractStatus, updateContractDocUrl, applyContractDiscount, createInvoice, getAllInvoices, getInvoicesByContractId,
+  createContract, getAllContracts, getContractById, updateContractStatus, updateContractConsultant, updateContractDocUrl, applyContractDiscount, createInvoice, getAllInvoices, getInvoicesByContractId,
   getInvoiceById, markInvoicePaid, updateInvoiceReceiptDate, updateInvoicePdfUrl, deleteInvoice, createPayment,
   getTotalPaidByContractId, getContractStats, getFamilyMemberDistribution,
   getRecentContracts, getPaymentsByContractId, getNextContractSequence, getNextContractSequenceForYear,
@@ -960,6 +960,24 @@ const contractingRouter = router({
           }
         }
         return getContractById(input.id);
+      }),
+    updateConsultant: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        consultantName: z.enum(["Mahmoud Saber", "Fouad Abdo", "Ziad El Shurafa", "Kirolos Nabil"]),
+      }))
+      .mutation(async ({ input }) => {
+        const contract = await getContractById(input.id);
+        if (!contract) throw new TRPCError({ code: "NOT_FOUND", message: "Contract not found" });
+
+        await updateContractConsultant(input.id, input.consultantName);
+        const { syncConsultantForContract } = await import("./finDb");
+        const sync = await syncConsultantForContract(input.id, input.consultantName);
+
+        return {
+          contract: await getContractById(input.id),
+          sync,
+        };
       }),
     regenerateDoc: protectedProcedure
       .input(z.object({ id: z.number() }))

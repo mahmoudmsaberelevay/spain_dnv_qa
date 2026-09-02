@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-const CONSULTANTS = ["Mahmoud", "Ziad", "Kirolos", "Fouad"];
+const CONSULTANTS = ["Mahmoud Saber", "Fouad Abdo", "Ziad El Shurafa", "Kirolos Nabil"] as const;
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 250];
 
 type SortField = "clientCode" | "name" | "program" | "consultant" | "contractValueEur" | "paidAmountEur" | "remainingAmountEur" | "signingDate";
@@ -317,13 +317,13 @@ export default function FinClients() {
   // Add client form state
   const [form, setForm] = useState({
     clientCode: "", name: "", phone: "", address: "", program: "Spain Nomad",
-    salesPerson: "", consultant: "Mahmoud", contractValueEur: "", paidAmountEur: "",
+    salesPerson: "", consultant: "Mahmoud Saber", contractValueEur: "", paidAmountEur: "",
   });
   const createMutation = trpc.financial.clients.create.useMutation({
     onSuccess: () => {
       toast.success("Client added successfully");
       setShowAdd(false);
-      setForm({ clientCode: "", name: "", phone: "", address: "", program: "Spain Nomad", salesPerson: "", consultant: "Mahmoud", contractValueEur: "", paidAmountEur: "" });
+      setForm({ clientCode: "", name: "", phone: "", address: "", program: "Spain Nomad", salesPerson: "", consultant: "Mahmoud Saber", contractValueEur: "", paidAmountEur: "" });
       utils.financial.clients.list.invalidate();
       utils.financial.clients.count.invalidate();
     },

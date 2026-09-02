@@ -13,7 +13,10 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Download, Search, FileText, Users, Calendar, CheckCircle, XCircle, Clock, Filter,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Plus, Download, Search, FileText, Users, Calendar, CheckCircle, XCircle, Clock, Filter, Pencil,
 } from "lucide-react";
 import NewContractDialog from "@/components/NewContractDialog";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
@@ -22,7 +25,7 @@ import { usePermissions } from "@/contexts/PermissionsContext";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Trash2 } from "lucide-react";
 
-const CONSULTANTS = ["Ziad El Shurafa", "Mahmoud Saber", "Fouad Abdo", "Kirolos Nabil"];
+const CONSULTANTS = ["Mahmoud Saber", "Fouad Abdo", "Ziad El Shurafa", "Kirolos Nabil"] as const;
 
 type DateRangePreset = "all" | "this_month" | "last_month" | "this_quarter" | "this_year";
 
@@ -104,6 +107,12 @@ export default function Contracts() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [consultantFilter, setConsultantFilter] = useState<string>("all");
   const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>("all");
+  const [editConsultant, setEditConsultant] = useState<{
+    id: number;
+    contractCode: string;
+    clientName: string;
+    consultantName: string;
+  } | null>(null);
 
   const { dateFrom, dateTo } = useMemo(() => computeDateRange(dateRangePreset), [dateRangePreset]);
 
@@ -157,6 +166,18 @@ export default function Contracts() {
       toast.error(`Failed to update status: ${err.message}`);
       setConfirmStatus(null);
     },
+  });
+
+  const updateConsultantMutation = trpc.contracting.contracts.updateConsultant.useMutation({
+    onSuccess: (result) => {
+      utils.contracting.contracts.list.invalidate();
+      utils.contracting.analytics.stats.invalidate();
+      toast.success(
+        `Consultant changed to ${result.contract?.consultantName ?? "the selected consultant"}. Linked client records were updated.`
+      );
+      setEditConsultant(null);
+    },
+    onError: (err) => toast.error(`Failed to change consultant: ${err.message}`),
   });
 
   const filtered = useMemo(() => {
@@ -439,6 +460,23 @@ export default function Contracts() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              className="h-7 px-2 gap-1 text-xs text-amber-700 hover:text-amber-900 hover:bg-amber-50"
+                              onClick={() => setEditConsultant({
+                                id: contract.id,
+                                contractCode: contract.contractCode,
+                                clientName: contract.clientName,
+                                consultantName: contract.consultantName ?? "Mahmoud Saber",
+                              })}
+                              title="Change consultant"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Consultant
+                            </Button>
+                          )}
+                          {canEdit("contracts") && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               className="h-7 px-2 gap-1 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50"
                               disabled={redownloadingId === contract.id}
                               onClick={() => {
@@ -478,6 +516,47 @@ export default function Contracts() {
       </Card>
 
       <NewContractDialog open={showNewContract} onClose={() => setShowNewContract(false)} />
+
+      <Dialog open={!!editConsultant} onOpenChange={(open) => !open && setEditConsultant(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Change Contract Consultant</DialogTitle>
+            <DialogDescription>
+              Update contract {editConsultant?.contractCode} for {editConsultant?.clientName}. The linked Financial Client and Commission records will be updated automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-3">
+            <Select
+              value={editConsultant?.consultantName ?? "Mahmoud Saber"}
+              onValueChange={(consultantName) => setEditConsultant((current) => current ? { ...current, consultantName } : current)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select consultant" />
+              </SelectTrigger>
+              <SelectContent>
+                {CONSULTANTS.map((consultantName) => (
+                  <SelectItem key={consultantName} value={consultantName}>{consultantName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditConsultant(null)}>Cancel</Button>
+            <Button
+              disabled={!editConsultant || updateConsultantMutation.isPending}
+              onClick={() => {
+                if (!editConsultant) return;
+                updateConsultantMutation.mutate({
+                  id: editConsultant.id,
+                  consultantName: editConsultant.consultantName as typeof CONSULTANTS[number],
+                });
+              }}
+            >
+              {updateConsultantMutation.isPending ? "Saving..." : "Save Consultant"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Contract Confirmation (Admin Only) */}
       <AlertDialog open={!!confirmDelete} onOpenChange={() => setConfirmDelete(null)}>

@@ -216,6 +216,12 @@ export async function updateContractStatus(id: number, status: "pending" | "sign
   await db.update(contracts).set({ status }).where(eq(contracts.id, id));
 }
 
+export async function updateContractConsultant(id: number, consultantName: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(contracts).set({ consultantName }).where(eq(contracts.id, id));
+}
+
 export async function updateContractDocUrl(id: number, docUrl: string, driveFileId?: string, driveLink?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

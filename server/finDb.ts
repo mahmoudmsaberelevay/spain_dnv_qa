@@ -377,6 +377,39 @@ export async function getFinClientByContractId(contractId: number) {
   return rows[0] ?? null;
 }
 
+export async function syncConsultantForContract(contractId: number, consultant: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const linkedClients = await db
+    .select({ id: finClients.id })
+    .from(finClients)
+    .where(eq(finClients.contractId, contractId));
+
+  if (linkedClients.length === 0) {
+    return { financialClientsUpdated: 0, commissionsUpdated: 0 };
+  }
+
+  const clientIds = linkedClients.map((client) => client.id);
+  const linkedCommissions = await db
+    .select({ id: finCommissions.id })
+    .from(finCommissions)
+    .where(inArray(finCommissions.finClientId, clientIds));
+  await db
+    .update(finClients)
+    .set({ consultant, salesPerson: consultant })
+    .where(inArray(finClients.id, clientIds));
+  await db
+    .update(finCommissions)
+    .set({ consultant })
+    .where(inArray(finCommissions.finClientId, clientIds));
+
+  return {
+    financialClientsUpdated: clientIds.length,
+    commissionsUpdated: linkedCommissions.length,
+  };
+}
+
 // ─── Commissions ─────────────────────────────────────────────────────────────
 export async function listCommissions(filters?: {
   status?: string;

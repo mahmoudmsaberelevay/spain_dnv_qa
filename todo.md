@@ -1147,3 +1147,10 @@ Check email for download link within 5 minutes
 - [x] Allow authorized users to edit the date of existing receipts
 - [x] Regenerate receipt PDFs after receipt-date changes while preserving the separate paid-at/payment date
 - [x] Verify new and existing receipt date flows without changing financial amounts
+
+## Contract Consultant Editing and Client Filter Alignment
+- [x] Add an authorized Change Consultant action to every existing contract
+- [x] Synchronize consultant changes to the linked Financial Client and Commission records
+- [x] Normalize existing consultant values to Mahmoud Saber, Fouad Abdo, Ziad El Shurafa, and Kirolos Nabil
+- [x] Update the Financial Client consultant filter to use the exact full names from contract creation
+- [x] Verify consultant editing and filtering without changing contract or financial amounts
