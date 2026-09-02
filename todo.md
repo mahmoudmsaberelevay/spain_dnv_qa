@@ -1159,3 +1159,9 @@ Check email for download link within 5 minutes
 - [x] Set client 26091 signing date to 20 August 2026
 - [x] Set client 26085 signing date to 30 July 2026
 - [x] Synchronize linked Commission signing dates and verify both records
+
+## Client Signing-Date Custom Range Filter
+- [x] Add Custom Range to the Client Database signing-date filter
+- [x] Add From and To date controls with inclusive range behavior
+- [x] Apply the custom range to client list, count, totals, pagination, and exports
+- [x] Verify preset filters continue to work unchanged

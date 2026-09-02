@@ -48,7 +48,9 @@ export default function FinClients() {
   const [codeFilter, setCodeFilter] = useState("");
   const [debouncedCode, setDebouncedCode] = useState("");
   const [consultant, setConsultant] = useState<string>("all");
-  const [signingDateRange, setSigningDateRange] = useState<"all" | "this_month" | "previous_month" | "this_year">("all");
+  const [signingDateRange, setSigningDateRange] = useState<"all" | "this_month" | "previous_month" | "this_year" | "custom">("all");
+  const [signingDateFrom, setSigningDateFrom] = useState("");
+  const [signingDateTo, setSigningDateTo] = useState("");
   const [sortField, setSortField] = useState<SortField>("clientCode");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [page, setPage] = useState(0);
@@ -106,22 +108,26 @@ export default function FinClients() {
   const queryParams = useMemo(() => ({
     search: combinedSearch,
     consultant: consultant !== "all" ? consultant : undefined,
-    signingDateRange: signingDateRange !== "all" ? signingDateRange as "this_month" | "previous_month" | "this_year" : undefined,
+    signingDateRange: signingDateRange !== "all" && signingDateRange !== "custom" ? signingDateRange : undefined,
+    signingDateFrom: signingDateRange === "custom" && signingDateFrom ? signingDateFrom : undefined,
+    signingDateTo: signingDateRange === "custom" && signingDateTo ? signingDateTo : undefined,
     limit: pageSize,
     offset: page * pageSize,
     sortField: sortField,
     sortDir: sortDir,
-  }), [combinedSearch, consultant, signingDateRange, page, pageSize, sortField, sortDir]);
+  }), [combinedSearch, consultant, signingDateRange, signingDateFrom, signingDateTo, page, pageSize, sortField, sortDir]);
 
   const countParams = useMemo(() => ({
     search: combinedSearch,
     consultant: consultant !== "all" ? consultant : undefined,
-    signingDateRange: signingDateRange !== "all" ? signingDateRange as "this_month" | "previous_month" | "this_year" : undefined,
-  }), [combinedSearch, consultant, signingDateRange]);
+    signingDateRange: signingDateRange !== "all" && signingDateRange !== "custom" ? signingDateRange : undefined,
+    signingDateFrom: signingDateRange === "custom" && signingDateFrom ? signingDateFrom : undefined,
+    signingDateTo: signingDateRange === "custom" && signingDateTo ? signingDateTo : undefined,
+  }), [combinedSearch, consultant, signingDateRange, signingDateFrom, signingDateTo]);
 
   // Fetch all for export (no limit) — only when exporting
   const { data: allClientsForExport } = trpc.financial.clients.list.useQuery(
-    { search: combinedSearch, consultant: consultant !== "all" ? consultant : undefined },
+    countParams,
     { enabled: false }
   );
 
@@ -197,6 +203,9 @@ export default function FinClients() {
       const allData = await utils.financial.clients.list.fetch({
         search: combinedSearch,
         consultant: consultant !== "all" ? consultant : undefined,
+        signingDateRange: queryParams.signingDateRange,
+        signingDateFrom: queryParams.signingDateFrom,
+        signingDateTo: queryParams.signingDateTo,
         limit: 10000,
         offset: 0,
         sortField: sortField,
@@ -210,6 +219,9 @@ export default function FinClients() {
       const filterDesc = [
         consultant !== "all" ? `Consultant: ${consultant}` : "",
         combinedSearch ? `Filter: "${combinedSearch}"` : "",
+        signingDateRange === "custom" && (signingDateFrom || signingDateTo)
+          ? `Signing date: ${signingDateFrom || "Any"} to ${signingDateTo || "Any"}`
+          : signingDateRange !== "all" ? `Signing date: ${signingDateRange.replaceAll("_", " ")}` : "",
       ].filter(Boolean).join(" | ") || "All Clients";
 
       const rows = sorted.map(c => {
@@ -295,6 +307,9 @@ export default function FinClients() {
       const result = await utils.financial.clients.exportCsv.fetch({
         search: combinedSearch,
         consultant: consultant !== "all" ? consultant : undefined,
+        signingDateRange: queryParams.signingDateRange,
+        signingDateFrom: queryParams.signingDateFrom,
+        signingDateTo: queryParams.signingDateTo,
       });
       const blob = new Blob([result.csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
@@ -427,8 +442,33 @@ export default function FinClients() {
             <SelectItem value="this_month">This Month</SelectItem>
             <SelectItem value="previous_month">Previous Month</SelectItem>
             <SelectItem value="this_year">This Year</SelectItem>
+            <SelectItem value="custom">Custom Range</SelectItem>
           </SelectContent>
         </Select>
+        {signingDateRange === "custom" && (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">From</span>
+              <Input
+                type="date"
+                aria-label="Signing date from"
+                value={signingDateFrom}
+                onChange={(event) => { setSigningDateFrom(event.target.value); setPage(0); }}
+                className="w-[155px]"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">To</span>
+              <Input
+                type="date"
+                aria-label="Signing date to"
+                value={signingDateTo}
+                onChange={(event) => { setSigningDateTo(event.target.value); setPage(0); }}
+                className="w-[155px]"
+              />
+            </div>
+          </>
+        )}
         <Select value={sortField + "_" + sortDir} onValueChange={(v) => {
           const [f, d] = v.split("_") as [SortField, SortDir];
           setSortField(f); setSortDir(d); setPage(0);

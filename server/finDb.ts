@@ -138,6 +138,11 @@ export async function deleteEmployee(id: number) {
 // ─── Fin Clients ─────────────────────────────────────────────────────────────
 type FinClientSortField = "clientCode" | "name" | "program" | "consultant" | "contractValueEur" | "paidAmountEur" | "remainingAmountEur" | "signingDate";
 export type SigningDateRange = "this_month" | "previous_month" | "this_year";
+type SigningDateFilter = {
+  signingDateRange?: SigningDateRange;
+  signingDateFrom?: string;
+  signingDateTo?: string;
+};
 function getSigningDateBounds(range: SigningDateRange): { from: string; to: string } {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -155,7 +160,21 @@ function getSigningDateBounds(range: SigningDateRange): { from: string; to: stri
   const to = new Date(now.getFullYear(), now.getMonth(), 0);
   return { from: fmt(from), to: fmt(to) };
 }
-export async function listFinClients(opts?: { search?: string; consultant?: string; signingDateRange?: SigningDateRange; limit?: number; offset?: number; sortField?: FinClientSortField; sortDir?: "asc" | "desc" }) {
+function addSigningDateConditions(conditions: any[], opts?: SigningDateFilter) {
+  if (opts?.signingDateFrom || opts?.signingDateTo) {
+    let from = opts.signingDateFrom;
+    let to = opts.signingDateTo;
+    if (from && to && from > to) [from, to] = [to, from];
+    if (from) conditions.push(sql`DATE(${finClients.signingDate}) >= ${from}`);
+    if (to) conditions.push(sql`DATE(${finClients.signingDate}) <= ${to}`);
+    return;
+  }
+  if (opts?.signingDateRange) {
+    const { from, to } = getSigningDateBounds(opts.signingDateRange);
+    conditions.push(sql`DATE(${finClients.signingDate}) BETWEEN ${from} AND ${to}`);
+  }
+}
+export async function listFinClients(opts?: { search?: string; consultant?: string; signingDateRange?: SigningDateRange; signingDateFrom?: string; signingDateTo?: string; limit?: number; offset?: number; sortField?: FinClientSortField; sortDir?: "asc" | "desc" }) {
   const db = await getDb(); if (!db) return [];
   const conditions = [];
   if (opts?.search) {
@@ -164,10 +183,7 @@ export async function listFinClients(opts?: { search?: string; consultant?: stri
     conditions.push(sql`(${finClients.name} LIKE ${nameLike} OR ${finClients.clientCode} LIKE ${codeLike})`);
   }
   if (opts?.consultant) conditions.push(eq(finClients.consultant, opts.consultant));
-  if (opts?.signingDateRange) {
-    const { from, to } = getSigningDateBounds(opts.signingDateRange);
-    conditions.push(sql`DATE(${finClients.signingDate}) BETWEEN ${from} AND ${to}`);
-  }
+  addSigningDateConditions(conditions, opts);
   const query = db.select({
     id: finClients.id,
     contractId: finClients.contractId,
@@ -206,7 +222,7 @@ export async function listFinClients(opts?: { search?: string; consultant?: stri
   if (opts?.offset) query.offset(opts.offset);
   return query;
 }
-export async function getFinClientTotals(opts?: { search?: string; consultant?: string; signingDateRange?: SigningDateRange }) {
+export async function getFinClientTotals(opts?: { search?: string; consultant?: string; signingDateRange?: SigningDateRange; signingDateFrom?: string; signingDateTo?: string }) {
   const db = await getDb(); if (!db) return null;
   const conditions = [];
   if (opts?.search) {
@@ -215,22 +231,19 @@ export async function getFinClientTotals(opts?: { search?: string; consultant?: 
     conditions.push(sql`(${finClients.name} LIKE ${nameLike} OR ${finClients.clientCode} LIKE ${codeLike})`);
   }
   if (opts?.consultant) conditions.push(eq(finClients.consultant, opts.consultant));
-  if (opts?.signingDateRange) {
-    const { from, to } = getSigningDateBounds(opts.signingDateRange);
-    conditions.push(sql`DATE(${finClients.signingDate}) BETWEEN ${from} AND ${to}`);
-  }
+  addSigningDateConditions(conditions, opts);
   const [row] = await db.select({
     totalContractValueEur: sql<number>`COALESCE(SUM(CAST(${finClients.contractValueEur} AS DECIMAL(15,2))), 0)`,
     totalPaidEur: sql<number>`COALESCE(SUM(CAST(${finClients.paidAmountEur} AS DECIMAL(15,2))), 0)`,
     totalPaidEgp: sql<number>`COALESCE(SUM(CAST(${finClients.paidAmountEgp} AS DECIMAL(15,2))), 0)`,
     totalRemainingEur: sql<number>`COALESCE(SUM(CAST(${finClients.remainingAmountEur} AS DECIMAL(15,2))), 0)`,
-    totalDirectCostEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId IN (SELECT id FROM finClients) AND ft.type = 'expense'), 0)`,
-    totalDirectIncomeEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId IN (SELECT id FROM finClients) AND ft.type = 'income'), 0)`,
+    totalDirectCostEgp: sql<number>`COALESCE(SUM((SELECT COALESCE(SUM(ft.amount), 0) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'expense')), 0)`,
+    totalDirectIncomeEgp: sql<number>`COALESCE(SUM((SELECT COALESCE(SUM(ft.amount), 0) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'income')), 0)`,
   }).from(finClients)
     .where(conditions.length === 0 ? undefined : conditions.length === 1 ? conditions[0] : and(...conditions));
   return row ?? null;
 }
-export async function countFinClients(opts?: { search?: string; consultant?: string; signingDateRange?: SigningDateRange }) {
+export async function countFinClients(opts?: { search?: string; consultant?: string; signingDateRange?: SigningDateRange; signingDateFrom?: string; signingDateTo?: string }) {
   const db = await getDb(); if (!db) return 0;
   const conditions = [];
   if (opts?.search) {
@@ -239,10 +252,7 @@ export async function countFinClients(opts?: { search?: string; consultant?: str
     conditions.push(sql`(${finClients.name} LIKE ${nameLike} OR ${finClients.clientCode} LIKE ${codeLike})`);
   }
   if (opts?.consultant) conditions.push(eq(finClients.consultant, opts.consultant));
-  if (opts?.signingDateRange) {
-    const { from, to } = getSigningDateBounds(opts.signingDateRange);
-    conditions.push(sql`DATE(${finClients.signingDate}) BETWEEN ${from} AND ${to}`);
-  }
+  addSigningDateConditions(conditions, opts);
   const [row] = await db.select({ count: sql<number>`COUNT(*)` }).from(finClients)
     .where(conditions.length === 0 ? undefined : conditions.length === 1 ? conditions[0] : and(...conditions));
   return Number(row?.count ?? 0);

@@ -175,6 +175,8 @@ const finClientsRouter = router({
       search: z.string().optional(),
       consultant: z.string().optional(),
       signingDateRange: z.enum(["this_month", "previous_month", "this_year"]).optional(),
+      signingDateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      signingDateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       limit: z.number().optional(),
       offset: z.number().optional(),
       sortField: z.enum(["clientCode", "name", "program", "consultant", "contractValueEur", "paidAmountEur", "remainingAmountEur", "signingDate"]).optional(),
@@ -186,6 +188,8 @@ const finClientsRouter = router({
       search: z.string().optional(),
       consultant: z.string().optional(),
       signingDateRange: z.enum(["this_month", "previous_month", "this_year"]).optional(),
+      signingDateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      signingDateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     }).optional())
     .query(async ({ input }) => countFinClients(input ?? undefined)),
   totals: finReadProcedure
@@ -193,6 +197,8 @@ const finClientsRouter = router({
       search: z.string().optional(),
       consultant: z.string().optional(),
       signingDateRange: z.enum(["this_month", "previous_month", "this_year"]).optional(),
+      signingDateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      signingDateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     }).optional())
     .query(async ({ input }) => getFinClientTotals(input ?? undefined)),
   get: finReadProcedure
@@ -288,12 +294,18 @@ const finClientsRouter = router({
     .input(z.object({
       search: z.string().optional(),
       consultant: z.string().optional(),
+      signingDateRange: z.enum(["this_month", "previous_month", "this_year"]).optional(),
+      signingDateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      signingDateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     }).optional())
     .query(async ({ input }) => {
       // Fetch all clients (no pagination) for export
       const clients = await listFinClients({
         search: input?.search,
         consultant: input?.consultant,
+        signingDateRange: input?.signingDateRange,
+        signingDateFrom: input?.signingDateFrom,
+        signingDateTo: input?.signingDateTo,
         limit: 10000,
         offset: 0,
         sortField: "clientCode",
