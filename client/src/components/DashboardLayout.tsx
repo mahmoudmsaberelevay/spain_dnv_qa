@@ -20,7 +20,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { startLogin } from "@/const";
+import { startSystemLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import {
   BarChart3,
@@ -350,7 +350,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </p>
           </div>
           <Button
-            onClick={() => startLogin(window.location.pathname)}
+            onClick={() => startSystemLogin(`${window.location.pathname}${window.location.search}`)}
             size="lg"
             className="w-full shadow-lg hover:shadow-xl transition-all"
           >

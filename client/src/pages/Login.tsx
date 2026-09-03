@@ -12,6 +12,10 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const requestedPath = new URLSearchParams(window.location.search).get("returnTo") ?? "/";
+  const returnTo = requestedPath.startsWith("/") && !requestedPath.startsWith("//") && !requestedPath.startsWith("/login")
+    ? requestedPath
+    : "/";
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +38,7 @@ export default function Login() {
       toast.success("Logged in successfully!");
       // Wait a moment for the session cookie to be set, then redirect
       setTimeout(() => {
-        setLocation("/");
+        setLocation(returnTo);
       }, 500);
     } catch (error) {
       toast.error("Login failed. Please try again.");

@@ -1165,3 +1165,8 @@ Check email for download link within 5 minutes
 - [x] Add From and To date controls with inclusive range behavior
 - [x] Apply the custom range to client list, count, totals, pagination, and exports
 - [x] Verify preset filters continue to work unchanged
+
+## Default ELEVAY Login Routing
+- [x] Stop default sign-in controls and unauthorized redirects from sending users to the Manus platform
+- [x] Route users to the internal ELEVAY `/login` page and preserve their requested destination
+- [x] Verify password login, logout, session-only behavior, mobile login, and optional Manus OAuth remain functional

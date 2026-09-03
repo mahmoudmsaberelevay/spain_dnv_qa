@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { startLogin } from "@/const";
+import { startSystemLogin } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -98,7 +98,7 @@ export default function ClientDocs() {
         <p className="text-gray-500">Please sign in to access Client Documentation</p>
         <Button
           className="bg-[#1e3a5f] hover:bg-[#16304f] text-white"
-          onClick={() => startLogin("/docs/dashboard")}
+          onClick={() => startSystemLogin("/docs/dashboard")}
         >
           Sign In
         </Button>
