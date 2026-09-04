@@ -24,6 +24,7 @@ Meta documents Page webhook subscription and Lead Ads retrieval in its [Lead Ads
 | Customer data | Email and phone are normalized and SHA-256 hashed before transmission. Outbox snapshots contain hashes and non-sensitive CRM context, not raw contact data. |
 | Production approval | `META_CRM_PRODUCTION_ENABLED` must equal `true` before production events can be transmitted. It must remain absent or false during setup and Test Events validation. |
 | Test retries | Manual retry requires a Meta Test Event Code and retries only the selected outbox event. It cannot silently replay the production queue. |
+| Test Lead isolation | Meta Test Leads are explicitly classified against Meta's Form test-leads registry and marked on the Lead, immutable attribution, webhook inbox, and outbox event. They remain visible for audit but are excluded from operational reporting and cannot be sent through the production queue. |
 
 ## Authoritative funnel mapping
 
@@ -53,7 +54,7 @@ No secret value may be entered in a normal Leads form, returned by tRPC, printed
 
 ## Meta Business configuration
 
-In Meta for Developers, configure **ELEVAY CRM Integration** (`2057654031829453`) on the **Elevay Global** Page. The live callback is `https://elevay.vip/api/webhooks/meta-leads-v2`; use the server-side ELEVAY verify token and subscribe the Page webhook object to `leadgen`. The original `/api/webhook/meta-leads` path remains available for compatibility, while the v2 path avoids stale edge-cached verification responses. The Page administrator authorized only Elevay Global with `pages_manage_metadata`, `pages_show_list`, `pages_read_engagement`, and `leads_retrieval`; the Page is subscribed to the ELEVAY CRM app's `leadgen` updates. ELEVAY CRM Integration is also assigned under **Business Settings → Integrations → Leads Access → Elevay Global → CRMs** without removing the existing LSQ connector. The app-level subscription was verified as active on Graph API v26.0 with the public production callback and only the `leadgen` field. The app is published.
+In Meta for Developers, configure **ELEVAY CRM Integration** (`2057654031829453`) on the **Elevay Global** Page. The live callback is exactly `https://elevay.vip/api/webhooks/meta-leads-v2`; use the server-side ELEVAY verify token and subscribe the Page webhook object to `leadgen`. This exact route is registered with raw-body handling before Express JSON parsing, static assets, and the SPA fallback. The original `/api/webhook/meta-leads` path remains available for compatibility. The Page administrator authorized only Elevay Global with `pages_manage_metadata`, `pages_show_list`, `pages_read_engagement`, and `leads_retrieval`; the Page is subscribed to the ELEVAY CRM app's `leadgen` updates. ELEVAY CRM Integration is also assigned under **Business Settings → Integrations → Leads Access → Elevay Global → CRMs** without removing the existing LSQ connector. The app-level subscription was verified as active on Graph API v26.0 with the public production callback and only the `leadgen` field. The app is published.
 
 Use Meta's [Lead Ads Testing Tool][3] to create a test Lead. Confirm in **Leads Settings → Meta Ops** that the webhook time updates, the Lead is retrieved, the existing contact is matched or a single new Lead is created, and the immutable inquiry appears. Then use Meta Events Manager Test Events with a Test Event Code to validate the selected queued CRM event. Do not enable production transmission during this step.
 
@@ -61,7 +62,7 @@ Meta's official testing documentation also supports programmatic creation with `
 
 ## Admin operations
 
-The Meta Ops tab is restricted in both the interface and the backend to administrators. It provides secret-safe readiness booleans, last webhook/sync/event timestamps, pending and failure counts, Lead ID and hash coverage, mapping management, real-timestamp funnel reporting, reconciliation, failure diagnostics, and test-only retry.
+The Meta Ops tab is restricted in both the interface and the backend to administrators. It provides secret-safe readiness booleans, last webhook/sync/event timestamps, pending and failure counts, Lead ID and hash coverage, mapping management, real-timestamp funnel reporting, reconciliation, failure diagnostics, and test-only retry. Explicitly marked Meta Test Leads are excluded from funnel totals, conversion rates, coverage, consultant and program performance, campaign and Form analytics, monthly summaries, and activity reporting; they remain identifiable by a Test Lead badge in the Leads list and profile.
 
 Daily reconciliation should call `POST /api/scheduled/metaReconciliation` through the supported Heartbeat scheduler. The route accepts only an authenticated cron identity with a task UID. It must not be called by an ordinary user session or an anonymous request.
 
@@ -69,17 +70,19 @@ Daily reconciliation should call `POST /api/scheduled/metaReconciliation` throug
 
 | Validation | Result |
 |---|---|
-| Focused Meta Vitest suites | 25 tests passed across signature verification, durable receipt ordering, matching, immutable inquiries, deterministic IDs, event prerequisites, seven-day window, payload privacy, token redaction, admin authorization, browser isolation, and cron authentication. |
+| Focused Meta Vitest suites | 30 tests passed across the exact production callback, valid and invalid verification, signed and unsigned POST handling, durable receipt ordering, matching, immutable inquiries, deterministic IDs, Test Lead classification, operational report isolation, production-send blocking, seven-day window, payload privacy, token redaction, admin authorization, browser isolation, and cron authentication. |
 | Meta Test Lead pipeline | Meta created a fake Lead on the active Spain form; ELEVAY retrieved it, processed one durable inbox row, preserved one immutable inquiry on one matched Lead, and queued one Initial Lead event without duplication. |
 | Meta Test Events | The selected Initial Lead event was accepted through Meta Test Events and recorded as sent; production conversion sending remained disabled. |
 | Production build | Passed. Existing bundle-size and unrelated legacy authentication import warnings remain outside this Meta change. |
 | Complete project test run | Meta tests passed. The global run still has pre-existing Reports fixture collisions caused by duplicate unique report dates; these are unrelated to the Meta integration. |
 | Authenticated desktop UI | Leads filters, column chooser, Lead profile, Meta Ops health/reporting/mappings/diagnostics, and approval gate rendered successfully against live CRM data. |
 | Mobile rendering | Leads Settings uses a horizontally scrollable tab strip; the Leads list and filters render at a 390-pixel viewport. |
-| Endpoint protection | A wrong verification token returns 403, an invalid POST signature returns 401, and an anonymous scheduled request returns 401. |
+| Exact production callback | Independent checks against `https://elevay.vip/api/webhooks/meta-leads-v2` returned the exact challenge with HTTP 200 for valid verification, HTTP 403 `Forbidden` for an invalid token, HTTP 401 `Invalid signature` for an unsigned POST, and HTTP 200 JSON acknowledgement for a correctly signed PII-free POST. The route no longer returns CRM HTML. |
 | Meta app and Page subscription | ELEVAY CRM Integration is published, connected to Elevay Global, assigned direct CRM Lead Access, and subscribed to the Page `leadgen` field. Least-privilege Page authorization is complete, and the app subscription points to the production v2 callback. |
 | Fresh published-app Test Lead | Meta's Testing Tool reported **Success — Successful webhook integration** for both ELEVAY CRM Integration and the existing LSQ connector. ELEVAY stored exactly one durable inbox row, processed it, preserved exactly one immutable attribution, and queued exactly one deterministic Initial Lead event with no duplicate event ID. |
 | Final Meta Test Events send | The single Initial Lead event from the successful production webhook test was accepted through Meta Test Events and recorded as sent. `META_CRM_PRODUCTION_ENABLED` remained disabled, so no production conversion was transmitted. |
+| Post-remediation Test Lead | A fresh Meta Test Lead was delivered successfully to ELEVAY CRM Integration. The database contains exactly one processed inbox row, one immutable attribution, one explicitly marked Lead, one explicitly marked outbox event, one distinct deterministic event ID, and zero sent production events for that Meta Lead ID. |
+| Historical Test Lead backfill | All three Meta Test Leads created during integration validation are explicitly marked across the Lead, attribution, inbox, and outbox records. Earlier events accepted only through Meta Test Events remain auditable but are excluded from operational reports. |
 
 ## Go-live sequence
 
