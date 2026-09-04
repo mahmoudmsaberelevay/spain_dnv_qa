@@ -1185,4 +1185,4 @@ Check email for download link within 5 minutes
 - [x] Remove internal employee browser PageView tracking from advertising conversion signals
 - [x] Add reporting for Meta Leads, qualified meetings, conversions, funnel rates, delays, success rate, and Lead ID coverage without estimated ad costs
 - [x] Validate webhook security, idempotency, matching, stage ordering, retries, historical safety, permissions, exports, and responsive UI
-- [ ] Configure server-side Meta secrets and complete Test Lead and Test Events validation without sending a production event before explicit approval
+- [x] Configure server-side Meta secrets and complete Test Lead and Test Events validation without sending a production event before explicit approval
