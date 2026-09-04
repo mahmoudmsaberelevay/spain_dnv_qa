@@ -1170,3 +1170,19 @@ Check email for download link within 5 minutes
 - [x] Stop default sign-in controls and unauthorized redirects from sending users to the Manus platform
 - [x] Route users to the internal ELEVAY `/login` page and preserve their requested destination
 - [x] Verify password login, logout, session-only behavior, mobile login, and optional Manus OAuth remain functional
+
+## Leads Module Attached Instructions
+- [x] Review and map every requirement in Pasted_content_03.txt to the current Leads module
+- [x] Add safe Meta attribution, inquiry history, webhook inbox, mapping, event outbox, and reconciliation data models
+- [ ] Implement signed, idempotent Meta leadgen webhook receipt with fast acknowledgement and queued processing
+- [ ] Implement normalized phone/email matching, Meta Lead ID matching, and repeat-inquiry attribution preservation
+- [ ] Add configurable Form, Campaign, Ad Set, Ad, Page, Program, and CRM-stage mapping controls
+- [ ] Implement CRM event payloads using `system_generated`, hashed contact data, deterministic event IDs, ordering gates, retries, and dead-letter review
+- [ ] Connect authoritative Lead stage changes and genuine signed Contracts to the event outbox without inventing timestamps
+- [ ] Replace in-process Meta polling with Heartbeat-backed daily reconciliation and event retry handling
+- [ ] Add Meta attribution, IDs, sync status, event history, and required filters to existing Lead list and profile pages
+- [ ] Add an admin-only Meta Integration health, funnel coverage, match quality, diagnostics, mappings, test, and retry interface
+- [ ] Remove internal employee browser PageView tracking from advertising conversion signals
+- [ ] Add reporting for Meta Leads, qualified meetings, conversions, funnel rates, delays, success rate, and Lead ID coverage without estimated ad costs
+- [ ] Validate webhook security, idempotency, matching, stage ordering, retries, historical safety, permissions, exports, and responsive UI
+- [ ] Configure server-side Meta secrets and complete Test Lead and Test Events validation without sending a production event before explicit approval

@@ -807,7 +807,7 @@ export const leads = mysqlTable("leads", {
   // Lead Tracking
   leadSource: varchar("leadSource", { length: 100 }),
   // Meta Lead Ads IDs
-  metaLeadId: varchar("metaLeadId", { length: 100 }),
+  metaLeadId: varchar("metaLeadId", { length: 100 }).unique(),
   metaFormId: varchar("metaFormId", { length: 100 }),
   metaFormName: varchar("metaFormName", { length: 255 }),
   metaPageId: varchar("metaPageId", { length: 100 }),
@@ -830,6 +830,14 @@ export const leads = mysqlTable("leads", {
   ipAddress: varchar("ipAddress", { length: 64 }),
   userAgent: text("userAgent"),
   utmParams: text("utmParams"),
+  normalizedPhone: varchar("normalizedPhone", { length: 50 }),
+  normalizedEmail: varchar("normalizedEmail", { length: 320 }),
+  metaLeadCreatedAt: bigint("metaLeadCreatedAt", { mode: "number" }),
+  firstReceivedAt: bigint("firstReceivedAt", { mode: "number" }),
+  metaLastEventSent: varchar("metaLastEventSent", { length: 255 }),
+  metaLastEventSentAt: bigint("metaLastEventSentAt", { mode: "number" }),
+  metaSyncStatus: mysqlEnum("metaSyncStatus", ["pending", "sent", "failed", "retrying", "manual_review"]).default("pending"),
+  metaSyncError: text("metaSyncError"),
   // Qualification & Deal
   investmentBudget: varchar("investmentBudget", { length: 100 }),
   numberOfApplicants: int("numberOfApplicants").default(1),
@@ -965,6 +973,125 @@ export const leadIntegrations = mysqlTable("lead_integrations", {
 });
 export type LeadIntegration = typeof leadIntegrations.$inferSelect;
 export type InsertLeadIntegration = typeof leadIntegrations.$inferInsert;
+
+// ─── META LEAD ADS / CONVERSIONS API FOR CRM ─────────────────────────────────
+
+/**
+ * Immutable inquiry-level attribution. A contact can submit more than one Meta
+ * Instant Form without creating a duplicate Lead or losing earlier attribution.
+ */
+export const leadMetaAttributions = mysqlTable("lead_meta_attributions", {
+  id: int("id").autoincrement().primaryKey(),
+  leadId: int("leadId").notNull(),
+  metaLeadId: varchar("metaLeadId", { length: 100 }).notNull().unique(),
+  metaPageId: varchar("metaPageId", { length: 100 }),
+  metaFormId: varchar("metaFormId", { length: 100 }),
+  metaFormName: varchar("metaFormName", { length: 255 }),
+  metaCampaignId: varchar("metaCampaignId", { length: 100 }),
+  metaCampaignName: varchar("metaCampaignName", { length: 255 }),
+  metaAdSetId: varchar("metaAdSetId", { length: 100 }),
+  metaAdSetName: varchar("metaAdSetName", { length: 255 }),
+  metaAdId: varchar("metaAdId", { length: 100 }),
+  metaAdName: varchar("metaAdName", { length: 255 }),
+  metaIsOrganic: boolean("metaIsOrganic").default(false),
+  source: varchar("source", { length: 100 }).default("Meta Instant Form").notNull(),
+  program: varchar("program", { length: 150 }),
+  utmSource: varchar("utmSource", { length: 100 }),
+  utmMedium: varchar("utmMedium", { length: 100 }),
+  utmCampaign: varchar("utmCampaign", { length: 255 }),
+  utmContent: varchar("utmContent", { length: 255 }),
+  utmTerm: varchar("utmTerm", { length: 255 }),
+  metaLeadCreatedAt: bigint("metaLeadCreatedAt", { mode: "number" }).notNull(),
+  firstReceivedAt: bigint("firstReceivedAt", { mode: "number" }).notNull(),
+  isPrimary: boolean("isPrimary").default(false).notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type LeadMetaAttribution = typeof leadMetaAttributions.$inferSelect;
+export type InsertLeadMetaAttribution = typeof leadMetaAttributions.$inferInsert;
+
+/** Sanitized, idempotent webhook notification inbox. Never stores lead PII. */
+export const metaWebhookInbox = mysqlTable("meta_webhook_inbox", {
+  id: int("id").autoincrement().primaryKey(),
+  webhookKey: varchar("webhookKey", { length: 255 }).notNull().unique(),
+  metaLeadId: varchar("metaLeadId", { length: 100 }).notNull(),
+  metaPageId: varchar("metaPageId", { length: 100 }),
+  metaFormId: varchar("metaFormId", { length: 100 }),
+  metaAdId: varchar("metaAdId", { length: 100 }),
+  metaAdGroupId: varchar("metaAdGroupId", { length: 100 }),
+  metaCreatedTime: bigint("metaCreatedTime", { mode: "number" }),
+  leadId: int("leadId"),
+  status: mysqlEnum("status", ["pending", "processing", "processed", "failed", "retrying", "dead_letter"]).default("pending").notNull(),
+  attempts: int("attempts").default(0).notNull(),
+  nextAttemptAt: bigint("nextAttemptAt", { mode: "number" }),
+  lastError: text("lastError"),
+  receivedAt: bigint("receivedAt", { mode: "number" }).notNull(),
+  processedAt: bigint("processedAt", { mode: "number" }),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type MetaWebhookInboxItem = typeof metaWebhookInbox.$inferSelect;
+export type InsertMetaWebhookInboxItem = typeof metaWebhookInbox.$inferInsert;
+
+/** Admin-configurable attribution and CRM-stage mapping rules. */
+export const metaIntegrationMappings = mysqlTable("meta_integration_mappings", {
+  id: int("id").autoincrement().primaryKey(),
+  mappingKey: varchar("mappingKey", { length: 255 }).notNull().unique(),
+  mappingType: mysqlEnum("mappingType", ["form", "campaign", "adset", "ad", "page", "crm_stage"]).notNull(),
+  matchValue: varchar("matchValue", { length: 255 }).notNull(),
+  matchName: varchar("matchName", { length: 255 }),
+  program: varchar("program", { length: 150 }),
+  outputValue: varchar("outputValue", { length: 255 }),
+  priority: int("priority").default(100).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdBy: int("createdBy"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type MetaIntegrationMapping = typeof metaIntegrationMappings.$inferSelect;
+export type InsertMetaIntegrationMapping = typeof metaIntegrationMappings.$inferInsert;
+
+/** Ordered, idempotent CRM-stage event outbox for Meta Conversions API. */
+export const metaCrmEventLog = mysqlTable("meta_crm_event_log", {
+  id: int("id").autoincrement().primaryKey(),
+  leadId: int("leadId").notNull(),
+  metaLeadId: varchar("metaLeadId", { length: 100 }),
+  eventName: varchar("eventName", { length: 255 }).notNull(),
+  eventTime: bigint("eventTime", { mode: "number" }).notNull(),
+  eventId: varchar("eventId", { length: 255 }).notNull().unique(),
+  sourceType: varchar("sourceType", { length: 64 }).notNull(),
+  sourceId: varchar("sourceId", { length: 100 }),
+  sourceStage: varchar("sourceStage", { length: 100 }),
+  status: mysqlEnum("status", ["pending", "sent", "failed", "retrying", "dead_letter", "manual_review"]).default("pending").notNull(),
+  attempts: int("attempts").default(0).notNull(),
+  nextAttemptAt: bigint("nextAttemptAt", { mode: "number" }),
+  hasLeadId: boolean("hasLeadId").default(false).notNull(),
+  hasEmailHash: boolean("hasEmailHash").default(false).notNull(),
+  hasPhoneHash: boolean("hasPhoneHash").default(false).notNull(),
+  metaResponse: text("metaResponse"),
+  errorCode: varchar("errorCode", { length: 100 }),
+  lastError: text("lastError"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+  sentAt: bigint("sentAt", { mode: "number" }),
+});
+export type MetaCrmEvent = typeof metaCrmEventLog.$inferSelect;
+export type InsertMetaCrmEvent = typeof metaCrmEventLog.$inferInsert;
+
+export const metaReconciliationState = mysqlTable("meta_reconciliation_state", {
+  id: int("id").autoincrement().primaryKey(),
+  integrationId: int("integrationId").unique(),
+  cursor: text("cursor"),
+  status: mysqlEnum("status", ["idle", "running", "success", "failed"]).default("idle").notNull(),
+  lastAttemptAt: bigint("lastAttemptAt", { mode: "number" }),
+  lastSuccessAt: bigint("lastSuccessAt", { mode: "number" }),
+  lastError: text("lastError"),
+  leadsScanned: int("leadsScanned").default(0).notNull(),
+  leadsImported: int("leadsImported").default(0).notNull(),
+  eventsRetried: int("eventsRetried").default(0).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type MetaReconciliationState = typeof metaReconciliationState.$inferSelect;
+export type InsertMetaReconciliationState = typeof metaReconciliationState.$inferInsert;
 
 export const leadsPermissions = mysqlTable("leads_permissions", {
   id: int("id").autoincrement().primaryKey(),
