@@ -1179,7 +1179,7 @@ Check email for download link within 5 minutes
 - [x] Add configurable Form, Campaign, Ad Set, Ad, Page, Program, and CRM-stage mapping controls
 - [x] Implement CRM event payloads using `system_generated`, hashed contact data, deterministic event IDs, ordering gates, retries, and dead-letter review
 - [x] Connect authoritative Lead stage changes and genuine signed Contracts to the event outbox without inventing timestamps
-- [ ] Replace in-process Meta polling with Heartbeat-backed daily reconciliation and event retry handling
+- [x] Replace in-process Meta polling with Heartbeat-backed daily reconciliation and event retry handling
 - [x] Add Meta attribution, IDs, sync status, event history, and required filters to existing Lead list and profile pages
 - [x] Add an admin-only Meta Integration health, funnel coverage, match quality, diagnostics, mappings, test, and retry interface
 - [x] Remove internal employee browser PageView tracking from advertising conversion signals
