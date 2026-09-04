@@ -1,5 +1,8 @@
 import type { Request, Response } from "express";
+import { eq } from "drizzle-orm";
+import { metaReconciliationState } from "../drizzle/schema";
 import { sdk } from "./_core/sdk";
+import { getDb } from "./db";
 import { runMetaReconciliation } from "./metaLeadsService";
 
 export async function scheduledMetaReconciliationHandler(req: Request, res: Response) {
@@ -15,6 +18,15 @@ export async function scheduledMetaReconciliationHandler(req: Request, res: Resp
     return res.status(403).json({ error: "cron-only" });
   }
   try {
+    const db = await getDb();
+    if (!db) throw new Error("Database unavailable");
+    const [registeredState] = await db.select({ id: metaReconciliationState.id })
+      .from(metaReconciliationState)
+      .where(eq(metaReconciliationState.scheduleCronTaskUid, cronIdentity.taskUid))
+      .limit(1);
+    if (!registeredState) {
+      return res.json({ ok: true, skipped: "orphan-schedule" });
+    }
     const result = await runMetaReconciliation({ limit: 200 });
     return res.json({
       ok: true,

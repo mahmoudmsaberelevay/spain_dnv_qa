@@ -1080,6 +1080,7 @@ export type InsertMetaCrmEvent = typeof metaCrmEventLog.$inferInsert;
 export const metaReconciliationState = mysqlTable("meta_reconciliation_state", {
   id: int("id").autoincrement().primaryKey(),
   integrationId: int("integrationId").unique(),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }).unique(),
   cursor: text("cursor"),
   status: mysqlEnum("status", ["idle", "running", "success", "failed"]).default("idle").notNull(),
   lastAttemptAt: bigint("lastAttemptAt", { mode: "number" }),

@@ -1,9 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ authenticateRequest: vi.fn(), runMetaReconciliation: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  authenticateRequest: vi.fn(),
+  runMetaReconciliation: vi.fn(),
+  registeredRows: [{ id: 1 }] as Array<{ id: number }>,
+}));
 
 vi.mock("./_core/sdk", () => ({ sdk: { authenticateRequest: mocks.authenticateRequest } }));
 vi.mock("./metaLeadsService", () => ({ runMetaReconciliation: mocks.runMetaReconciliation }));
+vi.mock("./db", () => ({
+  getDb: vi.fn(async () => ({
+    select: () => ({
+      from: () => ({
+        where: () => ({ limit: async () => mocks.registeredRows }),
+      }),
+    }),
+  })),
+}));
 
 import { scheduledMetaReconciliationHandler } from "./scheduledMetaReconciliationHandler";
 
@@ -20,6 +33,7 @@ function responseRecorder() {
 describe("scheduled Meta reconciliation authentication", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.registeredRows = [{ id: 1 }];
     mocks.runMetaReconciliation.mockResolvedValue({ pull: { scanned: 0, queued: 0 }, inbox: { processed: 0 }, events: { sent: 0 } });
   });
 
@@ -47,5 +61,15 @@ describe("scheduled Meta reconciliation authentication", () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toMatchObject({ ok: true, taskUid: "meta-reconcile-daily" });
     expect(mocks.runMetaReconciliation).toHaveBeenCalledWith({ limit: 200 });
+  });
+
+  it("acknowledges an orphan cron without running reconciliation", async () => {
+    mocks.registeredRows = [];
+    mocks.authenticateRequest.mockResolvedValue({ id: 0, role: "user", isCron: true, taskUid: "unregistered-task" });
+    const response = responseRecorder();
+    await scheduledMetaReconciliationHandler({} as any, response);
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ ok: true, skipped: "orphan-schedule" });
+    expect(mocks.runMetaReconciliation).not.toHaveBeenCalled();
   });
 });
