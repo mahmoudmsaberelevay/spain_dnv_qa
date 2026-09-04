@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getVerifyToken: vi.fn(),
+  verifyToken: vi.fn(),
   verifySignature: vi.fn(),
   storeNotifications: vi.fn(),
   processInbox: vi.fn(),
 }));
 
 vi.mock("./metaLeadsService", () => ({
-  getMetaWebhookVerifyToken: mocks.getVerifyToken,
+  verifyMetaWebhookVerifyToken: mocks.verifyToken,
   verifyMetaWebhookSignature: mocks.verifySignature,
   storeMetaWebhookNotifications: mocks.storeNotifications,
   processMetaWebhookInboxBatch: mocks.processInbox,
@@ -32,7 +32,7 @@ describe("Meta Lead Ads webhook transport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.META_WEBHOOK_VERIFY_TOKEN = "verify-me";
-    mocks.getVerifyToken.mockResolvedValue("verify-me");
+    mocks.verifyToken.mockImplementation(async (value: string) => value === "verify-me");
     mocks.verifySignature.mockReturnValue(true);
     mocks.storeNotifications.mockResolvedValue({ accepted: 1, ignored: 0 });
     mocks.processInbox.mockResolvedValue({ selected: 1, processed: 1, failed: 0 });

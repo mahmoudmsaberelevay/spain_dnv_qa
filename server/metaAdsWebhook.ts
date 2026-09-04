@@ -9,24 +9,18 @@
  */
 import type { Request, Response } from "express";
 import {
-  getMetaWebhookVerifyToken,
   processMetaWebhookInboxBatch,
   storeMetaWebhookNotifications,
   type MetaWebhookPayload,
   verifyMetaWebhookSignature,
+  verifyMetaWebhookVerifyToken,
 } from "./metaLeadsService";
 
 export async function verifyMetaWebhook(req: Request, res: Response) {
-  const configuredToken = await getMetaWebhookVerifyToken();
   const mode = typeof req.query["hub.mode"] === "string" ? req.query["hub.mode"] : "";
   const token = typeof req.query["hub.verify_token"] === "string" ? req.query["hub.verify_token"] : "";
   const challenge = typeof req.query["hub.challenge"] === "string" ? req.query["hub.challenge"] : "";
-
-  if (!configuredToken) {
-    console.error("[MetaWebhook] Verification token is not configured");
-    return res.status(503).send("Meta webhook is not configured");
-  }
-  if (mode === "subscribe" && token === configuredToken && challenge) {
+  if (mode === "subscribe" && challenge && await verifyMetaWebhookVerifyToken(token)) {
     return res.status(200).type("text/plain").send(challenge);
   }
   return res.status(403).send("Forbidden");

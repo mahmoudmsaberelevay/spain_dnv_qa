@@ -302,6 +302,31 @@ export async function getMetaWebhookVerifyToken(): Promise<string> {
   return storedConfig.verify_token || integration?.webhookToken || deriveMetaWebhookVerifyToken();
 }
 
+export async function verifyMetaWebhookVerifyToken(candidate: string): Promise<boolean> {
+  if (!candidate) return false;
+  const configuredToken = await getMetaWebhookVerifyToken();
+  if (configuredToken) {
+    const configured = Buffer.from(configuredToken, "utf8");
+    const received = Buffer.from(candidate, "utf8");
+    if (configured.length === received.length && crypto.timingSafeEqual(configured, received)) return true;
+  }
+
+  const db = await getDb();
+  if (!db) return false;
+  const [integration] = await db.select({ config: leadIntegrations.config })
+    .from(leadIntegrations)
+    .where(and(eq(leadIntegrations.type, "meta"), eq(leadIntegrations.isActive, true)))
+    .orderBy(desc(leadIntegrations.updatedAt))
+    .limit(1);
+  let storedConfig: Record<string, string> = {};
+  try { storedConfig = integration?.config ? JSON.parse(integration.config) : {}; } catch { storedConfig = {}; }
+  const expectedHash = storedConfig.verify_token_hash || "";
+  const candidateHash = sha256(candidate);
+  const expected = Buffer.from(expectedHash, "utf8");
+  const received = Buffer.from(candidateHash, "utf8");
+  return expected.length > 0 && expected.length === received.length && crypto.timingSafeEqual(expected, received);
+}
+
 export async function storeMetaWebhookNotifications(payload: MetaWebhookPayload) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -1103,7 +1128,7 @@ export async function getMetaIntegrationHealth() {
   const capiTokenConfigured = Boolean(process.env.META_CAPI_TOKEN);
   const datasetConfigured = Boolean(process.env.META_DATASET_ID || process.env.META_PIXEL_ID || DEFAULT_DATASET_ID);
   const appSecretConfigured = Boolean(process.env.META_APP_SECRET);
-  const verifyTokenConfigured = Boolean(process.env.META_WEBHOOK_VERIFY_TOKEN || storedConfig.verify_token || activeIntegration?.webhookToken || deriveMetaWebhookVerifyToken());
+  const verifyTokenConfigured = Boolean(process.env.META_WEBHOOK_VERIFY_TOKEN || storedConfig.verify_token || storedConfig.verify_token_hash || activeIntegration?.webhookToken || deriveMetaWebhookVerifyToken());
   const [lastWebhook] = await db.select().from(metaWebhookInbox).orderBy(desc(metaWebhookInbox.receivedAt)).limit(1);
   const [lastProcessed] = await db.select().from(metaWebhookInbox).where(eq(metaWebhookInbox.status, "processed")).orderBy(desc(metaWebhookInbox.processedAt)).limit(1);
   const [lastEvent] = await db.select().from(metaCrmEventLog).where(eq(metaCrmEventLog.status, "sent")).orderBy(desc(metaCrmEventLog.sentAt)).limit(1);
