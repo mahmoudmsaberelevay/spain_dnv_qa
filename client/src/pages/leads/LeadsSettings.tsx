@@ -1,5 +1,7 @@
 import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
+import MetaOperationsTab from "./MetaOperationsTab";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -19,7 +21,7 @@ import {
   Settings, Download, Upload, Users, Tag, Zap, Globe,
   Plus, Trash2, RefreshCw, Copy, Check, Eye, Pencil,
   FileDown, FileUp, AlertCircle, ExternalLink, MapPin, Star, List,
-  CheckCircle2, XCircle, Clock, ToggleLeft, ToggleRight,
+  CheckCircle2, XCircle, Clock, ToggleLeft, ToggleRight, Activity,
 } from "lucide-react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -826,8 +828,8 @@ function ActivityPresetsTab() {
 
 function MetaAdsTab() {
   const { data: integrations, refetch } = trpc.leadsSettings.listIntegrations.useQuery();
-  const createMut = trpc.leadsSettings.createIntegration.useMutation({ onSuccess: () => { refetch(); setShowAdd(false); setFormName(""); setFormAccessToken(""); toast.success("Meta integration added — click Sync Now to pull your leads"); } });
-  const regenMut = trpc.leadsSettings.regenerateToken.useMutation({ onSuccess: () => { refetch(); toast.success("Token regenerated"); } });
+  const { data: metaHealth } = trpc.leadsSettings.metaAdmin.health.useQuery();
+  const createMut = trpc.leadsSettings.createIntegration.useMutation({ onSuccess: () => { refetch(); setShowAdd(false); setFormName(""); toast.success("Meta integration added. Configure secure Meta credentials before syncing."); } });
   const deleteMut = trpc.leadsSettings.deleteIntegration.useMutation({ onSuccess: () => { refetch(); toast.success("Integration removed"); } });
   const updateMut = trpc.leadsSettings.updateIntegration.useMutation({ onSuccess: () => { refetch(); toast.success("Updated"); } });
   const syncMut = trpc.leadsSettings.syncMeta.useMutation({
@@ -848,9 +850,6 @@ function MetaAdsTab() {
   const metaIntegrations = (integrations ?? []).filter(i => i.type === "meta");
   const [showAdd, setShowAdd] = useState(false);
   const [formName, setFormName] = useState("");
-  const [formAccessToken, setFormAccessToken] = useState("");
-  const [editingToken, setEditingToken] = useState<number | null>(null);
-  const [editTokenValue, setEditTokenValue] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
   const copy = (text: string, key: string) => {
@@ -867,7 +866,7 @@ function MetaAdsTab() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-foreground">Meta Ads Lead Forms</h3>
-          <p className="text-sm text-muted-foreground">Paste your Page Access Token once — ELEVAY auto-discovers <strong>all</strong> your lead forms and syncs every 4 hours. New forms are picked up automatically.</p>
+          <p className="text-sm text-muted-foreground">ELEVAY receives Meta Instant Form leads through a signed webhook and reconciles missed leads server-to-server. Credentials are managed only as secure environment secrets.</p>
         </div>
         <Button onClick={() => setShowAdd(true)} className="gap-2"><Plus className="h-4 w-4" />Connect Form</Button>
       </div>
@@ -876,11 +875,11 @@ function MetaAdsTab() {
       <div className="border border-blue-200 bg-blue-50 rounded-lg p-4 space-y-3">
         <h4 className="font-medium text-blue-900 flex items-center gap-2"><Zap className="h-4 w-4" />How it works</h4>
         <ol className="text-sm text-blue-800 space-y-1.5 list-decimal list-inside">
-          <li>Click <strong>Connect Form</strong> and paste your <strong>Page Access Token</strong> from Meta Business Manager</li>
-          <li>ELEVAY automatically finds <strong>all lead forms</strong> on your page — no Form ID needed</li>
-          <li>Leads sync every <strong>4 hours automatically</strong> — duplicates are always skipped</li>
-          <li>New campaigns with new forms are picked up on the next sync — zero configuration</li>
-          <li>Click <strong>Sync Now</strong> on any integration to pull leads immediately</li>
+          <li>Create the Meta integration record, then configure the Page token, App secret, verify token, Page ID, dataset ID, and CAPI token in secure system settings</li>
+          <li>Subscribe the Meta Page to the app's <strong>leadgen</strong> webhook and use the webhook URL shown below</li>
+          <li>ELEVAY retrieves the lead server-to-server, matches the contact conservatively, and preserves every inquiry attribution</li>
+          <li>Reconciliation pulls missed leads and retries ordered CRM events without creating duplicate Leads</li>
+          <li>Production CRM event sending remains disabled until explicit approval</li>
         </ol>
       </div>
 
@@ -888,7 +887,7 @@ function MetaAdsTab() {
       {metaIntegrations.map(i => {
         const webhookUrl = `${baseUrl}/api/webhook/meta-leads`;
         const cfg: Record<string, string> = (() => { try { return i.config ? JSON.parse(i.config) : {}; } catch { return {}; } })();
-        const hasToken = !!(cfg.page_access_token);
+        const hasToken = i.hasMetaPageAccessToken || metaHealth?.pageAccessTokenConfigured;
         const isSyncing = syncMut.isPending && syncMut.variables?.integrationId === i.id;
         return (
           <div key={i.id} className="border border-border rounded-lg p-5 space-y-4">
@@ -928,40 +927,18 @@ function MetaAdsTab() {
               </div>
             </div>
 
-            {/* Page Access Token — required for Graph API bulk sync */}
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                Page Access Token
-                <span className="text-red-500">*</span>
-                <span className="text-muted-foreground font-normal">(required for automatic sync)</span>
-              </Label>
-              {editingToken === i.id ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="password"
-                    className="flex-1 font-mono text-xs h-8"
-                    placeholder="Paste your long-lived Page Access Token here"
-                    value={editTokenValue}
-                    onChange={e => setEditTokenValue(e.target.value)}
-                  />
-                  <Button size="sm" onClick={() => {
-                    const newCfg = { ...cfg, page_access_token: editTokenValue };
-                    updateMut.mutate({ id: i.id, config: newCfg });
-                    setEditingToken(null);
-                    setEditTokenValue("");
-                  }} disabled={!editTokenValue.trim()}>Save</Button>
-                  <Button size="sm" variant="outline" onClick={() => { setEditingToken(null); setEditTokenValue(""); }}>Cancel</Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono text-muted-foreground">
-                    {hasToken ? "●●●●●●●●●●●●●●●●●●●● (saved)" : <span className="text-amber-600">Not set — sync will not work until you add this</span>}
-                  </div>
-                  <Button size="sm" variant="outline" onClick={() => { setEditingToken(i.id); setEditTokenValue(""); }}>
-                    {hasToken ? "Update" : "Add Token"}
-                  </Button>
-                </div>
-              )}
+              <Label className="text-xs text-muted-foreground">Secure credential readiness</Label>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                {[
+                  ["Page token", hasToken],
+                  ["App secret", metaHealth?.appSecretConfigured],
+                  ["Verify token", metaHealth?.verifyTokenConfigured],
+                  ["Page ID", metaHealth?.pageIdConfigured],
+                  ["Dataset", metaHealth?.datasetConfigured],
+                  ["CAPI token", metaHealth?.capiTokenConfigured],
+                ].map(([label, ready]) => <div key={String(label)} className="bg-muted px-3 py-2 rounded"><span className={ready ? "text-emerald-700" : "text-amber-700"}>{ready ? "Configured" : "Required"}</span> · {label}</div>)}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-3">
@@ -975,16 +952,8 @@ function MetaAdsTab() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Verify Token <span className="text-muted-foreground font-normal">(enter this in Meta when setting up webhook)</span></Label>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono truncate">{i.webhookToken}</code>
-                  <Button size="sm" variant="outline" className="gap-1 shrink-0" onClick={() => copy(i.webhookToken ?? "", `token-${i.id}`)}>
-                    {copied === `token-${i.id}` ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                  </Button>
-                  <Button size="sm" variant="outline" className="gap-1 shrink-0" title="Regenerate token" onClick={() => regenMut.mutate({ id: i.id })}>
-                    <RefreshCw className="h-3 w-3" />
-                  </Button>
-                </div>
+                <Label className="text-xs text-muted-foreground">Verify Token <span className="text-muted-foreground font-normal">(secure secret; enter the same value in Meta)</span></Label>
+                <div className="text-xs bg-muted px-3 py-2 rounded text-muted-foreground">{metaHealth?.verifyTokenConfigured ? "Configured securely" : "Not configured"}</div>
               </div>
               <div className="text-xs text-muted-foreground">
                 {cfg.page_id ? <>Page ID: <code className="bg-muted px-1 rounded">{cfg.page_id}</code> · </> : null}
@@ -1007,29 +976,19 @@ function MetaAdsTab() {
           <DialogHeader><DialogTitle>Connect Meta Lead Ads</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
-              Paste your Page Access Token below. ELEVAY will automatically discover all lead forms on your page and sync them every 4 hours.
+              This creates the integration record only. Sensitive Meta credentials must be added through secure system settings and are never shown in the browser.
             </div>
             <div className="space-y-2">
               <Label>Integration Name</Label>
               <Input placeholder="e.g. ELEVAY Facebook Leads" value={formName} onChange={e => setFormName(e.target.value)} />
             </div>
-            <div className="space-y-2">
-              <Label>Page Access Token <span className="text-red-500">*</span></Label>
-              <Input
-                type="password"
-                placeholder="Paste your long-lived Page Access Token"
-                value={formAccessToken}
-                onChange={e => setFormAccessToken(e.target.value)}
-                className="font-mono text-xs"
-              />
-              <p className="text-xs text-muted-foreground">Get this from Meta Business Manager → System Users → Generate New Token</p>
-            </div>
+            <p className="text-xs text-muted-foreground">After creating it, complete the secure credential checklist shown on this page.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
             <Button
-              onClick={() => createMut.mutate({ type: "meta", name: formName, config: { page_access_token: formAccessToken } })}
-              disabled={!formName.trim() || !formAccessToken.trim() || createMut.isPending}
+              onClick={() => createMut.mutate({ type: "meta", name: formName, config: {} })}
+              disabled={!formName.trim() || createMut.isPending}
             >
               {createMut.isPending ? "Connecting..." : "Connect"}
             </Button>
@@ -1328,6 +1287,8 @@ function WebsiteIntegrationTab() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function LeadsSettings() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
@@ -1342,14 +1303,15 @@ export default function LeadsSettings() {
       </div>
 
       <Tabs defaultValue="export">
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="flex w-full h-auto justify-start overflow-x-auto">
           <TabsTrigger value="export" className="gap-1 text-xs"><Download className="h-3.5 w-3.5" />Export / Import</TabsTrigger>
           <TabsTrigger value="permissions" className="gap-1 text-xs"><Users className="h-3.5 w-3.5" />Permissions</TabsTrigger>
           <TabsTrigger value="sources" className="gap-1 text-xs"><Tag className="h-3.5 w-3.5" />Lead Sources</TabsTrigger>
           <TabsTrigger value="programs" className="gap-1 text-xs"><MapPin className="h-3.5 w-3.5" />Programs</TabsTrigger>
           <TabsTrigger value="presets" className="gap-1 text-xs"><Star className="h-3.5 w-3.5" />Activity Presets</TabsTrigger>
-          <TabsTrigger value="meta" className="gap-1 text-xs"><Zap className="h-3.5 w-3.5" />Meta Ads</TabsTrigger>
-          <TabsTrigger value="forms" className="gap-1 text-xs"><List className="h-3.5 w-3.5" />Lead Forms</TabsTrigger>
+          {isAdmin && <TabsTrigger value="meta" className="gap-1 text-xs"><Zap className="h-3.5 w-3.5" />Meta Ads</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="meta-ops" className="gap-1 text-xs"><Activity className="h-3.5 w-3.5" />Meta Ops</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="forms" className="gap-1 text-xs"><List className="h-3.5 w-3.5" />Lead Forms</TabsTrigger>}
           <TabsTrigger value="website" className="gap-1 text-xs"><Globe className="h-3.5 w-3.5" />Website</TabsTrigger>
         </TabsList>
 
@@ -1358,8 +1320,9 @@ export default function LeadsSettings() {
         <TabsContent value="sources" className="mt-6"><LeadSourcesTab /></TabsContent>
         <TabsContent value="programs" className="mt-6"><ProgramsTab /></TabsContent>
         <TabsContent value="presets" className="mt-6"><ActivityPresetsTab /></TabsContent>
-        <TabsContent value="meta" className="mt-6"><MetaAdsTab /></TabsContent>
-        <TabsContent value="forms" className="mt-6"><LeadFormsTab /></TabsContent>
+        {isAdmin && <TabsContent value="meta" className="mt-6"><MetaAdsTab /></TabsContent>}
+        {isAdmin && <TabsContent value="meta-ops" className="mt-6"><MetaOperationsTab /></TabsContent>}
+        {isAdmin && <TabsContent value="forms" className="mt-6"><LeadFormsTab /></TabsContent>}
         <TabsContent value="website" className="mt-6"><WebsiteIntegrationTab /></TabsContent>
       </Tabs>
     </div>

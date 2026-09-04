@@ -11,6 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, Search, Phone, Mail, User, Calendar, Download,
   Filter, X, Trash2, CheckSquare, Square, MinusSquare, RefreshCw, LayoutList,
@@ -91,6 +92,10 @@ export default function LeadsList() {
   // Pre-populate from URL param if provided (from dashboard chart click)
   const [metaFormFilter, setMetaFormFilter] = useState(initialForm || "all");
   const [campaignFilter, setCampaignFilter] = useState(initialCampaign);
+  const [metaAdsetFilter, setMetaAdsetFilter] = useState("all");
+  const [metaAdFilter, setMetaAdFilter] = useState("all");
+  const [metaSyncStatusFilter, setMetaSyncStatusFilter] = useState("all");
+  const [metaEventStatusFilter, setMetaEventStatusFilter] = useState("all");
   const [showHistoricalSyncConfirm, setShowHistoricalSyncConfirm] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [createdFrom, setCreatedFrom] = useState("");
@@ -149,6 +154,14 @@ export default function LeadsList() {
     { key: "nationality", label: "Nationality" },
     { key: "budget", label: "Budget" },
     { key: "lastActivity", label: "Last Activity Date" },
+    { key: "metaCampaign", label: "Meta Campaign" },
+    { key: "metaAdset", label: "Meta Ad Set" },
+    { key: "metaAd", label: "Meta Ad" },
+    { key: "metaForm", label: "Meta Form" },
+    { key: "metaSync", label: "Meta Sync Status" },
+    { key: "metaLeadCoverage", label: "Meta Lead ID Coverage" },
+    { key: "meetingDate", label: "Meeting Date" },
+    { key: "contractDate", label: "Contract Signed Date" },
   ];
   const DEFAULT_VISIBLE = ["contact", "program", "source", "stage", "priority", "assigned", "createdAt"];
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
@@ -228,9 +241,9 @@ export default function LeadsList() {
     notes: "", budgetRange: "",
   });
 
-  // ── Meta forms for filter dropdown ────────────────────────────────────────
-  // listMetaForms requires an integrationId — skip it in the leads list context
-  const metaForms: { id: string; name: string }[] = [];
+  // ── Meta attribution filter options ───────────────────────────────────────
+  const { data: metaFilterOptions } = trpc.leads.metaFilterOptions.useQuery();
+  const metaForms = metaFilterOptions?.forms ?? [];
 
   // ── Build query filters ───────────────────────────────────────────────────
   const filters = useMemo(() => ({
@@ -241,6 +254,10 @@ export default function LeadsList() {
     assignedTo: assignedFilter !== "all" ? assignedFilter : undefined,
     metaFormId: metaFormFilter !== "all" ? metaFormFilter : undefined,
     metaCampaign: campaignFilter || undefined,
+    metaAdset: metaAdsetFilter !== "all" ? metaAdsetFilter : undefined,
+    metaAd: metaAdFilter !== "all" ? metaAdFilter : undefined,
+    metaSyncStatus: metaSyncStatusFilter !== "all" ? metaSyncStatusFilter : undefined,
+    metaEventStatus: metaEventStatusFilter !== "all" ? metaEventStatusFilter : undefined,
     dateFrom: createdFrom ? new Date(createdFrom).getTime() : undefined,
     dateTo: createdTo ? new Date(createdTo + "T23:59:59").getTime() : undefined,
     lastActivityFrom: lastActivityFrom ? new Date(lastActivityFrom).getTime() : undefined,
@@ -248,24 +265,26 @@ export default function LeadsList() {
     page,
     pageSize,
   }), [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter,
-    campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo, page, pageSize]);
+    campaignFilter, metaAdsetFilter, metaAdFilter, metaSyncStatusFilter, metaEventStatusFilter,
+    createdFrom, createdTo, lastActivityFrom, lastActivityTo, page, pageSize]);
 
   // Reset page and selection when non-page filters change
   useEffect(() => {
-    const key = JSON.stringify({ debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo });
+    const key = JSON.stringify({ debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, metaAdsetFilter, metaAdFilter, metaSyncStatusFilter, metaEventStatusFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo });
     if (prevFiltersRef.current && prevFiltersRef.current !== key) {
       setPage(1);
       setSelectedIds(new Set());
       setAllPagesSelected(false);
     }
     prevFiltersRef.current = key;
-  }, [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
+  }, [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, metaAdsetFilter, metaAdFilter, metaSyncStatusFilter, metaEventStatusFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
 
-  const hasActiveFilters = stageFilter !== "all" || sourceFilter !== "all" || programFilter !== "all" || assignedFilter !== "all" || metaFormFilter !== "all" || !!campaignFilter || createdFrom || createdTo || lastActivityFrom || lastActivityTo;
+  const hasActiveFilters = stageFilter !== "all" || sourceFilter !== "all" || programFilter !== "all" || assignedFilter !== "all" || metaFormFilter !== "all" || !!campaignFilter || metaAdsetFilter !== "all" || metaAdFilter !== "all" || metaSyncStatusFilter !== "all" || metaEventStatusFilter !== "all" || createdFrom || createdTo || lastActivityFrom || lastActivityTo;
 
   function clearAllFilters() {
     setStageFilter("all"); setSourceFilter("all"); setProgramFilter("all"); setAssignedFilter("all");
     setMetaFormFilter("all"); setCampaignFilter("");
+    setMetaAdsetFilter("all"); setMetaAdFilter("all"); setMetaSyncStatusFilter("all"); setMetaEventStatusFilter("all");
     setCreatedFrom(""); setCreatedTo(""); setLastActivityFrom(""); setLastActivityTo("");
   }
 
@@ -564,7 +583,7 @@ export default function LeadsList() {
           >
             <Filter className="w-3.5 h-3.5" />
             More Filters
-            {(createdFrom || createdTo || lastActivityFrom || lastActivityTo || activityTypeFilter.length > 0) && (
+            {(createdFrom || createdTo || lastActivityFrom || lastActivityTo || activityTypeFilter.length > 0 || campaignFilter || metaAdsetFilter !== "all" || metaAdFilter !== "all" || metaSyncStatusFilter !== "all" || metaEventStatusFilter !== "all") && (
               <span className="w-2 h-2 rounded-full bg-primary-foreground" />
             )}
           </Button>
@@ -705,6 +724,46 @@ export default function LeadsList() {
                 </div>
               </div>
             </div>
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Meta Attribution & CRM Events</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+                <Select value={campaignFilter || "all"} onValueChange={value => setCampaignFilter(value === "all" ? "" : value)}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Campaign" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Campaigns</SelectItem>
+                    {(metaFilterOptions?.campaigns ?? []).map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={metaAdsetFilter} onValueChange={setMetaAdsetFilter}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Ad Set" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Ad Sets</SelectItem>
+                    {(metaFilterOptions?.adsets ?? []).map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={metaAdFilter} onValueChange={setMetaAdFilter}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Ad" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Ads</SelectItem>
+                    {(metaFilterOptions?.ads ?? []).map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={metaSyncStatusFilter} onValueChange={setMetaSyncStatusFilter}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Sync Status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sync Statuses</SelectItem>
+                    {['pending', 'sent', 'retrying', 'failed', 'manual_review'].map(value => <SelectItem key={value} value={value}>{value.replace('_', ' ')}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={metaEventStatusFilter} onValueChange={setMetaEventStatusFilter}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Event Status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Event Statuses</SelectItem>
+                    {['pending', 'sent', 'retrying', 'failed', 'dead_letter', 'manual_review'].map(value => <SelectItem key={value} value={value}>{value.replace('_', ' ')}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             {/* Activity type multi-select */}
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
@@ -802,6 +861,14 @@ export default function LeadsList() {
                 {col("createdAt") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Created</th>}
                 {col("budget") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Budget</th>}
                 {col("lastActivity") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Last Activity</th>}
+                {col("metaCampaign") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Meta Campaign</th>}
+                {col("metaAdset") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Meta Ad Set</th>}
+                {col("metaAd") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Meta Ad</th>}
+                {col("metaForm") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Meta Form</th>}
+                {col("metaSync") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Meta Sync</th>}
+                {col("metaLeadCoverage") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Lead ID</th>}
+                {col("meetingDate") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Meeting</th>}
+                {col("contractDate") && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Signed</th>}
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -892,6 +959,14 @@ export default function LeadsList() {
                         </a>
                       </td>
                     )}
+                    {col("metaCampaign") && <td className="px-4 py-3 text-xs text-muted-foreground min-w-48"><div>{lead.metaCampaign || "—"}</div>{lead.metaCampaignId && <code className="text-[10px]">{lead.metaCampaignId}</code>}</td>}
+                    {col("metaAdset") && <td className="px-4 py-3 text-xs text-muted-foreground min-w-44"><div>{lead.metaAdset || "—"}</div>{lead.metaAdsetId && <code className="text-[10px]">{lead.metaAdsetId}</code>}</td>}
+                    {col("metaAd") && <td className="px-4 py-3 text-xs text-muted-foreground min-w-44"><div>{lead.metaAd || "—"}</div>{lead.metaAdId && <code className="text-[10px]">{lead.metaAdId}</code>}</td>}
+                    {col("metaForm") && <td className="px-4 py-3 text-xs text-muted-foreground min-w-40"><div>{lead.metaFormName || "—"}</div>{lead.metaFormId && <code className="text-[10px]">{lead.metaFormId}</code>}</td>}
+                    {col("metaSync") && <td className="px-4 py-3 text-xs"><Badge variant="outline">{lead.metaSyncStatus || "—"}</Badge></td>}
+                    {col("metaLeadCoverage") && <td className="px-4 py-3 text-xs"><Badge variant={lead.metaLeadId ? "default" : "secondary"}>{lead.metaLeadId ? "Covered" : "Missing"}</Badge></td>}
+                    {col("meetingDate") && <td className="px-4 py-3 text-xs text-muted-foreground">{lead.consultationBookedDate ? new Date(lead.consultationBookedDate).toLocaleDateString() : "—"}</td>}
+                    {col("contractDate") && <td className="px-4 py-3 text-xs text-muted-foreground">{lead.contractSignedDate ? new Date(lead.contractSignedDate).toLocaleDateString() : "—"}</td>}
                   </tr>
                 );
               })}

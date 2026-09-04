@@ -16,7 +16,6 @@ import path from "path";
 import { startReminderScheduler } from "../reminderScheduler";
 import { startMonthlyReportScheduler } from "../monthlyReportScheduler";
 import { startRateScheduler } from "../rateScheduler";
-import { startMetaLeadSyncScheduler } from "../metaLeadSyncScheduler";
 import { startWeeklyBackupScheduler } from "../weeklyBackupScheduler";
 import rateLimit from "express-rate-limit";
 
@@ -173,6 +172,11 @@ async function startServer() {
     await handleManusCouncilWebhook(req, res);
   });
 
+  // Meta Lead Ads signatures must be validated against the untouched body.
+  const { verifyMetaWebhook, processMetaLeadEvent } = await import("../metaAdsWebhook");
+  app.get("/api/webhook/meta-leads", verifyMetaWebhook);
+  app.post("/api/webhook/meta-leads", express.raw({ type: "application/json", limit: "2mb" }), processMetaLeadEvent);
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -317,10 +321,6 @@ async function startServer() {
     }
   });
 
-  // Meta Ads Lead Gen Webhook
-  const { verifyMetaWebhook, processMetaLeadEvent } = await import("../metaAdsWebhook");
-  app.get("/api/webhook/meta-leads", verifyMetaWebhook);
-  app.post("/api/webhook/meta-leads", processMetaLeadEvent);
   // Website / Landing Page Lead Webhook
   app.post("/api/webhook/leads/:token", async (req, res) => {
     try {
@@ -372,6 +372,8 @@ async function startServer() {
   // Scheduled Database Backup (Heartbeat cron Mon-Thu 18:00 Cairo + manual trigger)
   const { scheduledDbBackupHandler } = await import("../scheduledDbBackupHandler");
   app.post("/api/scheduled/dbBackup", scheduledDbBackupHandler);
+  const { scheduledMetaReconciliationHandler } = await import("../scheduledMetaReconciliationHandler");
+  app.post("/api/scheduled/metaReconciliation", scheduledMetaReconciliationHandler);
 
   // Backup list endpoint
   app.get("/api/backup/list", (req, res) => {
@@ -705,6 +707,4 @@ startServer().catch(console.error);
 startReminderScheduler();
 startMonthlyReportScheduler();
 startRateScheduler();
-// Start Meta Lead Ads 4-hour sync
-startMetaLeadSyncScheduler();
 startWeeklyBackupScheduler();

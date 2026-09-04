@@ -958,6 +958,21 @@ const contractingRouter = router({
           } catch (e) {
             console.error("[AutoSync] Failed to create financial client/commission:", e);
           }
+          try {
+            const { enqueueMetaConvertedForSignedContract, shouldEnqueueMetaConverted } = await import("./metaLeadsService");
+            if (shouldEnqueueMetaConverted(contract.status, input.status)) {
+              await enqueueMetaConvertedForSignedContract({
+                contractId: contract.id,
+                clientName: contract.clientName,
+                clientPhone: contract.clientMobile,
+                contractValue: Number(contract.contractValue || 0),
+                currency: contract.currency,
+                signedAt: Date.now(),
+              });
+            }
+          } catch (e) {
+            console.error("[MetaCRM] Failed to enqueue signed-contract conversion:", e);
+          }
         }
         return getContractById(input.id);
       }),

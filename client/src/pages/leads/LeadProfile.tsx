@@ -99,6 +99,7 @@ export default function LeadProfile() {
   const { data: notes = [] } = trpc.leads.notes.list.useQuery({ leadId });
   const { data: tasks = [] } = trpc.leads.tasks.list.useQuery({ leadId });
   const { data: presets = [] } = trpc.leadsSettings.listActivityPresets.useQuery();
+  const { data: metaContext } = trpc.leads.metaContext.useQuery({ leadId });
 
   const [newNote, setNewNote] = useState("");
   const [noteImportant, setNoteImportant] = useState(false);
@@ -343,14 +344,82 @@ export default function LeadProfile() {
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               {lead.leadSource && <InfoRow label="Source" value={lead.leadSource} />}
+              {lead.metaFormName && <InfoRow label="Meta Form" value={lead.metaFormName} />}
               {lead.metaCampaign && <InfoRow label="Campaign" value={lead.metaCampaign} />}
               {lead.metaAdset && <InfoRow label="Ad Set" value={lead.metaAdset} />}
               {lead.metaAd && <InfoRow label="Ad" value={lead.metaAd} />}
+              {lead.metaLeadId && <InfoRow label="Meta Lead ID" value={lead.metaLeadId} />}
+              {lead.metaPageId && <InfoRow label="Meta Page ID" value={lead.metaPageId} />}
+              {lead.metaFormId && <InfoRow label="Meta Form ID" value={lead.metaFormId} />}
+              {lead.metaCampaignId && <InfoRow label="Campaign ID" value={lead.metaCampaignId} />}
+              {lead.metaAdsetId && <InfoRow label="Ad Set ID" value={lead.metaAdsetId} />}
+              {lead.metaAdId && <InfoRow label="Ad ID" value={lead.metaAdId} />}
+              {lead.metaSyncStatus && <InfoRow label="Meta Sync" value={lead.metaSyncStatus.replace("_", " ")} highlight={lead.metaSyncStatus === "failed" || lead.metaSyncStatus === "manual_review"} />}
               {lead.assignedTo && <InfoRow label="Assigned To" value={lead.assignedTo} />}
               {lead.lastContactAt && <InfoRow label="Last Contact" value={new Date(lead.lastContactAt).toLocaleDateString()} />}
               {lead.leadScore !== undefined && lead.leadScore !== null && <InfoRow label="Lead Score" value={String(lead.leadScore)} />}
+              {lead.metaSyncError && <p className="text-xs text-red-600 break-words">{lead.metaSyncError}</p>}
             </CardContent>
           </Card>
+
+          {(metaContext?.attributions.length ?? 0) > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Meta Inquiry History</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {metaContext!.attributions.map(attribution => (
+                  <div key={attribution.id} className="border-b border-border/60 last:border-0 pb-3 last:pb-0 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{attribution.metaCampaignName || attribution.metaFormName || "Meta Instant Form"}</span>
+                      {attribution.isPrimary && <Badge variant="secondary">Primary</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{new Date(attribution.metaLeadCreatedAt).toLocaleString()}</p>
+                    {attribution.metaFormName && <p className="text-xs">Form: {attribution.metaFormName}</p>}
+                    {attribution.metaAdSetName && <p className="text-xs">Ad Set: {attribution.metaAdSetName}</p>}
+                    {attribution.metaAdName && <p className="text-xs">Ad: {attribution.metaAdName}</p>}
+                    {attribution.program && <p className="text-xs">Program: {attribution.program}</p>}
+                    <p className="text-[11px] text-muted-foreground break-all">Lead ID: {attribution.metaLeadId}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {(lead.leadSource?.toLowerCase().includes("meta") || lead.leadSource?.toLowerCase().includes("facebook"))
+            && (metaContext?.attributions.length ?? 0) === 0 && (
+            <Card className="border-amber-300 bg-amber-50/60">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold text-amber-950 uppercase tracking-wide">Meta Inquiry History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-amber-900">This Lead was imported by the legacy Meta sync before durable Meta Lead IDs and immutable inquiry history were enabled. Its existing Form, Campaign, Ad Set, and Ad fields remain visible above; future signed webhook inquiries will be recorded here without creating a duplicate Lead.</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {(metaContext?.events.length ?? 0) > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Meta CRM Events</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {metaContext!.events.map(event => (
+                  <div key={event.id} className="border-b border-border/60 last:border-0 pb-3 last:pb-0 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{event.eventName}</span>
+                      <Badge variant={event.status === "sent" ? "default" : event.status === "dead_letter" || event.status === "failed" ? "destructive" : "secondary"}>
+                        {event.status.replace("_", " ")}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{new Date(event.eventTime * 1000).toLocaleString()} · {event.attempts} attempt{event.attempts === 1 ? "" : "s"}</p>
+                    <p className="text-[11px] text-muted-foreground break-all">Event ID: {event.eventId}</p>
+                    {event.lastError && <p className="text-xs text-red-600 break-words">{event.lastError}</p>}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* GDPR & Consent */}
           {(lead.gdprConsent || lead.dataSharingConsent || lead.marketingOptIn || lead.optOutSignal) && (

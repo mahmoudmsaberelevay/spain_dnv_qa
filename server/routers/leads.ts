@@ -2,8 +2,8 @@ import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getDb } from "../db";
-import { leadsReportPresets } from "../../drizzle/schema";
-import { eq, desc } from "drizzle-orm";
+import { leadMetaAttributions, leads, leadsReportPresets, metaCrmEventLog } from "../../drizzle/schema";
+import { eq, desc, sql } from "drizzle-orm";
 import {
   createLead, getLeadById, listLeads, updateLead, deleteLead, checkDuplicate,
   addLeadActivity, getLeadActivities,
@@ -20,7 +20,7 @@ import { listActivityPresets, listLeadIntegrations } from "../leadsSettingsDb";
 import { syncOneIntegrationById } from "../metaLeadSync";
 import { writeAuditLog, auditCtxFromTrpc } from "../auditLog";
 import { sendLeadAssignmentNotification, TEAM_EMAIL_MAP } from "../emailService";
-import { sendCapiEvent, stageToCapiEvent, extractCapiParamsFromRequest } from "../metaCapi";
+import { enqueueMappedMetaCrmEvent, normalizeMetaEmail, normalizeMetaPhone } from "../metaLeadsService";
 
 const STAGES = [
   "fresh", "contacted", "qualified", "prospect", "client", "dormant", "resubmit",
@@ -80,6 +80,8 @@ export const leadsRouter = router({
       const id = await createLead({
         ...input,
         email: input.email || undefined,
+        normalizedEmail: normalizeMetaEmail(input.email),
+        normalizedPhone: normalizeMetaPhone(input.phone || input.whatsapp),
         stage: importedStage,
         leadScore: 0,
       });
@@ -97,24 +99,6 @@ export const leadsRouter = router({
           description: `Assigned to ${input.assignedTo}`,
         });
       }
-      // Fire CAPI Lead event (non-blocking)
-      // Split fullName into first/last for better Meta event match quality
-      const _nameParts = (input.fullName || "").trim().split(/\s+/);
-      const _capiFirstName = _nameParts[0] || undefined;
-      const _capiLastName = _nameParts.length > 1 ? _nameParts.slice(1).join(" ") : undefined;
-      // Extract browser-side params (fbc, fbp, IP, user-agent) using Meta param builder SDK
-      const _capiParams = extractCapiParamsFromRequest(ctx.req);
-      sendCapiEvent({
-        eventName: "Lead",
-        leadId: id,
-        email: input.email || undefined,
-        phone: input.phone || input.whatsapp || undefined,
-        firstName: _capiFirstName,
-        lastName: _capiLastName,
-        country: input.nationality || undefined,
-        city: input.countryOfResidence || undefined,
-        ..._capiParams,
-      }).catch(() => {});
       return { id };
     }),
 
@@ -125,6 +109,50 @@ export const leadsRouter = router({
       if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
       return lead;
     }),
+
+  metaContext: protectedProcedure
+    .input(z.object({ leadId: z.number() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+      const [attributions, events] = await Promise.all([
+        db.select().from(leadMetaAttributions)
+          .where(eq(leadMetaAttributions.leadId, input.leadId))
+          .orderBy(desc(leadMetaAttributions.metaLeadCreatedAt)),
+        db.select().from(metaCrmEventLog)
+          .where(eq(metaCrmEventLog.leadId, input.leadId))
+          .orderBy(desc(metaCrmEventLog.eventTime)),
+      ]);
+      return { attributions, events };
+    }),
+
+  metaFilterOptions: protectedProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+    const [forms, campaigns, adsets, ads, programs, consultants] = await Promise.all([
+      db.selectDistinct({ id: leads.metaFormId, name: leads.metaFormName }).from(leads)
+        .where(sql`${leads.metaFormId} IS NOT NULL`),
+      db.selectDistinct({ value: leads.metaCampaign }).from(leads)
+        .where(sql`${leads.metaCampaign} IS NOT NULL`),
+      db.selectDistinct({ value: leads.metaAdset }).from(leads)
+        .where(sql`${leads.metaAdset} IS NOT NULL`),
+      db.selectDistinct({ value: leads.metaAd }).from(leads)
+        .where(sql`${leads.metaAd} IS NOT NULL`),
+      db.selectDistinct({ value: leads.interestedProgram }).from(leads)
+        .where(sql`${leads.interestedProgram} IS NOT NULL`),
+      db.selectDistinct({ value: leads.assignedTo }).from(leads)
+        .where(sql`${leads.assignedTo} IS NOT NULL`),
+    ]);
+    return {
+      forms: forms.filter(item => item.id).map(item => ({ id: item.id!, name: item.name || item.id! })),
+      campaigns: campaigns.map(item => item.value).filter((value): value is string => Boolean(value)),
+      adsets: adsets.map(item => item.value).filter((value): value is string => Boolean(value)),
+      ads: ads.map(item => item.value).filter((value): value is string => Boolean(value)),
+      programs: programs.map(item => item.value).filter((value): value is string => Boolean(value)),
+      consultants: consultants.map(item => item.value).filter((value): value is string => Boolean(value)),
+      stages: [...STAGES],
+    };
+  }),
 
   list: protectedProcedure
     .input(z.object({
@@ -140,6 +168,10 @@ export const leadsRouter = router({
       lastActivityTo: z.number().optional(),
       metaFormId: z.string().optional(),
       metaCampaign: z.string().optional(),
+      metaAdset: z.string().optional(),
+      metaAd: z.string().optional(),
+      metaSyncStatus: z.string().optional(),
+      metaEventStatus: z.string().optional(),
       page: z.number().int().min(1).optional(),
       pageSize: z.number().int().min(10).max(300).optional(),
     }).optional())
@@ -162,6 +194,10 @@ export const leadsRouter = router({
       lastActivityTo: z.number().optional(),
       metaFormId: z.string().optional(),
       metaCampaign: z.string().optional(),
+      metaAdset: z.string().optional(),
+      metaAd: z.string().optional(),
+      metaSyncStatus: z.string().optional(),
+      metaEventStatus: z.string().optional(),
     }).optional())
     .query(async ({ input }) => {
       const result = await listLeads({ ...input, page: 1, pageSize: 10000 });
@@ -212,7 +248,13 @@ export const leadsRouter = router({
       const { id, ...data } = input;
       const lead = await getLeadById(id);
       if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
-      await updateLead(id, data);
+      await updateLead(id, {
+        ...data,
+        ...(input.email !== undefined ? { normalizedEmail: normalizeMetaEmail(input.email) } : {}),
+        ...(input.phone !== undefined || input.whatsapp !== undefined
+          ? { normalizedPhone: normalizeMetaPhone(input.phone || input.whatsapp || lead.phone || lead.whatsapp) }
+          : {}),
+      });
       await addLeadActivity({
         leadId: id,
         userId: ctx.user.id,
@@ -247,28 +289,14 @@ export const leadsRouter = router({
         activityType: "stage_changed",
         description: `Stage changed from "${prevStage}" to "${input.stage}" by ${ctx.user.name ?? "system"}`,
       });
-      // Fire CAPI event for the new stage (non-blocking)
-      const capiEventName = stageToCapiEvent(input.stage);
-      if (capiEventName) {
-        const _stageNameParts = (lead.fullName || "").trim().split(/\s+/);
-        const _stageCapi = extractCapiParamsFromRequest(ctx.req);
-        sendCapiEvent({
-          eventName: capiEventName,
-          customEventName: capiEventName === "CustomEvent" ? input.stage : undefined,
-          leadId: input.id,
-          email: lead.email || undefined,
-          phone: lead.phone || lead.whatsapp || undefined,
-          firstName: _stageNameParts[0] || undefined,
-          lastName: _stageNameParts.length > 1 ? _stageNameParts.slice(1).join(" ") : undefined,
-          country: lead.nationality || undefined,
-          city: (lead as any).countryOfResidence || undefined,
-          // Use stored fbc/fbp from DB if available, otherwise from current request
-          fbc: lead.fbcCookie || _stageCapi.fbc,
-          fbp: lead.fbpCookie || _stageCapi.fbp,
-          clientIpAddress: _stageCapi.clientIpAddress,
-          clientUserAgent: _stageCapi.clientUserAgent,
-        }).catch(() => {});
-      }
+      await enqueueMappedMetaCrmEvent({
+        leadId: input.id,
+        mappingValue: input.stage,
+        eventTime: Date.now(),
+        sourceType: "lead_stage",
+        sourceId: input.stage,
+        sourceStage: input.stage,
+      });
       return { success: true };
     }),
 
@@ -401,8 +429,19 @@ export const leadsRouter = router({
         description: z.string(),
       }))
       .mutation(async ({ ctx, input }) => {
+        const eventTime = Date.now();
         await addLeadActivity({ ...input, userId: ctx.user.id });
-        await updateLead(input.leadId, { lastContactAt: Date.now() });
+        await updateLead(input.leadId, { lastContactAt: eventTime });
+        if (input.activityType === "meeting_scheduled") {
+          await enqueueMappedMetaCrmEvent({
+            leadId: input.leadId,
+            mappingValue: "activity:meeting_scheduled",
+            eventTime,
+            sourceType: "lead_activity",
+            sourceId: "meeting_scheduled",
+            sourceStage: "meeting_scheduled",
+          });
+        }
         return { success: true };
       }),
   }),
@@ -529,22 +568,15 @@ export const leadsRouter = router({
     .mutation(async ({ input, ctx }) => {
       const updated = await bulkUpdateLeadsStage(input.ids, input.stage);
       await writeAuditLog(auditCtxFromTrpc(ctx), "bulk_update", "leads", undefined, `Stage → ${input.stage} for ${updated} leads: [${input.ids.join(",")}]`);
-      // Fire CAPI events for each lead (non-blocking)
-      const capiEventName = stageToCapiEvent(input.stage);
-      if (capiEventName) {
-        Promise.all(input.ids.map(async (leadId) => {
-          const lead = await getLeadById(leadId);
-          if (!lead) return;
-          return sendCapiEvent({
-            eventName: capiEventName,
-            customEventName: capiEventName === "CustomEvent" ? input.stage : undefined,
-            leadId,
-            email: lead.email || undefined,
-            phone: lead.phone || lead.whatsapp || undefined,
-            country: lead.nationality || undefined,
-          });
-        })).catch(() => {});
-      }
+      const eventTime = Date.now();
+      await Promise.all(input.ids.map(leadId => enqueueMappedMetaCrmEvent({
+        leadId,
+        mappingValue: input.stage,
+        eventTime,
+        sourceType: "lead_stage",
+        sourceId: input.stage,
+        sourceStage: input.stage,
+      })));
       return { updated };
     }),
 

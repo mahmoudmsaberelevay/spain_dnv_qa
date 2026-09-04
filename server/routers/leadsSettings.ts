@@ -1,5 +1,14 @@
 import { z } from "zod";
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, protectedProcedure, adminProcedure } from "../_core/trpc";
+import { getDb } from "../db";
+import { leadIntegrations, leads, metaCrmEventLog, metaIntegrationMappings, metaWebhookInbox } from "../../drizzle/schema";
+import { and, count, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
+import {
+  getMetaIntegrationHealth,
+  retryMetaCrmEvent,
+  runMetaReconciliation,
+} from "../metaLeadsService";
 import {
   listLeadSources, createLeadSource, updateLeadSource, deleteLeadSource,
   listLeadIntegrations, createLeadIntegration, updateLeadIntegration,
@@ -11,6 +20,21 @@ import {
 } from "../leadsSettingsDb";
 
 const ACTIVITY_TYPES = ["call", "whatsapp", "sms", "email", "meeting", "note", "stage_change", "email_sent", "other"] as const;
+
+const META_SECRET_CONFIG_KEYS = new Set([
+  "access_token",
+  "page_access_token",
+  "app_secret",
+  "client_secret",
+  "capi_token",
+  "conversions_api_token",
+  "verify_token",
+  "webhook_verify_token",
+]);
+
+function scrubMetaConfig(config: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(config).filter(([key]) => !META_SECRET_CONFIG_KEYS.has(key.toLowerCase())));
+}
 
 export const leadsSettingsRouter = router({
 
@@ -118,7 +142,25 @@ export const leadsSettingsRouter = router({
 
   // ─── Integrations ──────────────────────────────────────────────────────────
   listIntegrations: protectedProcedure.query(async () => {
-    return listLeadIntegrations();
+    const integrations = await listLeadIntegrations();
+    return integrations.map(integration => {
+      let config: Record<string, unknown> = {};
+      try { config = integration.config ? JSON.parse(integration.config) : {}; } catch { config = {}; }
+      const hasMetaPageAccessToken = integration.type === "meta" && Boolean(
+        process.env.META_PAGE_ACCESS_TOKEN || config.page_access_token || config.access_token,
+      );
+      const hasMetaWebhookVerifyToken = integration.type === "meta" && Boolean(
+        process.env.META_WEBHOOK_VERIFY_TOKEN || config.verify_token || integration.webhookToken,
+      );
+      const publicConfig = integration.type === "meta" ? scrubMetaConfig(config) : config;
+      return {
+        ...integration,
+        webhookToken: integration.type === "meta" ? "" : integration.webhookToken,
+        config: JSON.stringify(publicConfig),
+        hasMetaPageAccessToken,
+        hasMetaWebhookVerifyToken,
+      };
+    });
   }),
 
   createIntegration: protectedProcedure
@@ -127,8 +169,14 @@ export const leadsSettingsRouter = router({
       name: z.string().min(1),
       config: z.record(z.string(), z.unknown()).optional(),
     }))
-    .mutation(async ({ input }) => {
-      return createLeadIntegration(input);
+    .mutation(async ({ ctx, input }) => {
+      if (input.type === "meta" && ctx.user.role !== "admin") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only administrators can configure Meta integrations" });
+      }
+      const config = input.type === "meta"
+        ? scrubMetaConfig({ ...(input.config || {}) })
+        : { ...(input.config || {}) };
+      return createLeadIntegration({ ...input, config });
     }),
 
   updateIntegration: protectedProcedure
@@ -138,22 +186,52 @@ export const leadsSettingsRouter = router({
       config: z.record(z.string(), z.unknown()).optional(),
       isActive: z.boolean().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database unavailable");
+      const [existing] = await db.select({
+        type: leadIntegrations.type,
+        config: leadIntegrations.config,
+      }).from(leadIntegrations).where(eq(leadIntegrations.id, input.id)).limit(1);
+      if (existing?.type === "meta" && ctx.user.role !== "admin") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only administrators can configure Meta integrations" });
+      }
       const { id, ...data } = input;
+      if (data.config && existing?.type === "meta") {
+        let existingConfig: Record<string, unknown> = {};
+        try { existingConfig = existing.config ? JSON.parse(existing.config) : {}; } catch { existingConfig = {}; }
+        data.config = { ...existingConfig, ...scrubMetaConfig(data.config) };
+      }
       await updateLeadIntegration(id, data);
       return { success: true };
     }),
 
   deleteIntegration: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database unavailable");
+      const [existing] = await db.select({ type: leadIntegrations.type }).from(leadIntegrations).where(eq(leadIntegrations.id, input.id)).limit(1);
+      if (existing?.type === "meta" && ctx.user.role !== "admin") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only administrators can configure Meta integrations" });
+      }
       await deleteLeadIntegration(input.id);
       return { success: true };
     }),
 
   regenerateToken: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database unavailable");
+      const [existing] = await db.select({ type: leadIntegrations.type })
+        .from(leadIntegrations)
+        .where(eq(leadIntegrations.id, input.id))
+        .limit(1);
+      if (existing?.type === "meta") {
+        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+        throw new TRPCError({ code: "FORBIDDEN", message: "Meta webhook verification credentials are managed server-side" });
+      }
       const token = await regenerateWebhookToken(input.id);
       return { webhookToken: token };
     }),
@@ -190,7 +268,7 @@ export const leadsSettingsRouter = router({
   }),
 
   // ─── Meta Forms Management ─────────────────────────────────────────────────────
-  listMetaForms: protectedProcedure
+  listMetaForms: adminProcedure
     .input(z.object({ integrationId: z.number() }))
     .query(async ({ input }) => {
       const db = await (await import("../db")).getDb();
@@ -200,11 +278,14 @@ export const leadsSettingsRouter = router({
       const [integration] = await db.select().from(leadIntegrations).where(eq(leadIntegrations.id, input.integrationId)).limit(1);
       if (!integration) throw new Error("Integration not found");
       const config = integration.config ? JSON.parse(integration.config) : {};
-      const { page_access_token: accessToken, page_id: pageId, excluded_forms: excludedFormsRaw } = config;
+      const accessToken = process.env.META_PAGE_ACCESS_TOKEN || config.page_access_token || config.access_token;
+      const pageId = process.env.META_PAGE_ID || config.page_id;
+      const excludedFormsRaw = config.excluded_forms;
       if (!accessToken || !pageId) throw new Error("Integration not configured with token and page ID");
       const excludedForms: string[] = Array.isArray(excludedFormsRaw) ? excludedFormsRaw : [];
       const params = new URLSearchParams({ access_token: accessToken, fields: "id,name,status,leads_count", limit: "100" });
-      const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/leadgen_forms?${params.toString()}`);
+      const graphVersion = process.env.META_GRAPH_API_VERSION || "v26.0";
+      const res = await fetch(`https://graph.facebook.com/${graphVersion}/${pageId}/leadgen_forms?${params.toString()}`);
       const json = await res.json() as { data?: Array<{ id: string; name: string; status: string; leads_count?: number }>; error?: { message: string } };
       if (json.error) throw new Error(json.error.message);
       const forms = (json.data ?? []).map(f => ({
@@ -217,7 +298,7 @@ export const leadsSettingsRouter = router({
       return { forms, lastSyncAt: integration.lastSyncAt, lastSyncCount: integration.lastSyncCount };
     }),
 
-  toggleMetaForm: protectedProcedure
+  toggleMetaForm: adminProcedure
     .input(z.object({ integrationId: z.number(), formId: z.string(), connected: z.boolean() }))
     .mutation(async ({ input }) => {
       const db = await (await import("../db")).getDb();
@@ -239,7 +320,7 @@ export const leadsSettingsRouter = router({
     }),
 
   // ─── Per-Form Lead Source Override ──────────────────────────────────────────
-  setFormLeadSource: protectedProcedure
+  setFormLeadSource: adminProcedure
     .input(z.object({ integrationId: z.number(), formId: z.string(), leadSource: z.string() }))
     .mutation(async ({ input }) => {
       const db = await (await import("../db")).getDb();
@@ -261,7 +342,7 @@ export const leadsSettingsRouter = router({
     }),
 
   // ─── Meta Sync ───────────────────────────────────────────────────────────────
-  syncMeta: protectedProcedure   .input(z.object({ integrationId: z.number().optional() }))
+  syncMeta: adminProcedure   .input(z.object({ integrationId: z.number().optional() }))
     .mutation(async ({ input }) => {
       const { syncAllMetaIntegrations, syncOneIntegrationById } = await import("../metaLeadSync");
       if (input.integrationId) {
@@ -271,4 +352,176 @@ export const leadsSettingsRouter = router({
       const results = await syncAllMetaIntegrations();
       return { results };
     }),
+
+  metaAdmin: router({
+    health: adminProcedure.query(async () => getMetaIntegrationHealth()),
+
+    listMappings: adminProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) throw new Error("Database unavailable");
+      return db.select().from(metaIntegrationMappings)
+        .orderBy(metaIntegrationMappings.mappingType, metaIntegrationMappings.priority, metaIntegrationMappings.matchName);
+    }),
+
+    createMapping: adminProcedure
+      .input(z.object({
+        mappingKey: z.string().min(1).max(255),
+        mappingType: z.enum(["form", "campaign", "adset", "ad", "page", "crm_stage"]),
+        matchValue: z.string().min(1).max(255),
+        matchName: z.string().max(255).optional(),
+        program: z.string().max(150).optional(),
+        outputValue: z.string().max(255).optional(),
+        priority: z.number().int().min(0).max(10000).default(100),
+        isActive: z.boolean().default(true),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database unavailable");
+        const timestamp = Date.now();
+        await db.insert(metaIntegrationMappings).values({
+          ...input,
+          matchName: input.matchName || null,
+          program: input.program || null,
+          outputValue: input.outputValue || null,
+          createdBy: ctx.user.id,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        });
+        return { success: true };
+      }),
+
+    updateMapping: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        matchName: z.string().max(255).nullable().optional(),
+        program: z.string().max(150).nullable().optional(),
+        outputValue: z.string().max(255).nullable().optional(),
+        priority: z.number().int().min(0).max(10000).optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database unavailable");
+        const { id, ...updates } = input;
+        await db.update(metaIntegrationMappings).set({ ...updates, updatedAt: Date.now() }).where(eq(metaIntegrationMappings.id, id));
+        return { success: true };
+      }),
+
+    deleteMapping: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database unavailable");
+        await db.delete(metaIntegrationMappings).where(eq(metaIntegrationMappings.id, input.id));
+        return { success: true };
+      }),
+
+    diagnostics: adminProcedure
+      .input(z.object({
+        dateFrom: z.number().optional(),
+        dateTo: z.number().optional(),
+        program: z.string().optional(),
+        campaign: z.string().optional(),
+        adset: z.string().optional(),
+        ad: z.string().optional(),
+        formId: z.string().optional(),
+        consultant: z.string().optional(),
+        leadStatus: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database unavailable");
+        const eventConditions = [];
+        const leadConditions = [];
+        if (input?.dateFrom) {
+          eventConditions.push(gte(metaCrmEventLog.eventTime, Math.floor(input.dateFrom / 1000)));
+          leadConditions.push(gte(leads.createdAt, input.dateFrom));
+        }
+        if (input?.dateTo) {
+          eventConditions.push(lte(metaCrmEventLog.eventTime, Math.floor(input.dateTo / 1000)));
+          leadConditions.push(lte(leads.createdAt, input.dateTo));
+        }
+        if (input?.program) leadConditions.push(eq(leads.interestedProgram, input.program));
+        if (input?.campaign) leadConditions.push(eq(leads.metaCampaign, input.campaign));
+        if (input?.adset) leadConditions.push(eq(leads.metaAdset, input.adset));
+        if (input?.ad) leadConditions.push(eq(leads.metaAd, input.ad));
+        if (input?.formId) leadConditions.push(eq(leads.metaFormId, input.formId));
+        if (input?.consultant) leadConditions.push(eq(leads.assignedTo, input.consultant));
+        if (input?.leadStatus) leadConditions.push(sql`${leads.stage} = ${input.leadStatus}`);
+        const eventWhere = eventConditions.length ? and(...eventConditions) : undefined;
+        const leadWhere = leadConditions.length ? and(...leadConditions) : undefined;
+        const eventWithLeadWhere = and(eventWhere, leadWhere);
+        const failedWhere = and(eventWithLeadWhere, sql`${metaCrmEventLog.status} IN ('failed','dead_letter','manual_review')`);
+        const [eventByStatus, eventByName, inboxByStatus, recentFailures, leadTotals, eventTotals] = await Promise.all([
+          db.select({ status: metaCrmEventLog.status, total: count() }).from(metaCrmEventLog).innerJoin(leads, eq(leads.id, metaCrmEventLog.leadId)).where(eventWithLeadWhere).groupBy(metaCrmEventLog.status),
+          db.select({ eventName: metaCrmEventLog.eventName, total: count() }).from(metaCrmEventLog).innerJoin(leads, eq(leads.id, metaCrmEventLog.leadId)).where(eventWithLeadWhere).groupBy(metaCrmEventLog.eventName),
+          db.select({ status: metaWebhookInbox.status, total: count() }).from(metaWebhookInbox).groupBy(metaWebhookInbox.status),
+          db.select({
+            id: metaCrmEventLog.id,
+            leadId: metaCrmEventLog.leadId,
+            eventName: metaCrmEventLog.eventName,
+            eventTime: metaCrmEventLog.eventTime,
+            eventId: metaCrmEventLog.eventId,
+            status: metaCrmEventLog.status,
+            attempts: metaCrmEventLog.attempts,
+            errorCode: metaCrmEventLog.errorCode,
+            lastError: metaCrmEventLog.lastError,
+            updatedAt: metaCrmEventLog.updatedAt,
+          }).from(metaCrmEventLog).innerJoin(leads, eq(leads.id, metaCrmEventLog.leadId))
+            .where(failedWhere)
+            .orderBy(desc(metaCrmEventLog.updatedAt)).limit(25),
+          db.select({
+            total: count(),
+            metaLeads: sql<number>`SUM(CASE WHEN ${leads.metaLeadId} IS NOT NULL OR EXISTS (SELECT 1 FROM lead_meta_attributions a WHERE a.leadId = ${leads.id}) THEN 1 ELSE 0 END)`,
+            averageWebhookDelaySeconds: sql<number>`AVG(CASE WHEN ${leads.metaLeadCreatedAt} IS NOT NULL AND ${leads.firstReceivedAt} IS NOT NULL THEN (${leads.firstReceivedAt} - ${leads.metaLeadCreatedAt}) / 1000 END)`,
+          }).from(leads).where(and(leadWhere, sql`(${leads.metaLeadId} IS NOT NULL OR EXISTS (SELECT 1 FROM lead_meta_attributions a WHERE a.leadId = ${leads.id}))`)),
+          db.select({
+            total: count(),
+            sent: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'sent' THEN 1 ELSE 0 END)`,
+            covered: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.hasLeadId} OR ${metaCrmEventLog.hasEmailHash} OR ${metaCrmEventLog.hasPhoneHash} THEN 1 ELSE 0 END)`,
+            leadIdCovered: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.hasLeadId} THEN 1 ELSE 0 END)`,
+            emailCovered: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.hasEmailHash} THEN 1 ELSE 0 END)`,
+            phoneCovered: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.hasPhoneHash} THEN 1 ELSE 0 END)`,
+            averageDelaySeconds: sql<number>`AVG(CASE WHEN ${metaCrmEventLog.sentAt} IS NOT NULL THEN (${metaCrmEventLog.sentAt} / 1000) - ${metaCrmEventLog.eventTime} END)`,
+          }).from(metaCrmEventLog).innerJoin(leads, eq(leads.id, metaCrmEventLog.leadId)).where(eventWithLeadWhere),
+        ]);
+        const leadSummary = leadTotals[0];
+        const eventSummary = eventTotals[0];
+        const byName = Object.fromEntries(eventByName.map(row => [row.eventName, Number(row.total || 0)]));
+        const metaLeads = Number(leadSummary?.metaLeads || 0);
+        const qualified = Number(byName["Marketing Qualified Lead"] || 0);
+        const converted = Number(byName.Converted || 0);
+        const eventTotal = Number(eventSummary?.total || 0);
+        return {
+          eventByStatus,
+          eventByName,
+          inboxByStatus,
+          recentFailures,
+          summary: {
+            totalLeads: Number(leadSummary?.total || 0),
+            metaLeads,
+            qualified,
+            converted,
+            qualificationRate: metaLeads ? qualified / metaLeads : 0,
+            meetingToSigningRate: qualified ? converted / qualified : 0,
+            conversionRate: metaLeads ? converted / metaLeads : 0,
+            sendSuccessRate: eventTotal ? Number(eventSummary?.sent || 0) / eventTotal : 0,
+            matchCoverage: eventTotal ? Number(eventSummary?.covered || 0) / eventTotal : 0,
+            leadIdCoverage: eventTotal ? Number(eventSummary?.leadIdCovered || 0) / eventTotal : 0,
+            emailHashCoverage: eventTotal ? Number(eventSummary?.emailCovered || 0) / eventTotal : 0,
+            phoneHashCoverage: eventTotal ? Number(eventSummary?.phoneCovered || 0) / eventTotal : 0,
+            averageWebhookDelaySeconds: Number(leadSummary?.averageWebhookDelaySeconds || 0),
+            averageDelaySeconds: Number(eventSummary?.averageDelaySeconds || 0),
+          },
+        };
+      }),
+
+    runReconciliation: adminProcedure
+      .input(z.object({ limit: z.number().int().min(1).max(500).default(200) }).optional())
+      .mutation(async ({ input }) => runMetaReconciliation({ limit: input?.limit || 200 })),
+
+    retryTestEvent: adminProcedure
+      .input(z.object({ eventLogId: z.number(), testEventCode: z.string().min(1).max(100) }))
+      .mutation(async ({ input }) => retryMetaCrmEvent(input.eventLogId, input.testEventCode)),
+  }),
 });

@@ -1,6 +1,4 @@
 import nodemailer from "nodemailer";
-import { db } from "./db";
-
 // Team email mapping
 export const TEAM_EMAIL_MAP: Record<string, string> = {
   "Mahmoud Saber": "mahmoud.saber@elevay.com",
@@ -26,8 +24,13 @@ const transporter = nodemailer.createTransport({
 // Send email helper
 async function sendEmail(to: string | string[], subject: string, html: string) {
   try {
+    const sender = process.env.SYSTEM_EMAIL_SENDER || process.env.GMAIL_USER || "";
+    if (!sender || sender.toLowerCase().endsWith("@elevay.com")) {
+      console.error("Email send blocked: sender must be a configured non-@elevay.com address");
+      return false;
+    }
     await transporter.sendMail({
-      from: process.env.GMAIL_USER || "noreply@elevay.com",
+      from: sender,
       to: Array.isArray(to) ? to.join(",") : to,
       subject,
       html,
@@ -139,30 +142,85 @@ export async function sendDocReminderToAssignedTeam(
 }
 
 // Lead notifications
-export async function sendLeadAssignmentNotification(leadName: string, assignedTo: string, assignedEmail: string) {
+export async function sendLeadAssignmentNotification(input: {
+  ownerName: string;
+  ownerEmail: string;
+  leadId: number;
+  leadName: string;
+  leadPhone?: string | null;
+  leadProgram?: string | null;
+  origin: string;
+} | string, legacyAssignedTo?: string, legacyAssignedEmail?: string) {
+  const structured = typeof input !== "string";
+  const leadName = structured ? input.leadName : input;
+  const assignedTo = structured ? input.ownerName : (legacyAssignedTo || "Assigned consultant");
+  const assignedEmail = structured ? input.ownerEmail : (legacyAssignedEmail || "");
   const html = `
     <h2>New Lead Assigned</h2>
     <p><strong>Lead:</strong> ${leadName}</p>
     <p><strong>Assigned To:</strong> ${assignedTo}</p>
+    ${structured ? `<p><strong>Phone:</strong> ${input.leadPhone || "Not provided"}</p>` : ""}
+    ${structured ? `<p><strong>Program:</strong> ${input.leadProgram || "Not specified"}</p>` : ""}
+    ${structured ? `<p><a href="${input.origin}/leads/${input.leadId}">Open Lead</a></p>` : ""}
   `;
   return sendEmail(assignedEmail, "New Lead Assigned", html);
 }
 
 // Meta lead sync notifications
-export async function sendLeadSyncSummaryEmail(summary: string) {
+export async function sendLeadSyncSummaryEmail(summary: string | {
+  date: string;
+  totalNew: number;
+  totalSkipped: number;
+  byForm: Array<{ formName: string; newLeads: number; errors: string[] }>;
+  errors: string[];
+}) {
+  const summaryText = typeof summary === "string"
+    ? summary
+    : [
+        `Date: ${summary.date}`,
+        `New leads: ${summary.totalNew}`,
+        `Skipped duplicates: ${summary.totalSkipped}`,
+        ...summary.byForm.map(form => `${form.formName}: ${form.newLeads} new${form.errors.length ? `; ${form.errors.join(" | ")}` : ""}`),
+        ...(summary.errors.length ? [`Errors: ${summary.errors.join(" | ")}`] : []),
+      ].join("\n");
   const html = `
     <h2>Meta Lead Sync Summary</h2>
-    <pre>${summary}</pre>
+    <pre>${summaryText}</pre>
   `;
   return sendEmail(MAHMOUD_EMAILS, "Meta Lead Sync Summary", html);
 }
 
-export async function sendMetaLeadAlert(alertMessage: string) {
+export async function sendMetaLeadAlert(alert: string | {
+  leadName?: string;
+  phone?: string;
+  assignedTo?: string | null;
+  program?: string | null;
+  campaign?: string | null;
+  integrationName?: string;
+  newLeadCount?: number;
+  formNames?: string[];
+  formResults?: Array<{ formName: string; newLeads: number; errors?: string[] }>;
+}) {
+  const isLegacyMessage = typeof alert === "string";
+  const recipients = new Set(MAHMOUD_EMAILS);
+  if (!isLegacyMessage && alert.assignedTo && TEAM_EMAIL_MAP[alert.assignedTo]) {
+    recipients.add(TEAM_EMAIL_MAP[alert.assignedTo]);
+  }
   const html = `
     <h2>Meta Lead Alert</h2>
-    <p>${alertMessage}</p>
+    ${isLegacyMessage ? `<p>${alert}</p>` : `
+      ${alert.leadName ? `<p><strong>Lead:</strong> ${alert.leadName}</p>` : ""}
+      ${alert.phone ? `<p><strong>Phone:</strong> ${alert.phone}</p>` : ""}
+      <p><strong>Assigned consultant:</strong> ${alert.assignedTo || "Unassigned"}</p>
+      <p><strong>Program:</strong> ${alert.program || "Not mapped"}</p>
+      <p><strong>Campaign:</strong> ${alert.campaign || "Not available"}</p>
+      ${alert.integrationName ? `<p><strong>Integration:</strong> ${alert.integrationName}</p>` : ""}
+      ${typeof alert.newLeadCount === "number" ? `<p><strong>New leads:</strong> ${alert.newLeadCount}</p>` : ""}
+      ${alert.formNames?.length ? `<p><strong>Forms:</strong> ${alert.formNames.join(", ")}</p>` : ""}
+      ${alert.formResults?.length ? `<p><strong>Forms:</strong> ${alert.formResults.map(form => `${form.formName} (${form.newLeads})`).join(", ")}</p>` : ""}
+    `}
   `;
-  return sendEmail(MAHMOUD_EMAILS, "Meta Lead Alert", html);
+  return sendEmail(Array.from(recipients), "Meta Lead Alert", html);
 }
 
 // Backup notifications

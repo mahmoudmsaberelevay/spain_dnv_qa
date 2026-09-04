@@ -20,9 +20,8 @@
 import { getDb } from "./db";
 import { leadIntegrations, leads, leadActivities, leadNotes } from "../drizzle/schema";
 import { eq, and, or } from "drizzle-orm";
-import { sendCapiEvent } from "./metaCapi";
 
-const META_GRAPH_BASE = "https://graph.facebook.com/v19.0";
+const META_GRAPH_BASE = `https://graph.facebook.com/${process.env.META_GRAPH_API_VERSION || "v26.0"}`;
 
 interface MetaFieldData {
   name: string;
@@ -250,14 +249,15 @@ async function syncOneIntegration(integration: {
     return result;
   }
 
-  const { page_access_token: accessToken, lead_source: leadSource, assigned_to: assignedTo } = config;
+  const accessToken = process.env.META_PAGE_ACCESS_TOKEN || config.page_access_token || config.access_token;
+  const { lead_source: leadSource, assigned_to: assignedTo } = config;
   const perFormSources: Record<string, string> = (config.form_sources && typeof config.form_sources === "object") ? config.form_sources as Record<string, string> : {};
 
   // page_id can be in config or auto-detected — we always auto-detect from /me/accounts
-  let pageId = config.page_id;
+  let pageId = process.env.META_PAGE_ID || config.page_id;
 
   if (!accessToken) {
-    result.errors.push("No page_access_token configured");
+    result.errors.push("Meta Page access token is not configured in secure system settings");
     return result;
   }
 
@@ -470,25 +470,6 @@ async function syncOneIntegration(integration: {
             } catch {
               // Activity logging failure should not block the lead import
             }
-          }
-
-          // Fire CAPI Lead event for the newly synced lead (non-blocking)
-          // Meta Lead Ads don't have browser-side fbc/fbp available, but we send
-          // all available PII fields to maximize event match quality.
-          if (newLeadId) {
-            const _syncNameParts = (mapped.fullName || "").trim().split(/\s+/);
-            sendCapiEvent({
-              eventName: "Lead",
-              leadId: newLeadId,
-              email: email,
-              phone: phone,
-              firstName: mapped.firstName || _syncNameParts[0] || undefined,
-              lastName: mapped.lastName || (_syncNameParts.length > 1 ? _syncNameParts.slice(1).join(" ") : undefined),
-              country: mapped.nationality || undefined,
-              city: mapped.city || undefined,
-              // Meta Lead Ads forms don't expose fbc/fbp — these come from browser cookies
-              // which are not available server-side for form submissions
-            }).catch(() => {});
           }
 
           result.newLeads++;

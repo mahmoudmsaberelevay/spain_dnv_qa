@@ -35,6 +35,10 @@ export async function listLeads(filters?: {
   lastActivityTo?: number;
   metaFormId?: string;
   metaCampaign?: string;
+  metaAdset?: string;
+  metaAd?: string;
+  metaSyncStatus?: string;
+  metaEventStatus?: string;
   page?: number;
   pageSize?: number;
 }) {
@@ -69,6 +73,16 @@ export async function listLeads(filters?: {
   if (filters?.lastActivityTo) conditions.push(sql`${leads.lastContactAt} <= ${filters.lastActivityTo}`);
   if (filters?.metaFormId) conditions.push(eq(leads.metaFormId, filters.metaFormId));
   if (filters?.metaCampaign) conditions.push(eq(leads.metaCampaign, filters.metaCampaign));
+  if (filters?.metaAdset) conditions.push(eq(leads.metaAdset, filters.metaAdset));
+  if (filters?.metaAd) conditions.push(eq(leads.metaAd, filters.metaAd));
+  if (filters?.metaSyncStatus) conditions.push(eq(leads.metaSyncStatus, filters.metaSyncStatus as any));
+  if (filters?.metaEventStatus) {
+    conditions.push(sql`EXISTS (
+      SELECT 1 FROM meta_crm_event_log event_log
+      WHERE event_log.leadId = ${leads.id}
+        AND event_log.status = ${filters.metaEventStatus}
+    )`);
+  }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
