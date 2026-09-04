@@ -4,6 +4,7 @@ import { eq, desc, like, or, and, sql, inArray, count } from "drizzle-orm";
 import type { InsertLead, InsertLeadActivity, InsertLeadNote, InsertLeadTask } from "../drizzle/schema";
 
 const now = () => Date.now();
+const operationalLeadCondition = eq(leads.isMetaTestLead, false);
 
 // ─── Leads ────────────────────────────────────────────────────────────────────
 
@@ -278,6 +279,7 @@ export async function getLeadStageCounts() {
   return db
     .select({ stage: leads.stage, count: sql<number>`COUNT(*)` })
     .from(leads)
+    .where(operationalLeadCondition)
     .groupBy(leads.stage);
 }
 
@@ -287,6 +289,7 @@ export async function getLeadSourceCounts() {
   return db
     .select({ source: leads.leadSource, count: sql<number>`COUNT(*)` })
     .from(leads)
+    .where(operationalLeadCondition)
     .groupBy(leads.leadSource);
 }
 
@@ -296,6 +299,7 @@ export async function getLeadProgramCounts() {
   return db
     .select({ program: leads.interestedProgram, count: sql<number>`COUNT(*)` })
     .from(leads)
+    .where(operationalLeadCondition)
     .groupBy(leads.interestedProgram);
 }
 
@@ -309,14 +313,14 @@ export async function getMonthlyLeadConversions(year: number) {
       converted: sql<number>`SUM(CASE WHEN ${leads.stage} = 'client' THEN 1 ELSE 0 END)`,
     })
     .from(leads)
-    .where(sql`YEAR(FROM_UNIXTIME(${leads.createdAt} / 1000)) = ${year}`)
+    .where(and(operationalLeadCondition, sql`YEAR(FROM_UNIXTIME(${leads.createdAt} / 1000)) = ${year}`))
     .groupBy(sql`MONTH(FROM_UNIXTIME(${leads.createdAt} / 1000))`);
 }
 
 export async function getLeadTotalCount() {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  const [row] = await db.select({ count: sql<number>`COUNT(*)` }).from(leads);
+  const [row] = await db.select({ count: sql<number>`COUNT(*)` }).from(leads).where(operationalLeadCondition);
   return Number(row?.count ?? 0);
 }
 
@@ -326,7 +330,7 @@ export async function getLeadCampaignCounts() {
   return db
     .select({ campaign: leads.metaCampaign, count: sql<number>`COUNT(*)` })
     .from(leads)
-    .where(sql`${leads.metaCampaign} IS NOT NULL AND ${leads.metaCampaign} != ''`)
+    .where(and(operationalLeadCondition, sql`${leads.metaCampaign} IS NOT NULL AND ${leads.metaCampaign} != ''`))
     .groupBy(leads.metaCampaign)
     .orderBy(sql`COUNT(*) DESC`)
     .limit(15);
@@ -338,7 +342,7 @@ export async function getLeadFormCounts() {
   return db
     .select({ form: leads.metaFormName, count: sql<number>`COUNT(*)` })
     .from(leads)
-    .where(sql`${leads.metaFormName} IS NOT NULL AND ${leads.metaFormName} != ''`)
+    .where(and(operationalLeadCondition, sql`${leads.metaFormName} IS NOT NULL AND ${leads.metaFormName} != ''`))
     .groupBy(leads.metaFormName)
     .orderBy(sql`COUNT(*) DESC`)
     .limit(20);
@@ -353,14 +357,14 @@ export async function getNewLeadsReport(dateFrom: number, dateTo: number) {
   const [{ total }] = await db
     .select({ total: sql<number>`COUNT(*)` })
     .from(leads)
-    .where(sql`${leads.createdAt} >= ${dateFrom} AND ${leads.createdAt} <= ${dateTo}`);
+    .where(and(operationalLeadCondition, sql`${leads.createdAt} >= ${dateFrom} AND ${leads.createdAt} <= ${dateTo}`));
   const byDay = await db
     .select({
       day: sql<string>`DATE(FROM_UNIXTIME(${leads.createdAt} / 1000))`,
       count: sql<number>`COUNT(*)`,
     })
     .from(leads)
-    .where(sql`${leads.createdAt} >= ${dateFrom} AND ${leads.createdAt} <= ${dateTo}`)
+    .where(and(operationalLeadCondition, sql`${leads.createdAt} >= ${dateFrom} AND ${leads.createdAt} <= ${dateTo}`))
     .groupBy(sql`DATE(FROM_UNIXTIME(${leads.createdAt} / 1000))`)
     .orderBy(sql`DATE(FROM_UNIXTIME(${leads.createdAt} / 1000))`);
   return { total: Number(total), byDay };
@@ -395,7 +399,8 @@ export async function getStageChangeReport(dateFrom: number, dateTo: number, use
       createdAt: leadActivities.createdAt,
     })
     .from(leadActivities)
-    .where(and(...conditions))
+    .innerJoin(leads, eq(leadActivities.leadId, leads.id))
+    .where(and(operationalLeadCondition, ...conditions))
     .orderBy(desc(leadActivities.createdAt))
     .limit(500);
   // Parse from/to stages for each row
@@ -422,7 +427,8 @@ export async function getUserActivityReport(dateFrom: number, dateTo: number, us
       byType: sql<string>`GROUP_CONCAT(DISTINCT ${leadActivities.activityType})`,
     })
     .from(leadActivities)
-    .where(and(...conditions))
+    .innerJoin(leads, eq(leadActivities.leadId, leads.id))
+    .where(and(operationalLeadCondition, ...conditions))
     .groupBy(leadActivities.userId);
   // Breakdown per user per type
   const breakdown = await db
@@ -432,7 +438,8 @@ export async function getUserActivityReport(dateFrom: number, dateTo: number, us
       count: sql<number>`COUNT(*)`,
     })
     .from(leadActivities)
-    .where(and(...conditions))
+    .innerJoin(leads, eq(leadActivities.leadId, leads.id))
+    .where(and(operationalLeadCondition, ...conditions))
     .groupBy(leadActivities.userId, leadActivities.activityType)
     .orderBy(leadActivities.userId, desc(sql`COUNT(*)`));
   return { summary, breakdown };
@@ -454,7 +461,9 @@ export async function getTodayActivityReport() {
       const [{ count }] = await db
         .select({ count: sql<number>`COUNT(DISTINCT ${leadActivities.leadId})` })
         .from(leadActivities)
+        .innerJoin(leads, eq(leadActivities.leadId, leads.id))
         .where(and(
+          operationalLeadCondition,
           eq(leadActivities.activityType as any, type),
           sql`${leadActivities.createdAt} >= ${todayStart}`,
           sql`${leadActivities.createdAt} < ${todayEnd}`,
@@ -470,7 +479,9 @@ export async function getTodayActivityReport() {
       leadId: leadActivities.leadId,
     })
     .from(leadActivities)
+    .innerJoin(leads, eq(leadActivities.leadId, leads.id))
     .where(and(
+      operationalLeadCondition,
       eq(leadActivities.activityType, "stage_changed"),
       sql`${leadActivities.createdAt} >= ${todayStart}`,
       sql`${leadActivities.createdAt} < ${todayEnd}`,

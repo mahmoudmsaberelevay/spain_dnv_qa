@@ -173,11 +173,11 @@ async function startServer() {
   });
 
   // Meta Lead Ads signatures must be validated against the untouched body.
-  const { verifyMetaWebhook, processMetaLeadEvent } = await import("../metaAdsWebhook");
-  app.get("/api/webhook/meta-leads", verifyMetaWebhook);
-  app.post("/api/webhook/meta-leads", express.raw({ type: "application/json", limit: "2mb" }), processMetaLeadEvent);
-  app.get("/api/webhook/meta-leads/v2", verifyMetaWebhook);
-  app.post("/api/webhook/meta-leads/v2", express.raw({ type: "application/json", limit: "2mb" }), processMetaLeadEvent);
+  // The registrar includes the exact production callback
+  // /api/webhooks/meta-leads-v2 and keeps it before express.json(), tRPC,
+  // static assets, and the SPA fallback.
+  const { registerMetaAdsWebhookRoutes } = await import("../metaAdsWebhook");
+  registerMetaAdsWebhookRoutes(app);
 
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));

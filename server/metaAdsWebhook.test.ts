@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import express from "express";
+import { createServer, type Server } from "http";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   verifyToken: vi.fn(),
@@ -14,7 +16,26 @@ vi.mock("./metaLeadsService", () => ({
   processMetaWebhookInboxBatch: mocks.processInbox,
 }));
 
-import { processMetaLeadEvent, verifyMetaWebhook } from "./metaAdsWebhook";
+import {
+  META_WEBHOOK_PATHS,
+  processMetaLeadEvent,
+  registerMetaAdsWebhookRoutes,
+  verifyMetaWebhook,
+} from "./metaAdsWebhook";
+
+const servers: Server[] = [];
+
+async function startWebhookTestServer() {
+  const app = express();
+  registerMetaAdsWebhookRoutes(app);
+  app.use((_req, res) => res.status(200).type("html").send("<!doctype html><title>SPA fallback</title>"));
+  const server = createServer(app);
+  servers.push(server);
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Test server address unavailable");
+  return `http://127.0.0.1:${address.port}`;
+}
 
 function responseRecorder(order: string[] = []) {
   const response: any = {
@@ -37,6 +58,10 @@ describe("Meta Lead Ads webhook transport", () => {
     mocks.verifySignature.mockReturnValue(true);
     mocks.storeNotifications.mockResolvedValue({ accepted: 1, ignored: 0 });
     mocks.processInbox.mockResolvedValue({ selected: 1, processed: 1, failed: 0 });
+  });
+
+  afterEach(async () => {
+    await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => resolve()))));
   });
 
   it("returns the challenge only for the exact configured verify token", async () => {
@@ -73,5 +98,38 @@ describe("Meta Lead Ads webhook transport", () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ received: true, accepted: 1, ignored: 0 });
     expect(order.slice(0, 3)).toEqual(["store", "respond", "process"]);
+  });
+
+  it("routes the exact production callback before an SPA fallback and preserves all required statuses", async () => {
+    expect(META_WEBHOOK_PATHS).toContain("/api/webhooks/meta-leads-v2");
+    const baseUrl = await startWebhookTestServer();
+    const callback = `${baseUrl}/api/webhooks/meta-leads-v2`;
+
+    const validGet = await fetch(`${callback}?hub.mode=subscribe&hub.verify_token=verify-me&hub.challenge=challenge-123`);
+    expect(validGet.status).toBe(200);
+    expect(await validGet.text()).toBe("challenge-123");
+
+    const invalidGet = await fetch(`${callback}?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=challenge-123`);
+    expect(invalidGet.status).toBe(403);
+    expect(await invalidGet.text()).toBe("Forbidden");
+
+    mocks.verifySignature.mockReturnValue(false);
+    const unsignedPost = await fetch(callback, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ object: "page", entry: [] }),
+    });
+    expect(unsignedPost.status).toBe(401);
+    expect(await unsignedPost.text()).toBe("Invalid signature");
+
+    mocks.verifySignature.mockReturnValue(true);
+    const signedPost = await fetch(callback, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Hub-Signature-256": "sha256=valid" },
+      body: JSON.stringify({ object: "page", entry: [] }),
+    });
+    expect(signedPost.status).toBe(200);
+    expect(await signedPost.json()).toEqual({ received: true, accepted: 1, ignored: 0 });
+    expect(mocks.storeNotifications).toHaveBeenCalledTimes(1);
   });
 });

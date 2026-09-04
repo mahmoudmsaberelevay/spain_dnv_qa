@@ -888,7 +888,12 @@ export default function LeadsList() {
                       </button>
                     </td>
                     <td className="p-0">
-                      <a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 font-medium text-foreground hover:no-underline">{lead.fullName}</a>
+                      <a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 font-medium text-foreground hover:no-underline">
+                        <span className="inline-flex items-center gap-2">
+                          {lead.fullName}
+                          {lead.isMetaTestLead && <Badge variant="secondary" className="border-amber-300 bg-amber-50 text-amber-900">Meta Test</Badge>}
+                        </span>
+                      </a>
                     </td>
                     {col("contact") && (
                       <td className="p-0">

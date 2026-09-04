@@ -223,6 +223,11 @@ export default function LeadProfile() {
                 {lead.priority} priority
               </span>
             )}
+            {lead.isMetaTestLead && (
+              <Badge variant="secondary" className="border-amber-300 bg-amber-50 text-amber-900">
+                Meta Test Lead · excluded from reports
+              </Badge>
+            )}
             {/* Lead Score */}
             {lead.leadScore !== undefined && lead.leadScore !== null && (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border bg-yellow-50 text-yellow-700 border-yellow-200">
@@ -349,6 +354,7 @@ export default function LeadProfile() {
               {lead.metaAdset && <InfoRow label="Ad Set" value={lead.metaAdset} />}
               {lead.metaAd && <InfoRow label="Ad" value={lead.metaAd} />}
               {lead.metaLeadId && <InfoRow label="Meta Lead ID" value={lead.metaLeadId} />}
+              {lead.isMetaTestLead && <InfoRow label="Meta Record Type" value="Meta Test Lead — excluded from operational reports" highlight />}
               {lead.metaPageId && <InfoRow label="Meta Page ID" value={lead.metaPageId} />}
               {lead.metaFormId && <InfoRow label="Meta Form ID" value={lead.metaFormId} />}
               {lead.metaCampaignId && <InfoRow label="Campaign ID" value={lead.metaCampaignId} />}
@@ -372,7 +378,10 @@ export default function LeadProfile() {
                   <div key={attribution.id} className="border-b border-border/60 last:border-0 pb-3 last:pb-0 space-y-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium">{attribution.metaCampaignName || attribution.metaFormName || "Meta Instant Form"}</span>
-                      {attribution.isPrimary && <Badge variant="secondary">Primary</Badge>}
+                      <div className="flex items-center gap-2">
+                        {attribution.isTestLead && <Badge variant="secondary" className="border-amber-300 bg-amber-50 text-amber-900">Meta Test</Badge>}
+                        {attribution.isPrimary && <Badge variant="secondary">Primary</Badge>}
+                      </div>
                     </div>
                     <p className="text-xs text-muted-foreground">{new Date(attribution.metaLeadCreatedAt).toLocaleString()}</p>
                     {attribution.metaFormName && <p className="text-xs">Form: {attribution.metaFormName}</p>}

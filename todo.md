@@ -1186,3 +1186,13 @@ Check email for download link within 5 minutes
 - [x] Add reporting for Meta Leads, qualified meetings, conversions, funnel rates, delays, success rate, and Lead ID coverage without estimated ad costs
 - [x] Validate webhook security, idempotency, matching, stage ordering, retries, historical safety, permissions, exports, and responsive UI
 - [x] Configure server-side Meta secrets and complete Test Lead and Test Events validation without sending a production event before explicit approval
+
+## Meta Production Verification Remediation
+- [x] Reproduce the exact public `/api/webhooks/meta-leads-v2` GET and POST SPA-fallback failures on `elevay.vip`
+- [ ] Fix production routing so GET and raw-body POST requests reach `metaAdsWebhook.ts` before static files and the SPA fallback
+- [ ] Prove valid verification returns the challenge, invalid verification returns 403, unsigned POST returns 401, and signed POST is accepted
+- [ ] Explicitly mark all Meta Test Leads in durable attribution and Lead records without relying only on names or contact values
+- [x] Exclude Meta Test Leads from operational funnel reports, conversion rates, coverage metrics, and consultant/program performance totals
+- [x] Add regression tests for production callback routing, Test Lead marking, deduplication, and reporting exclusions
+- [ ] Create one new Meta Test Lead and prove exactly one immutable attribution and one deterministic outbox event are created
+- [x] Keep `META_CRM_PRODUCTION_ENABLED` false and verify no production conversion event is sent

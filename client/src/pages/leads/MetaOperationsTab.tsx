@@ -138,7 +138,7 @@ export default function MetaOperationsTab() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
           <h3 className="font-semibold text-foreground">Meta Lead Ads & CRM Events</h3>
-          <p className="text-sm text-muted-foreground">Webhook health, Lead ID coverage, funnel events, retries, reconciliation, and attribution mappings.</p>
+          <p className="text-sm text-muted-foreground">Webhook health, Lead ID coverage, funnel events, retries, reconciliation, and attribution mappings. Explicitly marked Meta Test Leads are excluded from operational totals and rates.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => reconcile.mutate({ limit: 200 })} disabled={reconcile.isPending}>
@@ -174,7 +174,7 @@ export default function MetaOperationsTab() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <h4 className="font-semibold flex items-center gap-2"><BarChart3 className="w-4 h-4" />Funnel Reporting</h4>
-            <p className="text-xs text-muted-foreground">Uses only real Lead and CRM event timestamps. No estimated Meta cost figures.</p>
+            <p className="text-xs text-muted-foreground">Uses only real Lead and CRM event timestamps. Meta Test Leads are excluded. No estimated Meta cost figures.</p>
           </div>
           <Select value={period} onValueChange={setPeriod}>
             <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>

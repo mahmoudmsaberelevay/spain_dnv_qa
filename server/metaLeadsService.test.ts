@@ -13,6 +13,7 @@ import {
   addAttribution,
   buildMetaCrmEventId,
   buildMetaCrmPayload,
+  classifyMetaTestLead,
   findMatchingLead,
   hashMetaEmail,
   hashMetaPhone,
@@ -49,6 +50,7 @@ describe("Meta Leads safety helpers", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     if (originalAppSecret === undefined) delete process.env.META_APP_SECRET;
     else process.env.META_APP_SECRET = originalAppSecret;
   });
@@ -107,6 +109,29 @@ describe("Meta Leads safety helpers", () => {
     expect(persisted).not.toContain("person@example.com");
     expect(persisted).not.toContain("+201001234567");
     expect(persisted).not.toContain("field_data");
+  });
+
+  it("classifies a Lead explicitly from Meta's form test-leads registry", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ id: "1234567890123456" }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(classifyMetaTestLead("1234567890123456", "99887766", "page-token")).resolves.toBe(true);
+    await expect(classifyMetaTestLead("9999999999999999", "99887766", "page-token")).resolves.toBe(false);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/99887766/test_leads");
+  });
+
+  it("fails closed when Meta cannot confirm whether a Lead is a test record", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({ error: { message: "temporary failure" } }),
+    }));
+    await expect(classifyMetaTestLead("1234567890123456", "99887766", "page-token"))
+      .rejects.toThrow("Meta Test Lead lookup failed");
   });
 
   it("matches an existing contact by normalized phone after Meta Lead ID checks", async () => {

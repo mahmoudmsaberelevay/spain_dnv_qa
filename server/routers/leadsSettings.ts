@@ -431,8 +431,8 @@ export const leadsSettingsRouter = router({
       .query(async ({ input }) => {
         const db = await getDb();
         if (!db) throw new Error("Database unavailable");
-        const eventConditions = [];
-        const leadConditions = [];
+        const eventConditions = [eq(metaCrmEventLog.isTestLead, false)];
+        const leadConditions = [eq(leads.isMetaTestLead, false)];
         if (input?.dateFrom) {
           eventConditions.push(gte(metaCrmEventLog.eventTime, Math.floor(input.dateFrom / 1000)));
           leadConditions.push(gte(leads.createdAt, input.dateFrom));
@@ -455,7 +455,7 @@ export const leadsSettingsRouter = router({
         const [eventByStatus, eventByName, inboxByStatus, recentFailures, leadTotals, eventTotals] = await Promise.all([
           db.select({ status: metaCrmEventLog.status, total: count() }).from(metaCrmEventLog).innerJoin(leads, eq(leads.id, metaCrmEventLog.leadId)).where(eventWithLeadWhere).groupBy(metaCrmEventLog.status),
           db.select({ eventName: metaCrmEventLog.eventName, total: count() }).from(metaCrmEventLog).innerJoin(leads, eq(leads.id, metaCrmEventLog.leadId)).where(eventWithLeadWhere).groupBy(metaCrmEventLog.eventName),
-          db.select({ status: metaWebhookInbox.status, total: count() }).from(metaWebhookInbox).groupBy(metaWebhookInbox.status),
+          db.select({ status: metaWebhookInbox.status, total: count() }).from(metaWebhookInbox).where(eq(metaWebhookInbox.isTestLead, false)).groupBy(metaWebhookInbox.status),
           db.select({
             id: metaCrmEventLog.id,
             leadId: metaCrmEventLog.leadId,
@@ -472,9 +472,9 @@ export const leadsSettingsRouter = router({
             .orderBy(desc(metaCrmEventLog.updatedAt)).limit(25),
           db.select({
             total: count(),
-            metaLeads: sql<number>`SUM(CASE WHEN ${leads.metaLeadId} IS NOT NULL OR EXISTS (SELECT 1 FROM lead_meta_attributions a WHERE a.leadId = ${leads.id}) THEN 1 ELSE 0 END)`,
+            metaLeads: sql<number>`SUM(CASE WHEN ${leads.metaLeadId} IS NOT NULL OR EXISTS (SELECT 1 FROM lead_meta_attributions a WHERE a.leadId = ${leads.id} AND a.isTestLead = 0) THEN 1 ELSE 0 END)`,
             averageWebhookDelaySeconds: sql<number>`AVG(CASE WHEN ${leads.metaLeadCreatedAt} IS NOT NULL AND ${leads.firstReceivedAt} IS NOT NULL THEN (${leads.firstReceivedAt} - ${leads.metaLeadCreatedAt}) / 1000 END)`,
-          }).from(leads).where(and(leadWhere, sql`(${leads.metaLeadId} IS NOT NULL OR EXISTS (SELECT 1 FROM lead_meta_attributions a WHERE a.leadId = ${leads.id}))`)),
+          }).from(leads).where(and(leadWhere, sql`(${leads.metaLeadId} IS NOT NULL OR EXISTS (SELECT 1 FROM lead_meta_attributions a WHERE a.leadId = ${leads.id} AND a.isTestLead = 0))`)),
           db.select({
             total: count(),
             sent: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'sent' THEN 1 ELSE 0 END)`,

@@ -7,7 +7,7 @@
  * - Valid leadgen notifications are stored durably before HTTP 200.
  * - Full lead retrieval and CRM writes happen from the durable inbox processor.
  */
-import type { Request, Response } from "express";
+import express, { type Express, type Request, type Response } from "express";
 import {
   processMetaWebhookInboxBatch,
   storeMetaWebhookNotifications,
@@ -15,6 +15,19 @@ import {
   verifyMetaWebhookSignature,
   verifyMetaWebhookVerifyToken,
 } from "./metaLeadsService";
+
+export const META_WEBHOOK_PATHS = [
+  "/api/webhook/meta-leads",
+  "/api/webhook/meta-leads/v2",
+  "/api/webhooks/meta-leads-v2",
+] as const;
+
+export function registerMetaAdsWebhookRoutes(app: Express) {
+  for (const webhookPath of META_WEBHOOK_PATHS) {
+    app.get(webhookPath, verifyMetaWebhook);
+    app.post(webhookPath, express.raw({ type: "application/json", limit: "2mb" }), processMetaLeadEvent);
+  }
+}
 
 export async function verifyMetaWebhook(req: Request, res: Response) {
   res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
