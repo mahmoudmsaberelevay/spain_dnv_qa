@@ -17,6 +17,7 @@ import {
 } from "./metaLeadsService";
 
 export async function verifyMetaWebhook(req: Request, res: Response) {
+  res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
   const mode = typeof req.query["hub.mode"] === "string" ? req.query["hub.mode"] : "";
   const token = typeof req.query["hub.verify_token"] === "string" ? req.query["hub.verify_token"] : "";
   const challenge = typeof req.query["hub.challenge"] === "string" ? req.query["hub.challenge"] : "";

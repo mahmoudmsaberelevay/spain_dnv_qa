@@ -176,6 +176,8 @@ async function startServer() {
   const { verifyMetaWebhook, processMetaLeadEvent } = await import("../metaAdsWebhook");
   app.get("/api/webhook/meta-leads", verifyMetaWebhook);
   app.post("/api/webhook/meta-leads", express.raw({ type: "application/json", limit: "2mb" }), processMetaLeadEvent);
+  app.get("/api/webhook/meta-leads/v2", verifyMetaWebhook);
+  app.post("/api/webhook/meta-leads/v2", express.raw({ type: "application/json", limit: "2mb" }), processMetaLeadEvent);
 
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));

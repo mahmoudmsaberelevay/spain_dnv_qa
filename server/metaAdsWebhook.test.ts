@@ -21,6 +21,7 @@ function responseRecorder(order: string[] = []) {
     statusCode: 200,
     body: undefined,
     status: vi.fn((code: number) => { response.statusCode = code; return response; }),
+    setHeader: vi.fn(),
     type: vi.fn(() => response),
     send: vi.fn((body: unknown) => { order.push("respond"); response.body = body; return response; }),
     json: vi.fn((body: unknown) => { order.push("respond"); response.body = body; return response; }),
@@ -43,6 +44,7 @@ describe("Meta Lead Ads webhook transport", () => {
     await verifyMetaWebhook({ query: { "hub.mode": "subscribe", "hub.verify_token": "verify-me", "hub.challenge": "12345" } } as any, ok);
     expect(ok.statusCode).toBe(200);
     expect(ok.body).toBe("12345");
+    expect(ok.setHeader).toHaveBeenCalledWith("Cache-Control", "private, no-store, no-cache, must-revalidate");
 
     const denied = responseRecorder();
     await verifyMetaWebhook({ query: { "hub.mode": "subscribe", "hub.verify_token": "wrong", "hub.challenge": "12345" } } as any, denied);
