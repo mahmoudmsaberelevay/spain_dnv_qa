@@ -20,4 +20,17 @@ describe("configured Meta App Secret", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ received: true, accepted: 0, ignored: 0 });
   });
+
+  it("accepts the configured verify token through the real webhook verification endpoint", async () => {
+    const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN;
+    expect(verifyToken, "META_WEBHOOK_VERIFY_TOKEN must be configured").toBeTruthy();
+    const challenge = `elevay-meta-${Date.now()}`;
+    const url = new URL("http://127.0.0.1:3000/api/webhook/meta-leads");
+    url.searchParams.set("hub.mode", "subscribe");
+    url.searchParams.set("hub.verify_token", verifyToken!);
+    url.searchParams.set("hub.challenge", challenge);
+    const response = await fetch(url);
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe(challenge);
+  });
 });
