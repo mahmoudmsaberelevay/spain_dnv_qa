@@ -207,6 +207,53 @@ async function metaGraphGet<T>(path: string, accessToken: string, fields: string
   return payload;
 }
 
+export async function inspectMetaLeadForm(formId: string): Promise<{ id: string; name: string | null; status: string | null }> {
+  if (!/^\d+$/.test(formId)) throw new Error("Invalid Meta Form ID");
+  const config = await getActiveMetaConfig();
+  const form = await metaGraphGet<{ id: string; name?: string; status?: string }>(
+    formId,
+    config.accessToken,
+    "id,name,status",
+  );
+  return { id: form.id, name: form.name ?? null, status: form.status ?? null };
+}
+
+export async function createMetaTestLead(formId: string): Promise<{ id: string }> {
+  if (!/^\d+$/.test(formId)) throw new Error("Invalid Meta Form ID");
+  const config = await getActiveMetaConfig();
+  const response = await fetch(`${graphBase()}/${formId}/test_leads`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ access_token: config.accessToken }),
+  });
+  const payload = (await response.json()) as { id?: string; error?: { message?: string; code?: number; error_subcode?: number } };
+  if (!response.ok || payload.error || !payload.id) {
+    throw new Error(`Meta Test Lead ${response.status}: ${payload.error?.message || "creation failed"}`);
+  }
+  return { id: payload.id };
+}
+
+export async function inspectMetaLeadgenSubscriptions(): Promise<{
+  pageId: string;
+  subscriptions: Array<{ id: string; name: string | null; subscribedFields: string[] }>;
+}> {
+  const config = await getActiveMetaConfig();
+  const payload = await metaGraphGet<{
+    data?: Array<{ id: string; name?: string; subscribed_fields?: string[] }>;
+  }>(`${config.pageId}/subscribed_apps`, config.accessToken, "id,name,subscribed_fields");
+  return {
+    pageId: config.pageId,
+    subscriptions: (payload.data ?? []).map(item => ({
+      id: item.id,
+      name: item.name ?? null,
+      subscribedFields: item.subscribed_fields ?? [],
+    })),
+  };
+}
+
 export async function fetchMetaLeadDetail(metaLeadId: string, accessToken: string): Promise<MetaLeadDetail> {
   return metaGraphGet<MetaLeadDetail>(
     metaLeadId,
@@ -234,6 +281,11 @@ export function verifyMetaWebhookSignature(rawBody: Buffer, signatureHeader?: st
   return received.length === expectedBuffer.length && crypto.timingSafeEqual(received, expectedBuffer);
 }
 
+function deriveMetaWebhookVerifyToken(): string {
+  const appSecret = process.env.META_APP_SECRET || "";
+  return appSecret ? sha256(`elevay-meta-webhook:${appSecret}`) : "";
+}
+
 export async function getMetaWebhookVerifyToken(): Promise<string> {
   if (process.env.META_WEBHOOK_VERIFY_TOKEN) return process.env.META_WEBHOOK_VERIFY_TOKEN;
   const db = await getDb();
@@ -247,7 +299,7 @@ export async function getMetaWebhookVerifyToken(): Promise<string> {
     .limit(1);
   let storedConfig: Record<string, string> = {};
   try { storedConfig = integration?.config ? JSON.parse(integration.config) : {}; } catch { storedConfig = {}; }
-  return storedConfig.verify_token || integration?.webhookToken || "";
+  return storedConfig.verify_token || integration?.webhookToken || deriveMetaWebhookVerifyToken();
 }
 
 export async function storeMetaWebhookNotifications(payload: MetaWebhookPayload) {
@@ -1051,7 +1103,7 @@ export async function getMetaIntegrationHealth() {
   const capiTokenConfigured = Boolean(process.env.META_CAPI_TOKEN);
   const datasetConfigured = Boolean(process.env.META_DATASET_ID || process.env.META_PIXEL_ID || DEFAULT_DATASET_ID);
   const appSecretConfigured = Boolean(process.env.META_APP_SECRET);
-  const verifyTokenConfigured = Boolean(process.env.META_WEBHOOK_VERIFY_TOKEN || storedConfig.verify_token || activeIntegration?.webhookToken);
+  const verifyTokenConfigured = Boolean(process.env.META_WEBHOOK_VERIFY_TOKEN || storedConfig.verify_token || activeIntegration?.webhookToken || deriveMetaWebhookVerifyToken());
   const [lastWebhook] = await db.select().from(metaWebhookInbox).orderBy(desc(metaWebhookInbox.receivedAt)).limit(1);
   const [lastProcessed] = await db.select().from(metaWebhookInbox).where(eq(metaWebhookInbox.status, "processed")).orderBy(desc(metaWebhookInbox.processedAt)).limit(1);
   const [lastEvent] = await db.select().from(metaCrmEventLog).where(eq(metaCrmEventLog.status, "sent")).orderBy(desc(metaCrmEventLog.sentAt)).limit(1);

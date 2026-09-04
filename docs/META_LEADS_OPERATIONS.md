@@ -57,6 +57,8 @@ In Meta for Developers, configure the public callback as `https://elevay.vip/api
 
 Use Meta's [Lead Ads Testing Tool][3] to create a test Lead. Confirm in **Leads Settings → Meta Ops** that the webhook time updates, the Lead is retrieved, the existing contact is matched or a single new Lead is created, and the immutable inquiry appears. Then use Meta Events Manager Test Events with a Test Event Code to validate the selected queued CRM event. Do not enable production transmission during this step.
 
+Meta's official testing documentation also supports programmatic creation with `POST /{FORM_ID}/test_leads` using the Page access token. The Page user must have Advertiser access or higher, and only one test Lead may exist per Form at a time; delete the existing test Lead before recreating it. Test Leads created through this endpoint are fake organic Leads and are not associated with an Ad.[1]
+
 ## Admin operations
 
 The Meta Ops tab is restricted in both the interface and the backend to administrators. It provides secret-safe readiness booleans, last webhook/sync/event timestamps, pending and failure counts, Lead ID and hash coverage, mapping management, real-timestamp funnel reporting, reconciliation, failure diagnostics, and test-only retry.
