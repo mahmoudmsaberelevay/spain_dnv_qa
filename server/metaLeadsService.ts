@@ -84,6 +84,54 @@ export function extractMetaResponseReceiptId(response: Record<string, unknown>):
   return null;
 }
 
+export type MetaEventHealthGroup = {
+  isTestLead: boolean;
+  status: string;
+  deliveryMode: string | null;
+  eventCount: number | string | null;
+  coveredEvents: number | string | null;
+};
+
+export function summarizeMetaEventHealthGroups(groups: MetaEventHealthGroup[]) {
+  const totals = {
+    totalEvents: 0,
+    sentEvents: 0,
+    failedEvents: 0,
+    pendingEvents: 0,
+    retryingEvents: 0,
+    manualReviewEvents: 0,
+    approvalGatedEvents: 0,
+    productionSentEvents: 0,
+    testSentEvents: 0,
+    legacyUnknownSentEvents: 0,
+    coveredEvents: 0,
+  };
+
+  for (const group of groups) {
+    const eventCount = Number(group.eventCount || 0);
+    const coveredEvents = Number(group.coveredEvents || 0);
+    if (group.isTestLead) {
+      if (group.status === "sent" && group.deliveryMode === "test") totals.testSentEvents += eventCount;
+      continue;
+    }
+
+    totals.totalEvents += eventCount;
+    totals.coveredEvents += coveredEvents;
+    if (group.status === "sent") totals.sentEvents += eventCount;
+    if (group.status === "failed" || group.status === "dead_letter") totals.failedEvents += eventCount;
+    if (group.status === "pending") totals.pendingEvents += eventCount;
+    if (group.status === "retrying") totals.retryingEvents += eventCount;
+    if (group.status === "manual_review") totals.manualReviewEvents += eventCount;
+    if (group.status === "approval_gated") totals.approvalGatedEvents += eventCount;
+    if (group.status === "sent" && group.deliveryMode === "production") totals.productionSentEvents += eventCount;
+    if (group.status === "sent" && (group.deliveryMode === null || group.deliveryMode === "legacy_unknown")) {
+      totals.legacyUnknownSentEvents += eventCount;
+    }
+  }
+
+  return totals;
+}
+
 export const META_EVENT_ORDER = [
   "Initial Lead from Facebook",
   "Contacted",
@@ -1442,19 +1490,14 @@ export async function getMetaIntegrationHealth() {
   const [lastProcessed] = await db.select().from(metaWebhookInbox).where(and(eq(metaWebhookInbox.status, "processed"), eq(metaWebhookInbox.isTestLead, false))).orderBy(desc(metaWebhookInbox.processedAt)).limit(1);
   const [lastEvent] = await db.select().from(metaCrmEventLog).where(and(eq(metaCrmEventLog.status, "sent"), eq(metaCrmEventLog.isTestLead, false))).orderBy(desc(metaCrmEventLog.sentAt)).limit(1);
   const [reconciliation] = await db.select().from(metaReconciliationState).orderBy(desc(metaReconciliationState.updatedAt)).limit(1);
-  const [counts] = await db.select({
-    totalEvents: sql<number>`COUNT(*)`,
-    sentEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'sent' THEN 1 ELSE 0 END)`,
-    failedEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} IN ('failed','dead_letter') THEN 1 ELSE 0 END)`,
-    pendingEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'pending' THEN 1 ELSE 0 END)`,
-    retryingEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'retrying' THEN 1 ELSE 0 END)`,
-    manualReviewEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'manual_review' THEN 1 ELSE 0 END)`,
-    approvalGatedEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'approval_gated' THEN 1 ELSE 0 END)`,
-    productionSentEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'sent' AND ${metaCrmEventLog.deliveryMode} = 'production' THEN 1 ELSE 0 END)`,
-    testSentEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'sent' AND ${metaCrmEventLog.deliveryMode} = 'test' THEN 1 ELSE 0 END)`,
-    legacyUnknownSentEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'sent' AND (${metaCrmEventLog.deliveryMode} IS NULL OR ${metaCrmEventLog.deliveryMode} = 'legacy_unknown') THEN 1 ELSE 0 END)`,
+  const groupedCounts = await db.select({
+    isTestLead: metaCrmEventLog.isTestLead,
+    status: metaCrmEventLog.status,
+    deliveryMode: metaCrmEventLog.deliveryMode,
+    eventCount: sql<number>`COUNT(*)`,
     coveredEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.hasLeadId} OR ${metaCrmEventLog.hasEmailHash} OR ${metaCrmEventLog.hasPhoneHash} THEN 1 ELSE 0 END)`,
-  }).from(metaCrmEventLog).where(eq(metaCrmEventLog.isTestLead, false));
+  }).from(metaCrmEventLog).groupBy(metaCrmEventLog.isTestLead, metaCrmEventLog.status, metaCrmEventLog.deliveryMode);
+  const counts = summarizeMetaEventHealthGroups(groupedCounts);
   const totalEvents = Number(counts?.totalEvents || 0);
   const failedEvents = Number(counts?.failedEvents || 0);
   const warnings: string[] = [];

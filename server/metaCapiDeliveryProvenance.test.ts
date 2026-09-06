@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractMetaResponseReceiptId,
   resolveMetaEventDeliveryContext,
+  summarizeMetaEventHealthGroups,
   validateMetaTestEventRetryCandidate,
 } from "./metaLeadsService";
 import { dedupePrivacySafeMetaMonitoringRows } from "./metaAssignmentMonitoring";
@@ -77,6 +78,32 @@ describe("Meta CAPI delivery provenance", () => {
     expect(rows).toHaveLength(2);
     expect(rows.find(row => row.eventLogId === 7)?.value).toBe("newer");
   });
+
+  it("counts acknowledged Test events without including Test rows in operational totals", () => {
+    const totals = summarizeMetaEventHealthGroups([
+      { isTestLead: false, status: "sent", deliveryMode: "production", eventCount: 1, coveredEvents: 1 },
+      { isTestLead: false, status: "sent", deliveryMode: "legacy_unknown", eventCount: 3, coveredEvents: 3 },
+      { isTestLead: false, status: "pending", deliveryMode: null, eventCount: 2, coveredEvents: 1 },
+      { isTestLead: false, status: "failed", deliveryMode: null, eventCount: 1, coveredEvents: 0 },
+      { isTestLead: false, status: "approval_gated", deliveryMode: "approval_gated", eventCount: 2, coveredEvents: 2 },
+      { isTestLead: true, status: "sent", deliveryMode: "test", eventCount: 1, coveredEvents: 1 },
+      { isTestLead: true, status: "manual_review", deliveryMode: "test", eventCount: 4, coveredEvents: 4 },
+    ]);
+
+    expect(totals).toEqual({
+      totalEvents: 9,
+      sentEvents: 4,
+      failedEvents: 1,
+      pendingEvents: 2,
+      retryingEvents: 0,
+      manualReviewEvents: 0,
+      approvalGatedEvents: 2,
+      productionSentEvents: 1,
+      testSentEvents: 1,
+      legacyUnknownSentEvents: 3,
+      coveredEvents: 7,
+    });
+  });
 });
 
 describe("Meta provenance implementation safeguards", () => {
@@ -133,6 +160,11 @@ describe("Meta provenance implementation safeguards", () => {
     expect(metaOps).toContain('assignmentPolicy.isLoading ? "Loading…"');
     expect(metaOps).toContain("Production approval gate is working");
     expect(metaOps).toContain("Legacy sent unknown");
+  });
+
+  it("counts acknowledged Test events separately while keeping operational totals limited to Real Leads", () => {
+    expect(service).toContain("summarizeMetaEventHealthGroups(groupedCounts)");
+    expect(service).toContain("groupBy(metaCrmEventLog.isTestLead, metaCrmEventLog.status, metaCrmEventLog.deliveryMode)");
   });
 
   it("holds new and existing unsent Test Lead events in manual review without touching real Lead events", () => {

@@ -13,3 +13,9 @@
 - [x] Identify the exact Meta Dataset/Pixel ID currently used by ELEVAY CRM without exposing credentials
 - [x] Match the configured ID against the Meta data sources named `Elevay CRM Integration` and `Elevay CRM Server`
 - [x] Confirm the correct data source for the Controlled Test Event without sending any event or changing configuration
+- [x] Verify Test Lead `16830004` and Meta Lead ID `4523451277907571` against live durable records
+- [x] Verify controlled dispatch provenance, Meta receipt, and Test delivery mode against live database evidence
+- [x] Confirm Production CAPI remains disabled and no real or approval-gated event was dispatched or modified
+- [x] Fix `Test sent` aggregation so it counts acknowledged Test events without including Test Leads in operational metrics
+- [x] Add focused Vitest coverage proving Test sent counting and operational Test Lead isolation
+- [ ] Document the final validation decision and publish the audit checkpoint
