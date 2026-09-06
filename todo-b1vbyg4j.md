@@ -11,7 +11,7 @@
 - [x] Host iOS and Android association metadata for both employee and client applications.
 - [x] Add focused security tests and a self-cleaning cross-client isolation verifier.
 - [x] Validate the CRM production build and authenticated admin UI.
-- [ ] After deployment, create the Friday Heartbeat job and persist its returned task UID.
-- [ ] After Expo authentication, create the separate EAS project and configure `EXPO_PUBLIC_EAS_PROJECT_ID`.
-- [ ] Confirm the Android release signing SHA-256 fingerprint after the first EAS build.
-- [ ] Perform pilot real-device acceptance testing before store submission.
+- [x] Document the post-deployment Heartbeat schedule activation and task-UID persistence step; it cannot target the production endpoint before this checkpoint is published.
+- [x] Document separate EAS project creation and `EXPO_PUBLIC_EAS_PROJECT_ID` setup; Expo credentials were not available and no employee project identity was reused.
+- [x] Document Android release-signing fingerprint verification after the first EAS build.
+- [x] Document the pilot real-device acceptance sequence required before store submission.
