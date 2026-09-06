@@ -25,6 +25,12 @@ export default function MetaOperationsTab() {
   const [leadStatus, setLeadStatus] = useState("all");
   const [showMappingDialog, setShowMappingDialog] = useState(false);
   const [testEventCode, setTestEventCode] = useState("");
+  const [pendingTestEvent, setPendingTestEvent] = useState<{
+    eventLogId: number;
+    leadId: number;
+    metaLeadId: string;
+    eventName: string;
+  } | null>(null);
   const [mappingForm, setMappingForm] = useState({
     mappingType: "campaign" as MappingType,
     matchValue: "",
@@ -72,6 +78,10 @@ export default function MetaOperationsTab() {
   const assignmentPolicy = trpc.leadsSettings.metaAdmin.assignmentPolicy.useQuery();
   const assignmentBackfill = trpc.leadsSettings.metaAdmin.assignmentBackfillDryRun.useQuery();
   const diagnostics = trpc.leadsSettings.metaAdmin.diagnostics.useQuery(range);
+  const testEvents = trpc.leadsSettings.metaAdmin.privacySafeMonitoring.useQuery({
+    testLeadStatus: "test",
+    limit: 50,
+  });
   const mappings = trpc.leadsSettings.metaAdmin.listMappings.useQuery();
   const filterOptions = trpc.leads.metaFilterOptions.useQuery();
 
@@ -81,6 +91,7 @@ export default function MetaOperationsTab() {
     void assignmentPolicy.refetch();
     void assignmentBackfill.refetch();
     void diagnostics.refetch();
+    void testEvents.refetch();
     void mappings.refetch();
   };
 
@@ -109,8 +120,16 @@ export default function MetaOperationsTab() {
     onError: error => toast.error(error.message),
   });
   const retryTestEvent = trpc.leadsSettings.metaAdmin.retryTestEvent.useMutation({
-    onSuccess: () => { refreshAll(); toast.success("Test event submitted to Meta Test Events."); },
+    onSuccess: data => {
+      refreshAll();
+      if (data.sent === 1) toast.success("Meta acknowledged the selected Test Lead event.");
+      else toast.error("Meta did not acknowledge the selected Test Lead event. No retry was attempted.");
+    },
     onError: error => toast.error(error.message),
+    onSettled: () => {
+      setTestEventCode("");
+      setPendingTestEvent(null);
+    },
   });
   const runAssignmentBackfill = trpc.leadsSettings.metaAdmin.runAssignmentBackfill.useMutation({
     onSuccess: data => {
@@ -353,16 +372,63 @@ export default function MetaOperationsTab() {
       </div>
 
       <div className="border rounded-lg bg-card">
-        <div className="p-4 border-b"><h4 className="font-semibold">Failures & Manual Review</h4><p className="text-xs text-muted-foreground">Retries require a Meta Test Events code and cannot silently send a production event.</p></div>
-        <div className="p-4"><Input placeholder="Meta Test Event Code" value={testEventCode} onChange={event => setTestEventCode(event.target.value)} className="max-w-sm" /></div>
+        <div className="p-4 border-b"><h4 className="font-semibold">Failures & Manual Review</h4><p className="text-xs text-muted-foreground">Real Lead failures and approval-gated events are diagnostic only. They cannot be retried as Test Events.</p></div>
         <div className="divide-y">
           {(diagnostics.data?.recentFailures ?? []).map(event => (
             <div key={event.id} className="p-4 flex flex-col lg:flex-row lg:items-center gap-3">
               <div className="flex-1 min-w-0"><p className="font-medium">{event.eventName} · Lead #{event.leadId}</p><p className={`text-xs break-words ${event.status === "approval_gated" ? "text-sky-700" : "text-red-600"}`}>{event.lastError || event.status}</p><p className="text-[11px] text-muted-foreground">{new Date(event.eventTime * 1000).toLocaleString()} · {event.attempts} attempts · Mode: {event.deliveryMode || "Data not available"} · Evidence: {event.deliveryEvidenceCode || "Data not available"}{event.metaResponseReceiptId ? ` · Receipt: ${event.metaResponseReceiptId}` : ""}</p></div>
-              <Button size="sm" variant="outline" disabled={!testEventCode.trim() || retryTestEvent.isPending} onClick={() => retryTestEvent.mutate({ eventLogId: event.id, testEventCode: testEventCode.trim() })}>Retry as Test</Button>
             </div>
           ))}
           {(diagnostics.data?.recentFailures.length ?? 0) === 0 && <p className="p-6 text-sm text-muted-foreground text-center">No failed or manual-review events in this range.</p>}
+        </div>
+      </div>
+
+      <div className="border rounded-lg bg-card">
+        <div className="p-4 border-b">
+          <h4 className="font-semibold">Controlled Meta Test Events</h4>
+          <p className="text-xs text-muted-foreground">Only explicitly marked Meta Test Leads can be sent. The code is masked, kept only in this browser field, cleared after the attempt, and never returned by the API.</p>
+        </div>
+        <div className="p-4 border-b space-y-2">
+          <Label htmlFor="meta-test-event-code">Current Meta Test Events code</Label>
+          <Input
+            id="meta-test-event-code"
+            type="password"
+            autoComplete="off"
+            placeholder="Enter the current code immediately before a confirmed test"
+            value={testEventCode}
+            onChange={event => setTestEventCode(event.target.value)}
+            className="max-w-md"
+          />
+          <p className="text-xs text-muted-foreground">Production CAPI must remain disabled. Do not paste this code into chat, reports, screenshots, or notes.</p>
+        </div>
+        <div className="divide-y">
+          {(testEvents.data ?? []).map(event => (
+            <div key={`${event.attributionId}-${event.eventId || "no-event"}`} className="p-4 flex flex-col lg:flex-row lg:items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium">Test Lead #{event.leadId} · {event.eventName || "No CRM event"}</p>
+                <p className="text-xs text-muted-foreground break-all">Meta Lead ID: {event.metaLeadId} · Event: {event.eventStatus || "Data not available"} · Assignment: {event.assignmentStatus || "not applicable"}</p>
+                <p className="text-[11px] text-muted-foreground mt-1">Mode: {event.deliveryMode || "Data not available"} · Code used: {event.testEventCodeUsed ? "Yes" : "No"} · Production gate at attempt: {event.productionGateEnabledAtAttempt === null || event.productionGateEnabledAtAttempt === undefined ? "Data not available" : event.productionGateEnabledAtAttempt ? "Enabled" : "Disabled"} · Dispatched: {event.requestDispatchedAt ? fmtDate(event.requestDispatchedAt) : "No"} · Evidence: {event.deliveryEvidenceCode || "Data not available"}{event.metaResponseReceiptId ? ` · Receipt: ${event.metaResponseReceiptId}` : " · Receipt: Data not available"}</p>
+              </div>
+              {event.eventStatus === "manual_review" && event.eventLogId && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!testEventCode.trim() || retryTestEvent.isPending}
+                  onClick={() => setPendingTestEvent({
+                    eventLogId: Number(event.eventLogId),
+                    leadId: event.leadId,
+                    metaLeadId: event.metaLeadId,
+                    eventName: event.eventName || "Meta Test Event",
+                  })}
+                >
+                  Retry as Test
+                </Button>
+              )}
+            </div>
+          ))}
+          {testEvents.isLoading && <p className="p-6 text-sm text-muted-foreground text-center">Loading Test Lead evidence…</p>}
+          {testEvents.isError && <p className="p-6 text-sm text-red-600 text-center">Test Lead evidence could not be loaded.</p>}
+          {!testEvents.isLoading && !testEvents.isError && (testEvents.data?.length ?? 0) === 0 && <p className="p-6 text-sm text-muted-foreground text-center">No explicitly marked Meta Test Leads found.</p>}
         </div>
       </div>
 
@@ -380,6 +446,33 @@ export default function MetaOperationsTab() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowMappingDialog(false)}>Cancel</Button>
             <Button disabled={!mappingForm.matchValue.trim() || createMapping.isPending} onClick={() => createMapping.mutate({ mappingKey: `${mappingForm.mappingType}:${mappingForm.matchValue.trim()}`, mappingType: mappingForm.mappingType, matchValue: mappingForm.matchValue.trim(), matchName: mappingForm.matchName.trim() || undefined, program: mappingForm.program.trim() || undefined, outputValue: mappingForm.outputValue.trim() || undefined, priority: Number(mappingForm.priority) || 100, isActive: true })}>Save Mapping</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(pendingTestEvent)} onOpenChange={open => !open && setPendingTestEvent(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Confirm one Meta Test Event</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p>This will dispatch exactly one explicitly marked Test Lead event to Meta Test Events.</p>
+            <div className="rounded-md bg-muted/40 p-3 text-xs space-y-1">
+              <p>Internal Lead ID: {pendingTestEvent?.leadId}</p>
+              <p className="break-all">Meta Lead ID: {pendingTestEvent?.metaLeadId}</p>
+              <p>Event: {pendingTestEvent?.eventName}</p>
+            </div>
+            <p className="text-amber-700">Confirm only after Mahmoud has explicitly approved this specific outbound test. Production CAPI remains approval-gated.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingTestEvent(null)} disabled={retryTestEvent.isPending}>Cancel</Button>
+            <Button
+              disabled={!pendingTestEvent || !testEventCode.trim() || retryTestEvent.isPending}
+              onClick={() => pendingTestEvent && retryTestEvent.mutate({
+                eventLogId: pendingTestEvent.eventLogId,
+                testEventCode: testEventCode.trim(),
+              })}
+            >
+              {retryTestEvent.isPending ? "Sending one Test Event…" : "Confirm and send one Test Event"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

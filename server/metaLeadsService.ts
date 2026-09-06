@@ -680,7 +680,10 @@ export async function enqueueMetaCrmEvent(input: {
     && Boolean(metaLeadCreatedAt && input.eventTime < metaLeadCreatedAt);
   const validationError = invalidHistoricalTime
     ? "CRM stage timestamp is earlier than the original Meta Lead timestamp; manual review required"
-    : null;
+    : isTestLead
+      ? "Meta Test Lead event is held for an explicit administrator-approved Meta Test Events retry"
+      : null;
+  const heldForManualReview = invalidHistoricalTime || isTestLead;
   const ts = now();
   await db.insert(metaCrmEventLog).values({
     leadId: input.leadId,
@@ -692,17 +695,24 @@ export async function enqueueMetaCrmEvent(input: {
     sourceId: sourceId || null,
     sourceStage: input.sourceStage || null,
     isTestLead,
-    status: invalidHistoricalTime ? "manual_review" : "pending",
+    deliveryMode: isTestLead ? "test" : null,
+    testEventCodeUsed: false,
+    productionGateEnabledAtAttempt: null,
+    requestDispatchedAt: null,
+    metaResponseReceiptId: null,
+    deliveryEvidenceCode: isTestLead ? "META_TEST_EVENT_CODE_REQUIRED" : null,
+    status: heldForManualReview ? "manual_review" : "pending",
     attempts: 0,
     hasLeadId: Boolean(metaLeadId),
     hasEmailHash: Boolean(normalizedEmail),
     hasPhoneHash: Boolean(normalizedPhone),
+    errorCode: isTestLead ? "META_TEST_EVENT_CODE_REQUIRED" : null,
     lastError: validationError,
     createdAt: ts,
     updatedAt: ts,
   }).onDuplicateKeyUpdate({ set: { eventId } });
   await db.update(leads).set({
-    metaSyncStatus: invalidHistoricalTime ? "manual_review" : "pending",
+    metaSyncStatus: heldForManualReview ? "manual_review" : "pending",
     metaSyncError: validationError,
     updatedAt: ts,
   }).where(eq(leads.id, input.leadId));
@@ -1239,11 +1249,29 @@ export async function processMetaCrmEventOutbox(limit = 25, testEventCode?: stri
   return { selected: events.length, sent, failed, blocked };
 }
 
+export function validateMetaTestEventRetryCandidate(event: {
+  isTestLead: boolean;
+  status: string;
+} | null | undefined) {
+  if (!event) return "META_TEST_EVENT_NOT_FOUND" as const;
+  if (!event.isTestLead) return "META_TEST_EVENT_REAL_LEAD_BLOCKED" as const;
+  if (event.status !== "manual_review") return "META_TEST_EVENT_NOT_IN_MANUAL_REVIEW" as const;
+  return null;
+}
+
 export async function retryMetaCrmEvent(eventLogId: number, testEventCode?: string | null) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   if (!testEventCode?.trim()) throw new Error("A Meta Test Event code is required for manual retry");
-  await db.update(metaCrmEventLog).set({
+  const [event] = await db.select({
+    id: metaCrmEventLog.id,
+    isTestLead: metaCrmEventLog.isTestLead,
+    status: metaCrmEventLog.status,
+  }).from(metaCrmEventLog).where(eq(metaCrmEventLog.id, eventLogId)).limit(1);
+  const validationError = validateMetaTestEventRetryCandidate(event);
+  if (validationError) throw new Error(validationError);
+
+  const updateResult = await db.update(metaCrmEventLog).set({
     status: "pending",
     attempts: 0,
     nextAttemptAt: null,
@@ -1256,7 +1284,14 @@ export async function retryMetaCrmEvent(eventLogId: number, testEventCode?: stri
     metaResponseReceiptId: null,
     deliveryEvidenceCode: null,
     updatedAt: now(),
-  }).where(eq(metaCrmEventLog.id, eventLogId));
+  }).where(and(
+    eq(metaCrmEventLog.id, eventLogId),
+    eq(metaCrmEventLog.isTestLead, true),
+    eq(metaCrmEventLog.status, "manual_review"),
+  ));
+  const updateMetadata = updateResult as unknown as { affectedRows?: number } | Array<{ affectedRows?: number }>;
+  const affectedRows = Number((Array.isArray(updateMetadata) ? updateMetadata[0]?.affectedRows : updateMetadata.affectedRows) || 0);
+  if (affectedRows !== 1) throw new Error("META_TEST_EVENT_RETRY_CONFLICT");
   return processMetaCrmEventOutbox(1, testEventCode.trim(), eventLogId);
 }
 

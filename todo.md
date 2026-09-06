@@ -1214,3 +1214,14 @@ Check email for download link within 5 minutes
 - [x] Add focused tests for consultant resolution, assignment cases, duplicate replay, Test Lead suppression, ambiguity, backfill dry-run/rerun, connector privacy, authorization, browser isolation, event order, and production gate
 - [x] Run production build, focused Meta/Leads tests, safe database validation, authenticated UI review, controlled Test Lead validation, redacted real-Lead validation, and 24-hour in-application monitoring readiness checks
 - [x] Document changed files, migration, environment-variable names without values, routes, permissions, Heartbeat behavior, validation evidence, rollback procedure, and remaining Production CAPI approval conditions
+
+## Attached Leads Module Specification — pasted_content_2.txt
+- [ ] Extract and implement every applicable instruction in `/home/ubuntu/upload/pasted_content_2.txt` directly in the existing ELEVAY Leads module, preserving current data, consultant assignments, Meta Test Lead isolation, reporting integrity, notification safeguards, authorization, idempotency, and `META_CRM_PRODUCTION_ENABLED=false`
+- [x] Hold every newly ingested Meta Test Lead CRM event directly in `manual_review` with no dispatch until an administrator supplies a current Test Events code explicitly
+- [x] Restrict `Retry as Test` to one selected explicitly marked Test Lead event in `manual_review`; reject real, approval-gated, missing, or already-sent events server-side
+- [x] Add a privacy-safe Meta Ops Test Events panel that shows only Test Lead IDs/internal IDs and delivery evidence, uses a masked non-persisted code field, and requires an explicit confirmation dialog before dispatch
+- [x] Keep real approval-gated failures separate from Test Lead events and remove any UI path that could retry a real Lead event as a Test Event
+- [x] Verify the active Page, form, campaign, ad set, and ad mappings from the current system without guessed identifiers before live validation
+- [ ] After explicit confirmation, create exactly one synthetic Meta Test Lead and prove one inbox, one marked Lead, one immutable attribution, skipped assignment, zero Lead alerts, one manual-review event, zero operational-report leakage, and zero real-Lead modification
+- [ ] After Mahmoud supplies a current Test Events code and separately confirms dispatch, send only that selected event and verify Meta Events Manager plus persisted test-delivery provenance without storing or exposing the code
+- [ ] Recheck duplicate counts, approval-gated real-event dispatch count, Production CAPI disabled state, focused Vitest suites, production build, and deliver the requested privacy-safe evidence report

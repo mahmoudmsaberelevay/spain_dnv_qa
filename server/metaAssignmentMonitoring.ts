@@ -568,6 +568,23 @@ export type MetaMonitoringFilters = {
   limit?: number;
 };
 
+export function dedupePrivacySafeMetaMonitoringRows<T extends {
+  attributionId: number;
+  eventLogId: number | null;
+  inboxProcessedAt: number | null;
+  inboxAttempts: number | null;
+}>(rows: T[]) {
+  const unique = new Map<string, T>();
+  for (const row of rows) {
+    const key = `${row.attributionId}:${row.eventLogId ?? "no-event"}`;
+    const existing = unique.get(key);
+    const rowRank = Number(row.inboxProcessedAt || 0) * 1_000 + Number(row.inboxAttempts || 0);
+    const existingRank = Number(existing?.inboxProcessedAt || 0) * 1_000 + Number(existing?.inboxAttempts || 0);
+    if (!existing || rowRank >= existingRank) unique.set(key, row);
+  }
+  return Array.from(unique.values());
+}
+
 export async function getPrivacySafeMetaMonitoring(filters: MetaMonitoringFilters = {}) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -617,6 +634,7 @@ export async function getPrivacySafeMetaMonitoring(filters: MetaMonitoringFilter
     inboxProcessedAt: metaWebhookInbox.processedAt,
     inboxSafeErrorCode: metaWebhookInbox.lastErrorCode,
     inboxManualReview: metaWebhookInbox.requiresManualReview,
+    eventLogId: metaCrmEventLog.id,
     eventName: metaCrmEventLog.eventName,
     eventTime: metaCrmEventLog.eventTime,
     eventId: metaCrmEventLog.eventId,
@@ -641,14 +659,14 @@ export async function getPrivacySafeMetaMonitoring(filters: MetaMonitoringFilter
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(leadMetaAttributions.metaLeadCreatedAt), asc(metaCrmEventLog.eventTime))
     .limit(Math.max(1, Math.min(500, filters.limit || 100)));
-  return rows.map(row => ({
+  return dedupePrivacySafeMetaMonitoringRows(rows.map(row => ({
     ...row,
     ingestionDelaySeconds: row.inboxProcessedAt && row.metaCreatedAt
       ? Math.max(0, Math.round((row.inboxProcessedAt - row.metaCreatedAt) / 1000))
       : null,
     attributionPresent: Boolean(row.attributionId),
     assignmentPresent: Boolean(row.consultantId || row.consultantDisplayName),
-  }));
+  })));
 }
 
 export async function collectMetaMonitoringSnapshot() {

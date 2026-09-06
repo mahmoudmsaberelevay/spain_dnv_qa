@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import {
   extractMetaResponseReceiptId,
   resolveMetaEventDeliveryContext,
+  validateMetaTestEventRetryCandidate,
 } from "./metaLeadsService";
+import { dedupePrivacySafeMetaMonitoringRows } from "./metaAssignmentMonitoring";
 
 const root = process.cwd();
 const read = (relative: string) => fs.readFileSync(path.join(root, relative), "utf8");
@@ -58,6 +60,23 @@ describe("Meta CAPI delivery provenance", () => {
     expect(extractMetaResponseReceiptId({ fbtrace_id: "trace-123", events_received: 1 })).toBe("trace-123");
     expect(extractMetaResponseReceiptId({ events_received: 1 })).toBeNull();
   });
+
+  it("permits Retry as Test only for an explicitly marked Test Lead event held in manual review", () => {
+    expect(validateMetaTestEventRetryCandidate(null)).toBe("META_TEST_EVENT_NOT_FOUND");
+    expect(validateMetaTestEventRetryCandidate({ isTestLead: false, status: "manual_review" })).toBe("META_TEST_EVENT_REAL_LEAD_BLOCKED");
+    expect(validateMetaTestEventRetryCandidate({ isTestLead: true, status: "pending" })).toBe("META_TEST_EVENT_NOT_IN_MANUAL_REVIEW");
+    expect(validateMetaTestEventRetryCandidate({ isTestLead: true, status: "manual_review" })).toBeNull();
+  });
+
+  it("deduplicates one event joined to repeated webhook-delivery records", () => {
+    const rows = dedupePrivacySafeMetaMonitoringRows([
+      { attributionId: 1, eventLogId: 7, inboxProcessedAt: 100, inboxAttempts: 1, value: "older" },
+      { attributionId: 1, eventLogId: 7, inboxProcessedAt: 200, inboxAttempts: 1, value: "newer" },
+      { attributionId: 1, eventLogId: 8, inboxProcessedAt: 150, inboxAttempts: 1, value: "different-event" },
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows.find(row => row.eventLogId === 7)?.value).toBe("newer");
+  });
 });
 
 describe("Meta provenance implementation safeguards", () => {
@@ -68,6 +87,8 @@ describe("Meta provenance implementation safeguards", () => {
   const connector = read("server/mcpServer.ts");
   const adminRouter = read("server/routers/leadsSettings.ts");
   const metaOps = read("client/src/pages/leads/MetaOperationsTab.tsx");
+  const holdMigration = read("drizzle/0059_meta_test_events_manual_review.sql");
+  const cleanupMigration = read("drizzle/0060_meta_test_lead_assignment_cleanup.sql");
 
   it("persists delivery mode, gate state, dispatch time, receipt ID, and evidence code", () => {
     for (const field of [
@@ -112,5 +133,44 @@ describe("Meta provenance implementation safeguards", () => {
     expect(metaOps).toContain('assignmentPolicy.isLoading ? "Loading…"');
     expect(metaOps).toContain("Production approval gate is working");
     expect(metaOps).toContain("Legacy sent unknown");
+  });
+
+  it("holds new and existing unsent Test Lead events in manual review without touching real Lead events", () => {
+    expect(service).toContain("const heldForManualReview = invalidHistoricalTime || isTestLead");
+    expect(service).toContain('status: heldForManualReview ? "manual_review" : "pending"');
+    expect(service).toContain('deliveryEvidenceCode: isTestLead ? "META_TEST_EVENT_CODE_REQUIRED" : null');
+    expect(holdMigration).toContain("WHERE `isTestLead` = 1");
+    expect(holdMigration).toContain("AND `status` IN ('pending', 'failed', 'retrying', 'approval_gated')");
+    expect(holdMigration).not.toContain("WHERE `isTestLead` = 0");
+  });
+
+  it("uses a privacy-safe one-event Test Events control with a masked ephemeral code and explicit confirmation", () => {
+    expect(monitoring).toContain("eventLogId: metaCrmEventLog.id");
+    expect(metaOps).toContain('testLeadStatus: "test"');
+    expect(metaOps).toContain('type="password"');
+    expect(metaOps).toContain('autoComplete="off"');
+    expect(metaOps).toContain("Confirm one Meta Test Event");
+    expect(metaOps).toContain("eventLogId: pendingTestEvent.eventLogId");
+    expect(metaOps).toContain('setTestEventCode("")');
+    expect(adminRouter).toContain("retryMetaCrmEvent(input.eventLogId, input.testEventCode)");
+  });
+
+  it("prevents real Lead failures from presenting a Test retry action", () => {
+    const failuresSection = metaOps.slice(
+      metaOps.indexOf("Failures & Manual Review"),
+      metaOps.indexOf("Controlled Meta Test Events"),
+    );
+    expect(failuresSection).toContain("They cannot be retried as Test Events");
+    expect(failuresSection).not.toContain("Retry as Test");
+    expect(service).toContain("META_TEST_EVENT_REAL_LEAD_BLOCKED");
+    expect(service).toContain('eq(metaCrmEventLog.isTestLead, true)');
+    expect(service).toContain('eq(metaCrmEventLog.status, "manual_review")');
+  });
+
+  it("removes synthetic assignments without deleting Lead, attribution, inbox, event, activity, or audit history", () => {
+    expect(cleanupMigration).toContain("WHERE `isMetaTestLead` = 1");
+    expect(cleanupMigration).toContain("`metaAssignmentStatus` = 'not_applicable'");
+    expect(cleanupMigration).toContain("`outcome` = 'skipped_test'");
+    expect(cleanupMigration).not.toMatch(/\bDELETE\b/i);
   });
 });
