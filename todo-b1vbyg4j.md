@@ -15,3 +15,14 @@
 - [x] Document separate EAS project creation and `EXPO_PUBLIC_EAS_PROJECT_ID` setup; Expo credentials were not available and no employee project identity was reused.
 - [x] Document Android release-signing fingerprint verification after the first EAS build.
 - [x] Document the pilot real-device acceptance sequence required before store submission.
+
+## Scope correction completed
+
+- [x] Replace the five-destination client tab bar with exactly Home and My Applications.
+- [x] Make Home display CRM-managed program cards and service-provider cards.
+- [x] Make My Applications display only documentation folders assigned to the signed-in client.
+- [x] Route authenticated clients to the assigned primary documentation folder after sign-in.
+- [x] Project the legacy CRM Client Documentation checklist into the client folder view.
+- [x] Add explicit "Assign to Client App" control on the CRM Client Documentation detail page.
+- [x] Clarify Client Portal account creation as credentials first, followed by documentation-folder selection.
+- [x] Validate mobile TypeScript, lint, tests, web export, CRM build, and focused portal security tests.

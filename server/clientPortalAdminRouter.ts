@@ -124,6 +124,27 @@ export const clientPortalAdminRouter = router({
     return { publicId: portalUser.publicId, username: portalUser.username, email: portalUser.email, temporaryPassword: password };
   }),
 
+  linkDocumentationFolder: adminProcedure.input(z.object({
+    portalUserPublicId: z.string().uuid(),
+    clientCaseId: z.number().int().positive(),
+    makePrimary: z.boolean().default(false),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+    const [portalUser] = await db.select().from(clientPortalUsers).where(eq(clientPortalUsers.publicId, input.portalUserPublicId)).limit(1);
+    const [clientCase] = await db.select().from(clientCases).where(eq(clientCases.id, input.clientCaseId)).limit(1);
+    if (!portalUser || !clientCase) throw new TRPCError({ code: "NOT_FOUND", message: "Client account or documentation folder was not found" });
+    const [existing] = await db.select().from(clientPortalApplications).where(and(eq(clientPortalApplications.portalUserId, portalUser.id), eq(clientPortalApplications.clientCaseId, clientCase.id))).limit(1);
+    if (existing) return { publicId: existing.publicId, alreadyLinked: true };
+    if (input.makePrimary) await db.update(clientPortalApplications).set({ isPrimary: false }).where(eq(clientPortalApplications.portalUserId, portalUser.id));
+    const publicId = randomUUID();
+    await db.insert(clientPortalApplications).values({ publicId, portalUserId: portalUser.id, clientCaseId: clientCase.id, label: `${clientCase.applicationType} – ${clientCase.clientName}`, isPrimary: input.makePrimary });
+    const [application] = await db.select().from(clientPortalApplications).where(eq(clientPortalApplications.publicId, publicId)).limit(1);
+    if (application) await db.insert(clientPortalApplicants).values({ publicId: randomUUID(), portalApplicationId: application.id, relation: "main", fullName: clientCase.clientName });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_portal_documentation_folder", clientCase.id, `Linked ${clientCase.clientName} folder to portal account ${portalUser.username}`);
+    return { publicId, alreadyLinked: false };
+  }),
+
   setAccountStatus: adminProcedure.input(z.object({ publicId: z.string().uuid(), status: z.enum(["active", "disabled"]) })).mutation(async ({ ctx, input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });

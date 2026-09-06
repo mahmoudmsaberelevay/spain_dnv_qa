@@ -24,7 +24,7 @@ export default function ClientDocDetail() {
   const { id } = useParams<{ id: string }>();
   const clientId = parseInt(id ?? "0");
   const [, setLocation] = useLocation();
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [activeAction, setActiveAction] = useState<ActionType>(null);
   const [activeTab, setActiveTab] = useState("main");
 
@@ -53,6 +53,8 @@ export default function ClientDocDetail() {
   const [spouseNameInput, setSpouseNameInput] = useState("");
   const [showChildrenDialog, setShowChildrenDialog] = useState(false);
   const [childrenEdit, setChildrenEdit] = useState<{ name: string; age: number }[]>([]);
+  const [showPortalFolderDialog, setShowPortalFolderDialog] = useState(false);
+  const [selectedPortalUser, setSelectedPortalUser] = useState("");
 
   const utils = trpc.useUtils();
 
@@ -65,6 +67,17 @@ export default function ClientDocDetail() {
     { id: clientId },
     { enabled: isAuthenticated && clientId > 0 }
   );
+  const { data: portalAccounts = [], isLoading: portalAccountsLoading } = trpc.clientPortalAdmin.listAccounts.useQuery(undefined, {
+    enabled: isAuthenticated && user?.role === "admin" && showPortalFolderDialog,
+  });
+  const linkFolderMutation = trpc.clientPortalAdmin.linkDocumentationFolder.useMutation({
+    onSuccess: result => {
+      toast.success(result.alreadyLinked ? "This folder is already linked" : "Documentation folder assigned to the client app");
+      setShowPortalFolderDialog(false);
+      setSelectedPortalUser("");
+    },
+    onError: error => toast.error(error.message),
+  });
 
   const receiveMutation = trpc.clientDocs.receiveDocuments.useMutation({
     onSuccess: () => {
@@ -313,6 +326,17 @@ export default function ClientDocDetail() {
             <FileDown className="w-3.5 h-3.5" />
             {exportMutation.isPending ? "جاري التحميل..." : "تصدير القائمة"}
           </Button>
+          {user?.role === "admin" && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs border-[#5ba3b8]/40 text-[#1e7184] hover:bg-[#5ba3b8]/10 gap-1.5"
+              onClick={() => setShowPortalFolderDialog(true)}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Assign to Client App
+            </Button>
+          )}
           {/* Delete Client Button */}
           <Button
             variant="outline"
@@ -1339,6 +1363,23 @@ export default function ClientDocDetail() {
               >
                 {spouseNameMutation.isPending ? "Saving..." : "Save"}
               </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign this CRM documentation folder to a client-app account */}
+      <Dialog open={showPortalFolderDialog} onOpenChange={setShowPortalFolderDialog}>
+        <DialogContent className="max-w-md bg-white border-gray-200 text-gray-900">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-[#5ba3b8]" />Assign folder to Client App</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-3">
+            <p className="text-sm text-gray-600">This will make <strong>{data.clientName}</strong>’s documentation folder visible in the selected client account.</p>
+            {portalAccountsLoading ? <p className="text-sm text-gray-500">Loading client accounts…</p> : portalAccounts.length === 0 ? <p className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">Create the client’s username and password in Client Portal Administration first.</p> : <select value={selectedPortalUser} onChange={event => setSelectedPortalUser(event.target.value)} className="w-full h-10 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900"><option value="">Select client account</option>{portalAccounts.map(account => <option key={account.publicId} value={account.publicId}>{account.clientName} · {account.username} · {account.email}</option>)}</select>}
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setShowPortalFolderDialog(false)}>Cancel</Button>
+              <Button className="flex-1 bg-[#1e3a5f] hover:bg-[#16304f] text-white" disabled={!selectedPortalUser || linkFolderMutation.isPending} onClick={() => linkFolderMutation.mutate({ portalUserPublicId: selectedPortalUser, clientCaseId: clientId, makePrimary: true })}>{linkFolderMutation.isPending ? "Assigning…" : "Assign folder"}</Button>
             </div>
           </div>
         </DialogContent>
