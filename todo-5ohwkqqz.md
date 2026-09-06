@@ -10,3 +10,6 @@
 - [x] Run focused tests, TypeScript/build checks, and visual verification
 - [x] Verify Production CAPI remains disabled and no automatic retry, Backfill, or reconciliation mutation occurs
 - [x] Save and publish a checkpoint with the completed fixes
+- [x] Identify the exact Meta Dataset/Pixel ID currently used by ELEVAY CRM without exposing credentials
+- [x] Match the configured ID against the Meta data sources named `Elevay CRM Integration` and `Elevay CRM Server`
+- [x] Confirm the correct data source for the Controlled Test Event without sending any event or changing configuration
