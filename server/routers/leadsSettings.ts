@@ -2,7 +2,7 @@ import { z } from "zod";
 import { router, protectedProcedure, adminProcedure } from "../_core/trpc";
 import { getDb } from "../db";
 import { leadIntegrations, leads, metaCrmEventLog, metaIntegrationMappings, metaWebhookInbox } from "../../drizzle/schema";
-import { and, count, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import {
   getMetaIntegrationHealth,
@@ -387,6 +387,7 @@ export const leadsSettingsRouter = router({
         formId: z.string().optional(),
         consultant: z.string().optional(),
         leadStatus: z.string().optional(),
+        metaSyncStatus: z.enum(["pending", "sent", "failed", "retrying", "manual_review", "approval_gated"]).optional(),
         metaEventStatus: z.string().optional(),
         testLeadStatus: z.enum(["real", "test", "all"]).optional(),
         limit: z.number().int().min(1).max(500).optional(),
@@ -488,8 +489,8 @@ export const leadsSettingsRouter = router({
         const eventWhere = eventConditions.length ? and(...eventConditions) : undefined;
         const leadWhere = leadConditions.length ? and(...leadConditions) : undefined;
         const eventWithLeadWhere = and(eventWhere, leadWhere);
-        const failedWhere = and(eventWithLeadWhere, sql`${metaCrmEventLog.status} IN ('failed','dead_letter','manual_review')`);
-        const [eventByStatus, eventByName, inboxByStatus, recentFailures, leadTotals, eventTotals] = await Promise.all([
+        const failedWhere = and(eventWithLeadWhere, sql`${metaCrmEventLog.status} IN ('failed','dead_letter','manual_review','approval_gated')`);
+        const [eventByStatus, eventByName, inboxByStatus, recentFailures, leadTotals, eventTotals, pendingEventStats] = await Promise.all([
           db.select({ status: metaCrmEventLog.status, total: count() }).from(metaCrmEventLog).innerJoin(leads, eq(leads.id, metaCrmEventLog.leadId)).where(eventWithLeadWhere).groupBy(metaCrmEventLog.status),
           db.select({ eventName: metaCrmEventLog.eventName, total: count() }).from(metaCrmEventLog).innerJoin(leads, eq(leads.id, metaCrmEventLog.leadId)).where(eventWithLeadWhere).groupBy(metaCrmEventLog.eventName),
           db.select({ status: metaWebhookInbox.status, total: count() }).from(metaWebhookInbox).where(eq(metaWebhookInbox.isTestLead, false)).groupBy(metaWebhookInbox.status),
@@ -503,6 +504,12 @@ export const leadsSettingsRouter = router({
             attempts: metaCrmEventLog.attempts,
             errorCode: metaCrmEventLog.errorCode,
             lastError: metaCrmEventLog.lastError,
+            deliveryMode: metaCrmEventLog.deliveryMode,
+            testEventCodeUsed: metaCrmEventLog.testEventCodeUsed,
+            productionGateEnabledAtAttempt: metaCrmEventLog.productionGateEnabledAtAttempt,
+            requestDispatchedAt: metaCrmEventLog.requestDispatchedAt,
+            metaResponseReceiptId: metaCrmEventLog.metaResponseReceiptId,
+            deliveryEvidenceCode: metaCrmEventLog.deliveryEvidenceCode,
             updatedAt: metaCrmEventLog.updatedAt,
           }).from(metaCrmEventLog).innerJoin(leads, eq(leads.id, metaCrmEventLog.leadId))
             .where(failedWhere)
@@ -515,12 +522,24 @@ export const leadsSettingsRouter = router({
           db.select({
             total: count(),
             sent: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'sent' THEN 1 ELSE 0 END)`,
+            productionSent: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'sent' AND ${metaCrmEventLog.deliveryMode} = 'production' THEN 1 ELSE 0 END)`,
+            testSent: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'sent' AND ${metaCrmEventLog.deliveryMode} = 'test' THEN 1 ELSE 0 END)`,
+            legacyUnknownSent: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'sent' AND (${metaCrmEventLog.deliveryMode} IS NULL OR ${metaCrmEventLog.deliveryMode} = 'legacy_unknown') THEN 1 ELSE 0 END)`,
+            approvalGated: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'approval_gated' THEN 1 ELSE 0 END)`,
             covered: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.hasLeadId} OR ${metaCrmEventLog.hasEmailHash} OR ${metaCrmEventLog.hasPhoneHash} THEN 1 ELSE 0 END)`,
             leadIdCovered: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.hasLeadId} THEN 1 ELSE 0 END)`,
             emailCovered: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.hasEmailHash} THEN 1 ELSE 0 END)`,
             phoneCovered: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.hasPhoneHash} THEN 1 ELSE 0 END)`,
             averageDelaySeconds: sql<number>`AVG(CASE WHEN ${metaCrmEventLog.sentAt} IS NOT NULL THEN (${metaCrmEventLog.sentAt} / 1000) - ${metaCrmEventLog.eventTime} END)`,
           }).from(metaCrmEventLog).innerJoin(leads, eq(leads.id, metaCrmEventLog.leadId)).where(eventWithLeadWhere),
+          db.select({
+            total: count(),
+            oldestEventTime: sql<number>`MIN(${metaCrmEventLog.eventTime})`,
+            nextRetryAt: sql<number>`MIN(${metaCrmEventLog.nextAttemptAt})`,
+          }).from(metaCrmEventLog).innerJoin(leads, eq(leads.id, metaCrmEventLog.leadId)).where(and(
+            eventWithLeadWhere,
+            inArray(metaCrmEventLog.status, ["pending", "retrying"]),
+          )),
         ]);
         const leadSummary = leadTotals[0];
         const eventSummary = eventTotals[0];
@@ -529,6 +548,8 @@ export const leadsSettingsRouter = router({
         const qualified = Number(byName["Marketing Qualified Lead"] || 0);
         const converted = Number(byName.Converted || 0);
         const eventTotal = Number(eventSummary?.total || 0);
+        const pendingTotal = Number(pendingEventStats[0]?.total || 0);
+        const oldestPendingEventTime = pendingEventStats[0]?.oldestEventTime ? Number(pendingEventStats[0].oldestEventTime) : null;
         return {
           eventByStatus,
           eventByName,
@@ -543,6 +564,15 @@ export const leadsSettingsRouter = router({
             meetingToSigningRate: qualified ? converted / qualified : 0,
             conversionRate: metaLeads ? converted / metaLeads : 0,
             sendSuccessRate: eventTotal ? Number(eventSummary?.sent || 0) / eventTotal : 0,
+            productionSent: Number(eventSummary?.productionSent || 0),
+            testSent: Number(eventSummary?.testSent || 0),
+            legacyUnknownSent: Number(eventSummary?.legacyUnknownSent || 0),
+            approvalGated: Number(eventSummary?.approvalGated || 0),
+            pendingEvents: pendingTotal,
+            oldestPendingEventTime,
+            oldestPendingAgeSeconds: oldestPendingEventTime ? Math.max(0, Math.floor(Date.now() / 1000) - oldestPendingEventTime) : null,
+            pendingNextRetryAt: pendingEventStats[0]?.nextRetryAt ? Number(pendingEventStats[0].nextRetryAt) : null,
+            pendingNextAction: pendingTotal === 0 ? "No pending CRM events" : "Awaiting scheduled delivery or retry evaluation",
             matchCoverage: eventTotal ? Number(eventSummary?.covered || 0) / eventTotal : 0,
             leadIdCoverage: eventTotal ? Number(eventSummary?.leadIdCovered || 0) / eventTotal : 0,
             emailHashCoverage: eventTotal ? Number(eventSummary?.emailCovered || 0) / eventTotal : 0,

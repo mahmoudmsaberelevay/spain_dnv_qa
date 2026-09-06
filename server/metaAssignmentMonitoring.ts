@@ -562,6 +562,7 @@ export type MetaMonitoringFilters = {
   formId?: string;
   consultant?: string;
   leadStatus?: string;
+  metaSyncStatus?: string;
   metaEventStatus?: string;
   testLeadStatus?: "real" | "test" | "all";
   limit?: number;
@@ -583,6 +584,7 @@ export async function getPrivacySafeMetaMonitoring(filters: MetaMonitoringFilter
     sql`CAST(${leads.assignedConsultantUserId} AS CHAR) = ${filters.consultant}`,
   ));
   if (filters.leadStatus) conditions.push(eq(leads.stage, filters.leadStatus as any));
+  if (filters.metaSyncStatus) conditions.push(eq(leads.metaSyncStatus, filters.metaSyncStatus as any));
   if (filters.metaEventStatus) conditions.push(eq(metaCrmEventLog.status, filters.metaEventStatus as any));
   if ((filters.testLeadStatus || "real") === "real") conditions.push(eq(leadMetaAttributions.isTestLead, false));
   if (filters.testLeadStatus === "test") conditions.push(eq(leadMetaAttributions.isTestLead, true));
@@ -591,6 +593,7 @@ export async function getPrivacySafeMetaMonitoring(filters: MetaMonitoringFilter
     leadCreatedAt: leads.createdAt,
     leadUpdatedAt: leads.updatedAt,
     leadStatus: leads.stage,
+    metaSyncStatus: leads.metaSyncStatus,
     consultantId: leads.assignedConsultantUserId,
     consultantDisplayName: leads.assignedTo,
     assignmentStatus: leads.metaAssignmentStatus,
@@ -618,6 +621,12 @@ export async function getPrivacySafeMetaMonitoring(filters: MetaMonitoringFilter
     eventTime: metaCrmEventLog.eventTime,
     eventId: metaCrmEventLog.eventId,
     eventStatus: metaCrmEventLog.status,
+    deliveryMode: metaCrmEventLog.deliveryMode,
+    testEventCodeUsed: metaCrmEventLog.testEventCodeUsed,
+    productionGateEnabledAtAttempt: metaCrmEventLog.productionGateEnabledAtAttempt,
+    requestDispatchedAt: metaCrmEventLog.requestDispatchedAt,
+    metaResponseReceiptId: metaCrmEventLog.metaResponseReceiptId,
+    deliveryEvidenceCode: metaCrmEventLog.deliveryEvidenceCode,
     eventAttempts: metaCrmEventLog.attempts,
     eventNextRetryAt: metaCrmEventLog.nextAttemptAt,
     eventSentAt: metaCrmEventLog.sentAt,
@@ -686,7 +695,7 @@ export async function collectMetaMonitoringSnapshot() {
       ))
       .limit(5_000),
     db.select({ id: metaCrmEventLog.id, leadId: metaCrmEventLog.leadId }).from(metaCrmEventLog)
-      .where(and(eq(metaCrmEventLog.isTestLead, false), inArray(metaCrmEventLog.status, ["dead_letter", "manual_review"])))
+      .where(and(eq(metaCrmEventLog.isTestLead, false), eq(metaCrmEventLog.status, "dead_letter"), gte(metaCrmEventLog.attempts, 5)))
       .orderBy(desc(metaCrmEventLog.updatedAt)).limit(50),
     db.select({ status: metaNotificationLog.status, total: count() }).from(metaNotificationLog)
       .where(gte(metaNotificationLog.createdAt, windowStart)).groupBy(metaNotificationLog.status),
@@ -712,7 +721,27 @@ export async function collectMetaMonitoringSnapshot() {
   )).orderBy(asc(leads.createdAt)).limit(50);
   const manualReviewCount = await db.select({ total: count() }).from(metaWebhookInbox)
     .where(and(eq(metaWebhookInbox.isTestLead, false), or(eq(metaWebhookInbox.requiresManualReview, true), eq(metaWebhookInbox.status, "manual_review"))));
+  const [approvalGatedRows, pendingEventRows] = await Promise.all([
+    db.select({ total: count() }).from(metaCrmEventLog).where(and(
+      eq(metaCrmEventLog.isTestLead, false),
+      eq(metaCrmEventLog.status, "approval_gated"),
+    )),
+    db.select({
+      total: count(),
+      oldestEventTime: sql<number>`MIN(${metaCrmEventLog.eventTime})`,
+      nextRetryAt: sql<number>`MIN(${metaCrmEventLog.nextAttemptAt})`,
+    }).from(metaCrmEventLog).where(and(
+      eq(metaCrmEventLog.isTestLead, false),
+      inArray(metaCrmEventLog.status, ["pending", "retrying"]),
+    )),
+  ]);
   const productionSendingEnabled = process.env.META_CRM_PRODUCTION_ENABLED === "true";
+  const approvalGatedEventCount = Number(approvalGatedRows[0]?.total || 0);
+  const pendingEventCount = Number(pendingEventRows[0]?.total || 0);
+  const oldestPendingEventTime = pendingEventRows[0]?.oldestEventTime ? Number(pendingEventRows[0].oldestEventTime) : null;
+  const oldestPendingAgeSeconds = oldestPendingEventTime
+    ? Math.max(0, Math.floor(timestamp / 1000) - oldestPendingEventTime)
+    : null;
   const snapshot = {
     capturedAt: timestamp,
     signedWebhookCount,
@@ -769,6 +798,16 @@ export async function collectMetaMonitoringSnapshot() {
     reconciliation: reconciliation[0] ?? null,
     recentUnassignedLeadIds: unassignedRows.map(row => row.id),
     eventRetryExhaustedCount: exhaustedEvents.length,
+    approvalGatedEventCount,
+    pendingEventCount,
+    oldestPendingEventTime,
+    oldestPendingAgeSeconds,
+    pendingNextRetryAt: pendingEventRows[0]?.nextRetryAt ? Number(pendingEventRows[0].nextRetryAt) : null,
+    pendingNextAction: pendingEventCount === 0
+      ? "No pending CRM events"
+      : productionSendingEnabled
+        ? "Awaiting scheduled delivery or retry"
+        : "Awaiting outbox evaluation; eligible production events will move to approval_gated without a Meta request",
     notificationByStatus: notificationCounts.map(row => ({ status: row.status, total: Number(row.total || 0) })),
     warnings,
     objectives: {

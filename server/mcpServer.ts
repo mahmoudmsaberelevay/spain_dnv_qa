@@ -248,13 +248,14 @@ export function registerMcpServer(app: Express) {
           formId: z.string().optional(),
           consultant: z.string().optional().describe("Consultant display name or internal user ID"),
           leadStatus: z.string().optional(),
+          metaSyncStatus: z.enum(["pending", "sent", "failed", "retrying", "manual_review", "approval_gated"]).optional(),
           metaEventStatus: z.string().optional(),
           testLeadStatus: z.enum(["real", "test", "all"]).optional().describe("Defaults to real operational Leads"),
           limit: z.number().int().min(1).max(500).optional(),
         }),
       }, async (filters: {
         dateFrom?: number; dateTo?: number; program?: string; campaignId?: string; adSetId?: string;
-        adId?: string; formId?: string; consultant?: string; leadStatus?: string; metaEventStatus?: string;
+        adId?: string; formId?: string; consultant?: string; leadStatus?: string; metaSyncStatus?: string; metaEventStatus?: string;
         testLeadStatus?: "real" | "test" | "all"; limit?: number;
       }) => {
         try {

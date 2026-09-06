@@ -141,7 +141,8 @@ describe("durable implementation safeguards", () => {
 
   it("keeps production CAPI approval-gated and Test Leads outside production sending", () => {
     expect(service).toContain('process.env.META_CRM_PRODUCTION_ENABLED === "true"');
-    expect(service).toContain("if (event.isTestLead && !code)");
+    expect(service).toContain('delivery.blockedReason === "META_TEST_EVENT_CODE_REQUIRED"');
+    expect(service).toContain('delivery.blockedReason === "META_PRODUCTION_APPROVAL_REQUIRED"');
     expect(assignment).toContain("productionSendingEnabled");
   });
 

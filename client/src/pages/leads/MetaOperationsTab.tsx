@@ -124,12 +124,19 @@ export default function MetaOperationsTab() {
   const fmtPercent = (value = 0) => `${(value * 100).toFixed(1)}%`;
   const fmtDate = (value?: number | null) => value ? new Date(value).toLocaleString() : "Never";
   const fmtBps = (value?: number | null) => value === null || value === undefined ? "Data not available" : `${(value / 100).toFixed(1)}%`;
+  const fmtDuration = (seconds?: number | null) => {
+    if (seconds === null || seconds === undefined) return "Data not available";
+    if (seconds < 60) return `${seconds} sec`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr`;
+    return `${Math.floor(seconds / 86400)} day`;
+  };
 
   const healthCards = [
-    { label: "Webhook", value: health.data?.lastWebhookAt ? "Receiving" : "No delivery yet", sub: fmtDate(health.data?.lastWebhookAt), icon: Activity },
-    { label: "Lead Sync", value: health.data?.lastLeadSyncAt ? "Processed" : "Awaiting lead", sub: fmtDate(health.data?.lastLeadSyncAt), icon: Database },
-    { label: "CRM Events", value: `${health.data?.eventTotals.sent || 0} sent`, sub: `${health.data?.eventTotals.failed || 0} failed`, icon: Zap },
-    { label: "Production Sending", value: health.data?.productionSendingEnabled ? "Enabled" : "Approval gated", sub: health.data?.signatureConfigured ? "Webhook signature ready" : "Signature secret required", icon: ShieldCheck },
+    { label: "Webhook", value: health.isLoading ? "Loading…" : health.isError ? "Unavailable" : health.data?.lastWebhookAt ? "Receiving" : "No delivery yet", sub: health.isLoading ? "Loading…" : fmtDate(health.data?.lastWebhookAt), icon: Activity },
+    { label: "Lead Sync", value: health.isLoading ? "Loading…" : health.isError ? "Unavailable" : health.data?.lastLeadSyncAt ? "Processed" : "Awaiting lead", sub: health.isLoading ? "Loading…" : fmtDate(health.data?.lastLeadSyncAt), icon: Database },
+    { label: "CRM Events", value: health.isLoading ? "Loading…" : health.isError ? "Unavailable" : `${health.data?.eventTotals.sent || 0} sent`, sub: health.isLoading ? "Loading…" : `${health.data?.eventTotals.failed || 0} failed · ${health.data?.eventTotals.approvalGated || 0} approval gated`, icon: Zap },
+    { label: "Production Sending", value: health.isLoading ? "Loading…" : health.isError ? "Unavailable" : health.data?.productionSendingEnabled ? "Enabled" : "Approval gated", sub: health.isLoading ? "Loading…" : health.data?.signatureConfigured ? "Webhook signature ready" : "Signature secret required", icon: ShieldCheck },
   ];
 
   const funnelCards: Array<[string, string | number]> = [
@@ -175,6 +182,13 @@ export default function MetaOperationsTab() {
         ))}
       </div>
 
+      {health.isError && (
+        <div className="border border-red-300 bg-red-50 text-red-950 rounded-lg p-4">
+          <h4 className="font-semibold">Meta health could not be loaded</h4>
+          <p className="text-sm mt-1">No configuration conclusion is shown until the health query succeeds.</p>
+        </div>
+      )}
+
       {(health.data?.warnings.length ?? 0) > 0 && (
         <div className="border border-amber-300 bg-amber-50 text-amber-950 rounded-lg p-4">
           <h4 className="font-semibold">Integration attention required</h4>
@@ -203,8 +217,8 @@ export default function MetaOperationsTab() {
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           <div className="bg-muted/30 rounded-md p-3">
             <p className="text-xs text-muted-foreground">Default consultant policy</p>
-            <p className="font-semibold mt-1">{assignmentPolicy.data?.status === "resolved" ? assignmentPolicy.data.consultant?.name : "Manual review required"}</p>
-            <p className="text-xs text-muted-foreground mt-1">{assignmentPolicy.data?.status === "resolved" ? `User ID ${assignmentPolicy.data.consultant?.id}` : ("safeCode" in (assignmentPolicy.data || {}) ? assignmentPolicy.data?.safeCode : "Loading…")}</p>
+            <p className="font-semibold mt-1">{assignmentPolicy.isLoading ? "Loading…" : assignmentPolicy.isError ? "Unable to load" : assignmentPolicy.data?.status === "resolved" ? assignmentPolicy.data.consultant?.name : "Manual review required"}</p>
+            <p className="text-xs text-muted-foreground mt-1">{assignmentPolicy.isLoading ? "Loading…" : assignmentPolicy.isError ? "Policy query failed" : assignmentPolicy.data?.status === "resolved" ? `User ID ${assignmentPolicy.data.consultant?.id}` : ("safeCode" in (assignmentPolicy.data || {}) ? assignmentPolicy.data?.safeCode : "Data not available")}</p>
           </div>
           <div className="bg-muted/30 rounded-md p-3">
             <p className="text-xs text-muted-foreground">Assignment coverage</p>
@@ -231,12 +245,32 @@ export default function MetaOperationsTab() {
           <Metric label="Manual review" value={monitoring.data?.manualReviewCount ?? "N/A"} />
           <Metric label="Test leakage" value={monitoring.data?.testLeadLeakageCount ?? "N/A"} />
           <Metric label="Retry exhausted" value={monitoring.data?.eventRetryExhaustedCount ?? "N/A"} />
+          <Metric label="Approval gated" value={monitoring.data?.approvalGatedEventCount ?? "N/A"} />
+          <Metric label="Pending events" value={monitoring.data?.pendingEventCount ?? "N/A"} />
+          <Metric label="Oldest pending age" value={fmtDuration(monitoring.data?.oldestPendingAgeSeconds)} />
+          <Metric label="Production sent" value={health.data?.eventTotals.productionSent ?? "N/A"} />
+          <Metric label="Test sent" value={health.data?.eventTotals.testSent ?? "N/A"} />
+          <Metric label="Legacy sent unknown" value={health.data?.eventTotals.legacyUnknownSent ?? "N/A"} />
           <Metric label="Reconciliation" value={monitoring.data?.reconciliationFresh ? "Fresh" : "Attention"} />
           <Metric label="Production CAPI" value={monitoring.data?.productionSendingEnabled ? "Enabled" : "Disabled"} />
           {(monitoring.data?.notificationByStatus ?? []).map(item => (
             <Metric key={item.status} label={`Alerts ${item.status}`} value={Number(item.total || 0)} />
           ))}
         </div>
+
+        {(monitoring.data?.approvalGatedEventCount ?? 0) > 0 && (
+          <div className="border border-sky-300 bg-sky-50 text-sky-950 rounded-md p-3">
+            <p className="font-medium">Production approval gate is working</p>
+            <p className="text-xs mt-1">{monitoring.data?.approvalGatedEventCount} CRM event(s) are held locally. No Meta request was dispatched for these events while Production CAPI is disabled.</p>
+          </div>
+        )}
+
+        {(monitoring.data?.pendingEventCount ?? 0) > 0 && (
+          <div className="border rounded-md p-3 bg-muted/20 text-sm">
+            <p className="font-medium">Pending CRM event diagnostics</p>
+            <p className="text-xs text-muted-foreground mt-1">Oldest age: {fmtDuration(monitoring.data?.oldestPendingAgeSeconds)} · Next retry: {monitoring.data?.pendingNextRetryAt ? fmtDate(monitoring.data.pendingNextRetryAt) : "Not scheduled"} · {monitoring.data?.pendingNextAction}</p>
+          </div>
+        )}
 
         {(monitoring.data?.warnings.length ?? 0) > 0 && (
           <div className="border border-amber-300 bg-amber-50 text-amber-950 rounded-md p-3">
@@ -324,7 +358,7 @@ export default function MetaOperationsTab() {
         <div className="divide-y">
           {(diagnostics.data?.recentFailures ?? []).map(event => (
             <div key={event.id} className="p-4 flex flex-col lg:flex-row lg:items-center gap-3">
-              <div className="flex-1 min-w-0"><p className="font-medium">{event.eventName} · Lead #{event.leadId}</p><p className="text-xs text-red-600 break-words">{event.lastError || event.status}</p><p className="text-[11px] text-muted-foreground">{new Date(event.eventTime * 1000).toLocaleString()} · {event.attempts} attempts</p></div>
+              <div className="flex-1 min-w-0"><p className="font-medium">{event.eventName} · Lead #{event.leadId}</p><p className={`text-xs break-words ${event.status === "approval_gated" ? "text-sky-700" : "text-red-600"}`}>{event.lastError || event.status}</p><p className="text-[11px] text-muted-foreground">{new Date(event.eventTime * 1000).toLocaleString()} · {event.attempts} attempts · Mode: {event.deliveryMode || "Data not available"} · Evidence: {event.deliveryEvidenceCode || "Data not available"}{event.metaResponseReceiptId ? ` · Receipt: ${event.metaResponseReceiptId}` : ""}</p></div>
               <Button size="sm" variant="outline" disabled={!testEventCode.trim() || retryTestEvent.isPending} onClick={() => retryTestEvent.mutate({ eventLogId: event.id, testEventCode: testEventCode.trim() })}>Retry as Test</Button>
             </div>
           ))}

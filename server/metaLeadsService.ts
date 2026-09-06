@@ -31,6 +31,59 @@ const DEFAULT_PAGE_ID = "100123051604258";
 const MAX_ATTEMPTS = 5;
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 60 * 60_000, 12 * 60 * 60_000];
 
+export type MetaEventDeliveryMode = "production" | "test" | "approval_gated" | "legacy_unknown";
+
+export function resolveMetaEventDeliveryContext(input: {
+  isTestLead: boolean;
+  testEventCode?: string | null;
+  productionEnabled: boolean;
+}) {
+  const testEventCode = input.testEventCode?.trim() || null;
+  if (testEventCode) {
+    return {
+      deliveryMode: "test" as const,
+      testEventCode,
+      testEventCodeUsed: true,
+      productionGateEnabledAtAttempt: input.productionEnabled,
+      blockedReason: null,
+    };
+  }
+  if (input.isTestLead) {
+    return {
+      deliveryMode: "test" as const,
+      testEventCode: null,
+      testEventCodeUsed: false,
+      productionGateEnabledAtAttempt: input.productionEnabled,
+      blockedReason: "META_TEST_EVENT_CODE_REQUIRED" as const,
+    };
+  }
+  if (!input.productionEnabled) {
+    return {
+      deliveryMode: "approval_gated" as const,
+      testEventCode: null,
+      testEventCodeUsed: false,
+      productionGateEnabledAtAttempt: false,
+      blockedReason: "META_PRODUCTION_APPROVAL_REQUIRED" as const,
+    };
+  }
+  return {
+    deliveryMode: "production" as const,
+    testEventCode: null,
+    testEventCodeUsed: false,
+    productionGateEnabledAtAttempt: true,
+    blockedReason: null,
+  };
+}
+
+export function extractMetaResponseReceiptId(response: Record<string, unknown>): string | null {
+  for (const key of ["event_receipt_id", "request_id", "fbtrace_id", "trace_id"]) {
+    const value = response[key];
+    if (typeof value === "string" && value.trim()) return value.trim().slice(0, 255);
+    if (typeof value === "number" && Number.isFinite(value)) return String(value).slice(0, 255);
+  }
+  return null;
+}
+
 export const META_EVENT_ORDER = [
   "Initial Lead from Facebook",
   "Contacted",
@@ -1021,24 +1074,61 @@ async function sendMetaCrmEvent(event: typeof metaCrmEventLog.$inferSelect, test
   const datasetId = process.env.META_DATASET_ID || process.env.META_PIXEL_ID || DEFAULT_DATASET_ID;
   const accessToken = process.env.META_CAPI_TOKEN || "";
   if (!datasetId || !accessToken) throw new Error("Meta dataset ID or Conversions API token is not configured");
-  const code = testEventCode?.trim() || null;
   const productionEnabled = process.env.META_CRM_PRODUCTION_ENABLED === "true";
-  if (event.isTestLead && !code) {
+  const delivery = resolveMetaEventDeliveryContext({
+    isTestLead: event.isTestLead,
+    testEventCode,
+    productionEnabled,
+  });
+  if (delivery.blockedReason === "META_TEST_EVENT_CODE_REQUIRED") {
     const reviewError = "Meta Test Lead event requires an explicit Meta Test Events code and cannot be sent as a production conversion";
-    await db.update(metaCrmEventLog).set({ status: "manual_review", lastError: reviewError, updatedAt: now() }).where(eq(metaCrmEventLog.id, event.id));
+    await db.update(metaCrmEventLog).set({
+      status: "manual_review",
+      deliveryMode: delivery.deliveryMode,
+      testEventCodeUsed: delivery.testEventCodeUsed,
+      productionGateEnabledAtAttempt: delivery.productionGateEnabledAtAttempt,
+      requestDispatchedAt: null,
+      metaResponseReceiptId: null,
+      deliveryEvidenceCode: delivery.blockedReason,
+      errorCode: delivery.blockedReason,
+      lastError: reviewError,
+      updatedAt: now(),
+    }).where(eq(metaCrmEventLog.id, event.id));
     await db.update(leads).set({ metaSyncStatus: "manual_review", metaSyncError: reviewError, updatedAt: now() }).where(eq(leads.id, event.leadId));
     return { sent: false, manualReview: true };
   }
-  if (!code && !productionEnabled) {
+  if (delivery.blockedReason === "META_PRODUCTION_APPROVAL_REQUIRED") {
     const reviewError = "Production Meta CRM event sending is disabled pending explicit approval";
-    await db.update(metaCrmEventLog).set({ status: "manual_review", lastError: reviewError, updatedAt: now() }).where(eq(metaCrmEventLog.id, event.id));
-    await db.update(leads).set({ metaSyncStatus: "manual_review", metaSyncError: reviewError, updatedAt: now() }).where(eq(leads.id, event.leadId));
-    return { sent: false, manualReview: true };
+    await db.update(metaCrmEventLog).set({
+      status: "approval_gated",
+      deliveryMode: delivery.deliveryMode,
+      testEventCodeUsed: delivery.testEventCodeUsed,
+      productionGateEnabledAtAttempt: delivery.productionGateEnabledAtAttempt,
+      requestDispatchedAt: null,
+      metaResponseReceiptId: null,
+      deliveryEvidenceCode: delivery.blockedReason,
+      errorCode: delivery.blockedReason,
+      nextAttemptAt: null,
+      lastError: reviewError,
+      updatedAt: now(),
+    }).where(eq(metaCrmEventLog.id, event.id));
+    await db.update(leads).set({ metaSyncStatus: "approval_gated", metaSyncError: reviewError, updatedAt: now() }).where(eq(leads.id, event.leadId));
+    return { sent: false, approvalGated: true };
   }
+  const requestDispatchedAt = now();
+  await db.update(metaCrmEventLog).set({
+    deliveryMode: delivery.deliveryMode,
+    testEventCodeUsed: delivery.testEventCodeUsed,
+    productionGateEnabledAtAttempt: delivery.productionGateEnabledAtAttempt,
+    requestDispatchedAt,
+    metaResponseReceiptId: null,
+    deliveryEvidenceCode: "META_REQUEST_DISPATCHED",
+    updatedAt: requestDispatchedAt,
+  }).where(eq(metaCrmEventLog.id, event.id));
   const response = await metaFetch(`${graphBase()}/${datasetId}/events`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify(buildMetaCrmPayload(event, lead, code)),
+    body: JSON.stringify(buildMetaCrmPayload(event, lead, delivery.testEventCode)),
   });
   const json = await response.json() as Record<string, unknown>;
   if (!response.ok || json.error) {
@@ -1048,7 +1138,7 @@ async function sendMetaCrmEvent(event: typeof metaCrmEventLog.$inferSelect, test
     wrapped.response = json;
     throw wrapped;
   }
-  return { sent: true, response: json };
+  return { sent: true, response: json, delivery };
 }
 
 export async function processMetaCrmEventOutbox(limit = 25, testEventCode?: string | null, eventLogId?: number) {
@@ -1098,10 +1188,11 @@ export async function processMetaCrmEventOutbox(limit = 25, testEventCode?: stri
     const attempt = event.attempts + 1;
     try {
       const result = await sendMetaCrmEvent(event, testEventCode);
-      if (result.manualReview) {
+      if (!result.sent || !result.response || !result.delivery) {
         blocked += 1;
         continue;
       }
+      const receiptId = extractMetaResponseReceiptId(result.response);
       await db.update(metaCrmEventLog).set({
         status: "sent",
         attempts: attempt,
@@ -1109,6 +1200,13 @@ export async function processMetaCrmEventOutbox(limit = 25, testEventCode?: stri
         nextAttemptAt: null,
         lastError: null,
         errorCode: null,
+        deliveryMode: result.delivery.deliveryMode,
+        testEventCodeUsed: result.delivery.testEventCodeUsed,
+        productionGateEnabledAtAttempt: result.delivery.productionGateEnabledAtAttempt,
+        metaResponseReceiptId: receiptId,
+        deliveryEvidenceCode: result.delivery.deliveryMode === "test"
+          ? "META_TEST_EVENT_ACKNOWLEDGED"
+          : "META_PRODUCTION_EVENT_ACKNOWLEDGED",
         metaResponse: JSON.stringify(result.response).slice(0, 8_000),
         updatedAt: now(),
       }).where(eq(metaCrmEventLog.id, event.id));
@@ -1130,6 +1228,7 @@ export async function processMetaCrmEventOutbox(limit = 25, testEventCode?: stri
         nextAttemptAt: deadLetter ? null : now() + RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)],
         lastError: message,
         errorCode,
+        deliveryEvidenceCode: "META_REQUEST_FAILED",
         metaResponse: JSON.stringify((error as { response?: unknown }).response || {}).slice(0, 8_000),
         updatedAt: now(),
       }).where(eq(metaCrmEventLog.id, event.id));
@@ -1144,7 +1243,20 @@ export async function retryMetaCrmEvent(eventLogId: number, testEventCode?: stri
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   if (!testEventCode?.trim()) throw new Error("A Meta Test Event code is required for manual retry");
-  await db.update(metaCrmEventLog).set({ status: "pending", attempts: 0, nextAttemptAt: null, lastError: null, errorCode: null, updatedAt: now() }).where(eq(metaCrmEventLog.id, eventLogId));
+  await db.update(metaCrmEventLog).set({
+    status: "pending",
+    attempts: 0,
+    nextAttemptAt: null,
+    lastError: null,
+    errorCode: null,
+    deliveryMode: null,
+    testEventCodeUsed: false,
+    productionGateEnabledAtAttempt: null,
+    requestDispatchedAt: null,
+    metaResponseReceiptId: null,
+    deliveryEvidenceCode: null,
+    updatedAt: now(),
+  }).where(eq(metaCrmEventLog.id, eventLogId));
   return processMetaCrmEventOutbox(1, testEventCode.trim(), eventLogId);
 }
 
@@ -1302,6 +1414,10 @@ export async function getMetaIntegrationHealth() {
     pendingEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'pending' THEN 1 ELSE 0 END)`,
     retryingEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'retrying' THEN 1 ELSE 0 END)`,
     manualReviewEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'manual_review' THEN 1 ELSE 0 END)`,
+    approvalGatedEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'approval_gated' THEN 1 ELSE 0 END)`,
+    productionSentEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'sent' AND ${metaCrmEventLog.deliveryMode} = 'production' THEN 1 ELSE 0 END)`,
+    testSentEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'sent' AND ${metaCrmEventLog.deliveryMode} = 'test' THEN 1 ELSE 0 END)`,
+    legacyUnknownSentEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.status} = 'sent' AND (${metaCrmEventLog.deliveryMode} IS NULL OR ${metaCrmEventLog.deliveryMode} = 'legacy_unknown') THEN 1 ELSE 0 END)`,
     coveredEvents: sql<number>`SUM(CASE WHEN ${metaCrmEventLog.hasLeadId} OR ${metaCrmEventLog.hasEmailHash} OR ${metaCrmEventLog.hasPhoneHash} THEN 1 ELSE 0 END)`,
   }).from(metaCrmEventLog).where(eq(metaCrmEventLog.isTestLead, false));
   const totalEvents = Number(counts?.totalEvents || 0);
@@ -1315,6 +1431,7 @@ export async function getMetaIntegrationHealth() {
   if (lastWebhook && now() - lastWebhook.receivedAt > 26 * 60 * 60_000) warnings.push("No Meta webhook delivery has been recorded in the last 26 hours");
   if (reconciliation?.status === "failed") warnings.push("The most recent reconciliation run failed");
   if (totalEvents >= 5 && failedEvents / totalEvents > 0.1) warnings.push("CRM event failure rate is above 10%");
+  if (Number(counts?.legacyUnknownSentEvents || 0) > 0) warnings.push("Historical sent CRM events have no retained delivery provenance");
   return {
     configured: pageAccessTokenConfigured && pageIdConfigured && capiTokenConfigured && datasetConfigured && appSecretConfigured && verifyTokenConfigured,
     leadRetrievalConfigured: pageAccessTokenConfigured && pageIdConfigured,
@@ -1342,6 +1459,10 @@ export async function getMetaIntegrationHealth() {
       pending: Number(counts?.pendingEvents || 0),
       retrying: Number(counts?.retryingEvents || 0),
       manualReview: Number(counts?.manualReviewEvents || 0),
+      approvalGated: Number(counts?.approvalGatedEvents || 0),
+      productionSent: Number(counts?.productionSentEvents || 0),
+      testSent: Number(counts?.testSentEvents || 0),
+      legacyUnknownSent: Number(counts?.legacyUnknownSentEvents || 0),
       covered: Number(counts?.coveredEvents || 0),
     },
   };
