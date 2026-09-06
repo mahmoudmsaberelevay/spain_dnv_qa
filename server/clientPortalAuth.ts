@@ -186,7 +186,7 @@ export async function authenticatePortalRequest(req: Request): Promise<PortalReq
 export async function writePortalAudit(input: {
   req: Request;
   portalUserId?: number;
-  clientCaseId?: number;
+  clientCaseId?: number | null;
   action: string;
   recordType?: string;
   recordPublicId?: string;

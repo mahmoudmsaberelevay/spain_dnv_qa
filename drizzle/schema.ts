@@ -1264,11 +1264,12 @@ export type InsertAuditLog = typeof auditLogs.$inferInsert;
 export const clientPortalUsers = mysqlTable("client_portal_users", {
   id: int("id").autoincrement().primaryKey(),
   publicId: varchar("publicId", { length: 36 }).notNull().unique(),
-  primaryClientCaseId: int("primaryClientCaseId").notNull(),
+  primaryClientCaseId: int("primaryClientCaseId"),
   username: varchar("username", { length: 100 }).notNull().unique(),
   email: varchar("email", { length: 320 }).notNull().unique(),
   mobile: varchar("mobile", { length: 64 }),
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  accountType: mysqlEnum("accountType", ["client", "admin"]).default("client").notNull(),
   status: mysqlEnum("status", ["active", "disabled"]).default("active").notNull(),
   mustChangePassword: boolean("mustChangePassword").default(true).notNull(),
   consultant: varchar("consultant", { length: 128 }),

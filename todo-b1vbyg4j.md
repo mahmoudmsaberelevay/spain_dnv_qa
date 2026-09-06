@@ -26,3 +26,13 @@
 - [x] Add explicit "Assign to Client App" control on the CRM Client Documentation detail page.
 - [x] Clarify Client Portal account creation as credentials first, followed by documentation-folder selection.
 - [x] Validate mobile TypeScript, lint, tests, web export, CRM build, and focused portal security tests.
+
+## Unified mobile administrator access completed
+
+- [x] Add `client` and `admin` account roles to the isolated client portal identity system.
+- [x] Provision the requested administrator with a one-way bcrypt password hash and no client-folder assignment.
+- [x] Use the normal mobile login form for both client and administrator accounts.
+- [x] Route administrators to a role-protected mobile admin dashboard.
+- [x] Add protected administrator APIs for Client Documentation folder selection and client credential creation.
+- [x] Add protected administrator APIs and mobile controls for adding, editing, showing, and hiding vendors.
+- [x] Verify the admin role, available documentation folders, vendor API, anonymous denial, server build, and focused security tests.

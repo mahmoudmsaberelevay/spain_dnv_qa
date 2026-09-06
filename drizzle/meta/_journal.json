@@ -379,6 +379,13 @@
       "when": 1788702473858,
       "tag": "0053_client_portal_production",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "5",
+      "when": 1788724759790,
+      "tag": "0054_client_portal_admin_role",
+      "breakpoints": true
     }
   ]
 }

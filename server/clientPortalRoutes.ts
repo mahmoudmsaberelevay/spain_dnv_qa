@@ -15,10 +15,12 @@ import {
   clientPortalNotifications,
   clientPortalSessions,
   clientPortalUsers,
+  publicServiceProviders,
 } from "../drizzle/schema";
 import {
   authenticatePortalRequest,
   createPortalSession,
+  generateTemporaryPassword,
   hashPortalPassword,
   hashPortalToken,
   rotatePortalSession,
@@ -82,6 +84,11 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
   if (portal.user.mustChangePassword && !["/auth/change-password", "/auth/logout", "/me"].includes(req.path)) {
     return error(res, 403, "password_change_required", "Change the temporary password before continuing");
   }
+  next();
+}
+
+function portalAdmin(req: PortalRequest, res: Response, next: NextFunction) {
+  if (req.portal?.user.accountType !== "admin") return error(res, 403, "admin_access_required");
   next();
 }
 
@@ -201,7 +208,7 @@ export function registerClientPortalRoutes(app: Express) {
     await db.update(clientPortalUsers).set({ failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() }).where(eq(clientPortalUsers.id, user.id));
     const session = await createPortalSession({ user, req, deviceName: body.deviceName, platform: body.platform, osVersion: body.osVersion, appVersion: body.appVersion });
     await writePortalAudit({ req, portalUserId: user.id, clientCaseId: user.primaryClientCaseId, action: "login", recordType: "session", recordPublicId: session.sessionId });
-    return res.json({ ...session, mustChangePassword: user.mustChangePassword, user: { publicId: user.publicId, username: user.username, email: user.email, mobile: user.mobile, locale: user.locale, consultant: user.consultant, paralegal: user.paralegal } });
+    return res.json({ ...session, mustChangePassword: user.mustChangePassword, user: { publicId: user.publicId, username: user.username, email: user.email, mobile: user.mobile, locale: user.locale, consultant: user.consultant, paralegal: user.paralegal, accountType: user.accountType } });
   });
 
   app.post("/client-api/auth/refresh", authLimiter, async (req, res) => {
@@ -209,7 +216,7 @@ export function registerClientPortalRoutes(app: Express) {
     if (typeof body.sessionId !== "string" || typeof body.refreshToken !== "string") return error(res, 400, "invalid_refresh_request");
     const rotated = await rotatePortalSession({ sessionId: body.sessionId, refreshToken: body.refreshToken, req });
     if (!rotated) return error(res, 401, "session_expired");
-    return res.json({ accessToken: rotated.accessToken, accessTokenExpiresIn: rotated.accessTokenExpiresIn, refreshToken: rotated.refreshToken, refreshTokenExpiresAt: rotated.refreshTokenExpiresAt, sessionId: rotated.sessionId, mustChangePassword: rotated.user.mustChangePassword });
+    return res.json({ accessToken: rotated.accessToken, accessTokenExpiresIn: rotated.accessTokenExpiresIn, refreshToken: rotated.refreshToken, refreshTokenExpiresAt: rotated.refreshTokenExpiresAt, sessionId: rotated.sessionId, mustChangePassword: rotated.user.mustChangePassword, accountType: rotated.user.accountType });
   });
 
   app.post("/client-api/auth/forgot-password", authLimiter, async (req, res) => {
@@ -242,6 +249,84 @@ export function registerClientPortalRoutes(app: Express) {
 
   app.use("/client-api", portalAuth);
 
+  app.use("/client-api/admin", portalAdmin);
+
+  app.get("/client-api/admin/client-cases", async (req: PortalRequest, res) => {
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
+    const rows = await db.select({ id: clientCases.id, clientCode: clientCases.clientCode, clientName: clientCases.clientName, applicationType: clientCases.applicationType, stage: clientCases.stage }).from(clientCases).orderBy(asc(clientCases.clientName)).limit(1000);
+    return res.json(rows);
+  });
+
+  app.get("/client-api/admin/accounts", async (req: PortalRequest, res) => {
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
+    const rows = await db.select({ publicId: clientPortalUsers.publicId, username: clientPortalUsers.username, email: clientPortalUsers.email, status: clientPortalUsers.status, createdAt: clientPortalUsers.createdAt, clientName: clientCases.clientName, clientCode: clientCases.clientCode, applicationType: clientCases.applicationType }).from(clientPortalUsers).innerJoin(clientCases, eq(clientPortalUsers.primaryClientCaseId, clientCases.id)).where(eq(clientPortalUsers.accountType, "client")).orderBy(desc(clientPortalUsers.createdAt)).limit(250);
+    return res.json(rows);
+  });
+
+  app.post("/client-api/admin/accounts", writeLimiter, async (req: PortalRequest, res) => {
+    const body = safeBody<{ clientCaseId: number; username: string; email: string; mobile: string; locale: "en" | "ar" }>(req);
+    const clientCaseId = Number(body.clientCaseId);
+    const username = typeof body.username === "string" ? body.username.trim().toLowerCase() : "";
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const mobile = typeof body.mobile === "string" ? body.mobile.trim().slice(0, 64) : "";
+    if (!Number.isInteger(clientCaseId) || clientCaseId <= 0 || !/^[a-z0-9._-]{4,100}$/.test(username) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) return error(res, 400, "invalid_account_details");
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
+    const [clientCase] = await db.select().from(clientCases).where(eq(clientCases.id, clientCaseId)).limit(1);
+    if (!clientCase) return error(res, 404, "documentation_folder_not_found");
+    const temporaryPassword = generateTemporaryPassword();
+    const publicId = randomUUID();
+    try {
+      await db.insert(clientPortalUsers).values({ publicId, primaryClientCaseId: clientCase.id, username, email, mobile: mobile || null, passwordHash: await hashPortalPassword(temporaryPassword), accountType: "client", consultant: clientCase.consultant, paralegal: clientCase.paralegal, locale: body.locale === "ar" ? "ar" : "en", mustChangePassword: true, notificationPreferences: { push: true, email: true, messages: true, documents: true, workflow: true }, createdBy: req.portal!.user.id });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      if (/duplicate/i.test(message)) return error(res, 409, "account_exists", "Username or email already has client access");
+      throw caught;
+    }
+    const [portalUser] = await db.select().from(clientPortalUsers).where(eq(clientPortalUsers.publicId, publicId)).limit(1);
+    if (!portalUser) return error(res, 500, "account_creation_failed");
+    const applicationPublicId = randomUUID();
+    await db.insert(clientPortalApplications).values({ publicId: applicationPublicId, portalUserId: portalUser.id, clientCaseId: clientCase.id, label: `${clientCase.applicationType} – ${clientCase.clientName}`, isPrimary: true });
+    const [application] = await db.select().from(clientPortalApplications).where(eq(clientPortalApplications.publicId, applicationPublicId)).limit(1);
+    if (application) await db.insert(clientPortalApplicants).values({ publicId: randomUUID(), portalApplicationId: application.id, relation: "main", fullName: clientCase.clientName });
+    await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_client_account_created", recordType: "client_portal_account", recordPublicId: portalUser.publicId, details: `Assigned case ${clientCase.clientCode}` });
+    return res.status(201).json({ publicId: portalUser.publicId, username: portalUser.username, email: portalUser.email, temporaryPassword, clientName: clientCase.clientName, clientCode: clientCase.clientCode });
+  });
+
+  app.get("/client-api/admin/providers", async (req: PortalRequest, res) => {
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
+    return res.json(await db.select().from(publicServiceProviders).orderBy(asc(publicServiceProviders.displayOrder), asc(publicServiceProviders.name)));
+  });
+
+  const saveAdminProvider = async (req: PortalRequest, res: Response) => {
+    const body = safeBody<{ providerType: "lawyer" | "accountant" | "service_facilitator"; name: string; country: string; city: string; description: string; services: string[]; phone: string; whatsapp: string; email: string; website: string; displayOrder: number; isActive: boolean }>(req);
+    const providerType = body.providerType;
+    const name = typeof body.name === "string" ? body.name.trim().slice(0, 255) : "";
+    const country = typeof body.country === "string" ? body.country.trim().slice(0, 128) : "";
+    if (!providerType || !["lawyer", "accountant", "service_facilitator"].includes(providerType) || !name || !country) return error(res, 400, "invalid_provider");
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
+    const values = { providerType, name, country, city: typeof body.city === "string" ? body.city.trim().slice(0, 128) || null : null, description: typeof body.description === "string" ? body.description.trim().slice(0, 5000) || null : null, services: Array.isArray(body.services) ? body.services.filter(item => typeof item === "string" && item.trim()).slice(0, 50).map(item => item.trim().slice(0, 255)) : [], phone: typeof body.phone === "string" ? body.phone.trim().slice(0, 64) || null : null, whatsapp: typeof body.whatsapp === "string" ? body.whatsapp.trim().slice(0, 64) || null : null, email: typeof body.email === "string" ? body.email.trim().slice(0, 320) || null : null, website: typeof body.website === "string" ? body.website.trim().slice(0, 1024) || null : null, displayOrder: Number.isInteger(body.displayOrder) ? Math.max(0, Math.min(10000, Number(body.displayOrder))) : 0, isActive: body.isActive !== false };
+    const publicId = req.params.publicId;
+    if (publicId) {
+      const [existing] = await db.select().from(publicServiceProviders).where(eq(publicServiceProviders.publicId, publicId)).limit(1);
+      if (!existing) return error(res, 404, "provider_not_found");
+      await db.update(publicServiceProviders).set(values).where(eq(publicServiceProviders.id, existing.id));
+      await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_provider_updated", recordType: "service_provider", recordPublicId: publicId });
+      return res.json({ publicId, updated: true });
+    }
+    const createdPublicId = randomUUID();
+    await db.insert(publicServiceProviders).values({ publicId: createdPublicId, ...values });
+    await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_provider_created", recordType: "service_provider", recordPublicId: createdPublicId });
+    return res.status(201).json({ publicId: createdPublicId, updated: false });
+  };
+
+  app.post("/client-api/admin/providers", writeLimiter, saveAdminProvider);
+  app.put("/client-api/admin/providers/:publicId", writeLimiter, saveAdminProvider);
+
   app.post("/client-api/auth/logout", async (req: PortalRequest, res) => {
     const portal = req.portal!;
     const db = await getDb();
@@ -265,7 +350,7 @@ export function registerClientPortalRoutes(app: Express) {
 
   app.get("/client-api/me", async (req: PortalRequest, res) => {
     const user = req.portal!.user;
-    return res.json({ publicId: user.publicId, username: user.username, email: user.email, mobile: user.mobile, locale: user.locale, consultant: user.consultant, paralegal: user.paralegal, mustChangePassword: user.mustChangePassword, notificationPreferences: user.notificationPreferences });
+    return res.json({ publicId: user.publicId, username: user.username, email: user.email, mobile: user.mobile, locale: user.locale, consultant: user.consultant, paralegal: user.paralegal, mustChangePassword: user.mustChangePassword, notificationPreferences: user.notificationPreferences, accountType: user.accountType });
   });
 
   app.patch("/client-api/me/preferences", writeLimiter, async (req: PortalRequest, res) => {
@@ -282,7 +367,7 @@ export function registerClientPortalRoutes(app: Express) {
     const portal = req.portal!;
     const requestedAt = new Date().toISOString();
     await Promise.all([
-      createNotification({ type: "client_account_deletion_requested", title: "Client account deletion request", body: `${portal.user.username} (${portal.user.email}) requested client-app account deletion.`, entityId: portal.user.primaryClientCaseId, entityType: "client_case" }),
+      createNotification({ type: "client_account_deletion_requested", title: "Client account deletion request", body: `${portal.user.username} (${portal.user.email}) requested client-app account deletion.`, entityId: portal.user.primaryClientCaseId ?? undefined, entityType: "client_case" }),
       queueStaffEmail({ eventType: "client_account_deletion_requested", recipients: staffRecipients(portal.user.consultant, portal.user.paralegal), subject: `Client Account Deletion Request – ${portal.user.username}`, html: `<h2>Client Account Deletion Request</h2><p><strong>Client account:</strong> ${portal.user.username}</p><p><strong>Email:</strong> ${portal.user.email}</p><p><strong>Requested:</strong> ${requestedAt}</p><p>Review the client record and applicable retention obligations before completing the request.</p><p><a href="https://elevay.vip/admin/client-portal">Open Client Portal Administration</a></p>` }),
     ]);
     await writePortalAudit({ req, portalUserId: portal.user.id, clientCaseId: portal.user.primaryClientCaseId, action: "account_deletion_requested", recordType: "client_portal_account", recordPublicId: portal.user.publicId, correlationId: portal.correlationId });
