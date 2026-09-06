@@ -15,6 +15,7 @@ import {
   verifyMetaWebhookSignature,
   verifyMetaWebhookVerifyToken,
 } from "./metaLeadsService";
+import { recordMetaWebhookSecurityEvent } from "./metaAssignmentMonitoring";
 
 export const META_WEBHOOK_PATHS = [
   "/api/webhook/meta-leads",
@@ -37,6 +38,7 @@ export async function verifyMetaWebhook(req: Request, res: Response) {
   if (mode === "subscribe" && challenge && await verifyMetaWebhookVerifyToken(token)) {
     return res.status(200).type("text/plain").send(challenge);
   }
+  void recordMetaWebhookSecurityEvent("verification_failure", "META_WEBHOOK_VERIFY_TOKEN_REJECTED");
   return res.status(403).send("Forbidden");
 }
 
@@ -48,6 +50,7 @@ export async function processMetaLeadEvent(req: Request, res: Response) {
 
   if (!rawBody || !verifyMetaWebhookSignature(rawBody, signature)) {
     console.warn("[MetaWebhook] Rejected POST with missing or invalid signature");
+    void recordMetaWebhookSecurityEvent("signature_failure", "META_WEBHOOK_SIGNATURE_REJECTED");
     return res.status(401).send("Invalid signature");
   }
 
@@ -59,7 +62,8 @@ export async function processMetaLeadEvent(req: Request, res: Response) {
   }
 
   try {
-    const stored = await storeMetaWebhookNotifications(payload);
+    const stored = await storeMetaWebhookNotifications(payload, true);
+    void recordMetaWebhookSecurityEvent("signed_accepted", "META_WEBHOOK_SIGNED_ACCEPTED");
     res.status(200).json({ received: true, accepted: stored.accepted, ignored: stored.ignored });
 
     // Best-effort low-latency processing. The inbox row is durable, so the

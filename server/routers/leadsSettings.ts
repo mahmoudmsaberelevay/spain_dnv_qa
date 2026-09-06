@@ -10,6 +10,13 @@ import {
   runMetaReconciliation,
 } from "../metaLeadsService";
 import {
+  applyMetaAssignmentBackfill,
+  collectMetaMonitoringSnapshot,
+  getMetaAssignmentBackfillDryRun,
+  getPrivacySafeMetaMonitoring,
+  resolveMetaDefaultConsultant,
+} from "../metaAssignmentMonitoring";
+import {
   listLeadSources, createLeadSource, updateLeadSource, deleteLeadSource,
   listLeadIntegrations, createLeadIntegration, updateLeadIntegration,
   deleteLeadIntegration, regenerateWebhookToken,
@@ -355,6 +362,36 @@ export const leadsSettingsRouter = router({
 
   metaAdmin: router({
     health: adminProcedure.query(async () => getMetaIntegrationHealth()),
+
+    monitoring: adminProcedure.query(async () => collectMetaMonitoringSnapshot()),
+
+    assignmentPolicy: adminProcedure.query(async () => {
+      const policy = await resolveMetaDefaultConsultant();
+      return policy.status === "resolved"
+        ? { status: policy.status, consultant: { id: policy.id, name: policy.name }, backfillBaselineAt: policy.backfillBaselineAt }
+        : { status: policy.status, safeCode: policy.safeCode, candidates: policy.candidates };
+    }),
+
+    assignmentBackfillDryRun: adminProcedure.query(async () => getMetaAssignmentBackfillDryRun()),
+
+    runAssignmentBackfill: adminProcedure.mutation(async () => applyMetaAssignmentBackfill()),
+
+    privacySafeMonitoring: adminProcedure
+      .input(z.object({
+        dateFrom: z.number().optional(),
+        dateTo: z.number().optional(),
+        program: z.string().optional(),
+        campaignId: z.string().optional(),
+        adSetId: z.string().optional(),
+        adId: z.string().optional(),
+        formId: z.string().optional(),
+        consultant: z.string().optional(),
+        leadStatus: z.string().optional(),
+        metaEventStatus: z.string().optional(),
+        testLeadStatus: z.enum(["real", "test", "all"]).optional(),
+        limit: z.number().int().min(1).max(500).optional(),
+      }).optional())
+      .query(async ({ input }) => getPrivacySafeMetaMonitoring(input || {})),
 
     listMappings: adminProcedure.query(async () => {
       const db = await getDb();

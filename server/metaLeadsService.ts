@@ -11,7 +11,19 @@ import {
   metaWebhookInbox,
 } from "../drizzle/schema";
 import { getDb } from "./db";
-import { sendMetaLeadAlert } from "./emailService";
+import {
+  applyMetaAssignment,
+  collectMetaMonitoringSnapshot,
+  processMetaNotificationOutbox,
+  queueMetaAdminAlert,
+  queueMetaLeadAlert,
+  recordAmbiguousMetaInquiry,
+  recoverUnassignedMetaLeads,
+  resolveMetaDefaultConsultant,
+  resolveMetaLeadMatch,
+  updateMetaInboxOutcome,
+  type MetaMatchMethod,
+} from "./metaAssignmentMonitoring";
 
 const DEFAULT_GRAPH_VERSION = "v26.0";
 const DEFAULT_DATASET_ID = "1944021856148780";
@@ -88,6 +100,11 @@ type ResolvedAttribution = {
   metaAdName: string | null;
   metaIsOrganic: boolean;
   isTestLead: boolean;
+  routingConsultantUserId: number | null;
+  routingConsultantDisplayName: string | null;
+  matchMethod: MetaMatchMethod;
+  duplicateIndicator: boolean;
+  ambiguousMatch: boolean;
   source: string;
   program: string | null;
   utmSource: string | null;
@@ -107,6 +124,13 @@ export function safeMetaError(error: unknown): string {
     .replace(/access_token=[^&\s]+/gi, "access_token=[REDACTED]")
     .replace(/Bearer\s+[^\s]+/gi, "Bearer [REDACTED]")
     .slice(0, 2_000);
+}
+
+export class MetaManualReviewError extends Error {
+  constructor(public readonly safeCode: string) {
+    super(safeCode);
+    this.name = "MetaManualReviewError";
+  }
 }
 
 function sha256(value: string): string {
@@ -196,11 +220,24 @@ function graphBase(): string {
   return `https://graph.facebook.com/${process.env.META_GRAPH_API_VERSION || DEFAULT_GRAPH_VERSION}`;
 }
 
+async function metaFetch(input: string | URL, init: RequestInit = {}, timeoutMs = 20_000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("META_REQUEST_TIMEOUT");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function metaGraphGet<T>(path: string, accessToken: string, fields: string): Promise<T> {
   const url = new URL(`${graphBase()}/${path}`);
   url.searchParams.set("fields", fields);
   url.searchParams.set("access_token", accessToken);
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  const response = await metaFetch(url, { headers: { Accept: "application/json" } });
   const payload = (await response.json()) as T & { error?: { message?: string; code?: number } };
   if (!response.ok || payload.error) {
     throw new Error(`Meta Graph API ${response.status}: ${payload.error?.message || "request failed"}`);
@@ -222,7 +259,7 @@ export async function inspectMetaLeadForm(formId: string): Promise<{ id: string;
 export async function createMetaTestLead(formId: string): Promise<{ id: string }> {
   if (!/^\d+$/.test(formId)) throw new Error("Invalid Meta Form ID");
   const config = await getActiveMetaConfig();
-  const response = await fetch(`${graphBase()}/${formId}/test_leads`, {
+  const response = await metaFetch(`${graphBase()}/${formId}/test_leads`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -249,7 +286,7 @@ export async function classifyMetaTestLead(metaLeadId: string, formId: string | 
     return url.toString();
   })();
   while (nextUrl) {
-    const response = await fetch(nextUrl, { headers: { Accept: "application/json" } });
+    const response = await metaFetch(nextUrl, { headers: { Accept: "application/json" } });
     const payload = await response.json() as {
       data?: Array<{ id?: string }>;
       paging?: { next?: string };
@@ -355,7 +392,7 @@ export async function verifyMetaWebhookVerifyToken(candidate: string): Promise<b
   return expected.length > 0 && expected.length === received.length && crypto.timingSafeEqual(expected, received);
 }
 
-export async function storeMetaWebhookNotifications(payload: MetaWebhookPayload) {
+export async function storeMetaWebhookNotifications(payload: MetaWebhookPayload, signatureValidated = false) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   if (payload.object !== "page" || !Array.isArray(payload.entry)) {
@@ -387,6 +424,8 @@ export async function storeMetaWebhookNotifications(payload: MetaWebhookPayload)
         metaAdId: value.ad_id || null,
         metaAdGroupId: value.adgroup_id || value.adset_id || null,
         metaCreatedTime: value.created_time || entry.time || null,
+        ingestionSource: "webhook",
+        signatureValidated,
         status: "pending",
         attempts: 0,
         receivedAt,
@@ -447,8 +486,8 @@ export async function findMatchingLead(metaLeadId: string, normalizedPhone: stri
   return matched ?? null;
 }
 
-export async function addAttribution(leadId: number, attribution: ResolvedAttribution, isPrimary: boolean) {
-  const db = await getDb();
+export async function addAttribution(leadId: number, attribution: ResolvedAttribution, isPrimary: boolean, executor?: any) {
+  const db = executor || await getDb();
   if (!db) throw new Error("Database unavailable");
   const ts = now();
   await db.insert(leadMetaAttributions).values({
@@ -465,6 +504,11 @@ export async function addAttribution(leadId: number, attribution: ResolvedAttrib
       metaAdSetName: attribution.metaAdSetName,
       metaAdName: attribution.metaAdName,
       isTestLead: attribution.isTestLead,
+      routingConsultantUserId: attribution.routingConsultantUserId,
+      routingConsultantDisplayName: attribution.routingConsultantDisplayName,
+      matchMethod: attribution.matchMethod,
+      duplicateIndicator: attribution.duplicateIndicator,
+      ambiguousMatch: attribution.ambiguousMatch,
       program: attribution.program,
       updatedAt: ts,
     },
@@ -488,8 +532,9 @@ async function writeMetaInquiryActivity(
   meta: MetaLeadDetail,
   attribution: ResolvedAttribution,
   repeatInquiry: boolean,
+  executor?: any,
 ) {
-  const db = await getDb();
+  const db = executor || await getDb();
   if (!db) throw new Error("Database unavailable");
   const lines = [
     attribution.isTestLead ? "[META TEST LEAD — EXCLUDED FROM OPERATIONAL REPORTS]" : null,
@@ -728,6 +773,15 @@ export async function ingestMetaLeadDetail(
   const formName = await fetchMetaFormName(formId, config.accessToken);
   const mappedProgram = await resolveProgram(meta, inbox);
   const program = mappedProgram || mapped.interestedProgram || null;
+  const match = await resolveMetaLeadMatch({ metaLeadId: meta.id, normalizedPhone, normalizedEmail, isTestLead });
+  if (match.status === "ambiguous") {
+    await recordAmbiguousMetaInquiry({ inboxId: inbox.id, metaLeadId: meta.id, candidateLeadIds: match.candidateLeadIds });
+    throw new MetaManualReviewError("META_CONTACT_MATCH_AMBIGUOUS");
+  }
+  const routingConsultant = await resolveMetaDefaultConsultant();
+  const resolvedRoutingConsultant = !isTestLead && routingConsultant.status === "resolved" ? routingConsultant : null;
+  const matchMethod = match.method || "new_lead";
+  const duplicateIndicator = match.status === "matched";
   const attribution: ResolvedAttribution = {
     metaLeadId: meta.id,
     metaPageId: inbox.metaPageId || config.pageId || null,
@@ -741,6 +795,11 @@ export async function ingestMetaLeadDetail(
     metaAdName: meta.ad_name || null,
     metaIsOrganic: Boolean(meta.is_organic),
     isTestLead,
+    routingConsultantUserId: resolvedRoutingConsultant?.id ?? null,
+    routingConsultantDisplayName: resolvedRoutingConsultant?.name ?? null,
+    matchMethod,
+    duplicateIndicator,
+    ambiguousMatch: false,
     source: config.leadSource,
     program,
     utmSource: "facebook",
@@ -752,67 +811,84 @@ export async function ingestMetaLeadDetail(
     firstReceivedAt,
   };
 
-  const existing = await findMatchingLead(meta.id, normalizedPhone, normalizedEmail);
-  let leadId: number;
-  let repeatInquiry = false;
-  if (existing) {
-    leadId = existing.id;
-    const [{ count: attributionCount }] = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(leadMetaAttributions)
-      .where(eq(leadMetaAttributions.leadId, leadId));
-    const isPrimary = Number(attributionCount) === 0;
-    repeatInquiry = !isPrimary;
-    await addAttribution(leadId, attribution, isPrimary);
-    await db.update(leads).set({
-      normalizedPhone: existing.normalizedPhone || normalizedPhone,
-      normalizedEmail: existing.normalizedEmail || normalizedEmail,
-      metaLeadId: existing.metaLeadId || meta.id,
-      metaFormId: existing.metaFormId || formId,
-      metaFormName: existing.metaFormName || formName,
-      metaCampaign: existing.metaCampaign || meta.campaign_name || meta.campaign_id || null,
-      metaAdset: existing.metaAdset || meta.adset_name || meta.adset_id || null,
-      metaAd: existing.metaAd || meta.ad_name || meta.ad_id || null,
-      metaLeadCreatedAt: existing.metaLeadCreatedAt || metaLeadCreatedAt,
-      firstReceivedAt: existing.firstReceivedAt || firstReceivedAt,
-      metaSyncStatus: "pending",
-      metaSyncError: null,
-      updatedAt: now(),
-    }).where(eq(leads.id, leadId));
-  } else {
-    const [insertResult] = await db.insert(leads).values({
-      fullName: mapped.fullName || `Meta Lead ${meta.id.slice(-6)}`,
-      email,
-      phone,
-      whatsapp: mapped.whatsapp || phone,
-      normalizedPhone,
-      normalizedEmail,
-      nationality: mapped.nationality || null,
-      interestedProgram: program,
-      budgetRange: mapped.budgetRange || null,
-      leadSource: config.leadSource,
+  const transactionResult = await db.transaction(async tx => {
+    const existing = match.lead;
+    let leadId: number;
+    let repeatInquiry = false;
+    if (existing) {
+      leadId = existing.id;
+      const [{ count: attributionCount }] = await tx.select({ count: sql<number>`COUNT(*)` })
+        .from(leadMetaAttributions).where(eq(leadMetaAttributions.leadId, leadId));
+      const isPrimary = Number(attributionCount) === 0;
+      repeatInquiry = !isPrimary;
+      await addAttribution(leadId, attribution, isPrimary, tx);
+      await tx.update(leads).set({
+        normalizedPhone: existing.normalizedPhone || normalizedPhone,
+        normalizedEmail: existing.normalizedEmail || normalizedEmail,
+        metaLeadId: existing.metaLeadId || meta.id,
+        metaFormId: existing.metaFormId || formId,
+        metaFormName: existing.metaFormName || formName,
+        metaCampaign: existing.metaCampaign || meta.campaign_name || meta.campaign_id || null,
+        metaAdset: existing.metaAdset || meta.adset_name || meta.adset_id || null,
+        metaAd: existing.metaAd || meta.ad_name || meta.ad_id || null,
+        isMetaTestLead: existing.isMetaTestLead || isTestLead,
+        metaLeadCreatedAt: existing.metaLeadCreatedAt || metaLeadCreatedAt,
+        firstReceivedAt: existing.firstReceivedAt || firstReceivedAt,
+        metaSyncStatus: "pending",
+        metaSyncError: null,
+        updatedAt: now(),
+      }).where(eq(leads.id, leadId));
+    } else {
+      const [insertResult] = await tx.insert(leads).values({
+        fullName: mapped.fullName || `Meta Lead ${meta.id.slice(-6)}`,
+        email,
+        phone,
+        whatsapp: mapped.whatsapp || phone,
+        normalizedPhone,
+        normalizedEmail,
+        nationality: mapped.nationality || null,
+        interestedProgram: program,
+        budgetRange: mapped.budgetRange || null,
+        leadSource: config.leadSource,
+        metaLeadId: meta.id,
+        metaFormId: formId,
+        metaFormName: formName,
+        metaCampaign: meta.campaign_name || meta.campaign_id || null,
+        metaAdset: meta.adset_name || meta.adset_id || null,
+        metaAd: meta.ad_name || meta.ad_id || null,
+        isMetaTestLead: isTestLead,
+        metaLeadCreatedAt,
+        firstReceivedAt,
+        stage: "fresh",
+        assignedTo: null,
+        assignedConsultantUserId: null,
+        metaAssignmentStatus: isTestLead ? "not_applicable" : "pending",
+        notes: mapped.notes || null,
+        leadScore: 0,
+        metaSyncStatus: "pending",
+        dataRegion: "EG",
+        createdAt: metaLeadCreatedAt,
+        updatedAt: firstReceivedAt,
+      });
+      leadId = Number((insertResult as { insertId?: number }).insertId);
+      await addAttribution(leadId, attribution, true, tx);
+    }
+    const assignment = await applyMetaAssignment({
+      leadId,
       metaLeadId: meta.id,
-      metaFormId: formId,
-      metaFormName: formName,
-      metaCampaign: meta.campaign_name || meta.campaign_id || null,
-      metaAdset: meta.adset_name || meta.adset_id || null,
-      metaAd: meta.ad_name || meta.ad_id || null,
-      isMetaTestLead: isTestLead,
-      metaLeadCreatedAt,
-      firstReceivedAt,
-      stage: "fresh",
-      assignedTo: config.assignedTo,
-      notes: mapped.notes || null,
-      leadScore: 0,
-      metaSyncStatus: "pending",
-      dataRegion: "EG",
-      createdAt: metaLeadCreatedAt,
-      updatedAt: firstReceivedAt,
-    });
-    leadId = Number((insertResult as { insertId?: number }).insertId);
-    await addAttribution(leadId, attribution, true);
-  }
-
+      isTestLead,
+      matchMethod,
+      routingConsultant,
+    }, tx);
+    return { leadId, repeatInquiry, assignment, created: !existing };
+  });
+  const { leadId, repeatInquiry, assignment } = transactionResult;
+  await updateMetaInboxOutcome({
+    inboxId: inbox.id,
+    matchMethod,
+    duplicateIndicator,
+    assignmentStatus: assignment.outcome,
+  });
   await writeMetaInquiryActivity(leadId, meta, attribution, repeatInquiry);
   await enqueueMetaCrmEvent({
     leadId,
@@ -825,16 +901,18 @@ export async function ingestMetaLeadDetail(
     isTestLead,
   });
 
-  if (!repeatInquiry && !isTestLead) {
-    void sendMetaLeadAlert({
-      leadName: mapped.fullName || `Meta Lead ${meta.id.slice(-6)}`,
-      phone: phone || "Not provided",
-      assignedTo: config.assignedTo,
-      program,
-      campaign: meta.campaign_name || null,
+  if (!isTestLead && assignment.outcome === "assigned") {
+    await queueMetaLeadAlert({ leadId, metaLeadId: meta.id });
+    void processMetaNotificationOutbox(5);
+  } else if (!isTestLead && assignment.outcome === "pending" && routingConsultant.status !== "resolved") {
+    await queueMetaAdminAlert({
+      notificationKey: `admin:assignment-policy:${routingConsultant.safeCode}:${meta.id}`,
+      safeAlertCode: routingConsultant.safeCode,
+      leadId,
     });
+    void processMetaNotificationOutbox(5);
   }
-  return { leadId, created: !existing, repeatInquiry };
+  return { leadId, created: transactionResult.created, repeatInquiry, assignment: assignment.outcome };
 }
 
 export async function processMetaWebhookInboxBatch(limit = 25) {
@@ -869,15 +947,21 @@ export async function processMetaWebhookInboxBatch(limit = 25) {
         processedAt: now(),
         nextAttemptAt: null,
         lastError: null,
+        lastErrorCode: null,
         updatedAt: now(),
       }).where(eq(metaWebhookInbox.id, item.id));
       processed += 1;
     } catch (error) {
+      if (error instanceof MetaManualReviewError) {
+        failed += 1;
+        continue;
+      }
       const deadLetter = attempt >= MAX_ATTEMPTS;
       await db.update(metaWebhookInbox).set({
         status: deadLetter ? "dead_letter" : "retrying",
         nextAttemptAt: deadLetter ? null : now() + RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)],
         lastError: safeMetaError(error),
+        lastErrorCode: "META_INGESTION_FAILED",
         updatedAt: now(),
       }).where(eq(metaWebhookInbox.id, item.id));
       failed += 1;
@@ -937,7 +1021,7 @@ async function sendMetaCrmEvent(event: typeof metaCrmEventLog.$inferSelect, test
   const datasetId = process.env.META_DATASET_ID || process.env.META_PIXEL_ID || DEFAULT_DATASET_ID;
   const accessToken = process.env.META_CAPI_TOKEN || "";
   if (!datasetId || !accessToken) throw new Error("Meta dataset ID or Conversions API token is not configured");
-  const code = testEventCode || process.env.META_CAPI_TEST_CODE || null;
+  const code = testEventCode?.trim() || null;
   const productionEnabled = process.env.META_CRM_PRODUCTION_ENABLED === "true";
   if (event.isTestLead && !code) {
     const reviewError = "Meta Test Lead event requires an explicit Meta Test Events code and cannot be sent as a production conversion";
@@ -951,7 +1035,7 @@ async function sendMetaCrmEvent(event: typeof metaCrmEventLog.$inferSelect, test
     await db.update(leads).set({ metaSyncStatus: "manual_review", metaSyncError: reviewError, updatedAt: now() }).where(eq(leads.id, event.leadId));
     return { sent: false, manualReview: true };
   }
-  const response = await fetch(`${graphBase()}/${datasetId}/events`, {
+  const response = await metaFetch(`${graphBase()}/${datasetId}/events`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify(buildMetaCrmPayload(event, lead, code)),
@@ -1071,7 +1155,7 @@ async function queueMissedMetaLeads(config: ActiveMetaConfig, sinceMs: number) {
   formUrl.searchParams.set("fields", "id,name,status");
   formUrl.searchParams.set("limit", "100");
   formUrl.searchParams.set("access_token", config.accessToken);
-  const formResponse = await fetch(formUrl, { headers: { Accept: "application/json" } });
+  const formResponse = await metaFetch(formUrl, { headers: { Accept: "application/json" } });
   const formPayload = await formResponse.json() as {
     data?: Array<{ id: string; name?: string; status?: string }>;
     error?: { message?: string };
@@ -1096,7 +1180,7 @@ async function queueMissedMetaLeads(config: ActiveMetaConfig, sinceMs: number) {
     })();
 
     while (nextUrl && scanned < 1_000) {
-      const response = await fetch(nextUrl, { headers: { Accept: "application/json" } });
+      const response = await metaFetch(nextUrl, { headers: { Accept: "application/json" } });
       const payload = await response.json() as {
         data?: MetaLeadDetail[];
         paging?: { next?: string };
@@ -1105,10 +1189,18 @@ async function queueMissedMetaLeads(config: ActiveMetaConfig, sinceMs: number) {
       if (!response.ok || payload.error) {
         throw new Error(`Meta lead reconciliation failed for form ${form.id}: ${payload.error?.message || response.status}`);
       }
-      for (const lead of payload.data ?? []) {
+      const pageLeads = payload.data ?? [];
+      const knownMetaLeadIds = pageLeads.length
+        ? new Set((await db.select({ metaLeadId: leadMetaAttributions.metaLeadId })
+          .from(leadMetaAttributions)
+          .where(inArray(leadMetaAttributions.metaLeadId, pageLeads.map(lead => lead.id))))
+          .map(row => row.metaLeadId))
+        : new Set<string>();
+      for (const lead of pageLeads) {
         scanned += 1;
         const leadTimeMs = lead.created_time ? new Date(lead.created_time).getTime() : now();
         if (Number.isFinite(leadTimeMs)) newestLeadTimeMs = Math.max(newestLeadTimeMs, leadTimeMs);
+        if (knownMetaLeadIds.has(lead.id)) continue;
         const webhookKey = sha256([config.pageId, lead.id, form.id, "reconciliation"].join(":"));
         const [result] = await db.insert(metaWebhookInbox).values({
           webhookKey,
@@ -1118,6 +1210,8 @@ async function queueMissedMetaLeads(config: ActiveMetaConfig, sinceMs: number) {
           metaAdId: lead.ad_id || null,
           metaAdGroupId: lead.adset_id || null,
           metaCreatedTime: Math.floor(leadTimeMs / 1000),
+          ingestionSource: "reconciliation",
+          signatureValidated: false,
           status: "pending",
           attempts: 0,
           receivedAt: now(),
@@ -1131,7 +1225,7 @@ async function queueMissedMetaLeads(config: ActiveMetaConfig, sinceMs: number) {
   return { scanned, queued, newestLeadTimeMs };
 }
 
-export async function runMetaReconciliation(options: { limit?: number } = {}) {
+export async function runMetaReconciliation(options: { limit?: number; sinceOverrideMs?: number } = {}) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const config = await getActiveMetaConfig();
@@ -1140,7 +1234,10 @@ export async function runMetaReconciliation(options: { limit?: number } = {}) {
     ? await db.select().from(metaReconciliationState).where(eq(metaReconciliationState.integrationId, config.integrationId)).limit(1)
     : [];
   const priorCursor = Number(existingState?.cursor || 0);
-  const sinceMs = priorCursor || existingState?.lastSuccessAt || config.lastSyncAt || (ts - 48 * 60 * 60_000);
+  const sinceMs = options.sinceOverrideMs ?? (priorCursor || existingState?.lastSuccessAt || config.lastSyncAt || (ts - 48 * 60 * 60_000));
+  if (existingState?.status === "running" && existingState.lastAttemptAt && existingState.lastAttemptAt > ts - 5 * 60_000) {
+    throw new Error("META_RECONCILIATION_ALREADY_RUNNING");
+  }
   if (config.integrationId) {
     await db.insert(metaReconciliationState).values({
       integrationId: config.integrationId,
@@ -1152,7 +1249,10 @@ export async function runMetaReconciliation(options: { limit?: number } = {}) {
   try {
     const pull = await queueMissedMetaLeads(config, sinceMs);
     const inbox = await processMetaWebhookInboxBatch(options.limit ?? 100);
+    const assignments = await recoverUnassignedMetaLeads();
     const events = await processMetaCrmEventOutbox(options.limit ?? 100);
+    const notifications = await processMetaNotificationOutbox(options.limit ?? 100);
+    const monitoring = await collectMetaMonitoringSnapshot();
     if (config.integrationId) {
       await db.update(metaReconciliationState).set({
         cursor: String(Math.max(sinceMs, pull.newestLeadTimeMs)),
@@ -1166,7 +1266,7 @@ export async function runMetaReconciliation(options: { limit?: number } = {}) {
       }).where(eq(metaReconciliationState.integrationId, config.integrationId));
       await db.update(leadIntegrations).set({ lastSyncAt: now(), lastSyncCount: inbox.processed, updatedAt: now() }).where(eq(leadIntegrations.id, config.integrationId));
     }
-    return { pull, inbox, events };
+    return { pull, inbox, assignments, events, notifications, monitoring };
   } catch (error) {
     if (config.integrationId) {
       await db.update(metaReconciliationState).set({ status: "failed", lastError: safeMetaError(error), updatedAt: now() }).where(eq(metaReconciliationState.integrationId, config.integrationId));

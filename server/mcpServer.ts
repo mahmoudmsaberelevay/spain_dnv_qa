@@ -170,13 +170,13 @@ export function registerMcpServer(app: Express) {
             like(leads.email, `%${query}%`)
           );
           const conditions: any[] = [searchCond];
-          if (status) conditions.push(eq(leads.status, status));
+          if (status) conditions.push(eq(leads.stage, status as any));
           const results = await db.select().from(leads)
             .where(and(...conditions)).orderBy(desc(leads.createdAt)).limit(limit);
           const formatted = results.map(l => ({
             id: l.id, name: l.fullName, phone: l.phone, email: l.email,
-            status: l.status, source: l.source, consultant: l.assignedTo,
-            program: l.program, createdAt: l.createdAt,
+            status: l.stage, source: l.leadSource, consultant: l.assignedTo,
+            program: l.interestedProgram, createdAt: l.createdAt,
           }));
           return { content: [{ type: "text" as const, text: JSON.stringify(formatted, null, 2) }] };
         } catch (error) {
@@ -232,6 +232,37 @@ export function registerMcpServer(app: Express) {
           return { content: [{ type: "text" as const, text: JSON.stringify({ clients: clientStats, contracts: contractStats, leads: leadStats, receipts: receiptStats }, null, 2) }] };
         } catch (error) {
           return { content: [{ type: "text" as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+        }
+      });
+
+      // ─── TOOL 8: Privacy-safe Meta Lead Monitoring ───────────────────────
+      server.registerTool("get_meta_lead_monitoring", {
+        description: "Read privacy-safe Meta Lead ingestion, attribution, assignment, and CRM event monitoring data. Raw names, phones, emails, form answers, payloads, and credentials are never returned.",
+        inputSchema: z.object({
+          dateFrom: z.number().optional().describe("UTC millisecond start time"),
+          dateTo: z.number().optional().describe("UTC millisecond end time"),
+          program: z.string().optional(),
+          campaignId: z.string().optional(),
+          adSetId: z.string().optional(),
+          adId: z.string().optional(),
+          formId: z.string().optional(),
+          consultant: z.string().optional().describe("Consultant display name or internal user ID"),
+          leadStatus: z.string().optional(),
+          metaEventStatus: z.string().optional(),
+          testLeadStatus: z.enum(["real", "test", "all"]).optional().describe("Defaults to real operational Leads"),
+          limit: z.number().int().min(1).max(500).optional(),
+        }),
+      }, async (filters: {
+        dateFrom?: number; dateTo?: number; program?: string; campaignId?: string; adSetId?: string;
+        adId?: string; formId?: string; consultant?: string; leadStatus?: string; metaEventStatus?: string;
+        testLeadStatus?: "real" | "test" | "all"; limit?: number;
+      }) => {
+        try {
+          const { getPrivacySafeMetaMonitoring } = await import("./metaAssignmentMonitoring");
+          const results = await getPrivacySafeMetaMonitoring(filters);
+          return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
+        } catch {
+          return { content: [{ type: "text" as const, text: "Error: Meta monitoring query failed" }], isError: true };
         }
       });
     },

@@ -510,11 +510,29 @@ export async function syncOneIntegrationById(id: number, sinceOverrideMs?: numbe
   if (!db) return { integrationId: id, integrationName: "Unknown", newLeads: 0, skippedDuplicates: 0, formsDiscovered: 0, errors: ["DB not available"] };
   const [integration] = await db.select().from(leadIntegrations).where(eq(leadIntegrations.id, id)).limit(1);
   if (!integration) return { integrationId: id, integrationName: "Unknown", newLeads: 0, skippedDuplicates: 0, formsDiscovered: 0, errors: ["Integration not found"] };
-  // If a historical override is provided, temporarily override lastSyncAt
-  const integrationWithOverride = sinceOverrideMs !== undefined
-    ? { ...integration, lastSyncAt: sinceOverrideMs }
-    : integration;
-  return syncOneIntegration(integrationWithOverride);
+  try {
+    const { runMetaReconciliation } = await import("./metaLeadsService");
+    const result = await runMetaReconciliation({ limit: 500, sinceOverrideMs });
+    return {
+      integrationId: id,
+      integrationName: integration.name,
+      newLeads: result.inbox.processed,
+      skippedDuplicates: Math.max(0, result.pull.scanned - result.pull.queued),
+      formsDiscovered: 0,
+      errors: [],
+      formResults: [],
+    };
+  } catch (error) {
+    return {
+      integrationId: id,
+      integrationName: integration.name,
+      newLeads: 0,
+      skippedDuplicates: 0,
+      formsDiscovered: 0,
+      errors: [error instanceof Error ? error.message : "Durable Meta reconciliation failed"],
+      formResults: [],
+    };
+  }
 }
 
 /** Sync ALL active Meta integrations — called by the 4-hour heartbeat */
@@ -532,13 +550,7 @@ export async function syncAllMetaIntegrations(): Promise<SyncResult[]> {
     return [];
   }
 
-  console.log(`[MetaLeadSync] Syncing ${activeIntegrations.length} Meta integration(s)...`);
   const results: SyncResult[] = [];
-  for (const integration of activeIntegrations) {
-    const result = await syncOneIntegration(integration);
-    console.log(`[MetaLeadSync] "${result.integrationName}": ${result.newLeads} new, ${result.skippedDuplicates} duplicates, ${result.formsDiscovered} forms${result.errors.length ? `, errors: ${result.errors.join("; ")}` : ""}`);
-    results.push(result);
-  }
-
+  for (const integration of activeIntegrations) results.push(await syncOneIntegrationById(integration.id));
   return results;
 }

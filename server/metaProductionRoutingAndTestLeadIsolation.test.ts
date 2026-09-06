@@ -25,7 +25,8 @@ describe("Meta production routing and Test Lead isolation", () => {
     expect(schemaSource.match(/isTestLead: boolean\("isTestLead"\)/g)?.length).toBeGreaterThanOrEqual(3);
     expect(serviceSource).toContain("classifyMetaTestLead");
     expect(serviceSource).toContain("Meta Test Lead event requires an explicit Meta Test Events code");
-    expect(serviceSource).toContain("!repeatInquiry && !isTestLead");
+    expect(serviceSource).toContain('if (!isTestLead && assignment.outcome === "assigned")');
+    expect(serviceSource).toContain("await queueMetaLeadAlert({ leadId, metaLeadId: meta.id })");
     expect(metaReportSource).toContain("eq(metaCrmEventLog.isTestLead, false)");
     expect(metaReportSource).toContain("eq(metaWebhookInbox.isTestLead, false)");
     expect(metaReportSource).toContain("eq(leads.isMetaTestLead, false)");

@@ -860,6 +860,10 @@ export const leads = mysqlTable("leads", {
   optOutSignal: boolean("optOutSignal").default(false),
   dataRegion: varchar("dataRegion", { length: 20 }),
   assignedTo: varchar("assignedTo", { length: 255 }),
+  assignedConsultantUserId: int("assignedConsultantUserId"),
+  metaAssignmentStatus: mysqlEnum("metaAssignmentStatus", ["not_applicable", "assigned", "preserved", "pending", "manual_review"]).default("not_applicable").notNull(),
+  metaAssignmentErrorCode: varchar("metaAssignmentErrorCode", { length: 100 }),
+  metaAssignmentUpdatedAt: bigint("metaAssignmentUpdatedAt", { mode: "number" }),
   stage: mysqlEnum("stage", [
     "fresh",
     "contacted",
@@ -996,6 +1000,11 @@ export const leadMetaAttributions = mysqlTable("lead_meta_attributions", {
   metaAdName: varchar("metaAdName", { length: 255 }),
   metaIsOrganic: boolean("metaIsOrganic").default(false),
   isTestLead: boolean("isTestLead").default(false).notNull(),
+  routingConsultantUserId: int("routingConsultantUserId"),
+  routingConsultantDisplayName: varchar("routingConsultantDisplayName", { length: 255 }),
+  matchMethod: mysqlEnum("matchMethod", ["new_lead", "meta_lead_id", "phone", "email"]).default("new_lead").notNull(),
+  duplicateIndicator: boolean("duplicateIndicator").default(false).notNull(),
+  ambiguousMatch: boolean("ambiguousMatch").default(false).notNull(),
   source: varchar("source", { length: 100 }).default("Meta Instant Form").notNull(),
   program: varchar("program", { length: 150 }),
   utmSource: varchar("utmSource", { length: 100 }),
@@ -1023,8 +1032,17 @@ export const metaWebhookInbox = mysqlTable("meta_webhook_inbox", {
   metaAdGroupId: varchar("metaAdGroupId", { length: 100 }),
   metaCreatedTime: bigint("metaCreatedTime", { mode: "number" }),
   isTestLead: boolean("isTestLead").default(false).notNull(),
+  ingestionSource: mysqlEnum("ingestionSource", ["webhook", "reconciliation"]).default("webhook").notNull(),
+  signatureValidated: boolean("signatureValidated").default(false).notNull(),
+  matchMethod: varchar("matchMethod", { length: 50 }),
+  duplicateIndicator: boolean("duplicateIndicator").default(false).notNull(),
+  ambiguousMatch: boolean("ambiguousMatch").default(false).notNull(),
+  requiresManualReview: boolean("requiresManualReview").default(false).notNull(),
+  manualReviewReason: varchar("manualReviewReason", { length: 100 }),
+  assignmentStatus: mysqlEnum("assignmentStatus", ["not_applicable", "assigned", "preserved", "pending", "manual_review"]).default("not_applicable").notNull(),
+  lastErrorCode: varchar("lastErrorCode", { length: 100 }),
   leadId: int("leadId"),
-  status: mysqlEnum("status", ["pending", "processing", "processed", "failed", "retrying", "dead_letter"]).default("pending").notNull(),
+  status: mysqlEnum("status", ["pending", "processing", "processed", "failed", "retrying", "dead_letter", "manual_review"]).default("pending").notNull(),
   attempts: int("attempts").default(0).notNull(),
   nextAttemptAt: bigint("nextAttemptAt", { mode: "number" }),
   lastError: text("lastError"),
@@ -1080,6 +1098,89 @@ export const metaCrmEventLog = mysqlTable("meta_crm_event_log", {
 });
 export type MetaCrmEvent = typeof metaCrmEventLog.$inferSelect;
 export type InsertMetaCrmEvent = typeof metaCrmEventLog.$inferInsert;
+
+/** Named, server-side policy that resolves the default consultant for real Meta inquiries. */
+export const metaAssignmentPolicies = mysqlTable("meta_assignment_policies", {
+  id: int("id").autoincrement().primaryKey(),
+  policyKey: varchar("policyKey", { length: 100 }).notNull().unique(),
+  consultantUserId: int("consultantUserId").notNull(),
+  consultantDisplayName: varchar("consultantDisplayName", { length: 255 }).notNull(),
+  monitoringCronTaskUid: varchar("monitoringCronTaskUid", { length: 65 }).unique(),
+  isActive: boolean("isActive").default(true).notNull(),
+  backfillBaselineAt: bigint("backfillBaselineAt", { mode: "number" }).notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type MetaAssignmentPolicy = typeof metaAssignmentPolicies.$inferSelect;
+
+/** Idempotent system audit for every Meta default-assignment decision. */
+export const metaLeadAssignmentAudits = mysqlTable("meta_lead_assignment_audits", {
+  id: int("id").autoincrement().primaryKey(),
+  assignmentKey: varchar("assignmentKey", { length: 255 }).notNull().unique(),
+  leadId: int("leadId"),
+  metaLeadId: varchar("metaLeadId", { length: 100 }),
+  previousConsultant: varchar("previousConsultant", { length: 255 }),
+  newConsultantUserId: int("newConsultantUserId"),
+  newConsultant: varchar("newConsultant", { length: 255 }),
+  reason: varchar("reason", { length: 100 }).default("meta_default_assignment").notNull(),
+  outcome: mysqlEnum("outcome", ["assigned", "preserved", "pending", "manual_review", "skipped_test"]).notNull(),
+  systemActor: varchar("systemActor", { length: 100 }).default("system:meta_ingestion").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+});
+export type MetaLeadAssignmentAudit = typeof metaLeadAssignmentAudits.$inferSelect;
+
+/** Durable notification deduplication and retry state; no recipient or Lead PII is stored. */
+export const metaNotificationLog = mysqlTable("meta_notification_log", {
+  id: int("id").autoincrement().primaryKey(),
+  notificationKey: varchar("notificationKey", { length: 255 }).notNull().unique(),
+  notificationType: mysqlEnum("notificationType", ["lead_alert", "admin_alert"]).notNull(),
+  leadId: int("leadId"),
+  metaLeadId: varchar("metaLeadId", { length: 100 }),
+  safeAlertCode: varchar("safeAlertCode", { length: 100 }),
+  status: mysqlEnum("status", ["pending", "sent", "failed", "suppressed"]).default("pending").notNull(),
+  attempts: int("attempts").default(0).notNull(),
+  nextAttemptAt: bigint("nextAttemptAt", { mode: "number" }),
+  recipientCount: int("recipientCount").default(0).notNull(),
+  lastError: text("lastError"),
+  sentAt: bigint("sentAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type MetaNotificationLog = typeof metaNotificationLog.$inferSelect;
+
+/** PII-free webhook security counters used for signature and acceptance monitoring. */
+export const metaWebhookSecurityEvents = mysqlTable("meta_webhook_security_events", {
+  id: int("id").autoincrement().primaryKey(),
+  eventType: mysqlEnum("eventType", ["signed_accepted", "signature_failure", "verification_failure"]).notNull(),
+  safeCode: varchar("safeCode", { length: 100 }).notNull(),
+  occurredAt: bigint("occurredAt", { mode: "number" }).notNull(),
+});
+export type MetaWebhookSecurityEvent = typeof metaWebhookSecurityEvents.$inferSelect;
+
+/** Heartbeat-produced operational evidence for the 24-hour Meta monitoring window. */
+export const metaMonitoringSnapshots = mysqlTable("meta_monitoring_snapshots", {
+  id: int("id").autoincrement().primaryKey(),
+  capturedAt: bigint("capturedAt", { mode: "number" }).notNull(),
+  signedWebhookCount: int("signedWebhookCount").default(0).notNull(),
+  signatureFailureCount: int("signatureFailureCount").default(0).notNull(),
+  processedInboxCount: int("processedInboxCount").default(0).notNull(),
+  failedInboxCount: int("failedInboxCount").default(0).notNull(),
+  retryInboxCount: int("retryInboxCount").default(0).notNull(),
+  p50IngestionDelaySeconds: int("p50IngestionDelaySeconds"),
+  p95IngestionDelaySeconds: int("p95IngestionDelaySeconds"),
+  metaLeadIdCoverageBps: int("metaLeadIdCoverageBps"),
+  attributionCoverageBps: int("attributionCoverageBps"),
+  programCoverageBps: int("programCoverageBps"),
+  assignmentCoverageBps: int("assignmentCoverageBps"),
+  unassignedOverTenMinutes: int("unassignedOverTenMinutes").default(0).notNull(),
+  duplicateAttributionCount: int("duplicateAttributionCount").default(0).notNull(),
+  ambiguousMatchCount: int("ambiguousMatchCount").default(0).notNull(),
+  manualReviewCount: int("manualReviewCount").default(0).notNull(),
+  stageOrderViolationCount: int("stageOrderViolationCount").default(0).notNull(),
+  testLeadLeakageCount: int("testLeadLeakageCount").default(0).notNull(),
+  productionSendingEnabled: boolean("productionSendingEnabled").default(false).notNull(),
+});
+export type MetaMonitoringSnapshot = typeof metaMonitoringSnapshots.$inferSelect;
 
 export const metaReconciliationState = mysqlTable("meta_reconciliation_state", {
   id: int("id").autoincrement().primaryKey(),

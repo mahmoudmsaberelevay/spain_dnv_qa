@@ -15,6 +15,9 @@ export const MAHMOUD_EMAILS = ["mahmoud.saber@elevay.com", "mahmoud.saberelevay@
 // Email transporter setup
 const transporter = nodemailer.createTransport({
   service: "gmail",
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 20_000,
   auth: {
     user: process.env.GMAIL_USER || "",
     pass: process.env.GMAIL_APP_PASSWORD || "",
@@ -194,15 +197,23 @@ export async function sendMetaLeadAlert(alert: string | {
   leadName?: string;
   phone?: string;
   assignedTo?: string | null;
+  assignedEmail?: string | null;
   program?: string | null;
   campaign?: string | null;
   integrationName?: string;
   newLeadCount?: number;
+  totalNew?: number;
+  totalSkipped?: number;
+  formsDiscovered?: number;
+  errors?: string[];
   formNames?: string[];
   formResults?: Array<{ formName: string; newLeads: number; errors?: string[] }>;
 }) {
   const isLegacyMessage = typeof alert === "string";
   const recipients = new Set(MAHMOUD_EMAILS);
+  if (!isLegacyMessage && alert.assignedEmail) {
+    recipients.add(alert.assignedEmail);
+  }
   if (!isLegacyMessage && alert.assignedTo && TEAM_EMAIL_MAP[alert.assignedTo]) {
     recipients.add(TEAM_EMAIL_MAP[alert.assignedTo]);
   }
@@ -216,11 +227,29 @@ export async function sendMetaLeadAlert(alert: string | {
       <p><strong>Campaign:</strong> ${alert.campaign || "Not available"}</p>
       ${alert.integrationName ? `<p><strong>Integration:</strong> ${alert.integrationName}</p>` : ""}
       ${typeof alert.newLeadCount === "number" ? `<p><strong>New leads:</strong> ${alert.newLeadCount}</p>` : ""}
+      ${typeof alert.totalNew === "number" ? `<p><strong>New leads:</strong> ${alert.totalNew}</p>` : ""}
+      ${typeof alert.totalSkipped === "number" ? `<p><strong>Skipped duplicates:</strong> ${alert.totalSkipped}</p>` : ""}
+      ${typeof alert.formsDiscovered === "number" ? `<p><strong>Forms discovered:</strong> ${alert.formsDiscovered}</p>` : ""}
+      ${alert.errors?.length ? `<p><strong>Errors:</strong> ${alert.errors.join(" | ")}</p>` : ""}
       ${alert.formNames?.length ? `<p><strong>Forms:</strong> ${alert.formNames.join(", ")}</p>` : ""}
       ${alert.formResults?.length ? `<p><strong>Forms:</strong> ${alert.formResults.map(form => `${form.formName} (${form.newLeads})`).join(", ")}</p>` : ""}
     `}
   `;
   return sendEmail(Array.from(recipients), "Meta Lead Alert", html);
+}
+
+export async function sendMetaOperationalAlert(input: {
+  safeCode: string;
+  summary: string;
+  leadId?: number | null;
+}) {
+  const html = `
+    <h2>Meta Leads Operational Alert</h2>
+    <p><strong>Code:</strong> ${input.safeCode}</p>
+    <p>${input.summary}</p>
+    ${input.leadId ? `<p><a href="https://elevay.vip/leads/${input.leadId}">Open Lead</a></p>` : ""}
+  `;
+  return sendEmail(MAHMOUD_EMAILS, `Meta Leads Alert: ${input.safeCode}`, html);
 }
 
 // Backup notifications

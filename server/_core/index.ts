@@ -376,6 +376,8 @@ async function startServer() {
   app.post("/api/scheduled/dbBackup", scheduledDbBackupHandler);
   const { scheduledMetaReconciliationHandler } = await import("../scheduledMetaReconciliationHandler");
   app.post("/api/scheduled/metaReconciliation", scheduledMetaReconciliationHandler);
+  const { scheduledMetaMonitoringHandler } = await import("../scheduledMetaMonitoringHandler");
+  app.post("/api/scheduled/metaMonitoring", scheduledMetaMonitoringHandler);
 
   // Backup list endpoint
   app.get("/api/backup/list", (req, res) => {

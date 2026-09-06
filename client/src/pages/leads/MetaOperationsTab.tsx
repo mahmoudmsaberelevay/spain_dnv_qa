@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Activity, BarChart3, Database, ExternalLink, Plus, RefreshCw, ShieldCheck, Trash2, Zap } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, Database, ExternalLink, Plus, RefreshCw, ShieldCheck, Timer, Trash2, UserCheck, Zap } from "lucide-react";
 
 type MappingType = "form" | "campaign" | "adset" | "ad" | "page" | "crm_stage";
 
@@ -68,12 +68,18 @@ export default function MetaOperationsTab() {
   }, [period, customFrom, customTo, program, campaign, adset, ad, formId, consultant, leadStatus]);
 
   const health = trpc.leadsSettings.metaAdmin.health.useQuery();
+  const monitoring = trpc.leadsSettings.metaAdmin.monitoring.useQuery(undefined, { refetchInterval: 5 * 60_000 });
+  const assignmentPolicy = trpc.leadsSettings.metaAdmin.assignmentPolicy.useQuery();
+  const assignmentBackfill = trpc.leadsSettings.metaAdmin.assignmentBackfillDryRun.useQuery();
   const diagnostics = trpc.leadsSettings.metaAdmin.diagnostics.useQuery(range);
   const mappings = trpc.leadsSettings.metaAdmin.listMappings.useQuery();
   const filterOptions = trpc.leads.metaFilterOptions.useQuery();
 
   const refreshAll = () => {
     void health.refetch();
+    void monitoring.refetch();
+    void assignmentPolicy.refetch();
+    void assignmentBackfill.refetch();
     void diagnostics.refetch();
     void mappings.refetch();
   };
@@ -106,10 +112,18 @@ export default function MetaOperationsTab() {
     onSuccess: () => { refreshAll(); toast.success("Test event submitted to Meta Test Events."); },
     onError: error => toast.error(error.message),
   });
+  const runAssignmentBackfill = trpc.leadsSettings.metaAdmin.runAssignmentBackfill.useMutation({
+    onSuccess: data => {
+      refreshAll();
+      toast.success(`${data.appliedCount} verified Meta Lead${data.appliedCount === 1 ? " was" : "s were"} assigned to Nouran.`);
+    },
+    onError: error => toast.error(error.message),
+  });
 
   const summary = diagnostics.data?.summary;
   const fmtPercent = (value = 0) => `${(value * 100).toFixed(1)}%`;
   const fmtDate = (value?: number | null) => value ? new Date(value).toLocaleString() : "Never";
+  const fmtBps = (value?: number | null) => value === null || value === undefined ? "Data not available" : `${(value / 100).toFixed(1)}%`;
 
   const healthCards = [
     { label: "Webhook", value: health.data?.lastWebhookAt ? "Receiving" : "No delivery yet", sub: fmtDate(health.data?.lastWebhookAt), icon: Activity },
@@ -169,6 +183,76 @@ export default function MetaOperationsTab() {
           </ul>
         </div>
       )}
+
+      <div className="border rounded-lg p-4 bg-card space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div>
+            <h4 className="font-semibold flex items-center gap-2"><UserCheck className="w-4 h-4" />Nouran Assignment & 24-hour Monitoring</h4>
+            <p className="text-xs text-muted-foreground">Real Meta Leads only. Test Leads are excluded from assignment, notifications, and operational objectives.</p>
+          </div>
+          <Button
+            variant="outline"
+            disabled={runAssignmentBackfill.isPending || !assignmentBackfill.data?.candidateCount || assignmentPolicy.data?.status !== "resolved"}
+            onClick={() => runAssignmentBackfill.mutate()}
+          >
+            <UserCheck className="w-4 h-4 mr-2" />
+            {runAssignmentBackfill.isPending ? "Applying verified backfill…" : `Assign verified backfill (${assignmentBackfill.data?.candidateCount || 0})`}
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="bg-muted/30 rounded-md p-3">
+            <p className="text-xs text-muted-foreground">Default consultant policy</p>
+            <p className="font-semibold mt-1">{assignmentPolicy.data?.status === "resolved" ? assignmentPolicy.data.consultant?.name : "Manual review required"}</p>
+            <p className="text-xs text-muted-foreground mt-1">{assignmentPolicy.data?.status === "resolved" ? `User ID ${assignmentPolicy.data.consultant?.id}` : ("safeCode" in (assignmentPolicy.data || {}) ? assignmentPolicy.data?.safeCode : "Loading…")}</p>
+          </div>
+          <div className="bg-muted/30 rounded-md p-3">
+            <p className="text-xs text-muted-foreground">Assignment coverage</p>
+            <p className="text-xl font-semibold mt-1">{fmtBps(monitoring.data?.assignmentCoverageBps)}</p>
+            <p className="text-xs text-muted-foreground mt-1">Unassigned over 10 minutes: {monitoring.data?.unassignedOverTenMinutes ?? "Data not available"}</p>
+          </div>
+          <div className="bg-muted/30 rounded-md p-3">
+            <p className="text-xs text-muted-foreground flex items-center gap-1"><Timer className="w-3.5 h-3.5" />Ingestion delay</p>
+            <p className="text-xl font-semibold mt-1">P95 {monitoring.data?.p95IngestionDelaySeconds ?? "N/A"} sec</p>
+            <p className="text-xs text-muted-foreground mt-1">P50 {monitoring.data?.p50IngestionDelaySeconds ?? "N/A"} sec</p>
+          </div>
+          <div className="bg-muted/30 rounded-md p-3">
+            <p className="text-xs text-muted-foreground">Webhook acceptance</p>
+            <p className="text-xl font-semibold mt-1">{monitoring.data?.webhookAcceptanceRate === null || monitoring.data?.webhookAcceptanceRate === undefined ? "Data not available" : fmtPercent(monitoring.data.webhookAcceptanceRate)}</p>
+            <p className="text-xs text-muted-foreground mt-1">Signature failures: {monitoring.data?.signatureFailureCount ?? 0}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 text-xs">
+          <Metric label="Lead ID coverage" value={fmtBps(monitoring.data?.metaLeadIdCoverageBps)} />
+          <Metric label="Program coverage" value={fmtBps(monitoring.data?.programCoverageBps)} />
+          <Metric label="Duplicate attribution" value={monitoring.data?.duplicateAttributionCount ?? "N/A"} />
+          <Metric label="Ambiguous matches" value={monitoring.data?.ambiguousMatchCount ?? "N/A"} />
+          <Metric label="Manual review" value={monitoring.data?.manualReviewCount ?? "N/A"} />
+          <Metric label="Test leakage" value={monitoring.data?.testLeadLeakageCount ?? "N/A"} />
+          <Metric label="Retry exhausted" value={monitoring.data?.eventRetryExhaustedCount ?? "N/A"} />
+          <Metric label="Reconciliation" value={monitoring.data?.reconciliationFresh ? "Fresh" : "Attention"} />
+          <Metric label="Production CAPI" value={monitoring.data?.productionSendingEnabled ? "Enabled" : "Disabled"} />
+          {(monitoring.data?.notificationByStatus ?? []).map(item => (
+            <Metric key={item.status} label={`Alerts ${item.status}`} value={Number(item.total || 0)} />
+          ))}
+        </div>
+
+        {(monitoring.data?.warnings.length ?? 0) > 0 && (
+          <div className="border border-amber-300 bg-amber-50 text-amber-950 rounded-md p-3">
+            <p className="font-medium flex items-center gap-2"><AlertTriangle className="w-4 h-4" />Monitoring warnings</p>
+            <ul className="mt-2 list-disc list-inside text-xs space-y-1">
+              {monitoring.data?.warnings.map((warning, index) => (
+                <li key={`${warning.code}-${warning.leadId || index}`}>{warning.code}{warning.leadId ? ` — Lead #${warning.leadId}` : ""}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="text-xs text-muted-foreground">
+          Dry-run baseline: {fmtDate(assignmentBackfill.data?.baselineAt)} · Eligible Lead IDs: {assignmentBackfill.data?.candidateLeadIds?.length ? assignmentBackfill.data.candidateLeadIds.join(", ") : "None"}. Production CAPI remains approval-gated.
+        </div>
+      </div>
 
       <div className="border rounded-lg p-4 space-y-4 bg-card">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -265,6 +349,15 @@ export default function MetaOperationsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="bg-muted/30 rounded-md p-2.5">
+      <p className="text-muted-foreground">{label}</p>
+      <p className="font-semibold mt-1">{value}</p>
     </div>
   );
 }

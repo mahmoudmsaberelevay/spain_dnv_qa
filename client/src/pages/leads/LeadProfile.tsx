@@ -361,6 +361,7 @@ export default function LeadProfile() {
               {lead.metaAdsetId && <InfoRow label="Ad Set ID" value={lead.metaAdsetId} />}
               {lead.metaAdId && <InfoRow label="Ad ID" value={lead.metaAdId} />}
               {lead.metaSyncStatus && <InfoRow label="Meta Sync" value={lead.metaSyncStatus.replace("_", " ")} highlight={lead.metaSyncStatus === "failed" || lead.metaSyncStatus === "manual_review"} />}
+              {lead.metaAssignmentStatus && <InfoRow label="Meta Assignment" value={lead.metaAssignmentStatus.replace("_", " ")} highlight={lead.metaAssignmentStatus === "pending" || lead.metaAssignmentStatus === "manual_review"} />}
               {lead.assignedTo && <InfoRow label="Assigned To" value={lead.assignedTo} />}
               {lead.lastContactAt && <InfoRow label="Last Contact" value={new Date(lead.lastContactAt).toLocaleDateString()} />}
               {lead.leadScore !== undefined && lead.leadScore !== null && <InfoRow label="Lead Score" value={String(lead.leadScore)} />}
@@ -388,6 +389,8 @@ export default function LeadProfile() {
                     {attribution.metaAdSetName && <p className="text-xs">Ad Set: {attribution.metaAdSetName}</p>}
                     {attribution.metaAdName && <p className="text-xs">Ad: {attribution.metaAdName}</p>}
                     {attribution.program && <p className="text-xs">Program: {attribution.program}</p>}
+                    {attribution.routingConsultantDisplayName && <p className="text-xs">Routing consultant: {attribution.routingConsultantDisplayName}</p>}
+                    <p className="text-xs">Match: {attribution.matchMethod.replace("_", " ")}{attribution.duplicateIndicator ? " · existing contact" : ""}{attribution.ambiguousMatch ? " · manual review" : ""}</p>
                     <p className="text-[11px] text-muted-foreground break-all">Lead ID: {attribution.metaLeadId}</p>
                   </div>
                 ))}
