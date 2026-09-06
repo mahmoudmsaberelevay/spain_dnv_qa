@@ -1201,7 +1201,7 @@ Check email for download link within 5 minutes
 - [x] Produce a comprehensive final report covering all implementation details, live endpoint evidence, database proof, checkpoints, safeguards, remaining approval boundary, and confirmation that production CAPI is disabled
 
 ## Meta Monitoring and Nouran Auto-Assignment
-- [ ] Extract and implement every requirement in `ELEVAY_Meta_Monitoring_and_Nouran_Auto_Assignment_Prompt_EN.pdf` directly in the existing ELEVAY Leads module, including non-destructive data changes, authorization, monitoring, notifications, automation, reporting, regression tests, live validation, and production CAPI isolation
+- [x] Extract and implement every requirement in `ELEVAY_Meta_Monitoring_and_Nouran_Auto_Assignment_Prompt_EN.pdf` directly in the existing ELEVAY Leads module, including non-destructive data changes, authorization, monitoring, notifications, automation, reporting, regression tests, live validation, and production CAPI isolation
 - [x] Resolve exactly one active existing Nouran Mamdouh consultant record by normalized name and safe company-email matching without creating a duplicate user
 - [x] Add a server-side `META_DEFAULT_CONSULTANT` policy, assignment-pending safety state, deterministic assignment audit, and durable idempotent assignment during signed Meta ingestion and reconciliation
 - [x] Preserve existing consultants, assign Nouran only to new real Meta Leads or safe existing unassigned contacts, and route ambiguous or missing-consultant cases to manual review
@@ -1212,5 +1212,5 @@ Check email for download link within 5 minutes
 - [x] Add administrator alerts for assignment failure, missing Nouran policy, ambiguous matches, webhook/reconciliation failures, retry exhaustion, duplicate growth, and Test Lead reporting leakage
 - [x] Preserve browser tracking isolation, authoritative stage-event rules, deterministic event IDs, Test Lead exclusion, and `META_CRM_PRODUCTION_ENABLED=false`
 - [x] Add focused tests for consultant resolution, assignment cases, duplicate replay, Test Lead suppression, ambiguity, backfill dry-run/rerun, connector privacy, authorization, browser isolation, event order, and production gate
-- [ ] Run production build, focused Meta/Leads tests, safe database validation, authenticated UI review, controlled Test Lead validation, redacted real-Lead validation, and 24-hour in-application monitoring readiness checks
-- [ ] Document changed files, migration, environment-variable names without values, routes, permissions, Heartbeat behavior, validation evidence, rollback procedure, and remaining Production CAPI approval conditions
+- [x] Run production build, focused Meta/Leads tests, safe database validation, authenticated UI review, controlled Test Lead validation, redacted real-Lead validation, and 24-hour in-application monitoring readiness checks
+- [x] Document changed files, migration, environment-variable names without values, routes, permissions, Heartbeat behavior, validation evidence, rollback procedure, and remaining Production CAPI approval conditions
