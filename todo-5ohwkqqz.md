@@ -23,3 +23,8 @@
 - [x] Inspect the existing task schedule and required Meta/CRM connector availability
 - [x] Configure 8-hour monitoring with automatic expiry after 24 hours and no write actions
 - [x] Verify the monitoring schedule and preserve the normal weekly review configuration
+- [x] Determine the current temporary-monitor checkpoint number and reporting cutoff in Africa/Cairo
+- [x] Pull read-only Campaign, Ad Set, and Ad metrics for the active Spain DNV campaign
+- [x] Pull privacy-safe ELEVAY CRM monitoring, Funnel, and CAPI provenance evidence
+- [x] Calculate checkpoint trends, guardrail comparisons, marginal-efficiency limits, and integration status
+- [x] Deliver the Arabic checkpoint report and restore the normal weekly schedule only if this is checkpoint 3
