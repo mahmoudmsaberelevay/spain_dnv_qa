@@ -1258,6 +1258,240 @@ export const auditLogs = mysqlTable("audit_logs", {
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
 
+// ─── ELEVAY Client Portal ─────────────────────────────────────────────────────
+// Client-portal identities are deliberately separate from employee `users`.
+// A portal session can never be accepted by the employee tRPC router.
+export const clientPortalUsers = mysqlTable("client_portal_users", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  primaryClientCaseId: int("primaryClientCaseId").notNull(),
+  username: varchar("username", { length: 100 }).notNull().unique(),
+  email: varchar("email", { length: 320 }).notNull().unique(),
+  mobile: varchar("mobile", { length: 64 }),
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  status: mysqlEnum("status", ["active", "disabled"]).default("active").notNull(),
+  mustChangePassword: boolean("mustChangePassword").default(true).notNull(),
+  consultant: varchar("consultant", { length: 128 }),
+  paralegal: varchar("paralegal", { length: 128 }),
+  locale: mysqlEnum("locale", ["en", "ar"]).default("en").notNull(),
+  notificationPreferences: json("notificationPreferences"),
+  failedLoginAttempts: int("failedLoginAttempts").default(0).notNull(),
+  lockedUntil: timestamp("lockedUntil"),
+  passwordResetTokenHash: varchar("passwordResetTokenHash", { length: 255 }),
+  passwordResetExpiresAt: timestamp("passwordResetExpiresAt"),
+  lastLoginAt: timestamp("lastLoginAt"),
+  createdBy: int("createdBy").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ClientPortalUser = typeof clientPortalUsers.$inferSelect;
+export type InsertClientPortalUser = typeof clientPortalUsers.$inferInsert;
+
+export const clientPortalApplications = mysqlTable("client_portal_applications", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  portalUserId: int("portalUserId").notNull(),
+  clientCaseId: int("clientCaseId").notNull(),
+  label: varchar("label", { length: 255 }),
+  isPrimary: boolean("isPrimary").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ClientPortalApplication = typeof clientPortalApplications.$inferSelect;
+export type InsertClientPortalApplication = typeof clientPortalApplications.$inferInsert;
+
+export const clientPortalApplicants = mysqlTable("client_portal_applicants", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  portalApplicationId: int("portalApplicationId").notNull(),
+  relation: mysqlEnum("relation", ["main", "spouse", "child", "dependent"]).notNull(),
+  fullName: varchar("fullName", { length: 255 }).notNull(),
+  birthDate: date("birthDate"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ClientPortalApplicant = typeof clientPortalApplicants.$inferSelect;
+export type InsertClientPortalApplicant = typeof clientPortalApplicants.$inferInsert;
+
+export const clientPortalSessions = mysqlTable("client_portal_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  portalUserId: int("portalUserId").notNull(),
+  refreshTokenHash: varchar("refreshTokenHash", { length: 255 }).notNull(),
+  deviceName: varchar("deviceName", { length: 255 }),
+  platform: varchar("platform", { length: 50 }),
+  osVersion: varchar("osVersion", { length: 100 }),
+  appVersion: varchar("appVersion", { length: 50 }),
+  pushToken: varchar("pushToken", { length: 512 }),
+  ipAddress: varchar("ipAddress", { length: 64 }),
+  expiresAt: timestamp("expiresAt").notNull(),
+  lastSeenAt: timestamp("lastSeenAt").defaultNow().notNull(),
+  revokedAt: timestamp("revokedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ClientPortalSession = typeof clientPortalSessions.$inferSelect;
+export type InsertClientPortalSession = typeof clientPortalSessions.$inferInsert;
+
+export const clientPortalDocuments = mysqlTable("client_portal_documents", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  portalApplicationId: int("portalApplicationId").notNull(),
+  applicantId: int("applicantId"),
+  documentType: varchar("documentType", { length: 128 }).notNull(),
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  fileKey: varchar("fileKey", { length: 1024 }).notNull(),
+  mimeType: varchar("mimeType", { length: 128 }).notNull(),
+  fileSize: int("fileSize").notNull(),
+  source: mysqlEnum("source", ["client_upload", "client_scan", "staff"]).notNull(),
+  visibleToClient: boolean("visibleToClient").default(true).notNull(),
+  reviewStatus: mysqlEnum("reviewStatus", ["submitted", "under_review", "accepted", "replacement_required"]).default("submitted").notNull(),
+  clientComment: text("clientComment"),
+  uploadedByPortalUserId: int("uploadedByPortalUserId"),
+  uploadedByStaffUserId: int("uploadedByStaffUserId"),
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ClientPortalDocument = typeof clientPortalDocuments.$inferSelect;
+export type InsertClientPortalDocument = typeof clientPortalDocuments.$inferInsert;
+
+export const clientPortalMessages = mysqlTable("client_portal_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  portalApplicationId: int("portalApplicationId").notNull(),
+  senderType: mysqlEnum("senderType", ["client", "staff"]).notNull(),
+  senderPortalUserId: int("senderPortalUserId"),
+  senderStaffUserId: int("senderStaffUserId"),
+  visibility: mysqlEnum("visibility", ["internal", "client"]).default("client").notNull(),
+  body: text("body").notNull(),
+  attachmentDocumentId: int("attachmentDocumentId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ClientPortalMessage = typeof clientPortalMessages.$inferSelect;
+export type InsertClientPortalMessage = typeof clientPortalMessages.$inferInsert;
+
+export const clientPortalNotifications = mysqlTable("client_portal_notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  portalUserId: int("portalUserId").notNull(),
+  type: varchar("type", { length: 64 }).notNull(),
+  titleEn: varchar("titleEn", { length: 255 }).notNull(),
+  titleAr: varchar("titleAr", { length: 255 }).notNull(),
+  bodyEn: text("bodyEn").notNull(),
+  bodyAr: text("bodyAr").notNull(),
+  entityType: varchar("entityType", { length: 64 }),
+  entityPublicId: varchar("entityPublicId", { length: 36 }),
+  isRead: boolean("isRead").default(false).notNull(),
+  readAt: timestamp("readAt"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+});
+export type ClientPortalNotification = typeof clientPortalNotifications.$inferSelect;
+export type InsertClientPortalNotification = typeof clientPortalNotifications.$inferInsert;
+
+export const clientPortalAuditLogs = mysqlTable("client_portal_audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  portalUserId: int("portalUserId"),
+  clientCaseId: int("clientCaseId"),
+  action: varchar("action", { length: 100 }).notNull(),
+  recordType: varchar("recordType", { length: 100 }),
+  recordPublicId: varchar("recordPublicId", { length: 64 }),
+  outcome: mysqlEnum("outcome", ["success", "denied", "failure"]).default("success").notNull(),
+  ipAddress: varchar("ipAddress", { length: 64 }),
+  userAgent: varchar("userAgent", { length: 512 }),
+  deviceName: varchar("deviceName", { length: 255 }),
+  osVersion: varchar("osVersion", { length: 100 }),
+  appVersion: varchar("appVersion", { length: 50 }),
+  correlationId: varchar("correlationId", { length: 64 }),
+  details: text("details"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+});
+export type ClientPortalAuditLog = typeof clientPortalAuditLogs.$inferSelect;
+export type InsertClientPortalAuditLog = typeof clientPortalAuditLogs.$inferInsert;
+
+export const clientPortalDeliveryOutbox = mysqlTable("client_portal_delivery_outbox", {
+  id: int("id").autoincrement().primaryKey(),
+  eventType: varchar("eventType", { length: 64 }).notNull(),
+  channel: mysqlEnum("channel", ["email", "push", "crm_notification"]).notNull(),
+  recipient: varchar("recipient", { length: 512 }).notNull(),
+  payload: json("payload").notNull(),
+  status: mysqlEnum("status", ["pending", "sent", "failed"]).default("pending").notNull(),
+  attempts: int("attempts").default(0).notNull(),
+  lastError: text("lastError"),
+  processedAt: timestamp("processedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+// ─── Public Program & Service Provider Content ────────────────────────────────
+export const publicPrograms = mysqlTable("public_programs", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  slug: varchar("slug", { length: 160 }).notNull().unique(),
+  category: mysqlEnum("category", ["residency", "citizenship"]).notNull(),
+  nameEn: varchar("nameEn", { length: 255 }).notNull(),
+  nameAr: varchar("nameAr", { length: 255 }),
+  country: varchar("country", { length: 128 }).notNull(),
+  summaryEn: text("summaryEn"),
+  summaryAr: text("summaryAr"),
+  details: json("details"),
+  imageUrl: varchar("imageUrl", { length: 1024 }),
+  sourceUrl: varchar("sourceUrl", { length: 1024 }).notNull(),
+  sourceHash: varchar("sourceHash", { length: 64 }),
+  isOverridden: boolean("isOverridden").default(false).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  displayOrder: int("displayOrder").default(0).notNull(),
+  lastSyncedAt: timestamp("lastSyncedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type PublicProgram = typeof publicPrograms.$inferSelect;
+export type InsertPublicProgram = typeof publicPrograms.$inferInsert;
+
+export const publicServiceProviders = mysqlTable("public_service_providers", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  providerType: mysqlEnum("providerType", ["lawyer", "accountant", "service_facilitator"]).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  country: varchar("country", { length: 128 }).notNull(),
+  city: varchar("city", { length: 128 }),
+  logoUrl: varchar("logoUrl", { length: 1024 }),
+  description: text("description"),
+  services: json("services"),
+  price: decimal("price", { precision: 14, scale: 2 }),
+  currency: varchar("currency", { length: 10 }),
+  phone: varchar("phone", { length: 64 }),
+  whatsapp: varchar("whatsapp", { length: 64 }),
+  email: varchar("email", { length: 320 }),
+  website: varchar("website", { length: 1024 }),
+  languages: json("languages"),
+  availability: varchar("availability", { length: 255 }),
+  displayOrder: int("displayOrder").default(0).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type PublicServiceProvider = typeof publicServiceProviders.$inferSelect;
+export type InsertPublicServiceProvider = typeof publicServiceProviders.$inferInsert;
+
+export const publicContentSyncRuns = mysqlTable("public_content_sync_runs", {
+  id: int("id").autoincrement().primaryKey(),
+  triggerType: mysqlEnum("triggerType", ["scheduled", "manual"]).notNull(),
+  status: mysqlEnum("status", ["running", "success", "failed"]).notNull(),
+  programsFound: int("programsFound").default(0).notNull(),
+  programsCreated: int("programsCreated").default(0).notNull(),
+  programsUpdated: int("programsUpdated").default(0).notNull(),
+  errorMessage: text("errorMessage"),
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+});
+export type PublicContentSyncRun = typeof publicContentSyncRuns.$inferSelect;
+
+export const publicContentSyncSettings = mysqlTable("public_content_sync_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
+  lastSuccessfulAt: timestamp("lastSuccessfulAt"),
+  lastAttemptAt: timestamp("lastAttemptAt"),
+  lastError: text("lastError"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 // ─── LEADS REPORT PRESETS ─────────────────────────────────────────────────────
 // Shared filter presets for the Leads Reporting page — visible to all users
 export const leadsReportPresets = mysqlTable("leads_report_presets", {

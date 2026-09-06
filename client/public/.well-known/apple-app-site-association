@@ -5,14 +5,19 @@
       {
         "appIDs": ["8M53HJ223G.com.app.elevaymobile"],
         "components": [
-          {
-            "/": "/*"
-          }
+          { "/": "/client-app/*", "exclude": true },
+          { "/": "/*" }
+        ]
+      },
+      {
+        "appIDs": ["8M53HJ223G.com.elevay.client"],
+        "components": [
+          { "/": "/client-app/*" }
         ]
       }
     ]
   },
   "webcredentials": {
-    "apps": ["8M53HJ223G.com.app.elevaymobile"]
+    "apps": ["8M53HJ223G.com.app.elevaymobile", "8M53HJ223G.com.elevay.client"]
   }
 }

@@ -45,6 +45,33 @@ async function sendEmail(to: string | string[], subject: string, html: string) {
   }
 }
 
+/**
+ * Send a client-portal operational alert. Sensitive client documents are never
+ * attached; callers include only metadata and a protected CRM deep link.
+ */
+export async function sendClientPortalActivityEmail(
+  recipients: string[],
+  subject: string,
+  html: string,
+) {
+  if (recipients.length === 0) return false;
+  return sendEmail(recipients, subject, html);
+}
+
+/** Send a short-lived password reset deep link for the dedicated client app. */
+export async function sendClientPortalPasswordResetEmail(email: string, token: string) {
+  const query = `email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+  const universalLink = `https://elevay.vip/client-app/reset-password?${query}`;
+  const deepLink = `elevayclient://reset-password?${query}`;
+  return sendEmail(email, "Reset your ELEVAY Client App password", `
+    <h2>Reset your password</h2>
+    <p>We received a request to reset your ELEVAY Client App password.</p>
+    <p><a href="${universalLink}">Open the ELEVAY Client App to reset your password</a></p>
+    <p style="font-size: 12px; color: #667085;">If the button does not open the app, try <a href="${deepLink}">this app link</a>.</p>
+    <p>This secure link expires in 30 minutes. If you did not request a reset, you can ignore this email.</p>
+  `);
+}
+
 // Contract notifications
 export async function notifyNewContract(contractId: string, contractName: string, clientName: string) {
   const html = `

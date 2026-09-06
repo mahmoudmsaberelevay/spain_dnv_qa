@@ -69,6 +69,7 @@ import TasksPage from "./pages/leads/TasksPage";
 
 import AdminSecurity from "@/pages/AdminSecurity";
 import AdminPrivacy from "@/pages/AdminPrivacy";
+import ClientPortalAdmin from "@/pages/ClientPortalAdmin";
 
 // ─── Marketing Module ─────────────────────────────────────────────────────────
 import MarketingDashboard from "./pages/marketing/MarketingDashboard";
@@ -274,6 +275,11 @@ function Router() {
       {/* ── Admin Privacy & Deletion Requests ── */}
       <Route path="/admin/privacy">
         <MobileRoute><AdminPrivacy /></MobileRoute>
+      </Route>
+
+      {/* ── Client Portal Administration ── */}
+      <Route path="/admin/client-portal">
+        <MobileRoute><ClientPortalAdmin /></MobileRoute>
       </Route>
 
       {/* ── WhatsApp Quality Control Module ── */}

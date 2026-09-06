@@ -50,6 +50,7 @@ import { reportsRouter } from "./routers/reports";
 import { backupsRouter } from "./routers/backups";
 import { backupDownloadRouter } from "./routers/backupDownload";
 import { aiCouncilRouter } from "./aiCouncilRouter";
+import { clientPortalAdminRouter } from "./clientPortalAdminRouter";
 
 const MOFA_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/mofa_stamp_a1afffba.png";
 const SPAIN_EMBASSY_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/spain_embassy_stamp_cf83213b.png";
@@ -1642,6 +1643,8 @@ const clientDocsRouter = router({
           receivedDate: new Date(item.receivedDate),
         });
       }
+      const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
+      await notifyPortalUsersForClientCase({ clientCaseId: input.clientCaseId, type: "document_received", titleEn: "Documents received", titleAr: "تم استلام المستندات", bodyEn: `Your ELEVAY team marked ${input.items.length} document${input.items.length === 1 ? "" : "s"} as received.`, bodyAr: `قام فريق إليفاي بتسجيل استلام ${input.items.length} مستند.` });
       return { success: true };
     }),
 
@@ -1658,6 +1661,8 @@ const clientDocsRouter = router({
         mofaAttested: true,
         mofaAttestedDate: new Date(),
       });
+      const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
+      await notifyPortalUsersForClientCase({ clientCaseId: input.clientCaseId, type: "document_attestation", titleEn: "Document attestation update", titleAr: "تحديث تصديق المستندات", bodyEn: "Your ELEVAY team updated the Ministry of Foreign Affairs attestation status.", bodyAr: "قام فريق إليفاي بتحديث حالة تصديق وزارة الخارجية." });
       return { success: true };
     }),
 
@@ -1674,6 +1679,8 @@ const clientDocsRouter = router({
         embassyAttested: true,
         embassyAttestedDate: new Date(),
       });
+      const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
+      await notifyPortalUsersForClientCase({ clientCaseId: input.clientCaseId, type: "document_attestation", titleEn: "Document attestation update", titleAr: "تحديث تصديق المستندات", bodyEn: "Your ELEVAY team updated the embassy attestation status.", bodyAr: "قام فريق إليفاي بتحديث حالة تصديق السفارة." });
       return { success: true };
     }),
 
@@ -1696,6 +1703,8 @@ const clientDocsRouter = router({
       if (input.expectedSubmissionDate !== undefined)
         update.expectedSubmissionDate = input.expectedSubmissionDate ? new Date(input.expectedSubmissionDate) : null;
       await updateClientCase(input.id, update as any);
+      const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
+      await notifyPortalUsersForClientCase({ clientCaseId: input.id, type: "workflow_dates_updated", titleEn: "Application dates updated", titleAr: "تم تحديث مواعيد الطلب", bodyEn: "Your ELEVAY team updated an important date in your application.", bodyAr: "قام فريق إليفاي بتحديث موعد مهم في طلبك." });
       return { success: true };
     }),
 
@@ -1790,6 +1799,11 @@ const clientDocsRouter = router({
       }
 
       await updateClientCase(input.id, update as any);
+      if (c.stage !== input.stage) {
+        const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
+        const labels = { preparation: { en: "Preparation", ar: "الإعداد" }, submission: { en: "Submission", ar: "التقديم" }, approved: { en: "Approved", ar: "الموافقة" } } as const;
+        await notifyPortalUsersForClientCase({ clientCaseId: input.id, type: "workflow_stage_updated", titleEn: "Application stage updated", titleAr: "تم تحديث مرحلة الطلب", bodyEn: `Your application moved to ${labels[input.stage].en}.`, bodyAr: `انتقل طلبك إلى مرحلة ${labels[input.stage].ar}.` });
+      }
       return { success: true };
     }),
 
@@ -2249,6 +2263,7 @@ export const appRouter = router({
   backupDownload: backupDownloadRouter,
   aiCouncil: aiCouncilRouter,
   admin: adminRouter,
+  clientPortalAdmin: clientPortalAdminRouter,
   support: supportRouter,
 });
 export type AppRouter = typeof appRouter;

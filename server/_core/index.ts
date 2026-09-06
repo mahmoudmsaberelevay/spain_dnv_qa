@@ -61,12 +61,16 @@ async function startServer() {
         details: [
           {
             appIDs: ["8M53HJ223G.com.app.elevaymobile"],
-            components: [{ "/": "/*" }]
+            components: [{ "/": "/client-app/*", exclude: true }, { "/": "/*" }]
+          },
+          {
+            appIDs: ["8M53HJ223G.com.elevay.client"],
+            components: [{ "/": "/client-app/*" }]
           }
         ]
       },
       webcredentials: {
-        apps: ["8M53HJ223G.com.app.elevaymobile"]
+        apps: ["8M53HJ223G.com.app.elevaymobile", "8M53HJ223G.com.elevay.client"]
       }
     };
     res.setHeader("Content-Type", "application/json");
@@ -81,6 +85,16 @@ async function startServer() {
         target: {
           namespace: "android_app",
           package_name: "com.app.elevaymobile",
+          sha256_cert_fingerprints: [
+            "D7:1E:11:BB:98:F3:2A:6F:FB:AC:12:F2:A7:86:E8:C7:16:FE:E5:D6:F1:AC:99:E8:B1:9D:BD:B5:31:37:DE:E7"
+          ]
+        }
+      },
+      {
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: {
+          namespace: "android_app",
+          package_name: "com.elevay.client",
           sha256_cert_fingerprints: [
             "D7:1E:11:BB:98:F3:2A:6F:FB:AC:12:F2:A7:86:E8:C7:16:FE:E5:D6:F1:AC:99:E8:B1:9D:BD:B5:31:37:DE:E7"
           ]
@@ -378,6 +392,8 @@ async function startServer() {
   app.post("/api/scheduled/metaReconciliation", scheduledMetaReconciliationHandler);
   const { scheduledMetaMonitoringHandler } = await import("../scheduledMetaMonitoringHandler");
   app.post("/api/scheduled/metaMonitoring", scheduledMetaMonitoringHandler);
+  const { scheduledPublicContentSyncHandler } = await import("../scheduledPublicContentSyncHandler");
+  app.post("/api/scheduled/publicContentSync", scheduledPublicContentSyncHandler);
 
   // Backup list endpoint
   app.get("/api/backup/list", (req, res) => {
@@ -659,6 +675,12 @@ async function startServer() {
 
   // Register backup routes BEFORE Vite (to avoid catch-all)
   registerBackupRoutes(app);
+
+  // ELEVAY Client App APIs are isolated from the employee tRPC identity layer.
+  const { registerPublicContentRoutes } = await import("../publicContentService.js");
+  registerPublicContentRoutes(app);
+  const { registerClientPortalRoutes } = await import("../clientPortalRoutes.js");
+  registerClientPortalRoutes(app);
 
   // Server-rendered public legal pages (no JS bundle needed, always accessible)
   const { registerPublicPages } = await import("../publicPagesHandler.js");
