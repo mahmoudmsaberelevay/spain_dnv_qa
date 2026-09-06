@@ -17,6 +17,7 @@ describe("client portal credential security", () => {
     const second = generateTemporaryPassword();
     expect(first).toHaveLength(14);
     expect(second).toHaveLength(14);
+    expect(first).toMatch(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
     expect(first).not.toBe(second);
     expect(hashPortalToken("secret")).toMatch(/^[a-f0-9]{64}$/);
     expect(hashPortalToken("secret")).toBe(hashPortalToken("secret"));

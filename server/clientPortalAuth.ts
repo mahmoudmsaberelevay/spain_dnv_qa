@@ -34,9 +34,10 @@ export function hashPortalToken(value: string) {
 }
 
 export function generateTemporaryPassword() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$";
-  const bytes = randomBytes(14);
-  return Array.from(bytes, byte => alphabet[byte % alphabet.length]).join("");
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes(12);
+  const characters = Array.from(bytes, byte => alphabet[byte % alphabet.length]);
+  return `${characters.slice(0, 4).join("")}-${characters.slice(4, 8).join("")}-${characters.slice(8, 12).join("")}`;
 }
 
 export async function hashPortalPassword(password: string) {

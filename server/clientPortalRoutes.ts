@@ -295,6 +295,18 @@ export function registerClientPortalRoutes(app: Express) {
     return res.status(201).json({ publicId: portalUser.publicId, username: portalUser.username, email: portalUser.email, temporaryPassword, clientName: clientCase.clientName, clientCode: clientCase.clientCode });
   });
 
+  app.post("/client-api/admin/accounts/:publicId/reset-password", writeLimiter, async (req: PortalRequest, res) => {
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
+    const [client] = await db.select().from(clientPortalUsers).where(and(eq(clientPortalUsers.publicId, req.params.publicId), eq(clientPortalUsers.accountType, "client"))).limit(1);
+    if (!client) return error(res, 404, "client_account_not_found");
+    const temporaryPassword = generateTemporaryPassword();
+    await db.update(clientPortalUsers).set({ passwordHash: await hashPortalPassword(temporaryPassword), mustChangePassword: true, failedLoginAttempts: 0, lockedUntil: null }).where(eq(clientPortalUsers.id, client.id));
+    await db.update(clientPortalSessions).set({ revokedAt: new Date() }).where(and(eq(clientPortalSessions.portalUserId, client.id), isNull(clientPortalSessions.revokedAt)));
+    await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_client_password_reset", recordType: "client_portal_account", recordPublicId: client.publicId });
+    return res.json({ publicId: client.publicId, username: client.username, email: client.email, temporaryPassword });
+  });
+
   app.get("/client-api/admin/providers", async (req: PortalRequest, res) => {
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
