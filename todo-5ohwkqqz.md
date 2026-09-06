@@ -18,4 +18,4 @@
 - [x] Confirm Production CAPI remains disabled and no real or approval-gated event was dispatched or modified
 - [x] Fix `Test sent` aggregation so it counts acknowledged Test events without including Test Leads in operational metrics
 - [x] Add focused Vitest coverage proving Test sent counting and operational Test Lead isolation
-- [ ] Document the final validation decision and publish the audit checkpoint
+- [x] Document the final validation decision and publish the audit checkpoint
