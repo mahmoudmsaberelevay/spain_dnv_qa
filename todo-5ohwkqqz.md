@@ -9,4 +9,4 @@
 - [x] Apply additive database migration and verify existing records remain intact
 - [x] Run focused tests, TypeScript/build checks, and visual verification
 - [x] Verify Production CAPI remains disabled and no automatic retry, Backfill, or reconciliation mutation occurs
-- [ ] Save and publish a checkpoint with the completed fixes
+- [x] Save and publish a checkpoint with the completed fixes
