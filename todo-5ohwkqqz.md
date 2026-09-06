@@ -19,3 +19,7 @@
 - [x] Fix `Test sent` aggregation so it counts acknowledged Test events without including Test Leads in operational metrics
 - [x] Add focused Vitest coverage proving Test sent counting and operational Test Lead isolation
 - [x] Document the final validation decision and publish the audit checkpoint
+- [x] Confirm the execution approach for three AI-reviewed Meta and CRM checks over 24 hours
+- [x] Inspect the existing task schedule and required Meta/CRM connector availability
+- [x] Configure 8-hour monitoring with automatic expiry after 24 hours and no write actions
+- [x] Verify the monitoring schedule and preserve the normal weekly review configuration
