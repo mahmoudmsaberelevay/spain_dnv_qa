@@ -20,6 +20,8 @@
 import { getDb } from "./db";
 import { leadIntegrations, leads, leadActivities, leadNotes } from "../drizzle/schema";
 import { eq, and, or } from "drizzle-orm";
+import { findLeadContactMatch } from "./leadContactMatcher";
+import { isLeadContactUniqueViolation, normalizeLeadEmail, normalizeLeadPhone } from "./leadContactIdentity";
 
 const META_GRAPH_BASE = `https://graph.facebook.com/${process.env.META_GRAPH_API_VERSION || "v26.0"}`;
 
@@ -186,34 +188,6 @@ async function fetchMetaLeadsPage(
   return json;
 }
 
-/** Find existing lead by phone (primary) or email (fallback). Returns the lead row or null. */
-async function findExistingLead(
-  db: Awaited<ReturnType<typeof getDb>>,
-  phone?: string,
-  email?: string
-): Promise<{ id: number; fullName: string; stage: string } | null> {
-  if (!db) return null;
-  // Phone-only check first (more reliable for deduplication)
-  if (phone) {
-    const [existing] = await db
-      .select({ id: leads.id, fullName: leads.fullName, stage: leads.stage })
-      .from(leads)
-      .where(eq(leads.phone, phone))
-      .limit(1);
-    if (existing) return existing as { id: number; fullName: string; stage: string };
-  }
-  // Fallback to email check
-  if (email) {
-    const [existing] = await db
-      .select({ id: leads.id, fullName: leads.fullName, stage: leads.stage })
-      .from(leads)
-      .where(eq(leads.email, email))
-      .limit(1);
-    if (existing) return existing as { id: number; fullName: string; stage: string };
-  }
-  return null;
-}
-
 export interface SyncResult {
   integrationId: number;
   integrationName: string;
@@ -337,11 +311,21 @@ async function syncOneIntegration(integration: {
           const phone = mapped.phone || mapped.whatsapp || undefined;
           const email = mapped.email || undefined;
 
-          // Deduplication check — if phone matches an existing lead, add a note and change stage to 'resubmit'
-          const existingLead = await findExistingLead(db, phone, email);
-          if (existingLead) {
+          const contactMatch = await findLeadContactMatch({
+            phone,
+            whatsapp: mapped.whatsapp,
+            email,
+            isMetaTestLead: false,
+          }, db);
+          if (contactMatch.status === "ambiguous") {
             result.skippedDuplicates++;
-            // Add a resubmit note to the existing lead
+            formErrors.push(`Meta Lead ${metaLead.id}: multiple existing Leads match its contact details; no Lead was created`);
+            continue;
+          }
+          if (contactMatch.status === "matched") {
+            const existingLead = contactMatch.lead;
+            result.skippedDuplicates++;
+            // Preserve the existing Lead's stage, consultant, source, consent and attribution.
             try {
               const resubmitNote = [
                 `🔄 This lead resubmitted again via Meta Ads`,
@@ -362,16 +346,11 @@ async function syncOneIntegration(integration: {
                 createdAt: noteTs,
                 updatedAt: noteTs,
               });
-              // Change stage to 'resubmit'
-              await db.update(leads)
-                .set({ stage: "resubmit", updatedAt: Date.now() })
-                .where(eq(leads.id, existingLead.id));
-              // Log activity
               await db.insert(leadActivities).values({
                 leadId: existingLead.id,
                 userId: null,
-                activityType: "stage_changed",
-                description: `Stage changed to Resubmit — lead resubmitted via Meta Ads (Form: ${form.name})`,
+                activityType: "other",
+                description: `Repeat Meta inquiry received (Form: ${form.name}); existing Lead ownership, stage, source, consent, and attribution preserved`,
                 score: 0,
                 createdAt: Date.now(),
               });
@@ -403,12 +382,17 @@ async function syncOneIntegration(integration: {
           if (metaLead.ad_name) noteParts.push(`🖼️ Ad: ${metaLead.ad_name}`);
           noteParts.push(`🔗 Meta Lead ID: ${metaLead.id}`);
 
-          // Insert the lead and capture the new ID
-          const [insertResult] = await db.insert(leads).values({
+          // Insert the lead and capture the new ID. Composite unique indexes
+          // close the race between simultaneous manual, landing and Meta intake.
+          let insertResult: unknown;
+          try {
+            [insertResult] = await db.insert(leads).values({
             fullName: mapped.fullName || "Unknown",
             email: email || null,
             phone: phone || null,
             whatsapp: mapped.whatsapp || phone || null,
+            normalizedPhone: normalizeLeadPhone(phone || mapped.whatsapp),
+            normalizedEmail: normalizeLeadEmail(email),
             // Country field → nationality
             nationality: mapped.nationality || null,
             // Program field → interestedProgram
@@ -431,7 +415,16 @@ async function syncOneIntegration(integration: {
             dataSharingConsent: true,
             marketingOptIn: true,
             dataRegion: "EG",
-          });
+            });
+          } catch (error) {
+            if (!isLeadContactUniqueViolation(error)) throw error;
+            const raceMatch = await findLeadContactMatch({ phone, whatsapp: mapped.whatsapp, email, isMetaTestLead: false }, db);
+            if (raceMatch.status === "matched") {
+              result.skippedDuplicates++;
+              continue;
+            }
+            throw error;
+          }
 
           const newLeadId = (insertResult as any).insertId as number;
 

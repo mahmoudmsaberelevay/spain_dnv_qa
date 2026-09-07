@@ -11,6 +11,7 @@ import {
   boolean,
   decimal,
   date,
+  uniqueIndex,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -884,7 +885,10 @@ export const leads = mysqlTable("leads", {
   lastContactAt: bigint("lastContactAt", { mode: "number" }),
   createdAt: bigint("createdAt", { mode: "number" }).notNull(),
   updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
-});
+}, table => ({
+  normalizedPhoneIdentityUnique: uniqueIndex("leads_test_normalized_phone_uq").on(table.isMetaTestLead, table.normalizedPhone),
+  normalizedEmailIdentityUnique: uniqueIndex("leads_test_normalized_email_uq").on(table.isMetaTestLead, table.normalizedEmail),
+}));
 export type Lead = typeof leads.$inferSelect;
 export type InsertLead = typeof leads.$inferInsert;
 

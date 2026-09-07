@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { leadMetaAttributions, leads, leadsReportPresets, metaCrmEventLog } from "../../drizzle/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import {
-  createLead, getLeadById, listLeads, updateLead, deleteLead, checkDuplicate,
+  createLead, getLeadById, listLeads, updateLead, deleteLead,
   addLeadActivity, getLeadActivities,
   addLeadNote, getLeadNotes, updateLeadNote, deleteLeadNote, getLeadNoteById,
   createLeadTask, getLeadTasks, completeLeadTask, deleteLeadTask, getAllTasksWithLeads,
@@ -21,6 +21,8 @@ import { syncOneIntegrationById } from "../metaLeadSync";
 import { writeAuditLog, auditCtxFromTrpc } from "../auditLog";
 import { sendLeadAssignmentNotification, TEAM_EMAIL_MAP } from "../emailService";
 import { enqueueMappedMetaCrmEvent, normalizeMetaEmail, normalizeMetaPhone } from "../metaLeadsService";
+import { findLeadContactMatch } from "../leadContactMatcher";
+import { isLeadContactUniqueViolation } from "../leadContactIdentity";
 
 const STAGES = [
   "fresh", "contacted", "qualified", "prospect", "client", "dormant", "resubmit",
@@ -61,30 +63,56 @@ export const leadsRouter = router({
       importedCreatedAt: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      if (!input.skipDuplicateCheck) {
-        const dup = await checkDuplicate(input.phone, input.email || undefined, input.whatsapp);
-        if (dup) {
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: JSON.stringify({
-              message: `A lead with this phone number already exists: ${dup.fullName}`,
-              existingLeadId: dup.id,
-              existingLeadName: dup.fullName,
-            }),
-          });
-        }
+      const contactMatch = await findLeadContactMatch({
+        phone: input.phone,
+        whatsapp: input.whatsapp,
+        email: input.email || undefined,
+        isMetaTestLead: false,
+      });
+      if (contactMatch.status === "matched") {
+        return {
+          id: contactMatch.lead.id,
+          created: false as const,
+          duplicate: true as const,
+          matchMethod: contactMatch.method,
+        };
+      }
+      if (contactMatch.status === "ambiguous") {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: JSON.stringify({
+            code: "AMBIGUOUS_CONTACT_MATCH",
+            message: "More than one existing Lead matches these contact details. No Lead was created.",
+            candidateLeadIds: contactMatch.candidateLeadIds,
+          }),
+        });
       }
       // Validate stage if provided
       const VALID_STAGES = ["fresh","contacted","qualified","prospect","client","dormant","resubmit","not_qualified_budget","not_qualified_work","not_qualified_study","not_qualified_criminal","not_qualified_other"];
       const importedStage = (input.stage && VALID_STAGES.includes(input.stage) ? input.stage : "fresh") as "fresh" | "contacted" | "qualified" | "prospect" | "client" | "dormant" | "resubmit" | "not_qualified_budget" | "not_qualified_work" | "not_qualified_study" | "not_qualified_criminal" | "not_qualified_other";
-      const id = await createLead({
-        ...input,
-        email: input.email || undefined,
-        normalizedEmail: normalizeMetaEmail(input.email),
-        normalizedPhone: normalizeMetaPhone(input.phone || input.whatsapp),
-        stage: importedStage,
-        leadScore: 0,
-      });
+      let id: number;
+      try {
+        id = await createLead({
+          ...input,
+          email: input.email || undefined,
+          normalizedEmail: normalizeMetaEmail(input.email),
+          normalizedPhone: normalizeMetaPhone(input.phone || input.whatsapp),
+          stage: importedStage,
+          leadScore: 0,
+        });
+      } catch (error) {
+        if (!isLeadContactUniqueViolation(error)) throw error;
+        const raceMatch = await findLeadContactMatch({
+          phone: input.phone,
+          whatsapp: input.whatsapp,
+          email: input.email || undefined,
+          isMetaTestLead: false,
+        });
+        if (raceMatch.status === "matched") {
+          return { id: raceMatch.lead.id, created: false as const, duplicate: true as const, matchMethod: raceMatch.method };
+        }
+        throw new TRPCError({ code: "CONFLICT", message: "Contact details match multiple existing Leads. No Lead was created." });
+      }
       await addLeadActivity({
         leadId: id,
         userId: ctx.user.id,
@@ -99,7 +127,7 @@ export const leadsRouter = router({
           description: `Assigned to ${input.assignedTo}`,
         });
       }
-      return { id };
+      return { id, created: true as const, duplicate: false as const, matchMethod: null };
     }),
 
   get: protectedProcedure
@@ -335,7 +363,7 @@ export const leadsRouter = router({
   checkDuplicate: protectedProcedure
     .input(z.object({ phone: z.string().optional(), email: z.string().optional(), whatsapp: z.string().optional() }))
     .query(async ({ input }) => {
-      return checkDuplicate(input.phone, input.email, input.whatsapp);
+      return findLeadContactMatch({ ...input, isMetaTestLead: false });
     }),
 
   // ── Preset Activity Log ─────────────────────────────────────────────────────

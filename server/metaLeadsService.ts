@@ -24,6 +24,7 @@ import {
   updateMetaInboxOutcome,
   type MetaMatchMethod,
 } from "./metaAssignmentMonitoring";
+import { isLeadContactUniqueViolation, normalizeLeadEmail, normalizeLeadPhone } from "./leadContactIdentity";
 
 const DEFAULT_GRAPH_VERSION = "v26.0";
 const DEFAULT_DATASET_ID = "1944021856148780";
@@ -239,19 +240,11 @@ function sha256(value: string): string {
 }
 
 export function normalizeMetaEmail(value?: string | null): string | null {
-  const normalized = value?.normalize("NFKC").trim().toLowerCase() ?? "";
-  if (!normalized || !normalized.includes("@")) return null;
-  return normalized;
+  return normalizeLeadEmail(value);
 }
 
 export function normalizeMetaPhone(value?: string | null): string | null {
-  if (!value) return null;
-  let digits = value.replace(/\D/g, "");
-  if (digits.startsWith("00")) digits = digits.slice(2);
-  if (digits.startsWith("0") && digits.length === 11) digits = `20${digits.slice(1)}`;
-  if (!digits.startsWith("20") && digits.length === 10) digits = `20${digits}`;
-  if (digits.length < 8 || digits.length > 15) return null;
-  return `+${digits}`;
+  return normalizeLeadPhone(value);
 }
 
 export function hashMetaEmail(value?: string | null): string | null {
@@ -869,6 +862,7 @@ export async function ingestMetaLeadDetail(
   inbox: typeof metaWebhookInbox.$inferSelect,
   config: ActiveMetaConfig,
   isTestLead = false,
+  contactRaceRetried = false,
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -922,11 +916,13 @@ export async function ingestMetaLeadDetail(
     firstReceivedAt,
   };
 
-  const transactionResult = await db.transaction(async tx => {
-    const existing = match.lead;
-    let leadId: number;
-    let repeatInquiry = false;
-    if (existing) {
+  let transactionResult: { leadId: number; repeatInquiry: boolean; assignment: Awaited<ReturnType<typeof applyMetaAssignment>>; created: boolean };
+  try {
+    transactionResult = await db.transaction(async tx => {
+      const existing = match.lead;
+      let leadId: number;
+      let repeatInquiry = false;
+      if (existing) {
       leadId = existing.id;
       const [{ count: attributionCount }] = await tx.select({ count: sql<number>`COUNT(*)` })
         .from(leadMetaAttributions).where(eq(leadMetaAttributions.leadId, leadId));
@@ -949,7 +945,7 @@ export async function ingestMetaLeadDetail(
         metaSyncError: null,
         updatedAt: now(),
       }).where(eq(leads.id, leadId));
-    } else {
+      } else {
       const [insertResult] = await tx.insert(leads).values({
         fullName: mapped.fullName || `Meta Lead ${meta.id.slice(-6)}`,
         email,
@@ -983,16 +979,22 @@ export async function ingestMetaLeadDetail(
       });
       leadId = Number((insertResult as { insertId?: number }).insertId);
       await addAttribution(leadId, attribution, true, tx);
+      }
+      const assignment = await applyMetaAssignment({
+        leadId,
+        metaLeadId: meta.id,
+        isTestLead,
+        matchMethod,
+        routingConsultant,
+      }, tx);
+      return { leadId, repeatInquiry, assignment, created: !existing };
+    });
+  } catch (error) {
+    if (!contactRaceRetried && isLeadContactUniqueViolation(error)) {
+      return ingestMetaLeadDetail(meta, inbox, config, isTestLead, true);
     }
-    const assignment = await applyMetaAssignment({
-      leadId,
-      metaLeadId: meta.id,
-      isTestLead,
-      matchMethod,
-      routingConsultant,
-    }, tx);
-    return { leadId, repeatInquiry, assignment, created: !existing };
-  });
+    throw error;
+  }
   const { leadId, repeatInquiry, assignment } = transactionResult;
   await updateMetaInboxOutcome({
     inboxId: inbox.id,

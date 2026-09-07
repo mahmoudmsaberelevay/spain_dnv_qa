@@ -28,6 +28,7 @@ import {
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { sendMetaLeadAlert, sendMetaOperationalAlert } from "./emailService";
+import { findLeadContactMatch } from "./leadContactMatcher";
 
 export const META_DEFAULT_CONSULTANT_POLICY = "META_DEFAULT_CONSULTANT";
 export const META_MONITORING_BASELINE_MS = 1_788_547_867_000;
@@ -162,22 +163,20 @@ export async function resolveMetaLeadMatch(input: {
     const [lead] = await db.select().from(leads).where(eq(leads.id, directAttribution.leadId)).limit(1);
     if (lead) return { status: "matched", method: "meta_lead_id", lead, candidateLeadIds: [lead.id] };
   }
-  const contactConditions = [];
-  if (input.normalizedPhone) contactConditions.push(eq(leads.normalizedPhone, input.normalizedPhone));
-  if (input.normalizedEmail) contactConditions.push(eq(leads.normalizedEmail, input.normalizedEmail));
-  if (!contactConditions.length) return { status: "new", method: "new_lead", lead: null, candidateLeadIds: [] };
-  const rows = await db.select().from(leads).where(and(
-    eq(leads.isMetaTestLead, input.isTestLead),
-    or(...contactConditions),
-  )).orderBy(asc(leads.createdAt)).limit(10);
-  const distinct = Array.from(new Map(rows.map(row => [row.id, row])).values());
-  if (distinct.length > 1) {
-    return { status: "ambiguous", method: null, lead: null, candidateLeadIds: distinct.map(row => row.id) };
+  const contactMatch = await findLeadContactMatch({
+    phone: input.normalizedPhone,
+    email: input.normalizedEmail,
+    isMetaTestLead: input.isTestLead,
+  }, db);
+  if (contactMatch.status === "ambiguous") {
+    return { status: "ambiguous", method: null, lead: null, candidateLeadIds: contactMatch.candidateLeadIds };
   }
-  if (!distinct.length) return { status: "new", method: "new_lead", lead: null, candidateLeadIds: [] };
-  const lead = distinct[0];
-  const method: MetaMatchMethod = input.normalizedPhone && lead.normalizedPhone === input.normalizedPhone ? "phone" : "email";
-  return { status: "matched", method, lead, candidateLeadIds: [lead.id] };
+  if (contactMatch.status === "new") {
+    return { status: "new", method: "new_lead", lead: null, candidateLeadIds: [] };
+  }
+  const [lead] = await db.select().from(leads).where(eq(leads.id, contactMatch.lead.id)).limit(1);
+  if (!lead) return { status: "new", method: "new_lead", lead: null, candidateLeadIds: [] };
+  return { status: "matched", method: contactMatch.method as MetaMatchMethod, lead, candidateLeadIds: [lead.id] };
 }
 
 export function decideMetaAssignment(input: {

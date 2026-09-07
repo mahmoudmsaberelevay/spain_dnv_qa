@@ -1252,3 +1252,12 @@ Check email for download link within 5 minutes
 - [x] Preserve server-side email validation and add regression tests for invalid and valid client-account creation
 - [x] Validate the creation flow in the authenticated Client Portal UI and confirm existing accounts remain unchanged
 - [x] Run focused tests and the production build, complete this checklist, and publish the fix
+
+## ELEVAY Leads — Unified Contact Duplicate Prevention
+- [x] Audit manual, Meta webhook, and Spain landing Lead creation paths plus existing phone/email normalization and attribution safeguards
+- [x] Define one conservative matcher where normalized mobile/WhatsApp or email identifies an existing Lead and conflicting matches never merge unrelated people
+- [x] Reuse the matcher across manual, Meta, and Spain landing ingestion without overwriting existing consultant, stage, source, consent, or Meta attribution
+- [x] Return the existing Lead identifier and make manual creation open that Lead instead of creating a duplicate
+- [x] Add regression coverage for phone, WhatsApp, email, formatting differences, exact replays, and ambiguous/conflicting matches
+- [x] Verify database safety, Meta Test Lead and Nouran safeguards, Spain landing idempotency, and `META_CRM_PRODUCTION_ENABLED=false`
+- [x] Run focused tests and the production build, complete the checklist, and publish the unified deduplication fix

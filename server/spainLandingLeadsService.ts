@@ -5,6 +5,8 @@ import { z } from "zod";
 import { getDb } from "./db";
 import { leadActivities, leads, spainLandingInquiries } from "../drizzle/schema";
 import { normalizeMetaEmail, normalizeMetaPhone } from "./metaLeadsService";
+import { findLeadContactMatch } from "./leadContactMatcher";
+import { isLeadContactUniqueViolation } from "./leadContactIdentity";
 
 export const SPAIN_LANDING_SOURCE = "Spain_landing page";
 export const SPAIN_LANDING_PROGRAM = "Spain DNV";
@@ -98,25 +100,14 @@ async function pullLandingPayload(submissionId: number, pullToken: string) {
 }
 
 async function findUniqueRealLead(db: QueryExecutor, payload: LandingPayload) {
-  const normalizedPhone = normalizeMetaPhone(payload.phoneE164);
-  const normalizedEmail = normalizeMetaEmail(payload.email || undefined);
-  const phoneMatches = normalizedPhone
-    ? await db.select({ id: leads.id }).from(leads).where(and(
-        eq(leads.normalizedPhone, normalizedPhone),
-        eq(leads.isMetaTestLead, false),
-      )).limit(2)
-    : [];
-  const emailMatches = normalizedEmail
-    ? await db.select({ id: leads.id }).from(leads).where(and(
-        eq(leads.normalizedEmail, normalizedEmail),
-        eq(leads.isMetaTestLead, false),
-      )).limit(2)
-    : [];
-
-  return resolveSpainLandingContactMatch(
-    phoneMatches.map(match => match.id),
-    emailMatches.map(match => match.id),
-  );
+  const match = await findLeadContactMatch({
+    phone: payload.phoneE164,
+    email: payload.email || undefined,
+    isMetaTestLead: false,
+  }, db);
+  if (match.status === "ambiguous") return { leadId: null, matchMethod: "manual_review" as const };
+  if (match.status === "new") return { leadId: null, matchMethod: "new" as const };
+  return { leadId: match.lead.id, matchMethod: match.method };
 }
 
 export async function ingestSpainLandingSubmission(
@@ -275,6 +266,37 @@ export async function ingestSpainLandingSubmission(
       return { success: true as const, outcome, leadId, duplicate: false };
     });
   } catch (error) {
+    if (isLeadContactUniqueViolation(error)) {
+      const raceMatch = await findUniqueRealLead(db, payload);
+      if (raceMatch.matchMethod === "phone" || raceMatch.matchMethod === "email") {
+        return db.transaction(async tx => {
+          const [claim] = await tx.select().from(spainLandingInquiries)
+            .where(eq(spainLandingInquiries.externalSubmissionId, submissionId)).limit(1);
+          if (!claim || claim.processingToken !== processingToken) {
+            return { success: true as const, outcome: claim?.status || "processing", leadId: claim?.leadId || null, duplicate: true };
+          }
+          await tx.update(spainLandingInquiries).set({
+            leadId: raceMatch.leadId,
+            matchMethod: raceMatch.matchMethod,
+            status: "matched",
+            processingToken: null,
+            payloadFingerprint,
+            lastErrorCode: null,
+            processedAt: now,
+            updatedAt: now,
+          }).where(eq(spainLandingInquiries.id, claim.id));
+          await tx.insert(leadActivities).values({
+            leadId: raceMatch.leadId!,
+            userId: null,
+            activityType: "other",
+            description: `New inquiry received from ${SPAIN_LANDING_SOURCE}; concurrent duplicate creation prevented and existing Lead preserved`,
+            score: 0,
+            createdAt: now,
+          });
+          return { success: true as const, outcome: "matched" as const, leadId: raceMatch.leadId, duplicate: false };
+        });
+      }
+    }
     await db.update(spainLandingInquiries).set({
       status: "failed",
       processingToken: null,

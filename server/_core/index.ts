@@ -355,30 +355,47 @@ async function startServer() {
       if (!fullName) {
         return res.status(400).json({ error: "full_name is required" });
       }
-      const { createLead, checkDuplicate } = await import("../leadsDb");
-      // Duplicate check by phone
-      if (phone) {
-        const dup = await checkDuplicate(phone);
-        if (dup) {
-          return res.status(409).json({ error: "Duplicate lead: phone already exists", leadId: dup.id });
-        }
+      const email = (body.email as string) || undefined;
+      const whatsapp = (body.whatsapp as string) || undefined;
+      const { createLead } = await import("../leadsDb");
+      const { findLeadContactMatch } = await import("../leadContactMatcher");
+      const { isLeadContactUniqueViolation, normalizeLeadEmail, normalizeLeadPhone } = await import("../leadContactIdentity");
+      const contactMatch = await findLeadContactMatch({ phone, whatsapp, email, isMetaTestLead: false });
+      if (contactMatch.status === "matched") {
+        return res.status(200).json({ success: true, leadId: contactMatch.lead.id, created: false, duplicate: true, matchMethod: contactMatch.method });
+      }
+      if (contactMatch.status === "ambiguous") {
+        return res.status(409).json({ error: "Multiple existing Leads match these contact details", code: "AMBIGUOUS_CONTACT_MATCH" });
       }
       const utmParams = {
         source: body.utm_source, medium: body.utm_medium, campaign: body.utm_campaign,
       };
-      const leadId = await createLead({
-        fullName,
-        phone: phone || undefined,
-        email: (body.email as string) || undefined,
-        nationality: (body.nationality as string) || undefined,
-        interestedProgram: (body.interested_program as string) || undefined,
-        interestedCountry: (body.interested_country as string) || undefined,
-        leadSource: (body.lead_source as string) || integration.name,
-        budgetRange: (body.budget_range as string) || undefined,
-        utmParams: Object.values(utmParams).some(Boolean) ? JSON.stringify(utmParams) : undefined,
-        stage: "fresh",
-      });
-      return res.status(200).json({ success: true, leadId });
+      let leadId: number;
+      try {
+        leadId = await createLead({
+          fullName,
+          phone: phone || undefined,
+          whatsapp,
+          email,
+          normalizedPhone: normalizeLeadPhone(phone || whatsapp),
+          normalizedEmail: normalizeLeadEmail(email),
+          nationality: (body.nationality as string) || undefined,
+          interestedProgram: (body.interested_program as string) || undefined,
+          interestedCountry: (body.interested_country as string) || undefined,
+          leadSource: (body.lead_source as string) || integration.name,
+          budgetRange: (body.budget_range as string) || undefined,
+          utmParams: Object.values(utmParams).some(Boolean) ? JSON.stringify(utmParams) : undefined,
+          stage: "fresh",
+        });
+      } catch (error) {
+        if (!isLeadContactUniqueViolation(error)) throw error;
+        const raceMatch = await findLeadContactMatch({ phone, whatsapp, email, isMetaTestLead: false });
+        if (raceMatch.status === "matched") {
+          return res.status(200).json({ success: true, leadId: raceMatch.lead.id, created: false, duplicate: true, matchMethod: raceMatch.method });
+        }
+        return res.status(409).json({ error: "Multiple existing Leads match these contact details", code: "AMBIGUOUS_CONTACT_MATCH" });
+      }
+      return res.status(200).json({ success: true, leadId, created: true, duplicate: false, matchMethod: null });
     } catch (err) {
       console.error("[Website Webhook] Error:", err);
       return res.status(500).json({ error: "Internal server error" });

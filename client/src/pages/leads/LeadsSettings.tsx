@@ -238,8 +238,9 @@ function ExportImportTab() {
 
       try {
         const lead = await importMut.mutateAsync({ fullName: obj.fullName, phone: obj.phone, email: obj.email || undefined, whatsapp: obj.whatsapp, nationality: obj.nationality, countryOfResidence: obj.countryOfResidence, interestedProgram: obj.interestedProgram, budgetRange: obj.budgetRange, occupation: obj.occupation, leadSource: obj.leadSource || "LeadSquared Import", assignedTo: obj.assignedTo, notes: obj.notes, stage: normalisedStage, importedCreatedAt: parsedCreatedAt, skipDuplicateCheck: false });
+        if (!lead.created) { skipped++; continue; }
         // If last activity date/type provided, create an activity record
-        if (lastActivityDate && lead?.id) {
+        if (lastActivityDate && lead.id) {
           const actDate = new Date(lastActivityDate);
           if (!isNaN(actDate.getTime())) {
             try {
@@ -411,7 +412,7 @@ function ExportImportTab() {
         </div>
         <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
           <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-          <span>Import will not overwrite existing leads. Duplicate phone numbers will be skipped automatically. You will see a preview before confirming.</span>
+          <span>Import will not overwrite existing Leads. Matching mobile, WhatsApp, or email records will be skipped automatically. You will see a preview before confirming.</span>
         </div>
       </div>
     </div>
