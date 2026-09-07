@@ -251,7 +251,7 @@ export default function BackupHistory() {
                     <p className="text-sm text-muted-foreground mb-1">Encryption</p>
                     <p className="font-semibold flex items-center gap-2">
                       <Lock className="w-4 h-4" />
-                      AES-256 (Password: 3488)
+                      AES-256-GCM · server-managed restoration key
                     </p>
                   </div>
                 </div>
@@ -264,13 +264,10 @@ export default function BackupHistory() {
                       <strong>1. Download</strong> the backup file from the table above
                     </li>
                     <li>
-                      <strong>2. Decrypt:</strong>
-                      <code className="block bg-white border border-blue-200 rounded px-2 py-1 mt-1 font-mono text-xs">
-                        openssl enc -aes-256-cbc -d -in {selectedBackup.filename} -out backup.sql.gz -k 3488
-                      </code>
+                      <strong>2. Validate and decrypt</strong> with the documented server-side recovery utility. The restoration key is never displayed in the browser.
                     </li>
                     <li>
-                      <strong>3. Decompress:</strong>
+                      <strong>3. Decompress the validated output:</strong>
                       <code className="block bg-white border border-blue-200 rounded px-2 py-1 mt-1 font-mono text-xs">
                         gunzip backup.sql.gz
                       </code>

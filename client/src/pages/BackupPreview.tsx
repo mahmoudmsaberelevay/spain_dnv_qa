@@ -85,7 +85,7 @@ export default function BackupPreview() {
             Upload Backup File
           </CardTitle>
           <CardDescription>
-            Select an encrypted .sql.gz.enc backup file (password: 3488)
+            Select a current ELEVAY .sql.gz.enc backup. Decryption uses the server-managed restoration key.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -256,13 +256,13 @@ export default function BackupPreview() {
             <CardHeader>
               <CardTitle className="text-blue-900">Ready to Restore?</CardTitle>
               <CardDescription className="text-blue-800">
-                After verifying the backup contents, you can proceed with restoration.
+                This page validates and previews the encrypted backup. Production restoration requires the documented controlled recovery procedure.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button className="gap-2" size="lg">
+              <Button className="gap-2" size="lg" disabled>
                 <Download className="w-4 h-4" />
-                Restore to Production
+                Production restore requires controlled recovery
               </Button>
               <p className="text-xs text-muted-foreground mt-3">
                 ⚠️ Restoration will overwrite all current data. This action cannot be undone.

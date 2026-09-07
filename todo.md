@@ -1261,3 +1261,14 @@ Check email for download link within 5 minutes
 - [x] Add regression coverage for phone, WhatsApp, email, formatting differences, exact replays, and ambiguous/conflicting matches
 - [x] Verify database safety, Meta Test Lead and Nouran safeguards, Spain landing idempotency, and `META_CRM_PRODUCTION_ENABLED=false`
 - [x] Run focused tests and the production build, complete the checklist, and publish the unified deduplication fix
+
+## ELEVAY Scheduled Database Backup — Mon–Thu 18:00 Cairo
+- [x] Audit the existing backup handler, route registration, Heartbeat schedule, encryption, storage, recipients, and recent failed executions
+- [x] Replace the obsolete scheduler-header check with authenticated Heartbeat identity and persistent task-UID ownership validation
+- [x] Remove hardcoded encryption credentials from the scheduled handler, restore endpoints, public/internal backup pages, API metadata, and email content while preserving AES-256 encrypted restore capability
+- [x] Update restore tooling and backup UI guidance for the new secret-backed authenticated-encryption envelope without displaying or accepting a password in browser-visible code
+- [x] Make executions idempotent and persist privacy-safe success/failure evidence for retries and monitoring
+- [x] Add regression tests for unauthorized calls, valid scheduler calls, encryption format, both notification recipients, and failure responses
+- [ ] Run focused tests and production build, publish the handler repair, then execute one controlled production backup
+- [ ] Verify a successful schedule log, durable encrypted artifact, both recipient delivery attempts, restoration metadata, and the next Mon–Thu 18:00 Cairo run
+- [ ] Document monitoring, restore, pause/resume, and rollback procedures, then publish the final validated checkpoint

@@ -278,9 +278,9 @@ export function getBackupDownloadHTML(): string {
       </div>
 
       <div class="info-box">
-        <strong>ℹ️ Password:</strong> 3488<br>
+        <strong>ℹ️ Restoration key:</strong> Stored securely outside the application<br>
         <strong>Schedule:</strong> Mon-Thu 18:00 Cairo Time<br>
-        <strong>Encryption:</strong> AES-256-CBC (OpenSSL)
+        <strong>Encryption:</strong> AES-256-GCM authenticated encryption
       </div>
     </div>
 

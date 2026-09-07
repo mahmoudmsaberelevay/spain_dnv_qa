@@ -22,7 +22,7 @@ interface BackupStats {
   oldestBackup: { filename: string; date: string; dateFormatted: string } | null;
   newestBackup: { filename: string; date: string; dateFormatted: string } | null;
   encryption: string;
-  password: string;
+  credentialStorage: string;
   retention: string;
   schedule: string;
 }
@@ -136,7 +136,7 @@ export function BackupDownloadPublic() {
           <div>
             <p className="font-semibold text-blue-900">Backup Information</p>
             <p className="text-sm text-blue-800 mt-1">
-              All backups are encrypted with AES-256. Password: <code className="bg-blue-100 px-2 py-1 rounded">3488</code>
+              New backups use authenticated AES-256-GCM encryption. Restoration credentials are never exposed in this page.
             </p>
             <p className="text-sm text-blue-800 mt-1">
               Schedule: <strong>Monday-Thursday at 18:00 Cairo Time</strong>
@@ -243,14 +243,12 @@ export function BackupDownloadPublic() {
 
                     <div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Encryption</p>
-                      <p className="text-sm text-slate-900">AES-256-CBC</p>
+                      <p className="text-sm text-slate-900">AES-256-GCM</p>
                     </div>
 
                     <div>
-                      <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Password</p>
-                      <code className="text-sm bg-slate-100 px-2 py-1 rounded block text-slate-900">
-                        3488
-                      </code>
+                      <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Restoration key</p>
+                      <p className="text-sm text-slate-900">Server-managed and not displayed</p>
                     </div>
 
                     <Button
@@ -274,9 +272,9 @@ export function BackupDownloadPublic() {
                   <h4 className="font-semibold text-slate-900 mb-3 text-sm">Restore Instructions</h4>
                   <ol className="text-xs text-slate-700 space-y-2 list-decimal list-inside">
                     <li>Download the backup file</li>
-                    <li>Decrypt: <code className="bg-white px-1 text-xs">openssl enc -aes-256-cbc -d -in file.enc -out backup.sql.gz -k 3488</code></li>
-                    <li>Decompress: <code className="bg-white px-1 text-xs">gunzip backup.sql.gz</code></li>
-                    <li>Restore: <code className="bg-white px-1 text-xs">mysql -u root -p &lt; backup.sql</code></li>
+                    <li>Administrator authentication is required for backup access.</li>
+                    <li>Validate and decrypt with the server-side recovery workflow.</li>
+                    <li>Restore into an isolated recovery database before any production action.</li>
                   </ol>
                 </div>
               </Card>

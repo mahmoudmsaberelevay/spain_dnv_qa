@@ -21,8 +21,12 @@ export async function sendEmail({
   text?: string;
 }): Promise<boolean> {
   try {
+    const sender = process.env.GMAIL_USER?.trim() || "";
+    if (!sender || sender.toLowerCase().endsWith("@elevay.com")) {
+      throw new Error("Backup email sender is missing or violates the non-ELEVAY sender policy");
+    }
     await transporter.sendMail({
-      from: process.env.GMAIL_USER,
+      from: sender,
       to,
       subject,
       html: html || text,

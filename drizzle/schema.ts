@@ -1235,6 +1235,41 @@ export const metaReconciliationState = mysqlTable("meta_reconciliation_state", {
 export type MetaReconciliationState = typeof metaReconciliationState.$inferSelect;
 export type InsertMetaReconciliationState = typeof metaReconciliationState.$inferInsert;
 
+export const databaseBackupSettings = mysqlTable("database_backup_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull().unique(),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }).unique(),
+  cronExpression: varchar("cronExpression", { length: 100 }).notNull(),
+  timeZone: varchar("timeZone", { length: 64 }).default("Africa/Cairo").notNull(),
+  isEnabled: boolean("isEnabled").default(true).notNull(),
+  authorizedTestRunUntil: bigint("authorizedTestRunUntil", { mode: "number" }),
+  lastAttemptAt: bigint("lastAttemptAt", { mode: "number" }),
+  lastSuccessAt: bigint("lastSuccessAt", { mode: "number" }),
+  lastFailureAt: bigint("lastFailureAt", { mode: "number" }),
+  lastErrorCode: varchar("lastErrorCode", { length: 80 }),
+  lastArtifactKey: varchar("lastArtifactKey", { length: 500 }),
+  lastArtifactSizeBytes: bigint("lastArtifactSizeBytes", { mode: "number" }),
+  lastEmailSuccessCount: int("lastEmailSuccessCount").default(0).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type DatabaseBackupSetting = typeof databaseBackupSettings.$inferSelect;
+
+export const databaseBackupRuns = mysqlTable("database_backup_runs", {
+  id: int("id").autoincrement().primaryKey(),
+  runKey: varchar("runKey", { length: 160 }).notNull().unique(),
+  taskUid: varchar("taskUid", { length: 65 }).notNull(),
+  status: mysqlEnum("status", ["processing", "success", "failed", "skipped"]).default("processing").notNull(),
+  artifactKey: varchar("artifactKey", { length: 500 }),
+  artifactSizeBytes: bigint("artifactSizeBytes", { mode: "number" }),
+  emailSuccessCount: int("emailSuccessCount").default(0).notNull(),
+  emailFailureCount: int("emailFailureCount").default(0).notNull(),
+  errorCode: varchar("errorCode", { length: 80 }),
+  startedAt: bigint("startedAt", { mode: "number" }).notNull(),
+  completedAt: bigint("completedAt", { mode: "number" }),
+  durationMs: int("durationMs"),
+});
+export type DatabaseBackupRun = typeof databaseBackupRuns.$inferSelect;
+
 export const leadsPermissions = mysqlTable("leads_permissions", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
