@@ -386,6 +386,20 @@
       "when": 1788724759790,
       "tag": "0054_client_portal_admin_role",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "5",
+      "when": 1788764601980,
+      "tag": "0062_client_portal_deletion_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "5",
+      "when": 1788765470715,
+      "tag": "0063_client_portal_review_scope",
+      "breakpoints": true
     }
   ]
 }

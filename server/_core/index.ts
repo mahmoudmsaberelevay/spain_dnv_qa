@@ -688,6 +688,8 @@ async function startServer() {
   // Server-rendered public legal pages (no JS bundle needed, always accessible)
   const { registerPublicPages } = await import("../publicPagesHandler.js");
   registerPublicPages(app);
+  const { registerClientAppPublicPages } = await import("../clientAppPublicPages.js");
+  registerClientAppPublicPages(app);
 
   // MCP Server for AI agent integration (Claude, Manus, ChatGPT, Cursor)
   const { registerMcpServer } = await import("../mcpServer.js");

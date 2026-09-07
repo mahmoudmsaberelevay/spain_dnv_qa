@@ -31,6 +31,27 @@ import {
 import { sendClientPortalActivityEmail, sendClientPortalPasswordResetEmail } from "./emailService";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
+const APP_REVIEW_CLIENT_CODE = "APP-REVIEW-001";
+const APP_REVIEW_PROVIDER = {
+  publicId: "app-review-demo-provider",
+  providerType: "lawyer" as const,
+  name: "Demo Immigration Counsel",
+  country: "Spain",
+  city: "Madrid",
+  logoUrl: null,
+  description: "Fictional service-provider record for App Review testing only.",
+  services: ["Document review", "Application guidance"],
+  price: null,
+  currency: null,
+  phone: null,
+  whatsapp: null,
+  email: "review-provider@example.invalid",
+  website: null,
+  languages: ["English"],
+  availability: "By appointment",
+  displayOrder: 1,
+  isActive: true,
+};
 const ALLOWED_MIME = new Map([
   ["application/pdf", ["pdf"]],
   ["image/jpeg", ["jpg", "jpeg"]],
@@ -254,14 +275,20 @@ export function registerClientPortalRoutes(app: Express) {
   app.get("/client-api/admin/client-cases", async (req: PortalRequest, res) => {
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
-    const rows = await db.select({ id: clientCases.id, clientCode: clientCases.clientCode, clientName: clientCases.clientName, applicationType: clientCases.applicationType, stage: clientCases.stage }).from(clientCases).orderBy(asc(clientCases.clientName)).limit(1000);
+    const baseQuery = db.select({ id: clientCases.id, clientCode: clientCases.clientCode, clientName: clientCases.clientName, applicationType: clientCases.applicationType, stage: clientCases.stage }).from(clientCases);
+    const rows = req.portal!.user.isReviewAccount
+      ? await baseQuery.where(eq(clientCases.clientCode, APP_REVIEW_CLIENT_CODE)).orderBy(asc(clientCases.clientName)).limit(1)
+      : await baseQuery.orderBy(asc(clientCases.clientName)).limit(1000);
     return res.json(rows);
   });
 
   app.get("/client-api/admin/accounts", async (req: PortalRequest, res) => {
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
-    const rows = await db.select({ publicId: clientPortalUsers.publicId, username: clientPortalUsers.username, email: clientPortalUsers.email, status: clientPortalUsers.status, createdAt: clientPortalUsers.createdAt, clientName: clientCases.clientName, clientCode: clientCases.clientCode, applicationType: clientCases.applicationType }).from(clientPortalUsers).innerJoin(clientCases, eq(clientPortalUsers.primaryClientCaseId, clientCases.id)).where(eq(clientPortalUsers.accountType, "client")).orderBy(desc(clientPortalUsers.createdAt)).limit(250);
+    const baseQuery = db.select({ publicId: clientPortalUsers.publicId, username: clientPortalUsers.username, email: clientPortalUsers.email, status: clientPortalUsers.status, createdAt: clientPortalUsers.createdAt, clientName: clientCases.clientName, clientCode: clientCases.clientCode, applicationType: clientCases.applicationType }).from(clientPortalUsers).innerJoin(clientCases, eq(clientPortalUsers.primaryClientCaseId, clientCases.id));
+    const rows = req.portal!.user.isReviewAccount
+      ? await baseQuery.where(and(eq(clientPortalUsers.accountType, "client"), eq(clientCases.clientCode, APP_REVIEW_CLIENT_CODE))).orderBy(desc(clientPortalUsers.createdAt)).limit(50)
+      : await baseQuery.where(eq(clientPortalUsers.accountType, "client")).orderBy(desc(clientPortalUsers.createdAt)).limit(250);
     return res.json(rows);
   });
 
@@ -276,6 +303,7 @@ export function registerClientPortalRoutes(app: Express) {
     if (!db) return error(res, 503, "service_unavailable");
     const [clientCase] = await db.select().from(clientCases).where(eq(clientCases.id, clientCaseId)).limit(1);
     if (!clientCase) return error(res, 404, "documentation_folder_not_found");
+    if (req.portal!.user.isReviewAccount && clientCase.clientCode !== APP_REVIEW_CLIENT_CODE) return error(res, 403, "review_scope_restricted");
     const temporaryPassword = generateTemporaryPassword();
     const publicId = randomUUID();
     try {
@@ -298,18 +326,20 @@ export function registerClientPortalRoutes(app: Express) {
   app.post("/client-api/admin/accounts/:publicId/reset-password", writeLimiter, async (req: PortalRequest, res) => {
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
-    const [client] = await db.select().from(clientPortalUsers).where(and(eq(clientPortalUsers.publicId, req.params.publicId), eq(clientPortalUsers.accountType, "client"))).limit(1);
+    const [client] = await db.select({ user: clientPortalUsers, clientCode: clientCases.clientCode }).from(clientPortalUsers).innerJoin(clientCases, eq(clientPortalUsers.primaryClientCaseId, clientCases.id)).where(and(eq(clientPortalUsers.publicId, req.params.publicId), eq(clientPortalUsers.accountType, "client"))).limit(1);
     if (!client) return error(res, 404, "client_account_not_found");
+    if (req.portal!.user.isReviewAccount && client.clientCode !== APP_REVIEW_CLIENT_CODE) return error(res, 403, "review_scope_restricted");
     const temporaryPassword = generateTemporaryPassword();
-    await db.update(clientPortalUsers).set({ passwordHash: await hashPortalPassword(temporaryPassword), mustChangePassword: true, failedLoginAttempts: 0, lockedUntil: null }).where(eq(clientPortalUsers.id, client.id));
-    await db.update(clientPortalSessions).set({ revokedAt: new Date() }).where(and(eq(clientPortalSessions.portalUserId, client.id), isNull(clientPortalSessions.revokedAt)));
-    await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_client_password_reset", recordType: "client_portal_account", recordPublicId: client.publicId });
-    return res.json({ publicId: client.publicId, username: client.username, email: client.email, temporaryPassword });
+    await db.update(clientPortalUsers).set({ passwordHash: await hashPortalPassword(temporaryPassword), mustChangePassword: true, failedLoginAttempts: 0, lockedUntil: null }).where(eq(clientPortalUsers.id, client.user.id));
+    await db.update(clientPortalSessions).set({ revokedAt: new Date() }).where(and(eq(clientPortalSessions.portalUserId, client.user.id), isNull(clientPortalSessions.revokedAt)));
+    await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_client_password_reset", recordType: "client_portal_account", recordPublicId: client.user.publicId });
+    return res.json({ publicId: client.user.publicId, username: client.user.username, email: client.user.email, temporaryPassword });
   });
 
   app.get("/client-api/admin/providers", async (req: PortalRequest, res) => {
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
+    if (req.portal!.user.isReviewAccount) return res.json([APP_REVIEW_PROVIDER]);
     return res.json(await db.select().from(publicServiceProviders).orderBy(asc(publicServiceProviders.displayOrder), asc(publicServiceProviders.name)));
   });
 
@@ -319,6 +349,10 @@ export function registerClientPortalRoutes(app: Express) {
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 255) : "";
     const country = typeof body.country === "string" ? body.country.trim().slice(0, 128) : "";
     if (!providerType || !["lawyer", "accountant", "service_facilitator"].includes(providerType) || !name || !country) return error(res, 400, "invalid_provider");
+    if (req.portal!.user.isReviewAccount) {
+      await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: req.params.publicId ? "admin_provider_updated" : "admin_provider_created", recordType: "review_service_provider", recordPublicId: req.params.publicId || "app-review-simulated-provider", details: "App Review sandbox: no production provider data changed" });
+      return res.status(req.params.publicId ? 200 : 201).json({ publicId: req.params.publicId || "app-review-simulated-provider", updated: Boolean(req.params.publicId), simulated: true });
+    }
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
     const values = { providerType, name, country, city: typeof body.city === "string" ? body.city.trim().slice(0, 128) || null : null, description: typeof body.description === "string" ? body.description.trim().slice(0, 5000) || null : null, services: Array.isArray(body.services) ? body.services.filter(item => typeof item === "string" && item.trim()).slice(0, 50).map(item => item.trim().slice(0, 255)) : [], phone: typeof body.phone === "string" ? body.phone.trim().slice(0, 64) || null : null, whatsapp: typeof body.whatsapp === "string" ? body.whatsapp.trim().slice(0, 64) || null : null, email: typeof body.email === "string" ? body.email.trim().slice(0, 320) || null : null, website: typeof body.website === "string" ? body.website.trim().slice(0, 1024) || null : null, displayOrder: Number.isInteger(body.displayOrder) ? Math.max(0, Math.min(10000, Number(body.displayOrder))) : 0, isActive: body.isActive !== false };
@@ -362,7 +396,7 @@ export function registerClientPortalRoutes(app: Express) {
 
   app.get("/client-api/me", async (req: PortalRequest, res) => {
     const user = req.portal!.user;
-    return res.json({ publicId: user.publicId, username: user.username, email: user.email, mobile: user.mobile, locale: user.locale, consultant: user.consultant, paralegal: user.paralegal, mustChangePassword: user.mustChangePassword, notificationPreferences: user.notificationPreferences, accountType: user.accountType });
+    return res.json({ publicId: user.publicId, username: user.username, email: user.email, mobile: user.mobile, locale: user.locale, consultant: user.consultant, paralegal: user.paralegal, mustChangePassword: user.mustChangePassword, notificationPreferences: user.notificationPreferences, accountType: user.accountType, deletionRequestedAt: user.deletionRequestedAt });
   });
 
   app.patch("/client-api/me/preferences", writeLimiter, async (req: PortalRequest, res) => {
@@ -377,13 +411,20 @@ export function registerClientPortalRoutes(app: Express) {
 
   app.post("/client-api/me/account-deletion-request", writeLimiter, async (req: PortalRequest, res) => {
     const portal = req.portal!;
+    if (portal.user.accountType !== "client") return error(res, 403, "client_account_required");
+    if (portal.user.deletionRequestedAt) return res.json({ ok: true, requestedAt: portal.user.deletionRequestedAt.toISOString(), alreadyRequested: true });
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
     const requestedAt = new Date().toISOString();
-    await Promise.all([
-      createNotification({ type: "client_account_deletion_requested", title: "Client account deletion request", body: `${portal.user.username} (${portal.user.email}) requested client-app account deletion.`, entityId: portal.user.primaryClientCaseId ?? undefined, entityType: "client_case" }),
-      queueStaffEmail({ eventType: "client_account_deletion_requested", recipients: staffRecipients(portal.user.consultant, portal.user.paralegal), subject: `Client Account Deletion Request – ${portal.user.username}`, html: `<h2>Client Account Deletion Request</h2><p><strong>Client account:</strong> ${portal.user.username}</p><p><strong>Email:</strong> ${portal.user.email}</p><p><strong>Requested:</strong> ${requestedAt}</p><p>Review the client record and applicable retention obligations before completing the request.</p><p><a href="https://elevay.vip/admin/client-portal">Open Client Portal Administration</a></p>` }),
-    ]);
+    await db.update(clientPortalUsers).set({ deletionRequestedAt: new Date(requestedAt) }).where(eq(clientPortalUsers.id, portal.user.id));
+    if (!portal.user.isReviewAccount) {
+      await Promise.all([
+        createNotification({ type: "client_account_deletion_requested", title: "Client account deletion request", body: `${portal.user.username} (${portal.user.email}) requested client-app account deletion.`, entityId: portal.user.primaryClientCaseId ?? undefined, entityType: "client_case" }),
+        queueStaffEmail({ eventType: "client_account_deletion_requested", recipients: staffRecipients(portal.user.consultant, portal.user.paralegal), subject: `Client Account Deletion Request – ${portal.user.username}`, html: `<h2>Client Account Deletion Request</h2><p><strong>Client account:</strong> ${portal.user.username}</p><p><strong>Email:</strong> ${portal.user.email}</p><p><strong>Requested:</strong> ${requestedAt}</p><p>Review the client record and applicable retention obligations before completing the request.</p><p><a href="https://elevay.vip/admin/client-portal">Open Client Portal Administration</a></p>` }),
+      ]);
+    }
     await writePortalAudit({ req, portalUserId: portal.user.id, clientCaseId: portal.user.primaryClientCaseId, action: "account_deletion_requested", recordType: "client_portal_account", recordPublicId: portal.user.publicId, correlationId: portal.correlationId });
-    return res.status(202).json({ ok: true, requestedAt });
+    return res.status(202).json({ ok: true, requestedAt, alreadyRequested: false });
   });
 
   app.get("/client-api/me/applications", async (req: PortalRequest, res) => {

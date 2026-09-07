@@ -46,3 +46,15 @@
 - [x] Protect PDF-derived summaries from automatic website synchronization overwrites.
 - [x] Rebuild mobile program pages with bilingual at-a-glance facts, investment cards, and organized detail sections.
 - [x] Validate all 19 database records, production public API delivery, mobile TypeScript, lint, tests, Expo export, Expo Doctor, CRM build, and focused portal security tests.
+
+## Apple App Review and unlisted distribution preparation completed
+
+- [x] Add public ELEVAY Client privacy, terms, support, and account-deletion pages.
+- [x] Add in-app Account & Legal access for guests and signed clients.
+- [x] Request camera and push-notification permissions only after explicit user actions.
+- [x] Persist idempotent account-deletion requests and provide a dry-run-first deletion completion process.
+- [x] Create a non-expiring fictional client review account with a realistic documentation folder.
+- [x] Create a sandboxed review administrator restricted to fictional folders and simulated vendors.
+- [x] Add iOS usage descriptions, export-compliance declaration, build number, required-reason privacy manifest, and an iPhone-only version 1.0 scope.
+- [x] Prepare App Store metadata, App Review notes, App Privacy answers, unlisted-app request text, screenshot plan, TestFlight commands, deletion runbook, response template, and official sources.
+- [x] Validate mobile TypeScript, lint, 17 acceptance tests, Expo Doctor, web export, CRM build, security tests, legal pages, review credentials, review-admin isolation, and deletion idempotency.
