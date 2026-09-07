@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS `database_backup_runs` (
 INSERT INTO `database_backup_settings`
   (`name`, `scheduleCronTaskUid`, `cronExpression`, `timeZone`, `isEnabled`, `updatedAt`)
 VALUES
-  ('primary-database-backup', '35xAWZJMQcb3whajGuJ6qL', '0 0 15,16 * * 1-4', 'Africa/Cairo', true, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000)
+  ('primary-database-backup', 'ekg7Ju3tix7vfk6qaWLb7c', '0 0 15,16 * * 1-4', 'Africa/Cairo', true, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000)
 ON DUPLICATE KEY UPDATE
   `scheduleCronTaskUid` = VALUES(`scheduleCronTaskUid`),
   `cronExpression` = VALUES(`cronExpression`),
