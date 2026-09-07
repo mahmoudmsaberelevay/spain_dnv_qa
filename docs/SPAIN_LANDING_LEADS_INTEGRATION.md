@@ -187,7 +187,9 @@ Operations can monitor the integration without viewing contact values by trackin
 | CRM `ae9fc22a` | Initial intake service, source seed, durable ledger, matching, activity history, and Meta isolation | Published predecessor |
 | CRM `f3ac27b4` | Production-routed landing pull alias plus regression validation | Published implementation checkpoint |
 | CRM `543b497e` | Controlled end-to-end verification, replay evidence, and initial operating runbook | Published verification checkpoint |
-| Landing `357e1bb3` | Server-only forwarding plus production `/api/trpc/` private pull alias | **Current published landing version** |
+| Landing `357e1bb3` | Server-only forwarding plus production `/api/trpc/` private pull alias | Published predecessor |
+| Landing `48d9a9e1` | Restored both private pull aliases before generic tRPC/static handling | **Current published landing version** |
+| CRM `6a394f9c` | Added secure primary-to-compatibility pull failover for routing resilience | Published resilience checkpoint |
 
 The least disruptive rollback is to remove or revert only the landing router’s call to `forwardSpainDnvLeadToCrm(lead.id)` and republish the landing website. This immediately stops CRM forwarding while preserving the public qualification form, local landing storage, duplicate behavior, owner notification, Arabic/English experience, and all ELEVAY CRM data already created.[1]
 
@@ -215,9 +217,19 @@ Post-run CRM verification found **18 historical inquiry rows and 18 distinct Lea
 
 One additional qualified live submission arrived after the dry-run boundary and synchronized automatically during the execution window. It was not part of the frozen historical batch. Consequently, the overall database moved from 9,256 to 9,273 Leads and from 2 to 19 Spain-landing-source Leads: 16 historical backfill creations plus one independent contemporaneous live submission.
 
-The temporary runner and its one-off test artifact were removed after success. No permanent route or application code was added to the landing website, and no landing checkpoint or publication was required. The live landing version therefore remains `357e1bb3`. `META_CRM_PRODUCTION_ENABLED=false` was reconfirmed after the backfill.
+The temporary runner and its one-off test artifact were removed after success. No permanent route or application code was added to the landing website, and no landing checkpoint or publication was required for that backfill. The live landing version at the time of the backfill was `357e1bb3`. `META_CRM_PRODUCTION_ENABLED=false` was reconfirmed after the backfill.
 
-## 16. References
+## 16. Live alias regression and repair — 7 September 2026
+
+A later landing deployment temporarily allowed `POST /api/trpc/integrations/spain-dnv-leads/pull` to fall through to the generic tRPC router, which returned a path-not-found response instead of the private token handler. The public landing page remained available, the CRM intake route remained active, the compatibility private pull alias remained available, and all 21 previously synchronized inquiry/Lead links remained intact with zero failed or stuck records.
+
+Landing version `48d9a9e1` restored both private POST aliases before generic tRPC/static/SPA handling. Live verification then proved both aliases return HTTP 404 `Not found` for a correctly shaped but invalid opaque token, while the CRM intake endpoint returns HTTP 400 `Invalid submission reference` for an invalid public request. These are the intended privacy-safe handler responses.
+
+The CRM additionally gained defense in depth: it tries the production-routed `/api/trpc/` alias first and, only for a route 404 or transport failure, retries the same server-only request through the compatibility alias. Fifteen focused Spain landing, shared-deduplication, and Meta-isolation tests passed, and the production build succeeded.[2]
+
+An already authorized synthetic Spain submission then synchronized successfully after publication, increasing the durable set from 21 to **22 inquiry rows and 22 distinct Lead links**. All 22 have outcome `created`, exact source `Spain_landing page`, programme `Spain DNV`, no failed/processing/manual-review rows, and zero Meta attribution or Meta CRM-event rows.
+
+## 17. References
 
 [1]: ../../elevay-website/server/routers/spainDnvLanding.ts "Landing qualification submission router"
 [2]: ../server/spainLandingLeadsService.ts "ELEVAY CRM Spain landing ingestion service"
