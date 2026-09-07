@@ -9,7 +9,7 @@ import { normalizeMetaEmail, normalizeMetaPhone } from "./metaLeadsService";
 export const SPAIN_LANDING_SOURCE = "Spain_landing page";
 export const SPAIN_LANDING_PROGRAM = "Spain DNV";
 export const SPAIN_LANDING_PULL_URL =
-  "https://elevayconsult-yttdaxru.manus.space/api/integrations/spain-dnv-leads/pull";
+  "https://elevayconsult-yttdaxru.manus.space/api/trpc/integrations/spain-dnv-leads/pull";
 
 const requestSchema = z.object({
   submissionId: z.number().int().positive().max(2_147_483_647),

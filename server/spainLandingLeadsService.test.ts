@@ -47,7 +47,7 @@ describe("Spain landing page to ELEVAY Leads ingestion", () => {
     expect(SPAIN_LANDING_SOURCE).toBe("Spain_landing page");
     expect(SPAIN_LANDING_PROGRAM).toBe("Spain DNV");
     expect(SPAIN_LANDING_PULL_URL).toBe(
-      "https://elevayconsult-yttdaxru.manus.space/api/integrations/spain-dnv-leads/pull",
+      "https://elevayconsult-yttdaxru.manus.space/api/trpc/integrations/spain-dnv-leads/pull",
     );
   });
 
