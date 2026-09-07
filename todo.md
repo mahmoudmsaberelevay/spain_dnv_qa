@@ -1238,3 +1238,10 @@ Check email for download link within 5 minutes
 - [x] Add focused tests proving valid creation, duplicate retry behavior, existing-contact matching, invalid payload rejection, source attribution, public-route ordering, no Meta webhook/CAPI regression, and `META_CRM_PRODUCTION_ENABLED=false`
 - [x] Run both production builds, safe database checks, authenticated Leads UI verification, and one controlled public-form submission with count-only evidence
 - [x] Save and auto-publish the validated integration and document the endpoint, fields, deduplication rules, security controls, evidence, and rollback path
+
+## Spain Digital Nomad Landing Page Historical Backfill
+- [x] Audit all qualified landing-form submissions and determine the exact unsynchronized count without exposing contact data
+- [x] Implement and validate a one-time server-only backfill runner for the 16 unsynchronized submissions, reusing existing qualification, conservative matching, idempotency, consent, and Meta-isolation rules
+- [x] Synchronize every eligible historical submission and record count-only created, matched, manual-review, failed, and duplicate outcomes
+- [x] Verify CRM Lead/inquiry/activity counts, authenticated Leads visibility, zero landing-generated Meta attribution/outbox rows, and `META_CRM_PRODUCTION_ENABLED=false`
+- [x] Document the historical backfill, complete validation, and publish the final checkpoint

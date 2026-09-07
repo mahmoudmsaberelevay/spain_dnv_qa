@@ -185,7 +185,8 @@ Operations can monitor the integration without viewing contact values by trackin
 | Checkpoint | Purpose | Status |
 |---|---|---|
 | CRM `ae9fc22a` | Initial intake service, source seed, durable ledger, matching, activity history, and Meta isolation | Published predecessor |
-| CRM `f3ac27b4` | Production-routed landing pull alias plus regression validation | **Current published CRM version** |
+| CRM `f3ac27b4` | Production-routed landing pull alias plus regression validation | Published implementation checkpoint |
+| CRM `543b497e` | Controlled end-to-end verification, replay evidence, and initial operating runbook | Published verification checkpoint |
 | Landing `357e1bb3` | Server-only forwarding plus production `/api/trpc/` private pull alias | **Current published landing version** |
 
 The least disruptive rollback is to remove or revert only the landing router’s call to `forwardSpainDnvLeadToCrm(lead.id)` and republish the landing website. This immediately stops CRM forwarding while preserving the public qualification form, local landing storage, duplicate behavior, owner notification, Arabic/English experience, and all ELEVAY CRM data already created.[1]
@@ -194,7 +195,29 @@ If the CRM implementation itself must be rolled back, restore the CRM to checkpo
 
 Meta webhook routes, Meta credentials, the durable Meta inbox/outbox, Test Lead safeguards, production CAPI gate, and Nouran assignment must not be changed as part of a Spain landing rollback.
 
-## 15. References
+## 15. One-time historical backfill — 7 September 2026
+
+A privacy-safe production audit found **18 qualified Spain Digital Nomad landing submissions**. Two already had durable CRM inquiry rows from the controlled integration verification, leaving **16 unsynchronized historical submissions**. Mahmoud selected a one-time secure backfill rather than a permanent administrative control.
+
+The landing website task created a temporary server-side runner that selected only records meeting the exact qualification contract, sorted them by submission ID, and reused `forwardSpainDnvLeadToCrm(id)` sequentially. A dry-run reported 18 eligible IDs, the expected minimum and maximum ID boundary, and a deterministic SHA-256 hash of the sorted ID list. TypeScript checking and 14 focused landing/backfill tests passed before apply mode was authorized.[4]
+
+| Backfill execution metric | Result |
+|---|---:|
+| Eligible submissions in the frozen dry-run list | 18 |
+| Attempted | 18 |
+| Successful server-to-server responses | 18 |
+| Idempotent duplicate responses | 2 |
+| Previously unsynchronized records processed | 16 |
+| Failed responses | 0 |
+| Stopped early | No |
+
+Post-run CRM verification found **18 historical inquiry rows and 18 distinct Lead links** inside the audited ID boundary. All 18 have `status=created`, exact source `Spain_landing page`, programme `Spain DNV`, released processing claims, no error code, the expected Arabic/consent/non-test context, and exactly one landing-source activity. The historical set has **zero manual-review rows, zero failed rows, zero processing rows, zero Meta attribution rows, and zero Meta CRM-event rows**.
+
+One additional qualified live submission arrived after the dry-run boundary and synchronized automatically during the execution window. It was not part of the frozen historical batch. Consequently, the overall database moved from 9,256 to 9,273 Leads and from 2 to 19 Spain-landing-source Leads: 16 historical backfill creations plus one independent contemporaneous live submission.
+
+The temporary runner and its one-off test artifact were removed after success. No permanent route or application code was added to the landing website, and no landing checkpoint or publication was required. The live landing version therefore remains `357e1bb3`. `META_CRM_PRODUCTION_ENABLED=false` was reconfirmed after the backfill.
+
+## 16. References
 
 [1]: ../../elevay-website/server/routers/spainDnvLanding.ts "Landing qualification submission router"
 [2]: ../server/spainLandingLeadsService.ts "ELEVAY CRM Spain landing ingestion service"
