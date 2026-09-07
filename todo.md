@@ -1236,5 +1236,5 @@ Check email for download link within 5 minutes
 - [x] Add retry-safe landing-backend delivery state while preserving the current local record, owner notification, qualification gates, duplicate behavior, and bilingual success/error experience
 - [x] Connect the public landing-page form to the ELEVAY endpoint while preserving Arabic/English behavior, loading, success, validation, and failure states
 - [x] Add focused tests proving valid creation, duplicate retry behavior, existing-contact matching, invalid payload rejection, source attribution, public-route ordering, no Meta webhook/CAPI regression, and `META_CRM_PRODUCTION_ENABLED=false`
-- [ ] Run both production builds, safe database checks, authenticated Leads UI verification, and one controlled public-form submission with count-only evidence
-- [ ] Save and auto-publish the validated integration and document the endpoint, fields, deduplication rules, security controls, evidence, and rollback path
+- [x] Run both production builds, safe database checks, authenticated Leads UI verification, and one controlled public-form submission with count-only evidence
+- [x] Save and auto-publish the validated integration and document the endpoint, fields, deduplication rules, security controls, evidence, and rollback path
