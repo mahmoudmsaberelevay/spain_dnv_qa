@@ -50,6 +50,16 @@ const providerInput = z.object({
   isActive: z.boolean().default(true),
 });
 
+export const clientPortalCreateAccountInput = z.object({
+  caseIds: z.array(z.number().int().positive()).min(1).max(10),
+  primaryCaseId: z.number().int().positive(),
+  username: z.string().trim().min(4).max(100).regex(/^[A-Za-z0-9._-]+$/),
+  email: z.string().trim().email().max(320),
+  mobile: z.string().trim().max(64).optional(),
+  password: z.string().min(10).max(72).optional(),
+  locale: z.enum(["en", "ar"]).default("en"),
+});
+
 export const clientPortalAdminRouter = router({
   listClientCases: adminProcedure.query(async () => {
     const db = await getDb();
@@ -75,15 +85,7 @@ export const clientPortalAdminRouter = router({
     }));
   }),
 
-  createAccount: adminProcedure.input(z.object({
-    caseIds: z.array(z.number().int().positive()).min(1).max(10),
-    primaryCaseId: z.number().int().positive(),
-    username: z.string().trim().min(4).max(100).regex(/^[A-Za-z0-9._-]+$/),
-    email: z.string().trim().email().max(320),
-    mobile: z.string().trim().max(64).optional(),
-    password: z.string().min(10).max(72).optional(),
-    locale: z.enum(["en", "ar"]).default("en"),
-  })).mutation(async ({ ctx, input }) => {
+  createAccount: adminProcedure.input(clientPortalCreateAccountInput).mutation(async ({ ctx, input }) => {
     if (!input.caseIds.includes(input.primaryCaseId)) throw new TRPCError({ code: "BAD_REQUEST", message: "Primary case must be selected" });
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });

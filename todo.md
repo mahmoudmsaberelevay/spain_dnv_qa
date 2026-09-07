@@ -1245,3 +1245,10 @@ Check email for download link within 5 minutes
 - [x] Synchronize every eligible historical submission and record count-only created, matched, manual-review, failed, and duplicate outcomes
 - [x] Verify CRM Lead/inquiry/activity counts, authenticated Leads visibility, zero landing-generated Meta attribution/outbox rows, and `META_CRM_PRODUCTION_ENABLED=false`
 - [x] Document the historical backfill, complete validation, and publish the final checkpoint
+
+## Client Portal — New User Creation Failure
+- [x] Confirm the create-access form maps the second field to `email` and that a surname entered there produces the reported raw Zod invalid-email response
+- [x] Add persistent field labels, client-side email validation, and a clear user-facing invalid-email message instead of raw validation JSON
+- [x] Preserve server-side email validation and add regression tests for invalid and valid client-account creation
+- [x] Validate the creation flow in the authenticated Client Portal UI and confirm existing accounts remain unchanged
+- [x] Run focused tests and the production build, complete this checklist, and publish the fix
