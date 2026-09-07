@@ -36,3 +36,13 @@
 - [x] Add protected administrator APIs for Client Documentation folder selection and client credential creation.
 - [x] Add protected administrator APIs and mobile controls for adding, editing, showing, and hiding vendors.
 - [x] Verify the admin role, available documentation folders, vendor API, anonymous denial, server build, and focused security tests.
+
+## Program PDF content update completed
+
+- [x] Extract structured English and Arabic summaries from all 20 supplied program PDFs.
+- [x] Match 19 substantive summaries to their exact residency or citizenship database records.
+- [x] Skip the blank duplicate Malta PDF while using the substantive Malta citizenship and permanent-residence PDFs.
+- [x] Store processing time, presence rules, investment options, benefits, eligibility, family, process, fee notes, and disclaimer in versioned structured data.
+- [x] Protect PDF-derived summaries from automatic website synchronization overwrites.
+- [x] Rebuild mobile program pages with bilingual at-a-glance facts, investment cards, and organized detail sections.
+- [x] Validate all 19 database records, production public API delivery, mobile TypeScript, lint, tests, Expo export, Expo Doctor, CRM build, and focused portal security tests.

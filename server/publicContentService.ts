@@ -151,6 +151,14 @@ export async function runPublicContentSync(triggerType: "scheduled" | "manual") 
 }
 
 export function registerPublicContentRoutes(app: Express) {
+  app.use("/public-api", (_req: Request, res: Response, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Device-Name, X-OS-Version, X-App-Version");
+    if (_req.method === "OPTIONS") return res.sendStatus(204);
+    next();
+  });
+
   app.get("/public-api/programs", async (req: Request, res: Response) => {
     try {
       const db = await getDb();
