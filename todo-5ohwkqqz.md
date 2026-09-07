@@ -28,3 +28,8 @@
 - [x] Pull privacy-safe ELEVAY CRM monitoring, Funnel, and CAPI provenance evidence
 - [x] Calculate checkpoint trends, guardrail comparisons, marginal-efficiency limits, and integration status
 - [x] Deliver the Arabic checkpoint report and restore the normal weekly schedule only if this is checkpoint 3
+- [x] Determine Checkpoint 2 cutoff and confirm the temporary schedule remains active
+- [x] Pull current Campaign, Ad Set, and Ad metrics for Checkpoint 2
+- [x] Pull current privacy-safe ELEVAY CRM monitoring and CAPI evidence for Checkpoint 2
+- [x] Calculate changes since Checkpoint 1 and evaluate guardrails, marginal efficiency, and integration integrity
+- [x] Deliver the Arabic Checkpoint 2 report without restoring the weekly schedule early
