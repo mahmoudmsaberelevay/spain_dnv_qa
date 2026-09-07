@@ -40,3 +40,10 @@
 - [x] Audit the attached Landing Page implementation report against the required Spain and Malta Meta tracking acceptance criteria
 - [x] Verify the currently published Spain and Malta pages for Pixel, PageView, Lead event, attribution, and deduplication behavior
 - [x] Deliver a clear acceptance decision and corrected implementation prompt without changing Campaigns or production events
+- [x] Extract and classify all claims in the new Landing Page Meta Tracking status report
+- [x] Verify live Spain Arabic and Malta Arabic Pixel, PageView, attribution, and Lead tracking behavior
+- [x] Verify CAPI outbox, shared event ID, consent gate, production gate, tests, and deployed checkpoint evidence
+- [x] Obtain the active Landing Page source/task reference and inspect server-side CAPI, consent, and outbox paths directly
+- [x] Independently verify the active Landing Page deployment version and relevant test/build results
+- [x] Deliver a final acceptance decision and exact remaining corrective action without sending any event
+- [x] Deliver the explicit remediation checklist for the rejected Landing Page Meta implementation and confirm the review remained read-only
