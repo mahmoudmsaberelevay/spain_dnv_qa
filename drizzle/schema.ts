@@ -888,6 +888,32 @@ export const leads = mysqlTable("leads", {
 export type Lead = typeof leads.$inferSelect;
 export type InsertLead = typeof leads.$inferInsert;
 
+/**
+ * Privacy-safe, idempotent receipt ledger for the separate Spain DNV landing
+ * website. Contact data remains on the Lead row; this table stores only the
+ * external submission identity, routing context, and processing outcome.
+ */
+export const spainLandingInquiries = mysqlTable("spain_landing_inquiries", {
+  id: int("id").autoincrement().primaryKey(),
+  externalSubmissionId: int("externalSubmissionId").notNull().unique(),
+  leadId: int("leadId"),
+  source: varchar("source", { length: 100 }).default("Spain_landing page").notNull(),
+  program: varchar("program", { length: 100 }).default("Spain DNV").notNull(),
+  language: mysqlEnum("language", ["en", "ar"]).notNull(),
+  jobPosition: varchar("jobPosition", { length: 80 }).notNull(),
+  matchMethod: mysqlEnum("matchMethod", ["new", "phone", "email", "manual_review"]).notNull(),
+  status: mysqlEnum("status", ["processing", "created", "matched", "manual_review", "failed"]).default("processing").notNull(),
+  processingToken: varchar("processingToken", { length: 64 }),
+  payloadFingerprint: varchar("payloadFingerprint", { length: 64 }).notNull(),
+  lastErrorCode: varchar("lastErrorCode", { length: 100 }),
+  firstReceivedAt: bigint("firstReceivedAt", { mode: "number" }).notNull(),
+  processedAt: bigint("processedAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type SpainLandingInquiry = typeof spainLandingInquiries.$inferSelect;
+export type InsertSpainLandingInquiry = typeof spainLandingInquiries.$inferInsert;
+
 export const leadActivities = mysqlTable("lead_activities", {
   id: int("id").autoincrement().primaryKey(),
   leadId: int("leadId").notNull(),

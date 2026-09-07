@@ -338,6 +338,9 @@ async function startServer() {
   });
 
   // Website / Landing Page Lead Webhook
+  const { registerSpainLandingLeadRoutes } = await import("../spainLandingLeadsService");
+  registerSpainLandingLeadRoutes(app);
+
   app.post("/api/webhook/leads/:token", async (req, res) => {
     try {
       const { token } = req.params;

@@ -1225,3 +1225,16 @@ Check email for download link within 5 minutes
 - [x] After explicit confirmation, create exactly one synthetic Meta Test Lead and prove one inbox, one marked Lead, one immutable attribution, skipped assignment, zero Lead alerts, one manual-review event, zero operational-report leakage, and zero real-Lead modification
 - [x] After Mahmoud supplies a current Test Events code and separately confirms dispatch, send only that selected event and verify Meta Events Manager plus persisted test-delivery provenance without storing or exposing the code
 - [x] Recheck duplicate counts, approval-gated real-event dispatch count, Production CAPI disabled state, focused Vitest suites, production build, and deliver the requested privacy-safe evidence report
+
+## Spain Digital Nomad Landing Page → Leads Integration
+- [x] Inspect `https://elevayconsult-yttdaxru.manus.space/spain-digital-nomad?lang=ar`, identify the actual form fields and submission path, and locate the landing-page project/source without changing its public behavior
+- [x] Design and implement a secure public ELEVAY Leads ingestion endpoint with strict validation, payload limits, origin controls, safe error handling, abuse/rate protection, and no authentication requirement for legitimate form visitors
+- [x] Create or safely match one Lead per person using normalized phone/email rules, preserve existing Lead history and consultant assignment, and prevent duplicate Leads on retries or repeated submissions
+- [x] Store the Lead source exactly as `Spain_landing page`, retain the Spain Digital Nomad program/language/referrer context, and keep the submission independent from Meta attribution and CRM event generation
+- [x] Implement short-lived opaque forwarding-token retrieval so visitor PII and CRM credentials never appear in landing-page browser code, URLs, or cross-project logs
+- [x] Add an idempotent CRM landing-inquiry ledger and preserve existing Lead source, stage, consultant, and Meta attribution when a landing submission safely matches an existing contact
+- [x] Add retry-safe landing-backend delivery state while preserving the current local record, owner notification, qualification gates, duplicate behavior, and bilingual success/error experience
+- [x] Connect the public landing-page form to the ELEVAY endpoint while preserving Arabic/English behavior, loading, success, validation, and failure states
+- [x] Add focused tests proving valid creation, duplicate retry behavior, existing-contact matching, invalid payload rejection, source attribution, public-route ordering, no Meta webhook/CAPI regression, and `META_CRM_PRODUCTION_ENABLED=false`
+- [ ] Run both production builds, safe database checks, authenticated Leads UI verification, and one controlled public-form submission with count-only evidence
+- [ ] Save and auto-publish the validated integration and document the endpoint, fields, deduplication rules, security controls, evidence, and rollback path
