@@ -33,3 +33,7 @@
 - [x] Pull current privacy-safe ELEVAY CRM monitoring and CAPI evidence for Checkpoint 2
 - [x] Calculate changes since Checkpoint 1 and evaluate guardrails, marginal efficiency, and integration integrity
 - [x] Deliver the Arabic Checkpoint 2 report without restoring the weekly schedule early
+- [x] Identify the Campaign showing no Results and confirm its Conversion location, Performance goal, Dataset, and conversion Event
+- [x] Compare Meta Action types and attribution with the 15 successful Landing Page form submissions
+- [x] Verify ELEVAY Landing Page form records and browser/server event routing without exposing PII
+- [x] Diagnose the root cause and deliver exact read-only corrective steps without changing the running Campaign or Ads
