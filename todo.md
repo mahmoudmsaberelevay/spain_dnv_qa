@@ -1272,3 +1272,10 @@ Check email for download link within 5 minutes
 - [x] Run focused tests and production build, publish the handler repair, then execute one controlled production backup
 - [x] Verify a successful schedule log, durable encrypted artifact, both recipient delivery attempts, restoration metadata, and the next Mon–Thu 18:00 Cairo run
 - [x] Document monitoring, restore, pause/resume, and rollback procedures, then publish the final validated checkpoint
+
+## Spain Landing Leads — Live Private Pull Alias Regression
+- [x] Record the count-safe live failure boundary: landing page 200, CRM intake JSON 400, legacy private pull handler active, and `/api/trpc` pull alias falling into generic tRPC 404
+- [ ] Restore the production-routed `/api/trpc/integrations/spain-dnv-leads/pull` handler in the latest landing deployment without exposing PII, tokens, or CRM credentials
+- [ ] Validate both private pull aliases reject invalid tokens through the intended handler and confirm the CRM intake route remains active
+- [ ] Verify existing inquiry/Lead counts, exact `Spain_landing page` source, Spain DNV program context, deduplication, and zero Meta/CAPI regression
+- [ ] Complete the checklist, publish the repair, and report restored landing-to-Leads synchronization

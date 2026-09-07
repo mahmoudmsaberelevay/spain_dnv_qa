@@ -12,6 +12,8 @@ export const SPAIN_LANDING_SOURCE = "Spain_landing page";
 export const SPAIN_LANDING_PROGRAM = "Spain DNV";
 export const SPAIN_LANDING_PULL_URL =
   "https://elevayconsult-yttdaxru.manus.space/api/trpc/integrations/spain-dnv-leads/pull";
+export const SPAIN_LANDING_PULL_FALLBACK_URL =
+  "https://elevayconsult-yttdaxru.manus.space/api/integrations/spain-dnv-leads/pull";
 
 const requestSchema = z.object({
   submissionId: z.number().int().positive().max(2_147_483_647),
@@ -81,22 +83,47 @@ export function resolveSpainLandingContactMatch(phoneIds: number[], emailIds: nu
   return { leadId: null, matchMethod: "new" as const };
 }
 
-async function pullLandingPayload(submissionId: number, pullToken: string) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8_000);
-  try {
-    const response = await fetch(SPAIN_LANDING_PULL_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json", "accept": "application/json" },
-      body: JSON.stringify({ submissionId, pullToken }),
-      signal: controller.signal,
-      redirect: "error",
-    });
-    if (!response.ok) throw new Error(`LANDING_PULL_${response.status}`);
-    return landingPayloadSchema.parse(await response.json());
-  } finally {
-    clearTimeout(timeout);
+export async function pullLandingPayloadFromAliases(
+  submissionId: number,
+  pullToken: string,
+  fetcher: typeof fetch = fetch,
+) {
+  const urls = [SPAIN_LANDING_PULL_URL, SPAIN_LANDING_PULL_FALLBACK_URL];
+  let lastError: unknown = new Error("LANDING_PULL_UNAVAILABLE");
+
+  for (let index = 0; index < urls.length; index += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8_000);
+    try {
+      const response = await fetcher(urls[index], {
+        method: "POST",
+        headers: { "content-type": "application/json", "accept": "application/json" },
+        body: JSON.stringify({ submissionId, pullToken }),
+        signal: controller.signal,
+        redirect: "error",
+      });
+      if (response.ok) return landingPayloadSchema.parse(await response.json());
+
+      const responseError = new Error(`LANDING_PULL_${response.status}`);
+      lastError = responseError;
+      if (index === 0 && response.status === 404) continue;
+      throw responseError;
+    } catch (error) {
+      lastError = error;
+      const isTransportFailure = error instanceof TypeError
+        || (error instanceof Error && error.name === "AbortError");
+      if (index === 0 && isTransportFailure) continue;
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+
+  throw lastError;
+}
+
+async function pullLandingPayload(submissionId: number, pullToken: string) {
+  return pullLandingPayloadFromAliases(submissionId, pullToken);
 }
 
 async function findUniqueRealLead(db: QueryExecutor, payload: LandingPayload) {
