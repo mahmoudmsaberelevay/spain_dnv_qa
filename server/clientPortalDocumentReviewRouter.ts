@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
   clientDocuments,
@@ -33,7 +33,7 @@ export const clientPortalDocumentReviewRouter = router({
       const publicId = randomUUID();
       const key = `client-portal/cases/${input.clientCaseId}/staff/${publicId}-${safeName}`;
       const stored = await storagePut(key, bytes, input.mimeType);
-      const [application] = await db.select({ id: clientPortalApplications.id }).from(clientPortalApplications).where(eq(clientPortalApplications.clientCaseId, input.clientCaseId)).limit(1);
+      const [application] = await db.select({ id: clientPortalApplications.id }).from(clientPortalApplications).where(and(eq(clientPortalApplications.clientCaseId, input.clientCaseId), isNull(clientPortalApplications.accessRevokedAt))).limit(1);
       if (application) {
         const label = input.kind === "submission_receipt" ? "Official submission receipt" : "Approval letter";
         await db.insert(clientPortalDocuments).values({ publicId, portalApplicationId: application.id, documentType: label, fileName: input.fileName, fileKey: stored.key, mimeType: input.mimeType, fileSize: bytes.length, source: "staff", visibleToClient: true, reviewStatus: "accepted", uploadedByStaffUserId: ctx.user.id, reviewedByUserId: ctx.user.id, reviewedAt: new Date() });
@@ -69,7 +69,7 @@ export const clientPortalDocumentReviewRouter = router({
         .innerJoin(clientPortalUsers, eq(clientPortalApplications.portalUserId, clientPortalUsers.id))
         .leftJoin(clientPortalApplicants, eq(clientPortalDocuments.applicantId, clientPortalApplicants.id))
         .leftJoin(clientDocuments, eq(clientPortalDocuments.clientDocumentId, clientDocuments.id))
-        .where(eq(clientPortalApplications.clientCaseId, input.clientCaseId))
+        .where(and(eq(clientPortalApplications.clientCaseId, input.clientCaseId), isNull(clientPortalApplications.accessRevokedAt)))
         .orderBy(desc(clientPortalDocuments.createdAt));
       return rows;
     }),
@@ -83,7 +83,7 @@ export const clientPortalDocumentReviewRouter = router({
         .select({ fileKey: clientPortalDocuments.fileKey })
         .from(clientPortalDocuments)
         .innerJoin(clientPortalApplications, eq(clientPortalDocuments.portalApplicationId, clientPortalApplications.id))
-        .where(and(eq(clientPortalDocuments.publicId, input.documentPublicId), eq(clientPortalApplications.clientCaseId, input.clientCaseId)))
+        .where(and(eq(clientPortalDocuments.publicId, input.documentPublicId), eq(clientPortalApplications.clientCaseId, input.clientCaseId), isNull(clientPortalApplications.accessRevokedAt)))
         .limit(1);
       if (!row) throw new TRPCError({ code: "NOT_FOUND" });
       const file = await storageGet(row.fileKey);
@@ -104,7 +104,7 @@ export const clientPortalDocumentReviewRouter = router({
         .select({ id: clientPortalDocuments.id, documentType: clientPortalDocuments.documentType })
         .from(clientPortalDocuments)
         .innerJoin(clientPortalApplications, eq(clientPortalDocuments.portalApplicationId, clientPortalApplications.id))
-        .where(and(eq(clientPortalDocuments.publicId, input.documentPublicId), eq(clientPortalApplications.clientCaseId, input.clientCaseId)))
+        .where(and(eq(clientPortalDocuments.publicId, input.documentPublicId), eq(clientPortalApplications.clientCaseId, input.clientCaseId), isNull(clientPortalApplications.accessRevokedAt)))
         .limit(1);
       if (!row) throw new TRPCError({ code: "NOT_FOUND" });
       await db.update(clientPortalDocuments).set({ reviewStatus: input.reviewStatus, staffComment: input.staffComment?.trim() || null, reviewedByUserId: ctx.user.id, reviewedAt: new Date() }).where(eq(clientPortalDocuments.id, row.id));

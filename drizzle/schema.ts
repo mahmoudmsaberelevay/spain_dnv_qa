@@ -1438,8 +1438,13 @@ export const clientPortalApplications = mysqlTable("client_portal_applications",
   clientCaseId: int("clientCaseId").notNull(),
   label: varchar("label", { length: 255 }),
   isPrimary: boolean("isPrimary").default(false).notNull(),
+  accessRevokedAt: timestamp("accessRevokedAt"),
+  accessRevokedBy: int("accessRevokedBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  uniquePortalCase: uniqueIndex("client_portal_applications_user_case_unique").on(table.portalUserId, table.clientCaseId),
+  activeAccess: index("client_portal_applications_active_access_idx").on(table.portalUserId, table.accessRevokedAt, table.isPrimary),
+}));
 export type ClientPortalApplication = typeof clientPortalApplications.$inferSelect;
 export type InsertClientPortalApplication = typeof clientPortalApplications.$inferInsert;
 

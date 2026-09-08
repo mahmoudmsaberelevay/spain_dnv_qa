@@ -1348,3 +1348,13 @@ Check email for download link within 5 minutes
 - [x] Enforce permissions, chronological dependencies, link/date validation, audit logging, and non-destructive history safeguards
 - [x] Add regression tests and validate all milestones, document links, old-client data preservation, reports, Client Portal, and production build
 - [x] Complete the checklist, publish, and report the expanded Spain documentation workflow
+
+## Client Portal — Manual Password & Documentation Assignment Editing
+- [x] Audit portal-account creation, password generation/hashing, reset flow, application assignments, permissions, audit history, and existing production accounts
+- [x] Define strong manually entered password requirements, confirmation behavior, browser-safety controls, and non-disclosure rules
+- [x] Require an administrator-entered password when creating a portal account; hash it server-side and never return or display it after creation
+- [x] Add protected backend procedures to replace, add, or remove the Client Documentation applications assigned to an existing portal username
+- [x] Add an `Edit Assigned Documentation` interface for every portal account with searchable case selection, current-access visibility, save confirmation, and empty-selection safeguards
+- [x] Write audit history for account creation and assignment changes without recording passwords or client-document content
+- [x] Add regression tests and validate manual-password security, assignment replacement, duplicate prevention, authorization, portal access boundaries, and existing-account preservation
+- [x] Complete the checklist, publish, and report the Client Portal administration update

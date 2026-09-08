@@ -100,7 +100,7 @@ async function sendResponsibleStaffNotice(input: { clientCaseId: number; idempot
   if (!db) throw new Error("DATABASE_UNAVAILABLE");
   const [clientCase] = await db.select({ clientName: clientCases.clientName, paralegal: clientCases.paralegal, consultant: clientCases.consultant }).from(clientCases).where(eq(clientCases.id, input.clientCaseId)).limit(1);
   if (!clientCase) return false;
-  const [application] = await db.select({ portalUserId: clientPortalApplications.portalUserId }).from(clientPortalApplications).where(eq(clientPortalApplications.clientCaseId, input.clientCaseId)).limit(1);
+  const [application] = await db.select({ portalUserId: clientPortalApplications.portalUserId }).from(clientPortalApplications).where(and(eq(clientPortalApplications.clientCaseId, input.clientCaseId), isNull(clientPortalApplications.accessRevokedAt))).limit(1);
   if (!application) return false;
   const recipients = Array.from(new Set([getTeamNotificationEmail(clientCase.paralegal), getTeamNotificationEmail(clientCase.consultant)].filter((email): email is string => Boolean(email))));
   if (!recipients.length) return false;
@@ -151,7 +151,7 @@ export async function recordClientLifecycleEvent(input: LifecycleEventInput) {
     locale: clientPortalUsers.locale,
   }).from(clientPortalApplications)
     .innerJoin(clientPortalUsers, eq(clientPortalApplications.portalUserId, clientPortalUsers.id))
-    .where(and(eq(clientPortalApplications.clientCaseId, input.clientCaseId), eq(clientPortalUsers.status, "active")));
+    .where(and(eq(clientPortalApplications.clientCaseId, input.clientCaseId), isNull(clientPortalApplications.accessRevokedAt), eq(clientPortalUsers.status, "active")));
   const unique = Array.from(new Map(linked.map(item => [item.portalUserId, item])).values());
 
   for (const item of unique) {
@@ -247,7 +247,7 @@ export async function runClientLifecycleReminders(now = new Date(), dependencies
   }).from(clientPortalApplications)
     .innerJoin(clientCases, eq(clientPortalApplications.clientCaseId, clientCases.id))
     .innerJoin(clientPortalUsers, eq(clientPortalApplications.portalUserId, clientPortalUsers.id))
-    .where(and(eq(clientPortalUsers.status, "active"), eq(clientPortalUsers.accountType, "client")));
+    .where(and(isNull(clientPortalApplications.accessRevokedAt), eq(clientPortalUsers.status, "active"), eq(clientPortalUsers.accountType, "client")));
   const unique = Array.from(new Map(rows.map(row => [`${row.clientCase.id}:${row.portalUserId}`, row])).values());
   const docs = await db.select().from(clientDocuments).orderBy(asc(clientDocuments.id));
   const payments = await db.select().from(clientDocumentationPayments).where(isNull(clientDocumentationPayments.archivedAt)).orderBy(asc(clientDocumentationPayments.sortOrder), asc(clientDocumentationPayments.id));

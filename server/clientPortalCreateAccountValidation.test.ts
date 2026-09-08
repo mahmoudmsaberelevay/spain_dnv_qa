@@ -7,6 +7,7 @@ const validInput = {
   username: "vlad.diduk",
   email: "vlad.diduk@example.com",
   mobile: "+20 155 459 6994",
+  password: "Elevay!2026Safe",
   locale: "en" as const,
 };
 

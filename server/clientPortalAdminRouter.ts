@@ -10,6 +10,8 @@ import { generateTemporaryPassword, hashPortalPassword } from "./clientPortalAut
 import { pushClientNotification } from "./clientPortalRoutes";
 import { recordClientLifecycleEvent } from "./clientLifecycleNotificationService";
 import { runPublicContentSync } from "./publicContentService";
+import { replaceClientPortalAssignments } from "./clientPortalAssignmentService";
+import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPolicy";
 import {
   clientCases,
   clientPortalApplications,
@@ -57,7 +59,7 @@ export const clientPortalCreateAccountInput = z.object({
   username: z.string().trim().min(4).max(100).regex(/^[A-Za-z0-9._-]+$/),
   email: z.string().trim().email().max(320),
   mobile: z.string().trim().max(64).optional(),
-  password: z.string().min(10).max(72).optional(),
+  password: z.string().min(10).max(72).refine(isStrongClientPortalPassword, "Password must include uppercase, lowercase, number, and symbol with no spaces"),
   locale: z.enum(["en", "ar"]).default("en"),
 });
 
@@ -74,7 +76,7 @@ export const clientPortalAdminRouter = router({
     const rows = await db.select({ portalUser: clientPortalUsers, clientName: clientCases.clientName, clientCode: clientCases.clientCode }).from(clientPortalUsers).innerJoin(clientCases, eq(clientPortalUsers.primaryClientCaseId, clientCases.id)).orderBy(desc(clientPortalUsers.createdAt));
     const sessions = await db.select({ portalUserId: clientPortalSessions.portalUserId, count: sql<number>`count(*)` }).from(clientPortalSessions).where(isNull(clientPortalSessions.revokedAt)).groupBy(clientPortalSessions.portalUserId);
     const counts = new Map(sessions.map(row => [row.portalUserId, Number(row.count)]));
-    const applications = await db.select({ publicId: clientPortalApplications.publicId, portalUserId: clientPortalApplications.portalUserId, label: clientPortalApplications.label, isPrimary: clientPortalApplications.isPrimary }).from(clientPortalApplications).orderBy(desc(clientPortalApplications.isPrimary), asc(clientPortalApplications.createdAt));
+    const applications = await db.select({ publicId: clientPortalApplications.publicId, portalUserId: clientPortalApplications.portalUserId, clientCaseId: clientPortalApplications.clientCaseId, label: clientPortalApplications.label, isPrimary: clientPortalApplications.isPrimary }).from(clientPortalApplications).where(isNull(clientPortalApplications.accessRevokedAt)).orderBy(desc(clientPortalApplications.isPrimary), asc(clientPortalApplications.createdAt));
     return rows.map(row => ({
       ...row.portalUser,
       passwordHash: undefined,
@@ -93,7 +95,7 @@ export const clientPortalAdminRouter = router({
     const cases = await db.select().from(clientCases).where(inArray(clientCases.id, input.caseIds));
     if (cases.length !== new Set(input.caseIds).size) throw new TRPCError({ code: "BAD_REQUEST", message: "One or more client cases were not found" });
     const primary = cases.find(row => row.id === input.primaryCaseId)!;
-    const password = input.password || generateTemporaryPassword();
+    const password = input.password;
     const publicId = randomUUID();
     try {
       await db.insert(clientPortalUsers).values({
@@ -106,7 +108,7 @@ export const clientPortalAdminRouter = router({
         consultant: primary.consultant,
         paralegal: primary.paralegal,
         locale: input.locale,
-        mustChangePassword: true,
+        mustChangePassword: false,
         notificationPreferences: { push: true, email: true, messages: true, documents: true, payments: true, workflow: true },
         createdBy: ctx.user.id,
       });
@@ -125,8 +127,22 @@ export const clientPortalAdminRouter = router({
       await db.update(clientCases).set({ clientPortalSignedAt: new Date() }).where(and(eq(clientCases.id, clientCase.id), isNull(clientCases.clientPortalSignedAt)));
       await recordClientLifecycleEvent({ clientCaseId: clientCase.id, eventType: "welcome", idempotencyKey: `portal-welcome:${portalUser.id}:${clientCase.id}`, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" }, titleEn: "Welcome to ELEVAY", titleAr: "مرحباً بك في إليفاي", bodyEn: "Your application workspace is ready. You can follow progress, receive updates, and securely submit required documents here.", bodyAr: "مساحة طلبك جاهزة. يمكنك متابعة التقدم واستلام التحديثات وإرسال المستندات المطلوبة بأمان من هنا." });
     }
-    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "client_portal_account", portalUser.id, `Created client portal access for ${primary.clientName}`);
-    return { publicId: portalUser.publicId, username: portalUser.username, email: portalUser.email, temporaryPassword: password };
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "client_portal_account", portalUser.id, `Created client portal access with ${cases.length} documentation folder assignment(s)`);
+    return { publicId: portalUser.publicId, username: portalUser.username, email: portalUser.email, assignedCount: cases.length };
+  }),
+
+  replaceDocumentationAssignments: adminProcedure.input(z.object({
+    portalUserPublicId: z.string().uuid(),
+    caseIds: z.array(z.number().int().positive()).min(1).max(10),
+    primaryCaseId: z.number().int().positive(),
+  })).mutation(async ({ ctx, input }) => {
+    const result = await replaceClientPortalAssignments({
+      ...input,
+      actorUserId: ctx.user.id,
+      actorName: ctx.user.name || ctx.user.email || "ELEVAY Team",
+    });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_portal_documentation_assignments", result.portalUserId, `Selected ${result.selectedCount}; added ${result.addedCount}; restored ${result.restoredCount}; removed ${result.removedCount}; active sessions revoked`);
+    return { ok: true, ...result };
   }),
 
   linkDocumentationFolder: adminProcedure.input(z.object({
@@ -141,13 +157,22 @@ export const clientPortalAdminRouter = router({
     if (!portalUser || !clientCase) throw new TRPCError({ code: "NOT_FOUND", message: "Client account or documentation folder was not found" });
     const [existing] = await db.select().from(clientPortalApplications).where(and(eq(clientPortalApplications.portalUserId, portalUser.id), eq(clientPortalApplications.clientCaseId, clientCase.id))).limit(1);
     if (existing) {
+      if (input.makePrimary) await db.update(clientPortalApplications).set({ isPrimary: false }).where(eq(clientPortalApplications.portalUserId, portalUser.id));
+      await db.update(clientPortalApplications).set({ accessRevokedAt: null, accessRevokedBy: null, isPrimary: input.makePrimary || existing.isPrimary }).where(eq(clientPortalApplications.id, existing.id));
+      if (input.makePrimary) await db.update(clientPortalUsers).set({ primaryClientCaseId: clientCase.id, consultant: clientCase.consultant, paralegal: clientCase.paralegal }).where(eq(clientPortalUsers.id, portalUser.id));
+      if (existing.accessRevokedAt || input.makePrimary) await db.update(clientPortalSessions).set({ revokedAt: new Date() }).where(and(eq(clientPortalSessions.portalUserId, portalUser.id), isNull(clientPortalSessions.revokedAt)));
       await db.update(clientCases).set({ clientPortalSignedAt: new Date() }).where(and(eq(clientCases.id, clientCase.id), isNull(clientCases.clientPortalSignedAt)));
       await recordClientLifecycleEvent({ clientCaseId: clientCase.id, eventType: "welcome", idempotencyKey: `portal-welcome:${portalUser.id}:${clientCase.id}`, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" }, titleEn: "Welcome to ELEVAY", titleAr: "مرحباً بك في إليفاي", bodyEn: "Your application workspace is ready. You can follow progress, receive updates, and securely submit required documents here.", bodyAr: "مساحة طلبك جاهزة. يمكنك متابعة التقدم واستلام التحديثات وإرسال المستندات المطلوبة بأمان من هنا." });
-      return { publicId: existing.publicId, alreadyLinked: true };
+      await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_portal_documentation_folder", clientCase.id, `${existing.accessRevokedAt ? "Restored" : "Confirmed"} ${clientCase.clientName} folder for portal account ${portalUser.username}`);
+      return { publicId: existing.publicId, alreadyLinked: !existing.accessRevokedAt, restored: Boolean(existing.accessRevokedAt) };
     }
     if (input.makePrimary) await db.update(clientPortalApplications).set({ isPrimary: false }).where(eq(clientPortalApplications.portalUserId, portalUser.id));
     const publicId = randomUUID();
     await db.insert(clientPortalApplications).values({ publicId, portalUserId: portalUser.id, clientCaseId: clientCase.id, label: `${clientCase.applicationType} – ${clientCase.clientName}`, isPrimary: input.makePrimary });
+    if (input.makePrimary) {
+      await db.update(clientPortalUsers).set({ primaryClientCaseId: clientCase.id, consultant: clientCase.consultant, paralegal: clientCase.paralegal }).where(eq(clientPortalUsers.id, portalUser.id));
+      await db.update(clientPortalSessions).set({ revokedAt: new Date() }).where(and(eq(clientPortalSessions.portalUserId, portalUser.id), isNull(clientPortalSessions.revokedAt)));
+    }
     const [application] = await db.select().from(clientPortalApplications).where(eq(clientPortalApplications.publicId, publicId)).limit(1);
     if (application) await db.insert(clientPortalApplicants).values({ publicId: randomUUID(), portalApplicationId: application.id, relation: "main", fullName: clientCase.clientName });
     await db.update(clientCases).set({ clientPortalSignedAt: new Date() }).where(and(eq(clientCases.id, clientCase.id), isNull(clientCases.clientPortalSignedAt)));
