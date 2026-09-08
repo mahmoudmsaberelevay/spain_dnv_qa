@@ -1286,3 +1286,14 @@ Check email for download link within 5 minutes
 - [x] Verify every eligible submission has one inquiry outcome and one conservative Lead linkage with exact source `Spain_landing page` and program `Spain DNV`
 - [x] Confirm zero failed/stuck/manual-review outcomes unless explicitly reported, zero duplicate Lead creation, and zero Meta attribution/outbox regression
 - [x] Reconfirm `META_CRM_PRODUCTION_ENABLED=false`, document the reconciliation result, complete the checklist, and publish any required update
+
+## Spain Landing Leads — Automated Six-Hour Reconciliation
+- [x] Audit the landing project’s Heartbeat support, current secure forwarding helper, qualified-record query, and existing schedule ownership
+- [x] Define a Cairo-aligned 00:00/06:00/12:00/18:00 schedule with authenticated task ownership, overlap protection, bounded sequential processing, and privacy-safe run evidence
+- [x] Implement the landing-side scheduled reconciliation handler and durable success/failure counters without exposing PII, tokens, or CRM credentials
+- [x] Add a server-only, single-use, short-lived controlled-run authorization so one production reconciliation can be verified outside the normal Cairo slot and cannot be replayed
+- [x] Fix controlled-run claim ordering so a valid authorization bypasses only the Cairo-window gate, creates a run-ledger row, releases its claim on every exit path, and leaves no stale claim
+- [x] Add regression tests for scheduler authentication, qualification filtering, idempotent duplicates, overlap protection, bounded failures, and Meta isolation
+- [x] Publish the landing automation, register the managed schedule, and run one controlled production execution
+- [x] Verify all eligible records remain synchronized, no duplicate Leads or Meta artifacts are created, and the next four Cairo-aligned run times are correct
+- [x] Document monitoring, retry, pause/resume, and rollback procedures, complete both project checklists, and publish the final validated state

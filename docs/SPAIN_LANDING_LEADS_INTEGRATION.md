@@ -188,8 +188,9 @@ Operations can monitor the integration without viewing contact values by trackin
 | CRM `f3ac27b4` | Production-routed landing pull alias plus regression validation | Published implementation checkpoint |
 | CRM `543b497e` | Controlled end-to-end verification, replay evidence, and initial operating runbook | Published verification checkpoint |
 | Landing `357e1bb3` | Server-only forwarding plus production `/api/trpc/` private pull alias | Published predecessor |
-| Landing `48d9a9e1` | Restored both private pull aliases before generic tRPC/static handling | **Current published landing version** |
+| Landing `48d9a9e1` | Restored both private pull aliases before generic tRPC/static handling | Published predecessor |
 | CRM `6a394f9c` | Added secure primary-to-compatibility pull failover for routing resilience | Published resilience checkpoint |
+| Landing `104bbca2` | Six-hour reconciliation, durable run ledger, single-use controlled-run gate, and guaranteed claim cleanup | **Current published landing version** |
 
 The least disruptive rollback is to remove or revert only the landing router’s call to `forwardSpainDnvLeadToCrm(lead.id)` and republish the landing website. This immediately stops CRM forwarding while preserving the public qualification form, local landing storage, duplicate behavior, owner notification, Arabic/English experience, and all ELEVAY CRM data already created.[1]
 
@@ -235,7 +236,27 @@ A fresh privacy-safe audit found **32 currently qualified Spain DNV landing subm
 
 Post-run CRM verification found **32 distinct external submission references**, 32 linked inquiry outcomes, and **31 distinct Lead records**. This is the expected conservative result: 31 inquiries created Leads and one inquiry matched an existing Lead rather than creating a duplicate. Every linked inquiry has exact source `Spain_landing page`, programme `Spain DNV`, non-test context, released processing claims, and no error code. There are zero failed, processing, or manual-review outcomes, zero Meta attribution rows, and zero Meta CRM-event rows. `META_CRM_PRODUCTION_ENABLED=false` was reconfirmed after the reconciliation.
 
-## 18. References
+## 18. Automated six-hour reconciliation — 8 September 2026
+
+The landing project now runs one authenticated managed reconciliation job at **00:00, 06:00, 12:00, and 18:00 Africa/Cairo time**. The platform schedule is `0 0 3,4,9,10,15,16,21,22 * * *`; paired UTC hours make the schedule safe across Cairo daylight-saving transitions, while the server-side Cairo window gate executes only the valid local slot and treats the companion trigger as a no-op. Exactly one matching managed job is enabled.
+
+Each valid run authenticates the managed task identity, verifies durable task ownership, claims one unique local time slot, rejects overlaps, recovers only genuinely stale claims, and processes qualified pending or failed submissions sequentially in bounded batches of 25. Existing immediate per-submission forwarding remains the primary path. The six-hour job is a reconciliation safety net and reuses the same qualification gate, opaque-token pull, conservative Lead matching, exact source/program attribution, and Meta-isolated CRM intake.[2] [4]
+
+Landing version `104bbca2` fixed the controlled-run validation path so a valid single-use authorization can execute outside the normal Cairo window, creates a durable run-ledger row, consumes the authorization atomically, and releases the settings claim on every completion or exception path. The focused landing validation completed with **28 passing tests**, TypeScript checking, and a production build.
+
+Two bounded controlled production batches validated the live workflow. The first completed run attempted 25 qualified records and received 25 matched/idempotent outcomes with zero failure or manual review. The second completed run attempted the remaining seven and received seven matched/idempotent outcomes with zero failure or manual review. Final landing state is **32 matched, zero pending, zero failed, zero manual-review, zero stale-processing, and zero active claims**.
+
+Independent CRM verification remains authoritative for the resulting customer records: there are 32 distinct landing inquiry references linked to 31 distinct Leads, comprising 31 `created` outcomes and one conservative `matched` outcome. All 32 inquiry rows retain exact source `Spain_landing page` and programme `Spain DNV`; there are no processing claims or error codes. The linked Lead set contains zero Meta Test Leads, zero Meta Lead IDs, zero immutable Meta attribution rows, and zero Meta CRM outbox rows. The production CAPI path remains disabled because dispatch requires `META_CRM_PRODUCTION_ENABLED === "true"`, and the variable is not enabled.[2] [3] [6]
+
+| Operating action | Procedure |
+|---|---|
+| Monitor | Review the managed schedule execution history and the landing reconciliation run ledger. Use aggregate counts only: eligible, attempted, matched/synchronized, manual review, failed, pending, and stale-processing. |
+| Retry | Leave failed or pending qualified rows unchanged; the next valid six-hour slot selects them automatically. Investigate before manually retrying a systemic failure. |
+| Pause | Pause the single managed reconciliation job and set the durable reconciliation setting to disabled. Immediate visitor-submission forwarding remains available unless separately disabled. |
+| Resume | Re-enable the durable setting, then resume the same managed task. Confirm there is exactly one matching job and verify the next Cairo-valid trigger. |
+| Roll back | The safest rollback is to pause the managed job while retaining the additive tables and all existing Lead/inquiry history. Revert only the scheduled handler, route registration, and sync-state writes after reviewing newer landing changes; do not roll back the entire website blindly. |
+
+## 19. References
 
 [1]: ../../elevay-website/server/routers/spainDnvLanding.ts "Landing qualification submission router"
 [2]: ../server/spainLandingLeadsService.ts "ELEVAY CRM Spain landing ingestion service"
