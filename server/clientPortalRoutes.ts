@@ -7,6 +7,7 @@ import { storageGet, storagePut } from "./storage";
 import {
   clientApplicationActivities,
   clientCases,
+  clientDocumentationPayments,
   clientDocuments,
   clientPortalApplications,
   clientPortalApplicants,
@@ -29,6 +30,7 @@ import {
   writePortalAudit,
   type PortalRequestContext,
 } from "./clientPortalAuth";
+import { projectClientProcessTimeline } from "./clientProcessTimeline";
 import { sendClientPortalActivityEmail, sendClientPortalPasswordResetEmail } from "./emailService";
 import { mergeSystemNotificationRecipients } from "./systemNotificationRecipients";
 
@@ -460,6 +462,37 @@ export function registerClientPortalRoutes(app: Express) {
     if (!db) return error(res, 503, "service_unavailable");
     const checklist = await db.select().from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id));
     return res.json(workflowProjection(owned.clientCase, checklist.filter(item => item.received).length, checklist.length));
+  });
+
+  app.get("/client-api/applications/:applicationId/process-timeline", async (req: PortalRequest, res) => {
+    const owned = await ownedApplication(req.portal!.user.id, req.params.applicationId);
+    if (!owned) return error(res, 404, "application_not_found");
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
+    const [documents, payments] = await Promise.all([
+      db.select({
+        received: clientDocuments.received,
+        receivedDate: clientDocuments.receivedDate,
+        mofaSubmitted: clientDocuments.mofaSubmitted,
+        mofaSubmittedDate: clientDocuments.mofaSubmittedDate,
+        embassySubmitted: clientDocuments.embassySubmitted,
+        embassySubmittedDate: clientDocuments.embassySubmittedDate,
+      }).from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id)),
+      db.select({
+        paymentName: clientDocumentationPayments.paymentName,
+        paidDate: clientDocumentationPayments.paidDate,
+        sortOrder: clientDocumentationPayments.sortOrder,
+      }).from(clientDocumentationPayments).where(and(
+        eq(clientDocumentationPayments.clientCaseId, owned.clientCase.id),
+        isNull(clientDocumentationPayments.archivedAt),
+      )).orderBy(asc(clientDocumentationPayments.sortOrder), asc(clientDocumentationPayments.id)),
+    ]);
+    return res.json(projectClientProcessTimeline({
+      clientCase: owned.clientCase,
+      documents,
+      payments,
+      applicationCreatedAt: owned.application.createdAt,
+    }));
   });
 
   app.get("/client-api/applications/:applicationId/activity", async (req: PortalRequest, res) => {
