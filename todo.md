@@ -1313,3 +1313,9 @@ Check email for download link within 5 minutes
 - [x] Verify no `@elevay.com` address is used as a sender and duplicate recipient variants are removed safely
 - [x] Add regression tests for single/multiple recipients, case-insensitive deduplication, existing recipients, and representative notification workflows
 - [x] Run focused tests and the production build, complete the checklist, publish, and report the notification update
+
+## Client Documentation — Notification Report
+- [x] Audit every Client Documentation email, in-app, push, outbox, scheduler, and fallback notification path on the latest shared branch
+- [x] Map each notification trigger, timing condition, recipients, message fields, channel, deduplication behavior, delivery evidence, and failure handling
+- [x] Assess active coverage, missing requirements, duplicate-send risks, privacy/security controls, and operational limitations
+- [x] Write and deliver a complete evidence-based Client Documentation notification report without exposing client data
