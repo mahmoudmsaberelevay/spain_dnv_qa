@@ -400,6 +400,13 @@
       "when": 1788765470715,
       "tag": "0063_client_portal_review_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "5",
+      "when": 1788864229317,
+      "tag": "0064_client_lifecycle_notifications",
+      "breakpoints": true
     }
   ]
 }

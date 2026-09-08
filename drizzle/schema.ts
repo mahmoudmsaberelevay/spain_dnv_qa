@@ -235,6 +235,38 @@ export const clientCases = mysqlTable("clientCases", {
   settlementFeeAmount: decimal("settlementFeeAmount", { precision: 12, scale: 2 }),
   settlementFeeDate: timestamp("settlementFeeDate"),
   biometricsDate: timestamp("biometricsDate"),
+  // Client application lifecycle anchors. Nullable by design: legacy cases are
+  // never backfilled from assumptions.
+  clientPortalSignedAt: timestamp("clientPortalSignedAt"),
+  appointmentBookingSubmittedAt: timestamp("appointmentBookingSubmittedAt"),
+  embassyReplyConfirmedAt: timestamp("embassyReplyConfirmedAt"),
+  secondPaymentAmount: decimal("secondPaymentAmount", { precision: 12, scale: 2 }),
+  secondPaymentCurrency: varchar("secondPaymentCurrency", { length: 10 }).default("EUR"),
+  secondPaymentDueDate: date("secondPaymentDueDate"),
+  secondPaymentStatus: mysqlEnum("secondPaymentStatus", ["pending", "paid"]).default("pending"),
+  travelDate: timestamp("travelDate"),
+  arrivalConfirmationAt: timestamp("arrivalConfirmationAt"),
+  spanishTeamSubmittedAt: timestamp("spanishTeamSubmittedAt"),
+  swornTranslationSubmittedAt: timestamp("swornTranslationSubmittedAt"),
+  spanishGovernmentSubmittedAt: timestamp("spanishGovernmentSubmittedAt"),
+  spanishGovernmentReceiptDocumentPublicId: varchar("spanishGovernmentReceiptDocumentPublicId", { length: 36 }),
+  approvalTransitionAt: timestamp("approvalTransitionAt"),
+  approvalDocumentPublicId: varchar("approvalDocumentPublicId", { length: 36 }),
+  thirdPaymentAmount: decimal("thirdPaymentAmount", { precision: 12, scale: 2 }),
+  thirdPaymentCurrency: varchar("thirdPaymentCurrency", { length: 10 }).default("EUR"),
+  thirdPaymentDueDate: date("thirdPaymentDueDate"),
+  thirdPaymentStatus: mysqlEnum("thirdPaymentStatus", ["pending", "paid"]).default("pending"),
+  travelByDate: date("travelByDate"),
+  biometricsLocation: varchar("biometricsLocation", { length: 500 }),
+  biometricsTimezone: varchar("biometricsTimezone", { length: 100 }).default("Europe/Madrid"),
+  biometricsStatus: mysqlEnum("biometricsStatus", ["not_booked", "confirmed", "cancelled", "completed"]).default("not_booked"),
+  biometricsBookedAt: timestamp("biometricsBookedAt"),
+  residencyCardStatus: mysqlEnum("residencyCardStatus", ["not_started", "processing", "ready_for_collection", "collected"]).default("not_started"),
+  residencyCardReadyAt: timestamp("residencyCardReadyAt"),
+  residencyCardCollectionLocation: varchar("residencyCardCollectionLocation", { length: 500 }),
+  residencyCardCollectionInstructions: text("residencyCardCollectionInstructions"),
+  residencyCardDocumentPublicId: varchar("residencyCardDocumentPublicId", { length: 36 }),
+  applicationTimezone: varchar("applicationTimezone", { length: 100 }).default("Africa/Cairo"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -257,6 +289,8 @@ export const clientDocuments = mysqlTable("clientDocuments", {
   mofaAttestedDate: timestamp("mofaAttestedDate"),
   embassyAttested: boolean("embassyAttested").default(false).notNull(),
   embassyAttestedDate: timestamp("embassyAttestedDate"),
+  legalStatus: mysqlEnum("legalStatus", ["pending", "mofa_submitted", "mofa_received", "embassy_submitted", "embassy_received"]).default("pending").notNull(),
+  portalDocumentPublicId: varchar("portalDocumentPublicId", { length: 36 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -1364,6 +1398,7 @@ export const clientPortalDocuments = mysqlTable("client_portal_documents", {
   publicId: varchar("publicId", { length: 36 }).notNull().unique(),
   portalApplicationId: int("portalApplicationId").notNull(),
   applicantId: int("applicantId"),
+  clientDocumentId: int("clientDocumentId"),
   documentType: varchar("documentType", { length: 128 }).notNull(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
   fileKey: varchar("fileKey", { length: 1024 }).notNull(),
@@ -1401,6 +1436,7 @@ export const clientPortalNotifications = mysqlTable("client_portal_notifications
   id: int("id").autoincrement().primaryKey(),
   publicId: varchar("publicId", { length: 36 }).notNull().unique(),
   portalUserId: int("portalUserId").notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 191 }).unique(),
   type: varchar("type", { length: 64 }).notNull(),
   titleEn: varchar("titleEn", { length: 255 }).notNull(),
   titleAr: varchar("titleAr", { length: 255 }).notNull(),
@@ -1437,6 +1473,7 @@ export type InsertClientPortalAuditLog = typeof clientPortalAuditLogs.$inferInse
 
 export const clientPortalDeliveryOutbox = mysqlTable("client_portal_delivery_outbox", {
   id: int("id").autoincrement().primaryKey(),
+  idempotencyKey: varchar("idempotencyKey", { length: 191 }).unique(),
   eventType: varchar("eventType", { length: 64 }).notNull(),
   channel: mysqlEnum("channel", ["email", "push", "crm_notification"]).notNull(),
   recipient: varchar("recipient", { length: 512 }).notNull(),
@@ -1446,6 +1483,54 @@ export const clientPortalDeliveryOutbox = mysqlTable("client_portal_delivery_out
   lastError: text("lastError"),
   processedAt: timestamp("processedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const clientApplicationActivities = mysqlTable("client_application_activities", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  clientCaseId: int("clientCaseId").notNull(),
+  actorType: mysqlEnum("actorType", ["staff", "client", "system"]).notNull(),
+  actorStaffUserId: int("actorStaffUserId"),
+  actorPortalUserId: int("actorPortalUserId"),
+  actorName: varchar("actorName", { length: 255 }).notNull(),
+  eventType: varchar("eventType", { length: 80 }).notNull(),
+  titleEn: varchar("titleEn", { length: 255 }).notNull(),
+  titleAr: varchar("titleAr", { length: 255 }).notNull(),
+  bodyEn: text("bodyEn").notNull(),
+  bodyAr: text("bodyAr").notNull(),
+  entityType: varchar("entityType", { length: 64 }),
+  entityPublicId: varchar("entityPublicId", { length: 64 }),
+  metadata: json("metadata"),
+  visibleToClient: boolean("visibleToClient").default(true).notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 191 }).notNull().unique(),
+  occurredAt: timestamp("occurredAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ClientApplicationActivity = typeof clientApplicationActivities.$inferSelect;
+export type InsertClientApplicationActivity = typeof clientApplicationActivities.$inferInsert;
+
+export const clientReminderDeliveries = mysqlTable("client_reminder_deliveries", {
+  id: int("id").autoincrement().primaryKey(),
+  idempotencyKey: varchar("idempotencyKey", { length: 191 }).notNull().unique(),
+  clientCaseId: int("clientCaseId").notNull(),
+  portalUserId: int("portalUserId").notNull(),
+  ruleKey: varchar("ruleKey", { length: 80 }).notNull(),
+  scheduledFor: timestamp("scheduledFor").notNull(),
+  status: mysqlEnum("status", ["pending", "sent", "skipped", "failed"]).default("pending").notNull(),
+  attempts: int("attempts").default(0).notNull(),
+  lastError: text("lastError"),
+  sentAt: timestamp("sentAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const clientReminderSettings = mysqlTable("client_reminder_settings", {
+  id: int("id").primaryKey(),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
+  enabled: boolean("enabled").default(true).notNull(),
+  lastRunAt: timestamp("lastRunAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
 // ─── Public Program & Service Provider Content ────────────────────────────────
