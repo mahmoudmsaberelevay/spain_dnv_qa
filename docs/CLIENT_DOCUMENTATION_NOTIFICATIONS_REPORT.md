@@ -89,7 +89,7 @@ The schema change is additive and preserves existing records. It adds authoritat
 
 ## Deployment Activation
 
-The code and database are ready. After publishing the saved WebDev checkpoint, create one project Heartbeat at a fixed UTC time equivalent to the selected Cairo operating time and persist its returned task UID in `client_reminder_settings`. The implementation is designed for one deterministic daily invocation. Platform retries of transient `5xx`/`429` responses are safe because lifecycle and delivery writes are idempotent.
+The project-owned Heartbeat **`client-lifecycle-reminders-daily`** is active. It runs once per day at **06:00 UTC**, equivalent to approximately **08:00 or 09:00 in Cairo** depending on daylight-saving time, and posts to `/api/scheduled/clientLifecycleReminders`. Its task UID, `S9vJ4UJkBMoDChVEuxGz4i`, is persisted in `client_reminder_settings`, so orphan or replaced schedules are safely skipped. Platform retries of transient `5xx`/`429` responses are safe because lifecycle and delivery writes are idempotent.
 
 ## Primary Implementation Files
 
