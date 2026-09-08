@@ -1279,3 +1279,10 @@ Check email for download link within 5 minutes
 - [x] Validate both private pull aliases reject invalid tokens through the intended handler and confirm the CRM intake route remains active
 - [x] Verify existing inquiry/Lead counts, exact `Spain_landing page` source, Spain DNV program context, deduplication, and zero Meta/CAPI regression
 - [x] Complete the checklist, publish the repair, and report restored landing-to-Leads synchronization
+
+## Spain Landing Leads — Complete Qualified Submission Reconciliation
+- [x] Audit the current qualified Spain landing submission count and compare it with distinct CRM inquiry references using count-only evidence
+- [x] Securely synchronize only qualified submission IDs missing from the CRM inquiry ledger through the existing server-side idempotent forwarding path
+- [x] Verify every eligible submission has one inquiry outcome and one conservative Lead linkage with exact source `Spain_landing page` and program `Spain DNV`
+- [x] Confirm zero failed/stuck/manual-review outcomes unless explicitly reported, zero duplicate Lead creation, and zero Meta attribution/outbox regression
+- [x] Reconfirm `META_CRM_PRODUCTION_ENABLED=false`, document the reconciliation result, complete the checklist, and publish any required update

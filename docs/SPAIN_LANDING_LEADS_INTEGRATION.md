@@ -229,7 +229,13 @@ The CRM additionally gained defense in depth: it tries the production-routed `/a
 
 An already authorized synthetic Spain submission then synchronized successfully after publication, increasing the durable set from 21 to **22 inquiry rows and 22 distinct Lead links**. All 22 have outcome `created`, exact source `Spain_landing page`, programme `Spain DNV`, no failed/processing/manual-review rows, and zero Meta attribution or Meta CRM-event rows.
 
-## 17. References
+## 17. Complete qualified-submission reconciliation — 8 September 2026
+
+A fresh privacy-safe audit found **32 currently qualified Spain DNV landing submissions**. The one-time server-side reconciliation processed the exact audited set sequentially through `forwardSpainDnvLeadToCrm(id)`: all 32 requests succeeded, 26 returned idempotent duplicate outcomes, six previously unsynchronized references were processed, zero requests failed, and execution did not stop early. The temporary runner was removed after completion; no permanent landing route or website publication was required.
+
+Post-run CRM verification found **32 distinct external submission references**, 32 linked inquiry outcomes, and **31 distinct Lead records**. This is the expected conservative result: 31 inquiries created Leads and one inquiry matched an existing Lead rather than creating a duplicate. Every linked inquiry has exact source `Spain_landing page`, programme `Spain DNV`, non-test context, released processing claims, and no error code. There are zero failed, processing, or manual-review outcomes, zero Meta attribution rows, and zero Meta CRM-event rows. `META_CRM_PRODUCTION_ENABLED=false` was reconfirmed after the reconciliation.
+
+## 18. References
 
 [1]: ../../elevay-website/server/routers/spainDnvLanding.ts "Landing qualification submission router"
 [2]: ../server/spainLandingLeadsService.ts "ELEVAY CRM Spain landing ingestion service"
