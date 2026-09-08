@@ -29,6 +29,7 @@ import {
   type PortalRequestContext,
 } from "./clientPortalAuth";
 import { sendClientPortalActivityEmail, sendClientPortalPasswordResetEmail } from "./emailService";
+import { mergeSystemNotificationRecipients } from "./systemNotificationRecipients";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const APP_REVIEW_CLIENT_CODE = "APP-REVIEW-001";
@@ -125,6 +126,7 @@ async function ownedApplication(portalUserId: number, applicationPublicId: strin
 }
 
 function workflowProjection(clientCase: typeof clientCases.$inferSelect, receivedCount: number, totalDocuments: number) {
+  const spainTeamReceived = clientCase.stage === "spain_team_received" || clientCase.stage === "submission" || clientCase.stage === "approved";
   const submitted = clientCase.stage === "submission" || clientCase.stage === "approved";
   const approved = clientCase.stage === "approved";
   const documentsReceived = totalDocuments > 0 && receivedCount > 0;
@@ -133,12 +135,13 @@ function workflowProjection(clientCase: typeof clientCases.$inferSelect, receive
     { key: "contract_signed", titleEn: "Contract Signed", titleAr: "تم توقيع العقد", status: "completed", date: clientCase.createdAt },
     { key: "initial_documents", titleEn: "Initial Documents Received", titleAr: "تم استلام المستندات الأولية", status: documentsReceived ? "completed" : "active", date: null },
     { key: "documents_review", titleEn: "Documents Under Review", titleAr: "المستندات قيد المراجعة", status: documentsComplete ? "completed" : documentsReceived ? "active" : "pending", date: null },
-    { key: "preparing", titleEn: "Preparing Application", titleAr: "إعداد الطلب", status: submitted ? "completed" : clientCase.stage === "preparation" ? "active" : "pending", date: clientCase.expectedSubmissionDate },
+    { key: "preparing", titleEn: "Preparing Application", titleAr: "إعداد الطلب", status: spainTeamReceived ? "completed" : "active", date: clientCase.expectedSubmissionDate },
+    { key: "spain_team_received", titleEn: "Spain Team Received", titleAr: "استلام فريق إسبانيا", status: spainTeamReceived ? "completed" : "pending", date: clientCase.spainTeamReceivedDate },
     { key: "submitted", titleEn: "Application Submitted", titleAr: "تم تقديم الطلب", status: submitted ? "completed" : "pending", date: clientCase.submissionDate },
     { key: "authority_review", titleEn: "Authority Review", titleAr: "مراجعة الجهة المختصة", status: approved ? "completed" : submitted ? "active" : "pending", date: clientCase.expectedApprovalDate },
     { key: "approval", titleEn: "Approval", titleAr: "الموافقة", status: approved ? "completed" : "pending", date: clientCase.approvalDate },
-    { key: "biometrics", titleEn: "Biometrics", titleAr: "البيانات البيومترية", status: clientCase.biometricsDate ? "completed" : approved ? "active" : "pending", date: clientCase.biometricsDate },
-    { key: "residence_card", titleEn: "Residence Card", titleAr: "بطاقة الإقامة", status: clientCase.biometricsDate ? "active" : "pending", date: null },
+    { key: "biometrics", titleEn: "Biometrics", titleAr: "البيانات البيومترية", status: clientCase.biometricsDate ? "completed" : clientCase.biometricsAppointmentDate ? "active" : "pending", date: clientCase.biometricsDate || clientCase.biometricsAppointmentDate },
+    { key: "residence_card", titleEn: "Residence Card", titleAr: "بطاقة الإقامة", status: clientCase.residencyCardReadyDate ? "completed" : clientCase.biometricsDate ? "active" : "pending", date: clientCase.residencyCardReadyDate },
   ] as const;
   const completed = stages.filter(stage => stage.status === "completed").length;
   return { stages, progressPercent: Math.round((completed / stages.length) * 100), currentStage: stages.find(stage => stage.status === "active") ?? stages[stages.length - 1] };
@@ -147,10 +150,11 @@ function workflowProjection(clientCase: typeof clientCases.$inferSelect, receive
 async function queueStaffEmail(input: { eventType: string; recipients: string[]; subject: string; html: string }) {
   const db = await getDb();
   if (!db || input.recipients.length === 0) return;
-  const [result] = await db.insert(clientPortalDeliveryOutbox).values({ eventType: input.eventType, channel: "email", recipient: input.recipients.join(","), payload: { subject: input.subject, html: input.html } });
+  const recipients = mergeSystemNotificationRecipients(input.recipients);
+  const [result] = await db.insert(clientPortalDeliveryOutbox).values({ eventType: input.eventType, channel: "email", recipient: recipients.join(","), payload: { subject: input.subject, html: input.html } });
   const outboxId = Number((result as { insertId?: number }).insertId || 0);
   try {
-    const sent = await sendClientPortalActivityEmail(input.recipients, input.subject, input.html);
+    const sent = await sendClientPortalActivityEmail(recipients, input.subject, input.html);
     if (!sent) throw new Error("email_provider_rejected");
     if (outboxId) await db.update(clientPortalDeliveryOutbox).set({ status: "sent", attempts: 1, processedAt: new Date() }).where(eq(clientPortalDeliveryOutbox.id, outboxId));
   } catch (sendError) {
@@ -203,7 +207,7 @@ function staffRecipients(consultant?: string | null, paralegal?: string | null) 
     Monica: "monica.sobhy@elevay.com", "Monica Sobhy": "monica.sobhy@elevay.com",
     Marina: "marina.kamel@elevay.com", "Marina Kamel": "marina.kamel@elevay.com",
   };
-  return Array.from(new Set([consultant && map[consultant], paralegal && map[paralegal], "mahmoud.saber@elevay.com"].filter((value): value is string => Boolean(value))));
+  return mergeSystemNotificationRecipients([consultant && map[consultant], paralegal && map[paralegal], "mahmoud.saber@elevay.com"].filter((value): value is string => Boolean(value)));
 }
 
 export function registerClientPortalRoutes(app: Express) {
@@ -440,9 +444,9 @@ export function registerClientPortalRoutes(app: Express) {
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
     const applicants = await db.select({ publicId: clientPortalApplicants.publicId, relation: clientPortalApplicants.relation, fullName: clientPortalApplicants.fullName, birthDate: clientPortalApplicants.birthDate }).from(clientPortalApplicants).where(eq(clientPortalApplicants.portalApplicationId, owned.application.id)).orderBy(asc(clientPortalApplicants.id));
-    const folderItems = await db.select({ id: clientDocuments.id, docKey: clientDocuments.docKey, docName: clientDocuments.docName, category: clientDocuments.category, received: clientDocuments.received, receivedDate: clientDocuments.receivedDate, requiresMofa: clientDocuments.requiresMofa, mofaAttested: clientDocuments.mofaAttested, requiresEmbassy: clientDocuments.requiresEmbassy, embassyAttested: clientDocuments.embassyAttested }).from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id)).orderBy(asc(clientDocuments.category), asc(clientDocuments.id));
+    const folderItems = await db.select({ id: clientDocuments.id, docKey: clientDocuments.docKey, docName: clientDocuments.docName, category: clientDocuments.category, received: clientDocuments.received, receivedDate: clientDocuments.receivedDate, documentLink: clientDocuments.documentLink, requiresMofa: clientDocuments.requiresMofa, mofaSubmitted: clientDocuments.mofaSubmitted, mofaSubmittedDate: clientDocuments.mofaSubmittedDate, mofaReceived: clientDocuments.mofaReceived, mofaReceivedDate: clientDocuments.mofaReceivedDate, requiresEmbassy: clientDocuments.requiresEmbassy, embassySubmitted: clientDocuments.embassySubmitted, embassySubmittedDate: clientDocuments.embassySubmittedDate, embassyReceived: clientDocuments.embassyReceived, embassyReceivedDate: clientDocuments.embassyReceivedDate }).from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id)).orderBy(asc(clientDocuments.category), asc(clientDocuments.id));
     const folder = { name: `${owned.clientCase.clientName} – Documentation`, clientCode: owned.clientCase.clientCode, total: folderItems.length, received: folderItems.filter(item => item.received).length, items: folderItems };
-    return res.json({ publicId: owned.application.publicId, label: owned.application.label || owned.clientCase.clientName, clientCode: owned.clientCase.clientCode, applicationType: owned.clientCase.applicationType, stage: owned.clientCase.stage, consultant: owned.clientCase.consultant, paralegal: owned.clientCase.paralegal, dates: { expectedSubmissionDate: owned.clientCase.expectedSubmissionDate, submissionDate: owned.clientCase.submissionDate, expectedApprovalDate: owned.clientCase.expectedApprovalDate, approvalDate: owned.clientCase.approvalDate, biometricsDate: owned.clientCase.biometricsDate }, applicants, documentationFolder: folder });
+    return res.json({ publicId: owned.application.publicId, label: owned.application.label || owned.clientCase.clientName, clientCode: owned.clientCase.clientCode, applicationType: owned.clientCase.applicationType, stage: owned.clientCase.stage, consultant: owned.clientCase.consultant, paralegal: owned.clientCase.paralegal, dates: { expectedSubmissionDate: owned.clientCase.expectedSubmissionDate, spainTeamReceivedDate: owned.clientCase.spainTeamReceivedDate, translatorSubmittedDate: owned.clientCase.translationDate, submissionDate: owned.clientCase.submissionDate, expectedApprovalDate: owned.clientCase.expectedApprovalDate, approvalDate: owned.clientCase.approvalDate, travelDate: owned.clientCase.travelDate, arrivalConfirmedDate: owned.clientCase.arrivalConfirmedDate, biometricsAppointmentDate: owned.clientCase.biometricsAppointmentDate, biometricsCompletedDate: owned.clientCase.biometricsDate, bankAccountCompletedDate: owned.clientCase.bankAccountCompletedDate, residencyCardReadyDate: owned.clientCase.residencyCardReadyDate }, links: { submissionReceipt: owned.clientCase.submissionReceiptLink, approvalLetter: owned.clientCase.approvalLetterLink, ticket: owned.clientCase.ticketLink, hotel: owned.clientCase.hotelLink }, applicants, documentationFolder: folder });
   });
 
   app.get("/client-api/applications/:applicationId/workflow", async (req: PortalRequest, res) => {
@@ -459,7 +463,7 @@ export function registerClientPortalRoutes(app: Express) {
     if (!owned) return error(res, 404, "application_not_found");
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
-    const folderItems = await db.select({ id: clientDocuments.id, docKey: clientDocuments.docKey, docName: clientDocuments.docName, category: clientDocuments.category, received: clientDocuments.received, receivedDate: clientDocuments.receivedDate, requiresMofa: clientDocuments.requiresMofa, mofaAttested: clientDocuments.mofaAttested, requiresEmbassy: clientDocuments.requiresEmbassy, embassyAttested: clientDocuments.embassyAttested }).from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id)).orderBy(asc(clientDocuments.category), asc(clientDocuments.id));
+    const folderItems = await db.select({ id: clientDocuments.id, docKey: clientDocuments.docKey, docName: clientDocuments.docName, category: clientDocuments.category, received: clientDocuments.received, receivedDate: clientDocuments.receivedDate, documentLink: clientDocuments.documentLink, requiresMofa: clientDocuments.requiresMofa, mofaSubmitted: clientDocuments.mofaSubmitted, mofaSubmittedDate: clientDocuments.mofaSubmittedDate, mofaReceived: clientDocuments.mofaReceived, mofaReceivedDate: clientDocuments.mofaReceivedDate, requiresEmbassy: clientDocuments.requiresEmbassy, embassySubmitted: clientDocuments.embassySubmitted, embassySubmittedDate: clientDocuments.embassySubmittedDate, embassyReceived: clientDocuments.embassyReceived, embassyReceivedDate: clientDocuments.embassyReceivedDate }).from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id)).orderBy(asc(clientDocuments.category), asc(clientDocuments.id));
     const rows = await db.select({ document: clientPortalDocuments, applicantName: clientPortalApplicants.fullName }).from(clientPortalDocuments).leftJoin(clientPortalApplicants, eq(clientPortalDocuments.applicantId, clientPortalApplicants.id)).where(and(eq(clientPortalDocuments.portalApplicationId, owned.application.id), eq(clientPortalDocuments.visibleToClient, true))).orderBy(desc(clientPortalDocuments.createdAt));
     return res.json({ folder: { name: `${owned.clientCase.clientName} – Documentation`, clientCode: owned.clientCase.clientCode, total: folderItems.length, received: folderItems.filter(item => item.received).length, items: folderItems }, uploads: rows.map(({ document, applicantName }) => ({ publicId: document.publicId, documentType: document.documentType, fileName: document.fileName, mimeType: document.mimeType, fileSize: document.fileSize, source: document.source, reviewStatus: document.reviewStatus, clientComment: document.clientComment, applicantName, createdAt: document.createdAt })) });
   });

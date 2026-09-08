@@ -11,6 +11,8 @@ import {
   boolean,
   decimal,
   date,
+  index,
+  uniqueIndex,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -204,6 +206,7 @@ export type InsertProformaInvoice = typeof proformaInvoices.$inferInsert;
 export const clientCases = mysqlTable("clientCases", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
+  finClientId: int("finClientId"),
   clientName: varchar("clientName", { length: 255 }).notNull(),
   clientCode: varchar("clientCode", { length: 64 }).notNull(),
   applicationType: mysqlEnum("applicationType", ["freelancer", "business_owner"]).notNull(),
@@ -220,20 +223,26 @@ export const clientCases = mysqlTable("clientCases", {
   embassyEmailDate: date("embassyEmailDate"),
   // Google Drive link for client documents folder
   driveLink: text("driveLink"),
+  // Dedicated Google Drive link for the signed client contract
+  contractDriveLink: text("contractDriveLink"),
   // Children data: JSON array of { name: string; age: number } (exact name + age per child)
   childrenData: json("childrenData"),
   // Spouse / wife name
   spouseName: varchar("spouseName", { length: 255 }),
-  // 3-stage workflow
-  stage: mysqlEnum("stage", ["preparation", "submission", "approved"]).default("preparation").notNull(),
+  // Spain documentation workflow
+  stage: mysqlEnum("stage", ["preparation", "spain_team_received", "submission", "approved"]).default("preparation").notNull(),
+  spainTeamReceivedDate: date("spainTeamReceivedDate", { mode: "string" }),
   // Submission stage fields
   submissionDate: timestamp("submissionDate"),
+  submissionReceiptLink: text("submissionReceiptLink"),
   expectedApprovalDate: timestamp("expectedApprovalDate"),
   translationDate: timestamp("translationDate"),
   // Approved stage fields
   approvalDate: timestamp("approvalDate"),
+  approvalLetterLink: text("approvalLetterLink"),
   settlementFeeAmount: decimal("settlementFeeAmount", { precision: 12, scale: 2 }),
   settlementFeeDate: timestamp("settlementFeeDate"),
+  biometricsAppointmentDate: date("biometricsAppointmentDate", { mode: "string" }),
   biometricsDate: timestamp("biometricsDate"),
   // Client application lifecycle anchors. Nullable by design: legacy cases are
   // never backfilled from assumptions.
@@ -244,8 +253,6 @@ export const clientCases = mysqlTable("clientCases", {
   secondPaymentCurrency: varchar("secondPaymentCurrency", { length: 10 }).default("EUR"),
   secondPaymentDueDate: date("secondPaymentDueDate"),
   secondPaymentStatus: mysqlEnum("secondPaymentStatus", ["pending", "paid"]).default("pending"),
-  travelDate: timestamp("travelDate"),
-  arrivalConfirmationAt: timestamp("arrivalConfirmationAt"),
   spanishTeamSubmittedAt: timestamp("spanishTeamSubmittedAt"),
   swornTranslationSubmittedAt: timestamp("swornTranslationSubmittedAt"),
   spanishGovernmentSubmittedAt: timestamp("spanishGovernmentSubmittedAt"),
@@ -262,11 +269,16 @@ export const clientCases = mysqlTable("clientCases", {
   biometricsStatus: mysqlEnum("biometricsStatus", ["not_booked", "confirmed", "cancelled", "completed"]).default("not_booked"),
   biometricsBookedAt: timestamp("biometricsBookedAt"),
   residencyCardStatus: mysqlEnum("residencyCardStatus", ["not_started", "processing", "ready_for_collection", "collected"]).default("not_started"),
-  residencyCardReadyAt: timestamp("residencyCardReadyAt"),
   residencyCardCollectionLocation: varchar("residencyCardCollectionLocation", { length: 500 }),
   residencyCardCollectionInstructions: text("residencyCardCollectionInstructions"),
   residencyCardDocumentPublicId: varchar("residencyCardDocumentPublicId", { length: 36 }),
   applicationTimezone: varchar("applicationTimezone", { length: 100 }).default("Africa/Cairo"),
+  bankAccountCompletedDate: date("bankAccountCompletedDate", { mode: "string" }),
+  travelDate: date("travelDate", { mode: "string" }),
+  ticketLink: text("ticketLink"),
+  hotelLink: text("hotelLink"),
+  arrivalConfirmedDate: date("arrivalConfirmedDate", { mode: "string" }),
+  residencyCardReadyDate: date("residencyCardReadyDate", { mode: "string" }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -285,17 +297,47 @@ export const clientDocuments = mysqlTable("clientDocuments", {
   // Tracking fields
   received: boolean("received").default(false).notNull(),
   receivedDate: timestamp("receivedDate"),
+  documentLink: text("documentLink"),
+  mofaSubmitted: boolean("mofaSubmitted").default(false).notNull(),
+  mofaSubmittedDate: date("mofaSubmittedDate", { mode: "string" }),
+  mofaReceived: boolean("mofaReceived").default(false).notNull(),
+  mofaReceivedDate: date("mofaReceivedDate", { mode: "string" }),
   mofaAttested: boolean("mofaAttested").default(false).notNull(),
   mofaAttestedDate: timestamp("mofaAttestedDate"),
+  embassySubmitted: boolean("embassySubmitted").default(false).notNull(),
+  embassySubmittedDate: date("embassySubmittedDate", { mode: "string" }),
+  embassyReceived: boolean("embassyReceived").default(false).notNull(),
+  embassyReceivedDate: date("embassyReceivedDate", { mode: "string" }),
   embassyAttested: boolean("embassyAttested").default(false).notNull(),
   embassyAttestedDate: timestamp("embassyAttestedDate"),
-  legalStatus: mysqlEnum("legalStatus", ["pending", "mofa_submitted", "mofa_received", "embassy_submitted", "embassy_received"]).default("pending").notNull(),
-  portalDocumentPublicId: varchar("portalDocumentPublicId", { length: 36 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type ClientDocument = typeof clientDocuments.$inferSelect;
 export type InsertClientDocument = typeof clientDocuments.$inferInsert;
+
+export const clientDocumentationPayments = mysqlTable("clientDocumentationPayments", {
+  id: int("id").autoincrement().primaryKey(),
+  clientCaseId: int("clientCaseId").notNull(),
+  paymentName: varchar("paymentName", { length: 160 }).notNull(),
+  amountEur: decimal("amountEur", { precision: 12, scale: 2 }).notNull(),
+  dueDate: date("dueDate", { mode: "string" }).notNull(),
+  paidDate: date("paidDate", { mode: "string" }),
+  receiptName: varchar("receiptName", { length: 255 }),
+  receiptDriveLink: text("receiptDriveLink"),
+  notes: text("notes"),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdByUserId: int("createdByUserId").notNull(),
+  updatedByUserId: int("updatedByUserId"),
+  archivedAt: timestamp("archivedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  index("idx_client_documentation_payments_case").on(table.clientCaseId),
+  index("idx_client_documentation_payments_due").on(table.dueDate),
+]);
+export type ClientDocumentationPayment = typeof clientDocumentationPayments.$inferSelect;
+export type InsertClientDocumentationPayment = typeof clientDocumentationPayments.$inferInsert;
 
 // ─── Financial Module ────────────────────────────────────────────────────────
 
@@ -918,7 +960,10 @@ export const leads = mysqlTable("leads", {
   lastContactAt: bigint("lastContactAt", { mode: "number" }),
   createdAt: bigint("createdAt", { mode: "number" }).notNull(),
   updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
-});
+}, table => ({
+  normalizedPhoneIdentityUnique: uniqueIndex("leads_test_normalized_phone_uq").on(table.isMetaTestLead, table.normalizedPhone),
+  normalizedEmailIdentityUnique: uniqueIndex("leads_test_normalized_email_uq").on(table.isMetaTestLead, table.normalizedEmail),
+}));
 export type Lead = typeof leads.$inferSelect;
 export type InsertLead = typeof leads.$inferInsert;
 
@@ -1264,6 +1309,41 @@ export const metaReconciliationState = mysqlTable("meta_reconciliation_state", {
 });
 export type MetaReconciliationState = typeof metaReconciliationState.$inferSelect;
 export type InsertMetaReconciliationState = typeof metaReconciliationState.$inferInsert;
+
+export const databaseBackupSettings = mysqlTable("database_backup_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull().unique(),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }).unique(),
+  cronExpression: varchar("cronExpression", { length: 100 }).notNull(),
+  timeZone: varchar("timeZone", { length: 64 }).default("Africa/Cairo").notNull(),
+  isEnabled: boolean("isEnabled").default(true).notNull(),
+  authorizedTestRunUntil: bigint("authorizedTestRunUntil", { mode: "number" }),
+  lastAttemptAt: bigint("lastAttemptAt", { mode: "number" }),
+  lastSuccessAt: bigint("lastSuccessAt", { mode: "number" }),
+  lastFailureAt: bigint("lastFailureAt", { mode: "number" }),
+  lastErrorCode: varchar("lastErrorCode", { length: 80 }),
+  lastArtifactKey: varchar("lastArtifactKey", { length: 500 }),
+  lastArtifactSizeBytes: bigint("lastArtifactSizeBytes", { mode: "number" }),
+  lastEmailSuccessCount: int("lastEmailSuccessCount").default(0).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type DatabaseBackupSetting = typeof databaseBackupSettings.$inferSelect;
+
+export const databaseBackupRuns = mysqlTable("database_backup_runs", {
+  id: int("id").autoincrement().primaryKey(),
+  runKey: varchar("runKey", { length: 160 }).notNull().unique(),
+  taskUid: varchar("taskUid", { length: 65 }).notNull(),
+  status: mysqlEnum("status", ["processing", "success", "failed", "skipped"]).default("processing").notNull(),
+  artifactKey: varchar("artifactKey", { length: 500 }),
+  artifactSizeBytes: bigint("artifactSizeBytes", { mode: "number" }),
+  emailSuccessCount: int("emailSuccessCount").default(0).notNull(),
+  emailFailureCount: int("emailFailureCount").default(0).notNull(),
+  errorCode: varchar("errorCode", { length: 80 }),
+  startedAt: bigint("startedAt", { mode: "number" }).notNull(),
+  completedAt: bigint("completedAt", { mode: "number" }),
+  durationMs: int("durationMs"),
+});
+export type DatabaseBackupRun = typeof databaseBackupRuns.$inferSelect;
 
 export const leadsPermissions = mysqlTable("leads_permissions", {
   id: int("id").autoincrement().primaryKey(),

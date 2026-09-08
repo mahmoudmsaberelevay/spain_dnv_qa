@@ -65,7 +65,7 @@
             <div>
                 <p class="font-semibold text-blue-900">Backup Information</p>
                 <p class="text-sm text-blue-800 mt-1">
-                    All backups are encrypted with AES-256. Password: <code class="bg-blue-100 px-2 py-1 rounded">3488</code>
+                    New backups use AES-256-GCM authenticated encryption. The restoration key is stored separately and never displayed.
                 </p>
                 <p class="text-sm text-blue-800 mt-1">
                     Schedule: <strong>Monday-Thursday at 18:00 Cairo Time</strong>
@@ -107,9 +107,9 @@
                     <h4 class="font-semibold text-slate-900 mb-3 text-sm">Restore Instructions</h4>
                     <ol class="text-xs text-slate-700 space-y-2 list-decimal list-inside">
                         <li>Download the backup file</li>
-                        <li>Decrypt: <code class="bg-white px-1 text-xs">openssl enc -aes-256-cbc -d -in file.enc -out backup.sql.gz -k 3488</code></li>
-                        <li>Decompress: <code class="bg-white px-1 text-xs">gunzip backup.sql.gz</code></li>
-                        <li>Restore: <code class="bg-white px-1 text-xs">mysql -u root -p &lt; backup.sql</code></li>
+                        <li>Validate and decrypt with the documented server-side recovery utility.</li>
+                        <li>Restore first into an isolated recovery database.</li>
+                        <li>Promote to production only after validation and authorization.</li>
                     </ol>
                 </div>
             </div>
@@ -189,11 +189,11 @@
                     </div>
                     <div>
                         <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Encryption</p>
-                        <p class="text-sm text-slate-900">AES-256-CBC</p>
+                        <p class="text-sm text-slate-900">AES-256-GCM</p>
                     </div>
                     <div>
-                        <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Password</p>
-                        <code class="text-sm bg-slate-100 px-2 py-1 rounded block text-slate-900">3488</code>
+                        <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Restoration key</p>
+                        <p class="text-sm text-slate-900">Server-managed and not displayed</p>
                     </div>
                     <button onclick="downloadBackup('${backup.filename}')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded mt-4">
                         <i class="fas fa-download mr-2"></i>Download

@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
+import { requireBackupAdmin } from "../backupAccess";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -16,7 +17,7 @@ function formatBytes(bytes: number): string {
 
 export function registerBackupRoutes(app: Express) {
   // Backup list endpoint
-  app.get("/api/backup/list", (req, res) => {
+  app.get("/api/backup/list", requireBackupAdmin, (req, res) => {
     try {
       const BACKUP_DIR = "/home/ubuntu/backups";
 
@@ -53,7 +54,7 @@ export function registerBackupRoutes(app: Express) {
   });
 
   // Backup stats endpoint
-  app.get("/api/backup/stats", (req, res) => {
+  app.get("/api/backup/stats", requireBackupAdmin, (req, res) => {
     try {
       const BACKUP_DIR = "/home/ubuntu/backups";
 
@@ -68,8 +69,8 @@ export function registerBackupRoutes(app: Express) {
             averageSizeFormatted: "0 B",
             oldestBackup: null,
             newestBackup: null,
-            encryption: "AES-256-CBC",
-            password: "3488",
+            encryption: "AES-256-GCM",
+            credentialStorage: "server-side secret",
             retention: "10 days",
             schedule: "Mon-Thu 18:00 Cairo",
           },
@@ -104,8 +105,8 @@ export function registerBackupRoutes(app: Express) {
           averageSizeFormatted: files.length > 0 ? formatBytes(totalSize / files.length) : "0 B",
           oldestBackup: oldestDate ? { filename: files[files.length - 1], date: oldestDate, dateFormatted: new Date(oldestDate).toLocaleString() } : null,
           newestBackup: newestDate ? { filename: files[0], date: newestDate, dateFormatted: new Date(newestDate).toLocaleString() } : null,
-          encryption: "AES-256-CBC",
-          password: "3488",
+          encryption: "AES-256-GCM",
+          credentialStorage: "server-side secret",
           retention: "10 days",
           schedule: "Mon-Thu 18:00 Cairo",
         },

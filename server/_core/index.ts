@@ -16,8 +16,8 @@ import path from "path";
 import { startReminderScheduler } from "../reminderScheduler";
 import { startMonthlyReportScheduler } from "../monthlyReportScheduler";
 import { startRateScheduler } from "../rateScheduler";
-import { startWeeklyBackupScheduler } from "../weeklyBackupScheduler";
 import rateLimit from "express-rate-limit";
+import { requireBackupAdmin } from "../backupAccess";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -106,13 +106,13 @@ async function startServer() {
   });
 
   // Backup download page (register FIRST to bypass all middleware)
-  app.get("/backup", (_req, res) => {
+  app.get("/backup", requireBackupAdmin, (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(getBackupDownloadHTML());
   });
 
   // Backup download API
-  app.get("/api/backup/download/:filename", (req, res) => {
+  app.get("/api/backup/download/:filename", requireBackupAdmin, (req, res) => {
     try {
       const filename = decodeURIComponent(req.params.filename);
       const BACKUP_DIR = "/home/ubuntu/backups";
@@ -355,30 +355,47 @@ async function startServer() {
       if (!fullName) {
         return res.status(400).json({ error: "full_name is required" });
       }
-      const { createLead, checkDuplicate } = await import("../leadsDb");
-      // Duplicate check by phone
-      if (phone) {
-        const dup = await checkDuplicate(phone);
-        if (dup) {
-          return res.status(409).json({ error: "Duplicate lead: phone already exists", leadId: dup.id });
-        }
+      const email = (body.email as string) || undefined;
+      const whatsapp = (body.whatsapp as string) || undefined;
+      const { createLead } = await import("../leadsDb");
+      const { findLeadContactMatch } = await import("../leadContactMatcher");
+      const { isLeadContactUniqueViolation, normalizeLeadEmail, normalizeLeadPhone } = await import("../leadContactIdentity");
+      const contactMatch = await findLeadContactMatch({ phone, whatsapp, email, isMetaTestLead: false });
+      if (contactMatch.status === "matched") {
+        return res.status(200).json({ success: true, leadId: contactMatch.lead.id, created: false, duplicate: true, matchMethod: contactMatch.method });
+      }
+      if (contactMatch.status === "ambiguous") {
+        return res.status(409).json({ error: "Multiple existing Leads match these contact details", code: "AMBIGUOUS_CONTACT_MATCH" });
       }
       const utmParams = {
         source: body.utm_source, medium: body.utm_medium, campaign: body.utm_campaign,
       };
-      const leadId = await createLead({
-        fullName,
-        phone: phone || undefined,
-        email: (body.email as string) || undefined,
-        nationality: (body.nationality as string) || undefined,
-        interestedProgram: (body.interested_program as string) || undefined,
-        interestedCountry: (body.interested_country as string) || undefined,
-        leadSource: (body.lead_source as string) || integration.name,
-        budgetRange: (body.budget_range as string) || undefined,
-        utmParams: Object.values(utmParams).some(Boolean) ? JSON.stringify(utmParams) : undefined,
-        stage: "fresh",
-      });
-      return res.status(200).json({ success: true, leadId });
+      let leadId: number;
+      try {
+        leadId = await createLead({
+          fullName,
+          phone: phone || undefined,
+          whatsapp,
+          email,
+          normalizedPhone: normalizeLeadPhone(phone || whatsapp),
+          normalizedEmail: normalizeLeadEmail(email),
+          nationality: (body.nationality as string) || undefined,
+          interestedProgram: (body.interested_program as string) || undefined,
+          interestedCountry: (body.interested_country as string) || undefined,
+          leadSource: (body.lead_source as string) || integration.name,
+          budgetRange: (body.budget_range as string) || undefined,
+          utmParams: Object.values(utmParams).some(Boolean) ? JSON.stringify(utmParams) : undefined,
+          stage: "fresh",
+        });
+      } catch (error) {
+        if (!isLeadContactUniqueViolation(error)) throw error;
+        const raceMatch = await findLeadContactMatch({ phone, whatsapp, email, isMetaTestLead: false });
+        if (raceMatch.status === "matched") {
+          return res.status(200).json({ success: true, leadId: raceMatch.lead.id, created: false, duplicate: true, matchMethod: raceMatch.method });
+        }
+        return res.status(409).json({ error: "Multiple existing Leads match these contact details", code: "AMBIGUOUS_CONTACT_MATCH" });
+      }
+      return res.status(200).json({ success: true, leadId, created: true, duplicate: false, matchMethod: null });
     } catch (err) {
       console.error("[Website Webhook] Error:", err);
       return res.status(500).json({ error: "Internal server error" });
@@ -399,7 +416,7 @@ async function startServer() {
   app.post("/api/scheduled/publicContentSync", scheduledPublicContentSyncHandler);
 
   // Backup list endpoint
-  app.get("/api/backup/list", (req, res) => {
+  app.get("/api/backup/list", requireBackupAdmin, (req, res) => {
     try {
       const fs = require("fs");
       const path = require("path");
@@ -438,7 +455,7 @@ async function startServer() {
   });
 
   // Backup stats endpoint
-  app.get("/api/backup/stats", (req, res) => {
+  app.get("/api/backup/stats", requireBackupAdmin, (req, res) => {
     try {
       const fs = require("fs");
       const path = require("path");
@@ -455,8 +472,8 @@ async function startServer() {
             averageSizeFormatted: "0 B",
             oldestBackup: null,
             newestBackup: null,
-            encryption: "AES-256-CBC",
-            password: "3488",
+            encryption: "AES-256-GCM",
+            credentialStorage: "server-side secret",
             retention: "10 days",
             schedule: "Mon-Thu 18:00 Cairo",
           },
@@ -491,8 +508,8 @@ async function startServer() {
           averageSizeFormatted: files.length > 0 ? formatBytes(totalSize / files.length) : "0 B",
           oldestBackup: oldestDate ? { filename: files[files.length - 1], date: oldestDate, dateFormatted: new Date(oldestDate).toLocaleString() } : null,
           newestBackup: newestDate ? { filename: files[0], date: newestDate, dateFormatted: new Date(newestDate).toLocaleString() } : null,
-          encryption: "AES-256-CBC",
-          password: "3488",
+          encryption: "AES-256-GCM",
+          credentialStorage: "server-side secret",
           retention: "10 days",
           schedule: "Mon-Thu 18:00 Cairo",
         },
@@ -504,7 +521,7 @@ async function startServer() {
   });
 
   // Backup download endpoints
-  app.get("/api/backup/download/:filename", (req, res) => {
+  app.get("/api/backup/download/:filename", requireBackupAdmin, (req, res) => {
     try {
       const fs = require("fs");
       const path = require("path");
@@ -555,10 +572,10 @@ async function startServer() {
   // Backup preview upload endpoint
   const multerMod = await import("multer");
   const multerUpload = multerMod.default({ dest: "/tmp/backup-uploads/", limits: { fileSize: 50 * 1024 * 1024 } });
-  const { execSync } = await import("child_process");
+  const { decryptBackupBuffer } = await import("../backupEncryption");
   const zlib = await import("zlib");
 
-  app.post("/api/backup/preview/upload", multerUpload.single("file"), async (req: any, res: any) => {
+  app.post("/api/backup/preview/upload", requireBackupAdmin, multerUpload.single("file"), async (req: any, res: any) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -567,29 +584,22 @@ async function startServer() {
       const uploadedPath = req.file.path;
       const originalName = req.file.originalname || "backup.sql.gz.enc";
 
-      // Step 1: Decrypt the file
-      const decryptedPath = uploadedPath + ".gz";
+      // Step 1: Decrypt with the server-only restoration secret.
+      let compressed: Buffer;
       try {
-        execSync(`openssl enc -aes-256-cbc -d -in "${uploadedPath}" -out "${decryptedPath}" -k 3488`, { timeout: 30000 });
-      } catch (decryptErr: any) {
-        // Try with -md md5 for older openssl versions
-        try {
-          execSync(`openssl enc -aes-256-cbc -d -md md5 -in "${uploadedPath}" -out "${decryptedPath}" -k 3488`, { timeout: 30000 });
-        } catch (e) {
-          fs.unlinkSync(uploadedPath);
-          return res.status(400).json({ error: "Failed to decrypt file. Wrong password or corrupted file." });
-        }
+        compressed = decryptBackupBuffer(fs.readFileSync(uploadedPath));
+      } catch {
+        fs.unlinkSync(uploadedPath);
+        return res.status(400).json({ error: "Failed to decrypt file. The backup is unsupported, corrupted, or does not match the server restoration key." });
       }
 
       // Step 2: Decompress gzip
       const sqlPath = uploadedPath + ".sql";
       try {
-        const compressed = fs.readFileSync(decryptedPath);
         const decompressed = zlib.gunzipSync(compressed);
         fs.writeFileSync(sqlPath, decompressed);
       } catch (gzipErr) {
         fs.unlinkSync(uploadedPath);
-        fs.existsSync(decryptedPath) && fs.unlinkSync(decryptedPath);
         return res.status(400).json({ error: "Failed to decompress file. File may be corrupted." });
       }
 
@@ -655,7 +665,6 @@ async function startServer() {
 
       // Cleanup temp files
       fs.existsSync(uploadedPath) && fs.unlinkSync(uploadedPath);
-      fs.existsSync(decryptedPath) && fs.unlinkSync(decryptedPath);
       fs.existsSync(sqlPath) && fs.unlinkSync(sqlPath);
 
       res.json({
@@ -669,7 +678,6 @@ async function startServer() {
       // Cleanup on error
       if (req.file?.path) {
         fs.existsSync(req.file.path) && fs.unlinkSync(req.file.path);
-        fs.existsSync(req.file.path + ".gz") && fs.unlinkSync(req.file.path + ".gz");
         fs.existsSync(req.file.path + ".sql") && fs.unlinkSync(req.file.path + ".sql");
       }
       res.status(500).json({ error: error.message || "Failed to preview backup" });
@@ -738,4 +746,3 @@ startServer().catch(console.error);
 startReminderScheduler();
 startMonthlyReportScheduler();
 startRateScheduler();
-startWeeklyBackupScheduler();

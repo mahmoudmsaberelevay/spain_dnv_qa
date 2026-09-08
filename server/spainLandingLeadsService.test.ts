@@ -1,10 +1,12 @@
 import fs from "fs";
 import path from "path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   landingPayloadSchema,
+  pullLandingPayloadFromAliases,
   resolveSpainLandingContactMatch,
   SPAIN_LANDING_PROGRAM,
+  SPAIN_LANDING_PULL_FALLBACK_URL,
   SPAIN_LANDING_PULL_URL,
   SPAIN_LANDING_SOURCE,
 } from "./spainLandingLeadsService";
@@ -49,6 +51,26 @@ describe("Spain landing page to ELEVAY Leads ingestion", () => {
     expect(SPAIN_LANDING_PULL_URL).toBe(
       "https://elevayconsult-yttdaxru.manus.space/api/trpc/integrations/spain-dnv-leads/pull",
     );
+    expect(SPAIN_LANDING_PULL_FALLBACK_URL).toBe(
+      "https://elevayconsult-yttdaxru.manus.space/api/integrations/spain-dnv-leads/pull",
+    );
+  });
+
+  it("falls back to the live compatibility handler only when the routed alias is unavailable", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "not found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(validPayload), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+
+    await expect(pullLandingPayloadFromAliases(27, "opaque-token", fetcher as typeof fetch))
+      .resolves.toEqual(validPayload);
+    expect(fetcher).toHaveBeenNthCalledWith(1, SPAIN_LANDING_PULL_URL, expect.any(Object));
+    expect(fetcher).toHaveBeenNthCalledWith(2, SPAIN_LANDING_PULL_FALLBACK_URL, expect.any(Object));
   });
 
   it("registers the dedicated endpoint before generic website ingestion, tRPC, static files, and SPA fallback", () => {

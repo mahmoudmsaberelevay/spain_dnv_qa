@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { Users, AlertTriangle, CheckCircle2, Clock, FileText, Stamp, Building2, Search, X, TrendingUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
-type Stage = "preparation" | "submission" | "approved";
+type Stage = "preparation" | "spain_team_received" | "submission" | "approved";
 
 function getProgressColor(pct: number) {
   if (pct >= 80) return "bg-emerald-500";
@@ -17,6 +17,7 @@ function getProgressColor(pct: number) {
 function StageBadge({ stage }: { stage: Stage }) {
   const map: Record<Stage, { label: string; cls: string }> = {
     preparation: { label: "Preparation", cls: "bg-blue-50 text-blue-700 border-blue-200" },
+    spain_team_received: { label: "Spain Team Received", cls: "bg-cyan-50 text-cyan-700 border-cyan-200" },
     submission: { label: "Submission", cls: "bg-amber-50 text-amber-700 border-amber-200" },
     approved: { label: "Approved", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   };
@@ -47,6 +48,7 @@ const CONSULTANTS = ["All", "Mahmoud", "Ziad", "Fouad", "Kirolos"];
 const STAGE_OPTIONS = [
   { value: "all", label: "All Stages" },
   { value: "preparation", label: "Preparation" },
+  { value: "spain_team_received", label: "Spain Team Received" },
   { value: "submission", label: "Submission" },
   { value: "approved", label: "Approved" },
 ];
@@ -138,9 +140,10 @@ export default function ClientDocsDashboard() {
 
           {/* Stage Stats Row */}
           {stats && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
               {[
                 { label: "Preparation", value: stats.preparation, cls: "border-blue-200 bg-blue-50 text-blue-700" },
+                { label: "Spain Team Received", value: stats.spainTeamReceived, cls: "border-cyan-200 bg-cyan-50 text-cyan-700" },
                 { label: "Submission", value: stats.submission, cls: "border-amber-200 bg-amber-50 text-amber-700" },
                 { label: "Approved", value: stats.approved, cls: "border-emerald-200 bg-emerald-50 text-emerald-700" },
                 {

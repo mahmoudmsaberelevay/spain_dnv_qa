@@ -1236,5 +1236,115 @@ Check email for download link within 5 minutes
 - [x] Add retry-safe landing-backend delivery state while preserving the current local record, owner notification, qualification gates, duplicate behavior, and bilingual success/error experience
 - [x] Connect the public landing-page form to the ELEVAY endpoint while preserving Arabic/English behavior, loading, success, validation, and failure states
 - [x] Add focused tests proving valid creation, duplicate retry behavior, existing-contact matching, invalid payload rejection, source attribution, public-route ordering, no Meta webhook/CAPI regression, and `META_CRM_PRODUCTION_ENABLED=false`
-- [ ] Run both production builds, safe database checks, authenticated Leads UI verification, and one controlled public-form submission with count-only evidence
-- [ ] Save and auto-publish the validated integration and document the endpoint, fields, deduplication rules, security controls, evidence, and rollback path
+- [x] Run both production builds, safe database checks, authenticated Leads UI verification, and one controlled public-form submission with count-only evidence
+- [x] Save and auto-publish the validated integration and document the endpoint, fields, deduplication rules, security controls, evidence, and rollback path
+
+## Spain Digital Nomad Landing Page Historical Backfill
+- [x] Audit all qualified landing-form submissions and determine the exact unsynchronized count without exposing contact data
+- [x] Implement and validate a one-time server-only backfill runner for the 16 unsynchronized submissions, reusing existing qualification, conservative matching, idempotency, consent, and Meta-isolation rules
+- [x] Synchronize every eligible historical submission and record count-only created, matched, manual-review, failed, and duplicate outcomes
+- [x] Verify CRM Lead/inquiry/activity counts, authenticated Leads visibility, zero landing-generated Meta attribution/outbox rows, and `META_CRM_PRODUCTION_ENABLED=false`
+- [x] Document the historical backfill, complete validation, and publish the final checkpoint
+
+## Client Portal — New User Creation Failure
+- [x] Confirm the create-access form maps the second field to `email` and that a surname entered there produces the reported raw Zod invalid-email response
+- [x] Add persistent field labels, client-side email validation, and a clear user-facing invalid-email message instead of raw validation JSON
+- [x] Preserve server-side email validation and add regression tests for invalid and valid client-account creation
+- [x] Validate the creation flow in the authenticated Client Portal UI and confirm existing accounts remain unchanged
+- [x] Run focused tests and the production build, complete this checklist, and publish the fix
+
+## ELEVAY Leads — Unified Contact Duplicate Prevention
+- [x] Audit manual, Meta webhook, and Spain landing Lead creation paths plus existing phone/email normalization and attribution safeguards
+- [x] Define one conservative matcher where normalized mobile/WhatsApp or email identifies an existing Lead and conflicting matches never merge unrelated people
+- [x] Reuse the matcher across manual, Meta, and Spain landing ingestion without overwriting existing consultant, stage, source, consent, or Meta attribution
+- [x] Return the existing Lead identifier and make manual creation open that Lead instead of creating a duplicate
+- [x] Add regression coverage for phone, WhatsApp, email, formatting differences, exact replays, and ambiguous/conflicting matches
+- [x] Verify database safety, Meta Test Lead and Nouran safeguards, Spain landing idempotency, and `META_CRM_PRODUCTION_ENABLED=false`
+- [x] Run focused tests and the production build, complete the checklist, and publish the unified deduplication fix
+
+## ELEVAY Scheduled Database Backup — Mon–Thu 18:00 Cairo
+- [x] Audit the existing backup handler, route registration, Heartbeat schedule, encryption, storage, recipients, and recent failed executions
+- [x] Replace the obsolete scheduler-header check with authenticated Heartbeat identity and persistent task-UID ownership validation
+- [x] Remove hardcoded encryption credentials from the scheduled handler, restore endpoints, public/internal backup pages, API metadata, and email content while preserving AES-256 encrypted restore capability
+- [x] Update restore tooling and backup UI guidance for the new secret-backed authenticated-encryption envelope without displaying or accepting a password in browser-visible code
+- [x] Make executions idempotent and persist privacy-safe success/failure evidence for retries and monitoring
+- [x] Add regression tests for unauthorized calls, valid scheduler calls, encryption format, both notification recipients, and failure responses
+- [x] Run focused tests and production build, publish the handler repair, then execute one controlled production backup
+- [x] Verify a successful schedule log, durable encrypted artifact, both recipient delivery attempts, restoration metadata, and the next Mon–Thu 18:00 Cairo run
+- [x] Document monitoring, restore, pause/resume, and rollback procedures, then publish the final validated checkpoint
+
+## Spain Landing Leads — Live Private Pull Alias Regression
+- [x] Record the count-safe live failure boundary: landing page 200, CRM intake JSON 400, legacy private pull handler active, and `/api/trpc` pull alias falling into generic tRPC 404
+- [x] Restore the production-routed `/api/trpc/integrations/spain-dnv-leads/pull` handler in the latest landing deployment without exposing PII, tokens, or CRM credentials
+- [x] Validate both private pull aliases reject invalid tokens through the intended handler and confirm the CRM intake route remains active
+- [x] Verify existing inquiry/Lead counts, exact `Spain_landing page` source, Spain DNV program context, deduplication, and zero Meta/CAPI regression
+- [x] Complete the checklist, publish the repair, and report restored landing-to-Leads synchronization
+
+## Spain Landing Leads — Complete Qualified Submission Reconciliation
+- [x] Audit the current qualified Spain landing submission count and compare it with distinct CRM inquiry references using count-only evidence
+- [x] Securely synchronize only qualified submission IDs missing from the CRM inquiry ledger through the existing server-side idempotent forwarding path
+- [x] Verify every eligible submission has one inquiry outcome and one conservative Lead linkage with exact source `Spain_landing page` and program `Spain DNV`
+- [x] Confirm zero failed/stuck/manual-review outcomes unless explicitly reported, zero duplicate Lead creation, and zero Meta attribution/outbox regression
+- [x] Reconfirm `META_CRM_PRODUCTION_ENABLED=false`, document the reconciliation result, complete the checklist, and publish any required update
+
+## Spain Landing Leads — Automated Six-Hour Reconciliation
+- [x] Audit the landing project’s Heartbeat support, current secure forwarding helper, qualified-record query, and existing schedule ownership
+- [x] Define a Cairo-aligned 00:00/06:00/12:00/18:00 schedule with authenticated task ownership, overlap protection, bounded sequential processing, and privacy-safe run evidence
+- [x] Implement the landing-side scheduled reconciliation handler and durable success/failure counters without exposing PII, tokens, or CRM credentials
+- [x] Add a server-only, single-use, short-lived controlled-run authorization so one production reconciliation can be verified outside the normal Cairo slot and cannot be replayed
+- [x] Fix controlled-run claim ordering so a valid authorization bypasses only the Cairo-window gate, creates a run-ledger row, releases its claim on every exit path, and leaves no stale claim
+- [x] Add regression tests for scheduler authentication, qualification filtering, idempotent duplicates, overlap protection, bounded failures, and Meta isolation
+- [x] Publish the landing automation, register the managed schedule, and run one controlled production execution
+- [x] Verify all eligible records remain synchronized, no duplicate Leads or Meta artifacts are created, and the next four Cairo-aligned run times are correct
+- [x] Document monitoring, retry, pause/resume, and rollback procedures, complete both project checklists, and publish the final validated state
+
+## Marketing Module — Proposal Generation Failure
+- [x] Audit the proposal-generation UI, request payload, backend procedure, AI/template generator, storage, and download response on the latest shared branch
+- [x] Reproduce the production failure and identify its root cause from browser, network, and server logs without exposing proposal content or customer data
+- [x] Implement a backward-compatible fix that preserves existing proposals, templates, branding, permissions, and marketing workflows
+- [x] Add regression tests for valid generation, required-field validation, generation/storage failures, and the final downloadable response
+- [x] Validate the authenticated Marketing proposal flow end to end and confirm no existing proposal or marketing records are modified
+- [x] Run focused tests and the production build, complete the checklist, publish, and report the fix
+
+## System Notifications — Add Ziad Gmail Recipient
+- [x] Audit every outbound system email path, shared mail helper, scheduled notification, alert, and direct SMTP call on the latest shared branch
+- [x] Define one case-insensitive recipient-merging rule that always includes `Ziadelshurafa@gmail.com` while preserving all existing recipients
+- [x] Apply the rule to internal ELEVAY system notifications without changing client-facing transactional emails or any sender address
+- [x] Verify no `@elevay.com` address is used as a sender and duplicate recipient variants are removed safely
+- [x] Add regression tests for single/multiple recipients, case-insensitive deduplication, existing recipients, and representative notification workflows
+- [x] Run focused tests and the production build, complete the checklist, publish, and report the notification update
+
+## Client Documentation — Notification Report
+- [x] Audit every Client Documentation email, in-app, push, outbox, scheduler, and fallback notification path on the latest shared branch
+- [x] Map each notification trigger, timing condition, recipients, message fields, channel, deduplication behavior, delivery evidence, and failure handling
+- [x] Assess active coverage, missing requirements, duplicate-send risks, privacy/security controls, and operational limitations
+- [x] Write and deliver a complete evidence-based Client Documentation notification report without exposing client data
+
+## Client Documentation — Contract & Payment Schedule
+- [x] Audit new-client creation, client profile, Client Portal linkage, Financial client/receipt records, Drive-link patterns, permissions, and existing data
+- [x] Design an additive contract/payment model with three initial blank rows for manually entered payment names, EUR amounts, and due dates
+- [x] Support custom installments, unique names, due dates, paid status/date, receipt name/link, notes, ordering, and non-destructive edit/delete controls
+- [x] Calculate contract value, paid total, due/overdue total, remaining balance, next payment, and payment status consistently from installment records
+- [x] Add contract Drive link and payment schedule fields to Client Documentation creation while preserving existing clients and workflows
+- [x] Add a responsive Contract & Payments section to each client profile with create, edit, mark-paid, receipt-link, and deletion confirmation actions
+- [x] Enforce permissions, URL/date/amount validation, transactional creation, audit history, and safe handling of legacy clients without schedules
+- [x] Replace the three example payment names and amounts with three blank manually entered rows while retaining editable due dates, add/remove controls, and automatic contract-value calculation
+- [x] Add regression tests and validate calculations, manual/custom payments, receipt links, due states, existing-client safety, and production build
+- [x] Complete the checklist, publish, and report the Client Documentation contract/payment feature
+
+## Client Documentation — Spain Document & Milestone Tracking
+- [x] Audit existing checklist, MOFA/Embassy flags, stage enum, submission/approval/biometrics fields, reminders, reports, Client Portal, and production data
+- [x] Design additive per-document link and MOFA/Embassy submitted-versus-received fields with conservative mapping of existing attestation-complete records
+- [x] Add a document link beside every required checklist item with HTTP(S) validation and audit history
+- [x] Add separate check marks and dates for Submitted to MOFA, Received from MOFA, Submitted to Embassy, and Received from Embassy
+- [x] Add the `Spain Team Received` stage between Preparation and Submission with a required stage date
+- [x] Add sworn-translator submission confirmation/date as a note-level milestone rather than a workflow stage
+- [x] Add official submission date and submission-receipt link
+- [x] Add approval date and approval-letter link when stage changes to Approved
+- [x] Add Spain travel date, ticket link, hotel link, and arrival-confirmation status/date
+- [x] Add biometrics appointment date, biometrics-completed confirmation/date, and bank-account-completed confirmation/date
+- [x] Add residency-card-ready confirmation/date and collection visibility
+- [x] Update Client Documentation profile, workflow/report outputs, and authorized Client Portal visibility without exposing internal-only data
+- [x] Enforce permissions, chronological dependencies, link/date validation, audit logging, and non-destructive history safeguards
+- [x] Add regression tests and validate all milestones, document links, old-client data preservation, reports, Client Portal, and production build
+- [x] Complete the checklist, publish, and report the expanded Spain documentation workflow

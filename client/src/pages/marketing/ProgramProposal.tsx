@@ -30,6 +30,7 @@ type ProposalResult = {
   };
   programSummary: string;
   recommendation: string;
+  generationMode?: "ai" | "standard";
   generatedAt: string;
 };
 
@@ -141,7 +142,12 @@ ${result.recommendation.split("\n\n").map((p) => `<p class="text-block">${p}</p>
             </label>
             <select
               value={programKey}
-              onChange={(e) => { setProgramKey(e.target.value); setResult(null); }}
+              onChange={(e) => {
+                const nextProgram = PROGRAMS.find((program) => program.key === e.target.value);
+                setProgramKey(e.target.value);
+                if (nextProgram && !nextProgram.hasRealEstate) setInvestmentType("donation");
+                setResult(null);
+              }}
               className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-teal-500"
             >
               <option value="">Select country...</option>
@@ -259,7 +265,9 @@ ${result.recommendation.split("\n\n").map((p) => `<p class="text-block">${p}</p>
             <div className="flex items-center gap-2 mb-4">
               <Info className="w-4 h-4 text-purple-400" />
               <h2 className="text-sm font-semibold text-white">ELEVAY Recommendation</h2>
-              <Badge variant="outline" className="ml-auto text-xs border-purple-700 text-purple-400">AI Generated</Badge>
+              <Badge variant="outline" className="ml-auto text-xs border-purple-700 text-purple-400">
+                {result.generationMode === "standard" ? "Standard Proposal" : "AI Generated"}
+              </Badge>
             </div>
             <div className="space-y-3">
               {result.recommendation.split("\n\n").filter(Boolean).map((para, i) => (

@@ -1,14 +1,20 @@
-import { router, publicProcedure } from "../_core/trpc";
+import { TRPCError } from "@trpc/server";
+import { router, protectedProcedure } from "../_core/trpc";
 import fs from "fs";
 import path from "path";
 
 const BACKUP_DIR = "/home/ubuntu/backups";
 
+const backupAdminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Administrator access required" });
+  return next({ ctx });
+});
+
 export const backupDownloadRouter = router({
   /**
    * List all available backups
    */
-  listBackups: publicProcedure.query(async () => {
+  listBackups: backupAdminProcedure.query(async () => {
     try {
       if (!fs.existsSync(BACKUP_DIR)) {
         return { success: false, backups: [], error: "Backup directory not found" };
@@ -58,7 +64,7 @@ export const backupDownloadRouter = router({
   /**
    * Get backup manifest/info
    */
-  getBackupInfo: publicProcedure
+  getBackupInfo: backupAdminProcedure
     .input((data: unknown) => {
       if (typeof data !== "object" || data === null || !("filename" in data)) {
         throw new Error("Invalid input");
@@ -106,7 +112,7 @@ export const backupDownloadRouter = router({
   /**
    * Get backup statistics
    */
-  getBackupStats: publicProcedure.query(async () => {
+  getBackupStats: backupAdminProcedure.query(async () => {
     try {
       if (!fs.existsSync(BACKUP_DIR)) {
         return {
@@ -118,23 +124,14 @@ export const backupDownloadRouter = router({
 
       const files = fs.readdirSync(BACKUP_DIR);
       const backupFiles = files.filter((file) => file.endsWith(".sql.gz.enc"));
-
-      let totalSize = 0;
-      let oldestBackup = null;
-      let newestBackup = null;
-
-      backupFiles.forEach((file) => {
+      const backupMetadata = backupFiles.map((file) => {
         const filePath = path.join(BACKUP_DIR, file);
         const stats = fs.statSync(filePath);
-        totalSize += stats.size;
-
-        if (!oldestBackup || stats.mtime < oldestBackup.mtime) {
-          oldestBackup = { file, mtime: stats.mtime };
-        }
-        if (!newestBackup || stats.mtime > newestBackup.mtime) {
-          newestBackup = { file, mtime: stats.mtime };
-        }
-      });
+        return { file, mtime: stats.mtime, size: stats.size };
+      }).sort((a, b) => a.mtime.getTime() - b.mtime.getTime());
+      const totalSize = backupMetadata.reduce((sum, backup) => sum + backup.size, 0);
+      const oldestBackup = backupMetadata[0] ?? null;
+      const newestBackup = backupMetadata[backupMetadata.length - 1] ?? null;
 
       return {
         success: true,
@@ -161,8 +158,8 @@ export const backupDownloadRouter = router({
                 dateFormatted: newestBackup.mtime.toLocaleString(),
               }
             : null,
-          encryption: "AES-256-CBC",
-          password: "3488",
+          encryption: "AES-256-GCM",
+          credentialStorage: "server-side secret",
           retention: "10 days",
           schedule: "Mon-Thu 18:00 Cairo Time",
         },

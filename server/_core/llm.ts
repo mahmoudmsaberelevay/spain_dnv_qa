@@ -56,6 +56,7 @@ export type ToolChoice =
   | ToolChoiceExplicit;
 
 export type InvokeParams = {
+  model?: string;
   messages: Message[];
   tools?: Tool[];
   toolChoice?: ToolChoice;
@@ -109,6 +110,8 @@ export type ResponseFormat =
   | { type: "text" }
   | { type: "json_object" }
   | { type: "json_schema"; json_schema: JsonSchema };
+
+export const DEFAULT_LLM_MODEL = "gemini-3-flash-preview";
 
 const ensureArray = (
   value: MessageContent | MessageContent[]
@@ -269,6 +272,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   assertApiKey();
 
   const {
+    model,
     messages,
     tools,
     toolChoice,
@@ -277,10 +281,12 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     output_schema,
     responseFormat,
     response_format,
+    maxTokens,
+    max_tokens,
   } = params;
 
   const payload: Record<string, unknown> = {
-    model: "gemini-2.5-flash",
+    model: model?.trim() || DEFAULT_LLM_MODEL,
     messages: messages.map(normalizeMessage),
   };
 
@@ -296,7 +302,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768
+  payload.max_tokens = maxTokens ?? max_tokens ?? 32768;
 
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,
@@ -307,10 +313,6 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   if (normalizedResponseFormat) {
     payload.response_format = normalizedResponseFormat;
-  } else {
-    // Only enable thinking when NOT using a structured response format,
-    // because Gemini 2.5 Flash does not support thinking + json_object/json_schema simultaneously.
-    payload.thinking = { budget_tokens: 128 };
   }
 
   const response = await fetch(resolveApiUrl(), {

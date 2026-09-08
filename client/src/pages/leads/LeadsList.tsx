@@ -399,19 +399,28 @@ export default function LeadsList() {
 
   // ── Create lead ───────────────────────────────────────────────────────────
   const createLead = trpc.leads.create.useMutation({
-    onSuccess: () => {
+    onSuccess: result => {
       utils.leads.list.invalidate();
       utils.leads.analytics.overview.invalidate();
       setShowCreate(false);
       setDuplicateInfo(null);
       setForm({ fullName: "", phone: "", whatsapp: "", email: "", nationality: "", interestedProgram: "", leadSource: "", assignedTo: "", priority: "medium", notes: "", budgetRange: "" });
+      if (!result.created) {
+        toast.info(`Existing Lead found by ${result.matchMethod === "email" ? "email" : "mobile/WhatsApp"}. Opening the registered Lead.`);
+        navigate(`/leads/${result.id}`);
+        return;
+      }
       toast.success("Lead created — new lead added to pipeline.");
     },
     onError: (err) => {
       if (err.data?.code === "CONFLICT") {
         try {
           const parsed = JSON.parse(err.message);
-          setDuplicateInfo({ id: parsed.existingLeadId, name: parsed.existingLeadName });
+          if (parsed.code === "AMBIGUOUS_CONTACT_MATCH") {
+            toast.error("More than one existing Lead matches these contact details. No Lead was created; search by mobile or email to review the records.");
+          } else {
+            setDuplicateInfo({ id: parsed.existingLeadId, name: parsed.existingLeadName });
+          }
         } catch {
           toast.error(`Duplicate detected: ${err.message}`);
         }
@@ -1156,9 +1165,9 @@ export default function LeadsList() {
               <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800 p-3 text-sm">
                 <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-medium text-red-700 dark:text-red-400">Duplicate phone number detected</p>
+                  <p className="font-medium text-red-700 dark:text-red-400">Existing contact detected</p>
                   <p className="text-red-600 dark:text-red-300 mt-0.5">
-                    A lead with this phone already exists:{" "}
+                    A Lead with this mobile, WhatsApp, or email already exists:{" "}
                     <button
                       className="font-semibold underline hover:no-underline"
                       onClick={() => { setShowCreate(false); setDuplicateInfo(null); navigate(`/leads/${duplicateInfo.id}`); }}
@@ -1166,7 +1175,7 @@ export default function LeadsList() {
                       {duplicateInfo.name} (Lead #{duplicateInfo.id})
                     </button>
                   </p>
-                  <p className="text-xs text-red-500 mt-1">Click the name above to open the existing lead, or change the phone number to proceed.</p>
+                  <p className="text-xs text-red-500 mt-1">Click the name above to open the existing Lead, or correct the contact details.</p>
                 </div>
                 <button onClick={() => setDuplicateInfo(null)} className="text-red-400 hover:text-red-600"><X className="w-4 h-4" /></button>
               </div>

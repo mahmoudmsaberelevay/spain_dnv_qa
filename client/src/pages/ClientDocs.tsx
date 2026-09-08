@@ -10,9 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Plus, FolderOpen, User, Calendar, ChevronRight, FileText, Briefcase, Baby, Users, Search } from "lucide-react";
+import { Plus, FolderOpen, User, ChevronRight, FileText, Briefcase, Users, Search, Link2, CreditCard, Trash2 } from "lucide-react";
 
 type ChildEntry = { name: string; age: number };
+type PaymentDraft = { paymentName: string; amountEur: string; dueDate: string };
+
+const createBlankPayments = (): PaymentDraft[] => Array.from({ length: 3 }, () => ({
+  paymentName: "",
+  amountEur: "",
+  dueDate: "",
+}));
 
 type FormState = {
   clientName: string;
@@ -25,9 +32,11 @@ type FormState = {
   children: ChildEntry[];
   schengenVisaValid: boolean | null; // null = not answered yet
   schengenExpiryDate: string;
+  contractDriveLink: string;
+  payments: PaymentDraft[];
 };
 
-const EMPTY_FORM: FormState = {
+const createEmptyForm = (): FormState => ({
   clientName: "",
   clientCode: "",
   applicationType: "",
@@ -38,13 +47,15 @@ const EMPTY_FORM: FormState = {
   children: [],
   schengenVisaValid: null,
   schengenExpiryDate: "",
-};
+  contractDriveLink: "",
+  payments: createBlankPayments(),
+});
 
 export default function ClientDocs() {
   const { loading, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [form, setForm] = useState<FormState>(() => createEmptyForm());
   const [clientSearch, setClientSearch] = useState("");
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
@@ -75,7 +86,7 @@ export default function ClientDocs() {
     onSuccess: (data) => {
       toast.success("Client case created successfully");
       setOpen(false);
-      setForm(EMPTY_FORM);
+      setForm(createEmptyForm());
       setClientSearch("");
       setSelectedClientId(null);
       refetch();
@@ -134,6 +145,15 @@ export default function ClientDocs() {
     });
   };
 
+  const handlePaymentUpdate = (idx: number, field: keyof PaymentDraft, value: string) => {
+    setForm(current => ({
+      ...current,
+      payments: current.payments.map((payment, paymentIndex) => paymentIndex === idx ? { ...payment, [field]: value } : payment),
+    }));
+  };
+
+  const contractValueEur = form.payments.reduce((total, payment) => total + (Number(payment.amountEur) || 0), 0);
+
   const handleCreate = () => {
     if (!form.clientName || !form.clientCode || !form.applicationType || !form.maritalStatus || !form.consultant) {
       toast.error("Please fill in all required fields");
@@ -147,6 +167,22 @@ export default function ClientDocs() {
       toast.error("Please enter the Schengen visa expiry date");
       return;
     }
+    try {
+      const url = new URL(form.contractDriveLink);
+      if (!["http:", "https:"].includes(url.protocol)) throw new Error("unsupported");
+    } catch {
+      toast.error("Please enter a valid Contract Drive link");
+      return;
+    }
+    if (form.payments.length === 0 || form.payments.some(payment => !payment.paymentName.trim() || Number(payment.amountEur) <= 0 || !payment.dueDate)) {
+      toast.error("Each payment needs a name, positive EUR amount, and due date");
+      return;
+    }
+    const uniquePaymentNames = new Set(form.payments.map(payment => payment.paymentName.trim().replace(/\s+/g, " ").toLowerCase()));
+    if (uniquePaymentNames.size !== form.payments.length) {
+      toast.error("Payment names must be unique");
+      return;
+    }
     createMutation.mutate({
       clientName: form.clientName,
       clientCode: form.clientCode,
@@ -157,6 +193,13 @@ export default function ClientDocs() {
       children: form.maritalStatus === "family" ? form.children : [],
       schengenVisaValid: form.schengenVisaValid ?? false,
       schengenExpiryDate: form.schengenVisaValid ? form.schengenExpiryDate : undefined,
+      finClientId: selectedClientId,
+      contractDriveLink: form.contractDriveLink.trim(),
+      payments: form.payments.map(payment => ({
+        paymentName: payment.paymentName.trim(),
+        amountEur: Number(payment.amountEur),
+        dueDate: payment.dueDate,
+      })),
     });
   };
 
@@ -183,7 +226,7 @@ export default function ClientDocs() {
               New Client
             </Button>
           </DialogTrigger>
-          <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogContent className="bg-white border-gray-200 text-gray-900 sm:max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-gray-900 text-lg font-semibold">Create Client Case</DialogTitle>
             </DialogHeader>
@@ -387,6 +430,74 @@ export default function ClientDocs() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-400">Paralegal can be assigned on the client detail page after creation.</p>
+              </div>
+
+              <div className="border border-[#1e3a5f]/20 rounded-xl p-4 bg-slate-50 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Link2 className="w-4 h-4 text-[#1e3a5f]" />
+                  <div>
+                    <p className="text-sm font-semibold text-[#1e3a5f]">Contract & Payment Schedule</p>
+                    <p className="text-xs text-gray-500">The contract link and every due date are required. You can edit the schedule later.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-gray-700 text-sm font-medium">Contract Google Drive Link <span className="text-red-500">*</span></Label>
+                  <Input
+                    type="url"
+                    placeholder="https://drive.google.com/..."
+                    value={form.contractDriveLink}
+                    onChange={event => setForm(current => ({ ...current, contractDriveLink: event.target.value }))}
+                    className="border-gray-300 text-gray-900 bg-white"
+                  />
+                  <p className="text-xs text-gray-400">This is separate from the client document-folder link.</p>
+                </div>
+
+                <div className="space-y-3">
+                  {form.payments.map((payment, index) => (
+                    <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_140px_165px_36px] gap-2 items-end bg-white border border-gray-200 rounded-lg p-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-600">Payment Name</Label>
+                        <Input placeholder={`Payment ${index + 1} name`} value={payment.paymentName} onChange={event => handlePaymentUpdate(index, "paymentName", event.target.value)} className="border-gray-300 text-gray-900" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-600">Amount (EUR)</Label>
+                        <Input type="number" min="0.01" step="0.01" value={payment.amountEur} onChange={event => handlePaymentUpdate(index, "amountEur", event.target.value)} className="border-gray-300 text-gray-900" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-600">Due Date</Label>
+                        <Input type="date" value={payment.dueDate} onChange={event => handlePaymentUpdate(index, "dueDate", event.target.value)} className="border-gray-300 text-gray-900" />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="border-red-200 text-red-600 hover:bg-red-50"
+                        disabled={form.payments.length === 1}
+                        onClick={() => setForm(current => ({ ...current, payments: current.payments.filter((_, paymentIndex) => paymentIndex !== index) }))}
+                        aria-label={`Remove ${payment.paymentName || `payment ${index + 1}`}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-[#1e3a5f]/30 text-[#1e3a5f] gap-1.5"
+                    onClick={() => setForm(current => ({ ...current, payments: [...current.payments, { paymentName: "", amountEur: "", dueDate: "" }] }))}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Payment
+                  </Button>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">Contract Value</p>
+                    <p className="text-lg font-semibold text-[#1e3a5f] flex items-center gap-1"><CreditCard className="w-4 h-4" /> €{contractValueEur.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  </div>
+                </div>
               </div>
 
               {/* ── Schengen Visa Section ── */}

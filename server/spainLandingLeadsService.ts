@@ -5,11 +5,15 @@ import { z } from "zod";
 import { getDb } from "./db";
 import { leadActivities, leads, spainLandingInquiries } from "../drizzle/schema";
 import { normalizeMetaEmail, normalizeMetaPhone } from "./metaLeadsService";
+import { findLeadContactMatch } from "./leadContactMatcher";
+import { isLeadContactUniqueViolation } from "./leadContactIdentity";
 
 export const SPAIN_LANDING_SOURCE = "Spain_landing page";
 export const SPAIN_LANDING_PROGRAM = "Spain DNV";
 export const SPAIN_LANDING_PULL_URL =
   "https://elevayconsult-yttdaxru.manus.space/api/trpc/integrations/spain-dnv-leads/pull";
+export const SPAIN_LANDING_PULL_FALLBACK_URL =
+  "https://elevayconsult-yttdaxru.manus.space/api/integrations/spain-dnv-leads/pull";
 
 const requestSchema = z.object({
   submissionId: z.number().int().positive().max(2_147_483_647),
@@ -79,44 +83,58 @@ export function resolveSpainLandingContactMatch(phoneIds: number[], emailIds: nu
   return { leadId: null, matchMethod: "new" as const };
 }
 
-async function pullLandingPayload(submissionId: number, pullToken: string) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8_000);
-  try {
-    const response = await fetch(SPAIN_LANDING_PULL_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json", "accept": "application/json" },
-      body: JSON.stringify({ submissionId, pullToken }),
-      signal: controller.signal,
-      redirect: "error",
-    });
-    if (!response.ok) throw new Error(`LANDING_PULL_${response.status}`);
-    return landingPayloadSchema.parse(await response.json());
-  } finally {
-    clearTimeout(timeout);
+export async function pullLandingPayloadFromAliases(
+  submissionId: number,
+  pullToken: string,
+  fetcher: typeof fetch = fetch,
+) {
+  const urls = [SPAIN_LANDING_PULL_URL, SPAIN_LANDING_PULL_FALLBACK_URL];
+  let lastError: unknown = new Error("LANDING_PULL_UNAVAILABLE");
+
+  for (let index = 0; index < urls.length; index += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8_000);
+    try {
+      const response = await fetcher(urls[index], {
+        method: "POST",
+        headers: { "content-type": "application/json", "accept": "application/json" },
+        body: JSON.stringify({ submissionId, pullToken }),
+        signal: controller.signal,
+        redirect: "error",
+      });
+      if (response.ok) return landingPayloadSchema.parse(await response.json());
+
+      const responseError = new Error(`LANDING_PULL_${response.status}`);
+      lastError = responseError;
+      if (index === 0 && response.status === 404) continue;
+      throw responseError;
+    } catch (error) {
+      lastError = error;
+      const isTransportFailure = error instanceof TypeError
+        || (error instanceof Error && error.name === "AbortError");
+      if (index === 0 && isTransportFailure) continue;
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+
+  throw lastError;
+}
+
+async function pullLandingPayload(submissionId: number, pullToken: string) {
+  return pullLandingPayloadFromAliases(submissionId, pullToken);
 }
 
 async function findUniqueRealLead(db: QueryExecutor, payload: LandingPayload) {
-  const normalizedPhone = normalizeMetaPhone(payload.phoneE164);
-  const normalizedEmail = normalizeMetaEmail(payload.email || undefined);
-  const phoneMatches = normalizedPhone
-    ? await db.select({ id: leads.id }).from(leads).where(and(
-        eq(leads.normalizedPhone, normalizedPhone),
-        eq(leads.isMetaTestLead, false),
-      )).limit(2)
-    : [];
-  const emailMatches = normalizedEmail
-    ? await db.select({ id: leads.id }).from(leads).where(and(
-        eq(leads.normalizedEmail, normalizedEmail),
-        eq(leads.isMetaTestLead, false),
-      )).limit(2)
-    : [];
-
-  return resolveSpainLandingContactMatch(
-    phoneMatches.map(match => match.id),
-    emailMatches.map(match => match.id),
-  );
+  const match = await findLeadContactMatch({
+    phone: payload.phoneE164,
+    email: payload.email || undefined,
+    isMetaTestLead: false,
+  }, db);
+  if (match.status === "ambiguous") return { leadId: null, matchMethod: "manual_review" as const };
+  if (match.status === "new") return { leadId: null, matchMethod: "new" as const };
+  return { leadId: match.lead.id, matchMethod: match.method };
 }
 
 export async function ingestSpainLandingSubmission(
@@ -275,6 +293,37 @@ export async function ingestSpainLandingSubmission(
       return { success: true as const, outcome, leadId, duplicate: false };
     });
   } catch (error) {
+    if (isLeadContactUniqueViolation(error)) {
+      const raceMatch = await findUniqueRealLead(db, payload);
+      if (raceMatch.matchMethod === "phone" || raceMatch.matchMethod === "email") {
+        return db.transaction(async tx => {
+          const [claim] = await tx.select().from(spainLandingInquiries)
+            .where(eq(spainLandingInquiries.externalSubmissionId, submissionId)).limit(1);
+          if (!claim || claim.processingToken !== processingToken) {
+            return { success: true as const, outcome: claim?.status || "processing", leadId: claim?.leadId || null, duplicate: true };
+          }
+          await tx.update(spainLandingInquiries).set({
+            leadId: raceMatch.leadId,
+            matchMethod: raceMatch.matchMethod,
+            status: "matched",
+            processingToken: null,
+            payloadFingerprint,
+            lastErrorCode: null,
+            processedAt: now,
+            updatedAt: now,
+          }).where(eq(spainLandingInquiries.id, claim.id));
+          await tx.insert(leadActivities).values({
+            leadId: raceMatch.leadId!,
+            userId: null,
+            activityType: "other",
+            description: `New inquiry received from ${SPAIN_LANDING_SOURCE}; concurrent duplicate creation prevented and existing Lead preserved`,
+            score: 0,
+            createdAt: now,
+          });
+          return { success: true as const, outcome: "matched" as const, leadId: raceMatch.leadId, duplicate: false };
+        });
+      }
+    }
     await db.update(spainLandingInquiries).set({
       status: "failed",
       processingToken: null,

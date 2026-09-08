@@ -1,4 +1,9 @@
 import nodemailer from "nodemailer";
+import {
+  isAllowedSystemEmailSender,
+  mergeSystemNotificationRecipients,
+  normalizeEmailRecipients,
+} from "./systemNotificationRecipients";
 // Team email mapping
 export const TEAM_EMAIL_MAP: Record<string, string> = {
   "Mahmoud Saber": "mahmoud.saber@elevay.com",
@@ -25,16 +30,25 @@ const transporter = nodemailer.createTransport({
 });
 
 // Send email helper
-async function sendEmail(to: string | string[], subject: string, html: string) {
+async function sendEmail(
+  to: string | string[],
+  subject: string,
+  html: string,
+  options: { includeSystemRecipient?: boolean } = {},
+) {
   try {
     const sender = process.env.SYSTEM_EMAIL_SENDER || process.env.GMAIL_USER || "";
-    if (!sender || sender.toLowerCase().endsWith("@elevay.com")) {
+    if (!isAllowedSystemEmailSender(sender)) {
       console.error("Email send blocked: sender must be a configured non-@elevay.com address");
       return false;
     }
+    const recipients = options.includeSystemRecipient === false
+      ? normalizeEmailRecipients(to)
+      : mergeSystemNotificationRecipients(to);
+    if (recipients.length === 0) return false;
     await transporter.sendMail({
       from: sender,
-      to: Array.isArray(to) ? to.join(",") : to,
+      to: recipients.join(","),
       subject,
       html,
     });
@@ -54,7 +68,6 @@ export async function sendClientPortalActivityEmail(
   subject: string,
   html: string,
 ) {
-  if (recipients.length === 0) return false;
   return sendEmail(recipients, subject, html);
 }
 
@@ -69,7 +82,7 @@ export async function sendClientPortalPasswordResetEmail(email: string, token: s
     <p><a href="${universalLink}">Open the ELEVAY Client App to reset your password</a></p>
     <p style="font-size: 12px; color: #667085;">If the button does not open the app, try <a href="${deepLink}">this app link</a>.</p>
     <p>This secure link expires in 30 minutes. If you did not request a reset, you can ignore this email.</p>
-  `);
+  `, { includeSystemRecipient: false });
 }
 
 // Contract notifications
@@ -109,7 +122,7 @@ export async function sendReceiptToClient(clientEmail: string, receiptName: stri
     <p><strong>Receipt:</strong> ${receiptName}</p>
     <p><a href="${receiptUrl}">Download Receipt</a></p>
   `;
-  return sendEmail(clientEmail, "Your Receipt", html);
+  return sendEmail(clientEmail, "Your Receipt", html, { includeSystemRecipient: false });
 }
 
 export async function notifyNewInvoice(invoiceId: string, invoiceName: string, clientName: string) {
