@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { ClientDocumentationPayments } from "@/components/ClientDocumentationPayments";
 import {
   ArrowLeft, CheckCircle2, Circle, Clock, AlertTriangle,
   FileCheck, Stamp, Building2, CalendarDays, ClipboardList,
@@ -498,6 +499,12 @@ export default function ClientDocDetail() {
           </div>
         )}
       </div>
+
+      <ClientDocumentationPayments
+        clientCaseId={clientId}
+        contractDriveLink={caseData.contractDriveLink}
+        finClientId={caseData.finClientId}
+      />
 
       {/* ── Embassy Attestation Email Date Panel ── */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">

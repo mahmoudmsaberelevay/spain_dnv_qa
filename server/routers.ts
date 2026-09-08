@@ -51,6 +51,16 @@ import { backupsRouter } from "./routers/backups";
 import { backupDownloadRouter } from "./routers/backupDownload";
 import { aiCouncilRouter } from "./aiCouncilRouter";
 import { clientPortalAdminRouter } from "./clientPortalAdminRouter";
+import {
+  addClientDocumentationPayment,
+  archiveClientDocumentationPayment,
+  createClientDocumentationBundle,
+  getClientDocumentationPaymentSchedule,
+  markClientDocumentationPaymentPaid,
+  setClientDocumentationContractDriveLink,
+  updateClientDocumentationPayment,
+} from "./clientDocumentationPaymentsService";
+import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
 
 const MOFA_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/mofa_stamp_a1afffba.png";
 const SPAIN_EMBASSY_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/spain_embassy_stamp_cf83213b.png";
@@ -1521,6 +1531,20 @@ const contractingRouter = router({
 });
 
 /// ─── Client Documentation Router ───────────────────────────────────────────
+const clientDocumentationHttpUrl = z.string().trim().url().max(2048).refine(value => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}, "Enter a valid HTTP or HTTPS link");
+
+const clientDocumentationIsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}, "Enter a valid date");
+
 const clientDocsRouter = router({
   // Create a new client case and auto-generate the document checklist
   create: protectedProcedure
@@ -1535,26 +1559,25 @@ const clientDocsRouter = router({
       spouseName: z.string().optional(),
       schengenVisaValid: z.boolean().optional().default(false),
       schengenExpiryDate: z.string().optional(),
+      finClientId: z.number().int().positive().nullable().optional(),
+      contractDriveLink: clientDocumentationHttpUrl,
+      payments: z.array(z.object({
+        paymentName: z.string().trim().min(2).max(160),
+        amountEur: z.number().positive().max(100000000),
+        dueDate: clientDocumentationIsoDate,
+      })).min(1).max(30).superRefine((payments, ctx) => {
+        const names = new Set<string>();
+        payments.forEach((payment, index) => {
+          const key = payment.paymentName.trim().replace(/\s+/g, " ").toLowerCase();
+          if (names.has(key)) ctx.addIssue({ code: "custom", path: [index, "paymentName"], message: "Payment names must be unique" });
+          names.add(key);
+        });
+      }),
     }))
     .mutation(async ({ ctx, input }) => {
       const childrenData: ChildEntry[] = input.children.map(c => ({ name: c.name ?? "", age: c.age, ageRange: c.age < 18 ? "0-17" as const : "18-26" as const }));
-      const result = await createClientCase({
-        clientName: input.clientName,
-        clientCode: input.clientCode,
-        applicationType: input.applicationType,
-        maritalStatus: input.maritalStatus,
-        paralegal: input.paralegal ?? null,
-        consultant: input.consultant,
-        userId: ctx.user.id,
-        childrenData: childrenData as any,
-        spouseName: input.spouseName ?? null,
-        schengenVisaValid: input.schengenVisaValid ?? false,
-        schengenExpiryDate: (input.schengenExpiryDate ? new Date(input.schengenExpiryDate) : null) as any,
-      });
-      const insertId = (result as any).insertId as number;
       const checklist = getDocChecklist(input.applicationType, input.maritalStatus, childrenData);
-      const docs = checklist.map(d => ({
-        clientCaseId: insertId,
+      const documents = checklist.map(d => ({
         docKey: d.docKey,
         docName: d.docName,
         category: d.category,
@@ -1562,7 +1585,36 @@ const clientDocsRouter = router({
         requiresMofa: d.requiresMofa,
         requiresEmbassy: d.requiresEmbassy,
       }));
-      await createClientDocuments(docs);
+      let insertId: number;
+      try {
+        const result = await createClientDocumentationBundle({
+          clientCase: {
+            clientName: input.clientName.trim(),
+            clientCode: input.clientCode.trim(),
+            applicationType: input.applicationType,
+            maritalStatus: input.maritalStatus,
+            paralegal: input.paralegal ?? null,
+            consultant: input.consultant,
+            userId: ctx.user.id,
+            finClientId: input.finClientId ?? null,
+            contractDriveLink: input.contractDriveLink,
+            childrenData: childrenData as any,
+            spouseName: input.spouseName?.trim() || null,
+            schengenVisaValid: input.schengenVisaValid ?? false,
+            schengenExpiryDate: (input.schengenExpiryDate || null) as any,
+          },
+          documents,
+          payments: input.payments,
+          userId: ctx.user.id,
+        });
+        insertId = result.clientCaseId;
+      } catch (error) {
+        if (error instanceof Error && error.message === "FIN_CLIENT_MISMATCH") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "The selected Finance client does not match this client code" });
+        }
+        throw error;
+      }
+      await writeAuditLog(auditCtxFromTrpc(ctx), "create", "client_documentation_case", insertId, `Created case with ${input.payments.length} payment schedule item(s)`);
       // Send assignment notification email to paralegal + consultant
       notifyNewClientAssigned(
         input.clientName,
@@ -1623,6 +1675,113 @@ const clientDocsRouter = router({
       if (!c) throw new TRPCError({ code: "NOT_FOUND" });
       const docs = await getClientDocuments(input.id);
       return { ...c, documents: docs };
+    }),
+
+  paymentSchedule: protectedProcedure
+    .input(z.object({ clientCaseId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const c = await getClientCase(input.clientCaseId);
+      if (!c) throw new TRPCError({ code: "NOT_FOUND", message: "Client not found" });
+      return getClientDocumentationPaymentSchedule(input.clientCaseId);
+    }),
+
+  addPayment: protectedProcedure
+    .input(z.object({
+      clientCaseId: z.number().int().positive(),
+      paymentName: z.string().trim().min(2).max(160),
+      amountEur: z.number().positive().max(100000000),
+      dueDate: clientDocumentationIsoDate,
+      receiptName: z.string().trim().max(255).nullable().optional(),
+      receiptDriveLink: clientDocumentationHttpUrl.nullable().optional(),
+      notes: z.string().trim().max(2000).nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await getClientCase(input.clientCaseId);
+      if (!c) throw new TRPCError({ code: "NOT_FOUND", message: "Client not found" });
+      try {
+        const paymentId = await addClientDocumentationPayment(input.clientCaseId, input, ctx.user.id);
+        await writeAuditLog(auditCtxFromTrpc(ctx), "create", "client_documentation_payment", paymentId, `Added payment schedule item to client case ${input.clientCaseId}`);
+        return { success: true, paymentId };
+      } catch (error) {
+        if (error instanceof Error && error.message === "PAYMENT_NAME_EXISTS") throw new TRPCError({ code: "CONFLICT", message: "A payment with this name already exists" });
+        throw error;
+      }
+    }),
+
+  updatePayment: protectedProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      clientCaseId: z.number().int().positive(),
+      paymentName: z.string().trim().min(2).max(160),
+      amountEur: z.number().positive().max(100000000),
+      dueDate: clientDocumentationIsoDate,
+      receiptName: z.string().trim().max(255).nullable().optional(),
+      receiptDriveLink: clientDocumentationHttpUrl.nullable().optional(),
+      notes: z.string().trim().max(2000).nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await getClientCase(input.clientCaseId);
+      if (!c) throw new TRPCError({ code: "NOT_FOUND", message: "Client not found" });
+      try {
+        await updateClientDocumentationPayment(input, ctx.user.id);
+        await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_documentation_payment", input.id, `Updated payment schedule item for client case ${input.clientCaseId}`);
+        return { success: true };
+      } catch (error) {
+        if (error instanceof Error && error.message === "PAYMENT_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND", message: "Payment not found" });
+        if (error instanceof Error && error.message === "PAYMENT_NAME_EXISTS") throw new TRPCError({ code: "CONFLICT", message: "A payment with this name already exists" });
+        if (error instanceof Error && error.message === "PAYMENT_HISTORY_PROTECTED") throw new TRPCError({ code: "BAD_REQUEST", message: "Paid payment names, amounts, and due dates are protected; receipt details and notes can still be updated" });
+        if (error instanceof Error && error.message === "PAYMENT_RECEIPT_PROTECTED") throw new TRPCError({ code: "BAD_REQUEST", message: "An existing receipt link cannot be removed; replace it with the corrected link if needed" });
+        throw error;
+      }
+    }),
+
+  markPaymentPaid: protectedProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      clientCaseId: z.number().int().positive(),
+      paidDate: clientDocumentationIsoDate,
+      receiptName: z.string().trim().max(255).nullable().optional(),
+      receiptDriveLink: clientDocumentationHttpUrl.nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await markClientDocumentationPaymentPaid(input, ctx.user.id);
+        await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_documentation_payment", input.id, `Marked payment paid for client case ${input.clientCaseId}`);
+        return { success: true };
+      } catch (error) {
+        if (error instanceof Error && error.message === "PAYMENT_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND", message: "Payment not found" });
+        if (error instanceof Error && error.message === "PAYMENT_ALREADY_PAID") throw new TRPCError({ code: "CONFLICT", message: "This payment is already marked as paid" });
+        throw error;
+      }
+    }),
+
+  archivePayment: protectedProcedure
+    .input(z.object({ id: z.number().int().positive(), clientCaseId: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await archiveClientDocumentationPayment(input.id, input.clientCaseId, ctx.user.id);
+        await writeAuditLog(auditCtxFromTrpc(ctx), "delete", "client_documentation_payment", input.id, `Archived unpaid payment schedule item for client case ${input.clientCaseId}`);
+        return { success: true };
+      } catch (error) {
+        if (error instanceof Error && error.message === "PAYMENT_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND", message: "Payment not found" });
+        if (error instanceof Error && error.message === "PAYMENT_HISTORY_PROTECTED") throw new TRPCError({ code: "BAD_REQUEST", message: "Paid payments and payments with receipt evidence cannot be removed" });
+        throw error;
+      }
+    }),
+
+  setContractDriveLink: protectedProcedure
+    .input(z.object({ id: z.number().int().positive(), contractDriveLink: clientDocumentationHttpUrl, finClientId: z.number().int().positive().nullable().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await getClientCase(input.id);
+      if (!c) throw new TRPCError({ code: "NOT_FOUND", message: "Client not found" });
+      try {
+        await setClientDocumentationContractDriveLink(input.id, input.contractDriveLink, input.finClientId);
+        await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_documentation_case", input.id, "Updated contract Drive link");
+        return { success: true };
+      } catch (error) {
+        if (error instanceof Error && error.message === "FIN_CLIENT_MISMATCH") throw new TRPCError({ code: "BAD_REQUEST", message: "The Finance client does not match this client code" });
+        throw error;
+      }
     }),
 
   // Mark selected documents as received with their issue date

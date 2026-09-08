@@ -11,6 +11,7 @@ import {
   boolean,
   decimal,
   date,
+  index,
   uniqueIndex,
 } from "drizzle-orm/mysql-core";
 
@@ -205,6 +206,7 @@ export type InsertProformaInvoice = typeof proformaInvoices.$inferInsert;
 export const clientCases = mysqlTable("clientCases", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
+  finClientId: int("finClientId"),
   clientName: varchar("clientName", { length: 255 }).notNull(),
   clientCode: varchar("clientCode", { length: 64 }).notNull(),
   applicationType: mysqlEnum("applicationType", ["freelancer", "business_owner"]).notNull(),
@@ -221,6 +223,8 @@ export const clientCases = mysqlTable("clientCases", {
   embassyEmailDate: date("embassyEmailDate"),
   // Google Drive link for client documents folder
   driveLink: text("driveLink"),
+  // Dedicated Google Drive link for the signed client contract
+  contractDriveLink: text("contractDriveLink"),
   // Children data: JSON array of { name: string; age: number } (exact name + age per child)
   childrenData: json("childrenData"),
   // Spouse / wife name
@@ -263,6 +267,29 @@ export const clientDocuments = mysqlTable("clientDocuments", {
 });
 export type ClientDocument = typeof clientDocuments.$inferSelect;
 export type InsertClientDocument = typeof clientDocuments.$inferInsert;
+
+export const clientDocumentationPayments = mysqlTable("clientDocumentationPayments", {
+  id: int("id").autoincrement().primaryKey(),
+  clientCaseId: int("clientCaseId").notNull(),
+  paymentName: varchar("paymentName", { length: 160 }).notNull(),
+  amountEur: decimal("amountEur", { precision: 12, scale: 2 }).notNull(),
+  dueDate: date("dueDate", { mode: "string" }).notNull(),
+  paidDate: date("paidDate", { mode: "string" }),
+  receiptName: varchar("receiptName", { length: 255 }),
+  receiptDriveLink: text("receiptDriveLink"),
+  notes: text("notes"),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdByUserId: int("createdByUserId").notNull(),
+  updatedByUserId: int("updatedByUserId"),
+  archivedAt: timestamp("archivedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  index("idx_client_documentation_payments_case").on(table.clientCaseId),
+  index("idx_client_documentation_payments_due").on(table.dueDate),
+]);
+export type ClientDocumentationPayment = typeof clientDocumentationPayments.$inferSelect;
+export type InsertClientDocumentationPayment = typeof clientDocumentationPayments.$inferInsert;
 
 // ─── Financial Module ────────────────────────────────────────────────────────
 

@@ -1319,3 +1319,15 @@ Check email for download link within 5 minutes
 - [x] Map each notification trigger, timing condition, recipients, message fields, channel, deduplication behavior, delivery evidence, and failure handling
 - [x] Assess active coverage, missing requirements, duplicate-send risks, privacy/security controls, and operational limitations
 - [x] Write and deliver a complete evidence-based Client Documentation notification report without exposing client data
+
+## Client Documentation — Contract & Payment Schedule
+- [x] Audit new-client creation, client profile, Client Portal linkage, Financial client/receipt records, Drive-link patterns, permissions, and existing data
+- [x] Design an additive contract/payment model with three initial blank rows for manually entered payment names, EUR amounts, and due dates
+- [x] Support custom installments, unique names, due dates, paid status/date, receipt name/link, notes, ordering, and non-destructive edit/delete controls
+- [x] Calculate contract value, paid total, due/overdue total, remaining balance, next payment, and payment status consistently from installment records
+- [x] Add contract Drive link and payment schedule fields to Client Documentation creation while preserving existing clients and workflows
+- [x] Add a responsive Contract & Payments section to each client profile with create, edit, mark-paid, receipt-link, and deletion confirmation actions
+- [x] Enforce permissions, URL/date/amount validation, transactional creation, audit history, and safe handling of legacy clients without schedules
+- [x] Replace the three example payment names and amounts with three blank manually entered rows while retaining editable due dates, add/remove controls, and automatic contract-value calculation
+- [x] Add regression tests and validate calculations, manual/custom payments, receipt links, due states, existing-client safety, and production build
+- [x] Complete the checklist, publish, and report the Client Documentation contract/payment feature
