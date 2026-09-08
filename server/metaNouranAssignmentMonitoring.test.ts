@@ -64,12 +64,14 @@ describe("durable implementation safeguards", () => {
   const router = read("server/routers/leadsSettings.ts");
   const connector = read("server/mcpServer.ts");
   const email = read("server/emailService.ts");
+  const contactMatcher = read("server/leadContactMatcher.ts");
+  const notificationRecipients = read("server/systemNotificationRecipients.ts");
   const html = read("client/index.html");
   const migration = read("drizzle/0055_meta_nouran_assignment_monitoring.sql");
   const suppressionMigration = read("drizzle/0056_meta_notification_suppression.sql");
 
   it("creates Lead, attribution, assignment, and audit inside one transaction", () => {
-    expect(service).toContain("const transactionResult = await db.transaction(async tx =>");
+    expect(service).toContain("transactionResult = await db.transaction(async tx =>");
     expect(service).toContain("await addAttribution(leadId, attribution, true, tx)");
     expect(service).toContain("await applyMetaAssignment({");
     expect(service).toContain("}, tx)");
@@ -78,7 +80,8 @@ describe("durable implementation safeguards", () => {
   });
 
   it("prevents real and Test Lead contact matching from crossing markers", () => {
-    expect(assignment).toContain("eq(leads.isMetaTestLead, input.isTestLead)");
+    expect(assignment).toContain("isMetaTestLead: input.isTestLead");
+    expect(contactMatcher).toContain("eq(leads.isMetaTestLead, input.isMetaTestLead ?? false)");
     expect(service).toContain("if (!isTestLead && assignment.outcome === \"assigned\")");
     expect(service).toContain("metaAssignmentStatus: isTestLead ? \"not_applicable\" : \"pending\"");
   });
@@ -88,7 +91,8 @@ describe("durable implementation safeguards", () => {
     expect(migration).toContain("notification_key_unique");
     expect(email).toContain("assignedEmail?: string | null");
     expect(email).toContain("const recipients = new Set(MAHMOUD_EMAILS)");
-    expect(email).toContain('toLowerCase().endsWith("@elevay.com")');
+    expect(email).toContain("isAllowedSystemEmailSender(sender)");
+    expect(notificationRecipients).toContain('endsWith("@elevay.com")');
     expect(html).not.toContain("connect.facebook.net/en_US/fbevents.js");
   });
 

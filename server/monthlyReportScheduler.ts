@@ -5,6 +5,7 @@
  */
 import { getFinancialSummary, listAccounts } from "./finDb";
 import nodemailer from "nodemailer";
+import { isAllowedSystemEmailSender, mergeSystemNotificationRecipients } from "./systemNotificationRecipients";
 
 const FINANCE_RECIPIENTS = [
   "Mahmoud.saber@elevay.com",
@@ -14,7 +15,7 @@ const FINANCE_RECIPIENTS = [
 function getTransporter() {
   const user = process.env.GMAIL_USER;
   const pass = process.env.GMAIL_APP_PASSWORD;
-  if (!user || !pass) return null;
+  if (!user || !pass || !isAllowedSystemEmailSender(user)) return null;
   return nodemailer.createTransport({
     service: "gmail",
     auth: { user, pass },
@@ -109,11 +110,11 @@ async function sendMonthlyReport() {
     try {
       await transporter.sendMail({
         from: process.env.GMAIL_USER,
-        to: FINANCE_RECIPIENTS.join(", "),
+        to: mergeSystemNotificationRecipients(FINANCE_RECIPIENTS).join(", "),
         subject,
         html,
       });
-      console.log(`[MonthlyReport] Sent ${monthName} ${year} report to ${FINANCE_RECIPIENTS.join(", ")}`);
+      console.log(`[MonthlyReport] Sent ${monthName} ${year} report to the configured internal recipients`);
       return true;
     } catch (err) {
       console.error("[MonthlyReport] Failed to send email:", err);

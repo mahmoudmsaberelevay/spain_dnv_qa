@@ -1305,3 +1305,11 @@ Check email for download link within 5 minutes
 - [x] Add regression tests for valid generation, required-field validation, generation/storage failures, and the final downloadable response
 - [x] Validate the authenticated Marketing proposal flow end to end and confirm no existing proposal or marketing records are modified
 - [x] Run focused tests and the production build, complete the checklist, publish, and report the fix
+
+## System Notifications — Add Ziad Gmail Recipient
+- [x] Audit every outbound system email path, shared mail helper, scheduled notification, alert, and direct SMTP call on the latest shared branch
+- [x] Define one case-insensitive recipient-merging rule that always includes `Ziadelshurafa@gmail.com` while preserving all existing recipients
+- [x] Apply the rule to internal ELEVAY system notifications without changing client-facing transactional emails or any sender address
+- [x] Verify no `@elevay.com` address is used as a sender and duplicate recipient variants are removed safely
+- [x] Add regression tests for single/multiple recipients, case-insensitive deduplication, existing recipients, and representative notification workflows
+- [x] Run focused tests and the production build, complete the checklist, publish, and report the notification update

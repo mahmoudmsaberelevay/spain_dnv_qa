@@ -13,13 +13,14 @@
 import { getAllClientCasesForReminders, getAllClientDocumentsForReminders, getUnpaidReceiptsOlderThanDays } from "./db";
 import { sendDocReminderToAssignedTeam, MAHMOUD_EMAILS, TEAM_EMAIL_MAP } from "./emailService";
 import nodemailer from "nodemailer";
+import { isAllowedSystemEmailSender, mergeSystemNotificationRecipients } from "./systemNotificationRecipients";
 
 const MAHMOUD_CC = "Mahmoud.saber@elevay.com";
 
 function createTransporter() {
   const gmailUser = process.env.GMAIL_USER;
   const gmailPass = process.env.GMAIL_APP_PASSWORD;
-  if (!gmailUser || !gmailPass) return null;
+  if (!gmailUser || !gmailPass || !isAllowedSystemEmailSender(gmailUser)) return null;
   return nodemailer.createTransport({
     service: "gmail",
     auth: { user: gmailUser, pass: gmailPass },
@@ -36,7 +37,7 @@ async function sendToMahmoud(subject: string, html: string, plain: string): Prom
     try {
       await transporter.sendMail({
         from: `"ELEVAY System" <${process.env.GMAIL_USER}>`,
-        to: MAHMOUD_EMAILS.join(", "),
+        to: mergeSystemNotificationRecipients(MAHMOUD_EMAILS).join(", "),
         subject: `[ELEVAY] ${subject}`,
         html: wrapEmail(subject, html),
         text: plain,
@@ -275,7 +276,7 @@ async function checkUnpaidReceiptReminders(): Promise<void> {
           await transporter.sendMail({
             from: `"ELEVAY System" <${process.env.GMAIL_USER}>`,
             to: consultantEmail,
-            cc: MAHMOUD_CC,
+            cc: mergeSystemNotificationRecipients(MAHMOUD_CC).join(", "),
             subject: `[ELEVAY] ${subject}`,
             html: wrapEmail(subject, html),
             text: plain,
