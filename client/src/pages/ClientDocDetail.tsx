@@ -12,14 +12,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ClientDocumentationPayments } from "@/components/ClientDocumentationPayments";
+import { ClientDocumentWorkflowRow } from "@/components/ClientDocumentWorkflowRow";
+import { ClientDocumentationSpainMilestones } from "@/components/ClientDocumentationSpainMilestones";
 import {
   ArrowLeft, CheckCircle2, Circle, Clock, AlertTriangle,
-  FileCheck, Stamp, Building2, CalendarDays, ClipboardList,
-  CalendarClock, Check, FileDown, Trash2, Link2, Mail, UserCheck, ShieldCheck
+  FileCheck, CalendarDays, CalendarClock,
+  FileDown, Trash2, Link2, Mail, UserCheck, ShieldCheck
 } from "lucide-react";
 
-type ActionType = "receive" | "mofa" | "embassy" | "schengen" | "appointment" | "submission" | null;
-type Stage = "preparation" | "submission" | "approved";
+type ActionType = "receive" | "schengen" | "appointment" | null;
+type Stage = "preparation" | "spain_team_received" | "submission" | "approved";
 
 export default function ClientDocDetail() {
   const { id } = useParams<{ id: string }>();
@@ -30,11 +32,9 @@ export default function ClientDocDetail() {
   const [activeTab, setActiveTab] = useState("main");
 
   const [receiveDates, setReceiveDates] = useState<Record<number, string>>({});
-  const [selectedDocIds, setSelectedDocIds] = useState<number[]>([]);
   const [dateInputs, setDateInputs] = useState<Record<string, string>>({
     schengenDate: "",
     embassyAppointmentDate: "",
-    expectedSubmissionDate: "",
   });
   // Stage workflow state
   const [stageInputs, setStageInputs] = useState<Record<string, string>>({});
@@ -85,28 +85,6 @@ export default function ClientDocDetail() {
       toast.success("Documents marked as received");
       setActiveAction(null);
       setReceiveDates({});
-      utils.clientDocs.get.invalidate({ id: clientId });
-      utils.clientDocs.report.invalidate({ id: clientId });
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const mofaMutation = trpc.clientDocs.markMofa.useMutation({
-    onSuccess: () => {
-      toast.success("MOFA attestation recorded");
-      setActiveAction(null);
-      setSelectedDocIds([]);
-      utils.clientDocs.get.invalidate({ id: clientId });
-      utils.clientDocs.report.invalidate({ id: clientId });
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const embassyMutation = trpc.clientDocs.markEmbassy.useMutation({
-    onSuccess: () => {
-      toast.success("Embassy attestation recorded");
-      setActiveAction(null);
-      setSelectedDocIds([]);
       utils.clientDocs.get.invalidate({ id: clientId });
       utils.clientDocs.report.invalidate({ id: clientId });
     },
@@ -226,13 +204,13 @@ export default function ClientDocDetail() {
 
   const notReceived = docs.filter(d => !d.received);
   const receivedDocs = docs.filter(d => d.received);
-  const needsMofaDocs = receivedDocs.filter(d => d.requiresMofa && !d.mofaAttested);
-  const needsEmbassyDocs = receivedDocs.filter(d => d.requiresEmbassy && !d.embassyAttested);
+  const needsMofaDocs = receivedDocs.filter(d => d.requiresMofa && !(d.mofaReceived || d.mofaAttested));
+  const needsEmbassyDocs = receivedDocs.filter(d => d.requiresEmbassy && !(d.embassyReceived || d.embassyAttested));
 
   const totalDocs = docs.length;
   const receivedCount = receivedDocs.length;
-  const mofaCount = docs.filter(d => !d.requiresMofa || d.mofaAttested).length;
-  const embassyCount = docs.filter(d => !d.requiresEmbassy || d.embassyAttested).length;
+  const mofaCount = docs.filter(d => !d.requiresMofa || d.mofaReceived || d.mofaAttested).length;
+  const embassyCount = docs.filter(d => !d.requiresEmbassy || d.embassyReceived || d.embassyAttested).length;
   const progressPct = totalDocs > 0 ? Math.round((receivedCount / totalDocs) * 100) : 0;
 
   const handleReceiveSubmit = () => {
@@ -243,30 +221,15 @@ export default function ClientDocDetail() {
     receiveMutation.mutate({ clientCaseId: clientId, items });
   };
 
-  const handleMofaSubmit = () => {
-    if (selectedDocIds.length === 0) { toast.error("Please select at least one document"); return; }
-    mofaMutation.mutate({ clientCaseId: clientId, docIds: selectedDocIds });
-  };
-
-  const handleEmbassySubmit = () => {
-    if (selectedDocIds.length === 0) { toast.error("Please select at least one document"); return; }
-    embassyMutation.mutate({ clientCaseId: clientId, docIds: selectedDocIds });
-  };
-
-  const handleDatesSubmit = (field: "schengenDate" | "embassyAppointmentDate" | "expectedSubmissionDate") => {
+  const handleDatesSubmit = (field: "schengenDate" | "embassyAppointmentDate") => {
     const val = dateInputs[field];
     if (!val) { toast.error("Please select a date"); return; }
     datesMutation.mutate({ id: clientId, [field]: val });
   };
 
   const openAction = (action: ActionType) => {
-    setSelectedDocIds([]);
     setReceiveDates({});
     setActiveAction(action);
-  };
-
-  const toggleDocId = (docId: number) => {
-    setSelectedDocIds(prev => prev.includes(docId) ? prev.filter(x => x !== docId) : [...prev, docId]);
   };
 
   const DocStatusIcon = ({ doc }: { doc: typeof docs[0] }) => {
@@ -363,12 +326,15 @@ export default function ClientDocDetail() {
             className={`text-xs font-semibold px-3 py-1.5 rounded-lg border cursor-pointer focus:outline-none ${
               (caseData.stage ?? "preparation") === "preparation"
                 ? "bg-blue-50 text-blue-700 border-blue-200"
+                : (caseData.stage ?? "preparation") === "spain_team_received"
+                ? "bg-cyan-50 text-cyan-700 border-cyan-200"
                 : (caseData.stage ?? "preparation") === "submission"
                 ? "bg-amber-50 text-amber-700 border-amber-200"
                 : "bg-emerald-50 text-emerald-700 border-emerald-200"
             }`}
           >
             <option value="preparation">📋 Preparation</option>
+            <option value="spain_team_received">🇪🇸 Spain Team Received</option>
             <option value="submission">📤 Submission</option>
             <option value="approved">✅ Approved</option>
           </select>
@@ -506,6 +472,8 @@ export default function ClientDocDetail() {
         finClientId={caseData.finClientId}
       />
 
+      <ClientDocumentationSpainMilestones clientCaseId={clientId} clientCase={caseData} />
+
       {/* ── Embassy Attestation Email Date Panel ── */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -537,55 +505,30 @@ export default function ClientDocDetail() {
       </div>
 
       {/* Stage Info Panel */}
-      {(caseData.stage === "submission" || caseData.stage === "approved") && (
-        <div className={`rounded-xl border p-4 ${
-          caseData.stage === "submission" ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"
-        }`}>
-          <h3 className={`text-sm font-semibold mb-3 ${
-            caseData.stage === "submission" ? "text-amber-800" : "text-emerald-800"
-          }`}>
-            {caseData.stage === "submission" ? "📤 Submission Details" : "✅ Approval Details"}
+      {caseData.stage !== "preparation" && (
+        <div className={`rounded-xl border p-4 ${caseData.stage === "spain_team_received" ? "border-cyan-200 bg-cyan-50" : caseData.stage === "submission" ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
+          <h3 className={`mb-3 text-sm font-semibold ${caseData.stage === "spain_team_received" ? "text-cyan-800" : caseData.stage === "submission" ? "text-amber-800" : "text-emerald-800"}`}>
+            {caseData.stage === "spain_team_received" ? "🇪🇸 Spain Team Received" : caseData.stage === "submission" ? "📤 Submission Details" : "✅ Approval Details"}
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {caseData.stage === "submission" && [
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {[
+              { label: "Spain Team Received", value: caseData.spainTeamReceivedDate },
               { label: "Submission Date", value: caseData.submissionDate },
               { label: "Expected Approval", value: caseData.expectedApprovalDate },
-              { label: "Translation Done", value: caseData.translationDate },
-            ].map(f => f.value ? (
-              <div key={f.label} className="bg-white rounded-lg px-3 py-2 border border-amber-100">
-                <p className="text-xs text-amber-600 opacity-70">{f.label}</p>
-                <p className="text-sm font-medium text-amber-900 mt-0.5">{new Date(f.value).toLocaleDateString()}</p>
-              </div>
-            ) : null)}
-            {caseData.stage === "approved" && [
+              { label: "Sent to Sworn Translator", value: caseData.translationDate },
               { label: "Approval Date", value: caseData.approvalDate },
-              { label: "Expected Approval", value: caseData.expectedApprovalDate },
               { label: "Settlement Fee Date", value: caseData.settlementFeeDate },
-              { label: "Biometrics Date", value: caseData.biometricsDate },
-            ].map(f => f.value ? (
-              <div key={f.label} className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
-                <p className="text-xs text-emerald-600 opacity-70">{f.label}</p>
-                <p className="text-sm font-medium text-emerald-900 mt-0.5">{new Date(f.value).toLocaleDateString()}</p>
+            ].filter(item => item.value).map(item => (
+              <div key={item.label} className="rounded-lg border border-white/80 bg-white px-3 py-2">
+                <p className="text-xs text-gray-500">{item.label}</p>
+                <p className="mt-0.5 text-sm font-medium text-gray-900">{new Date(item.value).toLocaleDateString()}</p>
               </div>
-            ) : null)}
-            {caseData.stage === "approved" && caseData.settlementFeeAmount && (
-              <div className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
-                <p className="text-xs text-emerald-600 opacity-70">Settlement Fee</p>
-                <p className="text-sm font-medium text-emerald-900 mt-0.5">€ {caseData.settlementFeeAmount}</p>
-              </div>
-            )}
-            {caseData.stage === "approved" && caseData.approvalDate && caseData.expectedApprovalDate && (
-              <div className={`rounded-lg px-3 py-2 border ${
-                new Date(caseData.approvalDate) <= new Date(caseData.expectedApprovalDate)
-                  ? "bg-emerald-100 border-emerald-200"
-                  : "bg-red-50 border-red-200"
-              }`}>
-                <p className="text-xs opacity-70">On-Time Status</p>
-                <p className="text-sm font-semibold mt-0.5">
-                  {new Date(caseData.approvalDate) <= new Date(caseData.expectedApprovalDate) ? "✓ On Time" : "✗ Delayed"}
-                </p>
-              </div>
-            )}
+            ))}
+            {caseData.submissionReceiptLink ? <a href={caseData.submissionReceiptLink} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-white/80 bg-white px-3 py-2 text-xs font-medium text-amber-800 hover:underline">Open Submission Receipt</a> : null}
+            {caseData.approvalLetterLink ? <a href={caseData.approvalLetterLink} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-white/80 bg-white px-3 py-2 text-xs font-medium text-emerald-800 hover:underline">Open Approval Letter</a> : null}
+            {caseData.settlementFeeAmount ? (
+              <div className="rounded-lg border border-white/80 bg-white px-3 py-2"><p className="text-xs text-gray-500">Settlement Fee</p><p className="mt-0.5 text-sm font-medium text-gray-900">€ {caseData.settlementFeeAmount}</p></div>
+            ) : null}
           </div>
         </div>
       )}
@@ -636,11 +579,8 @@ export default function ClientDocDetail() {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {[
           { action: "receive" as ActionType, icon: FileCheck, label: "Receive Documents", count: notReceived.length, bg: "bg-[#1e3a5f] hover:bg-[#16304f]" },
-          { action: "mofa" as ActionType, icon: Stamp, label: "MOFA Attestation", count: needsMofaDocs.length, bg: "bg-amber-600 hover:bg-amber-700" },
-          { action: "embassy" as ActionType, icon: Building2, label: "Embassy Attestation", count: needsEmbassyDocs.length, bg: "bg-orange-600 hover:bg-orange-700" },
           { action: "schengen" as ActionType, icon: CalendarDays, label: "Schengen Date", count: null, bg: "bg-purple-700 hover:bg-purple-800" },
           { action: "appointment" as ActionType, icon: CalendarClock, label: "Embassy Appointment", count: null, bg: "bg-cyan-700 hover:bg-cyan-800" },
-          { action: "submission" as ActionType, icon: ClipboardList, label: "Submission Date", count: null, bg: "bg-emerald-700 hover:bg-emerald-800" },
         ].map(btn => (
           <button
             key={btn.action}
@@ -679,7 +619,7 @@ export default function ClientDocDetail() {
             {mainDocs.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-4">No main applicant documents</p>
             ) : (
-              mainDocs.map(doc => <DocRow key={doc.id} doc={doc} />)
+              mainDocs.map(doc => <ClientDocumentWorkflowRow key={doc.id} clientCaseId={clientId} document={doc} />)
             )}
           </div>
         </TabsContent>
@@ -687,7 +627,7 @@ export default function ClientDocDetail() {
         {familyDocs.length > 0 && (
           <TabsContent value="family" className="mt-4">
             <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-              {familyDocs.map(doc => <DocRow key={doc.id} doc={doc} />)}
+              {familyDocs.map(doc => <ClientDocumentWorkflowRow key={doc.id} clientCaseId={clientId} document={doc} />)}
             </div>
           </TabsContent>
         )}
@@ -833,92 +773,6 @@ export default function ClientDocDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* MOFA Attestation */}
-      <Dialog open={activeAction === "mofa"} onOpenChange={o => !o && setActiveAction(null)}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-gray-900">MOFA Attestation</DialogTitle>
-          </DialogHeader>
-          <p className="text-xs text-gray-400 -mt-2">Select documents that have been attested by MOFA</p>
-          <div className="space-y-2 mt-2">
-            {needsMofaDocs.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">No documents pending MOFA attestation</p>
-            ) : (
-              needsMofaDocs.map(doc => (
-                <div
-                  key={doc.id}
-                  onClick={() => toggleDocId(doc.id)}
-                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                    selectedDocIds.includes(doc.id)
-                      ? "border-amber-400 bg-amber-50"
-                      : "border-gray-200 bg-gray-50 hover:border-gray-300"
-                  }`}
-                >
-                  <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
-                    selectedDocIds.includes(doc.id) ? "bg-amber-500 border-amber-500" : "border-gray-400"
-                  }`}>
-                    {selectedDocIds.includes(doc.id) && <Check className="w-3 h-3 text-white" />}
-                  </div>
-                  <span className="text-sm text-gray-700">{doc.docName}</span>
-                </div>
-              ))
-            )}
-          </div>
-          {needsMofaDocs.length > 0 && (
-            <Button
-              className="w-full bg-amber-600 hover:bg-amber-700 text-white mt-2"
-              onClick={handleMofaSubmit}
-              disabled={mofaMutation.isPending}
-            >
-              {mofaMutation.isPending ? "Saving..." : "Mark MOFA Attested"}
-            </Button>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Embassy Attestation */}
-      <Dialog open={activeAction === "embassy"} onOpenChange={o => !o && setActiveAction(null)}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-gray-900">Embassy Attestation</DialogTitle>
-          </DialogHeader>
-          <p className="text-xs text-gray-400 -mt-2">Select documents that have been attested by the Embassy</p>
-          <div className="space-y-2 mt-2">
-            {needsEmbassyDocs.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">No documents pending Embassy attestation</p>
-            ) : (
-              needsEmbassyDocs.map(doc => (
-                <div
-                  key={doc.id}
-                  onClick={() => toggleDocId(doc.id)}
-                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                    selectedDocIds.includes(doc.id)
-                      ? "border-orange-400 bg-orange-50"
-                      : "border-gray-200 bg-gray-50 hover:border-gray-300"
-                  }`}
-                >
-                  <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
-                    selectedDocIds.includes(doc.id) ? "bg-orange-500 border-orange-500" : "border-gray-400"
-                  }`}>
-                    {selectedDocIds.includes(doc.id) && <Check className="w-3 h-3 text-white" />}
-                  </div>
-                  <span className="text-sm text-gray-700">{doc.docName}</span>
-                </div>
-              ))
-            )}
-          </div>
-          {needsEmbassyDocs.length > 0 && (
-            <Button
-              className="w-full bg-orange-600 hover:bg-orange-700 text-white mt-2"
-              onClick={handleEmbassySubmit}
-              disabled={embassyMutation.isPending}
-            >
-              {embassyMutation.isPending ? "Saving..." : "Mark Embassy Attested"}
-            </Button>
-          )}
-        </DialogContent>
-      </Dialog>
-
       {/* Schengen Date */}
       <Dialog open={activeAction === "schengen"} onOpenChange={o => !o && setActiveAction(null)}>
         <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-sm">
@@ -958,29 +812,6 @@ export default function ClientDocDetail() {
           <Button
             className="w-full bg-[#1e3a5f] hover:bg-[#16304f] text-white mt-2"
             onClick={() => handleDatesSubmit("embassyAppointmentDate")}
-            disabled={datesMutation.isPending}
-          >
-            {datesMutation.isPending ? "Saving..." : "Save Date"}
-          </Button>
-        </DialogContent>
-      </Dialog>
-
-      {/* Submission Date */}
-      <Dialog open={activeAction === "submission"} onOpenChange={o => !o && setActiveAction(null)}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-gray-900">Expected Submission Date</DialogTitle>
-          </DialogHeader>
-          <p className="text-xs text-gray-400 -mt-2">Set the expected date for submitting the application</p>
-          <input
-            type="date"
-            value={dateInputs.expectedSubmissionDate}
-            onChange={e => setDateInputs(prev => ({ ...prev, expectedSubmissionDate: e.target.value }))}
-            className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 mt-2 bg-white focus:outline-none focus:border-[#1e3a5f]"
-          />
-          <Button
-            className="w-full bg-[#1e3a5f] hover:bg-[#16304f] text-white mt-2"
-            onClick={() => handleDatesSubmit("expectedSubmissionDate")}
             disabled={datesMutation.isPending}
           >
             {datesMutation.isPending ? "Saving..." : "Save Date"}
@@ -1195,9 +1026,21 @@ export default function ClientDocDetail() {
         <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md">
           <DialogHeader>
             <DialogTitle className="text-gray-900">
-              {showStageDialog === "submission" ? "Move to Submission Stage" : "Mark as Approved"}
+              {showStageDialog === "spain_team_received" ? "Move to Spain Team Received" : showStageDialog === "submission" ? "Move to Submission Stage" : "Mark as Approved"}
             </DialogTitle>
           </DialogHeader>
+
+          {showStageDialog === "spain_team_received" && (
+            <div className="space-y-4 mt-2">
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Spain Team Received Date <span className="text-red-500">*</span></label>
+                <input type="date" value={stageInputs.spainTeamReceivedDate ?? ""} onChange={e => setStageInputs(p => ({ ...p, spainTeamReceivedDate: e.target.value }))} className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm" />
+              </div>
+              <Button className="w-full bg-cyan-700 hover:bg-cyan-800 text-white" disabled={!stageInputs.spainTeamReceivedDate || stageMutation.isPending} onClick={() => stageMutation.mutate({ id: clientId, stage: "spain_team_received", spainTeamReceivedDate: stageInputs.spainTeamReceivedDate || null })}>
+                {stageMutation.isPending ? "Saving..." : "Confirm Spain Team Received"}
+              </Button>
+            </div>
+          )}
 
           {showStageDialog === "submission" && (
             <div className="space-y-4 mt-2">
@@ -1217,22 +1060,17 @@ export default function ClientDocDetail() {
                 })()}
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">Translation Done Date <span className="text-gray-400">(optional)</span></label>
-                <input
-                  type="date"
-                  value={stageInputs.translationDate ?? ""}
-                  onChange={e => setStageInputs(p => ({ ...p, translationDate: e.target.value }))}
-                  className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm"
-                />
+                <label className="text-xs font-medium text-gray-700 block mb-1">Submission Receipt Link <span className="text-red-500">*</span></label>
+                <input type="url" placeholder="https://drive.google.com/..." value={stageInputs.submissionReceiptLink ?? ""} onChange={e => setStageInputs(p => ({ ...p, submissionReceiptLink: e.target.value }))} className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm" />
               </div>
               <Button
                 className="w-full bg-amber-600 hover:bg-amber-700 text-white"
-                disabled={!stageInputs.submissionDate || stageMutation.isPending}
+                disabled={!stageInputs.submissionDate || !stageInputs.submissionReceiptLink || stageMutation.isPending}
                 onClick={() => stageMutation.mutate({
                   id: clientId,
                   stage: "submission",
                   submissionDate: stageInputs.submissionDate || null,
-                  translationDate: stageInputs.translationDate || null,
+                  submissionReceiptLink: stageInputs.submissionReceiptLink || null,
                 })}
               >
                 {stageMutation.isPending ? "Saving..." : "Confirm Submission Stage"}
@@ -1262,6 +1100,10 @@ export default function ClientDocDetail() {
                 })()}
               </div>
               <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Approval Letter Link <span className="text-red-500">*</span></label>
+                <input type="url" placeholder="https://drive.google.com/..." value={stageInputs.approvalLetterLink ?? ""} onChange={e => setStageInputs(p => ({ ...p, approvalLetterLink: e.target.value }))} className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm" />
+              </div>
+              <div>
                 <label className="text-xs font-medium text-gray-700 block mb-1">After-Settlement Fee Amount (€) <span className="text-gray-400">(optional)</span></label>
                 <input
                   type="number"
@@ -1280,25 +1122,16 @@ export default function ClientDocDetail() {
                   className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm"
                 />
               </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">Biometrics Date <span className="text-gray-400">(optional)</span></label>
-                <input
-                  type="date"
-                  value={stageInputs.biometricsDate ?? ""}
-                  onChange={e => setStageInputs(p => ({ ...p, biometricsDate: e.target.value }))}
-                  className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm"
-                />
-              </div>
               <Button
                 className="w-full bg-emerald-700 hover:bg-emerald-800 text-white"
-                disabled={!stageInputs.approvalDate || stageMutation.isPending}
+                disabled={!stageInputs.approvalDate || !stageInputs.approvalLetterLink || stageMutation.isPending}
                 onClick={() => stageMutation.mutate({
                   id: clientId,
                   stage: "approved",
                   approvalDate: stageInputs.approvalDate || null,
+                  approvalLetterLink: stageInputs.approvalLetterLink || null,
                   settlementFeeAmount: stageInputs.settlementFeeAmount || null,
                   settlementFeeDate: stageInputs.settlementFeeDate || null,
-                  biometricsDate: stageInputs.biometricsDate || null,
                 })}
               >
                 {stageMutation.isPending ? "Saving..." : "Confirm Approval"}

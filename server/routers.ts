@@ -61,6 +61,12 @@ import {
   updateClientDocumentationPayment,
 } from "./clientDocumentationPaymentsService";
 import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
+import {
+  recordClientDocumentAuthorityMilestone,
+  recordSpainCaseMilestone,
+  setClientDocumentEvidenceLink,
+  updateSpainCaseStage,
+} from "./clientDocumentationSpainWorkflow";
 
 const MOFA_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/mofa_stamp_a1afffba.png";
 const SPAIN_EMBASSY_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/spain_embassy_stamp_cf83213b.png";
@@ -1545,6 +1551,46 @@ const clientDocumentationIsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refin
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }, "Enter a valid date");
 
+function clientDocumentationWorkflowError(error: unknown): TRPCError {
+  const code = error instanceof Error ? error.message : "UNKNOWN_ERROR";
+  const messages: Record<string, string> = {
+    CLIENT_NOT_FOUND: "Client not found",
+    DOCUMENT_NOT_FOUND: "Document not found",
+    DOCUMENT_NOT_RECEIVED: "Mark the document as received first",
+    MOFA_NOT_REQUIRED: "This document does not require MOFA processing",
+    MOFA_NOT_SUBMITTED: "Mark the document as submitted to MOFA first",
+    MOFA_NOT_RECEIVED: "Receive the document from MOFA before submitting it to the Embassy",
+    EMBASSY_NOT_REQUIRED: "This document does not require Embassy processing",
+    EMBASSY_NOT_SUBMITTED: "Mark the document as submitted to the Embassy first",
+    DATE_BEFORE_DOCUMENT_RECEIVED: "The authority date cannot be before the document receipt date",
+    MOFA_RECEIVED_BEFORE_SUBMITTED: "MOFA receipt cannot be before MOFA submission",
+    EMBASSY_RECEIVED_BEFORE_SUBMITTED: "Embassy receipt cannot be before Embassy submission",
+    STAGE_DATE_REQUIRED: "A date is required for this stage",
+    EVIDENCE_LINK_REQUIRED: "An evidence link is required for this stage",
+    SPAIN_TEAM_NOT_RECEIVED: "Move the case to Spain Team Received first",
+    SUBMISSION_BEFORE_SPAIN_TEAM_RECEIVED: "Submission cannot be before the Spain Team received date",
+    APPLICATION_NOT_SUBMITTED: "The application must be submitted before approval",
+    APPROVAL_BEFORE_SUBMISSION: "Approval cannot be before submission",
+    APPLICATION_NOT_APPROVED: "The application must be approved first",
+    TRAVEL_LINKS_REQUIRED: "Ticket and hotel links are required with the travel date",
+    TRAVEL_BEFORE_APPROVAL: "Travel cannot be before approval",
+    TRAVEL_NOT_RECORDED: "Record the Spain travel date first",
+    ARRIVAL_BEFORE_TRAVEL: "Arrival confirmation cannot be before the travel date",
+    BIOMETRICS_BEFORE_APPROVAL: "The biometrics appointment cannot be before approval",
+    BIOMETRICS_APPOINTMENT_NOT_RECORDED: "Record the biometrics appointment first",
+    BIOMETRICS_COMPLETED_BEFORE_APPOINTMENT: "Biometrics completion cannot be before the appointment",
+    BANK_ACCOUNT_BEFORE_APPROVAL: "Bank-account completion cannot be before approval",
+    BIOMETRICS_NOT_COMPLETED: "Confirm biometrics completion first",
+    BANK_ACCOUNT_NOT_COMPLETED: "Confirm bank-account completion first",
+    CARD_READY_BEFORE_BIOMETRICS: "The residency card cannot be ready before biometrics completion",
+    CARD_READY_BEFORE_BANK_ACCOUNT: "The residency card cannot be ready before bank-account completion",
+    INVALID_LINK: "Enter a valid HTTP or HTTPS link",
+    INVALID_DATE: "Enter a valid date",
+  };
+  const trpcCode = code.endsWith("NOT_FOUND") ? "NOT_FOUND" : "BAD_REQUEST";
+  return new TRPCError({ code: trpcCode, message: messages[code] ?? "Unable to update the documentation workflow" });
+}
+
 const clientDocsRouter = router({
   // Create a new client case and auto-generate the document checklist
   create: protectedProcedure
@@ -1784,6 +1830,78 @@ const clientDocsRouter = router({
       }
     }),
 
+  setDocumentLink: protectedProcedure
+    .input(z.object({
+      clientCaseId: z.number().int().positive(),
+      documentId: z.number().int().positive(),
+      documentLink: clientDocumentationHttpUrl,
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await setClientDocumentEvidenceLink(input);
+        await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_document", input.documentId, `Updated document evidence link for client case ${input.clientCaseId}`);
+        return { success: true };
+      } catch (error) {
+        throw clientDocumentationWorkflowError(error);
+      }
+    }),
+
+  recordDocumentAuthorityMilestone: protectedProcedure
+    .input(z.object({
+      clientCaseId: z.number().int().positive(),
+      documentId: z.number().int().positive(),
+      milestone: z.enum(["mofa_submitted", "mofa_received", "embassy_submitted", "embassy_received"]),
+      date: clientDocumentationIsoDate,
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await recordClientDocumentAuthorityMilestone(input);
+        await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_document", input.documentId, `Recorded ${input.milestone} on ${input.date} for client case ${input.clientCaseId}`);
+        const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
+        await notifyPortalUsersForClientCase({
+          clientCaseId: input.clientCaseId,
+          type: "document_attestation",
+          titleEn: "Document processing updated",
+          titleAr: "تم تحديث معالجة المستند",
+          bodyEn: "Your ELEVAY team updated the official processing status of a required document.",
+          bodyAr: "قام فريق إليفاي بتحديث حالة المعالجة الرسمية لأحد المستندات المطلوبة.",
+        });
+        return { success: true };
+      } catch (error) {
+        throw clientDocumentationWorkflowError(error);
+      }
+    }),
+
+  recordSpainMilestone: protectedProcedure
+    .input(z.object({
+      clientCaseId: z.number().int().positive(),
+      milestone: z.enum(["translator_submitted", "travel_booked", "arrival_confirmed", "biometrics_appointment", "biometrics_completed", "bank_account_completed", "residency_card_ready"]),
+      date: clientDocumentationIsoDate,
+      ticketLink: clientDocumentationHttpUrl.nullable().optional(),
+      hotelLink: clientDocumentationHttpUrl.nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await recordSpainCaseMilestone(input);
+        await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_documentation_case", input.clientCaseId, `Recorded ${input.milestone} on ${input.date}`);
+        const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
+        const notifyMilestones = new Set(["travel_booked", "arrival_confirmed", "biometrics_appointment", "biometrics_completed", "residency_card_ready"]);
+        if (notifyMilestones.has(input.milestone)) {
+          await notifyPortalUsersForClientCase({
+            clientCaseId: input.clientCaseId,
+            type: "workflow_dates_updated",
+            titleEn: "Application milestone updated",
+            titleAr: "تم تحديث مرحلة في الطلب",
+            bodyEn: "Your ELEVAY team recorded an important application milestone.",
+            bodyAr: "قام فريق إليفاي بتسجيل مرحلة مهمة في طلبك.",
+          });
+        }
+        return { success: true };
+      } catch (error) {
+        throw clientDocumentationWorkflowError(error);
+      }
+    }),
+
   // Mark selected documents as received with their issue date
   receiveDocuments: protectedProcedure
     .input(z.object({
@@ -1807,40 +1925,24 @@ const clientDocsRouter = router({
       return { success: true };
     }),
 
-  // Mark selected received documents as MOFA attested
+  // Deprecated bulk shortcut. Authority milestones must be recorded separately with dates.
   markMofa: protectedProcedure
     .input(z.object({
       clientCaseId: z.number(),
       docIds: z.array(z.number()),
     }))
-    .mutation(async ({ input }) => {
-      const c = await getClientCase(input.clientCaseId);
-      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
-      await updateClientDocumentsByIds(input.docIds, {
-        mofaAttested: true,
-        mofaAttestedDate: new Date(),
-      });
-      const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
-      await notifyPortalUsersForClientCase({ clientCaseId: input.clientCaseId, type: "document_attestation", titleEn: "Document attestation update", titleAr: "تحديث تصديق المستندات", bodyEn: "Your ELEVAY team updated the Ministry of Foreign Affairs attestation status.", bodyAr: "قام فريق إليفاي بتحديث حالة تصديق وزارة الخارجية." });
-      return { success: true };
+    .mutation(async () => {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Record Submitted to MOFA and Received from MOFA separately for each document" });
     }),
 
-  // Mark selected received documents as Embassy attested
+  // Deprecated bulk shortcut. Authority milestones must be recorded separately with dates.
   markEmbassy: protectedProcedure
     .input(z.object({
       clientCaseId: z.number(),
       docIds: z.array(z.number()),
     }))
-    .mutation(async ({ input }) => {
-      const c = await getClientCase(input.clientCaseId);
-      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
-      await updateClientDocumentsByIds(input.docIds, {
-        embassyAttested: true,
-        embassyAttestedDate: new Date(),
-      });
-      const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
-      await notifyPortalUsersForClientCase({ clientCaseId: input.clientCaseId, type: "document_attestation", titleEn: "Document attestation update", titleAr: "تحديث تصديق المستندات", bodyEn: "Your ELEVAY team updated the embassy attestation status.", bodyAr: "قام فريق إليفاي بتحديث حالة تصديق السفارة." });
-      return { success: true };
+    .mutation(async () => {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Record Submitted to Embassy and Received from Embassy separately for each document" });
     }),
 
   // Set appointment / submission dates
@@ -1876,8 +1978,8 @@ const clientDocsRouter = router({
       const docs = await getClientDocuments(input.id);
 
       const notReceived = docs.filter(d => !d.received);
-      const receivedNotMofa = docs.filter(d => d.received && d.requiresMofa && !d.mofaAttested);
-      const receivedNotEmbassy = docs.filter(d => d.received && d.requiresEmbassy && !d.embassyAttested);
+      const receivedNotMofa = docs.filter(d => d.received && d.requiresMofa && !(d.mofaReceived || d.mofaAttested));
+      const receivedNotEmbassy = docs.filter(d => d.received && d.requiresEmbassy && !(d.embassyReceived || d.embassyAttested));
 
       // Compute expiry warnings for received docs
       const expiryWarnings = docs
@@ -1893,12 +1995,14 @@ const clientDocsRouter = router({
 
       const totalDocs = docs.length;
       const receivedCount = docs.filter(d => d.received).length;
-      const mofaComplete = docs.filter(d => !d.requiresMofa || d.mofaAttested).length;
-      const embassyComplete = docs.filter(d => !d.requiresEmbassy || d.embassyAttested).length;
+      const mofaSubmitted = docs.filter(d => !d.requiresMofa || d.mofaSubmitted || d.mofaAttested).length;
+      const mofaComplete = docs.filter(d => !d.requiresMofa || d.mofaReceived || d.mofaAttested).length;
+      const embassySubmitted = docs.filter(d => !d.requiresEmbassy || d.embassySubmitted || d.embassyAttested).length;
+      const embassyComplete = docs.filter(d => !d.requiresEmbassy || d.embassyReceived || d.embassyAttested).length;
 
       return {
         clientCase: c,
-        summary: { totalDocs, receivedCount, mofaComplete, embassyComplete },
+        summary: { totalDocs, receivedCount, mofaSubmitted, mofaComplete, embassySubmitted, embassyComplete },
         notReceived,
         receivedNotMofa,
         receivedNotEmbassy,
@@ -1911,12 +2015,15 @@ const clientDocsRouter = router({
   updateStage: protectedProcedure
     .input(z.object({
       id: z.number(),
-      stage: z.enum(["preparation", "submission", "approved"]),
+      stage: z.enum(["preparation", "spain_team_received", "submission", "approved"]),
+      spainTeamReceivedDate: clientDocumentationIsoDate.nullable().optional(),
       // Submission stage fields
       submissionDate: z.string().nullable().optional(),
+      submissionReceiptLink: clientDocumentationHttpUrl.nullable().optional(),
       translationDate: z.string().nullable().optional(),
       // Approved stage fields
       approvalDate: z.string().nullable().optional(),
+      approvalLetterLink: clientDocumentationHttpUrl.nullable().optional(),
       settlementFeeAmount: z.string().nullable().optional(),
       settlementFeeDate: z.string().nullable().optional(),
       biometricsDate: z.string().nullable().optional(),
@@ -1924,43 +2031,26 @@ const clientDocsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const c = await getClientCase(input.id);
       if (!c) throw new TRPCError({ code: "NOT_FOUND" });
-
-      const update: Record<string, any> = { stage: input.stage };
-
-      if (input.stage === "submission") {
-        if (input.submissionDate !== undefined)
-          update.submissionDate = input.submissionDate ? new Date(input.submissionDate) : null;
-        if (input.translationDate !== undefined)
-          update.translationDate = input.translationDate ? new Date(input.translationDate) : null;
-        // Auto-calculate expectedApprovalDate = submissionDate + 25 working days
-        if (input.submissionDate) {
-          const start = new Date(input.submissionDate);
-          let workingDays = 0;
-          const cursor = new Date(start);
-          while (workingDays < 25) {
-            cursor.setDate(cursor.getDate() + 1);
-            const dow = cursor.getDay();
-            if (dow !== 0 && dow !== 6) workingDays++; // skip Sat/Sun
-          }
-          update.expectedApprovalDate = cursor;
-        }
+      try {
+        await updateSpainCaseStage({
+          clientCaseId: input.id,
+          stage: input.stage,
+          stageDate: input.stage === "spain_team_received" ? input.spainTeamReceivedDate : input.stage === "submission" ? input.submissionDate : input.stage === "approved" ? input.approvalDate : null,
+          evidenceLink: input.stage === "submission" ? input.submissionReceiptLink : input.stage === "approved" ? input.approvalLetterLink : null,
+        });
+        const supplementary: Record<string, any> = {};
+        if (input.translationDate !== undefined) supplementary.translationDate = input.translationDate ? new Date(input.translationDate) : null;
+        if (input.settlementFeeAmount !== undefined) supplementary.settlementFeeAmount = input.settlementFeeAmount ?? null;
+        if (input.settlementFeeDate !== undefined) supplementary.settlementFeeDate = input.settlementFeeDate ? new Date(input.settlementFeeDate) : null;
+        if (input.biometricsDate !== undefined) supplementary.biometricsDate = input.biometricsDate ? new Date(input.biometricsDate) : null;
+        if (Object.keys(supplementary).length > 0) await updateClientCase(input.id, supplementary as any);
+      } catch (error) {
+        throw clientDocumentationWorkflowError(error);
       }
-
-      if (input.stage === "approved") {
-        if (input.approvalDate !== undefined)
-          update.approvalDate = input.approvalDate ? new Date(input.approvalDate) : null;
-        if (input.settlementFeeAmount !== undefined)
-          update.settlementFeeAmount = input.settlementFeeAmount ?? null;
-        if (input.settlementFeeDate !== undefined)
-          update.settlementFeeDate = input.settlementFeeDate ? new Date(input.settlementFeeDate) : null;
-        if (input.biometricsDate !== undefined)
-          update.biometricsDate = input.biometricsDate ? new Date(input.biometricsDate) : null;
-      }
-
-      await updateClientCase(input.id, update as any);
+      await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_documentation_case", input.id, `Changed stage from ${c.stage} to ${input.stage}`);
       if (c.stage !== input.stage) {
         const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
-        const labels = { preparation: { en: "Preparation", ar: "الإعداد" }, submission: { en: "Submission", ar: "التقديم" }, approved: { en: "Approved", ar: "الموافقة" } } as const;
+        const labels = { preparation: { en: "Preparation", ar: "الإعداد" }, spain_team_received: { en: "Spain Team Received", ar: "استلام فريق إسبانيا" }, submission: { en: "Submission", ar: "التقديم" }, approved: { en: "Approved", ar: "الموافقة" } } as const;
         await notifyPortalUsersForClientCase({ clientCaseId: input.id, type: "workflow_stage_updated", titleEn: "Application stage updated", titleAr: "تم تحديث مرحلة الطلب", bodyEn: `Your application moved to ${labels[input.stage].en}.`, bodyAr: `انتقل طلبك إلى مرحلة ${labels[input.stage].ar}.` });
       }
       return { success: true };
@@ -1992,8 +2082,8 @@ const clientDocsRouter = router({
         const docs = await getClientDocuments(c.id);
         const total = docs.length;
         const received = docs.filter(d => d.received).length;
-        const mofaDone = docs.filter(d => !d.requiresMofa || d.mofaAttested).length;
-        const embassyDone = docs.filter(d => !d.requiresEmbassy || d.embassyAttested).length;
+        const mofaDone = docs.filter(d => !d.requiresMofa || d.mofaReceived || d.mofaAttested).length;
+        const embassyDone = docs.filter(d => !d.requiresEmbassy || d.embassyReceived || d.embassyAttested).length;
         // Overall completion: average of receive%, mofa%, embassy%
         const receiveP = total > 0 ? Math.round((received / total) * 100) : 0;
         const mofaP = total > 0 ? Math.round((mofaDone / total) * 100) : 0;
@@ -2016,6 +2106,7 @@ const clientDocsRouter = router({
           paralegal: c.paralegal,
           consultant: c.consultant,
           stage: c.stage,
+          spainTeamReceivedDate: c.spainTeamReceivedDate,
           totalDocs: total,
           receivedDocs: received,
           receivePercent: receiveP,
@@ -2028,6 +2119,10 @@ const clientDocsRouter = router({
           submissionDate: c.submissionDate,
           expectedApprovalDate: c.expectedApprovalDate,
           approvalDate: c.approvalDate,
+          biometricsAppointmentDate: c.biometricsAppointmentDate,
+          biometricsDate: c.biometricsDate,
+          travelDate: c.travelDate,
+          residencyCardReadyDate: c.residencyCardReadyDate,
           daysToSchengen: daysUntil(c.schengenDate),
           daysToSubmission: daysUntil(c.expectedSubmissionDate),
           approvedOnTime,
@@ -2043,6 +2138,7 @@ const clientDocsRouter = router({
       stats: {
         total: results.length,
         preparation: results.filter(r => r.stage === "preparation").length,
+        spainTeamReceived: results.filter(r => r.stage === "spain_team_received").length,
         submission: results.filter(r => r.stage === "submission").length,
         approved: approvedCases.length,
         onTimePercent,

@@ -229,17 +229,27 @@ export const clientCases = mysqlTable("clientCases", {
   childrenData: json("childrenData"),
   // Spouse / wife name
   spouseName: varchar("spouseName", { length: 255 }),
-  // 3-stage workflow
-  stage: mysqlEnum("stage", ["preparation", "submission", "approved"]).default("preparation").notNull(),
+  // Spain documentation workflow
+  stage: mysqlEnum("stage", ["preparation", "spain_team_received", "submission", "approved"]).default("preparation").notNull(),
+  spainTeamReceivedDate: date("spainTeamReceivedDate", { mode: "string" }),
   // Submission stage fields
   submissionDate: timestamp("submissionDate"),
+  submissionReceiptLink: text("submissionReceiptLink"),
   expectedApprovalDate: timestamp("expectedApprovalDate"),
   translationDate: timestamp("translationDate"),
   // Approved stage fields
   approvalDate: timestamp("approvalDate"),
+  approvalLetterLink: text("approvalLetterLink"),
   settlementFeeAmount: decimal("settlementFeeAmount", { precision: 12, scale: 2 }),
   settlementFeeDate: timestamp("settlementFeeDate"),
+  biometricsAppointmentDate: date("biometricsAppointmentDate", { mode: "string" }),
   biometricsDate: timestamp("biometricsDate"),
+  bankAccountCompletedDate: date("bankAccountCompletedDate", { mode: "string" }),
+  travelDate: date("travelDate", { mode: "string" }),
+  ticketLink: text("ticketLink"),
+  hotelLink: text("hotelLink"),
+  arrivalConfirmedDate: date("arrivalConfirmedDate", { mode: "string" }),
+  residencyCardReadyDate: date("residencyCardReadyDate", { mode: "string" }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -258,8 +268,17 @@ export const clientDocuments = mysqlTable("clientDocuments", {
   // Tracking fields
   received: boolean("received").default(false).notNull(),
   receivedDate: timestamp("receivedDate"),
+  documentLink: text("documentLink"),
+  mofaSubmitted: boolean("mofaSubmitted").default(false).notNull(),
+  mofaSubmittedDate: date("mofaSubmittedDate", { mode: "string" }),
+  mofaReceived: boolean("mofaReceived").default(false).notNull(),
+  mofaReceivedDate: date("mofaReceivedDate", { mode: "string" }),
   mofaAttested: boolean("mofaAttested").default(false).notNull(),
   mofaAttestedDate: timestamp("mofaAttestedDate"),
+  embassySubmitted: boolean("embassySubmitted").default(false).notNull(),
+  embassySubmittedDate: date("embassySubmittedDate", { mode: "string" }),
+  embassyReceived: boolean("embassyReceived").default(false).notNull(),
+  embassyReceivedDate: date("embassyReceivedDate", { mode: "string" }),
   embassyAttested: boolean("embassyAttested").default(false).notNull(),
   embassyAttestedDate: timestamp("embassyAttestedDate"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

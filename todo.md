@@ -1331,3 +1331,20 @@ Check email for download link within 5 minutes
 - [x] Replace the three example payment names and amounts with three blank manually entered rows while retaining editable due dates, add/remove controls, and automatic contract-value calculation
 - [x] Add regression tests and validate calculations, manual/custom payments, receipt links, due states, existing-client safety, and production build
 - [x] Complete the checklist, publish, and report the Client Documentation contract/payment feature
+
+## Client Documentation — Spain Document & Milestone Tracking
+- [x] Audit existing checklist, MOFA/Embassy flags, stage enum, submission/approval/biometrics fields, reminders, reports, Client Portal, and production data
+- [x] Design additive per-document link and MOFA/Embassy submitted-versus-received fields with conservative mapping of existing attestation-complete records
+- [x] Add a document link beside every required checklist item with HTTP(S) validation and audit history
+- [x] Add separate check marks and dates for Submitted to MOFA, Received from MOFA, Submitted to Embassy, and Received from Embassy
+- [x] Add the `Spain Team Received` stage between Preparation and Submission with a required stage date
+- [x] Add sworn-translator submission confirmation/date as a note-level milestone rather than a workflow stage
+- [x] Add official submission date and submission-receipt link
+- [x] Add approval date and approval-letter link when stage changes to Approved
+- [x] Add Spain travel date, ticket link, hotel link, and arrival-confirmation status/date
+- [x] Add biometrics appointment date, biometrics-completed confirmation/date, and bank-account-completed confirmation/date
+- [x] Add residency-card-ready confirmation/date and collection visibility
+- [x] Update Client Documentation profile, workflow/report outputs, and authorized Client Portal visibility without exposing internal-only data
+- [x] Enforce permissions, chronological dependencies, link/date validation, audit logging, and non-destructive history safeguards
+- [x] Add regression tests and validate all milestones, document links, old-client data preservation, reports, Client Portal, and production build
+- [x] Complete the checklist, publish, and report the expanded Spain documentation workflow
