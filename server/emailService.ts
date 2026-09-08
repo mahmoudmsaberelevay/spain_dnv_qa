@@ -17,6 +17,11 @@ export const TEAM_EMAIL_MAP: Record<string, string> = {
 
 export const MAHMOUD_EMAILS = ["mahmoud.saber@elevay.com", "mahmoud.saberelevay@gmail.com"];
 
+export function getTeamNotificationEmail(name: string | null | undefined) {
+  if (!name) return undefined;
+  return TEAM_EMAIL_MAP[name] ?? Object.entries(TEAM_EMAIL_MAP).find(([fullName]) => fullName.toLowerCase().startsWith(`${name.toLowerCase()} `))?.[1];
+}
+
 // Email transporter setup
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -145,13 +150,26 @@ export async function notifyFinClientAdded(clientCode: string, clientName: strin
   return sendEmail(MAHMOUD_EMAILS, "New Financial Client Added", html);
 }
 
-export async function notifyNewClientAssigned(clientName: string, assignedTo: string) {
+export async function notifyNewClientAssigned(
+  clientName: string,
+  clientCodeOrAssignedTo: string,
+  applicationType?: string,
+  maritalStatus?: string,
+  paralegal?: string | null,
+  consultant?: string | null,
+) {
+  const structured = applicationType !== undefined;
+  const assignedNames = structured ? [paralegal, consultant].filter(Boolean).join(" and ") : clientCodeOrAssignedTo;
+  const recipients = structured
+    ? [paralegal, consultant].map(getTeamNotificationEmail).filter((email): email is string => Boolean(email))
+    : MAHMOUD_EMAILS;
   const html = `
     <h2>New Client Assigned</h2>
     <p><strong>Client:</strong> ${clientName}</p>
-    <p><strong>Assigned To:</strong> ${assignedTo}</p>
+    ${structured ? `<p><strong>Client Code:</strong> ${clientCodeOrAssignedTo}</p><p><strong>Application:</strong> ${applicationType}</p><p><strong>Family Status:</strong> ${maritalStatus || "Not specified"}</p>` : ""}
+    <p><strong>Assigned To:</strong> ${assignedNames || "ELEVAY Team"}</p>
   `;
-  return sendEmail(MAHMOUD_EMAILS, "New Client Assigned", html);
+  return sendEmail(recipients.length ? recipients : MAHMOUD_EMAILS, "New Client Assigned", html);
 }
 
 // Document reminders

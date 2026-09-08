@@ -8,6 +8,7 @@ import { protectedProcedure, router } from "./_core/trpc";
 import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
 import { generateTemporaryPassword, hashPortalPassword } from "./clientPortalAuth";
 import { pushClientNotification } from "./clientPortalRoutes";
+import { recordClientLifecycleEvent } from "./clientLifecycleNotificationService";
 import { runPublicContentSync } from "./publicContentService";
 import {
   clientCases,
@@ -106,7 +107,7 @@ export const clientPortalAdminRouter = router({
         paralegal: primary.paralegal,
         locale: input.locale,
         mustChangePassword: true,
-        notificationPreferences: { push: true, email: true, messages: true, documents: true, workflow: true },
+        notificationPreferences: { push: true, email: true, messages: true, documents: true, payments: true, workflow: true },
         createdBy: ctx.user.id,
       });
     } catch (error) {
@@ -121,6 +122,8 @@ export const clientPortalAdminRouter = router({
       await db.insert(clientPortalApplications).values({ publicId: applicationPublicId, portalUserId: portalUser.id, clientCaseId: clientCase.id, label: `${clientCase.applicationType} – ${clientCase.clientName}`, isPrimary: clientCase.id === input.primaryCaseId });
       const [application] = await db.select().from(clientPortalApplications).where(eq(clientPortalApplications.publicId, applicationPublicId)).limit(1);
       if (application) await db.insert(clientPortalApplicants).values({ publicId: randomUUID(), portalApplicationId: application.id, relation: "main", fullName: clientCase.clientName });
+      await db.update(clientCases).set({ clientPortalSignedAt: new Date() }).where(and(eq(clientCases.id, clientCase.id), isNull(clientCases.clientPortalSignedAt)));
+      await recordClientLifecycleEvent({ clientCaseId: clientCase.id, eventType: "welcome", idempotencyKey: `portal-welcome:${portalUser.id}:${clientCase.id}`, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" }, titleEn: "Welcome to ELEVAY", titleAr: "مرحباً بك في إليفاي", bodyEn: "Your application workspace is ready. You can follow progress, receive updates, and securely submit required documents here.", bodyAr: "مساحة طلبك جاهزة. يمكنك متابعة التقدم واستلام التحديثات وإرسال المستندات المطلوبة بأمان من هنا." });
     }
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "client_portal_account", portalUser.id, `Created client portal access for ${primary.clientName}`);
     return { publicId: portalUser.publicId, username: portalUser.username, email: portalUser.email, temporaryPassword: password };
@@ -137,12 +140,18 @@ export const clientPortalAdminRouter = router({
     const [clientCase] = await db.select().from(clientCases).where(eq(clientCases.id, input.clientCaseId)).limit(1);
     if (!portalUser || !clientCase) throw new TRPCError({ code: "NOT_FOUND", message: "Client account or documentation folder was not found" });
     const [existing] = await db.select().from(clientPortalApplications).where(and(eq(clientPortalApplications.portalUserId, portalUser.id), eq(clientPortalApplications.clientCaseId, clientCase.id))).limit(1);
-    if (existing) return { publicId: existing.publicId, alreadyLinked: true };
+    if (existing) {
+      await db.update(clientCases).set({ clientPortalSignedAt: new Date() }).where(and(eq(clientCases.id, clientCase.id), isNull(clientCases.clientPortalSignedAt)));
+      await recordClientLifecycleEvent({ clientCaseId: clientCase.id, eventType: "welcome", idempotencyKey: `portal-welcome:${portalUser.id}:${clientCase.id}`, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" }, titleEn: "Welcome to ELEVAY", titleAr: "مرحباً بك في إليفاي", bodyEn: "Your application workspace is ready. You can follow progress, receive updates, and securely submit required documents here.", bodyAr: "مساحة طلبك جاهزة. يمكنك متابعة التقدم واستلام التحديثات وإرسال المستندات المطلوبة بأمان من هنا." });
+      return { publicId: existing.publicId, alreadyLinked: true };
+    }
     if (input.makePrimary) await db.update(clientPortalApplications).set({ isPrimary: false }).where(eq(clientPortalApplications.portalUserId, portalUser.id));
     const publicId = randomUUID();
     await db.insert(clientPortalApplications).values({ publicId, portalUserId: portalUser.id, clientCaseId: clientCase.id, label: `${clientCase.applicationType} – ${clientCase.clientName}`, isPrimary: input.makePrimary });
     const [application] = await db.select().from(clientPortalApplications).where(eq(clientPortalApplications.publicId, publicId)).limit(1);
     if (application) await db.insert(clientPortalApplicants).values({ publicId: randomUUID(), portalApplicationId: application.id, relation: "main", fullName: clientCase.clientName });
+    await db.update(clientCases).set({ clientPortalSignedAt: new Date() }).where(and(eq(clientCases.id, clientCase.id), isNull(clientCases.clientPortalSignedAt)));
+    await recordClientLifecycleEvent({ clientCaseId: clientCase.id, eventType: "welcome", idempotencyKey: `portal-welcome:${portalUser.id}:${clientCase.id}`, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" }, titleEn: "Welcome to ELEVAY", titleAr: "مرحباً بك في إليفاي", bodyEn: "Your application workspace is ready. You can follow progress, receive updates, and securely submit required documents here.", bodyAr: "مساحة طلبك جاهزة. يمكنك متابعة التقدم واستلام التحديثات وإرسال المستندات المطلوبة بأمان من هنا." });
     await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_portal_documentation_folder", clientCase.id, `Linked ${clientCase.clientName} folder to portal account ${portalUser.username}`);
     return { publicId, alreadyLinked: false };
   }),

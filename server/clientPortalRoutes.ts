@@ -5,6 +5,7 @@ import { and, asc, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { createNotification, getDb } from "./db";
 import { storageGet, storagePut } from "./storage";
 import {
+  clientApplicationActivities,
   clientCases,
   clientDocuments,
   clientPortalApplications,
@@ -162,12 +163,13 @@ async function queueStaffEmail(input: { eventType: string; recipients: string[];
   }
 }
 
-async function pushClientNotification(portalUserId: number, title: string, body: string, data: Record<string, string>) {
+export async function pushClientNotification(portalUserId: number, title: string, body: string, data: Record<string, string>) {
   const db = await getDb();
   if (!db) return;
   const [portalUser] = await db.select({ preferences: clientPortalUsers.notificationPreferences }).from(clientPortalUsers).where(eq(clientPortalUsers.id, portalUserId)).limit(1);
   const preferences = portalUser?.preferences && typeof portalUser.preferences === "object" ? portalUser.preferences as Record<string, boolean> : {};
-  const category = data.type?.includes("message") ? "messages" : data.type?.includes("document") ? "documents" : data.type?.includes("workflow") || data.type?.includes("stage") ? "workflow" : null;
+  const type = data.type || "";
+  const category = type.includes("message") ? "messages" : type.includes("payment") ? "payments" : type.includes("document") || type.includes("attestation") || type.includes("translator") || type.includes("receipt") || type.includes("letter") ? "documents" : "workflow";
   if (preferences.push === false || (category && preferences[category] === false)) return;
   const sessions = await db.select({ token: clientPortalSessions.pushToken }).from(clientPortalSessions).where(and(eq(clientPortalSessions.portalUserId, portalUserId), isNull(clientPortalSessions.revokedAt), gt(clientPortalSessions.expiresAt, new Date())));
   const tokens = sessions.map(row => row.token).filter((token): token is string => Boolean(token && token.startsWith("ExponentPushToken[")));
@@ -311,7 +313,7 @@ export function registerClientPortalRoutes(app: Express) {
     const temporaryPassword = generateTemporaryPassword();
     const publicId = randomUUID();
     try {
-      await db.insert(clientPortalUsers).values({ publicId, primaryClientCaseId: clientCase.id, username, email, mobile: mobile || null, passwordHash: await hashPortalPassword(temporaryPassword), accountType: "client", consultant: clientCase.consultant, paralegal: clientCase.paralegal, locale: body.locale === "ar" ? "ar" : "en", mustChangePassword: true, notificationPreferences: { push: true, email: true, messages: true, documents: true, workflow: true }, createdBy: req.portal!.user.id });
+      await db.insert(clientPortalUsers).values({ publicId, primaryClientCaseId: clientCase.id, username, email, mobile: mobile || null, passwordHash: await hashPortalPassword(temporaryPassword), accountType: "client", consultant: clientCase.consultant, paralegal: clientCase.paralegal, locale: body.locale === "ar" ? "ar" : "en", mustChangePassword: true, notificationPreferences: { push: true, email: true, messages: true, documents: true, payments: true, workflow: true }, createdBy: req.portal!.user.id });
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);
       if (/duplicate/i.test(message)) return error(res, 409, "account_exists", "Username or email already has client access");
@@ -323,6 +325,8 @@ export function registerClientPortalRoutes(app: Express) {
     await db.insert(clientPortalApplications).values({ publicId: applicationPublicId, portalUserId: portalUser.id, clientCaseId: clientCase.id, label: `${clientCase.applicationType} – ${clientCase.clientName}`, isPrimary: true });
     const [application] = await db.select().from(clientPortalApplications).where(eq(clientPortalApplications.publicId, applicationPublicId)).limit(1);
     if (application) await db.insert(clientPortalApplicants).values({ publicId: randomUUID(), portalApplicationId: application.id, relation: "main", fullName: clientCase.clientName });
+    const { recordClientLifecycleEvent } = await import("./clientLifecycleNotificationService");
+    await recordClientLifecycleEvent({ clientCaseId: clientCase.id, eventType: "portal_access_linked", idempotencyKey: `portal-user:${portalUser.id}:access-linked`, actor: { type: "staff", portalUserId: req.portal!.user.id, name: req.portal!.user.username }, titleEn: "Welcome to your ELEVAY application", titleAr: "مرحباً بك في طلب إليفاي", bodyEn: "Your secure client access is active. Review your document checklist and application activity here.", bodyAr: "تم تفعيل وصولك الآمن. يمكنك مراجعة قائمة المستندات ونشاط الطلب من هنا.", entityType: "application", entityPublicId: applicationPublicId, occurredAt: new Date() });
     await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_client_account_created", recordType: "client_portal_account", recordPublicId: portalUser.publicId, details: `Assigned case ${clientCase.clientCode}` });
     return res.status(201).json({ publicId: portalUser.publicId, username: portalUser.username, email: portalUser.email, temporaryPassword, clientName: clientCase.clientName, clientCode: clientCase.clientCode });
   });
@@ -444,7 +448,7 @@ export function registerClientPortalRoutes(app: Express) {
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
     const applicants = await db.select({ publicId: clientPortalApplicants.publicId, relation: clientPortalApplicants.relation, fullName: clientPortalApplicants.fullName, birthDate: clientPortalApplicants.birthDate }).from(clientPortalApplicants).where(eq(clientPortalApplicants.portalApplicationId, owned.application.id)).orderBy(asc(clientPortalApplicants.id));
-    const folderItems = await db.select({ id: clientDocuments.id, docKey: clientDocuments.docKey, docName: clientDocuments.docName, category: clientDocuments.category, received: clientDocuments.received, receivedDate: clientDocuments.receivedDate, documentLink: clientDocuments.documentLink, requiresMofa: clientDocuments.requiresMofa, mofaSubmitted: clientDocuments.mofaSubmitted, mofaSubmittedDate: clientDocuments.mofaSubmittedDate, mofaReceived: clientDocuments.mofaReceived, mofaReceivedDate: clientDocuments.mofaReceivedDate, requiresEmbassy: clientDocuments.requiresEmbassy, embassySubmitted: clientDocuments.embassySubmitted, embassySubmittedDate: clientDocuments.embassySubmittedDate, embassyReceived: clientDocuments.embassyReceived, embassyReceivedDate: clientDocuments.embassyReceivedDate }).from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id)).orderBy(asc(clientDocuments.category), asc(clientDocuments.id));
+    const folderItems = await db.select({ docKey: clientDocuments.docKey, docName: clientDocuments.docName, category: clientDocuments.category, received: clientDocuments.received, receivedDate: clientDocuments.receivedDate, documentLink: clientDocuments.documentLink, requiresMofa: clientDocuments.requiresMofa, mofaSubmitted: clientDocuments.mofaSubmitted, mofaSubmittedDate: clientDocuments.mofaSubmittedDate, mofaReceived: clientDocuments.mofaReceived, mofaReceivedDate: clientDocuments.mofaReceivedDate, requiresEmbassy: clientDocuments.requiresEmbassy, embassySubmitted: clientDocuments.embassySubmitted, embassySubmittedDate: clientDocuments.embassySubmittedDate, embassyReceived: clientDocuments.embassyReceived, embassyReceivedDate: clientDocuments.embassyReceivedDate }).from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id)).orderBy(asc(clientDocuments.category), asc(clientDocuments.id));
     const folder = { name: `${owned.clientCase.clientName} – Documentation`, clientCode: owned.clientCase.clientCode, total: folderItems.length, received: folderItems.filter(item => item.received).length, items: folderItems };
     return res.json({ publicId: owned.application.publicId, label: owned.application.label || owned.clientCase.clientName, clientCode: owned.clientCase.clientCode, applicationType: owned.clientCase.applicationType, stage: owned.clientCase.stage, consultant: owned.clientCase.consultant, paralegal: owned.clientCase.paralegal, dates: { expectedSubmissionDate: owned.clientCase.expectedSubmissionDate, spainTeamReceivedDate: owned.clientCase.spainTeamReceivedDate, translatorSubmittedDate: owned.clientCase.translationDate, submissionDate: owned.clientCase.submissionDate, expectedApprovalDate: owned.clientCase.expectedApprovalDate, approvalDate: owned.clientCase.approvalDate, travelDate: owned.clientCase.travelDate, arrivalConfirmedDate: owned.clientCase.arrivalConfirmedDate, biometricsAppointmentDate: owned.clientCase.biometricsAppointmentDate, biometricsCompletedDate: owned.clientCase.biometricsDate, bankAccountCompletedDate: owned.clientCase.bankAccountCompletedDate, residencyCardReadyDate: owned.clientCase.residencyCardReadyDate }, links: { submissionReceipt: owned.clientCase.submissionReceiptLink, approvalLetter: owned.clientCase.approvalLetterLink, ticket: owned.clientCase.ticketLink, hotel: owned.clientCase.hotelLink }, applicants, documentationFolder: folder });
   });
@@ -458,14 +462,25 @@ export function registerClientPortalRoutes(app: Express) {
     return res.json(workflowProjection(owned.clientCase, checklist.filter(item => item.received).length, checklist.length));
   });
 
+  app.get("/client-api/applications/:applicationId/activity", async (req: PortalRequest, res) => {
+    const owned = await ownedApplication(req.portal!.user.id, req.params.applicationId);
+    if (!owned) return error(res, 404, "application_not_found");
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
+    const rows = await db.select({ publicId: clientApplicationActivities.publicId, actorType: clientApplicationActivities.actorType, actorName: clientApplicationActivities.actorName, eventType: clientApplicationActivities.eventType, titleEn: clientApplicationActivities.titleEn, titleAr: clientApplicationActivities.titleAr, bodyEn: clientApplicationActivities.bodyEn, bodyAr: clientApplicationActivities.bodyAr, entityType: clientApplicationActivities.entityType, entityPublicId: clientApplicationActivities.entityPublicId, metadata: clientApplicationActivities.metadata, occurredAt: clientApplicationActivities.occurredAt }).from(clientApplicationActivities).where(and(eq(clientApplicationActivities.clientCaseId, owned.clientCase.id), eq(clientApplicationActivities.visibleToClient, true))).orderBy(desc(clientApplicationActivities.occurredAt)).limit(200);
+    return res.json(rows);
+  });
+
   app.get("/client-api/applications/:applicationId/documents", async (req: PortalRequest, res) => {
     const owned = await ownedApplication(req.portal!.user.id, req.params.applicationId);
     if (!owned) return error(res, 404, "application_not_found");
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
-    const folderItems = await db.select({ id: clientDocuments.id, docKey: clientDocuments.docKey, docName: clientDocuments.docName, category: clientDocuments.category, received: clientDocuments.received, receivedDate: clientDocuments.receivedDate, documentLink: clientDocuments.documentLink, requiresMofa: clientDocuments.requiresMofa, mofaSubmitted: clientDocuments.mofaSubmitted, mofaSubmittedDate: clientDocuments.mofaSubmittedDate, mofaReceived: clientDocuments.mofaReceived, mofaReceivedDate: clientDocuments.mofaReceivedDate, requiresEmbassy: clientDocuments.requiresEmbassy, embassySubmitted: clientDocuments.embassySubmitted, embassySubmittedDate: clientDocuments.embassySubmittedDate, embassyReceived: clientDocuments.embassyReceived, embassyReceivedDate: clientDocuments.embassyReceivedDate }).from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id)).orderBy(asc(clientDocuments.category), asc(clientDocuments.id));
+    const folderItems = await db.select({ internalId: clientDocuments.id, docKey: clientDocuments.docKey, docName: clientDocuments.docName, category: clientDocuments.category, received: clientDocuments.received, receivedDate: clientDocuments.receivedDate, documentLink: clientDocuments.documentLink, requiresMofa: clientDocuments.requiresMofa, mofaSubmitted: clientDocuments.mofaSubmitted, mofaSubmittedDate: clientDocuments.mofaSubmittedDate, mofaReceived: clientDocuments.mofaReceived, mofaReceivedDate: clientDocuments.mofaReceivedDate, requiresEmbassy: clientDocuments.requiresEmbassy, embassySubmitted: clientDocuments.embassySubmitted, embassySubmittedDate: clientDocuments.embassySubmittedDate, embassyReceived: clientDocuments.embassyReceived, embassyReceivedDate: clientDocuments.embassyReceivedDate }).from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id)).orderBy(asc(clientDocuments.category), asc(clientDocuments.id));
     const rows = await db.select({ document: clientPortalDocuments, applicantName: clientPortalApplicants.fullName }).from(clientPortalDocuments).leftJoin(clientPortalApplicants, eq(clientPortalDocuments.applicantId, clientPortalApplicants.id)).where(and(eq(clientPortalDocuments.portalApplicationId, owned.application.id), eq(clientPortalDocuments.visibleToClient, true))).orderBy(desc(clientPortalDocuments.createdAt));
-    return res.json({ folder: { name: `${owned.clientCase.clientName} – Documentation`, clientCode: owned.clientCase.clientCode, total: folderItems.length, received: folderItems.filter(item => item.received).length, items: folderItems }, uploads: rows.map(({ document, applicantName }) => ({ publicId: document.publicId, documentType: document.documentType, fileName: document.fileName, mimeType: document.mimeType, fileSize: document.fileSize, source: document.source, reviewStatus: document.reviewStatus, clientComment: document.clientComment, applicantName, createdAt: document.createdAt })) });
+    const uploads = rows.map(({ document, applicantName }) => ({ publicId: document.publicId, checklistDocumentKey: folderItems.find(item => item.internalId === document.clientDocumentId)?.docKey ?? null, documentType: document.documentType, fileName: document.fileName, mimeType: document.mimeType, fileSize: document.fileSize, source: document.source, reviewStatus: document.reviewStatus, clientComment: document.clientComment, applicantName, createdAt: document.createdAt }));
+    const items = folderItems.map(({ internalId: _internalId, ...item }) => ({ ...item, linkedUploads: uploads.filter(upload => upload.checklistDocumentKey === item.docKey) }));
+    return res.json({ folder: { name: `${owned.clientCase.clientName} – Documentation`, clientCode: owned.clientCase.clientCode, total: folderItems.length, received: folderItems.filter(item => item.received).length, items }, uploads });
   });
 
   app.get("/client-api/documents/:documentId/access", async (req: PortalRequest, res) => {
@@ -481,9 +496,8 @@ export function registerClientPortalRoutes(app: Express) {
   app.post("/client-api/applications/:applicationId/documents", writeLimiter, async (req: PortalRequest, res) => {
     const owned = await ownedApplication(req.portal!.user.id, req.params.applicationId);
     if (!owned) return error(res, 404, "application_not_found");
-    const body = safeBody<{ documentType: string; applicantPublicId: string; fileName: string; mimeType: string; fileSize: number; base64: string; comment: string; source: "client_upload" | "client_scan" }>(req);
+    const body = safeBody<{ checklistDocumentKey: string; documentType: string; applicantPublicId: string; fileName: string; mimeType: string; fileSize: number; base64: string; comment: string; source: "client_upload" | "client_scan" }>(req);
     try {
-      const documentType = requireString(body.documentType, "document_type", 128);
       const mimeType = requireString(body.mimeType, "mime_type", 128).toLowerCase();
       const fileName = normalizeFileName(requireString(body.fileName, "file_name", 255));
       const base64 = requireString(body.base64, "file", 40 * 1024 * 1024);
@@ -491,6 +505,10 @@ export function registerClientPortalRoutes(app: Express) {
       validateFile(buffer, mimeType, fileName, typeof body.fileSize === "number" ? body.fileSize : undefined);
       const db = await getDb();
       if (!db) return error(res, 503, "service_unavailable");
+      const checklistDocumentKey = requireString(body.checklistDocumentKey, "checklist_document_key", 128);
+      const [checklistDocument] = await db.select().from(clientDocuments).where(and(eq(clientDocuments.clientCaseId, owned.clientCase.id), eq(clientDocuments.docKey, checklistDocumentKey))).limit(1);
+      if (!checklistDocument) return error(res, 400, "invalid_checklist_document");
+      const documentType = checklistDocument.docName;
       let applicantId: number | null = null;
       if (body.applicantPublicId) {
         const [applicant] = await db.select().from(clientPortalApplicants).where(and(eq(clientPortalApplicants.publicId, body.applicantPublicId), eq(clientPortalApplicants.portalApplicationId, owned.application.id))).limit(1);
@@ -502,8 +520,9 @@ export function registerClientPortalRoutes(app: Express) {
       const extension = fileName.split(".").pop()!.toLowerCase();
       const key = `client-portal/${owned.clientCase.id}/clients-uploaded-documents/${publicId}-${fileHash}.${extension}`;
       await storagePut(key, buffer, mimeType);
-      await db.insert(clientPortalDocuments).values({ publicId, portalApplicationId: owned.application.id, applicantId, documentType, fileName, fileKey: key, mimeType, fileSize: buffer.length, source: body.source === "client_scan" ? "client_scan" : "client_upload", visibleToClient: true, clientComment: typeof body.comment === "string" ? body.comment.trim().slice(0, 2000) || null : null, uploadedByPortalUserId: req.portal!.user.id });
-      await db.insert(clientPortalNotifications).values({ publicId: randomUUID(), portalUserId: req.portal!.user.id, type: "document_submitted", titleEn: "Document received", titleAr: "تم استلام المستند", bodyEn: "Your document was securely submitted to Elevay for review.", bodyAr: "تم إرسال مستندك بأمان إلى إليفاي للمراجعة.", entityType: "document", entityPublicId: publicId, createdAt: Date.now() });
+      await db.insert(clientPortalDocuments).values({ publicId, portalApplicationId: owned.application.id, applicantId, clientDocumentId: checklistDocument.id, documentType: checklistDocument.docName, fileName, fileKey: key, mimeType, fileSize: buffer.length, source: body.source === "client_scan" ? "client_scan" : "client_upload", visibleToClient: true, clientComment: typeof body.comment === "string" ? body.comment.trim().slice(0, 2000) || null : null, uploadedByPortalUserId: req.portal!.user.id });
+      const { recordClientLifecycleEvent } = await import("./clientLifecycleNotificationService");
+      await recordClientLifecycleEvent({ clientCaseId: owned.clientCase.id, eventType: "document_submitted", idempotencyKey: `client-upload:${publicId}`, actor: { type: "client", portalUserId: req.portal!.user.id, name: req.portal!.user.username }, titleEn: "Document submitted", titleAr: "تم إرسال المستند", bodyEn: `${checklistDocument.docName} was securely submitted to ELEVAY for review.`, bodyAr: `تم إرسال مستند ${checklistDocument.docName} بأمان إلى إليفاي للمراجعة.`, entityType: "document", entityPublicId: publicId, metadata: { checklistDocumentKey: checklistDocument.docKey, source: body.source === "client_scan" ? "client_scan" : "client_upload" } });
       const recipients = staffRecipients(owned.clientCase.consultant, owned.clientCase.paralegal);
       await Promise.all([
         queueStaffEmail({ eventType: "client_document_uploaded", recipients, subject: `New Client Document – ${owned.clientCase.clientName} – ${documentType}`, html: `<h2>New Client Document</h2><p>A new document was uploaded through the Elevay Client App.</p><p><strong>Client:</strong> ${owned.clientCase.clientName}</p><p><strong>Application:</strong> ${owned.application.label || owned.clientCase.applicationType}</p><p><strong>Document:</strong> ${documentType}</p><p><strong>Uploaded:</strong> ${new Date().toLocaleString()}</p>${body.comment ? `<p><strong>Comment:</strong> ${String(body.comment).replace(/[<>]/g, "")}</p>` : ""}<p><a href="https://elevay.vip/admin/client-portal">Open Client Portal Administration</a></p><p>The sensitive document is not attached to this email.</p>` }),
@@ -588,5 +607,3 @@ export function registerClientPortalRoutes(app: Express) {
     return res.json({ ok: true, currentSessionRevoked: session.id === req.portal!.session.id });
   });
 }
-
-export { pushClientNotification };

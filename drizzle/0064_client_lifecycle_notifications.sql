@@ -6,8 +6,6 @@ ALTER TABLE `clientCases`
   ADD COLUMN `secondPaymentCurrency` varchar(10) NULL DEFAULT 'EUR',
   ADD COLUMN `secondPaymentDueDate` date NULL,
   ADD COLUMN `secondPaymentStatus` enum('pending','paid') NULL DEFAULT 'pending',
-  ADD COLUMN `travelDate` timestamp NULL,
-  ADD COLUMN `arrivalConfirmationAt` timestamp NULL,
   ADD COLUMN `spanishTeamSubmittedAt` timestamp NULL,
   ADD COLUMN `swornTranslationSubmittedAt` timestamp NULL,
   ADD COLUMN `spanishGovernmentSubmittedAt` timestamp NULL,
@@ -20,31 +18,27 @@ ALTER TABLE `clientCases`
   ADD COLUMN `thirdPaymentStatus` enum('pending','paid') NULL DEFAULT 'pending',
   ADD COLUMN `travelByDate` date NULL,
   ADD COLUMN `biometricsLocation` varchar(500) NULL,
+  ADD COLUMN `biometricsAppointmentTime` varchar(5) NULL,
   ADD COLUMN `biometricsTimezone` varchar(100) NULL DEFAULT 'Europe/Madrid',
   ADD COLUMN `biometricsStatus` enum('not_booked','confirmed','cancelled','completed') NULL DEFAULT 'not_booked',
   ADD COLUMN `biometricsBookedAt` timestamp NULL,
   ADD COLUMN `residencyCardStatus` enum('not_started','processing','ready_for_collection','collected') NULL DEFAULT 'not_started',
-  ADD COLUMN `residencyCardReadyAt` timestamp NULL,
   ADD COLUMN `residencyCardCollectionLocation` varchar(500) NULL,
   ADD COLUMN `residencyCardCollectionInstructions` text NULL,
   ADD COLUMN `residencyCardDocumentPublicId` varchar(36) NULL,
   ADD COLUMN `applicationTimezone` varchar(100) NULL DEFAULT 'Africa/Cairo';
 
-ALTER TABLE `clientDocuments`
-  ADD COLUMN `legalStatus` enum('pending','mofa_submitted','mofa_received','embassy_submitted','embassy_received') NOT NULL DEFAULT 'pending',
-  ADD COLUMN `portalDocumentPublicId` varchar(36) NULL;
-
 ALTER TABLE `client_portal_documents`
-  ADD COLUMN `clientDocumentId` int NULL,
-  ADD INDEX `idx_portal_document_checklist` (`clientDocumentId`);
+  ADD COLUMN `clientDocumentId` int NULL;
+CREATE INDEX `idx_portal_document_checklist` ON `client_portal_documents` (`clientDocumentId`);
 
 ALTER TABLE `client_portal_notifications`
-  ADD COLUMN `idempotencyKey` varchar(191) NULL,
-  ADD UNIQUE INDEX `uniq_portal_notification_idempotency` (`idempotencyKey`);
+  ADD COLUMN `idempotencyKey` varchar(191) NULL;
+CREATE UNIQUE INDEX `uniq_portal_notification_idempotency` ON `client_portal_notifications` (`idempotencyKey`);
 
 ALTER TABLE `client_portal_delivery_outbox`
-  ADD COLUMN `idempotencyKey` varchar(191) NULL,
-  ADD UNIQUE INDEX `uniq_portal_outbox_idempotency` (`idempotencyKey`);
+  ADD COLUMN `idempotencyKey` varchar(191) NULL;
+CREATE UNIQUE INDEX `uniq_portal_outbox_idempotency` ON `client_portal_delivery_outbox` (`idempotencyKey`);
 
 CREATE TABLE IF NOT EXISTS `client_application_activities` (
   `id` int NOT NULL AUTO_INCREMENT,

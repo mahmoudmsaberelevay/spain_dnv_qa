@@ -414,6 +414,8 @@ async function startServer() {
   app.post("/api/scheduled/metaMonitoring", scheduledMetaMonitoringHandler);
   const { scheduledPublicContentSyncHandler } = await import("../scheduledPublicContentSyncHandler");
   app.post("/api/scheduled/publicContentSync", scheduledPublicContentSyncHandler);
+  const { scheduledClientLifecycleRemindersHandler } = await import("../scheduledClientLifecycleRemindersHandler");
+  app.post("/api/scheduled/clientLifecycleReminders", scheduledClientLifecycleRemindersHandler);
 
   // Backup list endpoint
   app.get("/api/backup/list", requireBackupAdmin, (req, res) => {

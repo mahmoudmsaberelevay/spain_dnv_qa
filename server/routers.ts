@@ -51,6 +51,7 @@ import { backupsRouter } from "./routers/backups";
 import { backupDownloadRouter } from "./routers/backupDownload";
 import { aiCouncilRouter } from "./aiCouncilRouter";
 import { clientPortalAdminRouter } from "./clientPortalAdminRouter";
+import { clientPortalDocumentReviewRouter } from "./clientPortalDocumentReviewRouter";
 import {
   addClientDocumentationPayment,
   archiveClientDocumentationPayment,
@@ -1791,8 +1792,14 @@ const clientDocsRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       try {
+        const schedule = await getClientDocumentationPaymentSchedule(input.clientCaseId);
+        const payment = schedule.payments.find(item => item.id === input.id);
         await markClientDocumentationPaymentPaid(input, ctx.user.id);
         await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_documentation_payment", input.id, `Marked payment paid for client case ${input.clientCaseId}`);
+        if (payment) {
+          const { recordClientLifecycleEvent } = await import("./clientLifecycleNotificationService");
+          await recordClientLifecycleEvent({ clientCaseId: input.clientCaseId, eventType: "payment_received", idempotencyKey: `payment:${input.id}:paid:${input.paidDate}`, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" }, titleEn: "Payment received", titleAr: "تم استلام الدفعة", bodyEn: `${payment.paymentName} of ${payment.amountEur} EUR was recorded as paid on ${input.paidDate}.`, bodyAr: `تم تسجيل سداد ${payment.paymentName} بقيمة ${payment.amountEur} يورو بتاريخ ${input.paidDate}.`, entityType: "payment", entityPublicId: String(input.id), metadata: { paymentName: payment.paymentName, amountEur: payment.amountEur, paidDate: input.paidDate } });
+        }
         return { success: true };
       } catch (error) {
         if (error instanceof Error && error.message === "PAYMENT_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND", message: "Payment not found" });
@@ -1855,17 +1862,8 @@ const clientDocsRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       try {
-        await recordClientDocumentAuthorityMilestone(input);
+        await recordClientDocumentAuthorityMilestone({ ...input, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" } });
         await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_document", input.documentId, `Recorded ${input.milestone} on ${input.date} for client case ${input.clientCaseId}`);
-        const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
-        await notifyPortalUsersForClientCase({
-          clientCaseId: input.clientCaseId,
-          type: "document_attestation",
-          titleEn: "Document processing updated",
-          titleAr: "تم تحديث معالجة المستند",
-          bodyEn: "Your ELEVAY team updated the official processing status of a required document.",
-          bodyAr: "قام فريق إليفاي بتحديث حالة المعالجة الرسمية لأحد المستندات المطلوبة.",
-        });
         return { success: true };
       } catch (error) {
         throw clientDocumentationWorkflowError(error);
@@ -1879,23 +1877,14 @@ const clientDocsRouter = router({
       date: clientDocumentationIsoDate,
       ticketLink: clientDocumentationHttpUrl.nullable().optional(),
       hotelLink: clientDocumentationHttpUrl.nullable().optional(),
+      location: z.string().trim().max(500).nullable().optional(),
+      time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(),
+      timezone: z.string().trim().max(100).nullable().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       try {
-        await recordSpainCaseMilestone(input);
+        await recordSpainCaseMilestone({ ...input, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" } });
         await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_documentation_case", input.clientCaseId, `Recorded ${input.milestone} on ${input.date}`);
-        const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
-        const notifyMilestones = new Set(["travel_booked", "arrival_confirmed", "biometrics_appointment", "biometrics_completed", "residency_card_ready"]);
-        if (notifyMilestones.has(input.milestone)) {
-          await notifyPortalUsersForClientCase({
-            clientCaseId: input.clientCaseId,
-            type: "workflow_dates_updated",
-            titleEn: "Application milestone updated",
-            titleAr: "تم تحديث مرحلة في الطلب",
-            bodyEn: "Your ELEVAY team recorded an important application milestone.",
-            bodyAr: "قام فريق إليفاي بتسجيل مرحلة مهمة في طلبك.",
-          });
-        }
         return { success: true };
       } catch (error) {
         throw clientDocumentationWorkflowError(error);
@@ -1911,17 +1900,21 @@ const clientDocsRouter = router({
         receivedDate: z.string(), // ISO date string
       })),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const c = await getClientCase(input.clientCaseId);
       if (!c) throw new TRPCError({ code: "NOT_FOUND" });
+      const documents = await getClientDocuments(input.clientCaseId);
       for (const item of input.items) {
         await updateClientDocument(item.docId, {
           received: true,
           receivedDate: new Date(item.receivedDate),
         });
+        const document = documents.find(row => row.id === item.docId);
+        if (document) {
+          const { recordClientLifecycleEvent } = await import("./clientLifecycleNotificationService");
+          await recordClientLifecycleEvent({ clientCaseId: input.clientCaseId, eventType: "document_received", idempotencyKey: `document:${item.docId}:received:${item.receivedDate}`, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" }, titleEn: "Document received by ELEVAY", titleAr: "استلمت إليفاي المستند", bodyEn: `${document.docName} was received on ${item.receivedDate}.`, bodyAr: `تم استلام مستند ${document.docName} بتاريخ ${item.receivedDate}.`, entityType: "checklist_document", entityPublicId: document.docKey });
+        }
       }
-      const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
-      await notifyPortalUsersForClientCase({ clientCaseId: input.clientCaseId, type: "document_received", titleEn: "Documents received", titleAr: "تم استلام المستندات", bodyEn: `Your ELEVAY team marked ${input.items.length} document${input.items.length === 1 ? "" : "s"} as received.`, bodyAr: `قام فريق إليفاي بتسجيل استلام ${input.items.length} مستند.` });
       return { success: true };
     }),
 
@@ -1964,8 +1957,10 @@ const clientDocsRouter = router({
       if (input.expectedSubmissionDate !== undefined)
         update.expectedSubmissionDate = input.expectedSubmissionDate ? new Date(input.expectedSubmissionDate) : null;
       await updateClientCase(input.id, update as any);
-      const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
-      await notifyPortalUsersForClientCase({ clientCaseId: input.id, type: "workflow_dates_updated", titleEn: "Application dates updated", titleAr: "تم تحديث مواعيد الطلب", bodyEn: "Your ELEVAY team updated an important date in your application.", bodyAr: "قام فريق إليفاي بتحديث موعد مهم في طلبك." });
+      const { recordClientLifecycleEvent } = await import("./clientLifecycleNotificationService");
+      const actor = { type: "staff" as const, staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" };
+      if (input.embassyAppointmentDate) await recordClientLifecycleEvent({ clientCaseId: input.id, eventType: "embassy_appointment_confirmed", idempotencyKey: `case:${input.id}:embassy-appointment:${input.embassyAppointmentDate}`, actor, titleEn: "Embassy appointment confirmed", titleAr: "تم تأكيد موعد السفارة", bodyEn: `Your Embassy appointment is confirmed for ${input.embassyAppointmentDate}.`, bodyAr: `تم تأكيد موعدك في السفارة بتاريخ ${input.embassyAppointmentDate}.` });
+      if (input.expectedSubmissionDate) await recordClientLifecycleEvent({ clientCaseId: input.id, eventType: "submission_date_scheduled", idempotencyKey: `case:${input.id}:submission-scheduled:${input.expectedSubmissionDate}`, actor, titleEn: "Application submission scheduled", titleAr: "تم تحديد موعد تقديم الطلب", bodyEn: `Your application is scheduled for submission on ${input.expectedSubmissionDate}.`, bodyAr: `تم تحديد موعد تقديم طلبك بتاريخ ${input.expectedSubmissionDate}.` });
       return { success: true };
     }),
 
@@ -2037,6 +2032,7 @@ const clientDocsRouter = router({
           stage: input.stage,
           stageDate: input.stage === "spain_team_received" ? input.spainTeamReceivedDate : input.stage === "submission" ? input.submissionDate : input.stage === "approved" ? input.approvalDate : null,
           evidenceLink: input.stage === "submission" ? input.submissionReceiptLink : input.stage === "approved" ? input.approvalLetterLink : null,
+          actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" },
         });
         const supplementary: Record<string, any> = {};
         if (input.translationDate !== undefined) supplementary.translationDate = input.translationDate ? new Date(input.translationDate) : null;
@@ -2048,11 +2044,6 @@ const clientDocsRouter = router({
         throw clientDocumentationWorkflowError(error);
       }
       await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_documentation_case", input.id, `Changed stage from ${c.stage} to ${input.stage}`);
-      if (c.stage !== input.stage) {
-        const { notifyPortalUsersForClientCase } = await import("./clientPortalRoutes");
-        const labels = { preparation: { en: "Preparation", ar: "الإعداد" }, spain_team_received: { en: "Spain Team Received", ar: "استلام فريق إسبانيا" }, submission: { en: "Submission", ar: "التقديم" }, approved: { en: "Approved", ar: "الموافقة" } } as const;
-        await notifyPortalUsersForClientCase({ clientCaseId: input.id, type: "workflow_stage_updated", titleEn: "Application stage updated", titleAr: "تم تحديث مرحلة الطلب", bodyEn: `Your application moved to ${labels[input.stage].en}.`, bodyAr: `انتقل طلبك إلى مرحلة ${labels[input.stage].ar}.` });
-      }
       return { success: true };
     }),
 
@@ -2185,10 +2176,33 @@ const clientDocsRouter = router({
       id: z.number(),
       embassyEmailDate: z.string().nullable(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const c = await getClientCase(input.id);
       if (!c) throw new TRPCError({ code: "NOT_FOUND" });
       await updateClientCase(input.id, { embassyEmailDate: input.embassyEmailDate ?? null } as any);
+      if (input.embassyEmailDate) {
+        const { recordClientLifecycleEvent } = await import("./clientLifecycleNotificationService");
+        await recordClientLifecycleEvent({ clientCaseId: input.id, eventType: "embassy_attestation_requested", idempotencyKey: `case:${input.id}:embassy-attestation:${input.embassyEmailDate}`, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" }, titleEn: "Embassy attestation request sent", titleAr: "تم إرسال طلب تصديق السفارة", bodyEn: `The Embassy attestation request was sent on ${input.embassyEmailDate}. ELEVAY will follow up if no reply is confirmed.`, bodyAr: `تم إرسال طلب تصديق السفارة بتاريخ ${input.embassyEmailDate}. ستقوم إليفاي بالمتابعة إذا لم يتم تأكيد الرد.` });
+      }
+      return { success: true };
+    }),
+
+  setLifecycleSignal: protectedProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      signal: z.enum(["appointment_booking_submitted", "embassy_reply_confirmed"]),
+      date: clientDocumentationIsoDate,
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await getClientCase(input.id);
+      if (!c) throw new TRPCError({ code: "NOT_FOUND" });
+      const timestamp = new Date(`${input.date}T12:00:00Z`);
+      await updateClientCase(input.id, input.signal === "appointment_booking_submitted" ? { appointmentBookingSubmittedAt: timestamp } : { embassyReplyConfirmedAt: timestamp } as any);
+      const { recordClientLifecycleEvent } = await import("./clientLifecycleNotificationService");
+      const copy = input.signal === "appointment_booking_submitted"
+        ? { titleEn: "Appointment booking confirmation received", titleAr: "تم استلام تأكيد حجز الموعد", bodyEn: `ELEVAY received your Embassy appointment booking confirmation on ${input.date}.`, bodyAr: `استلمت إليفاي تأكيد حجز موعد السفارة بتاريخ ${input.date}.` }
+        : { titleEn: "Embassy reply confirmed", titleAr: "تم تأكيد رد السفارة", bodyEn: `The Embassy reply was confirmed on ${input.date}. Related repeat reminders have stopped.`, bodyAr: `تم تأكيد رد السفارة بتاريخ ${input.date}. تم إيقاف التذكيرات المتكررة المرتبطة بذلك.` };
+      await recordClientLifecycleEvent({ clientCaseId: input.id, eventType: input.signal, idempotencyKey: `case:${input.id}:${input.signal}:${input.date}`, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" }, ...copy });
       return { success: true };
     }),
 
@@ -2519,6 +2533,7 @@ export const appRouter = router({
   aiCouncil: aiCouncilRouter,
   admin: adminRouter,
   clientPortalAdmin: clientPortalAdminRouter,
+  clientPortalDocumentReview: clientPortalDocumentReviewRouter,
   support: supportRouter,
 });
 export type AppRouter = typeof appRouter;

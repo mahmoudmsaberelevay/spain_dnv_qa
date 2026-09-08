@@ -407,6 +407,13 @@
       "when": 1788864229317,
       "tag": "0064_client_lifecycle_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "5",
+      "when": 1788865721222,
+      "tag": "0068_client_portal_document_review",
+      "breakpoints": true
     }
   ]
 }

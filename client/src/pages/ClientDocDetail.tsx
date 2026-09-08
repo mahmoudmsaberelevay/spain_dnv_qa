@@ -14,6 +14,8 @@ import { toast } from "sonner";
 import { ClientDocumentationPayments } from "@/components/ClientDocumentationPayments";
 import { ClientDocumentWorkflowRow } from "@/components/ClientDocumentWorkflowRow";
 import { ClientDocumentationSpainMilestones } from "@/components/ClientDocumentationSpainMilestones";
+import { ClientPortalUploadsPanel } from "@/components/ClientPortalUploadsPanel";
+import { ClientStageEvidenceUpload } from "@/components/ClientStageEvidenceUpload";
 import {
   ArrowLeft, CheckCircle2, Circle, Clock, AlertTriangle,
   FileCheck, CalendarDays, CalendarClock,
@@ -615,6 +617,7 @@ export default function ClientDocDetail() {
         </TabsList>
 
         <TabsContent value="main" className="mt-4">
+          <div className="mb-4"><ClientPortalUploadsPanel clientCaseId={clientId} /></div>
           <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
             {mainDocs.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-4">No main applicant documents</p>
@@ -1062,6 +1065,7 @@ export default function ClientDocDetail() {
               <div>
                 <label className="text-xs font-medium text-gray-700 block mb-1">Submission Receipt Link <span className="text-red-500">*</span></label>
                 <input type="url" placeholder="https://drive.google.com/..." value={stageInputs.submissionReceiptLink ?? ""} onChange={e => setStageInputs(p => ({ ...p, submissionReceiptLink: e.target.value }))} className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm" />
+                <div className="mt-2"><ClientStageEvidenceUpload clientCaseId={clientId} kind="submission_receipt" onUploaded={url => setStageInputs(p => ({ ...p, submissionReceiptLink: url }))} /></div>
               </div>
               <Button
                 className="w-full bg-amber-600 hover:bg-amber-700 text-white"
@@ -1102,6 +1106,7 @@ export default function ClientDocDetail() {
               <div>
                 <label className="text-xs font-medium text-gray-700 block mb-1">Approval Letter Link <span className="text-red-500">*</span></label>
                 <input type="url" placeholder="https://drive.google.com/..." value={stageInputs.approvalLetterLink ?? ""} onChange={e => setStageInputs(p => ({ ...p, approvalLetterLink: e.target.value }))} className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1e3a5f] text-sm" />
+                <div className="mt-2"><ClientStageEvidenceUpload clientCaseId={clientId} kind="approval_letter" onUploaded={url => setStageInputs(p => ({ ...p, approvalLetterLink: url }))} /></div>
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-700 block mb-1">After-Settlement Fee Amount (€) <span className="text-gray-400">(optional)</span></label>

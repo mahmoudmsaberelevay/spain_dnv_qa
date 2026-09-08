@@ -58,3 +58,19 @@
 - [x] Add iOS usage descriptions, export-compliance declaration, build number, required-reason privacy manifest, and an iPhone-only version 1.0 scope.
 - [x] Prepare App Store metadata, App Review notes, App Privacy answers, unlisted-app request text, screenshot plan, TestFlight commands, deletion runbook, response template, and official sources.
 - [x] Validate mobile TypeScript, lint, 17 acceptance tests, Expo Doctor, web export, CRM build, security tests, legal pages, review credentials, review-admin isolation, and deletion idempotency.
+
+## Client Documentation lifecycle, activity, and notification system completed
+
+- [x] Map all 23 lifecycle rules to authoritative CRM fields and safe trigger conditions.
+- [x] Add additive lifecycle, activity, checklist-link, reminder-delivery, biometrics-time, and document-review schema.
+- [x] Implement bilingual idempotent lifecycle events for the client notification center and Application Activity timeline.
+- [x] Implement durable daily reminders for Embassy follow-up, payments, flight preparation, travel countdown, approval follow-up, and biometrics.
+- [x] Route required staff alerts to the assigned paralegal and consultant with durable retry evidence.
+- [x] Disable the duplicate legacy Client Documentation reminder branch while preserving unrelated finance reminders.
+- [x] Require client uploads and scans to target an owned CRM checklist item and group them under that item.
+- [x] Add secure Client Documentation review, download, approval, and replacement controls for client app uploads.
+- [x] Add secure CRM uploads for the Spanish Government submission receipt and approval letter.
+- [x] Add mobile Application Activity, bilingual Notifications, secure evidence links, travel links, and client notification preferences.
+- [x] Backfill existing linked applications with a non-notifying welcome activity.
+- [x] Add and pass deterministic lifecycle reminder, payment, Spain workflow, portal security, mobile acceptance, Expo Doctor, build, and export validation.
+- [x] Save deployment activation steps for the authenticated daily Heartbeat task UID after publishing the checkpoint.

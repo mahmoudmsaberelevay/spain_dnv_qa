@@ -74,6 +74,10 @@ function formatDate(date: Date | string | null | undefined): string {
 
 export async function runReminderCheck(): Promise<void> {
   try {
+    // Client Documentation reminders now run through the durable, idempotent
+    // /api/scheduled/clientLifecycleReminders engine. Keep the legacy branch
+    // available only for an explicit emergency rollback.
+    if (process.env.ENABLE_LEGACY_CLIENT_DOC_REMINDERS === "true") {
     const cases = await getAllClientCasesForReminders();
     const allDocs = await getAllClientDocumentsForReminders();
 
@@ -97,7 +101,7 @@ export async function runReminderCheck(): Promise<void> {
           </table>
           <p style="color:#C0392B; margin-top:16px; font-size:13px;">⚠️ The client's Schengen visa expires in 30 days. Please ensure the application is submitted or the visa is renewed before expiry.</p>`;
         const plain = `Schengen Visa Expiry Reminder (30 days)\n\nClient: ${clientName}\nExpiry: ${formatDate(schengenExpiry)}\nDays Remaining: 30\nParalegal: ${paralegal ?? "—"}\nConsultant: ${consultant ?? "—"}`;
-        await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html, plain);
+        await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html);
       }
 
       // ── 2. Schengen visa expiry reminder — 20 days before ─────────────────
@@ -113,7 +117,7 @@ export async function runReminderCheck(): Promise<void> {
           </table>
           <p style="color:#C0392B; margin-top:16px; font-size:13px;">🚨 URGENT: The client's Schengen visa expires in only 20 days. Immediate action is required.</p>`;
         const plain = `URGENT: Schengen Visa Expiry Reminder (20 days)\n\nClient: ${clientName}\nExpiry: ${formatDate(schengenExpiry)}\nDays Remaining: 20 — URGENT\nParalegal: ${paralegal ?? "—"}\nConsultant: ${consultant ?? "—"}`;
-        await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html, plain);
+        await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html);
       }
 
       // ── 3. Embassy attestation email follow-up — 15 days after ────────────
@@ -131,7 +135,7 @@ export async function runReminderCheck(): Promise<void> {
           </table>
           <p style="color:#E67E22; margin-top:16px; font-size:13px;">📬 It has been 15 days since the Embassy Attestation email was sent for this client. Please follow up if no response has been received.</p>`;
         const plain = `Embassy Attestation Follow-Up Reminder\n\nClient: ${clientName}\nEmbassy Email Sent: ${formatDate(embassyEmailDate)}\nDays Since Email: 15\nParalegal: ${paralegal ?? "—"}\nConsultant: ${consultant ?? "—"}`;
-        await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html, plain);
+        await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html);
       }
 
       // ── 4. Submission deadline reminder (12 days before) ─────────────────
@@ -149,7 +153,7 @@ export async function runReminderCheck(): Promise<void> {
           </table>
           <p style="color:#C0392B; margin-top:16px; font-size:13px;">📅 The application submission deadline is approaching. Please ensure all documents are ready and outstanding payments are collected.</p>`;
         const plain = `Submission Deadline Reminder\n\nClient: ${clientName}\nClient Code: ${(c as any).clientCode}\nSubmission Date: ${formatDate(c.expectedSubmissionDate)}\nDays Remaining: 12\nParalegal: ${paralegal ?? "—"}\nConsultant: ${consultant ?? "—"}`;
-        await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html, plain);
+        await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html);
       }
 
       // ── 5. Submission date update reminder (when submissionDate is updated) ──
@@ -167,7 +171,7 @@ export async function runReminderCheck(): Promise<void> {
           </table>
           <p style="color:#27AE60; margin-top:16px; font-size:13px;">✅ The client's application has been submitted. Please ensure all outstanding payments are collected and follow up on approval status.</p>`;
         const plain = `Submission Confirmed Reminder\n\nClient: ${clientName}\nClient Code: ${(c as any).clientCode}\nSubmission Date: ${formatDate(submissionDate)}\nParalegal: ${paralegal ?? "—"}\nConsultant: ${consultant ?? "—"}`;
-        await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html, plain);
+        await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html);
       }
 
       // ── 6. Document expiry reminders (30 days before each doc expires) ────
@@ -190,9 +194,10 @@ export async function runReminderCheck(): Promise<void> {
             </table>
             <p style="color:#C0392B; margin-top:16px; font-size:13px;">⚠️ Please renew or obtain a fresh copy of this document before it expires.</p>`;
           const plain = `Document Expiry Reminder\n\nClient: ${clientName}\nDocument: ${doc.docName}\nExpiry Date: ${formatDate(expiryDate)}\nDays Remaining: 30\nParalegal: ${paralegal ?? "—"}\nConsultant: ${consultant ?? "—"}`;
-          await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html, plain);
+          await sendDocReminderToAssignedTeam(clientName, paralegal, consultant, subject, html);
         }
       }
+    }
     }
     // ── 6. Office rent reminder — 1st of odd months starting July 2026 ─────
     // Send on: July, September, November 2026, January, March, May 2027, etc.
@@ -264,12 +269,12 @@ async function checkUnpaidReceiptReminders(): Promise<void> {
         <table style="width:100%; border-collapse:collapse; font-size:14px;">
           <tr><td style="padding:6px 0; color:#8A9499;">Receipt Code</td><td style="padding:6px 0; color:#2C3A40; font-weight:bold;">${receipt.receiptCode}</td></tr>
           <tr><td style="padding:6px 0; color:#8A9499;">Client</td><td style="padding:6px 0; color:#2C3A40;">${receipt.clientName ?? "—"}</td></tr>
-          <tr><td style="padding:6px 0; color:#8A9499;">Amount</td><td style="padding:6px 0; color:#C0392B; font-weight:bold;">€${(receipt.amountEur ?? 0).toLocaleString("en-US")}</td></tr>
+          <tr><td style="padding:6px 0; color:#8A9499;">Amount</td><td style="padding:6px 0; color:#C0392B; font-weight:bold;">€${Number(receipt.amountEur ?? 0).toLocaleString("en-US")}</td></tr>
           <tr><td style="padding:6px 0; color:#8A9499;">Created</td><td style="padding:6px 0; color:#2C3A40;">${formatDate(receipt.createdAt)}</td></tr>
           <tr><td style="padding:6px 0; color:#8A9499;">Consultant</td><td style="padding:6px 0; color:#2C3A40;">${receipt.consultantName ?? "—"}</td></tr>
         </table>
         <p style="color:#E67E22; margin-top:16px; font-size:13px;">⏰ This receipt has been outstanding for 5 days without being marked as paid. Please follow up with the client or update the payment status.</p>`;
-      const plain = `Unpaid Receipt Reminder\n\nReceipt: ${receipt.receiptCode}\nClient: ${receipt.clientName ?? "—"}\nAmount: €${(receipt.amountEur ?? 0).toLocaleString("en-US")}\nCreated: ${formatDate(receipt.createdAt)}\nConsultant: ${receipt.consultantName ?? "—"}`;
+      const plain = `Unpaid Receipt Reminder\n\nReceipt: ${receipt.receiptCode}\nClient: ${receipt.clientName ?? "—"}\nAmount: €${Number(receipt.amountEur ?? 0).toLocaleString("en-US")}\nCreated: ${formatDate(receipt.createdAt)}\nConsultant: ${receipt.consultantName ?? "—"}`;
 
       if (transporter && consultantEmail) {
         try {
