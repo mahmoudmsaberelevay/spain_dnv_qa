@@ -9,6 +9,7 @@ import { nanoid } from "nanoid";
 import { invokeLLM } from "./_core/llm";
 import { generatePlanRuleBased, generateWeekMediaPrompts } from "./marketingTemplates";
 import { ELEVAY_ARABIC_VOICE_DEFAULTS, generateElevayArabicVoiceOver } from "./elevenLabsTts";
+import { generateProgramProposal } from "./marketingProposalService";
 
 export const marketingRouter = router({
   // List all summaries for the current user
@@ -311,95 +312,7 @@ export const marketingRouter = router({
       investmentType: z.enum(["donation", "real_estate"]),
       familyMembers: z.number().min(1).max(20),
     }))
-    .mutation(async ({ input }) => {
-      type ProposalFees = { governmentFeePerApplicant?: number; governmentFeePerFamily?: number; governmentFeeNote?: string; dueDiligenceFeeMain?: number; dueDiligenceFeeDependents?: number; processingFeePerApplicant?: number };
-      type ProposalInvestment = { name: string; type: string; costSingle: number; costCouple?: number; costFamily4?: number; costFamily5plus?: number; holdPeriodYears?: number };
-      type ProposalEntry = { country: string; processingTime: string; visaFreeCountries: string; residencyRequirement: string; familyIncluded: string; investmentOptions: ProposalInvestment[]; applicationFees: ProposalFees; specialFeatures: string[] };
-
-      const PDATA: Record<string, ProposalEntry> = {
-        dominica: { country: "Dominica", processingTime: "3-6 months", visaFreeCountries: "140+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse, dependent children, parents, siblings", investmentOptions: [{ name: "Economic Diversification Fund (EDF)", type: "donation", costSingle: 100000, costFamily4: 175000 }, { name: "Real Estate Investment", type: "real_estate", costSingle: 200000, holdPeriodYears: 5 }], applicationFees: { governmentFeePerApplicant: 1000, dueDiligenceFeeMain: 7500, dueDiligenceFeeDependents: 4000, processingFeePerApplicant: 2000 }, specialFeatures: ["One of the most affordable CBI programs globally", "140+ visa-free countries"] },
-        grenada: { country: "Grenada", processingTime: "3-6 months", visaFreeCountries: "144+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse, dependent children, parents, siblings", investmentOptions: [{ name: "National Transformation Fund (NTF)", type: "donation", costSingle: 150000, costFamily4: 200000 }, { name: "Real Estate Investment", type: "real_estate", costSingle: 220000, holdPeriodYears: 5 }], applicationFees: { governmentFeePerApplicant: 1500, dueDiligenceFeeMain: 5000, dueDiligenceFeeDependents: 2500, processingFeePerApplicant: 1500 }, specialFeatures: ["E-2 Treaty with USA", "Access to China visa-free"] },
-        egypt: { country: "Egypt", processingTime: "6-9 months", visaFreeCountries: "66+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse and dependent children of any age", investmentOptions: [{ name: "Central Bank of Egypt Deposit", type: "donation", costSingle: 250000 }, { name: "Real Estate Investment", type: "real_estate", costSingle: 300000, holdPeriodYears: 5 }], applicationFees: { governmentFeePerApplicant: 10000 }, specialFeatures: ["Multiple investment pathways", "Strategic location bridging Africa, Middle East, Europe"] },
-        st_kitts: { country: "Saint Kitts & Nevis", processingTime: "45-60 days (Accelerated)", visaFreeCountries: "157+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse, dependent children, parents, grandparents", investmentOptions: [{ name: "Sustainable Island State Contribution (SISC)", type: "donation", costSingle: 250000, costFamily4: 300000 }, { name: "Real Estate Investment", type: "real_estate", costSingle: 400000, holdPeriodYears: 7 }], applicationFees: { governmentFeePerApplicant: 7500, dueDiligenceFeeMain: 10000, dueDiligenceFeeDependents: 7500, processingFeePerApplicant: 4000 }, specialFeatures: ["Oldest CBI program in the world (since 1984)", "157+ visa-free countries"] },
-        st_lucia: { country: "Saint Lucia", processingTime: "3-6 months", visaFreeCountries: "145+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse, dependent children, parents, siblings", investmentOptions: [{ name: "National Economic Fund (NEF)", type: "donation", costSingle: 100000, costFamily4: 165000 }, { name: "Real Estate Investment", type: "real_estate", costSingle: 300000, holdPeriodYears: 5 }], applicationFees: { governmentFeePerApplicant: 2000, dueDiligenceFeeMain: 7500, dueDiligenceFeeDependents: 5000, processingFeePerApplicant: 2000 }, specialFeatures: ["One of the most affordable Caribbean CBI programs"] },
-        antigua: { country: "Antigua & Barbuda", processingTime: "3-6 months", visaFreeCountries: "150+", residencyRequirement: "Must spend 5 days in Antigua within first 5 years", familyIncluded: "Spouse, dependent children, parents, siblings", investmentOptions: [{ name: "National Development Fund (NDF)", type: "donation", costSingle: 100000, costFamily4: 100000, costFamily5plus: 125000 }, { name: "Real Estate Investment", type: "real_estate", costSingle: 200000, holdPeriodYears: 5 }], applicationFees: { governmentFeePerFamily: 30000, dueDiligenceFeeMain: 7500, dueDiligenceFeeDependents: 2000, processingFeePerApplicant: 1500 }, specialFeatures: ["UWI Fund option includes 1 year of tuition"] },
-        sao_tome: { country: "Sao Tome & Principe", processingTime: "3-6 months", visaFreeCountries: "70+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse and dependent children", investmentOptions: [{ name: "Government Fund Contribution", type: "donation", costSingle: 50000 }], applicationFees: { governmentFeeNote: "Included in contribution", dueDiligenceFeeMain: 3000, processingFeePerApplicant: 1500 }, specialFeatures: ["Most affordable CBI program globally", "Favourable tax environment"] },
-      };
-
-      const program = PDATA[input.programKey];
-      if (!program) throw new TRPCError({ code: "BAD_REQUEST", message: "Unknown program" });
-
-      const option = program.investmentOptions.find((o) => o.type === input.investmentType);
-      if (!option) throw new TRPCError({ code: "BAD_REQUEST", message: input.investmentType + " not available for " + program.country });
-
-      const fm = input.familyMembers;
-      let investmentCost = option.costSingle;
-      if (fm >= 5 && option.costFamily5plus) investmentCost = option.costFamily5plus;
-      else if (fm >= 3 && option.costFamily4) investmentCost = option.costFamily4;
-      else if (fm === 2 && option.costCouple) investmentCost = option.costCouple;
-
-      const fees = program.applicationFees;
-      const dependents = Math.max(0, fm - 1);
-      const governmentFee = fees.governmentFeePerApplicant
-        ? fees.governmentFeePerApplicant * fm
-        : fees.governmentFeePerFamily
-        ? fees.governmentFeePerFamily
-        : 0;
-      const dueDiligenceFee = (fees.dueDiligenceFeeMain || 0) + (fees.dueDiligenceFeeDependents || 0) * dependents;
-      const processingFee = (fees.processingFeePerApplicant || 0) * fm;
-      const totalCost = investmentCost + governmentFee + dueDiligenceFee + processingFee;
-
-      const notes: string[] = [];
-      if (option.holdPeriodYears) {
-        notes.push("The " + (input.investmentType === "real_estate" ? "property" : "investment") + " must be held for a minimum of " + option.holdPeriodYears + " years.");
-      }
-      if (program.residencyRequirement !== "No residency requirement") {
-        notes.push("Residency requirement: " + program.residencyRequirement);
-      }
-      notes.push("Legal fees and ELEVAY service fees are not included in this estimate. Please contact your consultant for a full quote.");
-
-      const proposalPrompt =
-        "Write a professional program proposal for a client interested in " + program.country + " Citizenship by Investment.\n\n" +
-        "Details:\n" +
-        "- Investment Type: " + (input.investmentType === "donation" ? "Donation/Contribution" : "Real Estate") + "\n" +
-        "- Investment Amount: $" + investmentCost.toLocaleString() + "\n" +
-        "- Total Estimated Cost: $" + totalCost.toLocaleString() + " for " + fm + " family member" + (fm > 1 ? "s" : "") + "\n" +
-        "- Processing Time: " + program.processingTime + "\n" +
-        "- Visa-Free Countries: " + program.visaFreeCountries + "\n" +
-        "- Family Included: " + program.familyIncluded + "\n" +
-        "- Special Features: " + program.specialFeatures.join(", ") + "\n\n" +
-        'Return JSON: { "programSummary": "2-paragraph overview of the program and its key benefits", "recommendation": "2-paragraph ELEVAY recommendation explaining why this is a good choice and what the client should consider" }';
-
-      const response = await invokeLLM({
-        messages: [
-          { role: "system", content: "You are an expert citizenship and residency by investment advisor at ELEVAY. Write professional, persuasive, and factual proposals for high-net-worth clients." },
-          { role: "user", content: proposalPrompt },
-        ],
-        response_format: { type: "json_object" },
-      });
-
-      const content = response.choices?.[0]?.message?.content;
-      if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI response empty" });
-      const aiContent = JSON.parse(content as string);
-
-      return {
-        country: program.country,
-        investmentType: input.investmentType,
-        familyMembers: fm,
-        breakdown: {
-          investmentCost,
-          governmentFee,
-          dueDiligenceFee,
-          processingFee,
-          otherFees: 0,
-          totalCost,
-          notes,
-        },
-        programSummary: aiContent.programSummary || "",
-        recommendation: aiContent.recommendation || "",
-        generatedAt: new Date().toISOString(),
-      };
-    }),
+    .mutation(({ input }) => generateProgramProposal(input)),
 
   generateMarketingPlan: protectedProcedure
     .input(z.object({

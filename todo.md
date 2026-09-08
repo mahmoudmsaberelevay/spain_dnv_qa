@@ -1297,3 +1297,11 @@ Check email for download link within 5 minutes
 - [x] Publish the landing automation, register the managed schedule, and run one controlled production execution
 - [x] Verify all eligible records remain synchronized, no duplicate Leads or Meta artifacts are created, and the next four Cairo-aligned run times are correct
 - [x] Document monitoring, retry, pause/resume, and rollback procedures, complete both project checklists, and publish the final validated state
+
+## Marketing Module — Proposal Generation Failure
+- [x] Audit the proposal-generation UI, request payload, backend procedure, AI/template generator, storage, and download response on the latest shared branch
+- [x] Reproduce the production failure and identify its root cause from browser, network, and server logs without exposing proposal content or customer data
+- [x] Implement a backward-compatible fix that preserves existing proposals, templates, branding, permissions, and marketing workflows
+- [x] Add regression tests for valid generation, required-field validation, generation/storage failures, and the final downloadable response
+- [x] Validate the authenticated Marketing proposal flow end to end and confirm no existing proposal or marketing records are modified
+- [x] Run focused tests and the production build, complete the checklist, publish, and report the fix

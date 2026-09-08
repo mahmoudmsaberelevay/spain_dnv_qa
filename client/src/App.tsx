@@ -350,6 +350,9 @@ function Router() {
       <Route path="/marketing/program-proposal">
         <MobileRoute><ProgramProposal /></MobileRoute>
       </Route>
+      <Route path="/marketing/proposal">
+        <MobileRoute><ProgramProposal /></MobileRoute>
+      </Route>
       <Route path="/marketing/marketing-plan">
         <MobileRoute><MarketingPlan /></MobileRoute>
       </Route>

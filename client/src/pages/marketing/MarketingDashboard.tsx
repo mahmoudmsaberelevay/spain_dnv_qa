@@ -30,9 +30,9 @@ const tools = [
     icon: Send,
     title: "Program Proposal",
     description: "Generate tailored program proposals for clients based on their profile, budget, and goals. Export as branded PDF documents.",
-    href: "/marketing/proposal",
+    href: "/marketing/program-proposal",
     color: "from-purple-500 to-violet-600",
-    badge: "Coming Soon",
+    badge: "Available",
   },
 ];
 
