@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { MarketingSummaryTabs } from "./MarketingSummaryTabs";
 
 // ─── Program Definitions ───────────────────────────────────────────────────────
 const RESIDENCY_PROGRAMS = [
@@ -96,6 +97,7 @@ export default function SummaryGenerator() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
+      <MarketingSummaryTabs />
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

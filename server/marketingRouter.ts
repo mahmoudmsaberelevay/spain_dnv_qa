@@ -19,6 +19,7 @@ import {
   readySummaryStorageKey,
 } from "./marketingReadySummaryFiles";
 import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
+import { buildReadySummaryWhatsappUrl } from "../shared/readySummaryWhatsappShare";
 
 function requireReadySummaryManager(user: { role?: string | null }) {
   if (user.role !== "admin") {
@@ -65,6 +66,34 @@ export const marketingRouter = router({
       const stored = await storageGet(summary.storageKey);
       await writeAuditLog(auditCtxFromTrpc(ctx), "download", "marketing_ready_summary", summary.id, summary.title);
       return { url: stored.url, fileName: summary.originalFileName, title: summary.title };
+    }),
+
+  prepareReadySummaryWhatsappShare: protectedProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const [summary] = await db
+        .select({
+          id: marketingReadySummaries.id,
+          title: marketingReadySummaries.title,
+          originalFileName: marketingReadySummaries.originalFileName,
+          storageKey: marketingReadySummaries.storageKey,
+        })
+        .from(marketingReadySummaries)
+        .where(and(eq(marketingReadySummaries.id, input.id), isNull(marketingReadySummaries.deletedAt)))
+        .limit(1);
+      if (!summary) throw new TRPCError({ code: "NOT_FOUND", message: "Ready summary not found" });
+
+      const stored = await storageGet(summary.storageKey);
+      const whatsappUrl = buildReadySummaryWhatsappUrl(summary.title, stored.url);
+      await writeAuditLog(auditCtxFromTrpc(ctx), "share_prepare", "marketing_ready_summary", summary.id, summary.title);
+      return {
+        whatsappUrl,
+        title: summary.title,
+        fileName: summary.originalFileName,
+        sentAutomatically: false as const,
+      };
     }),
 
   uploadReadySummary: protectedProcedure

@@ -5,7 +5,7 @@
 
 The Marketing module now contains a shared **Ready Summaries** library for authenticated CRM users. The initial import contains **21 unique PDF files**: nine Citizenship summaries, eight Residency summaries, and four Immigration summaries. Every record has a title, storage reference, positive file size, and positive page count; all 21 stored files were downloaded from persistent storage and verified to begin with a valid PDF signature.[1] [2]
 
-The desktop and mobile Marketing navigation both include Ready Summaries. The authenticated page displays all 21 records with category labels, page counts, file sizes, search, category filtering, and a PDF download action. Administrators additionally see **Add summary** and confirmed deletion controls; ordinary authenticated users receive list and download access but cannot call add or delete procedures.[3] [4]
+The desktop and mobile Marketing navigation both include Ready Summaries. The authenticated page displays all 21 records with category labels, page counts, file sizes, search, category filtering, PDF download, and **WhatsApp** actions. Administrators additionally see **Add summary** and confirmed deletion controls; ordinary authenticated users receive list, download, and manual WhatsApp sharing access but cannot call add or delete procedures.[3] [4]
 
 Authenticated browser verification confirmed that the library renders all 21 PDFs and that the Antigua download procedure returns a valid persistent-storage PDF URL with the original download filename. The administrator upload dialog exposes a PDF-only file control, a required display title, one of four controlled categories, a 25 MB limit, cancel behavior, and a disabled submit action until the required fields are present. No PDF was added or deleted during this interface check.[3] [4]
 
@@ -24,9 +24,13 @@ The server validates the MIME type, `.pdf` extension, declared size, decoded siz
 
 Deletion is soft: the catalog record receives deletion time and deleting-user metadata, disappears from list/download queries immediately, and retains audit history. Because the storage layer does not expose object deletion, the object key is no longer returned or referenced after deletion. Re-uploading the same PDF restores the catalog record without creating a second mapping.[2] [3]
 
-Desktop and mobile verification confirmed a responsive one-column mobile catalog, searchable/filterable desktop layout, navigation visibility, 21 rendered cards, administrator upload controls, and explicit delete confirmation. The Marketing regression suite passed **12 tests**, and the production build completed successfully with only the three documented pre-existing authentication-route import warnings.[4] [5]
+Desktop and mobile verification confirmed a responsive one-column mobile catalog, searchable/filterable desktop layout, navigation visibility, 21 rendered cards, administrator upload controls, explicit delete confirmation, and a readable WhatsApp action on every card. The focused Ready Summaries suite passed **7 tests**, and the production build completed successfully with the documented pre-existing authentication-route import warnings.[4] [5]
 
 To add a summary, an administrator opens **Marketing → Ready Summaries → Add summary**, selects a PDF no larger than 25 MB, enters a clear display title, chooses Residency, Citizenship, Immigration, or Other, and confirms the upload. To remove one, an administrator selects the trash action on its card and confirms the named warning. All authenticated Marketing users can download any active summary through **Download PDF**.
+
+To share a summary, the CRM user selects **WhatsApp** on the chosen card. The authenticated server verifies that the summary is still active, prepares an opaque storage-generated HTTPS link, and returns a `wa.me` URL containing the ELEVAY Ready Summary title and PDF link. WhatsApp then opens in a separate tab or app; the user chooses the intended contact, reviews the message, and presses Send manually. The CRM does not select a recipient, call the WhatsApp Cloud API, or claim that the message was delivered.[3] [4] [6]
+
+The audit log records only `share_prepare` with the summary identifier and title. It does not record a recipient because recipient selection occurs inside WhatsApp after leaving the CRM. If pop-ups are blocked, the page shows instructions to allow pop-ups and does not prepare or send a message. Deleted summaries cannot produce new share links because the server applies the same active-record filter used for downloads.[3] [4] [5]
 
 Rollback is additive and non-destructive: the route, navigation entries, page, and router procedures can be reverted while leaving the catalog table and stored objects untouched. The table must not be dropped during an application rollback because it contains the audit-preserving metadata for imported PDFs.
 
@@ -37,3 +41,4 @@ Rollback is additive and non-destructive: the route, navigation entries, page, a
 [3]: ../server/marketingRouter.ts "Ready Summaries list, download, upload, and soft-delete procedures"
 [4]: ../client/src/pages/marketing/ReadySummaries.tsx "Ready Summaries responsive user interface"
 [5]: ../server/marketingReadySummaries.test.ts "Ready Summaries security and interface regressions"
+[6]: ../shared/readySummaryWhatsappShare.ts "Ready Summary WhatsApp message and URL encoding"

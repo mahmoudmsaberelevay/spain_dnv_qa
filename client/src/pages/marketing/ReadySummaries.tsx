@@ -33,6 +33,7 @@ import {
   FileText,
   FolderOpen,
   Loader2,
+  MessageCircle,
   Search,
   ShieldCheck,
   Trash2,
@@ -40,6 +41,7 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { MarketingSummaryTabs } from "./MarketingSummaryTabs";
 
 const CATEGORIES = ["Residency", "Citizenship", "Immigration", "Other"] as const;
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
@@ -100,6 +102,7 @@ export default function ReadySummaries() {
     },
     onError: error => toast.error(error.message || "Unable to prepare this download"),
   });
+  const whatsappShareMutation = trpc.marketing.prepareReadySummaryWhatsappShare.useMutation();
   const uploadMutation = trpc.marketing.uploadReadySummary.useMutation({
     onSuccess: async () => {
       await utils.marketing.listReadySummaries.invalidate();
@@ -157,9 +160,33 @@ export default function ReadySummaries() {
     });
   };
 
+  const openWhatsappShare = (summary: ReadySummary) => {
+    const shareWindow = window.open("about:blank", "_blank");
+    if (!shareWindow) {
+      toast.error("Allow pop-ups for ELEVAY, then try Share via WhatsApp again.");
+      return;
+    }
+    shareWindow.opener = null;
+    shareWindow.document.title = "Preparing WhatsApp share";
+    shareWindow.document.body.textContent = "Preparing your secure Ready Summary link…";
+    whatsappShareMutation.mutate(
+      { id: summary.id },
+      {
+        onSuccess: result => {
+          shareWindow.location.replace(result.whatsappUrl);
+        },
+        onError: error => {
+          shareWindow.close();
+          toast.error(error.message || "Unable to prepare the WhatsApp share link");
+        },
+      },
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#0b1120] px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
+        <MarketingSummaryTabs />
         <div className="flex flex-col gap-5 border-b border-white/10 pb-6 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#A1C6CF]">
@@ -218,10 +245,20 @@ export default function ReadySummaries() {
                 <p className="mt-2 text-xs text-slate-500">
                   {summary.pageCount ? `${summary.pageCount} pages · ` : ""}{formatBytes(summary.fileSizeBytes)} · PDF
                 </p>
-                <div className="mt-auto flex items-center gap-2 pt-6">
+                <div className="mt-auto grid grid-cols-[1fr_1fr_auto] items-center gap-2 pt-6">
                   <Button disabled={downloadMutation.isPending} onClick={() => downloadMutation.mutate({ id: summary.id })} className="flex-1 bg-white text-[#0b1120] hover:bg-slate-200">
                     {downloadMutation.isPending && downloadMutation.variables?.id === summary.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                     Download PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={whatsappShareMutation.isPending}
+                    onClick={() => openWhatsappShare(summary)}
+                    className="border-[#5BA3B8]/50 text-[#A1C6CF] hover:bg-[#5BA3B8]/10 hover:text-white"
+                    aria-label={`Share ${summary.title} via WhatsApp`}
+                  >
+                    {whatsappShareMutation.isPending && whatsappShareMutation.variables?.id === summary.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageCircle className="mr-2 h-4 w-4" />}
+                    WhatsApp
                   </Button>
                   {isAdmin && (
                     <Button variant="outline" size="icon" aria-label={`Delete ${summary.title}`} onClick={() => setDeleteTarget(summary)} className="border-red-400/30 text-red-300 hover:bg-red-500/10 hover:text-red-200">
@@ -235,7 +272,7 @@ export default function ReadySummaries() {
         )}
 
         <div className="mt-8 flex items-center gap-2 text-xs text-slate-500">
-          <ShieldCheck className="h-4 w-4 text-[#5BA3B8]" /> Downloads require an authenticated CRM account. Files are stored outside the application database.
+          <ShieldCheck className="h-4 w-4 text-[#5BA3B8]" /> Downloads and WhatsApp share links require an authenticated CRM account. WhatsApp opens with a prefilled message; the user chooses the recipient and sends it manually.
         </div>
       </div>
 

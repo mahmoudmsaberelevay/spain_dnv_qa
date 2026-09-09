@@ -1412,3 +1412,28 @@ Check email for download link within 5 minutes
 - [x] Upload and register all 21 supplied country and program summary PDFs with clear display names
 - [x] Add focused regressions for PDF validation, permissions, downloads, duplicate handling, deletion, and legacy safety
 - [x] Verify desktop/mobile behavior and all 21 downloads, document operations, and publish
+
+## Marketing — Attached-Data Program Proposal Recalculation
+- [ ] Audit the current Proposal catalogue, form criteria, pricing formulas, AI/fallback behavior, and PDF breakdown
+- [ ] Extract and normalize every programme route, applicant/family tier, dependent age band, fee, percentage, and conditional rule from the supplied data
+- [ ] Replace incomplete or hardcoded proposal totals with an auditable programme-specific calculation engine
+- [ ] Expose every applicable investment route and pricing criterion dynamically for the selected programme
+- [ ] Show included inputs, itemized charges, quoted amounts, excluded/request-only fees, and formula assumptions in the proposal and PDF
+- [ ] Add scenario tests for single applicants, couples, families, additional dependants, route choices, age bands, nationality-specific due diligence, and percentage fees
+- [ ] Verify the corrected form and generated proposal on desktop/mobile, document limitations, and publish
+- [ ] Paused at the user’s request before calculator implementation; resume only when explicitly requested
+
+## Marketing — Missing Summary/Proposal Page Visibility
+- [x] Identify whether Ready Summaries, Summary Generator, or Program Proposal is hidden for the reporting user
+- [x] Audit Marketing route wrappers, module permissions, desktop sidebar, mobile navigation, and dashboard entry visibility
+- [x] Restore the missing Marketing page for all intended authenticated users without widening unrelated module access
+- [x] Verify the repaired page on desktop and mobile before resuming Proposal recalculation
+
+## Marketing — Send Ready Summary via WhatsApp
+- [x] Audit Ready Summary download-link behavior, WhatsApp share URL encoding, permissions, and audit behavior
+- [x] Add an Open WhatsApp to Share action to every active Ready Summary without changing PDF downloads
+- [x] Generate an authenticated opaque HTTPS PDF link without exposing its storage key
+- [x] Open WhatsApp with the selected summary title and secure link prefilled; require the CRM user to choose the recipient and press Send manually
+- [x] Record only the share-link preparation event and never claim delivery because the CRM does not send the message
+- [x] Add focused regressions for authorization, inactive summaries, URL encoding, storage-key privacy, and popup failures
+- [x] Verify desktop/mobile behavior without unsolicited sends, document operations, and publish

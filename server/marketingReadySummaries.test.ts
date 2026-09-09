@@ -7,6 +7,7 @@ import {
   READY_SUMMARY_MAX_BYTES,
   readySummaryStorageKey,
 } from "./marketingReadySummaryFiles";
+import { buildReadySummaryWhatsappText, buildReadySummaryWhatsappUrl } from "../shared/readySummaryWhatsappShare";
 
 const root = process.cwd();
 const read = (relative: string) => fs.readFileSync(path.join(root, relative), "utf8");
@@ -45,8 +46,36 @@ describe("Marketing Ready Summaries", () => {
     expect(router).not.toMatch(/listReadySummaries:[\s\S]{0,1300}storageKey:/);
   });
 
+  it("builds a manually sent WhatsApp URL with an encoded title and secure PDF link", () => {
+    const downloadUrl = "https://files.example.test/summary.pdf?token=a+b&expires=1";
+    const url = buildReadySummaryWhatsappUrl("Spain & Portugal Summary", downloadUrl);
+    const parsed = new URL(url);
+    expect(parsed.origin).toBe("https://wa.me");
+    expect(parsed.pathname).toBe("/");
+    expect(parsed.searchParams.get("text")).toBe(buildReadySummaryWhatsappText("Spain & Portugal Summary", downloadUrl));
+    expect(parsed.searchParams.get("text")).toContain("Spain & Portugal Summary");
+    expect(() => buildReadySummaryWhatsappUrl("Unsafe", "http://files.example.test/summary.pdf")).toThrow("ready_summary_share_https_required");
+  });
+
+  it("prepares authenticated active-summary shares without sending through the Cloud API", () => {
+    const router = read("server/marketingRouter.ts");
+    const page = read("client/src/pages/marketing/ReadySummaries.tsx");
+    expect(router).toContain("prepareReadySummaryWhatsappShare: protectedProcedure");
+    expect(router).toContain("buildReadySummaryWhatsappUrl(summary.title, stored.url)");
+    expect(router).toContain('"share_prepare", "marketing_ready_summary"');
+    expect(router).toContain("sentAutomatically: false as const");
+    expect(router).not.toMatch(/prepareReadySummaryWhatsappShare:[\s\S]{0,2200}graph\.facebook\.com/);
+    expect(page).toContain("prepareReadySummaryWhatsappShare.useMutation");
+    expect(page).toContain('window.open("about:blank", "_blank")');
+    expect(page).toContain("shareWindow.location.replace(result.whatsappUrl)");
+    expect(page).toContain("Allow pop-ups for ELEVAY");
+    expect(page).toContain("the user chooses the recipient and sends it manually");
+  });
+
   it("provides desktop, mobile, dashboard, upload, download, and confirmed delete interfaces", () => {
     const page = read("client/src/pages/marketing/ReadySummaries.tsx");
+    const generator = read("client/src/pages/marketing/SummaryGenerator.tsx");
+    const tabs = read("client/src/pages/marketing/MarketingSummaryTabs.tsx");
     const app = read("client/src/App.tsx");
     const desktop = read("client/src/components/DashboardLayout.tsx");
     const mobile = read("client/src/components/MobileLayout.tsx");
@@ -57,9 +86,16 @@ describe("Marketing Ready Summaries", () => {
     expect(dashboard).toContain('title: "Ready Summaries"');
     expect(page).toContain("uploadReadySummary.useMutation");
     expect(page).toContain("getReadySummaryDownload.useMutation");
+    expect(page).toContain("prepareReadySummaryWhatsappShare.useMutation");
     expect(page).toContain("deleteReadySummary.useMutation");
     expect(page).toContain("<AlertDialog");
     expect(page).toContain('const isAdmin = user?.role === "admin"');
+    expect(page).toContain("<MarketingSummaryTabs />");
+    expect(generator).toContain("<MarketingSummaryTabs />");
+    expect(tabs).toContain('label: "Ready Summaries"');
+    expect(tabs).toContain('path: "/marketing/ready-summaries"');
+    expect(tabs).toContain('label: "Summary Generator"');
+    expect(tabs).toContain('aria-label="Marketing summaries"');
   });
 
   it("uses an additive catalog migration with unique content and soft-deletion metadata", () => {
