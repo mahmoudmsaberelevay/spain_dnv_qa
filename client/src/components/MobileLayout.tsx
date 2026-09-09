@@ -475,6 +475,28 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
               </button>
             </div>
             <div className="p-3">
+              <div className="mb-3 border-b border-border/50 pb-3">
+                <p className="px-4 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Marketing shortcuts</p>
+                {[
+                  { label: "Ready Summaries", icon: FolderOpen, path: "/marketing/ready-summaries" },
+                  { label: "Program Proposal", icon: FileSignature, path: "/marketing/program-proposal" },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.path}
+                      onClick={() => { setLocation(item.path); setShowMore(false); }}
+                      className="w-full flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-accent transition-colors"
+                    >
+                      <div className="h-10 w-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                        <Icon className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <span className="flex-1 text-left text-sm font-medium">{item.label}</span>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  );
+                })}
+              </div>
               {visibleSidebarModules.filter(i => !["contracting","financial","leads"].includes(i.id)).map((item) => {
                 const Icon = item.icon;
                 return (

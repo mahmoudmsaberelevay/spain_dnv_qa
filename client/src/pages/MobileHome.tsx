@@ -17,6 +17,8 @@ import {
   ChevronRight,
   Calendar,
   DollarSign,
+  FolderOpen,
+  FileSignature,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { startSystemLogin } from "@/const";
@@ -114,6 +116,25 @@ export default function MobileHome() {
         </div>
       </div>
 
+      {/* Direct mobile access to the most-used Marketing tools */}
+      <div>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Marketing Tools</h2>
+        <div className="grid grid-cols-2 gap-3">
+          <MarketingShortcut
+            label="Ready Summaries"
+            description="Download or share PDFs"
+            icon={FolderOpen}
+            onClick={() => handleNav("/marketing/ready-summaries")}
+          />
+          <MarketingShortcut
+            label="Program Proposal"
+            description="Prepare client proposals"
+            icon={FileSignature}
+            onClick={() => handleNav("/marketing/program-proposal")}
+          />
+        </div>
+      </div>
+
       {/* Recent Activity / Quick Actions */}
       <div>
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Quick Actions</h2>
@@ -176,6 +197,23 @@ function QuickAction({ label, description, icon: Icon, onClick }: { label: strin
         <p className="text-xs text-muted-foreground">{description}</p>
       </div>
       <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+    </button>
+  );
+}
+
+function MarketingShortcut({ label, description, icon: Icon, onClick }: { label: string; description: string; icon: any; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex min-h-28 flex-col items-start justify-between rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-500/10 to-primary/5 p-4 text-left transition-all hover:border-purple-500/40 active:scale-[0.98]"
+    >
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/15 text-purple-600">
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="mt-3">
+        <p className="text-sm font-semibold text-foreground">{label}</p>
+        <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{description}</p>
+      </div>
     </button>
   );
 }

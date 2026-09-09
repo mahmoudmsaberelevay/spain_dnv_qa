@@ -1414,14 +1414,14 @@ Check email for download link within 5 minutes
 - [x] Verify desktop/mobile behavior and all 21 downloads, document operations, and publish
 
 ## Marketing — Attached-Data Program Proposal Recalculation
-- [x] Paused before audit completion at the user’s explicit request; existing Proposal production behavior was left unchanged
-- [x] Paused before normalized programme rules were integrated; temporary extraction files were removed from the release
-- [x] Paused before any calculator replacement; no incomplete pricing engine was published
-- [x] Paused before dynamic criteria changes; existing Proposal inputs remain unchanged
-- [x] Paused before proposal/PDF breakdown changes; existing outputs remain unchanged
-- [x] Paused before scenario implementation; no unverified pricing tests were presented as complete
-- [x] Paused before Proposal browser validation or publication; the task must be reopened explicitly to resume
-- [x] Interruption recorded and incomplete calculator artifacts removed before the Ready Summary WhatsApp release
+- [ ] Audit the current Proposal catalogue, form criteria, pricing formulas, AI/fallback behavior, and PDF breakdown
+- [ ] Restore and verify the normalized programme routes, applicant/family tiers, dependant age bands, fees, percentages, and conditional rules from the supplied sources
+- [ ] Replace incomplete or hardcoded proposal totals with an auditable programme-specific calculation engine
+- [ ] Expose every applicable investment route and pricing criterion dynamically for the selected programme
+- [ ] Show included inputs, itemized charges, quoted amounts, excluded/request-only fees, and formula assumptions in the proposal and PDF
+- [ ] Add scenario tests for single applicants, couples, families, additional dependants, route choices, age bands, nationality-specific due diligence, and percentage fees
+- [ ] Verify the corrected form and generated proposal on desktop/mobile, document limitations, and publish
+- [x] Previous interruption and incomplete-artifact cleanup recorded; work explicitly resumed by the user
 
 ## Marketing — Missing Summary/Proposal Page Visibility
 - [x] Identify whether Ready Summaries, Summary Generator, or Program Proposal is hidden for the reporting user
@@ -1437,3 +1437,10 @@ Check email for download link within 5 minutes
 - [x] Record only the share-link preparation event and never claim delivery because the CRM does not send the message
 - [x] Add focused regressions for authorization, inactive summaries, URL encoding, storage-key privacy, and popup failures
 - [x] Verify desktop/mobile behavior without unsolicited sends, document operations, and publish
+
+## Mobile Marketing — Direct Ready Summaries & Program Proposal Access
+- [x] Audit the installed mobile application’s Marketing navigation, route handling, and page guards
+- [x] Add direct Ready Summaries and Program Proposal entries to the mobile Marketing navigation
+- [x] Ensure both pages open without desktop-only redirects or special permission requirements
+- [x] Verify Ready Summary download/WhatsApp actions and Proposal inputs on a phone viewport
+- [x] Add mobile navigation regressions and publish the direct-access update before continuing Proposal pricing work

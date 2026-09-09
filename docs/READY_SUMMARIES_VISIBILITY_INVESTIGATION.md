@@ -15,6 +15,10 @@ Authenticated development verification confirmed that the new Ready Summaries ta
 
 Mobile verification at 375 × 812 confirmed that the two tabs stack cleanly at the top of both pages, retain a clear active state, and remain above the primary page action and content. The Ready Summaries page displayed the 21-PDF count and the Summary Generator retained its existing creation and edit controls.
 
+On 9 September 2026, direct mobile access was added beyond the nested Marketing submenu. The mobile home now contains two prominent **Marketing Tools** shortcuts for **Ready Summaries** and **Program Proposal**. The mobile **More** sheet also places both destinations in a dedicated **Marketing shortcuts** section, while retaining their existing entries inside the full slide-out Marketing navigation.
+
+Phone-viewport verification at 375 × 812 confirmed that both home shortcuts are visible without expanding a module, Ready Summaries opens all 21 PDFs with Download and WhatsApp actions, and Program Proposal opens its complete input form without a desktop-only redirect. Both routes remain available to every authenticated Marketing user under the existing universal Marketing access policy.
+
 ## References
 
 [1]: ../client/src/pages/marketing/MarketingDashboard.tsx "Marketing dashboard Ready Summaries card"

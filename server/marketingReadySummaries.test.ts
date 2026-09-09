@@ -98,6 +98,21 @@ describe("Marketing Ready Summaries", () => {
     expect(tabs).toContain('aria-label="Marketing summaries"');
   });
 
+  it("exposes Ready Summaries and Program Proposal as direct mobile application shortcuts", () => {
+    const mobileLayout = read("client/src/components/MobileLayout.tsx");
+    const mobileHome = read("client/src/pages/MobileHome.tsx");
+    const app = read("client/src/App.tsx");
+
+    expect(mobileLayout).toContain('label: "Ready Summaries", icon: FolderOpen, path: "/marketing/ready-summaries"');
+    expect(mobileLayout).toContain('label: "Program Proposal", icon: FileSignature, path: "/marketing/program-proposal"');
+    expect(mobileLayout).toContain("Marketing shortcuts");
+    expect(mobileHome).toContain("Marketing Tools");
+    expect(mobileHome).toContain('handleNav("/marketing/ready-summaries")');
+    expect(mobileHome).toContain('handleNav("/marketing/program-proposal")');
+    expect(app).toContain('<Route path="/marketing/ready-summaries">');
+    expect(app).toContain('<Route path="/marketing/program-proposal">');
+  });
+
   it("uses an additive catalog migration with unique content and soft-deletion metadata", () => {
     const migration = read("drizzle/0072_marketing_ready_summaries.sql");
     expect(migration).toContain("CREATE TABLE IF NOT EXISTS `marketing_ready_summaries`");
