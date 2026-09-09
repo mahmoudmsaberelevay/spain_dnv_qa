@@ -4,19 +4,14 @@ import { BarChart2, Loader2, Download, CheckCircle2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { MARKETING_COMPARISON_PROGRAMS, type MarketingComparisonCategory, getMarketingComparisonProgram } from "@shared/marketingComparisonPrograms";
 
-const PROGRAMS = [
-  { key: "dominica", label: "Dominica", flag: "🇩🇲" },
-  { key: "grenada", label: "Grenada", flag: "🇬🇩" },
-  { key: "egypt", label: "Egypt", flag: "🇪🇬" },
-  { key: "st_kitts", label: "Saint Kitts & Nevis", flag: "🇰🇳" },
-  { key: "st_lucia", label: "Saint Lucia", flag: "🇱🇨" },
-  { key: "antigua", label: "Antigua & Barbuda", flag: "🇦🇬" },
-  { key: "vanuatu", label: "Vanuatu", flag: "🇻🇺" },
-  { key: "nauru", label: "Nauru", flag: "🇳🇷" },
-  { key: "sao_tome", label: "São Tomé & Príncipe", flag: "🇸🇹" },
-  { key: "turkey", label: "Turkey", flag: "🇹🇷" },
-];
+const PROGRAMS = MARKETING_COMPARISON_PROGRAMS;
+
+const CATEGORY_DETAILS: Record<MarketingComparisonCategory, { label: string; description: string }> = {
+  residency: { label: "Residency Programs", description: "Temporary residence, permanent residence, and skilled migration pathways" },
+  citizenship: { label: "Citizenship Programs", description: "Direct citizenship-by-investment pathways" },
+};
 
 const CRITERIA_LABELS: Record<string, string> = {
   governmentCost: "Government Cost",
@@ -64,7 +59,10 @@ export default function ProgramComparison() {
     if (!result) return;
     const win = window.open("", "_blank");
     if (!win) return;
-    const programLabels = result.programs.map((k) => PROGRAMS.find((p) => p.key === k)?.label || k);
+    const programLabels = result.programs.map((k) => {
+      const program = getMarketingComparisonProgram(k);
+      return program ? `${program.label} (${CATEGORY_DETAILS[program.category].label.replace(" Programs", "")})` : k;
+    });
     const rows = Object.entries(CRITERIA_LABELS).map(([key, label]) => ({
       label,
       cells: result.programs.map((pk) => result.comparison[pk]?.[key] || "—"),
@@ -110,7 +108,7 @@ tr:nth-child(even) td{background:#f5f9fb}
           </div>
           <div>
             <h1 className="text-xl font-bold text-white">Program Enhanced Comparison</h1>
-            <p className="text-sm text-gray-400">Select 2–6 programs to compare across 8 criteria using AI</p>
+            <p className="text-sm text-gray-400">Compare 2–6 Residency or Citizenship programs across 8 criteria</p>
           </div>
         </div>
         {result && (
@@ -125,18 +123,28 @@ tr:nth-child(even) td{background:#f5f9fb}
           <h2 className="text-sm font-semibold text-gray-300">Select Programs to Compare</h2>
           <span className="text-xs text-gray-500">{selected.length}/6 selected</span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-4">
-          {PROGRAMS.map((p) => {
-            const isSel = selected.includes(p.key);
-            return (
-              <button key={p.key} onClick={() => toggleProgram(p.key)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${isSel ? "bg-teal-900/40 border-teal-500 text-teal-300" : "bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300"}`}>
-                <span>{p.flag}</span>
-                <span className="truncate">{p.label}</span>
-                {isSel && <CheckCircle2 className="w-3.5 h-3.5 ml-auto shrink-0 text-teal-400" />}
-              </button>
-            );
-          })}
+        <div className="space-y-5 mb-5">
+          {(["residency", "citizenship"] as MarketingComparisonCategory[]).map(category => (
+            <section key={category} aria-labelledby={`${category}-programs-heading`}>
+              <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-1 mb-2">
+                <h3 id={`${category}-programs-heading`} className="text-sm font-semibold text-white">{CATEGORY_DETAILS[category].label}</h3>
+                <p className="text-xs text-gray-500">{CATEGORY_DETAILS[category].description}</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+                {PROGRAMS.filter(program => program.category === category).map((p) => {
+                  const isSel = selected.includes(p.key);
+                  return (
+                    <button key={p.key} onClick={() => toggleProgram(p.key)} aria-pressed={isSel}
+                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium text-left transition-all ${isSel ? "bg-teal-900/40 border-teal-500 text-teal-300" : "bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300"}`}>
+                      <span aria-hidden="true">{p.flag}</span>
+                      <span className="min-w-0 flex-1 truncate">{p.label}</span>
+                      {isSel && <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-teal-400" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
         </div>
         <Button onClick={handleCompare} disabled={selected.length < 2 || compareMutation.isPending}
           className="bg-teal-600 hover:bg-teal-700 text-white gap-2">
@@ -162,10 +170,11 @@ tr:nth-child(even) td{background:#f5f9fb}
                   <tr className="bg-gray-800">
                     <th className="text-left px-4 py-3 text-gray-300 font-semibold w-44 border-r border-gray-700">Criteria</th>
                     {result.programs.map((pk) => {
-                      const prog = PROGRAMS.find((p) => p.key === pk);
+                      const prog = getMarketingComparisonProgram(pk);
                       return (
                         <th key={pk} className="text-left px-4 py-3 text-teal-300 font-semibold min-w-[160px]">
                           <span className="mr-1">{prog?.flag}</span>{prog?.label || pk}
+                          {prog && <span className="block mt-1 text-[10px] uppercase tracking-wider text-gray-500">{prog.category}</span>}
                         </th>
                       );
                     })}

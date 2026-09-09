@@ -1379,3 +1379,10 @@ Check email for download link within 5 minutes
 - [x] Expose active After Settlement Services appropriately in the Client Portal with responsive desktop and mobile layouts
 - [x] Add migrations and focused regressions for permissions, legacy providers, image metadata, edits, deletes, and service visibility
 - [x] Verify authenticated administration and client experiences, complete documentation, and publish
+
+## Marketing — Unified Residency & Citizenship Program Comparison
+- [x] Audit Program Comparison data sources, current program-category restrictions, comparison fields, calculations, saved records, and responsive layout
+- [x] Add Residency programs to every comparison selector while retaining Citizenship programs and clear category labels
+- [x] Support Residency-to-Residency, Citizenship-to-Citizenship, and Residency-to-Citizenship comparisons without changing existing comparison records
+- [x] Add focused regressions and verify comparison results, empty/error states, and desktop/mobile behavior
+- [x] Complete documentation and publish the unified Program Comparison update
