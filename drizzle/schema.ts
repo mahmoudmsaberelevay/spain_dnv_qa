@@ -1753,6 +1753,28 @@ export const marketingSummaries = mysqlTable("marketing_summaries", {
 export type MarketingSummary = typeof marketingSummaries.$inferSelect;
 export type InsertMarketingSummary = typeof marketingSummaries.$inferInsert;
 
+// ─── MARKETING READY SUMMARIES ─────────────────────────────────────────────────
+export const marketingReadySummaries = mysqlTable("marketing_ready_summaries", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  category: varchar("category", { length: 32 }).notNull(),
+  originalFileName: varchar("originalFileName", { length: 255 }).notNull(),
+  storageKey: varchar("storageKey", { length: 768 }).notNull(),
+  fileSizeBytes: bigint("fileSizeBytes", { mode: "number" }).notNull(),
+  pageCount: int("pageCount"),
+  sha256Digest: varchar("sha256Digest", { length: 64 }).notNull(),
+  uploadedByUserId: int("uploadedByUserId").notNull(),
+  uploadedByEmail: varchar("uploadedByEmail", { length: 320 }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  deletedAt: bigint("deletedAt", { mode: "number" }),
+  deletedByUserId: int("deletedByUserId"),
+}, table => [
+  uniqueIndex("marketing_ready_summaries_sha256_unique").on(table.sha256Digest),
+  index("marketing_ready_summaries_active_category_idx").on(table.deletedAt, table.category, table.title),
+]);
+export type MarketingReadySummary = typeof marketingReadySummaries.$inferSelect;
+export type InsertMarketingReadySummary = typeof marketingReadySummaries.$inferInsert;
+
 // ─── MARKETING PLANS ─────────────────────────────────────────────────────────
 // NOTE: This table was created in a previous session with camelCase columns and bigint timestamps.
 // Schema matches the actual DB: userId(int), startDate(varchar20), planJson(mediumtext), createdAt/updatedAt(bigint)

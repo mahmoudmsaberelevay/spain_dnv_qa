@@ -2,17 +2,157 @@ import { z } from "zod";
 import { protectedProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getDb } from "./db";
-import { marketingSummaries, marketingPlans, marketingWeekMedia } from "../drizzle/schema";
-import { eq, and, desc } from "drizzle-orm";
-import { storagePut } from "./storage";
+import { marketingSummaries, marketingPlans, marketingWeekMedia, marketingReadySummaries } from "../drizzle/schema";
+import { eq, and, desc, asc, isNull } from "drizzle-orm";
+import { storageGet, storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import { invokeLLM } from "./_core/llm";
 import { generatePlanRuleBased, generateWeekMediaPrompts } from "./marketingTemplates";
 import { ELEVAY_ARABIC_VOICE_DEFAULTS, generateElevayArabicVoiceOver } from "./elevenLabsTts";
 import { generateProgramProposal } from "./marketingProposalService";
 import { comparePrograms as generateProgramComparison } from "./programComparisonService";
+import {
+  decodeReadySummaryPdf,
+  READY_SUMMARY_CATEGORIES,
+  READY_SUMMARY_MAX_BASE64_LENGTH,
+  READY_SUMMARY_MAX_BYTES,
+  readySummaryStorageKey,
+} from "./marketingReadySummaryFiles";
+import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
+
+function requireReadySummaryManager(user: { role?: string | null }) {
+  if (user.role !== "admin") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Only administrators can add or delete ready summaries" });
+  }
+}
 
 export const marketingRouter = router({
+  listReadySummaries: protectedProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+    return db
+      .select({
+        id: marketingReadySummaries.id,
+        title: marketingReadySummaries.title,
+        category: marketingReadySummaries.category,
+        originalFileName: marketingReadySummaries.originalFileName,
+        fileSizeBytes: marketingReadySummaries.fileSizeBytes,
+        pageCount: marketingReadySummaries.pageCount,
+        uploadedByEmail: marketingReadySummaries.uploadedByEmail,
+        createdAt: marketingReadySummaries.createdAt,
+      })
+      .from(marketingReadySummaries)
+      .where(isNull(marketingReadySummaries.deletedAt))
+      .orderBy(asc(marketingReadySummaries.category), asc(marketingReadySummaries.title));
+  }),
+
+  getReadySummaryDownload: protectedProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const [summary] = await db
+        .select({
+          id: marketingReadySummaries.id,
+          title: marketingReadySummaries.title,
+          originalFileName: marketingReadySummaries.originalFileName,
+          storageKey: marketingReadySummaries.storageKey,
+        })
+        .from(marketingReadySummaries)
+        .where(and(eq(marketingReadySummaries.id, input.id), isNull(marketingReadySummaries.deletedAt)))
+        .limit(1);
+      if (!summary) throw new TRPCError({ code: "NOT_FOUND", message: "Ready summary not found" });
+      const stored = await storageGet(summary.storageKey);
+      await writeAuditLog(auditCtxFromTrpc(ctx), "download", "marketing_ready_summary", summary.id, summary.title);
+      return { url: stored.url, fileName: summary.originalFileName, title: summary.title };
+    }),
+
+  uploadReadySummary: protectedProcedure
+    .input(z.object({
+      title: z.string().trim().min(2).max(255),
+      category: z.enum(READY_SUMMARY_CATEGORIES),
+      fileName: z.string().trim().min(1).max(255),
+      mimeType: z.literal("application/pdf"),
+      fileSize: z.number().int().positive().max(READY_SUMMARY_MAX_BYTES),
+      fileBase64: z.string().min(1).max(READY_SUMMARY_MAX_BASE64_LENGTH),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requireReadySummaryManager(ctx.user);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+
+      let decoded: ReturnType<typeof decodeReadySummaryPdf>;
+      try {
+        decoded = decodeReadySummaryPdf(input);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "ready_summary_upload_invalid";
+        throw new TRPCError({ code: "BAD_REQUEST", message });
+      }
+
+      const [existing] = await db
+        .select({ id: marketingReadySummaries.id, deletedAt: marketingReadySummaries.deletedAt })
+        .from(marketingReadySummaries)
+        .where(eq(marketingReadySummaries.sha256Digest, decoded.sha256Digest))
+        .limit(1);
+      if (existing && existing.deletedAt == null) {
+        throw new TRPCError({ code: "CONFLICT", message: "This PDF already exists in Ready Summaries" });
+      }
+
+      const now = Date.now();
+      if (existing) {
+        await db.update(marketingReadySummaries).set({
+          title: input.title,
+          category: input.category,
+          originalFileName: decoded.fileName,
+          fileSizeBytes: decoded.buffer.byteLength,
+          uploadedByUserId: ctx.user.id,
+          uploadedByEmail: ctx.user.email ?? null,
+          createdAt: now,
+          deletedAt: null,
+          deletedByUserId: null,
+        }).where(eq(marketingReadySummaries.id, existing.id));
+        await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_ready_summary", existing.id, `Restored ${input.title}`);
+        return { id: existing.id, restored: true };
+      }
+
+      const stored = await storagePut(readySummaryStorageKey(), decoded.buffer, "application/pdf");
+      const [result] = await db.insert(marketingReadySummaries).values({
+        title: input.title,
+        category: input.category,
+        originalFileName: decoded.fileName,
+        storageKey: stored.key,
+        fileSizeBytes: decoded.buffer.byteLength,
+        pageCount: null,
+        sha256Digest: decoded.sha256Digest,
+        uploadedByUserId: ctx.user.id,
+        uploadedByEmail: ctx.user.email ?? null,
+        createdAt: now,
+      });
+      const id = (result as { insertId: number }).insertId;
+      await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_ready_summary", id, input.title);
+      return { id, restored: false };
+    }),
+
+  deleteReadySummary: protectedProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      requireReadySummaryManager(ctx.user);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const [summary] = await db
+        .select({ id: marketingReadySummaries.id, title: marketingReadySummaries.title })
+        .from(marketingReadySummaries)
+        .where(and(eq(marketingReadySummaries.id, input.id), isNull(marketingReadySummaries.deletedAt)))
+        .limit(1);
+      if (!summary) throw new TRPCError({ code: "NOT_FOUND", message: "Ready summary not found" });
+      await db.update(marketingReadySummaries).set({
+        deletedAt: Date.now(),
+        deletedByUserId: ctx.user.id,
+      }).where(eq(marketingReadySummaries.id, summary.id));
+      await writeAuditLog(auditCtxFromTrpc(ctx), "delete", "marketing_ready_summary", summary.id, summary.title);
+      return { success: true };
+    }),
+
   // List all summaries for the current user
   listSummaries: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();

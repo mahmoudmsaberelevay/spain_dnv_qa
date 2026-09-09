@@ -1403,3 +1403,12 @@ Check email for download link within 5 minutes
 - [x] Preserve the Mahmoud and Ziad event-specific recipient matrix and all non-notification email exclusions
 - [x] Add mocked sender-policy regressions and verify provider authentication without unauthorized live delivery
 - [x] Document the sender configuration, operational requirements, rollback steps, and publish
+
+## Marketing — Ready Summaries PDF Library
+- [x] Audit Marketing navigation, permissions, existing proposal/summary pages, and approved S3 file-storage patterns
+- [x] Add a Ready Summaries catalog with PDF metadata, uploader identity, ordering, and safe deletion history
+- [x] Add a Marketing sidebar/tab page where every authorized user can browse and download active summaries
+- [x] Add protected PDF upload and confirmed deletion controls without exposing storage keys or affecting unrelated files
+- [x] Upload and register all 21 supplied country and program summary PDFs with clear display names
+- [x] Add focused regressions for PDF validation, permissions, downloads, duplicate handling, deletion, and legacy safety
+- [x] Verify desktop/mobile behavior and all 21 downloads, document operations, and publish

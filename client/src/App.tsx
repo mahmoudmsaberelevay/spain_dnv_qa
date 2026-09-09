@@ -79,6 +79,7 @@ import ProgramComparison from "./pages/marketing/ProgramComparison";
 import ProgramProposal from "./pages/marketing/ProgramProposal";
 import MarketingPlan from "./pages/marketing/MarketingPlan";
 import ArabicVoiceOver from "./pages/marketing/ArabicVoiceOver";
+import ReadySummaries from "./pages/marketing/ReadySummaries";
 
 // ─── Reports Module ─────────────────────────────────────────────────────────────
 import Reports from "./pages/Reports";
@@ -337,6 +338,9 @@ function Router() {
       </Route>
       <Route path="/marketing/summary-generator">
         <MobileRoute><SummaryGenerator /></MobileRoute>
+      </Route>
+      <Route path="/marketing/ready-summaries">
+        <MobileRoute><ReadySummaries /></MobileRoute>
       </Route>
       <Route path="/marketing/voice-over">
         <MobileRoute><ArabicVoiceOver /></MobileRoute>

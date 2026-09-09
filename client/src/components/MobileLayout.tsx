@@ -146,6 +146,7 @@ export const MOBILE_SIDEBAR_MODULES = [
     label: "Marketing",
     icon: Megaphone,
     items: [
+      { icon: FolderOpen, label: "Ready Summaries", path: "/marketing/ready-summaries" },
       { icon: Sparkles, label: "Summary Generator", path: "/marketing/summary-generator" },
       { icon: Mic2, label: "Arabic Voice-over", path: "/marketing/voice-over" },
       { icon: GitCompare, label: "Program Comparison", path: "/marketing/program-comparison" },

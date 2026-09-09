@@ -1,7 +1,15 @@
 import { useLocation } from "wouter";
-import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2 } from "lucide-react";
+import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2, FolderOpen } from "lucide-react";
 
 const tools = [
+  {
+    icon: FolderOpen,
+    title: "Ready Summaries",
+    description: "Browse and download approved ELEVAY country and program summaries. Administrators can add or remove PDFs from the shared library.",
+    href: "/marketing/ready-summaries",
+    color: "from-[#5BA3B8] to-[#1A3A5C]",
+    badge: "PDF Library",
+  },
   {
     icon: Mic2,
     title: "Arabic Voice-over",
@@ -22,9 +30,9 @@ const tools = [
     icon: BarChart2,
     title: "Program Enhanced Comparison",
     description: "Compare multiple citizenship and residency programs side-by-side with detailed criteria, costs, timelines, and benefits.",
-    href: "/marketing/comparison",
+    href: "/marketing/program-comparison",
     color: "from-blue-500 to-indigo-600",
-    badge: "Coming Soon",
+    badge: "Available",
   },
   {
     icon: Send,
