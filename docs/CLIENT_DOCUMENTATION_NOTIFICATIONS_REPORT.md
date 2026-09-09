@@ -16,7 +16,7 @@ A durable daily reminder endpoint is implemented at `/api/scheduled/clientLifecy
 | # | User rule | Trigger and result | Status |
 |---:|---|---|---|
 | 1 | Welcome when a client first receives application access | Linking a client account to a Client Documentation folder creates the first bilingual welcome activity and notification | Implemented in CRM and mobile-admin account creation |
-| 2 | Appointment-booking reminder after two days | If no appointment booking submission and no appointment date exist two days after access, one reminder is created | Implemented with missed-run catch-up and duplicate suppression |
+| 2 | Appointment-booking reminder after two days | If no appointment booking submission and no appointment date exist two days after access, the client receives the personalized “Dear Mr. [Client Name]” Embassy-email instruction and the supplied `embassyemail.docx` template | Implemented with missed-run catch-up, duplicate suppression, and attachment access in Notifications and Application Activity |
 | 3 | Check Embassy email every three days | While no Embassy appointment or confirmed reply exists, reminders are generated in three-day cycles | Implemented; stops automatically when the appointment/reply is confirmed |
 | 4 | Embassy appointment reminders three days and one day before | The daily engine creates separate three-day and one-day reminders | Implemented with catch-up inside each reminder window |
 | 5 | Schengen visa expiring in 30 days | A bilingual 30-day warning is sent to the assigned client | Implemented |
@@ -41,7 +41,7 @@ A durable daily reminder endpoint is implemented at `/api/scheduled/clientLifecy
 
 ## Application Activity and Attached Links
 
-The client sees one ordered history for each assigned application. The first item is the welcome event; later items use their true business time and are shown chronologically with the actor, title, operational description, and date/time. Staff-provided checklist links are visible beneath their related document. Client uploads, government submission receipts, approval letters, and reviewed documents open only through authenticated short-lived access. Flight-ticket and hotel-booking links recorded by staff are mirrored into their related travel activity.
+The client sees one ordered history for each assigned application. The first item is the welcome event; later items use their true business time and are shown chronologically with the actor, title, operational description, and date/time. The two-day Embassy appointment-booking reminder includes the exact personalized English instruction requested by management and a downloadable Word template containing the Embassy email subject/body. Staff-provided checklist links are visible beneath their related document. Client uploads, government submission receipts, approval letters, and reviewed documents open only through authenticated short-lived access. Flight-ticket and hotel-booking links recorded by staff are mirrored into their related travel activity.
 
 The notification center is protected by client authentication and supports read/unread state. Push permission is requested only after a clear client action. Signed clients can control **push**, **application**, **document**, **payment**, and **message** categories in Account & Legal. The in-app activity ledger remains the durable record when push is disabled or no device token exists.
 
@@ -105,4 +105,4 @@ The project-owned Heartbeat **`client-lifecycle-reminders-daily`** is active. It
 | Mobile activity and checklist upload workflow | `app/documents.tsx` |
 | Mobile notification center | `app/notifications.tsx` |
 | Mobile preferences | `app/account.tsx` |
-| Additive migrations | `drizzle/0064_client_lifecycle_notifications.sql`, `drizzle/0068_client_portal_document_review.sql` |
+| Additive migrations | `drizzle/0064_client_lifecycle_notifications.sql`, `drizzle/0068_client_portal_document_review.sql`, `drizzle/0070_embassy_email_template_notification.sql` |

@@ -30,6 +30,7 @@ import {
   type PortalRequestContext,
 } from "./clientPortalAuth";
 import { projectClientProcessTimeline } from "./clientProcessTimeline";
+import { getClientNotificationAttachment } from "./clientNotificationAttachments";
 import { sendClientPortalActivityEmail, sendClientPortalPasswordResetEmail } from "./emailService";
 import { mergeSystemNotificationRecipients } from "./systemNotificationRecipients";
 import { replaceClientPortalAssignments } from "./clientPortalAssignmentService";
@@ -622,7 +623,40 @@ export function registerClientPortalRoutes(app: Express) {
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
     const rows = await db.select().from(clientPortalNotifications).where(eq(clientPortalNotifications.portalUserId, req.portal!.user.id)).orderBy(desc(clientPortalNotifications.createdAt)).limit(100);
-    return res.json(rows.map(row => ({ publicId: row.publicId, type: row.type, titleEn: row.titleEn, titleAr: row.titleAr, bodyEn: row.bodyEn, bodyAr: row.bodyAr, entityType: row.entityType, entityPublicId: row.entityPublicId, isRead: row.isRead, createdAt: row.createdAt })));
+    return res.json(rows.map(row => {
+      const attachment = row.entityType === "notification_attachment" && row.entityPublicId
+        ? getClientNotificationAttachment(row.entityPublicId)
+        : null;
+      return {
+        publicId: row.publicId,
+        type: row.type,
+        title: { en: row.titleEn, ar: row.titleAr },
+        body: { en: row.bodyEn, ar: row.bodyAr },
+        entityType: row.entityType,
+        entityPublicId: row.entityPublicId,
+        attachment: attachment ? {
+          publicId: attachment.publicId,
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          label: { en: attachment.labelEn, ar: attachment.labelAr },
+        } : null,
+        isRead: row.isRead,
+        readAt: row.readAt,
+        createdAt: row.createdAt,
+      };
+    }));
+  });
+
+  app.get("/client-api/notification-attachments/:attachmentId/access", async (req: PortalRequest, res) => {
+    const attachment = getClientNotificationAttachment(req.params.attachmentId);
+    if (!attachment) return error(res, 404, "attachment_not_found");
+    await writePortalAudit({ req, portalUserId: req.portal!.user.id, clientCaseId: req.portal!.user.primaryClientCaseId, action: "notification_attachment_viewed", recordType: "notification_attachment", recordPublicId: attachment.publicId, correlationId: req.portal!.correlationId });
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({
+      url: `https://elevay.vip${attachment.storagePath}`,
+      fileName: attachment.fileName,
+      mimeType: attachment.mimeType,
+    });
   });
 
   app.patch("/client-api/notifications/:notificationId/read", writeLimiter, async (req: PortalRequest, res) => {

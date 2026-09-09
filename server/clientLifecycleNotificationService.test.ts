@@ -92,6 +92,20 @@ describe("client lifecycle reminder engine", () => {
     expect(deliveries.filter(item => item.template.notifyStaff).map(item => item.template.ruleKey)).toEqual(expect.arrayContaining([
       "embassy_attestation_followup_d15", "second_payment_d12", "second_payment_d7", "arrival_confirmation_d1", "third_payment_d1", "travel_deadline_d3",
     ]));
+    const appointmentBooking = deliveries.find(item => item.template.ruleKey === "appointment_booking_d2");
+    expect(appointmentBooking?.template).toMatchObject({
+      titleEn: "Send the Embassy attestation appointment email",
+      entityType: "notification_attachment",
+      entityPublicId: "embassy-email-template",
+      metadata: {
+        attachment: {
+          publicId: "embassy-email-template",
+          fileName: "embassyemail.docx",
+          mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        },
+      },
+    });
+    expect(appointmentBooking?.template.bodyEn).toBe("Dear Mr. Client 1\n\nnow you will need to send an email to the Spanish Embassy to book an attestation appointment\n\nyou can find an attached word file here you can just copy the subject and add it to the email subject field and also copy the mail body and just change you personal data Name and Passport Number");
     expect(result.sent).toBe(deliveries.length);
     expect(result.linkedApplications).toBe(13);
   });

@@ -13,6 +13,7 @@ import {
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { getTeamNotificationEmail, sendClientPortalActivityEmail } from "./emailService";
+import { embassyAppointmentBookingMessage } from "./clientNotificationAttachments";
 
 export type LifecycleActor = {
   type: "staff" | "client" | "system";
@@ -177,6 +178,7 @@ export async function recordClientLifecycleEvent(input: LifecycleEventInput) {
     await pushClientNotification(item.portalUserId, title, body.slice(0, 180), {
       type: input.eventType,
       applicationPublicId: item.applicationPublicId,
+      entityType: input.entityType ?? "application",
       entityPublicId: input.entityPublicId ?? notificationPublicId,
     });
   }
@@ -275,7 +277,7 @@ export async function runClientLifecycleReminders(now = new Date(), dependencies
     const biometrics = dateKey(c.biometricsAppointmentDate);
 
     if (signed && calendarDaysBetween(signed, today) >= 2 && !c.appointmentBookingSubmittedAt && !appointment) {
-      reminders.push({ ruleKey: "appointment_booking_d2", idempotencyKey: `case:${c.id}:appointment-booking:${signed}:d2`, eventType: "appointment_booking_reminder", titleEn: "Embassy appointment booking reminder", titleAr: "تذكير بحجز موعد السفارة", bodyEn: "Please send your Spanish Consulate appointment booking confirmation for attestation. Contact your consultant if you need help.", bodyAr: "يرجى إرسال تأكيد حجز موعد القنصلية الإسبانية للتصديق. تواصل مع مستشارك إذا احتجت إلى مساعدة." });
+      reminders.push({ ruleKey: "appointment_booking_d2", idempotencyKey: `case:${c.id}:appointment-booking:${signed}:d2`, eventType: "appointment_booking_reminder", ...embassyAppointmentBookingMessage(c.clientName) });
     }
     if (embassyEmail && !appointment && !c.embassyReplyConfirmedAt) {
       const elapsed = calendarDaysBetween(embassyEmail, today);
