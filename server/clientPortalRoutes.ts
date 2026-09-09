@@ -1,5 +1,6 @@
 import type { Express, NextFunction, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
+import { ZodError } from "zod";
 import { createHash, randomBytes, randomUUID } from "crypto";
 import { and, asc, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { createNotification, getDb } from "./db";
@@ -37,6 +38,7 @@ import { mergeSystemNotificationRecipients } from "./systemNotificationRecipient
 import { replaceClientPortalAssignments } from "./clientPortalAssignmentService";
 import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPolicy";
 import { decodeProviderCoverUpload, providerCoverStorageKey, type ProviderCoverUpload } from "./clientPortalProviderMedia";
+import { comparePrograms, PROGRAM_COMPARISON_OPTIONS } from "./programComparisonService";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const APP_REVIEW_CLIENT_CODE = "APP-REVIEW-001";
@@ -238,6 +240,7 @@ function staffRecipients(consultant?: string | null, paralegal?: string | null) 
 export function registerClientPortalRoutes(app: Express) {
   const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, message: { error: "too_many_attempts" } });
   const writeLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: "too_many_requests" } });
+  const comparisonLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false, message: { error: "comparison_rate_limit", message: "Please wait before generating another comparison." } });
 
   app.post("/client-api/auth/login", authLimiter, async (req, res) => {
     const body = safeBody<{ identifier: string; password: string; deviceName: string; platform: string; osVersion: string; appVersion: string }>(req);
@@ -298,6 +301,35 @@ export function registerClientPortalRoutes(app: Express) {
   });
 
   app.use("/client-api", portalAuth);
+
+  app.get("/client-api/program-comparisons/options", (_req: PortalRequest, res) => {
+    return res.json(PROGRAM_COMPARISON_OPTIONS);
+  });
+
+  app.post("/client-api/program-comparisons", comparisonLimiter, async (req: PortalRequest, res) => {
+    const body = safeBody<{ programKeys: string[]; locale: "en" | "ar" }>(req);
+    try {
+      const result = await comparePrograms({
+        programKeys: body.programKeys,
+        locale: body.locale === "ar" ? "ar" : req.portal!.user.locale,
+      });
+      await writePortalAudit({
+        req,
+        portalUserId: req.portal!.user.id,
+        clientCaseId: req.portal!.user.primaryClientCaseId,
+        action: "program_comparison_generated",
+        recordType: "program_comparison",
+        details: `Programs: ${result.programs.join(", ")}; locale: ${result.locale}; model: ${result.model}`,
+      });
+      return res.json(result);
+    } catch (caught) {
+      if (caught instanceof ZodError || (caught instanceof Error && caught.message === "duplicate_programs")) {
+        return error(res, 400, "invalid_program_selection", "Select 2 to 6 unique supported programs.");
+      }
+      console.error("[ClientPortal] Program comparison failed", caught);
+      return error(res, 502, "comparison_generation_failed", "The comparison could not be generated. Please try again.");
+    }
+  });
 
   app.use("/client-api/admin", portalAdmin);
 

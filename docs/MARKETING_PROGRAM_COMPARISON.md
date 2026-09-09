@@ -7,6 +7,8 @@
 
 The Marketing module's **Program Comparison** now presents two clearly labelled catalogs: **Residency Programs** and **Citizenship Programs**. A user can select two to six programs from either catalog, allowing Residency-to-Residency, Citizenship-to-Citizenship, and Residency-to-Citizenship comparisons in one report.
 
+The same validated catalog and comparison service is now available to signed-in users of the **ELEVAY Client** mobile app through a dedicated **AI Compare** tab. The mobile app offers bilingual English/Arabic output and creates a downloadable PDF locally on the client device. Guest users can see the tab and its sign-in requirement, but cannot access the program options or invoke the AI service.
+
 The comparison retains the existing eight criteria: government cost, processing time, family inclusion, investment or qualification basis, qualification, route to citizenship, route to permanent residence, and renewal. Results and printable exports label every selected program by pathway category so temporary residence, permanent residence, and direct citizenship are not presented as equivalent statuses.
 
 ## Residency Catalog
@@ -23,6 +25,8 @@ Spain's entry follows the official international teleworker framework, including
 The server accepts only known, unique program keys. Unknown selections are excluded and at least two valid programs remain mandatory. Residency source facts are supplied directly to the comparison model with official links and explicit **verify before filing** caveats where fees, thresholds, processing times, or filing practices vary.
 
 The AI request uses a strict JSON schema for the selected programs and all eight criteria. Its instruction prohibits invented legal timelines, tax claims, travel counts, fees, eligibility rules, or nationality conditions. It must distinguish temporary residence, permanent residence, and citizenship, preserve filing caveats, and avoid guaranteeing approval.
+
+Both the CRM Marketing screen and mobile REST endpoint call the shared server service. Client requests accept only two to six unique allowlisted program keys, are authenticated through the dedicated client-portal bearer session, are rate-limited to eight generations per 15 minutes, and create a portal audit record. The service explicitly uses `gpt-5-mini` for cost-conscious structured analysis. Comparison data is transient; no client information, prompt text, or comparison result is persisted. The mobile PDF is generated from escaped, validated result values and includes the mandatory informational, no-guarantee, and no-legal-or-tax-advice disclaimer.
 
 ## Validation
 

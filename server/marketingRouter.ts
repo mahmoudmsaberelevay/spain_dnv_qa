@@ -10,7 +10,7 @@ import { invokeLLM } from "./_core/llm";
 import { generatePlanRuleBased, generateWeekMediaPrompts } from "./marketingTemplates";
 import { ELEVAY_ARABIC_VOICE_DEFAULTS, generateElevayArabicVoiceOver } from "./elevenLabsTts";
 import { generateProgramProposal } from "./marketingProposalService";
-import { getMarketingComparisonProgram } from "../shared/marketingComparisonPrograms";
+import { comparePrograms as generateProgramComparison } from "./programComparisonService";
 
 export const marketingRouter = router({
   // List all summaries for the current user
@@ -223,130 +223,19 @@ export const marketingRouter = router({
 
   // AI-powered program comparison
   comparePrograms: protectedProcedure
-    .input(z.object({ programKeys: z.array(z.string()).min(2).max(10).refine(keys => new Set(keys).size === keys.length, "Programs must be unique") }))
+    .input(z.object({
+      programKeys: z.array(z.string()).min(2).max(6),
+    }))
     .mutation(async ({ input }) => {
-      type Fees = { governmentFeePerApplicant?: number; governmentFeePerFamily?: number; governmentFeeNote?: string; dueDiligenceFeeMain?: number };
-      type Investment = { name: string; type: string; costSingle: number; costFamily4?: number; holdPeriodYears?: number };
-      type ProgramEntry = { country: string; processingTime: string; visaFreeCountries: string; residencyRequirement: string; familyIncluded: string; dualCitizenship: boolean; investmentOptions?: Investment[]; investmentSummary?: string; applicationFees?: Fees; governmentCost?: string; qualificationSummary?: string; routeToCitizenship: string; routeToPermanentResidency: string; renewalMethod: string; specialFeatures: string[]; officialSourceUrl?: string };
-
-      const CDATA: Record<string, ProgramEntry> = {
-        dominica: { country: "Dominica", processingTime: "3-6 months", visaFreeCountries: "140+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse, dependent children, parents, siblings", dualCitizenship: true, investmentOptions: [{ name: "EDF Donation", type: "donation", costSingle: 100000, costFamily4: 175000 }, { name: "Real Estate", type: "real_estate", costSingle: 200000, holdPeriodYears: 5 }], applicationFees: { governmentFeePerApplicant: 1000, dueDiligenceFeeMain: 7500 }, routeToCitizenship: "Direct citizenship by qualifying investment", routeToPermanentResidency: "Citizenship granted directly; no separate PR step", renewalMethod: "Passport renewal every 5-10 years; no investment renewal required", specialFeatures: ["One of the most affordable CBI programs globally"] },
-        grenada: { country: "Grenada", processingTime: "3-6 months", visaFreeCountries: "144+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse, dependent children, parents, siblings", dualCitizenship: true, investmentOptions: [{ name: "NTF Donation", type: "donation", costSingle: 150000, costFamily4: 200000 }, { name: "Real Estate", type: "real_estate", costSingle: 220000, holdPeriodYears: 5 }], applicationFees: { governmentFeePerApplicant: 1500, dueDiligenceFeeMain: 5000 }, routeToCitizenship: "Direct citizenship by qualifying investment", routeToPermanentResidency: "Citizenship granted directly; no separate PR step", renewalMethod: "Passport renewal every 5-10 years", specialFeatures: ["E-2 Treaty with USA", "Access to China visa-free"] },
-        egypt: { country: "Egypt", processingTime: "6-9 months", visaFreeCountries: "66+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse and dependent children of any age", dualCitizenship: true, investmentOptions: [{ name: "Central Bank Deposit", type: "donation", costSingle: 250000 }, { name: "Real Estate", type: "real_estate", costSingle: 300000, holdPeriodYears: 5 }], applicationFees: { governmentFeePerApplicant: 10000 }, routeToCitizenship: "Direct citizenship by qualifying investment", routeToPermanentResidency: "Citizenship granted directly; no separate PR step", renewalMethod: "Passport renewal; no investment renewal required", specialFeatures: ["Multiple investment pathways", "Strategic location bridging Africa, Middle East, Europe"] },
-        st_kitts: { country: "Saint Kitts & Nevis", processingTime: "45-60 days (Accelerated)", visaFreeCountries: "157+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse, dependent children, parents, grandparents", dualCitizenship: true, investmentOptions: [{ name: "SISC Donation", type: "donation", costSingle: 250000, costFamily4: 300000 }, { name: "Real Estate", type: "real_estate", costSingle: 400000, holdPeriodYears: 7 }], applicationFees: { governmentFeePerApplicant: 7500, dueDiligenceFeeMain: 10000 }, routeToCitizenship: "Direct citizenship by qualifying investment", routeToPermanentResidency: "Citizenship granted directly; no separate PR step", renewalMethod: "Passport renewal every 5-10 years", specialFeatures: ["Oldest CBI program in the world (since 1984)", "Fastest processing globally"] },
-        st_lucia: { country: "Saint Lucia", processingTime: "3-6 months", visaFreeCountries: "145+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse, dependent children, parents, siblings", dualCitizenship: true, investmentOptions: [{ name: "NEF Donation", type: "donation", costSingle: 100000, costFamily4: 165000 }, { name: "Real Estate", type: "real_estate", costSingle: 300000, holdPeriodYears: 5 }], applicationFees: { governmentFeePerApplicant: 2000, dueDiligenceFeeMain: 7500 }, routeToCitizenship: "Direct citizenship by qualifying investment", routeToPermanentResidency: "Citizenship granted directly; no separate PR step", renewalMethod: "Passport renewal every 5-10 years", specialFeatures: ["One of the most affordable Caribbean CBI programs"] },
-        antigua: { country: "Antigua & Barbuda", processingTime: "3-6 months", visaFreeCountries: "150+", residencyRequirement: "Must spend 5 days in Antigua within first 5 years", familyIncluded: "Spouse, dependent children, parents, siblings", dualCitizenship: true, investmentOptions: [{ name: "NDF Donation", type: "donation", costSingle: 100000, costFamily4: 100000 }, { name: "Real Estate", type: "real_estate", costSingle: 200000, holdPeriodYears: 5 }], applicationFees: { governmentFeePerFamily: 30000, dueDiligenceFeeMain: 7500 }, routeToCitizenship: "Direct citizenship by qualifying investment", routeToPermanentResidency: "Citizenship granted directly; no separate PR step", renewalMethod: "Passport renewal every 5-10 years", specialFeatures: ["UWI Fund option includes 1 year of tuition"] },
-        vanuatu: { country: "Vanuatu", processingTime: "30-60 days", visaFreeCountries: "130+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse and dependent children under 18", dualCitizenship: true, investmentOptions: [{ name: "DSP Donation", type: "donation", costSingle: 130000, costFamily4: 200000 }], applicationFees: { governmentFeePerApplicant: 5000, dueDiligenceFeeMain: 5000 }, routeToCitizenship: "Direct citizenship by qualifying investment", routeToPermanentResidency: "Citizenship granted directly; no separate PR step", renewalMethod: "Passport renewal; no investment renewal required", specialFeatures: ["One of the fastest CBI programs globally", "No income tax, capital gains tax, or inheritance tax"] },
-        nauru: { country: "Nauru", processingTime: "3-6 months", visaFreeCountries: "88+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse and dependent children", dualCitizenship: true, investmentOptions: [{ name: "Government Fund Contribution", type: "donation", costSingle: 105000 }], applicationFees: { governmentFeeNote: "Included in contribution", dueDiligenceFeeMain: 5000 }, routeToCitizenship: "Direct citizenship by qualifying investment", routeToPermanentResidency: "Citizenship granted directly; no separate PR step", renewalMethod: "Passport renewal; no investment renewal required", specialFeatures: ["No income tax in Nauru", "Emerging CBI program with low entry cost"] },
-        sao_tome: { country: "Sao Tome & Principe", processingTime: "3-6 months", visaFreeCountries: "70+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse and dependent children", dualCitizenship: true, investmentOptions: [{ name: "Government Fund Contribution", type: "donation", costSingle: 50000 }], applicationFees: { governmentFeeNote: "Included in contribution", dueDiligenceFeeMain: 3000 }, routeToCitizenship: "Direct citizenship by qualifying investment", routeToPermanentResidency: "Citizenship granted directly; no separate PR step", renewalMethod: "Passport renewal; no investment renewal required", specialFeatures: ["Most affordable CBI program globally", "Favourable tax environment"] },
-        turkey: { country: "Turkey", processingTime: "3-6 months", visaFreeCountries: "110+", residencyRequirement: "No residency requirement", familyIncluded: "Spouse and dependent children under 18", dualCitizenship: true, investmentOptions: [{ name: "Real Estate", type: "real_estate", costSingle: 400000, holdPeriodYears: 3 }], applicationFees: { governmentFeePerApplicant: 535 }, routeToCitizenship: "Direct citizenship by qualifying investment", routeToPermanentResidency: "Citizenship granted directly; no separate PR step", renewalMethod: "Passport renewal; no investment renewal required", specialFeatures: ["Access to Japan, Singapore, South Korea visa-free", "No Turkish taxes unless residing in Turkey"] },
-        spain_dnv: { country: "Spain Digital Nomad Residency", processingTime: "Decision time varies by filing authority; verify the current service standard before filing", visaFreeCountries: "Schengen travel subject to residence-card and 90/180-day travel rules", residencyRequirement: "Designed for residence in Spain while working remotely", familyIncluded: "Eligible accompanying family members may apply under the applicable international teleworker rules; verify dependency evidence before filing", dualCitizenship: false, investmentSummary: "No capital investment; qualifying remote employment or professional activity and sufficient financial means are required", governmentCost: "Government and residence-card fees vary by filing route and location; verify before filing", qualificationSummary: "Non-EU remote employee or professional working primarily for companies outside Spain; professional work for Spanish clients is limited, and education or at least 3 years of professional experience plus an established remote relationship is required", routeToCitizenship: "No direct citizenship grant; ordinary Spanish nationality rules and residence conditions apply", routeToPermanentResidency: "May contribute to qualifying legal residence under ordinary Spanish immigration rules; continuity and physical-presence conditions apply", renewalMethod: "Visa validity is up to 1 year and an eligible in-country residence authorization can be issued for up to 3 years; renewal or extension requires continued compliance", specialFeatures: ["Remote-work residence pathway", "Official in-country authorization can be issued for up to 3 years"], officialSourceUrl: "https://prie.comercio.gob.es/en-us/paginas/teletrabajadores-caracter-internacional.aspx" },
-        portugal_d7: { country: "Portugal D7 Residency", processingTime: "Decision times vary by consulate and AIMA; verify the current service standard before filing", visaFreeCountries: "Schengen travel subject to residence-card and 90/180-day travel rules", residencyRequirement: "A residence pathway intended for people living from stable own or passive income", familyIncluded: "An accompanying family-member residence visa is available, subject to eligibility and supporting evidence", dualCitizenship: false, investmentSummary: "No prescribed capital investment; stable passive or own-income evidence, accommodation, insurance, and subsistence documentation apply", governmentCost: "Government, consular, and residence-permit fees vary; verify before filing", qualificationSummary: "Applicant must qualify for Portugal's residence visa for retirement or people living from passive income and satisfy the current documentation requirements", routeToCitizenship: "No direct citizenship grant; standard Portuguese nationality eligibility and legal-residence conditions apply", routeToPermanentResidency: "May lead to permanent residence under standard Portuguese legal-residence rules and conditions", renewalMethod: "The residence visa is valid for 4 months and requires a residence-permit application to AIMA; later renewal requires continued eligibility", specialFeatures: ["Passive-income residence pathway", "Family-accompaniment route available"], officialSourceUrl: "https://vistos.mne.gov.pt/en/national-visas/general-information/type-of-visa" },
-        portugal_d8: { country: "Portugal D8 Digital Nomad Residency", processingTime: "Decision times vary by consulate and AIMA; verify the current service standard before filing", visaFreeCountries: "Schengen travel subject to residence-card and 90/180-day travel rules", residencyRequirement: "A residence pathway for professional activity performed remotely", familyIncluded: "An accompanying family-member residence visa is available, subject to eligibility and supporting evidence", dualCitizenship: false, investmentSummary: "No prescribed capital investment; qualifying remote activity, current income evidence, accommodation, insurance, and subsistence documentation apply", governmentCost: "Government, consular, and residence-permit fees vary; verify before filing", qualificationSummary: "Applicant must perform qualifying professional activity remotely and meet the current Portuguese digital-nomad residence documentation and income rules", routeToCitizenship: "No direct citizenship grant; standard Portuguese nationality eligibility and legal-residence conditions apply", routeToPermanentResidency: "May lead to permanent residence under standard Portuguese legal-residence rules and conditions", renewalMethod: "The residence visa is valid for 4 months and requires a residence-permit application to AIMA; later renewal requires continued eligibility", specialFeatures: ["Remote-work residence pathway", "Family-accompaniment route available"], officialSourceUrl: "https://vistos.mne.gov.pt/en/national-visas/general-information/type-of-visa" },
-        portugal_d2: { country: "Portugal D2 Entrepreneur Residency", processingTime: "Decision times vary by consulate and AIMA; verify the current service standard before filing", visaFreeCountries: "Schengen travel subject to residence-card and 90/180-day travel rules", residencyRequirement: "A residence pathway for independent professional activity or entrepreneurs", familyIncluded: "An accompanying family-member residence visa is available, subject to eligibility and supporting evidence", dualCitizenship: false, investmentSummary: "No single universal investment threshold is stated on the official visa-type page; a credible independent-activity or entrepreneurial basis and sufficient resources must be documented", governmentCost: "Government, consular, and residence-permit fees vary; verify before filing", qualificationSummary: "Applicant must qualify for Portugal's residence visa for independent work or entrepreneurs and satisfy the current business, professional, accommodation, insurance, and subsistence documentation requirements", routeToCitizenship: "No direct citizenship grant; standard Portuguese nationality eligibility and legal-residence conditions apply", routeToPermanentResidency: "May lead to permanent residence under standard Portuguese legal-residence rules and conditions", renewalMethod: "The residence visa is valid for 4 months and requires a residence-permit application to AIMA; later renewal requires continued eligibility", specialFeatures: ["Entrepreneur and independent-work pathway", "Family-accompaniment route available"], officialSourceUrl: "https://vistos.mne.gov.pt/en/national-visas/general-information/type-of-visa" },
-        greece_golden_visa: { country: "Greece Golden Visa", processingTime: "Processing time varies by investment route, documentation, and authority", visaFreeCountries: "Schengen travel subject to residence-card and 90/180-day travel rules", residencyRequirement: "Investor permanent residence permit; ongoing qualifying investment or lease conditions apply", familyIncluded: "Eligible family members may be included under the investor-residence rules; verify relationship and dependency conditions", dualCitizenship: false, investmentSummary: "Qualifying real-estate or other statutory investor route; current thresholds depend on the route, property use, and location", governmentCost: "Investment threshold varies; official permit, electronic-fee, insurance, and residence-card costs also apply", qualificationSummary: "Third-country investor must complete a qualifying statutory investment and provide the required ownership, payment, insurance, and identity evidence", routeToCitizenship: "No direct citizenship grant; ordinary naturalisation has separate residence and eligibility requirements", routeToPermanentResidency: "The official route is an investor permanent residence permit", renewalMethod: "Renewable while the qualifying investment or lease remains in force and other renewal conditions are met", specialFeatures: ["Investor permanent residence", "Multiple qualifying investment structures under current law"], officialSourceUrl: "https://migration.gov.gr/en/golden-visa/" },
-        malta_mprp: { country: "Malta Permanent Residence Programme", processingTime: "Structured due-diligence process; decision time varies by application complexity and verification", visaFreeCountries: "Schengen travel for up to 90 days in any 180-day period", residencyRequirement: "Permanent residence in Malta, subject to maintaining programme obligations", familyIncluded: "The official programme allows eligible family members and can include up to four generations in one application", dualCitizenship: false, investmentSummary: "Qualifying property, government contribution, NGO donation, administrative fee, capital-asset test, insurance, and residence-card requirements", governmentCost: "€60,000 administration fee, €37,000 government contribution, €7,500 per adult dependant excluding spouse, €2,000 NGO donation, plus qualifying property and card fees", qualificationSummary: "Non-EU, non-EEA, non-Swiss applicant using a Licensed Agent, with qualifying capital assets, stable resources, clean record, insurance, property, contribution, donation, and due-diligence compliance", routeToCitizenship: "MPRP is legally distinct from citizenship and grants no direct citizenship", routeToPermanentResidency: "Grants permanent residence in Malta", renewalMethod: "Qualifying property must be retained for at least 5 years, followed by continued maintenance of residential property in Malta; residence cards are renewed as required", specialFeatures: ["Permanent residence", "Up to four generations may be included"], officialSourceUrl: "https://residencymalta.gov.mt/legal-framework-mprp-2/" },
-        uk_expansion_worker: { country: "UK Expansion Worker", processingTime: "Usually 3 weeks for applications outside the UK and 8 weeks inside the UK after identity and documents are completed", visaFreeCountries: "No general Schengen or visa-free benefit is granted by this UK work route", residencyRequirement: "Temporary sponsored work route for establishing a UK branch of an overseas business", familyIncluded: "Eligible partner and children may apply as dependants", dualCitizenship: false, investmentSummary: "No fixed personal investment; employer sponsorship, eligible occupation, qualifying overseas employment, salary, and maintenance requirements apply", governmentCost: "Application fee, healthcare surcharge for each year, and maintenance funds apply; verify current amounts before filing", qualificationSummary: "Senior manager or specialist employee of an overseas business that has not started trading in the UK, with a valid sponsor certificate, qualifying employment, occupation, and salary", routeToCitizenship: "No direct citizenship route and time on this route does not itself provide settlement", routeToPermanentResidency: "The official route does not permit an application for permanent settlement", renewalMethod: "Initial permission is generally up to 12 months and may be extended by 12 months, with a maximum of 2 years on this route", specialFeatures: ["Business expansion work route", "Eligible dependants may accompany"], officialSourceUrl: "https://www.gov.uk/uk-expansion-worker-visa" },
-        canada_skilled_migration: { country: "Canada Express Entry Skilled Migration", processingTime: "Varies by programme and application", visaFreeCountries: "Canadian travel-document benefits arise only after later citizenship; permanent residence itself is not a passport", residencyRequirement: "Successful invited applicants apply directly for Canadian permanent residence", familyIncluded: "Spouse and dependent children may be included, subject to eligibility and fees", dualCitizenship: false, investmentSummary: "No investment purchase; eligibility and ranking depend on the applicable skilled-worker programme, language, education, work history, points, documents, and any required settlement funds", governmentCost: "CAD 1,590 principal applicant, CAD 1,590 spouse, and CAD 270 per dependent child on the official 2026 Express Entry page", qualificationSummary: "Candidate qualifies under a managed skilled-worker programme, creates an Express Entry profile, enters the pool, and must receive an invitation before applying for permanent residence", routeToCitizenship: "Permanent residents may later qualify under Canada's separate citizenship residence and eligibility rules; there is no direct citizenship grant", routeToPermanentResidency: "Express Entry manages applications for permanent residence", renewalMethod: "Permanent resident status is maintained under Canadian residence obligations; PR cards are renewed separately", specialFeatures: ["Points-based selection", "Direct permanent-residence application after invitation"], officialSourceUrl: "https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry.html" },
-      };
-
-      const validProgramKeys = input.programKeys.filter(key => CDATA[key] && getMarketingComparisonProgram(key));
-      const programs = validProgramKeys.map(key => CDATA[key]);
-      if (programs.length < 2) throw new TRPCError({ code: "BAD_REQUEST", message: "At least 2 valid programs required" });
-
-      const programDataLines: string[] = [];
-      for (let index = 0; index < programs.length; index += 1) {
-        const p = programs[index];
-        const key = validProgramKeys[index];
-        const metadata = getMarketingComparisonProgram(key);
-        const govFee = p.governmentCost ?? (p.applicationFees?.governmentFeePerApplicant
-          ? "$" + p.applicationFees.governmentFeePerApplicant + "/applicant"
-          : p.applicationFees?.governmentFeePerFamily
-          ? "$" + p.applicationFees.governmentFeePerFamily + "/family"
-          : p.applicationFees?.governmentFeeNote || "Verify before filing");
-        const ddFee = p.applicationFees?.dueDiligenceFeeMain
-          ? "$" + p.applicationFees.dueDiligenceFeeMain + " main applicant"
-          : "N/A";
-        const investmentOptionsText = (p.investmentOptions ?? []).map((o) => {
-          let s = o.name + " ($" + o.costSingle.toLocaleString() + " single";
-          if (o.costFamily4) s += ", $" + o.costFamily4.toLocaleString() + " family of 4";
-          if (o.holdPeriodYears) s += ", hold " + o.holdPeriodYears + " years";
-          return s + ")";
-        }).join("; ");
-        const investments = p.investmentSummary ?? (investmentOptionsText || "Verify current qualifying route before filing");
-        programDataLines.push(
-          "--- " + p.country + " ---\n" +
-          "Program Category: " + (metadata?.category ?? "unknown") + "\n" +
-          "Processing Time: " + p.processingTime + "\n" +
-          "Visa-Free Countries: " + p.visaFreeCountries + "\n" +
-          "Residency Requirement: " + p.residencyRequirement + "\n" +
-          "Family Included: " + p.familyIncluded + "\n" +
-          "Dual Citizenship: " + (p.dualCitizenship ? "Yes" : "No") + "\n" +
-          "Investment Options: " + investments + "\n" +
-          "Government Fee: " + govFee + "\n" +
-          "Due Diligence Fee: " + ddFee + "\n" +
-          "Qualification: " + (p.qualificationSummary ?? p.specialFeatures.join(", ")) + "\n" +
-          "Route to Citizenship: " + p.routeToCitizenship + "\n" +
-          "Route to PR: " + p.routeToPermanentResidency + "\n" +
-          "Renewal: " + p.renewalMethod + "\n" +
-          "Special Features: " + p.specialFeatures.join(", ") + "\n" +
-          "Official Source: " + (p.officialSourceUrl ?? "Existing ELEVAY comparison reference data")
-        );
+      try {
+        return await generateProgramComparison({ programKeys: input.programKeys, locale: "en" });
+      } catch (caught) {
+        if (caught instanceof z.ZodError || (caught instanceof Error && caught.message === "duplicate_programs")) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Select 2 to 6 unique supported programs" });
+        }
+        console.error("[Marketing] Program comparison failed", caught);
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The comparison could not be generated. Please try again." });
       }
-      const programDataStr = programDataLines.join("\n\n");
-
-      const comparisonShape = validProgramKeys
-        .map((k) => '"' + k + '": { "governmentCost": "...", "processingTime": "...", "familyIncluded": "...", "investmentType": "...", "qualification": "...", "routeToCitizenship": "...", "routeToPR": "...", "renewal": "..." }')
-        .join(", ");
-
-      const userPrompt =
-        "Compare these residency and citizenship programs across 8 criteria. Clearly distinguish temporary residence, permanent residence, and direct citizenship. Return JSON with this exact structure:\n" +
-        '{ "programs": ' + JSON.stringify(validProgramKeys) + ', "comparison": { ' + comparisonShape + ' }, ' +
-        '"summary": "3-4 paragraph professional analysis comparing the programs, highlighting key differences, best use cases, and ELEVAY recommendation for different client profiles.", ' +
-        '"generatedAt": "' + new Date().toISOString() + '" }\n\n' +
-        "Program Data:\n" + programDataStr + "\n\n" +
-        "Use the supplied currencies and timeframes. If the official data says a figure varies, keep that caveat instead of inventing a number. Never imply guaranteed approval. Use the exact program keys provided.";
-
-      const criteriaSchema = {
-        type: "object",
-        properties: {
-          governmentCost: { type: "string" }, processingTime: { type: "string" }, familyIncluded: { type: "string" }, investmentType: { type: "string" }, qualification: { type: "string" }, routeToCitizenship: { type: "string" }, routeToPR: { type: "string" }, renewal: { type: "string" },
-        },
-        required: ["governmentCost", "processingTime", "familyIncluded", "investmentType", "qualification", "routeToCitizenship", "routeToPR", "renewal"],
-        additionalProperties: false,
-      };
-
-      const response = await invokeLLM({
-        messages: [
-          { role: "system", content: "You are an expert citizenship and residency advisor at ELEVAY. Use only the facts in the supplied Program Data. Do not add legal timeframes, tax claims, travel counts, fees, eligibility rules, or nationality conditions from memory. Preserve every 'verify before filing' caveat, distinguish temporary residence from permanent residence and citizenship, never guarantee approval, and output only the requested JSON." },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "elevay_program_comparison",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                programs: { type: "array", items: { type: "string", enum: validProgramKeys } },
-                comparison: { type: "object", properties: Object.fromEntries(validProgramKeys.map(key => [key, criteriaSchema])), required: validProgramKeys, additionalProperties: false },
-                summary: { type: "string" },
-                generatedAt: { type: "string" },
-              },
-              required: ["programs", "comparison", "summary", "generatedAt"],
-              additionalProperties: false,
-            },
-          },
-        },
-      });
-
-      const content = response.choices?.[0]?.message?.content;
-      if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI response empty" });
-      const parsed = JSON.parse(content as string);
-      parsed.programs = validProgramKeys;
-      parsed.generatedAt = new Date().toISOString();
-      return parsed;
     }),
 
   // AI-powered program proposal with cost calculation

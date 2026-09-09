@@ -28,16 +28,32 @@ describe("Marketing Program Comparison categories", () => {
 
   it("accepts valid cross-category keys and uses a strict non-fabrication comparison prompt", () => {
     const router = read("server/marketingRouter.ts");
-    expect(router).toContain("spain_dnv:");
-    expect(router).toContain("portugal_d7:");
-    expect(router).toContain("malta_mprp:");
-    expect(router).toContain("canada_skilled_migration:");
-    expect(router).toContain("Compare these residency and citizenship programs across 8 criteria");
-    expect(router).toContain('type: "json_schema"');
-    expect(router).toContain("additionalProperties: false");
-    expect(router).toContain("Never imply guaranteed approval");
-    expect(router).toContain("Use only the facts in the supplied Program Data");
-    expect(router).toContain("Do not add legal timeframes, tax claims, travel counts, fees, eligibility rules, or nationality conditions from memory");
-    expect(router).toContain("parsed.programs = validProgramKeys");
+    const service = read("server/programComparisonService.ts");
+    expect(router).toContain('comparePrograms as generateProgramComparison');
+    expect(service).toContain("spain_dnv:");
+    expect(service).toContain("portugal_d7:");
+    expect(service).toContain("malta_mprp:");
+    expect(service).toContain("canada_skilled_migration:");
+    expect(service).toContain('model: "gpt-5-mini"');
+    expect(service).toContain('type: "json_schema"');
+    expect(service).toContain("additionalProperties: false");
+    expect(service).toContain("Compare only the supplied facts");
+    expect(service).toContain("do not guarantee approval");
+    expect(service).toContain("Official Source:");
+    expect(service).toContain("comparison_response_program_mismatch");
+  });
+
+  it("exposes comparison to the client app only through authenticated, rate-limited, audited REST routes", () => {
+    const routes = read("server/clientPortalRoutes.ts");
+    const authPosition = routes.indexOf('app.use("/client-api", portalAuth)');
+    const optionsPosition = routes.indexOf('app.get("/client-api/program-comparisons/options"');
+    const generatePosition = routes.indexOf('app.post("/client-api/program-comparisons"');
+    expect(authPosition).toBeGreaterThan(-1);
+    expect(optionsPosition).toBeGreaterThan(authPosition);
+    expect(generatePosition).toBeGreaterThan(authPosition);
+    expect(routes).toContain("comparisonLimiter");
+    expect(routes).toContain("max: 8");
+    expect(routes).toContain('action: "program_comparison_generated"');
+    expect(routes).toContain("PROGRAM_COMPARISON_OPTIONS");
   });
 });
