@@ -33,13 +33,6 @@ export function hashPortalToken(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export function generateTemporaryPassword() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = randomBytes(12);
-  const characters = Array.from(bytes, byte => alphabet[byte % alphabet.length]);
-  return `${characters.slice(0, 4).join("")}-${characters.slice(4, 8).join("")}-${characters.slice(8, 12).join("")}`;
-}
-
 export async function hashPortalPassword(password: string) {
   return bcrypt.hash(password, 12);
 }

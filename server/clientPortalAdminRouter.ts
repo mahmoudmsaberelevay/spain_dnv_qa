@@ -6,7 +6,7 @@ import { getDb } from "./db";
 import { storageGet } from "./storage";
 import { protectedProcedure, router } from "./_core/trpc";
 import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
-import { generateTemporaryPassword, hashPortalPassword } from "./clientPortalAuth";
+import { hashPortalPassword } from "./clientPortalAuth";
 import { pushClientNotification } from "./clientPortalRoutes";
 import { recordClientLifecycleEvent } from "./clientLifecycleNotificationService";
 import { runPublicContentSync } from "./publicContentService";
@@ -61,6 +61,11 @@ export const clientPortalCreateAccountInput = z.object({
   mobile: z.string().trim().max(64).optional(),
   password: z.string().min(10).max(72).refine(isStrongClientPortalPassword, "Password must include uppercase, lowercase, number, and symbol with no spaces"),
   locale: z.enum(["en", "ar"]).default("en"),
+});
+
+export const clientPortalSetPasswordInput = z.object({
+  publicId: z.string().uuid(),
+  password: z.string().min(10).max(72).refine(isStrongClientPortalPassword, "Password must include uppercase, lowercase, number, and symbol with no spaces"),
 });
 
 export const clientPortalAdminRouter = router({
@@ -192,16 +197,15 @@ export const clientPortalAdminRouter = router({
     return { ok: true };
   }),
 
-  resetTemporaryPassword: adminProcedure.input(z.object({ publicId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+  setCustomPassword: adminProcedure.input(clientPortalSetPasswordInput).mutation(async ({ ctx, input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
     const [user] = await db.select().from(clientPortalUsers).where(eq(clientPortalUsers.publicId, input.publicId)).limit(1);
     if (!user) throw new TRPCError({ code: "NOT_FOUND" });
-    const temporaryPassword = generateTemporaryPassword();
-    await db.update(clientPortalUsers).set({ passwordHash: await hashPortalPassword(temporaryPassword), mustChangePassword: true, failedLoginAttempts: 0, lockedUntil: null }).where(eq(clientPortalUsers.id, user.id));
+    await db.update(clientPortalUsers).set({ passwordHash: await hashPortalPassword(input.password), mustChangePassword: false, failedLoginAttempts: 0, lockedUntil: null, passwordResetTokenHash: null, passwordResetExpiresAt: null }).where(eq(clientPortalUsers.id, user.id));
     await db.update(clientPortalSessions).set({ revokedAt: new Date() }).where(and(eq(clientPortalSessions.portalUserId, user.id), isNull(clientPortalSessions.revokedAt)));
-    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_portal_password", user.id, "Issued temporary password and revoked active sessions");
-    return { temporaryPassword };
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_portal_password", user.id, "Administrator set a custom password and revoked active sessions");
+    return { ok: true };
   }),
 
   forceLogout: adminProcedure.input(z.object({ publicId: z.string().uuid() })).mutation(async ({ ctx, input }) => {

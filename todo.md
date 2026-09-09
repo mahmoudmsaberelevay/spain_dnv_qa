@@ -1358,3 +1358,9 @@ Check email for download link within 5 minutes
 - [x] Write audit history for account creation and assignment changes without recording passwords or client-document content
 - [x] Add regression tests and validate manual-password security, assignment replacement, duplicate prevention, authorization, portal access boundaries, and existing-account preservation
 - [x] Complete the checklist, publish, and report the Client Portal administration update
+
+## Client Portal — Custom Password Editing for Existing Accounts
+- [x] Replace auto-generated administrator password reset with an administrator-entered custom password and confirmation
+- [x] Validate the same strong password policy server-side, store only the hash, revoke active sessions, and never return or log the password
+- [x] Add an `Edit password` action and secure custom-password dialog for every client portal account
+- [x] Add focused regressions, verify creation and existing-account password changes, update documentation, and publish

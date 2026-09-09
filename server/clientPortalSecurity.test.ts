@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { generateTemporaryPassword, hashPortalPassword, hashPortalToken, verifyPortalPassword } from "./clientPortalAuth";
+import { hashPortalPassword, hashPortalToken, verifyPortalPassword } from "./clientPortalAuth";
 import { fetchProgramsFromElevay } from "./publicContentService";
 
 describe("client portal credential security", () => {
@@ -12,13 +12,7 @@ describe("client portal credential security", () => {
     await expect(verifyPortalPassword("wrong-password", hash)).resolves.toBe(false);
   });
 
-  it("creates high-entropy temporary credentials and deterministic token fingerprints", () => {
-    const first = generateTemporaryPassword();
-    const second = generateTemporaryPassword();
-    expect(first).toHaveLength(14);
-    expect(second).toHaveLength(14);
-    expect(first).toMatch(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
-    expect(first).not.toBe(second);
+  it("creates deterministic one-way token fingerprints", () => {
     expect(hashPortalToken("secret")).toMatch(/^[a-f0-9]{64}$/);
     expect(hashPortalToken("secret")).toBe(hashPortalToken("secret"));
   });

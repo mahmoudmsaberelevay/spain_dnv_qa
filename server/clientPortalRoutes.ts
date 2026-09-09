@@ -22,7 +22,6 @@ import {
 import {
   authenticatePortalRequest,
   createPortalSession,
-  generateTemporaryPassword,
   hashPortalPassword,
   hashPortalToken,
   rotatePortalSession,
@@ -350,18 +349,22 @@ export function registerClientPortalRoutes(app: Express) {
     return res.json({ ok: true, selectedCount: result.selectedCount, addedCount: result.addedCount, restoredCount: result.restoredCount, removedCount: result.removedCount });
   });
 
-  app.post("/client-api/admin/accounts/:publicId/reset-password", writeLimiter, async (req: PortalRequest, res) => {
+  const setAdminClientPassword = async (req: PortalRequest, res: Response) => {
+    const body = safeBody<{ password: string }>(req);
+    if (!validNewPassword(body.password)) return error(res, 400, "invalid_password", "Password must include uppercase, lowercase, number, and symbol with no spaces");
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
     const [client] = await db.select({ user: clientPortalUsers, clientCode: clientCases.clientCode }).from(clientPortalUsers).innerJoin(clientCases, eq(clientPortalUsers.primaryClientCaseId, clientCases.id)).where(and(eq(clientPortalUsers.publicId, req.params.publicId), eq(clientPortalUsers.accountType, "client"))).limit(1);
     if (!client) return error(res, 404, "client_account_not_found");
     if (req.portal!.user.isReviewAccount && client.clientCode !== APP_REVIEW_CLIENT_CODE) return error(res, 403, "review_scope_restricted");
-    const temporaryPassword = generateTemporaryPassword();
-    await db.update(clientPortalUsers).set({ passwordHash: await hashPortalPassword(temporaryPassword), mustChangePassword: true, failedLoginAttempts: 0, lockedUntil: null }).where(eq(clientPortalUsers.id, client.user.id));
+    await db.update(clientPortalUsers).set({ passwordHash: await hashPortalPassword(body.password), mustChangePassword: false, failedLoginAttempts: 0, lockedUntil: null, passwordResetTokenHash: null, passwordResetExpiresAt: null }).where(eq(clientPortalUsers.id, client.user.id));
     await db.update(clientPortalSessions).set({ revokedAt: new Date() }).where(and(eq(clientPortalSessions.portalUserId, client.user.id), isNull(clientPortalSessions.revokedAt)));
-    await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_client_password_reset", recordType: "client_portal_account", recordPublicId: client.user.publicId });
-    return res.json({ publicId: client.user.publicId, username: client.user.username, email: client.user.email, temporaryPassword });
-  });
+    await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_client_password_updated", recordType: "client_portal_account", recordPublicId: client.user.publicId, details: "Custom password set; active sessions revoked" });
+    return res.json({ ok: true, publicId: client.user.publicId, username: client.user.username, email: client.user.email });
+  };
+
+  app.put("/client-api/admin/accounts/:publicId/password", writeLimiter, setAdminClientPassword);
+  app.post("/client-api/admin/accounts/:publicId/reset-password", writeLimiter, setAdminClientPassword);
 
   app.get("/client-api/admin/providers", async (req: PortalRequest, res) => {
     const db = await getDb();

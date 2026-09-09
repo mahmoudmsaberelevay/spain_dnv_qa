@@ -33,6 +33,34 @@ describe("Client Portal manual password and documentation assignment integration
     expect(page).toContain("Password confirmation does not match");
     expect(page).toContain('data-lpignore="true"');
     expect(page).not.toContain("setCredentials(data)");
+    expect(page).not.toContain("CredentialsDialog");
+    expect(page).not.toContain("temporaryPassword");
+  });
+
+  it("requires an administrator-entered custom password for existing accounts without disclosing it", () => {
+    const router = read("server/clientPortalAdminRouter.ts");
+    const setPasswordBlock = router.slice(router.indexOf("setCustomPassword:"), router.indexOf("forceLogout:"));
+    expect(router).toContain("clientPortalSetPasswordInput");
+    expect(setPasswordBlock).toContain("hashPortalPassword(input.password)");
+    expect(setPasswordBlock).toContain("mustChangePassword: false");
+    expect(setPasswordBlock).toContain("revokedAt: new Date()");
+    expect(setPasswordBlock).toContain("return { ok: true }");
+    expect(setPasswordBlock).not.toContain("generateTemporaryPassword");
+    expect(setPasswordBlock).not.toContain("temporaryPassword");
+
+    const rest = read("server/clientPortalRoutes.ts");
+    const restPasswordBlock = rest.slice(rest.indexOf("const setAdminClientPassword"), rest.indexOf('app.get("/client-api/admin/providers"'));
+    expect(restPasswordBlock).toContain("validNewPassword(body.password)");
+    expect(restPasswordBlock).toContain("hashPortalPassword(body.password)");
+    expect(restPasswordBlock).toContain("mustChangePassword: false");
+    expect(restPasswordBlock).not.toContain("generateTemporaryPassword");
+    expect(restPasswordBlock).not.toContain("temporaryPassword");
+
+    const page = read("client/src/pages/ClientPortalAdmin.tsx");
+    expect(page).toContain("Edit password");
+    expect(page).toContain("Set custom password");
+    expect(page).toContain("checkClientPortalPassword(password)");
+    expect(page).toContain("Passwords do not match.");
   });
 
   it("preserves assignment history, revokes sessions, and blocks revoked folder access everywhere", () => {
