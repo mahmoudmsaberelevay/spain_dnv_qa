@@ -30,6 +30,7 @@ import { generateAndUploadInvoicePdf } from "./invoiceGenerator";
 import { generateAndUploadProformaPdf } from "./proformaGenerator";
 import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient, notifyNewInvoice, notifyFinClientAdded, notifyNewClientAssigned } from "./emailService";
 import { sendEmail } from "./backupEmailService";
+import { isSystemNotificationVisibleToExecutive } from "./systemNotificationRecipients";
 import { generateInvoicePdfBuffer } from "./invoiceGenerator";
 import {
   createClientCase, listClientCases, getClientCase, updateClientCase, deleteClientCase,
@@ -922,17 +923,18 @@ const contractingRouter = router({
       .mutation(async ({ input }) => {
         const contract = await getContractById(input.id);
         if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
+        const statusChanged = contract.status !== input.status;
         await updateContractStatus(input.id, input.status);
-        await notifyContractStatusChange(contract.contractCode, contract.clientName, input.status);
-        if (input.status === "signed") {
+        if (statusChanged) await notifyContractStatusChange(contract.contractCode, contract.clientName, input.status);
+        if (statusChanged && input.status === "signed") {
           const { createNotification: cn } = await import("./db");
           await cn({ type: "contract_signed", title: "✅ عقد موقّع", body: `تم توقيع عقد ${contract.clientName} (كود: ${contract.contractCode})`, entityId: contract.id, entityType: "contract" });
-        } else if (input.status === "cancelled") {
+        } else if (statusChanged && input.status === "cancelled") {
           const { createNotification: cn } = await import("./db");
           await cn({ type: "contract_cancelled", title: "❌ عقد ملغي", body: `تم إلغاء عقد ${contract.clientName} (كود: ${contract.contractCode})`, entityId: contract.id, entityType: "contract" });
         }
         // Auto-sync: when contract is signed, create financial client + commission
-        if (input.status === "signed") {
+        if (statusChanged && input.status === "signed") {
           try {
             const { createFinClient, getFinClientByContractId, createCommission } = await import("./finDb");
             const existing = await getFinClientByContractId(contract.id);
@@ -2478,11 +2480,14 @@ const nationalVisaRouter = router({
 
 // ─── Notifications Router ─────────────────────────────────────────────────────
 const notificationsRouter = router({
-  list: protectedProcedure.query(async () => {
+  list: protectedProcedure.query(async ({ ctx }) => {
     const { getRecentNotifications } = await import("./db");
     const rows = await getRecentNotifications(40);
     // Return newest first
-    return rows.slice().sort((a: any, b: any) => b.createdAt - a.createdAt);
+    return rows
+      .filter(row => isSystemNotificationVisibleToExecutive(ctx.user.email, row.type))
+      .slice()
+      .sort((a: any, b: any) => b.createdAt - a.createdAt);
   }),
   markRead: protectedProcedure
     .input(z.object({ id: z.number() }))

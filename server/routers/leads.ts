@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { getDb } from "../db";
+import { createNotification, getDb } from "../db";
 import { leadMetaAttributions, leads, leadsReportPresets, metaCrmEventLog } from "../../drizzle/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import {
@@ -344,6 +344,13 @@ export const leadsRouter = router({
       });
       // Send email notification to the new owner if their email is known and owner changed
       if (input.assignedTo !== prevOwner) {
+        await createNotification({
+          type: "lead_assigned",
+          title: "New Lead Assigned",
+          body: `${lead.fullName} was assigned to ${input.assignedTo}`,
+          entityId: input.id,
+          entityType: "lead",
+        });
         const ownerEmail = TEAM_EMAIL_MAP[input.assignedTo];
         if (ownerEmail) {
           const origin = input.origin ?? "https://elevay.vip";

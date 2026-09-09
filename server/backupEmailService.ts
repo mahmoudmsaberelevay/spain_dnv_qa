@@ -1,8 +1,8 @@
 import nodemailer from "nodemailer";
 import {
   isAllowedSystemEmailSender,
-  mergeSystemNotificationRecipients,
   normalizeEmailRecipients,
+  resolveSystemNotificationRecipients,
 } from "./systemNotificationRecipients";
 
 // Create transporter using Gmail credentials from env
@@ -33,7 +33,7 @@ export async function sendEmail({
       throw new Error("Backup email sender is missing or violates the non-ELEVAY sender policy");
     }
     const recipients = includeSystemRecipient
-      ? mergeSystemNotificationRecipients(to)
+      ? resolveSystemNotificationRecipients("other", to)
       : normalizeEmailRecipients(to);
     if (recipients.length === 0) throw new Error("Email recipient is missing");
     await transporter.sendMail({

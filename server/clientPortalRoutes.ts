@@ -34,7 +34,7 @@ import {
 import { projectClientProcessTimeline } from "./clientProcessTimeline";
 import { getClientNotificationAttachment } from "./clientNotificationAttachments";
 import { sendClientPortalActivityEmail, sendClientPortalPasswordResetEmail } from "./emailService";
-import { mergeSystemNotificationRecipients } from "./systemNotificationRecipients";
+import { resolveSystemNotificationRecipients } from "./systemNotificationRecipients";
 import { replaceClientPortalAssignments } from "./clientPortalAssignmentService";
 import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPolicy";
 import { decodeProviderCoverUpload, providerCoverStorageKey, type ProviderCoverUpload } from "./clientPortalProviderMedia";
@@ -176,7 +176,8 @@ function workflowProjection(clientCase: typeof clientCases.$inferSelect, receive
 async function queueStaffEmail(input: { eventType: string; recipients: string[]; subject: string; html: string }) {
   const db = await getDb();
   if (!db || input.recipients.length === 0) return;
-  const recipients = mergeSystemNotificationRecipients(input.recipients);
+  const recipients = resolveSystemNotificationRecipients(input.eventType, input.recipients);
+  if (recipients.length === 0) return;
   const [result] = await db.insert(clientPortalDeliveryOutbox).values({ eventType: input.eventType, channel: "email", recipient: recipients.join(","), payload: { subject: input.subject, html: input.html } });
   const outboxId = Number((result as { insertId?: number }).insertId || 0);
   try {
@@ -234,7 +235,7 @@ function staffRecipients(consultant?: string | null, paralegal?: string | null) 
     Monica: "monica.sobhy@elevay.com", "Monica Sobhy": "monica.sobhy@elevay.com",
     Marina: "marina.kamel@elevay.com", "Marina Kamel": "marina.kamel@elevay.com",
   };
-  return mergeSystemNotificationRecipients([consultant && map[consultant], paralegal && map[paralegal], "mahmoud.saber@elevay.com"].filter((value): value is string => Boolean(value)));
+  return resolveSystemNotificationRecipients("other", [consultant && map[consultant], paralegal && map[paralegal]].filter((value): value is string => Boolean(value)));
 }
 
 export function registerClientPortalRoutes(app: Express) {

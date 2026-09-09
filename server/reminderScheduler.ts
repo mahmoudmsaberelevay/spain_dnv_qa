@@ -13,9 +13,7 @@
 import { getAllClientCasesForReminders, getAllClientDocumentsForReminders, getUnpaidReceiptsOlderThanDays } from "./db";
 import { sendDocReminderToAssignedTeam, MAHMOUD_EMAILS, TEAM_EMAIL_MAP } from "./emailService";
 import nodemailer from "nodemailer";
-import { isAllowedSystemEmailSender, mergeSystemNotificationRecipients } from "./systemNotificationRecipients";
-
-const MAHMOUD_CC = "Mahmoud.saber@elevay.com";
+import { isAllowedSystemEmailSender, resolveSystemNotificationRecipients } from "./systemNotificationRecipients";
 
 function createTransporter() {
   const gmailUser = process.env.GMAIL_USER;
@@ -33,21 +31,22 @@ function wrapEmail(title: string, body: string): string {
 
 async function sendToMahmoud(subject: string, html: string, plain: string): Promise<void> {
   const transporter = createTransporter();
-  if (transporter) {
+  const recipients = resolveSystemNotificationRecipients("other", MAHMOUD_EMAILS);
+  if (transporter && recipients.length > 0) {
     try {
       await transporter.sendMail({
         from: `"ELEVAY System" <${process.env.GMAIL_USER}>`,
-        to: mergeSystemNotificationRecipients(MAHMOUD_EMAILS).join(", "),
+        to: recipients.join(", "),
         subject: `[ELEVAY] ${subject}`,
         html: wrapEmail(subject, html),
         text: plain,
       });
-      console.log(`[ReminderScheduler] Sent to Mahmoud: ${subject}`);
+      console.log(`[ReminderScheduler] Sent to eligible recipients: ${subject}`);
     } catch (err) {
-      console.error("[ReminderScheduler] Failed to send to Mahmoud:", err);
+      console.error("[ReminderScheduler] Failed to send reminder:", err);
     }
   } else {
-    console.log(`[ReminderScheduler] (no SMTP) Would send to Mahmoud: ${subject}`);
+    console.log(`[ReminderScheduler] No eligible recipients or SMTP credentials for: ${subject}`);
   }
 }
 
@@ -276,23 +275,22 @@ async function checkUnpaidReceiptReminders(): Promise<void> {
         <p style="color:#E67E22; margin-top:16px; font-size:13px;">⏰ This receipt has been outstanding for 5 days without being marked as paid. Please follow up with the client or update the payment status.</p>`;
       const plain = `Unpaid Receipt Reminder\n\nReceipt: ${receipt.receiptCode}\nClient: ${receipt.clientName ?? "—"}\nAmount: €${Number(receipt.amountEur ?? 0).toLocaleString("en-US")}\nCreated: ${formatDate(receipt.createdAt)}\nConsultant: ${receipt.consultantName ?? "—"}`;
 
-      if (transporter && consultantEmail) {
+      const recipients = resolveSystemNotificationRecipients("other", consultantEmail);
+      if (transporter && recipients.length > 0) {
         try {
           await transporter.sendMail({
             from: `"ELEVAY System" <${process.env.GMAIL_USER}>`,
-            to: consultantEmail,
-            cc: mergeSystemNotificationRecipients(MAHMOUD_CC).join(", "),
+            to: recipients.join(", "),
             subject: `[ELEVAY] ${subject}`,
             html: wrapEmail(subject, html),
             text: plain,
           });
-          console.log(`[ReminderScheduler] Unpaid receipt reminder sent for ${receipt.receiptCode} to ${consultantEmail}`);
+          console.log(`[ReminderScheduler] Unpaid receipt reminder sent for ${receipt.receiptCode} to ${recipients.length} eligible recipient(s)`);
         } catch (err) {
           console.error(`[ReminderScheduler] Failed to send unpaid receipt reminder for ${receipt.receiptCode}:`, err);
         }
       } else {
-        // Fallback: send to Mahmoud only
-        await sendToMahmoud(subject, html, plain);
+        console.log(`[ReminderScheduler] No eligible recipient for unpaid receipt ${receipt.receiptCode}; email skipped`);
       }
     }
   } catch (err) {

@@ -1,36 +1,56 @@
 import { describe, expect, it } from "vitest";
 import {
-  MANDATORY_SYSTEM_NOTIFICATION_RECIPIENT,
+  MAHMOUD_NOTIFICATION_RECIPIENTS,
+  ZIAD_NOTIFICATION_RECIPIENTS,
   extractSenderAddress,
+  isSystemNotificationVisibleToExecutive,
   isAllowedSystemEmailSender,
-  mergeSystemNotificationRecipients,
   normalizeEmailRecipients,
+  resolveSystemNotificationRecipients,
 } from "./systemNotificationRecipients";
 
 describe("system notification recipient policy", () => {
-  it("always includes Ziad Gmail while preserving existing recipients", () => {
-    expect(mergeSystemNotificationRecipients(["owner@example.com", "team@elevay.com"])).toEqual([
-      "owner@example.com",
-      "team@elevay.com",
-      MANDATORY_SYSTEM_NOTIFICATION_RECIPIENT,
-    ]);
+  it("routes contract and receipt create/sign events to Mahmoud and Ziad", () => {
+    for (const eventType of ["contract_created", "contract_signed", "receipt_created", "receipt_paid"]) {
+      expect(resolveSystemNotificationRecipients(eventType, "team@elevay.com")).toEqual([
+        "team@elevay.com",
+        ...MAHMOUD_NOTIFICATION_RECIPIENTS,
+        ...ZIAD_NOTIFICATION_RECIPIENTS,
+      ]);
+    }
   });
 
-  it("deduplicates comma-separated and array recipients case-insensitively", () => {
-    expect(mergeSystemNotificationRecipients(
-      "OWNER@example.com, ziadelshurafa@GMAIL.com",
-      ["owner@example.com", "another@example.com"],
+  it("routes Lead assignment to the assigned consultant and Mahmoud, never Ziad", () => {
+    expect(resolveSystemNotificationRecipients(
+      "lead_assigned",
+      ["consultant@elevay.com", "ziad.elshurafa@elevay.com"],
     )).toEqual([
-      "OWNER@example.com",
-      "ziadelshurafa@GMAIL.com",
-      "another@example.com",
+      "consultant@elevay.com",
+      ...MAHMOUD_NOTIFICATION_RECIPIENTS,
     ]);
   });
 
-  it("can normalize client-facing recipients without adding the system recipient", () => {
+  it("removes Mahmoud and Ziad from every other automatic notification category", () => {
+    expect(resolveSystemNotificationRecipients("client_document_uploaded", [
+      "assigned@elevay.com",
+      "mahmoud.saberelevay@gmail.com",
+      "ZIAD.ELSHURAFA@ELEVAY.COM",
+      "ziadelshurafa@gmail.com",
+    ])).toEqual(["assigned@elevay.com"]);
+  });
+
+  it("keeps client-facing normalization independent of the executive matrix", () => {
     expect(normalizeEmailRecipients("client@example.com", ["CLIENT@example.com"])).toEqual([
       "client@example.com",
     ]);
+  });
+
+  it("filters CRM bell events for Mahmoud and Ziad while leaving other staff unchanged", () => {
+    expect(isSystemNotificationVisibleToExecutive("mahmoud.saberelevay@gmail.com", "lead_assigned")).toBe(true);
+    expect(isSystemNotificationVisibleToExecutive("ziad.elshurafa@elevay.com", "lead_assigned")).toBe(false);
+    expect(isSystemNotificationVisibleToExecutive("ziadelshurafa@gmail.com", "contract_signed")).toBe(true);
+    expect(isSystemNotificationVisibleToExecutive("mahmoud.saber@elevay.com", "client_message")).toBe(false);
+    expect(isSystemNotificationVisibleToExecutive("consultant@elevay.com", "client_message")).toBe(true);
   });
 
   it("rejects ELEVAY-domain senders even when a display name is used", () => {

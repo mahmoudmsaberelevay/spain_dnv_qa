@@ -5,26 +5,40 @@ import { describe, expect, it } from "vitest";
 const root = process.cwd();
 const read = (relative: string) => fs.readFileSync(path.join(root, relative), "utf8");
 
-describe("all-system email notification coverage", () => {
-  it("routes shared internal notifications through the mandatory recipient merger", () => {
+describe("event-specific executive notification coverage", () => {
+  it("routes shared internal notifications through the event-specific recipient resolver", () => {
     const emailService = read("server/emailService.ts");
     const backupEmailService = read("server/backupEmailService.ts");
-    expect(emailService).toContain("mergeSystemNotificationRecipients(to)");
-    expect(backupEmailService).toContain("mergeSystemNotificationRecipients(to)");
+    expect(emailService).toContain('resolveSystemNotificationRecipients(options.eventType ?? "other", to)');
+    expect(backupEmailService).toContain('resolveSystemNotificationRecipients("other", to)');
     expect(emailService).toContain("sendClientPortalActivityEmail");
+    expect(emailService).toContain('eventType: "contract_created"');
+    expect(emailService).toContain('eventType: "contract_signed"');
+    expect(emailService).toContain('eventType: "receipt_created"');
+    expect(emailService).toContain('eventType: "receipt_paid"');
+    expect(emailService).toContain('eventType: "lead_assigned"');
   });
 
-  it("covers every direct scheduled and staff notification path", () => {
+  it("filters executives from every unrelated scheduled and staff notification path", () => {
     const monthly = read("server/monthlyReportScheduler.ts");
     const reminders = read("server/reminderScheduler.ts");
     const scheduledBackup = read("server/scheduledDbBackupService.ts");
     const clientPortal = read("server/clientPortalRoutes.ts");
-    expect(monthly).toContain("mergeSystemNotificationRecipients(FINANCE_RECIPIENTS)");
-    expect(reminders).toContain("mergeSystemNotificationRecipients(MAHMOUD_EMAILS)");
-    expect(reminders).toContain("mergeSystemNotificationRecipients(MAHMOUD_CC)");
-    expect(scheduledBackup).toContain("mergeSystemNotificationRecipients([");
-    expect(clientPortal).toContain("const recipients = mergeSystemNotificationRecipients(input.recipients)");
-    expect(clientPortal).toContain("return mergeSystemNotificationRecipients([");
+    expect(monthly).toContain('resolveSystemNotificationRecipients("other", FINANCE_RECIPIENTS)');
+    expect(reminders).toContain('resolveSystemNotificationRecipients("other", MAHMOUD_EMAILS)');
+    expect(reminders).toContain('resolveSystemNotificationRecipients("other", consultantEmail)');
+    expect(scheduledBackup).toContain('resolveSystemNotificationRecipients("other", [');
+    expect(clientPortal).toContain("resolveSystemNotificationRecipients(input.eventType, input.recipients)");
+    expect(clientPortal).toContain('return resolveSystemNotificationRecipients("other",');
+  });
+
+  it("filters the CRM notification bell by the signed-in executive", () => {
+    const router = read("server/routers.ts");
+    const leadRouter = read("server/routers/leads.ts");
+    expect(router).toContain("isSystemNotificationVisibleToExecutive(ctx.user.email, row.type)");
+    expect(router).toContain("const statusChanged = contract.status !== input.status");
+    expect(router).toContain('if (statusChanged && input.status === "signed")');
+    expect(leadRouter).toContain('type: "lead_assigned"');
   });
 
   it("keeps client transactional emails excluded from internal copying", () => {

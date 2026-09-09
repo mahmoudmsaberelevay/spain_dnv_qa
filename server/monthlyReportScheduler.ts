@@ -1,11 +1,11 @@
 /**
  * Monthly Financial Report Scheduler
  * Runs on the last day of each month and sends a PDF summary email
- * to the finance team (Mahmoud + Ziad).
+ * to the configured finance recipients after recipient-policy filtering.
  */
 import { getFinancialSummary, listAccounts } from "./finDb";
 import nodemailer from "nodemailer";
-import { isAllowedSystemEmailSender, mergeSystemNotificationRecipients } from "./systemNotificationRecipients";
+import { isAllowedSystemEmailSender, resolveSystemNotificationRecipients } from "./systemNotificationRecipients";
 
 const FINANCE_RECIPIENTS = [
   "Mahmoud.saber@elevay.com",
@@ -106,11 +106,12 @@ async function sendMonthlyReport() {
   const subject = `Elevay Financial Report — ${monthName} ${year}`;
 
   const transporter = getTransporter();
-  if (transporter) {
+  const recipients = resolveSystemNotificationRecipients("other", FINANCE_RECIPIENTS);
+  if (transporter && recipients.length > 0) {
     try {
       await transporter.sendMail({
         from: process.env.GMAIL_USER,
-        to: mergeSystemNotificationRecipients(FINANCE_RECIPIENTS).join(", "),
+        to: recipients.join(", "),
         subject,
         html,
       });
@@ -121,7 +122,7 @@ async function sendMonthlyReport() {
       return false;
     }
   } else {
-    console.log(`[MonthlyReport] No SMTP credentials — skipping email for ${monthName} ${year}`);
+    console.log(`[MonthlyReport] No eligible recipients or SMTP credentials — skipping email for ${monthName} ${year}`);
     return false;
   }
 }

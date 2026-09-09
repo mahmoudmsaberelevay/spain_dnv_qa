@@ -1,8 +1,8 @@
 import nodemailer from "nodemailer";
 import {
   isAllowedSystemEmailSender,
-  mergeSystemNotificationRecipients,
   normalizeEmailRecipients,
+  resolveSystemNotificationRecipients,
 } from "./systemNotificationRecipients";
 // Team email mapping
 export const TEAM_EMAIL_MAP: Record<string, string> = {
@@ -39,7 +39,7 @@ async function sendEmail(
   to: string | string[],
   subject: string,
   html: string,
-  options: { includeSystemRecipient?: boolean } = {},
+  options: { includeSystemRecipient?: boolean; eventType?: string } = {},
 ) {
   try {
     const sender = process.env.SYSTEM_EMAIL_SENDER || process.env.GMAIL_USER || "";
@@ -49,7 +49,7 @@ async function sendEmail(
     }
     const recipients = options.includeSystemRecipient === false
       ? normalizeEmailRecipients(to)
-      : mergeSystemNotificationRecipients(to);
+      : resolveSystemNotificationRecipients(options.eventType ?? "other", to);
     if (recipients.length === 0) return false;
     await transporter.sendMail({
       from: sender,
@@ -91,34 +91,39 @@ export async function sendClientPortalPasswordResetEmail(email: string, token: s
 }
 
 // Contract notifications
-export async function notifyNewContract(contractId: string, contractName: string, clientName: string) {
+export async function notifyNewContract(contractId: string, clientName: string, familyMembers?: number, contractValue?: number) {
   const html = `
     <h2>New Contract Created</h2>
-    <p><strong>Contract:</strong> ${contractName}</p>
     <p><strong>Client:</strong> ${clientName}</p>
+    ${familyMembers !== undefined ? `<p><strong>Family members:</strong> ${familyMembers}</p>` : ""}
+    ${contractValue !== undefined ? `<p><strong>Contract value:</strong> EUR ${contractValue.toLocaleString()}</p>` : ""}
     <p><strong>ID:</strong> ${contractId}</p>
   `;
-  return sendEmail(MAHMOUD_EMAILS, "New Contract Created", html);
+  return sendEmail(MAHMOUD_EMAILS, "New Contract Created", html, { eventType: "contract_created" });
 }
 
 export async function notifyContractStatusChange(contractId: string, contractName: string, status: string) {
+  if (status !== "signed") return true;
   const html = `
-    <h2>Contract Status Changed</h2>
+    <h2>Contract Marked as Signed</h2>
     <p><strong>Contract:</strong> ${contractName}</p>
     <p><strong>New Status:</strong> ${status}</p>
     <p><strong>ID:</strong> ${contractId}</p>
   `;
-  return sendEmail(MAHMOUD_EMAILS, "Contract Status Changed", html);
+  return sendEmail(MAHMOUD_EMAILS, "Contract Marked as Signed", html, { eventType: "contract_signed" });
 }
 
-export async function notifyReceiptPaid(receiptId: string, receiptName: string, amount: number) {
+export async function notifyReceiptPaid(receiptId: string, contractCode: string, clientName: string, amount: number, remainingBalance?: number) {
   const html = `
     <h2>Receipt Marked as Paid</h2>
-    <p><strong>Receipt:</strong> ${receiptName}</p>
-    <p><strong>Amount:</strong> EGP ${amount.toLocaleString()}</p>
+    <p><strong>Receipt:</strong> ${receiptId}</p>
+    <p><strong>Contract:</strong> ${contractCode}</p>
+    <p><strong>Client:</strong> ${clientName}</p>
+    <p><strong>Amount:</strong> EUR ${amount.toLocaleString()}</p>
+    ${remainingBalance !== undefined ? `<p><strong>Remaining balance:</strong> EUR ${remainingBalance.toLocaleString()}</p>` : ""}
     <p><strong>ID:</strong> ${receiptId}</p>
   `;
-  return sendEmail(MAHMOUD_EMAILS, "Receipt Marked as Paid", html);
+  return sendEmail(MAHMOUD_EMAILS, "Receipt Marked as Paid", html, { eventType: "receipt_paid" });
 }
 
 export async function sendReceiptToClient(clientEmail: string, receiptName: string, receiptUrl: string) {
@@ -130,14 +135,17 @@ export async function sendReceiptToClient(clientEmail: string, receiptName: stri
   return sendEmail(clientEmail, "Your Receipt", html, { includeSystemRecipient: false });
 }
 
-export async function notifyNewInvoice(invoiceId: string, invoiceName: string, clientName: string) {
+export async function notifyNewInvoice(invoiceId: string, contractCode: string, clientName: string, amount?: number, remainingBalance?: number) {
   const html = `
-    <h2>New Invoice Created</h2>
-    <p><strong>Invoice:</strong> ${invoiceName}</p>
+    <h2>New Receipt Created</h2>
+    <p><strong>Receipt:</strong> ${invoiceId}</p>
+    <p><strong>Contract:</strong> ${contractCode}</p>
     <p><strong>Client:</strong> ${clientName}</p>
+    ${amount !== undefined ? `<p><strong>Amount:</strong> EUR ${amount.toLocaleString()}</p>` : ""}
+    ${remainingBalance !== undefined ? `<p><strong>Remaining balance:</strong> EUR ${remainingBalance.toLocaleString()}</p>` : ""}
     <p><strong>ID:</strong> ${invoiceId}</p>
   `;
-  return sendEmail(MAHMOUD_EMAILS, "New Invoice Created", html);
+  return sendEmail(MAHMOUD_EMAILS, "New Receipt Created", html, { eventType: "receipt_created" });
 }
 
 export async function notifyFinClientAdded(clientCode: string, clientName: string, program: string) {
@@ -224,7 +232,7 @@ export async function sendLeadAssignmentNotification(input: {
     ${structured ? `<p><strong>Program:</strong> ${input.leadProgram || "Not specified"}</p>` : ""}
     ${structured ? `<p><a href="${input.origin}/leads/${input.leadId}">Open Lead</a></p>` : ""}
   `;
-  return sendEmail(assignedEmail, "New Lead Assigned", html);
+  return sendEmail(assignedEmail, "New Lead Assigned", html, { eventType: "lead_assigned" });
 }
 
 // Meta lead sync notifications
@@ -268,7 +276,7 @@ export async function sendMetaLeadAlert(alert: string | {
   formResults?: Array<{ formName: string; newLeads: number; errors?: string[] }>;
 }) {
   const isLegacyMessage = typeof alert === "string";
-  const recipients = new Set(MAHMOUD_EMAILS);
+  const recipients = new Set<string>();
   if (!isLegacyMessage && alert.assignedEmail) {
     recipients.add(alert.assignedEmail);
   }
@@ -293,7 +301,9 @@ export async function sendMetaLeadAlert(alert: string | {
       ${alert.formResults?.length ? `<p><strong>Forms:</strong> ${alert.formResults.map(form => `${form.formName} (${form.newLeads})`).join(", ")}</p>` : ""}
     `}
   `;
-  return sendEmail(Array.from(recipients), "Meta Lead Alert", html);
+  return sendEmail(Array.from(recipients), "Meta Lead Alert", html, {
+    eventType: !isLegacyMessage && (alert.leadName || alert.assignedTo) ? "lead_assigned" : "other",
+  });
 }
 
 export async function sendMetaOperationalAlert(input: {

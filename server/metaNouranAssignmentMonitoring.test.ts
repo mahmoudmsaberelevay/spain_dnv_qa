@@ -90,7 +90,8 @@ describe("durable implementation safeguards", () => {
     expect(assignment).toContain("notificationKey: `lead_alert:${input.metaLeadId}`");
     expect(migration).toContain("notification_key_unique");
     expect(email).toContain("assignedEmail?: string | null");
-    expect(email).toContain("const recipients = new Set(MAHMOUD_EMAILS)");
+    expect(email).toContain("const recipients = new Set<string>()");
+    expect(email).toContain('eventType: !isLegacyMessage && (alert.leadName || alert.assignedTo) ? "lead_assigned" : "other"');
     expect(email).toContain("isAllowedSystemEmailSender(sender)");
     expect(notificationRecipients).toContain('endsWith("@elevay.com")');
     expect(html).not.toContain("connect.facebook.net/en_US/fbevents.js");

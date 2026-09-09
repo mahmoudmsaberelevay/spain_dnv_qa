@@ -1386,3 +1386,12 @@ Check email for download link within 5 minutes
 - [x] Support Residency-to-Residency, Citizenship-to-Citizenship, and Residency-to-Citizenship comparisons without changing existing comparison records
 - [x] Add focused regressions and verify comparison results, empty/error states, and desktop/mobile behavior
 - [x] Complete documentation and publish the unified Program Comparison update
+
+## Notifications — Mahmoud & Ziad Event-Specific Recipient Policy
+- [x] Audit every internal email and in-system notification path that currently adds Mahmoud or Ziad automatically
+- [x] Send contract-created and contract-marked-signed notifications to Mahmoud and Ziad only as the executive recipients
+- [x] Send receipt-created and receipt-marked-signed notifications to Mahmoud and Ziad only as the executive recipients
+- [x] Send new Lead assignment notifications to Mahmoud only, while preserving any required assigned-consultant operational alert
+- [x] Remove Mahmoud and Ziad from all other automatic notification categories without changing client-facing communications
+- [x] Add focused recipient-matrix regressions and verify routing without sending live emails or mutating production records
+- [x] Document the final notification matrix and publish the update

@@ -11,12 +11,12 @@ import { sendEmail } from "./backupEmailService";
 import { notifyOwner } from "./_core/notification";
 import { getDb } from "./db";
 import { storageGet, storagePut } from "./storage";
-import { mergeSystemNotificationRecipients } from "./systemNotificationRecipients";
+import { resolveSystemNotificationRecipients } from "./systemNotificationRecipients";
 
 const gzip = promisify(gzipCallback);
 const CAIRO_TIME_ZONE = "Africa/Cairo";
 const PROCESSING_STALE_AFTER_MS = 10 * 60 * 1000;
-export const BACKUP_NOTIFICATION_EMAILS = mergeSystemNotificationRecipients([
+export const BACKUP_NOTIFICATION_EMAILS = resolveSystemNotificationRecipients("other", [
   "mahmoud.saberelevay@gmail.com",
   "mahmoud.saber@elevay.com",
 ]);
