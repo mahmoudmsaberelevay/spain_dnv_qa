@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "./db";
-import { storageGet } from "./storage";
+import { storageGet, storagePut } from "./storage";
 import { protectedProcedure, router } from "./_core/trpc";
 import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
 import { hashPortalPassword } from "./clientPortalAuth";
@@ -12,6 +12,7 @@ import { recordClientLifecycleEvent } from "./clientLifecycleNotificationService
 import { runPublicContentSync } from "./publicContentService";
 import { replaceClientPortalAssignments } from "./clientPortalAssignmentService";
 import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPolicy";
+import { decodeProviderCoverUpload, MAX_PROVIDER_COVER_BYTES, providerCoverStorageKey } from "./clientPortalProviderMedia";
 import {
   clientCases,
   clientPortalApplications,
@@ -24,6 +25,7 @@ import {
   publicContentSyncRuns,
   publicContentSyncSettings,
   publicPrograms,
+  publicAfterSettlementServices,
   publicServiceProviders,
 } from "../drizzle/schema";
 
@@ -39,6 +41,12 @@ const providerInput = z.object({
   country: z.string().trim().min(1).max(128),
   city: z.string().trim().max(128).nullable().optional(),
   logoUrl: z.string().url().max(1024).nullable().optional(),
+  coverPhotoUpload: z.object({
+    fileName: z.string().trim().min(1).max(180),
+    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    dataBase64: z.string().min(16).max(Math.ceil(MAX_PROVIDER_COVER_BYTES * 4 / 3) + 32),
+  }).nullable().optional(),
+  removeCoverPhoto: z.boolean().default(false),
   description: z.string().max(5000).nullable().optional(),
   services: z.array(z.string().trim().min(1).max(255)).max(50).default([]),
   price: z.string().regex(/^\d+(\.\d{1,2})?$/).nullable().optional(),
@@ -51,6 +59,26 @@ const providerInput = z.object({
   availability: z.string().trim().max(255).nullable().optional(),
   displayOrder: z.number().int().min(0).max(10000).default(0),
   isActive: z.boolean().default(true),
+});
+
+const afterSettlementServiceInput = z.object({
+  publicId: z.string().uuid().optional(),
+  category: z.enum(["housing", "banking", "insurance", "tax", "legal", "education", "healthcare", "utilities", "relocation", "other"]),
+  titleEn: z.string().trim().min(1).max(255),
+  titleAr: z.string().trim().max(255).nullable().optional(),
+  descriptionEn: z.string().trim().max(5000).nullable().optional(),
+  descriptionAr: z.string().trim().max(5000).nullable().optional(),
+  providerPublicId: z.string().uuid().nullable().optional(),
+  actionLabelEn: z.string().trim().max(120).nullable().optional(),
+  actionLabelAr: z.string().trim().max(120).nullable().optional(),
+  actionType: z.enum(["phone", "whatsapp", "email", "website", "none"]),
+  actionValue: z.string().trim().max(1024).nullable().optional(),
+  displayOrder: z.number().int().min(0).max(10000).default(0),
+  isActive: z.boolean().default(true),
+}).superRefine((value, ctx) => {
+  if (value.actionType !== "none" && !value.actionValue) ctx.addIssue({ code: "custom", path: ["actionValue"], message: "Action value is required" });
+  if (value.actionType === "email" && value.actionValue && !z.string().email().safeParse(value.actionValue).success) ctx.addIssue({ code: "custom", path: ["actionValue"], message: "Enter a valid email address" });
+  if (value.actionType === "website" && value.actionValue && !z.string().url().safeParse(value.actionValue).success) ctx.addIssue({ code: "custom", path: ["actionValue"], message: "Enter a valid website URL" });
 });
 
 export const clientPortalCreateAccountInput = z.object({
@@ -319,18 +347,83 @@ export const clientPortalAdminRouter = router({
   saveProvider: adminProcedure.input(providerInput).mutation(async ({ ctx, input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-    const values = { providerType: input.providerType, name: input.name, country: input.country, city: input.city ?? null, logoUrl: input.logoUrl ?? null, description: input.description ?? null, services: input.services, price: input.price ?? null, currency: input.currency ?? null, phone: input.phone ?? null, whatsapp: input.whatsapp ?? null, email: input.email ?? null, website: input.website ?? null, languages: input.languages, availability: input.availability ?? null, displayOrder: input.displayOrder, isActive: input.isActive };
-    if (input.publicId) {
-      const [existing] = await db.select().from(publicServiceProviders).where(eq(publicServiceProviders.publicId, input.publicId)).limit(1);
-      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+    const [existing] = input.publicId ? await db.select().from(publicServiceProviders).where(eq(publicServiceProviders.publicId, input.publicId)).limit(1) : [];
+    if (input.publicId && !existing) throw new TRPCError({ code: "NOT_FOUND" });
+    const publicId = existing?.publicId ?? randomUUID();
+    let coverImageKey = input.removeCoverPhoto ? null : existing?.coverImageKey ?? null;
+    let coverImageUrl = input.removeCoverPhoto ? null : existing?.coverImageUrl ?? null;
+    if (input.coverPhotoUpload) {
+      try {
+        const decoded = decodeProviderCoverUpload(input.coverPhotoUpload);
+        const stored = await storagePut(providerCoverStorageKey(publicId, decoded.extension), decoded.buffer, decoded.mimeType);
+        coverImageKey = stored.key;
+        coverImageUrl = stored.url;
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "invalid_cover_photo" });
+      }
+    }
+    const values = { providerType: input.providerType, name: input.name, country: input.country, city: input.city ?? null, logoUrl: input.logoUrl ?? null, coverImageKey, coverImageUrl, description: input.description ?? null, services: input.services, price: input.price ?? null, currency: input.currency ?? null, phone: input.phone ?? null, whatsapp: input.whatsapp ?? null, email: input.email ?? null, website: input.website ?? null, languages: input.languages, availability: input.availability ?? null, displayOrder: input.displayOrder, isActive: input.isActive };
+    if (existing) {
       await db.update(publicServiceProviders).set(values).where(eq(publicServiceProviders.id, existing.id));
       await writeAuditLog(auditCtxFromTrpc(ctx), "update", "public_service_provider", existing.id, `Updated ${input.name}`);
       return { publicId: existing.publicId };
     }
-    const publicId = randomUUID();
     await db.insert(publicServiceProviders).values({ publicId, ...values });
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "public_service_provider", publicId, `Created ${input.name}`);
     return { publicId };
+  }),
+
+  deleteProvider: adminProcedure.input(z.object({ publicId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+    const [existing] = await db.select().from(publicServiceProviders).where(eq(publicServiceProviders.publicId, input.publicId)).limit(1);
+    if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+    await db.transaction(async tx => {
+      await tx.update(publicAfterSettlementServices).set({ providerId: null }).where(eq(publicAfterSettlementServices.providerId, existing.id));
+      await tx.delete(publicServiceProviders).where(eq(publicServiceProviders.id, existing.id));
+    });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "delete", "public_service_provider", existing.id, `Deleted ${existing.name}; linked services retained without provider association`);
+    return { ok: true };
+  }),
+
+  listAfterSettlementServices: adminProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+    const rows = await db.select({ service: publicAfterSettlementServices, providerPublicId: publicServiceProviders.publicId, providerName: publicServiceProviders.name }).from(publicAfterSettlementServices).leftJoin(publicServiceProviders, eq(publicAfterSettlementServices.providerId, publicServiceProviders.id)).orderBy(asc(publicAfterSettlementServices.displayOrder), asc(publicAfterSettlementServices.titleEn));
+    return rows.map(row => ({ ...row.service, providerPublicId: row.providerPublicId ?? null, providerName: row.providerName ?? null }));
+  }),
+
+  saveAfterSettlementService: adminProcedure.input(afterSettlementServiceInput).mutation(async ({ ctx, input }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+    let providerId: number | null = null;
+    if (input.providerPublicId) {
+      const [provider] = await db.select({ id: publicServiceProviders.id }).from(publicServiceProviders).where(eq(publicServiceProviders.publicId, input.providerPublicId)).limit(1);
+      if (!provider) throw new TRPCError({ code: "BAD_REQUEST", message: "Selected provider was not found" });
+      providerId = provider.id;
+    }
+    const values = { category: input.category, titleEn: input.titleEn, titleAr: input.titleAr ?? null, descriptionEn: input.descriptionEn ?? null, descriptionAr: input.descriptionAr ?? null, providerId, actionLabelEn: input.actionLabelEn ?? null, actionLabelAr: input.actionLabelAr ?? null, actionType: input.actionType, actionValue: input.actionType === "none" ? null : input.actionValue ?? null, displayOrder: input.displayOrder, isActive: input.isActive };
+    if (input.publicId) {
+      const [existing] = await db.select().from(publicAfterSettlementServices).where(eq(publicAfterSettlementServices.publicId, input.publicId)).limit(1);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+      await db.update(publicAfterSettlementServices).set(values).where(eq(publicAfterSettlementServices.id, existing.id));
+      await writeAuditLog(auditCtxFromTrpc(ctx), "update", "public_after_settlement_service", existing.id, `Updated ${input.titleEn}`);
+      return { publicId: existing.publicId };
+    }
+    const publicId = randomUUID();
+    await db.insert(publicAfterSettlementServices).values({ publicId, ...values });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "public_after_settlement_service", publicId, `Created ${input.titleEn}`);
+    return { publicId };
+  }),
+
+  deleteAfterSettlementService: adminProcedure.input(z.object({ publicId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+    const [existing] = await db.select().from(publicAfterSettlementServices).where(eq(publicAfterSettlementServices.publicId, input.publicId)).limit(1);
+    if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+    await db.delete(publicAfterSettlementServices).where(eq(publicAfterSettlementServices.id, existing.id));
+    await writeAuditLog(auditCtxFromTrpc(ctx), "delete", "public_after_settlement_service", existing.id, `Deleted ${existing.titleEn}`);
+    return { ok: true };
   }),
 
   runContentSync: adminProcedure.mutation(async ({ ctx }) => {

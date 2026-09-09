@@ -17,6 +17,7 @@ import {
   clientPortalNotifications,
   clientPortalSessions,
   clientPortalUsers,
+  publicAfterSettlementServices,
   publicServiceProviders,
 } from "../drizzle/schema";
 import {
@@ -35,6 +36,7 @@ import { sendClientPortalActivityEmail, sendClientPortalPasswordResetEmail } fro
 import { mergeSystemNotificationRecipients } from "./systemNotificationRecipients";
 import { replaceClientPortalAssignments } from "./clientPortalAssignmentService";
 import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPolicy";
+import { decodeProviderCoverUpload, providerCoverStorageKey, type ProviderCoverUpload } from "./clientPortalProviderMedia";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const APP_REVIEW_CLIENT_CODE = "APP-REVIEW-001";
@@ -45,6 +47,7 @@ const APP_REVIEW_PROVIDER = {
   country: "Spain",
   city: "Madrid",
   logoUrl: null,
+  coverImageUrl: null,
   description: "Fictional service-provider record for App Review testing only.",
   services: ["Document review", "Application guidance"],
   price: null,
@@ -55,6 +58,22 @@ const APP_REVIEW_PROVIDER = {
   website: null,
   languages: ["English"],
   availability: "By appointment",
+  displayOrder: 1,
+  isActive: true,
+};
+const APP_REVIEW_AFTER_SETTLEMENT_SERVICE = {
+  publicId: "app-review-after-settlement-service",
+  category: "banking",
+  titleEn: "Bank account assistance",
+  titleAr: "المساعدة في فتح حساب بنكي",
+  descriptionEn: "Fictional after-settlement service for App Review testing only.",
+  descriptionAr: "خدمة تجريبية للمراجعة فقط.",
+  providerPublicId: APP_REVIEW_PROVIDER.publicId,
+  providerName: APP_REVIEW_PROVIDER.name,
+  actionLabelEn: "Contact provider",
+  actionLabelAr: "تواصل مع مقدم الخدمة",
+  actionType: "email",
+  actionValue: APP_REVIEW_PROVIDER.email,
   displayOrder: 1,
   isActive: true,
 };
@@ -375,7 +394,7 @@ export function registerClientPortalRoutes(app: Express) {
   });
 
   const saveAdminProvider = async (req: PortalRequest, res: Response) => {
-    const body = safeBody<{ providerType: "lawyer" | "accountant" | "service_facilitator"; name: string; country: string; city: string; description: string; services: string[]; phone: string; whatsapp: string; email: string; website: string; displayOrder: number; isActive: boolean }>(req);
+    const body = safeBody<{ providerType: "lawyer" | "accountant" | "service_facilitator"; name: string; country: string; city: string; logoUrl: string; description: string; services: string[]; price: string; currency: string; phone: string; whatsapp: string; email: string; website: string; languages: string[]; availability: string; displayOrder: number; isActive: boolean; coverPhotoUpload: ProviderCoverUpload; removeCoverPhoto: boolean }>(req);
     const providerType = body.providerType;
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 255) : "";
     const country = typeof body.country === "string" ? body.country.trim().slice(0, 128) : "";
@@ -386,23 +405,101 @@ export function registerClientPortalRoutes(app: Express) {
     }
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
-    const values = { providerType, name, country, city: typeof body.city === "string" ? body.city.trim().slice(0, 128) || null : null, description: typeof body.description === "string" ? body.description.trim().slice(0, 5000) || null : null, services: Array.isArray(body.services) ? body.services.filter(item => typeof item === "string" && item.trim()).slice(0, 50).map(item => item.trim().slice(0, 255)) : [], phone: typeof body.phone === "string" ? body.phone.trim().slice(0, 64) || null : null, whatsapp: typeof body.whatsapp === "string" ? body.whatsapp.trim().slice(0, 64) || null : null, email: typeof body.email === "string" ? body.email.trim().slice(0, 320) || null : null, website: typeof body.website === "string" ? body.website.trim().slice(0, 1024) || null : null, displayOrder: Number.isInteger(body.displayOrder) ? Math.max(0, Math.min(10000, Number(body.displayOrder))) : 0, isActive: body.isActive !== false };
     const publicId = req.params.publicId;
-    if (publicId) {
-      const [existing] = await db.select().from(publicServiceProviders).where(eq(publicServiceProviders.publicId, publicId)).limit(1);
-      if (!existing) return error(res, 404, "provider_not_found");
-      await db.update(publicServiceProviders).set(values).where(eq(publicServiceProviders.id, existing.id));
-      await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_provider_updated", recordType: "service_provider", recordPublicId: publicId });
-      return res.json({ publicId, updated: true });
+    const [existing] = publicId ? await db.select().from(publicServiceProviders).where(eq(publicServiceProviders.publicId, publicId)).limit(1) : [];
+    if (publicId && !existing) return error(res, 404, "provider_not_found");
+    const resolvedPublicId = existing?.publicId ?? randomUUID();
+    let coverImageKey = body.removeCoverPhoto ? null : existing?.coverImageKey ?? null;
+    let coverImageUrl = body.removeCoverPhoto ? null : existing?.coverImageUrl ?? null;
+    if (body.coverPhotoUpload) {
+      try {
+        const decoded = decodeProviderCoverUpload(body.coverPhotoUpload);
+        const stored = await storagePut(providerCoverStorageKey(resolvedPublicId, decoded.extension), decoded.buffer, decoded.mimeType);
+        coverImageKey = stored.key;
+        coverImageUrl = stored.url;
+      } catch (uploadError) {
+        return error(res, 400, uploadError instanceof Error ? uploadError.message : "invalid_cover_photo");
+      }
     }
-    const createdPublicId = randomUUID();
-    await db.insert(publicServiceProviders).values({ publicId: createdPublicId, ...values });
-    await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_provider_created", recordType: "service_provider", recordPublicId: createdPublicId });
-    return res.status(201).json({ publicId: createdPublicId, updated: false });
+    const values = { providerType, name, country, city: typeof body.city === "string" ? body.city.trim().slice(0, 128) || null : null, logoUrl: typeof body.logoUrl === "string" ? body.logoUrl.trim().slice(0, 1024) || null : null, coverImageKey, coverImageUrl, description: typeof body.description === "string" ? body.description.trim().slice(0, 5000) || null : null, services: Array.isArray(body.services) ? body.services.filter(item => typeof item === "string" && item.trim()).slice(0, 50).map(item => item.trim().slice(0, 255)) : [], price: typeof body.price === "string" && /^\d+(\.\d{1,2})?$/.test(body.price) ? body.price : null, currency: typeof body.currency === "string" ? body.currency.trim().slice(0, 10) || null : null, phone: typeof body.phone === "string" ? body.phone.trim().slice(0, 64) || null : null, whatsapp: typeof body.whatsapp === "string" ? body.whatsapp.trim().slice(0, 64) || null : null, email: typeof body.email === "string" ? body.email.trim().slice(0, 320) || null : null, website: typeof body.website === "string" ? body.website.trim().slice(0, 1024) || null : null, languages: Array.isArray(body.languages) ? body.languages.filter(item => typeof item === "string" && item.trim()).slice(0, 30).map(item => item.trim().slice(0, 80)) : [], availability: typeof body.availability === "string" ? body.availability.trim().slice(0, 255) || null : null, displayOrder: Number.isInteger(body.displayOrder) ? Math.max(0, Math.min(10000, Number(body.displayOrder))) : 0, isActive: body.isActive !== false };
+    if (existing) {
+      await db.update(publicServiceProviders).set(values).where(eq(publicServiceProviders.id, existing.id));
+      await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_provider_updated", recordType: "service_provider", recordPublicId: resolvedPublicId });
+      return res.json({ publicId: resolvedPublicId, updated: true, coverImageUrl });
+    }
+    await db.insert(publicServiceProviders).values({ publicId: resolvedPublicId, ...values });
+    await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_provider_created", recordType: "service_provider", recordPublicId: resolvedPublicId });
+    return res.status(201).json({ publicId: resolvedPublicId, updated: false, coverImageUrl });
   };
 
   app.post("/client-api/admin/providers", writeLimiter, saveAdminProvider);
   app.put("/client-api/admin/providers/:publicId", writeLimiter, saveAdminProvider);
+  app.delete("/client-api/admin/providers/:publicId", writeLimiter, async (req: PortalRequest, res) => {
+    if (req.portal!.user.isReviewAccount) return res.json({ ok: true, simulated: true });
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
+    const [existing] = await db.select().from(publicServiceProviders).where(eq(publicServiceProviders.publicId, req.params.publicId)).limit(1);
+    if (!existing) return error(res, 404, "provider_not_found");
+    await db.transaction(async tx => {
+      await tx.update(publicAfterSettlementServices).set({ providerId: null }).where(eq(publicAfterSettlementServices.providerId, existing.id));
+      await tx.delete(publicServiceProviders).where(eq(publicServiceProviders.id, existing.id));
+    });
+    await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_provider_deleted", recordType: "service_provider", recordPublicId: existing.publicId, details: "Linked after-settlement services retained without provider association" });
+    return res.json({ ok: true });
+  });
+
+  app.get("/client-api/admin/after-settlement-services", async (req: PortalRequest, res) => {
+    if (req.portal!.user.isReviewAccount) return res.json([APP_REVIEW_AFTER_SETTLEMENT_SERVICE]);
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
+    const rows = await db.select({ service: publicAfterSettlementServices, providerPublicId: publicServiceProviders.publicId, providerName: publicServiceProviders.name }).from(publicAfterSettlementServices).leftJoin(publicServiceProviders, eq(publicAfterSettlementServices.providerId, publicServiceProviders.id)).orderBy(asc(publicAfterSettlementServices.displayOrder), asc(publicAfterSettlementServices.titleEn));
+    return res.json(rows.map(row => ({ ...row.service, providerPublicId: row.providerPublicId ?? null, providerName: row.providerName ?? null })));
+  });
+
+  const saveAdminAfterSettlementService = async (req: PortalRequest, res: Response) => {
+    const body = safeBody<{ category: string; titleEn: string; titleAr: string; descriptionEn: string; descriptionAr: string; providerPublicId: string; actionLabelEn: string; actionLabelAr: string; actionType: string; actionValue: string; displayOrder: number; isActive: boolean }>(req);
+    const categories = ["housing", "banking", "insurance", "tax", "legal", "education", "healthcare", "utilities", "relocation", "other"];
+    const actionTypes = ["phone", "whatsapp", "email", "website", "none"];
+    const category = typeof body.category === "string" && categories.includes(body.category) ? body.category as typeof publicAfterSettlementServices.$inferInsert["category"] : "other";
+    const actionType = typeof body.actionType === "string" && actionTypes.includes(body.actionType) ? body.actionType as typeof publicAfterSettlementServices.$inferInsert["actionType"] : "none";
+    const titleEn = typeof body.titleEn === "string" ? body.titleEn.trim().slice(0, 255) : "";
+    const actionValue = typeof body.actionValue === "string" ? body.actionValue.trim().slice(0, 1024) : "";
+    if (!titleEn || (actionType !== "none" && !actionValue)) return error(res, 400, "invalid_after_settlement_service");
+    if (req.portal!.user.isReviewAccount) return res.status(req.params.publicId ? 200 : 201).json({ publicId: req.params.publicId || "app-review-after-settlement-service", simulated: true });
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
+    let providerId: number | null = null;
+    if (body.providerPublicId) {
+      const [provider] = await db.select({ id: publicServiceProviders.id }).from(publicServiceProviders).where(eq(publicServiceProviders.publicId, body.providerPublicId)).limit(1);
+      if (!provider) return error(res, 400, "provider_not_found");
+      providerId = provider.id;
+    }
+    const values = { category, titleEn, titleAr: typeof body.titleAr === "string" ? body.titleAr.trim().slice(0, 255) || null : null, descriptionEn: typeof body.descriptionEn === "string" ? body.descriptionEn.trim().slice(0, 5000) || null : null, descriptionAr: typeof body.descriptionAr === "string" ? body.descriptionAr.trim().slice(0, 5000) || null : null, providerId, actionLabelEn: typeof body.actionLabelEn === "string" ? body.actionLabelEn.trim().slice(0, 120) || null : null, actionLabelAr: typeof body.actionLabelAr === "string" ? body.actionLabelAr.trim().slice(0, 120) || null : null, actionType, actionValue: actionType === "none" ? null : actionValue, displayOrder: Number.isInteger(body.displayOrder) ? Math.max(0, Math.min(10000, Number(body.displayOrder))) : 0, isActive: body.isActive !== false };
+    if (req.params.publicId) {
+      const [existing] = await db.select().from(publicAfterSettlementServices).where(eq(publicAfterSettlementServices.publicId, req.params.publicId)).limit(1);
+      if (!existing) return error(res, 404, "after_settlement_service_not_found");
+      await db.update(publicAfterSettlementServices).set(values).where(eq(publicAfterSettlementServices.id, existing.id));
+      await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_after_settlement_service_updated", recordType: "after_settlement_service", recordPublicId: existing.publicId });
+      return res.json({ publicId: existing.publicId, updated: true });
+    }
+    const publicId = randomUUID();
+    await db.insert(publicAfterSettlementServices).values({ publicId, ...values });
+    await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_after_settlement_service_created", recordType: "after_settlement_service", recordPublicId: publicId });
+    return res.status(201).json({ publicId, updated: false });
+  };
+
+  app.post("/client-api/admin/after-settlement-services", writeLimiter, saveAdminAfterSettlementService);
+  app.put("/client-api/admin/after-settlement-services/:publicId", writeLimiter, saveAdminAfterSettlementService);
+  app.delete("/client-api/admin/after-settlement-services/:publicId", writeLimiter, async (req: PortalRequest, res) => {
+    if (req.portal!.user.isReviewAccount) return res.json({ ok: true, simulated: true });
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
+    const [existing] = await db.select().from(publicAfterSettlementServices).where(eq(publicAfterSettlementServices.publicId, req.params.publicId)).limit(1);
+    if (!existing) return error(res, 404, "after_settlement_service_not_found");
+    await db.delete(publicAfterSettlementServices).where(eq(publicAfterSettlementServices.id, existing.id));
+    await writePortalAudit({ req, portalUserId: req.portal!.user.id, action: "admin_after_settlement_service_deleted", recordType: "after_settlement_service", recordPublicId: existing.publicId });
+    return res.json({ ok: true });
+  });
 
   app.post("/client-api/auth/logout", async (req: PortalRequest, res) => {
     const portal = req.portal!;

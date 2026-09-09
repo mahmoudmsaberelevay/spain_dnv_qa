@@ -1370,3 +1370,12 @@ Check email for download link within 5 minutes
 - [x] Reproduce and identify the validation, routing, database, or UI cause of the blocked account creation
 - [x] Implement the smallest safe fix while preserving manual password entry, secure hashing, and duplicate-account protection
 - [x] Add regression coverage, verify one controlled end-to-end creation flow, clean up any synthetic record, and publish the repair
+
+## Client Portal — Provider Management & After Settlement Services
+- [x] Audit current provider schema, administration controls, client-facing provider cards, permissions, and media-storage patterns
+- [x] Add administrator-only editing and confirmed deletion for existing providers while preserving unrelated portal data
+- [x] Add provider cover-photo upload, validation, S3-backed storage, replacement, and safe removal behavior
+- [x] Add a new After Settlement Services tab with an explicit data model and administrator management controls
+- [x] Expose active After Settlement Services appropriately in the Client Portal with responsive desktop and mobile layouts
+- [x] Add migrations and focused regressions for permissions, legacy providers, image metadata, edits, deletes, and service visibility
+- [x] Verify authenticated administration and client experiences, complete documentation, and publish

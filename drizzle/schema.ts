@@ -1654,6 +1654,8 @@ export const publicServiceProviders = mysqlTable("public_service_providers", {
   country: varchar("country", { length: 128 }).notNull(),
   city: varchar("city", { length: 128 }),
   logoUrl: varchar("logoUrl", { length: 1024 }),
+  coverImageKey: varchar("coverImageKey", { length: 1024 }),
+  coverImageUrl: varchar("coverImageUrl", { length: 1024 }),
   description: text("description"),
   services: json("services"),
   price: decimal("price", { precision: 14, scale: 2 }),
@@ -1671,6 +1673,30 @@ export const publicServiceProviders = mysqlTable("public_service_providers", {
 });
 export type PublicServiceProvider = typeof publicServiceProviders.$inferSelect;
 export type InsertPublicServiceProvider = typeof publicServiceProviders.$inferInsert;
+
+export const publicAfterSettlementServices = mysqlTable("public_after_settlement_services", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  category: mysqlEnum("category", ["housing", "banking", "insurance", "tax", "legal", "education", "healthcare", "utilities", "relocation", "other"]).default("other").notNull(),
+  titleEn: varchar("titleEn", { length: 255 }).notNull(),
+  titleAr: varchar("titleAr", { length: 255 }),
+  descriptionEn: text("descriptionEn"),
+  descriptionAr: text("descriptionAr"),
+  providerId: int("providerId"),
+  actionLabelEn: varchar("actionLabelEn", { length: 120 }),
+  actionLabelAr: varchar("actionLabelAr", { length: 120 }),
+  actionType: mysqlEnum("actionType", ["phone", "whatsapp", "email", "website", "none"]).default("none").notNull(),
+  actionValue: varchar("actionValue", { length: 1024 }),
+  displayOrder: int("displayOrder").default(0).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  activeDisplayOrder: index("public_after_settlement_services_active_order_idx").on(table.isActive, table.displayOrder),
+  provider: index("public_after_settlement_services_provider_idx").on(table.providerId),
+}));
+export type PublicAfterSettlementService = typeof publicAfterSettlementServices.$inferSelect;
+export type InsertPublicAfterSettlementService = typeof publicAfterSettlementServices.$inferInsert;
 
 export const publicContentSyncRuns = mysqlTable("public_content_sync_runs", {
   id: int("id").autoincrement().primaryKey(),

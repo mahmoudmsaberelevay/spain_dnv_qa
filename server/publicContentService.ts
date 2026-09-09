@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "crypto";
 import { load } from "cheerio";
 import { and, asc, desc, eq, notInArray } from "drizzle-orm";
 import { getDb } from "./db";
-import { publicContentSyncRuns, publicContentSyncSettings, publicPrograms, publicServiceProviders } from "../drizzle/schema";
+import { publicAfterSettlementServices, publicContentSyncRuns, publicContentSyncSettings, publicPrograms, publicServiceProviders } from "../drizzle/schema";
 
 const SOURCES = [
   { category: "residency" as const, url: "https://elevay.com/residency-by-investment/", path: "/residency-by-investment/" },
@@ -190,7 +190,7 @@ export function registerPublicContentRoutes(app: Express) {
     const rows = type === "lawyer" || type === "accountant" || type === "service_facilitator"
       ? await db.select().from(publicServiceProviders).where(and(eq(publicServiceProviders.isActive, true), eq(publicServiceProviders.providerType, type))).orderBy(asc(publicServiceProviders.displayOrder), asc(publicServiceProviders.name))
       : await db.select().from(publicServiceProviders).where(eq(publicServiceProviders.isActive, true)).orderBy(asc(publicServiceProviders.displayOrder), asc(publicServiceProviders.name));
-    return res.json(rows.map(row => ({ publicId: row.publicId, providerType: row.providerType, name: row.name, country: row.country, city: row.city, logoUrl: row.logoUrl, description: row.description, services: row.services, price: row.price, currency: row.currency, phone: row.phone, whatsapp: row.whatsapp, email: row.email, website: row.website, languages: row.languages, availability: row.availability })));
+    return res.json(rows.map(row => ({ publicId: row.publicId, providerType: row.providerType, name: row.name, country: row.country, city: row.city, logoUrl: row.logoUrl, coverImageUrl: row.coverImageUrl, description: row.description, services: row.services, price: row.price, currency: row.currency, phone: row.phone, whatsapp: row.whatsapp, email: row.email, website: row.website, languages: row.languages, availability: row.availability })));
   });
 
   app.get("/public-api/service-providers/:publicId", async (req: Request, res: Response) => {
@@ -198,6 +198,26 @@ export function registerPublicContentRoutes(app: Express) {
     if (!db) return res.status(503).json({ error: "service_unavailable" });
     const [row] = await db.select().from(publicServiceProviders).where(and(eq(publicServiceProviders.publicId, req.params.publicId), eq(publicServiceProviders.isActive, true))).limit(1);
     if (!row) return res.status(404).json({ error: "not_found" });
-    return res.json(row);
+    return res.json({ publicId: row.publicId, providerType: row.providerType, name: row.name, country: row.country, city: row.city, logoUrl: row.logoUrl, coverImageUrl: row.coverImageUrl, description: row.description, services: row.services, price: row.price, currency: row.currency, phone: row.phone, whatsapp: row.whatsapp, email: row.email, website: row.website, languages: row.languages, availability: row.availability });
+  });
+
+  app.get("/public-api/after-settlement-services", async (_req: Request, res: Response) => {
+    const db = await getDb();
+    if (!db) return res.status(503).json({ error: "service_unavailable" });
+    const rows = await db.select({ service: publicAfterSettlementServices, provider: publicServiceProviders }).from(publicAfterSettlementServices).leftJoin(publicServiceProviders, and(eq(publicAfterSettlementServices.providerId, publicServiceProviders.id), eq(publicServiceProviders.isActive, true))).where(eq(publicAfterSettlementServices.isActive, true)).orderBy(asc(publicAfterSettlementServices.displayOrder), asc(publicAfterSettlementServices.titleEn));
+    res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
+    return res.json(rows.map(({ service, provider }) => ({
+      publicId: service.publicId,
+      category: service.category,
+      titleEn: service.titleEn,
+      titleAr: service.titleAr,
+      descriptionEn: service.descriptionEn,
+      descriptionAr: service.descriptionAr,
+      actionLabelEn: service.actionLabelEn,
+      actionLabelAr: service.actionLabelAr,
+      actionType: service.actionType,
+      actionValue: service.actionValue,
+      provider: provider ? { publicId: provider.publicId, name: provider.name, country: provider.country, city: provider.city, logoUrl: provider.logoUrl, coverImageUrl: provider.coverImageUrl } : null,
+    })));
   });
 }
