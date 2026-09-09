@@ -1364,3 +1364,9 @@ Check email for download link within 5 minutes
 - [x] Validate the same strong password policy server-side, store only the hash, revoke active sessions, and never return or log the password
 - [x] Add an `Edit password` action and secure custom-password dialog for every client portal account
 - [x] Add focused regressions, verify creation and existing-account password changes, update documentation, and publish
+
+## Client Portal — New User Creation Failure Repair
+- [x] Capture the exact failed create-account request and server error without exposing credentials or creating duplicate users
+- [x] Reproduce and identify the validation, routing, database, or UI cause of the blocked account creation
+- [x] Implement the smallest safe fix while preserving manual password entry, secure hashing, and duplicate-account protection
+- [x] Add regression coverage, verify one controlled end-to-end creation flow, clean up any synthetic record, and publish the repair

@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { formatClientPortalCreateError, validateClientPortalEmail } from "../client/src/lib/clientPortalAccountValidation";
+import { formatClientPortalCreateError, validateClientPortalEmail, validateClientPortalUsername } from "../client/src/lib/clientPortalAccountValidation";
 
 describe("Client Portal account form validation", () => {
+  it("accepts supported usernames and explains invalid characters", () => {
+    expect(validateClientPortalUsername("  client.portal_26  ")).toBeNull();
+    expect(validateClientPortalUsername("Client Portal")).toBe(
+      "Username may use only letters, numbers, dots, underscores, or hyphens",
+    );
+  });
+
   it("accepts a complete client email address", () => {
     expect(validateClientPortalEmail("  client@example.com  ")).toBeNull();
   });
@@ -22,6 +29,12 @@ describe("Client Portal account form validation", () => {
   it("preserves a clear duplicate-account message", () => {
     expect(formatClientPortalCreateError("Username or email already has client access")).toBe(
       "This username or email already has Client Portal access",
+    );
+  });
+
+  it("explains missing documentation assignment errors", () => {
+    expect(formatClientPortalCreateError("Primary case must be selected")).toBe(
+      "Select at least one Client Documentation folder and choose its primary folder",
     );
   });
 });

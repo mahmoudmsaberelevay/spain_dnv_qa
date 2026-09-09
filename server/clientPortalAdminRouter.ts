@@ -102,35 +102,48 @@ export const clientPortalAdminRouter = router({
     const primary = cases.find(row => row.id === input.primaryCaseId)!;
     const password = input.password;
     const publicId = randomUUID();
+    let portalUser: typeof clientPortalUsers.$inferSelect | undefined;
     try {
-      await db.insert(clientPortalUsers).values({
-        publicId,
-        primaryClientCaseId: input.primaryCaseId,
-        username: input.username.toLowerCase(),
-        email: input.email.toLowerCase(),
-        mobile: input.mobile || null,
-        passwordHash: await hashPortalPassword(password),
-        consultant: primary.consultant,
-        paralegal: primary.paralegal,
-        locale: input.locale,
-        mustChangePassword: false,
-        notificationPreferences: { push: true, email: true, messages: true, documents: true, payments: true, workflow: true },
-        createdBy: ctx.user.id,
+      const passwordHash = await hashPortalPassword(password);
+      portalUser = await db.transaction(async tx => {
+        await tx.insert(clientPortalUsers).values({
+          publicId,
+          primaryClientCaseId: input.primaryCaseId,
+          username: input.username.toLowerCase(),
+          email: input.email.toLowerCase(),
+          mobile: input.mobile || null,
+          passwordHash,
+          consultant: primary.consultant,
+          paralegal: primary.paralegal,
+          locale: input.locale,
+          mustChangePassword: false,
+          notificationPreferences: { push: true, email: true, messages: true, documents: true, payments: true, workflow: true },
+          createdBy: ctx.user.id,
+        });
+        const [createdUser] = await tx.select().from(clientPortalUsers).where(eq(clientPortalUsers.publicId, publicId)).limit(1);
+        if (!createdUser) throw new Error("CLIENT_PORTAL_ACCOUNT_INSERT_FAILED");
+        for (const clientCase of cases) {
+          const applicationPublicId = randomUUID();
+          await tx.insert(clientPortalApplications).values({ publicId: applicationPublicId, portalUserId: createdUser.id, clientCaseId: clientCase.id, label: `${clientCase.applicationType} – ${clientCase.clientName}`, isPrimary: clientCase.id === input.primaryCaseId });
+          const [application] = await tx.select().from(clientPortalApplications).where(eq(clientPortalApplications.publicId, applicationPublicId)).limit(1);
+          if (!application) throw new Error("CLIENT_PORTAL_ASSIGNMENT_INSERT_FAILED");
+          await tx.insert(clientPortalApplicants).values({ publicId: randomUUID(), portalApplicationId: application.id, relation: "main", fullName: clientCase.clientName });
+          await tx.update(clientCases).set({ clientPortalSignedAt: new Date() }).where(and(eq(clientCases.id, clientCase.id), isNull(clientCases.clientPortalSignedAt)));
+        }
+        return createdUser;
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (/duplicate/i.test(message)) throw new TRPCError({ code: "CONFLICT", message: "Username or email already has client access" });
-      throw error;
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Client access could not be created. No partial account was saved.", cause: error });
     }
-    const [portalUser] = await db.select().from(clientPortalUsers).where(eq(clientPortalUsers.publicId, publicId)).limit(1);
     if (!portalUser) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
     for (const clientCase of cases) {
-      const applicationPublicId = randomUUID();
-      await db.insert(clientPortalApplications).values({ publicId: applicationPublicId, portalUserId: portalUser.id, clientCaseId: clientCase.id, label: `${clientCase.applicationType} – ${clientCase.clientName}`, isPrimary: clientCase.id === input.primaryCaseId });
-      const [application] = await db.select().from(clientPortalApplications).where(eq(clientPortalApplications.publicId, applicationPublicId)).limit(1);
-      if (application) await db.insert(clientPortalApplicants).values({ publicId: randomUUID(), portalApplicationId: application.id, relation: "main", fullName: clientCase.clientName });
-      await db.update(clientCases).set({ clientPortalSignedAt: new Date() }).where(and(eq(clientCases.id, clientCase.id), isNull(clientCases.clientPortalSignedAt)));
-      await recordClientLifecycleEvent({ clientCaseId: clientCase.id, eventType: "welcome", idempotencyKey: `portal-welcome:${portalUser.id}:${clientCase.id}`, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" }, titleEn: "Welcome to ELEVAY", titleAr: "مرحباً بك في إليفاي", bodyEn: "Your application workspace is ready. You can follow progress, receive updates, and securely submit required documents here.", bodyAr: "مساحة طلبك جاهزة. يمكنك متابعة التقدم واستلام التحديثات وإرسال المستندات المطلوبة بأمان من هنا." });
+      try {
+        await recordClientLifecycleEvent({ clientCaseId: clientCase.id, eventType: "welcome", idempotencyKey: `portal-welcome:${portalUser.id}:${clientCase.id}`, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" }, titleEn: "Welcome to ELEVAY", titleAr: "مرحباً بك في إليفاي", bodyEn: "Your application workspace is ready. You can follow progress, receive updates, and securely submit required documents here.", bodyAr: "مساحة طلبك جاهزة. يمكنك متابعة التقدم واستلام التحديثات وإرسال المستندات المطلوبة بأمان من هنا." });
+      } catch {
+        console.warn("[ClientPortal] Welcome lifecycle notification failed after account creation", { portalUserId: portalUser.id, clientCaseId: clientCase.id });
+      }
     }
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "client_portal_account", portalUser.id, `Created client portal access with ${cases.length} documentation folder assignment(s)`);
     return { publicId: portalUser.publicId, username: portalUser.username, email: portalUser.email, assignedCount: cases.length };

@@ -24,6 +24,21 @@ describe("Client Portal manual password and documentation assignment integration
     expect(restCreateBlock).not.toContain("temporaryPassword");
   });
 
+  it("keeps account creation atomic and leaves administrators actionable validation guidance", () => {
+    const router = read("server/clientPortalAdminRouter.ts");
+    const createBlock = router.slice(router.indexOf("createAccount:"), router.indexOf("replaceDocumentationAssignments:"));
+    expect(createBlock).toContain("await db.transaction(async tx =>");
+    expect(createBlock).toContain("No partial account was saved");
+    expect(createBlock).toContain("Welcome lifecycle notification failed after account creation");
+
+    const page = read("client/src/pages/ClientPortalAdmin.tsx");
+    expect(page).toContain("validateClientPortalUsername");
+    expect(page).toContain('role="alert"');
+    expect(page).toContain("This username already has Client Portal access");
+    expect(page).toContain("Select at least one Client Documentation folder; the first checked folder becomes primary");
+    expect(page).toContain('<Button disabled={mutation.isPending} onClick={submit}>');
+  });
+
   it("provides searchable confirmed assignment replacement and never shows a generated password after creation", () => {
     const page = read("client/src/pages/ClientPortalAdmin.tsx");
     expect(page).toContain("Edit Assigned Documentation");
