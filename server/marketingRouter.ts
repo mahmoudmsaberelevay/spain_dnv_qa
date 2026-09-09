@@ -10,6 +10,7 @@ import { invokeLLM } from "./_core/llm";
 import { generatePlanRuleBased, generateWeekMediaPrompts } from "./marketingTemplates";
 import { ELEVAY_ARABIC_VOICE_DEFAULTS, generateElevayArabicVoiceOver } from "./elevenLabsTts";
 import { generateProgramProposal } from "./marketingProposalService";
+import { proposalInputSchema } from "./marketingProposalCalculator";
 import { comparePrograms as generateProgramComparison } from "./programComparisonService";
 import {
   decodeReadySummaryPdf,
@@ -409,11 +410,7 @@ export const marketingRouter = router({
 
   // AI-powered program proposal with cost calculation
   generateProposal: protectedProcedure
-    .input(z.object({
-      programKey: z.string(),
-      investmentType: z.enum(["donation", "real_estate"]),
-      familyMembers: z.number().min(1).max(20),
-    }))
+    .input(proposalInputSchema)
     .mutation(({ input }) => generateProgramProposal(input)),
 
   generateMarketingPlan: protectedProcedure

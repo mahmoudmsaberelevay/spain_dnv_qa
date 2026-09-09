@@ -1414,13 +1414,13 @@ Check email for download link within 5 minutes
 - [x] Verify desktop/mobile behavior and all 21 downloads, document operations, and publish
 
 ## Marketing — Attached-Data Program Proposal Recalculation
-- [ ] Audit the current Proposal catalogue, form criteria, pricing formulas, AI/fallback behavior, and PDF breakdown
-- [ ] Restore and verify the normalized programme routes, applicant/family tiers, dependant age bands, fees, percentages, and conditional rules from the supplied sources
-- [ ] Replace incomplete or hardcoded proposal totals with an auditable programme-specific calculation engine
-- [ ] Expose every applicable investment route and pricing criterion dynamically for the selected programme
-- [ ] Show included inputs, itemized charges, quoted amounts, excluded/request-only fees, and formula assumptions in the proposal and PDF
-- [ ] Add scenario tests for single applicants, couples, families, additional dependants, route choices, age bands, nationality-specific due diligence, and percentage fees
-- [ ] Verify the corrected form and generated proposal on desktop/mobile, document limitations, and publish
+- [x] Audit the current Proposal catalogue, form criteria, pricing formulas, AI/fallback behavior, and PDF breakdown
+- [x] Restore and verify the normalized programme routes, applicant/family tiers, dependant age bands, fees, percentages, and conditional rules from the supplied sources
+- [x] Replace incomplete or hardcoded proposal totals with an auditable programme-specific calculation engine
+- [x] Expose every applicable investment route and pricing criterion dynamically for the selected programme
+- [x] Show included inputs, itemized charges, quoted amounts, excluded/request-only fees, and formula assumptions in the proposal and PDF
+- [x] Add scenario tests for single applicants, couples, families, additional dependants, route choices, age bands, nationality-specific due diligence, and percentage fees
+- [x] Verify the corrected form and generated proposal on desktop/mobile, document limitations, and publish
 - [x] Previous interruption and incomplete-artifact cleanup recorded; work explicitly resumed by the user
 
 ## Marketing — Missing Summary/Proposal Page Visibility
