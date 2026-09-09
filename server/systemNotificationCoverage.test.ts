@@ -49,7 +49,7 @@ describe("event-specific executive notification coverage", () => {
     expect(leadRouter).toContain("isAllowedSystemEmailSender(user)");
   });
 
-  it("preserves the no-ELEVAY-domain sender policy across every SMTP implementation", () => {
+  it("uses the centralized Info mailbox From header across every SMTP implementation", () => {
     for (const file of [
       "server/emailService.ts",
       "server/backupEmailService.ts",
@@ -57,7 +57,10 @@ describe("event-specific executive notification coverage", () => {
       "server/reminderScheduler.ts",
       "server/routers/leads.ts",
     ]) {
-      expect(read(file), file).toContain("isAllowedSystemEmailSender");
+      expect(read(file), file).toContain("getSystemNotificationFromHeader");
     }
+    const policy = read("server/systemNotificationRecipients.ts");
+    expect(policy).toContain('SYSTEM_NOTIFICATION_SENDER_ADDRESS = "info@elevay.com"');
+    expect(policy).toContain("extractSenderAddress(sender) === SYSTEM_NOTIFICATION_SENDER_ADDRESS");
   });
 });

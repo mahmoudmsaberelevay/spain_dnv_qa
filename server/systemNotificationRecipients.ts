@@ -1,5 +1,8 @@
 export type EmailRecipients = string | readonly string[] | null | undefined;
 
+export const SYSTEM_NOTIFICATION_SENDER_ADDRESS = "info@elevay.com";
+export const SYSTEM_NOTIFICATION_FROM_HEADER = `ELEVAY <${SYSTEM_NOTIFICATION_SENDER_ADDRESS}>`;
+
 export const MAHMOUD_NOTIFICATION_RECIPIENTS = [
   "mahmoud.saber@elevay.com",
   "mahmoud.saberelevay@gmail.com",
@@ -87,5 +90,11 @@ export function extractSenderAddress(sender: string): string {
 
 export function isAllowedSystemEmailSender(sender: string | null | undefined): boolean {
   if (!sender?.trim()) return false;
-  return !extractSenderAddress(sender).endsWith("@elevay.com");
+  return extractSenderAddress(sender) === SYSTEM_NOTIFICATION_SENDER_ADDRESS;
+}
+
+export function getSystemNotificationFromHeader(): string | null {
+  const authenticatedMailbox = process.env.GMAIL_USER?.trim();
+  if (!isAllowedSystemEmailSender(authenticatedMailbox)) return null;
+  return SYSTEM_NOTIFICATION_FROM_HEADER;
 }

@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import {
-  isAllowedSystemEmailSender,
+  getSystemNotificationFromHeader,
   normalizeEmailRecipients,
   resolveSystemNotificationRecipients,
 } from "./systemNotificationRecipients";
@@ -42,9 +42,9 @@ async function sendEmail(
   options: { includeSystemRecipient?: boolean; eventType?: string } = {},
 ) {
   try {
-    const sender = process.env.SYSTEM_EMAIL_SENDER || process.env.GMAIL_USER || "";
-    if (!isAllowedSystemEmailSender(sender)) {
-      console.error("Email send blocked: sender must be a configured non-@elevay.com address");
+    const sender = getSystemNotificationFromHeader();
+    if (!sender) {
+      console.error("Email send blocked: the authenticated mailbox must be info@elevay.com");
       return false;
     }
     const recipients = options.includeSystemRecipient === false

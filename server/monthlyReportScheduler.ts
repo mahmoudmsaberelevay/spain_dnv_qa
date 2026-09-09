@@ -5,7 +5,7 @@
  */
 import { getFinancialSummary, listAccounts } from "./finDb";
 import nodemailer from "nodemailer";
-import { isAllowedSystemEmailSender, resolveSystemNotificationRecipients } from "./systemNotificationRecipients";
+import { getSystemNotificationFromHeader, isAllowedSystemEmailSender, resolveSystemNotificationRecipients } from "./systemNotificationRecipients";
 
 const FINANCE_RECIPIENTS = [
   "Mahmoud.saber@elevay.com",
@@ -106,11 +106,12 @@ async function sendMonthlyReport() {
   const subject = `Elevay Financial Report — ${monthName} ${year}`;
 
   const transporter = getTransporter();
+  const sender = getSystemNotificationFromHeader();
   const recipients = resolveSystemNotificationRecipients("other", FINANCE_RECIPIENTS);
-  if (transporter && recipients.length > 0) {
+  if (transporter && sender && recipients.length > 0) {
     try {
       await transporter.sendMail({
-        from: process.env.GMAIL_USER,
+        from: sender,
         to: recipients.join(", "),
         subject,
         html,

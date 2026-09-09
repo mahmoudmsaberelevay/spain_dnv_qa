@@ -11,9 +11,8 @@ vi.mock("nodemailer", () => ({
 describe("system notification email integration", () => {
   beforeEach(() => {
     sendMail.mockClear();
-    process.env.GMAIL_USER = "system.sender@gmail.com";
+    process.env.GMAIL_USER = "info@elevay.com";
     process.env.GMAIL_APP_PASSWORD = "test-password";
-    delete process.env.SYSTEM_EMAIL_SENDER;
   });
 
   it("sends contract and receipt create/sign notifications to Mahmoud and Ziad", async () => {
@@ -24,6 +23,7 @@ describe("system notification email integration", () => {
     await notifyReceiptPaid("receipt-1", "contract-1", "Test client", 1000, 2000);
     expect(sendMail).toHaveBeenCalledTimes(4);
     for (const [message] of sendMail.mock.calls) {
+      expect(message.from).toBe("ELEVAY <info@elevay.com>");
       const recipients = String(message.to).toLowerCase();
       expect(recipients).toContain("ziadelshurafa@gmail.com");
       expect(recipients).toContain("mahmoud.saberelevay@gmail.com");
@@ -43,6 +43,8 @@ describe("system notification email integration", () => {
     await sendReceiptToClient("client@example.com", "Receipt", "https://example.test/receipt");
     await sendClientPortalPasswordResetEmail("portal@example.com", "test-token");
     expect(sendMail).toHaveBeenCalledTimes(2);
+    expect(sendMail.mock.calls[0]?.[0]?.from).toBe("ELEVAY <info@elevay.com>");
+    expect(sendMail.mock.calls[1]?.[0]?.from).toBe("ELEVAY <info@elevay.com>");
     expect(sendMail.mock.calls[0]?.[0]?.to).toBe("client@example.com");
     expect(sendMail.mock.calls[1]?.[0]?.to).toBe("portal@example.com");
   });
@@ -51,6 +53,7 @@ describe("system notification email integration", () => {
     const { sendEmail } = await import("./backupEmailService");
     await sendEmail({ to: ["support@elevay.com", "mahmoud.saber@elevay.com", "Ziadelshurafa@gmail.com"], subject: "Test", text: "Test" });
     const recipients = String(sendMail.mock.calls[0]?.[0]?.to).toLowerCase().split(",");
+    expect(sendMail.mock.calls[0]?.[0]?.from).toBe("ELEVAY <info@elevay.com>");
     expect(recipients).toEqual(["support@elevay.com"]);
   });
 
@@ -64,6 +67,7 @@ describe("system notification email integration", () => {
       origin: "https://example.test",
     });
     const recipients = String(sendMail.mock.calls[0]?.[0]?.to).toLowerCase();
+    expect(sendMail.mock.calls[0]?.[0]?.from).toBe("ELEVAY <info@elevay.com>");
     expect(recipients).toContain("fouad.abdo@elevay.com");
     expect(recipients).toContain("mahmoud.saberelevay@gmail.com");
     expect(recipients).not.toContain("ziad");
@@ -77,6 +81,7 @@ describe("system notification email integration", () => {
       text: "Test",
       includeSystemRecipient: false,
     });
+    expect(sendMail.mock.calls[0]?.[0]?.from).toBe("ELEVAY <info@elevay.com>");
     expect(sendMail.mock.calls[0]?.[0]?.to).toBe("owner@example.com");
   });
 });

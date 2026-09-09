@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import {
-  isAllowedSystemEmailSender,
+  getSystemNotificationFromHeader,
   normalizeEmailRecipients,
   resolveSystemNotificationRecipients,
 } from "./systemNotificationRecipients";
@@ -28,9 +28,9 @@ export async function sendEmail({
   includeSystemRecipient?: boolean;
 }): Promise<boolean> {
   try {
-    const sender = process.env.GMAIL_USER?.trim() || "";
-    if (!isAllowedSystemEmailSender(sender)) {
-      throw new Error("Backup email sender is missing or violates the non-ELEVAY sender policy");
+    const sender = getSystemNotificationFromHeader();
+    if (!sender) {
+      throw new Error("Email sender is missing or is not the authenticated info@elevay.com mailbox");
     }
     const recipients = includeSystemRecipient
       ? resolveSystemNotificationRecipients("other", to)

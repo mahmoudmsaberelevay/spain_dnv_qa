@@ -1395,3 +1395,11 @@ Check email for download link within 5 minutes
 - [x] Remove Mahmoud and Ziad from all other automatic notification categories without changing client-facing communications
 - [x] Add focused recipient-matrix regressions and verify routing without sending live emails or mutating production records
 - [x] Document the final notification matrix and publish the update
+
+## Notifications — Universal Info@elevay.com Sender
+- [x] Audit every SMTP transport, notification helper, scheduler, support path, and direct sender override
+- [x] Add authenticated Info@elevay.com mailbox configuration without exposing credentials
+- [x] Centralize the From address so all automatic internal and client-facing notifications use Info@elevay.com
+- [x] Preserve the Mahmoud and Ziad event-specific recipient matrix and all non-notification email exclusions
+- [x] Add mocked sender-policy regressions and verify provider authentication without unauthorized live delivery
+- [x] Document the sender configuration, operational requirements, rollback steps, and publish

@@ -13,7 +13,7 @@
 import { getAllClientCasesForReminders, getAllClientDocumentsForReminders, getUnpaidReceiptsOlderThanDays } from "./db";
 import { sendDocReminderToAssignedTeam, MAHMOUD_EMAILS, TEAM_EMAIL_MAP } from "./emailService";
 import nodemailer from "nodemailer";
-import { isAllowedSystemEmailSender, resolveSystemNotificationRecipients } from "./systemNotificationRecipients";
+import { getSystemNotificationFromHeader, isAllowedSystemEmailSender, resolveSystemNotificationRecipients } from "./systemNotificationRecipients";
 
 function createTransporter() {
   const gmailUser = process.env.GMAIL_USER;
@@ -31,11 +31,12 @@ function wrapEmail(title: string, body: string): string {
 
 async function sendToMahmoud(subject: string, html: string, plain: string): Promise<void> {
   const transporter = createTransporter();
+  const sender = getSystemNotificationFromHeader();
   const recipients = resolveSystemNotificationRecipients("other", MAHMOUD_EMAILS);
-  if (transporter && recipients.length > 0) {
+  if (transporter && sender && recipients.length > 0) {
     try {
       await transporter.sendMail({
-        from: `"ELEVAY System" <${process.env.GMAIL_USER}>`,
+        from: sender,
         to: recipients.join(", "),
         subject: `[ELEVAY] ${subject}`,
         html: wrapEmail(subject, html),
@@ -258,6 +259,7 @@ async function checkUnpaidReceiptReminders(): Promise<void> {
     if (!unpaidReceipts || unpaidReceipts.length === 0) return;
 
     const transporter = createTransporter();
+    const sender = getSystemNotificationFromHeader();
     for (const receipt of unpaidReceipts) {
       const consultantEmail = receipt.consultantName && TEAM_EMAIL_MAP[receipt.consultantName]
         ? TEAM_EMAIL_MAP[receipt.consultantName]
@@ -276,10 +278,10 @@ async function checkUnpaidReceiptReminders(): Promise<void> {
       const plain = `Unpaid Receipt Reminder\n\nReceipt: ${receipt.receiptCode}\nClient: ${receipt.clientName ?? "—"}\nAmount: €${Number(receipt.amountEur ?? 0).toLocaleString("en-US")}\nCreated: ${formatDate(receipt.createdAt)}\nConsultant: ${receipt.consultantName ?? "—"}`;
 
       const recipients = resolveSystemNotificationRecipients("other", consultantEmail);
-      if (transporter && recipients.length > 0) {
+      if (transporter && sender && recipients.length > 0) {
         try {
           await transporter.sendMail({
-            from: `"ELEVAY System" <${process.env.GMAIL_USER}>`,
+            from: sender,
             to: recipients.join(", "),
             subject: `[ELEVAY] ${subject}`,
             html: wrapEmail(subject, html),

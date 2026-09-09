@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   MAHMOUD_NOTIFICATION_RECIPIENTS,
+  SYSTEM_NOTIFICATION_FROM_HEADER,
+  SYSTEM_NOTIFICATION_SENDER_ADDRESS,
   ZIAD_NOTIFICATION_RECIPIENTS,
   extractSenderAddress,
+  getSystemNotificationFromHeader,
   isSystemNotificationVisibleToExecutive,
   isAllowedSystemEmailSender,
   normalizeEmailRecipients,
@@ -53,10 +56,16 @@ describe("system notification recipient policy", () => {
     expect(isSystemNotificationVisibleToExecutive("consultant@elevay.com", "client_message")).toBe(true);
   });
 
-  it("rejects ELEVAY-domain senders even when a display name is used", () => {
-    expect(extractSenderAddress('"ELEVAY System" <sender@gmail.com>')).toBe("sender@gmail.com");
-    expect(isAllowedSystemEmailSender('"ELEVAY System" <sender@gmail.com>')).toBe(true);
-    expect(isAllowedSystemEmailSender('"ELEVAY System" <sender@elevay.com>')).toBe(false);
+  it("allows only the authenticated Info mailbox as the system sender", () => {
+    const originalUser = process.env.GMAIL_USER;
+    process.env.GMAIL_USER = "Info@elevay.com";
+    expect(extractSenderAddress('"ELEVAY" <Info@elevay.com>')).toBe(SYSTEM_NOTIFICATION_SENDER_ADDRESS);
+    expect(isAllowedSystemEmailSender('"ELEVAY" <Info@elevay.com>')).toBe(true);
+    expect(isAllowedSystemEmailSender('"ELEVAY" <sender@gmail.com>')).toBe(false);
+    expect(isAllowedSystemEmailSender('"ELEVAY" <sender@elevay.com>')).toBe(false);
     expect(isAllowedSystemEmailSender("")).toBe(false);
+    expect(getSystemNotificationFromHeader()).toBe(SYSTEM_NOTIFICATION_FROM_HEADER);
+    if (originalUser === undefined) delete process.env.GMAIL_USER;
+    else process.env.GMAIL_USER = originalUser;
   });
 });

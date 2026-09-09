@@ -12,6 +12,7 @@ describe("Gmail SMTP credentials", () => {
       expect(true).toBe(true);
       return;
     }
+    expect(gmailUser.trim().toLowerCase()).toBe("info@elevay.com");
 
     const transporter = nodemailer.createTransport({
       service: "gmail",

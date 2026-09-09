@@ -20,7 +20,7 @@ import { listActivityPresets, listLeadIntegrations } from "../leadsSettingsDb";
 import { syncOneIntegrationById } from "../metaLeadSync";
 import { writeAuditLog, auditCtxFromTrpc } from "../auditLog";
 import { sendLeadAssignmentNotification, TEAM_EMAIL_MAP } from "../emailService";
-import { isAllowedSystemEmailSender } from "../systemNotificationRecipients";
+import { getSystemNotificationFromHeader, isAllowedSystemEmailSender } from "../systemNotificationRecipients";
 import { enqueueMappedMetaCrmEvent, normalizeMetaEmail, normalizeMetaPhone } from "../metaLeadsService";
 import { findLeadContactMatch } from "../leadContactMatcher";
 import { isLeadContactUniqueViolation } from "../leadContactIdentity";
@@ -424,8 +424,9 @@ export const leadsRouter = router({
       const nodemailer = await import("nodemailer");
       const user = process.env.GMAIL_USER;
       const pass = process.env.GMAIL_APP_PASSWORD;
+      const sender = getSystemNotificationFromHeader();
       if (!user || !pass) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Email not configured" });
-      if (!isAllowedSystemEmailSender(user)) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Email sender is not allowed" });
+      if (!isAllowedSystemEmailSender(user) || !sender) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Email sender must authenticate as info@elevay.com" });
 
       const transporter = nodemailer.default.createTransport({
         service: "gmail",
@@ -433,7 +434,7 @@ export const leadsRouter = router({
       });
 
       await transporter.sendMail({
-        from: `ELEVAY <${user}>`,
+        from: sender,
         to: lead.email,
         subject: input.subject,
         html: input.body.replace(/\n/g, "<br>"),
