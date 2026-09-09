@@ -692,6 +692,10 @@ async function startServer() {
   // ELEVAY Client App APIs are isolated from the employee tRPC identity layer.
   const { registerPublicContentRoutes } = await import("../publicContentService.js");
   registerPublicContentRoutes(app);
+  const { registerNewsRoutes } = await import("../newsRoutes.js");
+  registerNewsRoutes(app);
+  const { scheduledNewsDigestHandler } = await import("../scheduledNewsDigestHandler.js");
+  app.post("/api/scheduled/news-digest", scheduledNewsDigestHandler);
   const { registerClientPortalRoutes } = await import("../clientPortalRoutes.js");
   registerClientPortalRoutes(app);
 

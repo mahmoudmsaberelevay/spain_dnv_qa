@@ -1720,6 +1720,77 @@ export const publicContentSyncSettings = mysqlTable("public_content_sync_setting
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+// ─── ELEVAY Client public News ────────────────────────────────────────────────
+export const publicNewsArticles = mysqlTable("public_news_articles", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  canonicalUrlHash: varchar("canonicalUrlHash", { length: 64 }).notNull(),
+  url: varchar("url", { length: 2048 }).notNull(),
+  title: varchar("title", { length: 500 }).notNull(),
+  description: text("description"),
+  sourceName: varchar("sourceName", { length: 255 }),
+  sourceMailbox: varchar("sourceMailbox", { length: 320 }).notNull(),
+  sourceMessageId: varchar("sourceMessageId", { length: 255 }).notNull(),
+  digestReceivedAt: timestamp("digestReceivedAt").notNull(),
+  publishedAt: timestamp("publishedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  canonicalUrl: uniqueIndex("public_news_articles_canonical_url_hash_uq").on(table.canonicalUrlHash),
+  newestFirst: index("public_news_articles_newest_idx").on(table.digestReceivedAt, table.id),
+}));
+export type PublicNewsArticle = typeof publicNewsArticles.$inferSelect;
+export type InsertPublicNewsArticle = typeof publicNewsArticles.$inferInsert;
+
+export const newsDigestImports = mysqlTable("news_digest_imports", {
+  id: int("id").autoincrement().primaryKey(),
+  sourceMessageId: varchar("sourceMessageId", { length: 255 }).notNull(),
+  sourceMailbox: varchar("sourceMailbox", { length: 320 }).notNull(),
+  subject: varchar("subject", { length: 500 }).notNull(),
+  receivedAt: timestamp("receivedAt").notNull(),
+  status: mysqlEnum("status", ["processing", "success", "failed"]).default("processing").notNull(),
+  articlesFound: int("articlesFound").default(0).notNull(),
+  articlesInserted: int("articlesInserted").default(0).notNull(),
+  errorMessage: text("errorMessage"),
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+}, (table) => ({
+  message: uniqueIndex("news_digest_imports_message_uq").on(table.sourceMailbox, table.sourceMessageId),
+  statusDate: index("news_digest_imports_status_date_idx").on(table.status, table.startedAt),
+}));
+export type NewsDigestImport = typeof newsDigestImports.$inferSelect;
+
+export const newsDigestSettings = mysqlTable("news_digest_settings", {
+  id: int("id").primaryKey(),
+  sourceMailbox: varchar("sourceMailbox", { length: 320 }).default("mahmoud.saberelevay@gmail.com").notNull(),
+  subjectTrigger: varchar("subjectTrigger", { length: 255 }).default("Daily Digest").notNull(),
+  gmailRefreshTokenEncrypted: text("gmailRefreshTokenEncrypted"),
+  gmailConnectedEmail: varchar("gmailConnectedEmail", { length: 320 }),
+  gmailConnectedAt: timestamp("gmailConnectedAt"),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
+  maxArticles: int("maxArticles").default(200).notNull(),
+  lastAttemptAt: timestamp("lastAttemptAt"),
+  lastSuccessfulAt: timestamp("lastSuccessfulAt"),
+  lastError: text("lastError"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const publicNewsPushSubscriptions = mysqlTable("public_news_push_subscriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  pushToken: varchar("pushToken", { length: 255 }).notNull(),
+  locale: mysqlEnum("locale", ["en", "ar"]).default("en").notNull(),
+  platform: varchar("platform", { length: 32 }),
+  appVersion: varchar("appVersion", { length: 64 }),
+  isActive: boolean("isActive").default(true).notNull(),
+  lastSeenAt: timestamp("lastSeenAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  token: uniqueIndex("public_news_push_subscriptions_token_uq").on(table.pushToken),
+  activeSeen: index("public_news_push_subscriptions_active_seen_idx").on(table.isActive, table.lastSeenAt),
+}));
+export type PublicNewsPushSubscription = typeof publicNewsPushSubscriptions.$inferSelect;
+
 // ─── LEADS REPORT PRESETS ─────────────────────────────────────────────────────
 // Shared filter presets for the Leads Reporting page — visible to all users
 export const leadsReportPresets = mysqlTable("leads_report_presets", {

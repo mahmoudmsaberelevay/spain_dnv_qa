@@ -145,7 +145,7 @@ export const clientPortalAdminRouter = router({
           paralegal: primary.paralegal,
           locale: input.locale,
           mustChangePassword: false,
-          notificationPreferences: { push: true, email: true, messages: true, documents: true, payments: true, workflow: true },
+          notificationPreferences: { push: true, email: true, messages: true, documents: true, payments: true, workflow: true, news: true },
           createdBy: ctx.user.id,
         });
         const [createdUser] = await tx.select().from(clientPortalUsers).where(eq(clientPortalUsers.publicId, publicId)).limit(1);
