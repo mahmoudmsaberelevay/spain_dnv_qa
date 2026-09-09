@@ -1,9 +1,12 @@
 import type { Express, Request, Response } from "express";
 import { createHash, randomUUID } from "crypto";
+import rateLimit from "express-rate-limit";
+import { ZodError } from "zod";
 import { load } from "cheerio";
 import { and, asc, desc, eq, notInArray } from "drizzle-orm";
 import { getDb } from "./db";
 import { publicAfterSettlementServices, publicContentSyncRuns, publicContentSyncSettings, publicPrograms, publicServiceProviders } from "../drizzle/schema";
+import { chatWithLayla } from "./clientAppAiAdvisor";
 
 const SOURCES = [
   { category: "residency" as const, url: "https://elevay.com/residency-by-investment/", path: "/residency-by-investment/" },
@@ -151,12 +154,39 @@ export async function runPublicContentSync(triggerType: "scheduled" | "manual") 
 }
 
 export function registerPublicContentRoutes(app: Express) {
+  const laylaLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 24,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "layla_rate_limit", message: "Please wait before sending more messages." },
+  });
   app.use("/public-api", (_req: Request, res: Response, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Device-Name, X-OS-Version, X-App-Version");
     if (_req.method === "OPTIONS") return res.sendStatus(204);
     next();
+  });
+
+  app.post("/public-api/layla/chat", laylaLimiter, async (req: Request, res: Response) => {
+    try {
+      const forwarded = typeof req.headers["x-forwarded-for"] === "string" ? req.headers["x-forwarded-for"].split(",")[0]?.trim() : undefined;
+      const result = await chatWithLayla({
+        sessionId: req.body?.sessionId,
+        locale: req.body?.locale === "ar" ? "ar" : "en",
+        message: req.body?.message,
+        history: req.body?.history,
+        ipAddress: forwarded || req.ip,
+        userAgent: req.headers["user-agent"],
+      });
+      res.setHeader("Cache-Control", "no-store");
+      return res.json(result);
+    } catch (caught) {
+      if (caught instanceof ZodError) return res.status(400).json({ error: "invalid_layla_request", message: "The message or conversation history is invalid." });
+      console.error("[PublicContent] Layla failed:", caught instanceof Error ? caught.message : String(caught));
+      return res.status(502).json({ error: "layla_unavailable", message: "Layla is temporarily unavailable. Please try again." });
+    }
   });
 
   app.get("/public-api/programs", async (req: Request, res: Response) => {

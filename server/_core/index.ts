@@ -700,6 +700,8 @@ async function startServer() {
   registerPublicPages(app);
   const { registerClientAppPublicPages } = await import("../clientAppPublicPages.js");
   registerClientAppPublicPages(app);
+  const { registerClientAppAiPages } = await import("../clientAppAiPages.js");
+  registerClientAppAiPages(app);
 
   // MCP Server for AI agent integration (Claude, Manus, ChatGPT, Cursor)
   const { registerMcpServer } = await import("../mcpServer.js");
