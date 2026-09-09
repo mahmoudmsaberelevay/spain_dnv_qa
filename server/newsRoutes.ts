@@ -42,6 +42,13 @@ export function registerNewsRoutes(app: Express) {
     legacyHeaders: false,
     message: { error: "too_many_requests" },
   });
+  const oauthLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "too_many_oauth_requests" },
+  });
 
   app.get("/public-api/news", async (_req: Request, res: Response) => {
     try {
@@ -95,7 +102,7 @@ export function registerNewsRoutes(app: Express) {
     }
   });
 
-  app.get("/api/admin/news/gmail/connect", requireAdmin, (_req: Request, res: Response) => {
+  app.get("/api/admin/news/gmail/connect", oauthLimiter, (_req: Request, res: Response) => {
     try {
       const state = createNewsGmailOAuthState();
       return res.redirect(302, getNewsGmailAuthorizationUrl(state));
@@ -104,7 +111,7 @@ export function registerNewsRoutes(app: Express) {
     }
   });
 
-  app.get("/api/admin/news/gmail/callback", requireAdmin, async (req: Request, res: Response) => {
+  app.get("/api/admin/news/gmail/callback", oauthLimiter, async (req: Request, res: Response) => {
     const code = typeof req.query.code === "string" ? req.query.code : "";
     const state = typeof req.query.state === "string" ? req.query.state : "";
     if (!code || !verifyNewsGmailOAuthState(state)) return setupResult(res, false, "The Google authorization response was invalid or expired.");
