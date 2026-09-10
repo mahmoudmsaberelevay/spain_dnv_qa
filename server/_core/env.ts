@@ -18,6 +18,8 @@ export const ENV = {
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   googleRefreshToken: process.env.GOOGLE_REFRESH_TOKEN ?? "",
+  newsGmailClientId: process.env.NEWS_GMAIL_CLIENT_ID ?? "",
+  newsGmailClientSecret: process.env.NEWS_GMAIL_CLIENT_SECRET ?? "",
   // Administrative AI Council — server-only provider credentials
   openAiApiKey: process.env.OPENAI_API_KEY ?? "",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",

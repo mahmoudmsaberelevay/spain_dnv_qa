@@ -63,8 +63,10 @@ export function decryptGmailRefreshToken(value: string) {
 }
 
 function oauthClient() {
-  if (!ENV.googleClientId || !ENV.googleClientSecret) throw new Error("Google OAuth client is not configured");
-  return new google.auth.OAuth2(ENV.googleClientId, ENV.googleClientSecret, OAUTH_CALLBACK);
+  const clientId = ENV.newsGmailClientId || ENV.googleClientId;
+  const clientSecret = ENV.newsGmailClientSecret || ENV.googleClientSecret;
+  if (!clientId || !clientSecret) throw new Error("Google OAuth client is not configured");
+  return new google.auth.OAuth2(clientId, clientSecret, OAUTH_CALLBACK);
 }
 
 function oauthStateSignature(payload: string) {
@@ -137,7 +139,7 @@ export async function connectNewsGmail(code: string) {
 export async function getNewsGmailConnectionStatus() {
   const settings = await ensureSettings();
   return {
-    configured: Boolean(ENV.googleClientId && ENV.googleClientSecret),
+    configured: Boolean((ENV.newsGmailClientId || ENV.googleClientId) && (ENV.newsGmailClientSecret || ENV.googleClientSecret)),
     connected: Boolean(settings.gmailRefreshTokenEncrypted && settings.gmailConnectedEmail === NEWS_SOURCE_MAILBOX),
     email: settings.gmailConnectedEmail,
     sourceMailbox: settings.sourceMailbox,
