@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS `layla_conversations` (
+  `id` int AUTO_INCREMENT NOT NULL,
+  `sessionId` varchar(64) NOT NULL,
+  `locale` enum('en','ar') NOT NULL DEFAULT 'en',
+  `goal` varchar(32),
+  `budget` varchar(32),
+  `familySize` int,
+  `employmentStatus` varchar(120),
+  `destinationPreference` varchar(120),
+  `contactName` varchar(80),
+  `contactEmail` varchar(320),
+  `contactPhone` varchar(32),
+  `timezone` varchar(80),
+  `leadScore` enum('hot','warm','cold') NOT NULL DEFAULT 'cold',
+  `messages` mediumtext NOT NULL,
+  `handedOff` boolean NOT NULL DEFAULT false,
+  `notified` boolean NOT NULL DEFAULT false,
+  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT `layla_conversations_id_pk` PRIMARY KEY(`id`),
+  CONSTRAINT `layla_conversations_sessionId_unique` UNIQUE(`sessionId`),
+  INDEX `layla_conversations_score_updated_idx` (`leadScore`, `updatedAt`)
+);

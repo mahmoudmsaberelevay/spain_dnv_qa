@@ -1790,7 +1790,30 @@ export const publicNewsPushSubscriptions = mysqlTable("public_news_push_subscrip
   activeSeen: index("public_news_push_subscriptions_active_seen_idx").on(table.isActive, table.lastSeenAt),
 }));
 export type PublicNewsPushSubscription = typeof publicNewsPushSubscriptions.$inferSelect;
-
+export const laylaConversations = mysqlTable("layla_conversations", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionId: varchar("sessionId", { length: 64 }).notNull().unique(),
+  locale: mysqlEnum("locale", ["en", "ar"]).default("en").notNull(),
+  goal: varchar("goal", { length: 32 }),
+  budget: varchar("budget", { length: 32 }),
+  familySize: int("familySize"),
+  employmentStatus: varchar("employmentStatus", { length: 120 }),
+  destinationPreference: varchar("destinationPreference", { length: 120 }),
+  contactName: varchar("contactName", { length: 80 }),
+  contactEmail: varchar("contactEmail", { length: 320 }),
+  contactPhone: varchar("contactPhone", { length: 32 }),
+  timezone: varchar("timezone", { length: 80 }),
+  leadScore: mysqlEnum("leadScore", ["hot", "warm", "cold"]).default("cold").notNull(),
+  messages: mediumtext("messages").notNull(),
+  handedOff: boolean("handedOff").default(false).notNull(),
+  notified: boolean("notified").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  scoreUpdated: index("layla_conversations_score_updated_idx").on(table.leadScore, table.updatedAt),
+}));
+export type LaylaConversation = typeof laylaConversations.$inferSelect;
+export type InsertLaylaConversation = typeof laylaConversations.$inferInsert;
 // ─── LEADS REPORT PRESETS ─────────────────────────────────────────────────────
 // Shared filter presets for the Leads Reporting page — visible to all users
 export const leadsReportPresets = mysqlTable("leads_report_presets", {
