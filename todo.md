@@ -1444,3 +1444,15 @@ Check email for download link within 5 minutes
 - [x] Ensure both pages open without desktop-only redirects or special permission requirements
 - [x] Verify Ready Summary download/WhatsApp actions and Proposal inputs on a phone viewport
 - [x] Add mobile navigation regressions and publish the direct-access update before continuing Proposal pricing work
+
+## WhatsApp Module — Full Chat Synchronization & Monitoring
+- [x] Audit webhook registration, signature verification, inbound/outbound message persistence, chat threading, media handling, delivery/read status updates, and module refresh behavior
+- [x] Inspect production webhook health, recent message/status ingestion, duplicate message IDs, unmatched contacts, stalled deliveries, and historical chat coverage using privacy-safe evidence
+- [x] Repair CRM-side webhook authentication, idempotency, timestamp, system-message, media tracking, retry, sorting, and automatic-refresh gaps without overwriting existing chats
+- [x] Add durable health monitoring for bridge connection, webhook freshness, last inbound/outbound events, failures, retries, duplicate suppression, and synchronization backlog
+- [x] Add focused regressions for webhook authentication, message idempotency, conversation grouping, media events, bilingual transcripts, refresh, and failure recovery
+- [ ] Validate the complete inbound/outbound chat flow safely, confirm historical chat integrity, document monitoring and recovery, and publish
+- [x] Keep the existing WhatsApp Web linked-device bridge; do not migrate this chat-monitoring workflow to Meta Cloud API
+- [ ] Restore QR generation, reconnect the linked WhatsApp device, and confirm the bridge changes from disconnected to connected
+- [x] Replace the static “Webhook Active” label with live bridge connection and last-message freshness indicators
+- [x] Preserve client/group-name sorting and keep WhatsApp chat management independent from the Leads module

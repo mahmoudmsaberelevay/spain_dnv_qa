@@ -21,7 +21,7 @@ function formatTime(date: Date | string | null | undefined) {
 export default function WaQcGroups() {
   const [search, setSearch] = useState("");
   const [, setLocation] = useLocation();
-  const { data: groups, isLoading } = trpc.waQc.groups.list.useQuery();
+  const { data: groups, isLoading } = trpc.waQc.groups.list.useQuery(undefined, { refetchInterval: 15000 });
 
   const filtered = groups?.filter((g) =>
     !search || (g.name || g.groupId).toLowerCase().includes(search.toLowerCase())

@@ -9,6 +9,7 @@ import {
   getWaConversations,
 } from "./db";
 import { invokeLLM } from "./_core/llm";
+import { getWaBridgeRuntimeConfig, getWaBridgeSyncHealth } from "./waBridgeSyncService";
 
 // ─── Access Guard ─────────────────────────────────────────────────────────────
 const waQcProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -20,11 +21,25 @@ const waQcProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next({ ctx });
 });
 
+const waQcAdminProcedure = waQcProcedure.use(async ({ ctx, next }) => {
+  if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Administrator access is required." });
+  return next({ ctx });
+});
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 export const waQcRouter = router({
   // Dashboard stats
   stats: waQcProcedure.query(async () => {
     return getWaMessageStats();
+  }),
+
+  bridgeHealth: waQcProcedure.query(async () => {
+    return getWaBridgeSyncHealth();
+  }),
+
+  bridgeQrUrl: waQcProcedure.query(() => {
+    const { baseUrl } = getWaBridgeRuntimeConfig();
+    return { qrUrl: `${baseUrl}/qr` };
   }),
 
   // Messages
@@ -69,9 +84,17 @@ export const waQcRouter = router({
           const result = await transcribeAudio({ audioUrl: msg.mediaUrl, language: "ar", prompt: "WhatsApp voice note. Transcribe accurately in the original language." });
           if ('error' in result) throw new Error(result.error || 'Transcription failed');
           const transcript = (result as any).text || null;
-          const transcriptLang = (result as any).language || "ar";
-          await updateWaMessageMedia(msg.messageId, msg.mediaUrl, msg.mediaMimeType || "audio/ogg", transcript, transcriptLang);
-          return { success: true, transcript, transcriptLang };
+          const transcriptLang = (result as any).language || null;
+          let transcriptArabic: string | null = null;
+          let transcriptEnglish: string | null = null;
+          if (transcript) {
+            const { translateWaTranscript } = await import("./waBridgeSyncService");
+            const translated = await translateWaTranscript(transcript);
+            transcriptArabic = translated.arabic;
+            transcriptEnglish = translated.english;
+          }
+          await updateWaMessageMedia(msg.messageId, msg.mediaUrl, msg.mediaMimeType || "audio/ogg", transcript, transcriptLang, null, transcriptArabic, transcriptEnglish);
+          return { success: true, transcript, transcriptLang, transcriptArabic, transcriptEnglish };
         } catch (err: any) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Transcription failed: ${err.message}` });
         }
@@ -117,6 +140,26 @@ export const waQcRouter = router({
           input.type === "video" ? "video/" :
           input.type === "audio" ? "audio/" : "application/";
         return getWaMediaFiles({ mimeTypePrefix, limit: input.limit, offset: input.offset });
+      }),
+    retryEnrichmentBacklog: waQcAdminProcedure
+      .input(z.object({ limit: z.number().int().min(1).max(25).default(10) }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { waMessages } = await import("../drizzle/schema");
+        const { and, eq, isNotNull, isNull, or } = await import("drizzle-orm");
+        const { enrichStoredWaMessage } = await import("./waBridgeSyncService");
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+        const candidates = await db.select({ messageId: waMessages.messageId }).from(waMessages).where(or(
+          and(eq(waMessages.messageType, "audio"), isNotNull(waMessages.mediaUrl), isNull(waMessages.transcript)),
+          and(eq(waMessages.messageType, "document"), isNotNull(waMessages.mediaUrl), isNull(waMessages.docText)),
+        )).limit(input.limit);
+        const totals = { processed: 0, failed: 0, skipped: 0 };
+        for (const candidate of candidates) {
+          const result = await enrichStoredWaMessage(candidate.messageId);
+          totals[result.status] += 1;
+        }
+        return { attempted: candidates.length, ...totals };
       }),
   }),
 
@@ -233,15 +276,14 @@ ${contextText}`;
       message: z.string().min(1),
     }))
     .mutation(async ({ input }) => {
-      const BRIDGE_URL = "http://35.231.217.0:3001/send";
-      const BRIDGE_SECRET = "elevay-bridge-2024";
+      const { baseUrl, secret } = getWaBridgeRuntimeConfig();
       const axiosLib = (await import("axios")).default;
       try {
-        const response = await axiosLib.post(BRIDGE_URL, {
+        const response = await axiosLib.post(`${baseUrl}/send`, {
           to: input.toPhone,
           message: input.message,
         }, {
-          headers: { "x-bridge-secret": BRIDGE_SECRET, "Content-Type": "application/json" },
+          headers: { "x-bridge-secret": secret, "Content-Type": "application/json" },
           timeout: 15000,
         });
         return { success: true, to: response.data?.to ?? input.toPhone };

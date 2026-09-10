@@ -38,7 +38,7 @@ export default function WaQcMedia() {
     type: typeFilter as "all" | "image" | "video" | "audio" | "document",
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
-  });
+  }, { refetchInterval: page === 0 ? 30000 : false });
 
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
 

@@ -32,13 +32,13 @@ export default function WaQcChats() {
   const [page, setPage] = useState(0);
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  const { data: groups } = trpc.waQc.groups.list.useQuery();
+  const { data: groups } = trpc.waQc.groups.list.useQuery(undefined, { refetchInterval: 15000 });
   const { data, isLoading } = trpc.waQc.messages.list.useQuery({
     groupId: groupFilter === "all" ? undefined : groupFilter,
     search: debouncedSearch || undefined,
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
-  });
+  }, { refetchInterval: page === 0 ? 15000 : false });
 
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
 

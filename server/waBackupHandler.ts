@@ -73,6 +73,8 @@ export async function waBackupHandler(req: Request, res: Response) {
         mediaMimeType: waMessages.mediaMimeType,
         transcript: waMessages.transcript,
         transcriptLang: waMessages.transcriptLang,
+        transcriptArabic: waMessages.transcriptArabic,
+        transcriptEnglish: waMessages.transcriptEnglish,
         docText: waMessages.docText,
         fromMe: waMessages.fromMe,
         whatsappTimestamp: waMessages.whatsappTimestamp,

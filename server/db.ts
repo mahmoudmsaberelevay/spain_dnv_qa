@@ -637,8 +637,8 @@ export async function getAllClientDocumentsForReminders() {
 
 // ─── WhatsApp Quality Control DB Helpers ─────────────────────────────────────
 import {
-  whatsappConfig, whatsappGroups, waMessages, waMediaFiles,
-  InsertWhatsappConfig, InsertWhatsappGroup, InsertWaMessage, InsertWaMediaFile,
+  whatsappConfig, whatsappGroups, waMessages, waMediaFiles, waBridgeEvents,
+  InsertWhatsappConfig, InsertWhatsappGroup, InsertWaMessage, InsertWaMediaFile, InsertWaBridgeEvent,
 } from "../drizzle/schema";
 import { and as _and, desc as _desc, eq as _eq, gte as _gte, like as _like, lte as _lte, or as _or, sql as _sql } from "drizzle-orm";
 
@@ -687,7 +687,7 @@ export async function getGroupById(groupId: string) {
 export async function getAllGroups() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(whatsappGroups).orderBy(_desc(whatsappGroups.messageCount));
+  return db.select().from(whatsappGroups).orderBy(_sql`LOWER(COALESCE(${whatsappGroups.name}, ${whatsappGroups.groupId})) ASC`);
 }
 export async function updateGroupStats(groupId: string) {
   const db = await getDb();
@@ -703,8 +703,15 @@ export async function insertWaMessage(data: InsertWaMessage) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const existing = await db.select({ id: waMessages.id }).from(waMessages).where(_eq(waMessages.messageId, data.messageId)).limit(1);
-  if (existing.length > 0) return; // deduplicate
-  await db.insert(waMessages).values(data);
+  if (existing.length > 0) return false;
+  try {
+    await db.insert(waMessages).values(data);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/duplicate|unique|1062/i.test(message)) return false;
+    throw error;
+  }
 }
 export async function getWaMessages(filter: { groupId?: string; limit?: number; offset?: number; search?: string } = {}) {
   const db = await getDb();
@@ -714,7 +721,9 @@ export async function getWaMessages(filter: { groupId?: string; limit?: number; 
   if (filter.search) conditions.push(
     _or(
       _like(waMessages.textContent, `%${filter.search}%`),
-      _like(waMessages.transcript, `%${filter.search}%`)
+      _like(waMessages.transcript, `%${filter.search}%`),
+      _like(waMessages.transcriptArabic, `%${filter.search}%`),
+      _like(waMessages.transcriptEnglish, `%${filter.search}%`)
     )!
   );
   const whereClause = conditions.length > 0 ? _and(...conditions) : undefined;
@@ -747,7 +756,25 @@ export async function getWaMessageStats() {
 export async function insertWaMediaFile(data: InsertWaMediaFile) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(waMediaFiles).values(data);
+  const existing = await db.select({ id: waMediaFiles.id }).from(waMediaFiles).where(_eq(waMediaFiles.messageId, data.messageId)).limit(1);
+  if (existing.length > 0) return existing[0].id;
+  try {
+    const [result] = await db.insert(waMediaFiles).values(data);
+    return Number((result as any).insertId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/duplicate|unique|1062/i.test(message)) {
+      const rows = await db.select({ id: waMediaFiles.id }).from(waMediaFiles).where(_eq(waMediaFiles.messageId, data.messageId)).limit(1);
+      return rows[0]?.id;
+    }
+    throw error;
+  }
+}
+
+export async function recordWaBridgeEvent(data: Omit<InsertWaBridgeEvent, "id" | "occurredAt">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(waBridgeEvents).values(data);
 }
 export async function updateWaMediaFile(id: number, data: Partial<InsertWaMediaFile>) {
   const db = await getDb();
@@ -801,7 +828,7 @@ export async function getWaConversations() {
       messageCount: Number(r.messageCount),
       isActive: meta?.isActive ?? true,
     };
-  });
+  }).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }));
 }
 
 // ─── Client Workflows ─────────────────────────────────────────────────────────
@@ -969,12 +996,14 @@ export async function updateWaMessageMedia(
   mediaMimeType: string,
   transcript: string | null,
   transcriptLang: string | null,
-  docText: string | null = null
+  docText: string | null = null,
+  transcriptArabic: string | null = null,
+  transcriptEnglish: string | null = null,
 ) {
   const db = await getDb();
   if (!db) return;
   await db
     .update(waMessages)
-    .set({ mediaUrl, mediaMimeType, transcript, transcriptLang, docText })
+    .set({ mediaUrl, mediaMimeType, transcript, transcriptLang, docText, transcriptArabic, transcriptEnglish })
     .where(eq(waMessages.messageId, messageId));
 }

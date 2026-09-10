@@ -5,8 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   MessageSquare, Users, Image, Bot, TrendingUp, Clock,
-  Wifi, WifiOff, FileText, Music, Video,
+  Wifi, WifiOff, FileText, Music, Video, RefreshCw, AlertTriangle, ExternalLink,
 } from "lucide-react";
+import { toast } from "sonner";
 
 function formatTime(date: Date | string | null | undefined) {
   if (!date) return "";
@@ -31,9 +32,22 @@ function MessageTypeIcon({ type }: { type: string }) {
 
 export default function WaQcDashboard() {
   const [, setLocation] = useLocation();
-  const { data: stats, isLoading: statsLoading } = trpc.waQc.stats.useQuery();
-  const { data: messages } = trpc.waQc.messages.list.useQuery({ limit: 10, offset: 0 });
-  const { data: groups } = trpc.waQc.groups.list.useQuery();
+  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = trpc.waQc.stats.useQuery(undefined, { refetchInterval: 30000 });
+  const { data: messages, refetch: refetchMessages } = trpc.waQc.messages.list.useQuery({ limit: 10, offset: 0 }, { refetchInterval: 30000 });
+  const { data: groups, refetch: refetchGroups } = trpc.waQc.groups.list.useQuery(undefined, { refetchInterval: 30000 });
+  const { data: health, isFetching: healthLoading, refetch: refetchHealth } = trpc.waQc.bridgeHealth.useQuery(undefined, { refetchInterval: 30000 });
+  const { data: qr } = trpc.waQc.bridgeQrUrl.useQuery();
+  const retryEnrichment = trpc.waQc.media.retryEnrichmentBacklog.useMutation({
+    onSuccess: result => {
+      toast.success(`Media recovery complete: ${result.processed} processed, ${result.failed} failed`);
+      void refetchHealth();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const state = health?.state ?? "checking";
+  const statusLabel = state === "connected" ? "Bridge connected" : state === "connected_stale" ? "Connected, no recent chats" : state === "disconnected" ? "Bridge disconnected" : state === "unreachable" ? "Bridge unreachable" : "Checking bridge";
+  const statusColor = state === "connected" ? "text-green-500" : state === "connected_stale" ? "text-amber-500" : "text-red-500";
+  const refreshAll = () => { void Promise.all([refetchStats(), refetchMessages(), refetchGroups(), refetchHealth()]); };
 
   return (
     <div className="p-6 space-y-6">
@@ -46,13 +60,39 @@ export default function WaQcDashboard() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Monitor and analyze ELEVAY WhatsApp group communications</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 text-xs text-green-400">
-            <Wifi className="h-3.5 w-3.5" />
-            <span>Webhook Active</span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className={`flex items-center gap-1.5 text-xs font-medium ${statusColor}`}>
+            {state === "connected" ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+            <span>{statusLabel}</span>
           </div>
+          <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={refreshAll} disabled={healthLoading}><RefreshCw className={`h-3.5 w-3.5 ${healthLoading ? "animate-spin" : ""}`} />Refresh</Button>
         </div>
       </div>
+
+      <Card className={`border ${state === "connected" ? "border-green-500/30" : state === "connected_stale" ? "border-amber-500/30" : "border-red-500/30"}`}>
+        <CardContent className="p-4">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:justify-between">
+            <div className="flex items-start gap-3">
+              <div className={`mt-0.5 ${statusColor}`}>{state === "connected" ? <Wifi className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}</div>
+              <div>
+                <p className="font-semibold text-foreground">{statusLabel}</p>
+                <p className="text-xs text-muted-foreground mt-1">Last inbound: {formatTime(health?.lastInboundAt)} · Last outbound: {formatTime(health?.lastOutboundAt)} · Checked every 30 seconds</p>
+                {health?.bridge.usesLegacySecret && <p className="text-xs text-amber-600 mt-1">Bridge credential rotation is pending hosting access.</p>}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+              <div><p className="text-lg font-bold text-foreground">{health?.last24Hours?.accepted ?? 0}</p><p className="text-[10px] text-muted-foreground">Accepted 24h</p></div>
+              <div><p className="text-lg font-bold text-foreground">{health?.last24Hours?.duplicates ?? 0}</p><p className="text-[10px] text-muted-foreground">Duplicates 24h</p></div>
+              <div><p className="text-lg font-bold text-foreground">{health?.last24Hours?.failed ?? 0}</p><p className="text-[10px] text-muted-foreground">Failed 24h</p></div>
+              <div><p className="text-lg font-bold text-foreground">{(health?.media?.pending ?? 0) + (health?.media?.failed ?? 0)}</p><p className="text-[10px] text-muted-foreground">Media backlog</p></div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {((health?.media?.audioWithoutTranscript ?? 0) + (health?.media?.documentsWithoutText ?? 0)) > 0 && <Button variant="outline" className="gap-2" disabled={retryEnrichment.isPending} onClick={() => retryEnrichment.mutate({ limit: 10 })}><RefreshCw className={`h-4 w-4 ${retryEnrichment.isPending ? "animate-spin" : ""}`} />Retry media processing</Button>}
+              {state !== "connected" && qr?.qrUrl && <Button variant="outline" className="gap-2" onClick={() => window.open(qr.qrUrl, "_blank", "noopener,noreferrer")}><ExternalLink className="h-4 w-4" />Open QR login</Button>}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -77,7 +77,8 @@ function MediaBubble({ msg }: { msg: any }) {
 
   const handleCopyTranscript = () => {
     if (!msg.transcript) return;
-    navigator.clipboard.writeText(msg.transcript).then(() => {
+    const copyText = [msg.transcriptArabic && `Arabic:\n${msg.transcriptArabic}`, msg.transcriptEnglish && `English:\n${msg.transcriptEnglish}`, !msg.transcriptArabic && !msg.transcriptEnglish ? msg.transcript : null].filter(Boolean).join("\n\n");
+    navigator.clipboard.writeText(copyText).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -209,10 +210,10 @@ function MediaBubble({ msg }: { msg: any }) {
             <span className="text-sm text-muted-foreground">Voice note (processing...)</span>
           </div>
         )}
-        {msg.transcript && (
+        {(msg.transcript || msg.transcriptArabic || msg.transcriptEnglish) && (
           <div className="bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-2">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-xs font-medium text-green-600">📝 Transcript ({msg.transcriptLang || "ar"})</p>
+              <p className="text-xs font-medium text-green-600">Voice-note transcript</p>
               <button
                 onClick={handleCopyTranscript}
                 className="flex items-center gap-1 text-xs text-green-600 hover:text-green-700 bg-green-500/10 hover:bg-green-500/20 rounded px-2 py-0.5"
@@ -222,7 +223,9 @@ function MediaBubble({ msg }: { msg: any }) {
                 {copied ? "Copied!" : "Copy"}
               </button>
             </div>
-            <p className="text-sm break-words whitespace-pre-wrap" dir="auto">{msg.transcript}</p>
+            {msg.transcriptArabic && <div className="mt-2"><p className="text-[10px] font-semibold uppercase tracking-wide text-green-700">Arabic</p><p className="text-sm break-words whitespace-pre-wrap" dir="rtl">{msg.transcriptArabic}</p></div>}
+            {msg.transcriptEnglish && <div className="mt-2"><p className="text-[10px] font-semibold uppercase tracking-wide text-green-700">English</p><p className="text-sm break-words whitespace-pre-wrap" dir="ltr">{msg.transcriptEnglish}</p></div>}
+            {!msg.transcriptArabic && !msg.transcriptEnglish && msg.transcript && <p className="text-sm break-words whitespace-pre-wrap" dir="auto">{msg.transcript}</p>}
           </div>
         )}
         {!msg.transcript && msg.mediaUrl && (
@@ -405,7 +408,7 @@ export default function WaQcConversations() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const msgSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MSG_PAGE_SIZE = 50;
-  const AUTO_REFRESH_INTERVAL = 7200; // 2 hours in seconds
+  const AUTO_REFRESH_INTERVAL = 15;
 
   // Parse groupId from URL query
   useEffect(() => {
@@ -447,7 +450,7 @@ export default function WaQcConversations() {
       setAutoRefreshCountdown(prev => {
         if (prev <= 1) {
           setLastRefreshed(new Date());
-          return AUTO_REFRESH_INTERVAL; // reset to 2 hours
+          return AUTO_REFRESH_INTERVAL;
         }
         return prev - 1;
       });

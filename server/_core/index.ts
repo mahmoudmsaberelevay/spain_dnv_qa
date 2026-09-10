@@ -225,115 +225,20 @@ async function startServer() {
   });
   // Baileys WhatsApp Bridge Webhook
   app.post("/api/webhook/baileys", express.json({ limit: "50mb" }), async (req, res) => {
-    const secret = req.headers["x-bridge-secret"];
-    if (secret !== "elevay-bridge-2024") return res.status(403).send("Forbidden");
-    // Respond immediately so the bridge never times out
-    res.status(200).send("OK");
-    const body = req.body as {
-      messageId?: string; groupId?: string; groupName?: string | null;
-      senderPhone?: string; senderName?: string | null; fromMe?: boolean;
-      isGroup?: boolean; textContent?: string | null; messageType?: string; timestamp?: string;
-      mediaBase64?: string; mediaMimeType?: string; mediaSize?: number;
-    };
-      // Validate required fields — log and drop if missing
-      if (!body?.messageId || !body?.groupId) {
-        console.error("[Baileys Webhook] ❌ Missing required fields. Payload:", JSON.stringify(body).slice(0, 200));
-        return;
-      }
-      // Skip internal WhatsApp system messages — never store these
-      if (body.messageType === 'system') {
-        console.log(`[Baileys Webhook] ⏭️ Skipping system message ${body.messageId}`);
-        return;
-      }
+    const { verifyWaBridgeSecret, ingestWaBridgePayload, enrichWaBridgeMedia } = await import("../waBridgeSyncService");
+    const receivedSecret = Array.isArray(req.headers["x-bridge-secret"])
+      ? req.headers["x-bridge-secret"][0]
+      : req.headers["x-bridge-secret"];
+    if (!verifyWaBridgeSecret(receivedSecret)) return res.status(403).json({ ok: false, code: "FORBIDDEN" });
     try {
-      const { upsertGroup, insertWaMessage, updateGroupStats, updateWaMessageMedia } = await import("../db");
-      // Step 1: Upsert the group/contact record
-      await upsertGroup({
-        groupId: body.groupId,
-        name: body.groupName || body.senderName || body.senderPhone || body.groupId,
-        isGroup: body.isGroup ?? body.groupId.includes("@g.us"),
-        lastSender: body.fromMe ? "ELEVAY" : (body.senderName || body.senderPhone || null),
-        messageCount: 0,
-      });
-      // Step 2: Insert the message (deduplicated by messageId)
-      const validMessageTypes = ["text","image","video","audio","document","sticker","location","reaction","contacts","unknown"];
-      const msgType = validMessageTypes.includes(body.messageType || "") ? body.messageType! : "unknown";
-      await insertWaMessage({
-        messageId: body.messageId,
-        groupId: body.groupId,
-        senderId: body.senderPhone || (body.fromMe ? "me" : "unknown"),
-        senderPhone: body.senderPhone || null,
-        senderName: body.senderName || null,
-        textContent: body.textContent || null,
-        messageType: msgType as any,
-        fromMe: body.fromMe ?? false,
-        whatsappTimestamp: body.timestamp ? Math.floor(new Date(body.timestamp).getTime() / 1000) : null,
-        createdAt: body.timestamp ? new Date(body.timestamp) : new Date(),
-      });
-      // Step 3: Update group message count and last message time
-      await updateGroupStats(body.groupId);
-      console.log(`[Baileys Webhook] ✅ Stored msg ${body.messageId} | group=${body.groupId} | from=${body.fromMe ? 'ELEVAY' : (body.senderName || body.senderPhone || 'unknown')} | type=${msgType}`);
-
-      // Step 4: Handle media — upload to S3 and transcribe audio
-      if (body.mediaBase64 && body.mediaMimeType) {
-        (async () => {
-          try {
-            const { storagePut } = await import("../storage");
-            const mediaBuffer = Buffer.from(body.mediaBase64!, "base64");
-            const ext = body.mediaMimeType!.split("/")[1]?.split(";")[0] || "bin";
-            const safeExt = ext === "ogg" ? "ogg" : ext === "opus" ? "ogg" : ext;
-            const fileKey = `wa-media/${body.groupId}/${body.messageId}.${safeExt}`;
-            const { url: mediaUrl } = await storagePut(fileKey, mediaBuffer, body.mediaMimeType!.split(";")[0]);
-            let transcript: string | null = null;
-            let transcriptLang: string | null = null;
-            // Transcribe audio messages using Whisper
-            if (msgType === "audio") {
-              try {
-                const { transcribeAudio } = await import("./voiceTranscription");
-                const result = await transcribeAudio({ audioUrl: mediaUrl, language: "ar", prompt: "This is a WhatsApp voice note. Transcribe accurately in the original language." });
-                transcript = result.text || null;
-                transcriptLang = result.language || "ar";
-                console.log(`[Baileys Webhook] 🎙️ Transcribed audio ${body.messageId}: ${transcript?.slice(0, 80)}`);
-              } catch (tErr: any) {
-                console.error(`[Baileys Webhook] ⚠️ Transcription failed for ${body.messageId}:`, tErr.message);
-              }
-            }
-            // Extract text from PDF and Word documents
-            let docText: string | null = null;
-            const mimeClean = body.mediaMimeType!.split(";")[0].toLowerCase();
-            const fileNameLower = (body.fileName || "").toLowerCase();
-            const isPdf = mimeClean === "application/pdf" || fileNameLower.endsWith(".pdf");
-            const isWord = mimeClean.includes("wordprocessingml") || mimeClean === "application/msword" ||
-              fileNameLower.endsWith(".docx") || fileNameLower.endsWith(".doc");
-            if (isPdf) {
-              try {
-                const pdfParse = (await import("pdf-parse")).default;
-                const pdfData = await pdfParse(mediaBuffer);
-                docText = pdfData.text?.trim() || null;
-                console.log(`[Baileys Webhook] 📄 PDF extracted for ${body.messageId}: ${docText?.slice(0, 100)}`);
-              } catch (pdfErr: any) {
-                console.error(`[Baileys Webhook] ⚠️ PDF extraction failed for ${body.messageId}:`, pdfErr.message);
-              }
-            } else if (isWord) {
-              try {
-                const mammoth = await import("mammoth");
-                const result = await mammoth.extractRawText({ buffer: mediaBuffer });
-                docText = result.value?.trim() || null;
-                console.log(`[Baileys Webhook] 📝 Word extracted for ${body.messageId}: ${docText?.slice(0, 100)}`);
-              } catch (wordErr: any) {
-                console.error(`[Baileys Webhook] ⚠️ Word extraction failed for ${body.messageId}:`, wordErr.message);
-              }
-            }
-            await updateWaMessageMedia(body.messageId!, mediaUrl, body.mediaMimeType!.split(";")[0], transcript, transcriptLang, docText);
-            console.log(`[Baileys Webhook] 📎 Media stored for ${body.messageId}: ${mediaUrl}`);
-          } catch (mediaErr: any) {
-            console.error(`[Baileys Webhook] ❌ Media upload failed for ${body.messageId}:`, mediaErr.message);
-          }
-        })();
+      const result = await ingestWaBridgePayload(req.body);
+      if (!result.accepted) return res.status(400).json({ ok: false, code: result.code });
+      res.status(200).json({ ok: true, inserted: result.inserted, duplicate: "duplicate" in result && result.duplicate === true });
+      if (result.inserted && req.body?.mediaBase64 && req.body?.mediaMimeType) {
+        void enrichWaBridgeMedia(req.body).catch(() => undefined);
       }
-    } catch (err: any) {
-      console.error(`[Baileys Webhook] ❌ Failed to store message ${body.messageId}: ${err?.message || err}`);
-      if (err?.stack) console.error(err.stack);
+    } catch {
+      return res.status(500).json({ ok: false, code: "INGEST_FAILED" });
     }
   });
 

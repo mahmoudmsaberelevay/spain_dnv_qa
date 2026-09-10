@@ -744,7 +744,7 @@ export const waMessages = mysqlTable("wa_messages", {
   senderPhone: varchar("senderPhone", { length: 32 }),
   messageType: mysqlEnum("messageType", [
     "text", "image", "video", "audio", "document",
-    "sticker", "location", "reaction", "contacts", "unknown",
+    "sticker", "location", "reaction", "contacts", "system", "unknown",
   ]).default("text").notNull(),
   textContent: text("textContent"),
   caption: text("caption"),
@@ -762,6 +762,8 @@ export const waMessages = mysqlTable("wa_messages", {
   mediaMimeType: varchar("mediaMimeType", { length: 100 }),
   transcript: text("transcript"),
   transcriptLang: varchar("transcriptLang", { length: 10 }),
+  transcriptArabic: text("transcriptArabic"),
+  transcriptEnglish: text("transcriptEnglish"),
   docText: text("docText"),
   whatsappTimestamp: bigint("whatsappTimestamp", { mode: "number" }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -782,9 +784,28 @@ export const waMediaFiles = mysqlTable("wa_media_files", {
   downloadError: text("downloadError"),
   downloadedAt: timestamp("downloadedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, table => [
+  uniqueIndex("wa_media_files_message_unique").on(table.messageId),
+  index("wa_media_files_status_created_idx").on(table.downloadStatus, table.createdAt),
+]);
 export type WaMediaFile = typeof waMediaFiles.$inferSelect;
 export type InsertWaMediaFile = typeof waMediaFiles.$inferInsert;
+
+export const waBridgeEvents = mysqlTable("wa_bridge_events", {
+  id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
+  eventType: mysqlEnum("eventType", ["message", "duplicate", "media_stored", "media_failed", "invalid", "error"]).notNull(),
+  outcome: mysqlEnum("outcome", ["accepted", "duplicate", "rejected", "failed"]).notNull(),
+  messageId: varchar("messageId", { length: 256 }),
+  groupId: varchar("groupId", { length: 128 }),
+  errorCode: varchar("errorCode", { length: 64 }),
+  occurredAt: timestamp("occurredAt").defaultNow().notNull(),
+}, table => [
+  index("wa_bridge_events_occurred_idx").on(table.occurredAt),
+  index("wa_bridge_events_outcome_occurred_idx").on(table.outcome, table.occurredAt),
+  index("wa_bridge_events_message_idx").on(table.messageId),
+]);
+export type WaBridgeEvent = typeof waBridgeEvents.$inferSelect;
+export type InsertWaBridgeEvent = typeof waBridgeEvents.$inferInsert;
 
 // ─── Client Workflows ─────────────────────────────────────────────────────────
 export const clientWorkflows = mysqlTable("clientWorkflows", {
