@@ -334,10 +334,36 @@ async function persistConversation(sessionId: string, locale: LaylaLocale, messa
   }
 }
 
-const SAFE_FALLBACK: Record<LaylaLocale, string> = {
-  en: "I'm sorry, I'm having a brief technical issue. Please try again in a moment, or contact us directly via WhatsApp.",
-  ar: "عذرًا، أواجه مشكلة تقنية مؤقتة. يُرجى المحاولة مرة أخرى بعد قليل، أو تواصل معنا مباشرة عبر واتساب.",
-};
+export function deterministicLaylaReply(qualification: LaylaQualification, locale: LaylaLocale) {
+  if (qualification.contactEmail || qualification.contactPhone) {
+    return locale === "ar"
+      ? "شكرًا لك. تم تسجيل بيانات التواصل التي قدمتها طوعًا، ويمكن لمستشار من إليفاي متابعة حالتك. هل تفضل دولة أو برنامجًا محددًا؟"
+      : "Thank you. The contact details you voluntarily provided have been recorded so an ELEVAY advisor can follow up. Do you prefer a specific country or program?";
+  }
+  if (!qualification.goal) {
+    return locale === "ar"
+      ? "يسعدني مساعدتك. هل هدفك الانتقال والإقامة، حرية سفر أكبر، توسيع أعمالك، أم خطة بديلة؟"
+      : "I’ll be glad to help. Is your main goal relocation and residency, more travel freedom, business expansion, or a backup plan?";
+  }
+  if (!qualification.budget) {
+    return locale === "ar"
+      ? "شكرًا لتوضيح هدفك. ما نطاق ميزانيتك التقريبي، وهل ستتقدم بمفردك أم مع أفراد من العائلة؟"
+      : "Thank you for clarifying your goal. What is your approximate budget range, and will you apply alone or with family members?";
+  }
+  if (!qualification.familySize) {
+    return locale === "ar"
+      ? "ممتاز، يساعدني نطاق الميزانية في تضييق الخيارات. كم عدد أفراد الطلب، وهل لديك دولة مفضلة؟"
+      : "Great, that budget range helps narrow the options. How many applicants are included, and do you have a preferred country?";
+  }
+  if (!qualification.destinationPreference) {
+    return locale === "ar"
+      ? "شكرًا، أصبحت الصورة أوضح. هل لديك دولة مفضلة، وما وضعك المهني الحالي؟"
+      : "Thank you, the picture is clearer now. Do you have a preferred country, and what is your current employment status?";
+  }
+  return locale === "ar"
+    ? "شكرًا، لدي الآن معلومات مبدئية مفيدة. يمكنني متابعة تضييق الخيارات معك، أو يمكنك التواصل مع مستشار من إليفاي لمراجعة حالتك بالتفصيل."
+    : "Thank you, I now have useful preliminary information. I can continue narrowing the options with you, or you can contact an ELEVAY advisor for a detailed review.";
+}
 
 export async function chatWithLayla(input: {
   sessionId?: string;
@@ -385,7 +411,7 @@ export async function chatWithLayla(input: {
     if (!assistantMessage || isPromptLeak(assistantMessage)) throw new Error("layla_response_invalid");
   } catch {
     operationalFailure("model request failed");
-    const fallbackMessage = SAFE_FALLBACK[latestLocale];
+    const fallbackMessage = deterministicLaylaReply(deterministicQualification, latestLocale);
     let leadCaptured = false;
     try {
       leadCaptured = await captureLead(deterministicQualification, latestLocale, sessionId, input.ipAddress, input.userAgent);

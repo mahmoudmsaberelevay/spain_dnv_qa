@@ -17,6 +17,7 @@ vi.mock("./leadContactMatcher", () => ({ findLeadContactMatch: mocks.findLeadCon
 import * as laylaService from "./clientAppAiAdvisor";
 import {
   chatWithLayla,
+  deterministicLaylaReply,
   extractLaylaQualification,
   laylaChatInputSchema,
   scoreLaylaLead,
@@ -161,12 +162,20 @@ describe("ELEVAY Client app Layla advisor", () => {
     expect(state.rows[0].notified).toBe(true);
   });
 
-  it("returns a localized safe fallback on LLM failure without creating notifications", async () => {
+  it("continues qualification in the detected language on LLM failure without creating notifications", async () => {
     mocks.invokeLLM.mockRejectedValue(new Error("secret upstream stack trace"));
     const result = await chatWithLayla({ locale: "ar", message: "مرحبا", history: [] });
-    expect(result.message).toContain("مشكلة تقنية مؤقتة");
+    expect(result.message).toContain("هل هدفك");
+    expect(result.message).not.toContain("مشكلة تقنية");
     expect(result.message).not.toContain("secret");
     expect(mocks.notifyOwner).not.toHaveBeenCalled();
+  });
+
+  it("uses deterministic fallback stages to keep Layla useful during an upstream interruption", () => {
+    expect(deterministicLaylaReply({}, "en")).toContain("main goal");
+    expect(deterministicLaylaReply({ goal: "relocate" }, "en")).toContain("budget range");
+    expect(deterministicLaylaReply({ goal: "relocate", budget: "under_20k" }, "en")).toContain("How many applicants");
+    expect(deterministicLaylaReply({ contactPhone: "+201284981717" }, "en")).toContain("advisor can follow up");
   });
 
   it("persists the user turn and localized safe fallback when the model fails", async () => {
