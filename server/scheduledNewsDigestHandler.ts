@@ -5,6 +5,18 @@ import { sdk } from "./_core/sdk";
 import { getDb } from "./db";
 import { runNewsDigestImport } from "./newsDigestService";
 
+export function isCairoNewsDigestTime(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Cairo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const hour = Number(parts.find(part => part.type === "hour")?.value);
+  const minute = Number(parts.find(part => part.type === "minute")?.value);
+  return hour === 9 && minute === 30;
+}
+
 export async function scheduledNewsDigestHandler(req: Request, res: Response) {
   let identity: { isCron?: boolean; taskUid?: string };
   try {
@@ -24,6 +36,9 @@ export async function scheduledNewsDigestHandler(req: Request, res: Response) {
   }
   if (!settings.scheduleCronTaskUid) {
     await db.update(newsDigestSettings).set({ scheduleCronTaskUid: identity.taskUid }).where(eq(newsDigestSettings.id, 1));
+  }
+  if (!isCairoNewsDigestTime()) {
+    return res.json({ ok: true, skipped: "outside_cairo_0930_window" });
   }
   if (!settings.gmailRefreshTokenEncrypted) {
     return res.status(409).json({ error: "gmail_connection_required" });

@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { describe, expect, it } from "vitest";
 import { createNewsGmailOAuthState, decryptGmailRefreshToken, encryptGmailRefreshToken, extractNewsArticlesFromDigest, NEWS_MAX_ARTICLES, NEWS_SOURCE_MAILBOX, NEWS_SUBJECT_TRIGGER, verifyNewsGmailOAuthState } from "./newsDigestService";
+import { isCairoNewsDigestTime } from "./scheduledNewsDigestHandler";
 
 describe("ELEVAY News Daily Digest importer", () => {
   it("extracts Google Alerts articles, unwraps original URLs, and deduplicates canonical links", () => {
@@ -61,5 +62,12 @@ The report summarizes current processing and appointment developments for applic
     const state = createNewsGmailOAuthState();
     expect(verifyNewsGmailOAuthState(state)).toBe(true);
     expect(verifyNewsGmailOAuthState(`${state}tampered`)).toBe(false);
+  });
+
+  it("runs at 09:30 Cairo in both summer and winter UTC offsets", () => {
+    expect(isCairoNewsDigestTime(new Date("2026-09-10T06:30:00Z"))).toBe(true);
+    expect(isCairoNewsDigestTime(new Date("2026-01-10T07:30:00Z"))).toBe(true);
+    expect(isCairoNewsDigestTime(new Date("2026-09-10T07:30:00Z"))).toBe(false);
+    expect(isCairoNewsDigestTime(new Date("2026-01-10T06:30:00Z"))).toBe(false);
   });
 });
