@@ -64,9 +64,12 @@ The report summarizes current processing and appointment developments for applic
     expect(verifyNewsGmailOAuthState(`${state}tampered`)).toBe(false);
   });
 
-  it("runs at 09:30 Cairo in both summer and winter UTC offsets", () => {
+  it("runs during the 09:00 Cairo hour despite routine scheduler delay, in summer and winter", () => {
     expect(isCairoNewsDigestTime(new Date("2026-09-10T06:30:00Z"))).toBe(true);
+    expect(isCairoNewsDigestTime(new Date("2026-09-10T06:31:51Z"))).toBe(true);
+    expect(isCairoNewsDigestTime(new Date("2026-09-10T06:59:59Z"))).toBe(true);
     expect(isCairoNewsDigestTime(new Date("2026-01-10T07:30:00Z"))).toBe(true);
+    expect(isCairoNewsDigestTime(new Date("2026-01-10T07:45:00Z"))).toBe(true);
     expect(isCairoNewsDigestTime(new Date("2026-09-10T07:30:00Z"))).toBe(false);
     expect(isCairoNewsDigestTime(new Date("2026-01-10T06:30:00Z"))).toBe(false);
   });

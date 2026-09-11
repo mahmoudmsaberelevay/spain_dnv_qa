@@ -13,8 +13,11 @@ export function isCairoNewsDigestTime(now = new Date()) {
     hour12: false,
   }).formatToParts(now);
   const hour = Number(parts.find(part => part.type === "hour")?.value);
-  const minute = Number(parts.find(part => part.type === "minute")?.value);
-  return hour === 9 && minute === 30;
+  // Heartbeat delivery is at-least-once and may start a few minutes after the
+  // nominal 09:30 trigger. The alternate DST cron slot is in the 08:00 or
+  // 10:00 Cairo hour, so accepting the 09:00 hour is both resilient and safe.
+  // Importing is idempotent per Gmail message and canonical article URL.
+  return hour === 9;
 }
 
 export async function scheduledNewsDigestHandler(req: Request, res: Response) {
