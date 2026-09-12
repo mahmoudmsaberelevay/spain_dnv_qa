@@ -13,6 +13,7 @@ import { runPublicContentSync } from "./publicContentService";
 import { replaceClientPortalAssignments } from "./clientPortalAssignmentService";
 import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPolicy";
 import { decodeProviderCoverUpload, MAX_PROVIDER_COVER_BYTES, providerCoverStorageKey } from "./clientPortalProviderMedia";
+import { listStaffMessages, sendStaffMessage } from "./clientChatService";
 import {
   clientCases,
   clientPortalApplications,
@@ -259,12 +260,12 @@ export const clientPortalAdminRouter = router({
     return { ok: true };
   }),
 
-  listMessages: adminProcedure.input(z.object({ applicationPublicId: z.string().uuid() })).query(async ({ input }) => {
+  listMessages: adminProcedure.input(z.object({ applicationPublicId: z.string().uuid() })).query(async ({ ctx, input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
     const [application] = await db.select().from(clientPortalApplications).where(eq(clientPortalApplications.publicId, input.applicationPublicId)).limit(1);
     if (!application) throw new TRPCError({ code: "NOT_FOUND" });
-    return db.select().from(clientPortalMessages).where(eq(clientPortalMessages.portalApplicationId, application.id)).orderBy(asc(clientPortalMessages.createdAt));
+    return listStaffMessages(application.clientCaseId, ctx.user);
   }),
 
   replyToClient: adminProcedure.input(z.object({ applicationPublicId: z.string().uuid(), body: z.string().trim().min(1).max(5000), visibility: z.enum(["client", "internal"]).default("client") })).mutation(async ({ ctx, input }) => {
@@ -272,12 +273,8 @@ export const clientPortalAdminRouter = router({
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
     const [application] = await db.select().from(clientPortalApplications).where(eq(clientPortalApplications.publicId, input.applicationPublicId)).limit(1);
     if (!application) throw new TRPCError({ code: "NOT_FOUND" });
-    const publicId = randomUUID();
-    await db.insert(clientPortalMessages).values({ publicId, portalApplicationId: application.id, senderType: "staff", senderStaffUserId: ctx.user.id, visibility: input.visibility, body: input.body });
-    if (input.visibility === "client") {
-      await db.insert(clientPortalNotifications).values({ publicId: randomUUID(), portalUserId: application.portalUserId, type: "new_message", titleEn: "New message from Elevay", titleAr: "رسالة جديدة من إليفاي", bodyEn: input.body.slice(0, 500), bodyAr: input.body.slice(0, 500), entityType: "message", entityPublicId: publicId, createdAt: Date.now() });
-      await pushClientNotification(application.portalUserId, "New message from Elevay", input.body.slice(0, 180), { type: "new_message", applicationPublicId: application.publicId, entityPublicId: publicId });
-    }
+    const message = await sendStaffMessage({ clientCaseId: application.clientCaseId, clientMessageId: `portal-admin:${randomUUID()}`, body: input.body, visibility: input.visibility, actor: ctx.user });
+    const publicId = message.publicId;
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "client_portal_message", publicId, `${input.visibility} reply`);
     return { publicId };
   }),

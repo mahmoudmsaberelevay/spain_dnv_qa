@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Plus, FolderOpen, User, ChevronRight, FileText, Briefcase, Users, Search, Link2, CreditCard, Trash2 } from "lucide-react";
+import { Plus, FolderOpen, User, ChevronRight, FileText, Briefcase, Users, Search, Link2, CreditCard, Trash2, MessageCircle, BellOff } from "lucide-react";
 
 type ChildEntry = { name: string; age: number };
 type PaymentDraft = { paymentName: string; amountEur: string; dueDate: string };
@@ -81,6 +81,11 @@ export default function ClientDocs() {
   const { data: clients, isLoading, refetch } = trpc.clientDocs.list.useQuery(undefined, {
     enabled: isAuthenticated,
   });
+  const { data: chatSummaries = [] } = trpc.clientChat.summaries.useQuery(undefined, {
+    enabled: isAuthenticated,
+    refetchInterval: 10_000,
+  });
+  const chatSummaryByCase = new Map(chatSummaries.map(summary => [summary.clientCaseId, summary]));
 
   const createMutation = trpc.clientDocs.create.useMutation({
     onSuccess: (data) => {
@@ -590,10 +595,12 @@ export default function ClientDocs() {
         </div>
       ) : clients && clients.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {clients.map(client => (
+          {clients.map(client => {
+            const chat = chatSummaryByCase.get(client.id);
+            return (
             <button
               key={client.id}
-              onClick={() => setLocation(`/docs/clients/${client.id}`)}
+              onClick={() => setLocation(`/docs/clients/${client.id}${chat?.unreadCount ? "?tab=chat" : ""}`)}
               className="w-full text-left bg-white hover:bg-gray-50 border border-gray-200 hover:border-[#1e3a5f]/40 rounded-xl p-4 transition-all duration-200 group shadow-sm"
             >
               <div className="flex items-start justify-between">
@@ -607,6 +614,8 @@ export default function ClientDocs() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {chat?.muted ? <BellOff className="h-4 w-4 text-gray-400" aria-label="Conversation muted" /> : null}
+                  {chat?.unreadCount ? <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#1e7184] text-white text-[11px] font-bold inline-flex items-center justify-center" aria-label={`${chat.unreadCount} unread chat messages`}>{chat.unreadCount > 99 ? "99+" : chat.unreadCount}</span> : null}
                   <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${getTypeBadge(client.applicationType)}`}>
                     {getTypeLabel(client.applicationType)}
                   </span>
@@ -633,8 +642,13 @@ export default function ClientDocs() {
                   </span>
                 )}
               </div>
+              {chat?.lastMessageAt ? <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2 min-w-0">
+                <MessageCircle className="h-4 w-4 text-[#1e7184] shrink-0" />
+                <span className={`text-xs truncate flex-1 ${chat.unreadCount ? "text-gray-900 font-semibold" : "text-gray-500"}`}>{chat.lastSenderType === "client" ? "Client: " : ""}{chat.lastMessagePreview || "New chat activity"}</span>
+                <span className={`text-[10px] shrink-0 ${chat.waitingOn === "staff" ? "text-amber-700 font-semibold" : "text-gray-400"}`}>{chat.waitingOn === "staff" ? "Reply needed" : chat.waitingOn === "client" ? "Waiting for client" : ""}</span>
+              </div> : null}
             </button>
-          ))}
+          );})}
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-20 text-center">

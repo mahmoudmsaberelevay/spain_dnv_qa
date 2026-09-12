@@ -28,10 +28,10 @@ describe("CRM employee access in ELEVAY Client", () => {
 
   it("uses an isolated, revocable session table and never turns employees into client portal users", () => {
     const schema = read("drizzle/schema.ts");
-    const migration = read("drizzle/0076_client_employee_mobile_access.sql");
+    const migration = read("drizzle/0078_client_employee_mobile_access.sql");
     const auth = read("server/clientEmployeeAuth.ts");
     expect(schema).toContain('mysqlTable("client_employee_sessions"');
-    expect(migration).toContain("CREATE TABLE `client_employee_sessions`");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS `client_employee_sessions`");
     expect(migration).not.toMatch(/\b(DROP|DELETE|TRUNCATE)\b/i);
     expect(auth).toContain('tokenType: "client_employee_access"');
     expect(auth).toContain('`${ENV.cookieSecret}:elevay-client-employee:v1`');
