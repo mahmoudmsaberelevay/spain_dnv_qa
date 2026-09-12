@@ -10,6 +10,7 @@ import {
   clientCases,
   clientDocumentationPayments,
   clientDocuments,
+  clientEmployeeSessions,
   clientPortalApplications,
   clientPortalApplicants,
   clientPortalDeliveryOutbox,
@@ -60,17 +61,36 @@ import {
   getEmployeeFolderDocuments,
   getEmployeeFolderTimeline,
   listEmployeeFolders,
+  decodeEmployeeFolderId,
 } from "./clientEmployeeDocuments";
 import {
+  deleteStaffMessage,
+  editStaffMessage,
+  getStaffAttachmentAccess,
+  getStaffConversation,
   getStaffChatEmailRecipients,
   getPortalChatPreferences,
   getPortalAttachmentAccess,
+  listEmployeeChatUnread,
   listPortalConversationMessages,
+  listPortalChatUnread,
+  listStaffMessages,
+  markPortalRead,
+  markStaffRead,
   pollPortalConversation,
+  pollStaffConversation,
+  resolvePortalChatMessageApplications,
   sendPortalConversationAttachment,
   sendPortalConversationMessage,
+  sendStaffAttachment,
+  sendStaffMessage,
+  toggleStaffReaction,
+  toggleStaffStar,
+  updateStaffChatPreferences,
+  updateStaffTyping,
   updatePortalChatPreferences,
   updatePortalTyping,
+  upsertStaffDraft,
 } from "./clientChatService";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
@@ -148,6 +168,45 @@ function requireString(value: unknown, field: string, max = 500) {
 
 function portalClientMessageId(value: unknown) {
   return typeof value === "string" && /^[A-Za-z0-9:_-]{8,64}$/.test(value) ? value : `portal:${randomUUID()}`;
+}
+
+function employeeChatCaseId(req: EmployeeRequest, res: Response) {
+  const clientCaseId = decodeEmployeeFolderId(req.params.folderId);
+  if (!clientCaseId) {
+    error(res, 404, "documentation_folder_not_found");
+    return null;
+  }
+  return clientCaseId;
+}
+
+function employeeChatActor(req: EmployeeRequest) {
+  const user = req.employee!.user;
+  return { id: user.id, openId: user.openId, email: user.email, name: user.name, role: user.role };
+}
+
+function serializeMobileStaffMessages(rows: any[], participantId: number) {
+  const publicIdById = new Map(rows.map(row => [row.id, row.publicId]));
+  return rows.map(row => ({
+    publicId: row.publicId,
+    cursorId: row.id,
+    senderType: row.senderType,
+    senderName: row.senderNameSnapshot,
+    isMine: row.senderParticipantId === participantId,
+    visibility: row.visibility,
+    messageType: row.messageType,
+    body: row.body,
+    attachments: row.attachments ?? [],
+    replyToPublicId: row.replyToMessageId ? publicIdById.get(row.replyToMessageId) ?? null : null,
+    isImportant: Boolean(row.isImportant),
+    isPinned: Boolean(row.isPinned),
+    isStarred: Boolean(row.isStarred),
+    reactions: row.reactions ?? [],
+    receiptSummary: row.receiptSummary ?? { delivered: 0, read: 0, listened: 0 },
+    editedAt: row.editedAt,
+    deletedAt: row.deletedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }));
 }
 
 function validNewPassword(value: unknown): value is string {
@@ -258,7 +317,7 @@ export async function pushClientNotification(portalUserId: number, title: string
     const [result] = await db.insert(clientPortalDeliveryOutbox).values({ eventType: data.type || "portal_notification", channel: "push", recipient: token, payload: { title, body, data } });
     const outboxId = Number((result as { insertId?: number }).insertId || 0);
     try {
-      const response = await fetch("https://exp.host/--/api/v2/push/send", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ to: token, title, body, data, sound: "default" }) });
+      const response = await fetch("https://exp.host/--/api/v2/push/send", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ to: token, title, body, data, sound: "default", ...(data.type === "client_chat_message" ? { channelId: "chat" } : {}) }) });
       if (!response.ok) throw new Error(`push_${response.status}`);
       if (outboxId) await db.update(clientPortalDeliveryOutbox).set({ status: "sent", attempts: 1, processedAt: new Date() }).where(eq(clientPortalDeliveryOutbox.id, outboxId));
     } catch (pushError) {
@@ -393,6 +452,177 @@ export function registerClientPortalRoutes(app: Express) {
     const body = safeBody<{ locale: "en" | "ar" }>(req);
     await updateEmployeeMobileLocale(req.employee!, body.locale === "ar" ? "ar" : "en");
     return res.json({ ok: true });
+  });
+
+  app.post("/client-api/employee/devices/push-token", writeLimiter, async (req: EmployeeRequest, res) => {
+    const token = typeof req.body?.pushToken === "string" ? req.body.pushToken.trim() : "";
+    if (!/^(?:Exponent|Expo)PushToken\[[A-Za-z0-9_-]+\]$/.test(token)) return error(res, 400, "invalid_push_token");
+    const db = await getDb();
+    if (!db) return error(res, 503, "service_unavailable");
+    await db.update(clientEmployeeSessions).set({ pushToken: token, lastSeenAt: new Date() }).where(eq(clientEmployeeSessions.id, req.employee!.session.id));
+    return res.json({ ok: true });
+  });
+
+  app.get("/client-api/employee/chat/unread", async (req: EmployeeRequest, res) => {
+    try { return res.json(await listEmployeeChatUnread(employeeChatActor(req))); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.get("/client-api/employee/notifications", async (req: EmployeeRequest, res) => {
+    try {
+      const unread = await listEmployeeChatUnread(employeeChatActor(req));
+      const locale = req.employee!.locale;
+      return res.json(unread.items.map(item => ({
+        publicId: `employee-chat-${createHash("sha256").update(`${req.employee!.user.id}:${item.folderPublicId}`).digest("hex").slice(0, 24)}`,
+        type: "client_chat_message",
+        title: { en: "Unread client chat", ar: "محادثة عميل غير مقروءة" },
+        body: {
+          en: `${item.unreadCount} unread ${item.unreadCount === 1 ? "message" : "messages"}${item.lastMessagePreview ? ` — ${item.lastMessagePreview}` : ""}`,
+          ar: `${item.unreadCount} ${item.unreadCount === 1 ? "رسالة غير مقروءة" : "رسائل غير مقروءة"}`,
+        },
+        entityType: "chat_message",
+        entityPublicId: null,
+        employeeFolderId: item.folderPublicId,
+        isRead: false,
+        readAt: null,
+        createdAt: item.lastMessageAt ?? Date.now(),
+        locale,
+      })));
+    } catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.get("/client-api/employee/folders/:folderId/chat", async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    try { return res.json(await getStaffConversation(clientCaseId, employeeChatActor(req))); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.get("/client-api/employee/folders/:folderId/chat/messages", async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    const beforeId = Number(req.query.beforeId || 0) || undefined;
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit || 50) || 50));
+    try {
+      const context = await getStaffConversation(clientCaseId, employeeChatActor(req));
+      const rows = await listStaffMessages(clientCaseId, employeeChatActor(req), beforeId, limit);
+      return res.json(serializeMobileStaffMessages(rows, context.participant.id));
+    } catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.post("/client-api/employee/folders/:folderId/chat/messages", writeLimiter, async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    try {
+      const body = requireString(req.body?.body, "message", 10_000);
+      const message = await sendStaffMessage({
+        clientCaseId,
+        actor: employeeChatActor(req),
+        clientMessageId: portalClientMessageId(req.body?.clientMessageId),
+        body,
+        visibility: req.body?.visibility === "internal" ? "internal" : "client",
+        replyToPublicId: typeof req.body?.replyToPublicId === "string" ? req.body.replyToPublicId : null,
+      });
+      return res.status(message.isDuplicate ? 200 : 201).json({ publicId: message.publicId, createdAt: message.createdAt, duplicate: message.isDuplicate });
+    } catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.post("/client-api/employee/folders/:folderId/chat/attachments", writeLimiter, async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    try {
+      const message = await sendStaffAttachment({
+        clientCaseId,
+        actor: employeeChatActor(req),
+        visibility: req.body?.visibility === "internal" ? "internal" : "client",
+        clientMessageId: portalClientMessageId(req.body?.clientMessageId),
+        body: typeof req.body?.body === "string" ? req.body.body.trim().slice(0, 10_000) || null : null,
+        replyToPublicId: typeof req.body?.replyToPublicId === "string" ? req.body.replyToPublicId : null,
+        fileName: requireString(req.body?.fileName, "file_name", 255),
+        mimeType: requireString(req.body?.mimeType, "mime_type", 128),
+        fileSize: Number(req.body?.fileSize),
+        base64: requireString(req.body?.base64, "file", 36 * 1024 * 1024),
+        durationMs: Number.isFinite(Number(req.body?.durationMs)) ? Number(req.body.durationMs) : null,
+      });
+      if (!message) return error(res, 500, "chat_unavailable");
+      return res.status(message.isDuplicate ? 200 : 201).json({ publicId: message.publicId, createdAt: message.createdAt, duplicate: message.isDuplicate });
+    } catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.get("/client-api/employee/folders/:folderId/chat/attachments/:attachmentId/access", async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    try { return res.json(await getStaffAttachmentAccess(clientCaseId, employeeChatActor(req), req.params.attachmentId)); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.get("/client-api/employee/folders/:folderId/chat/poll", async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    try {
+      const context = await getStaffConversation(clientCaseId, employeeChatActor(req));
+      const result = await pollStaffConversation(clientCaseId, employeeChatActor(req), Math.max(0, Number(req.query.afterEventId || 0) || 0));
+      return res.json({ ...result, messages: serializeMobileStaffMessages(result.messages, context.participant.id) });
+    } catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.post("/client-api/employee/folders/:folderId/chat/typing", writeLimiter, async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    try { return res.json(await updateStaffTyping(clientCaseId, employeeChatActor(req), Boolean(req.body?.typing))); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.post("/client-api/employee/folders/:folderId/chat/messages/:messageId/read", writeLimiter, async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    try { return res.json(await markStaffRead(clientCaseId, employeeChatActor(req), req.params.messageId, Boolean(req.body?.listened))); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.put("/client-api/employee/folders/:folderId/chat/draft", writeLimiter, async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    try { return res.json(await upsertStaffDraft(clientCaseId, employeeChatActor(req), typeof req.body?.body === "string" ? req.body.body.slice(0, 10_000) : "")); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.patch("/client-api/employee/folders/:folderId/chat/preferences", writeLimiter, async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    const muteUntil = req.body?.muteUntil == null ? null : Number(req.body.muteUntil);
+    try { return res.json(await updateStaffChatPreferences(clientCaseId, employeeChatActor(req), { muteUntil, inApp: req.body?.inApp !== false, email: req.body?.email !== false, push: req.body?.push !== false })); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.patch("/client-api/employee/folders/:folderId/chat/messages/:messageId", writeLimiter, async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    try { return res.json(await editStaffMessage(clientCaseId, employeeChatActor(req), req.params.messageId, requireString(req.body?.body, "message", 10_000))); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.delete("/client-api/employee/folders/:folderId/chat/messages/:messageId", writeLimiter, async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    try { return res.json(await deleteStaffMessage(clientCaseId, employeeChatActor(req), req.params.messageId)); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.post("/client-api/employee/folders/:folderId/chat/messages/:messageId/reaction", writeLimiter, async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    const reaction = req.body?.reaction;
+    if (!["👍", "❤️", "🙏", "✅", "🎉", "👀"].includes(reaction)) return error(res, 400, "invalid_reaction");
+    try { return res.json(await toggleStaffReaction(clientCaseId, employeeChatActor(req), req.params.messageId, reaction)); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.post("/client-api/employee/folders/:folderId/chat/messages/:messageId/star", writeLimiter, async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    try { return res.json(await toggleStaffStar(clientCaseId, employeeChatActor(req), req.params.messageId)); }
+    catch (chatError) { return chatRouteError(res, chatError); }
   });
 
   app.get("/client-api/employee/folders", async (req: EmployeeRequest, res) => {
@@ -894,7 +1124,9 @@ export function registerClientPortalRoutes(app: Express) {
 
   app.get("/client-api/applications/:applicationId/messages", async (req: PortalRequest, res) => {
     try {
-      const rows = await listPortalConversationMessages(req.params.applicationId, req.portal!.user.id);
+      const beforePublicId = typeof req.query.before === "string" ? req.query.before : undefined;
+      const limit = Math.max(1, Math.min(100, Number(req.query.limit || 50) || 50));
+      const rows = await listPortalConversationMessages(req.params.applicationId, req.portal!.user.id, beforePublicId, limit);
       return res.json(rows.map(row => ({ ...row, attachmentDocumentId: null })));
     } catch (chatError) {
       return chatRouteError(res, chatError);
@@ -907,7 +1139,7 @@ export function registerClientPortalRoutes(app: Express) {
     let bodyText: string;
     try { bodyText = requireString(req.body?.body, "message", 5000); } catch { return error(res, 400, "invalid_message"); }
     try {
-      const message = await sendPortalConversationMessage({ applicationPublicId: req.params.applicationId, portalUserId: req.portal!.user.id, senderName: req.portal!.user.username, clientMessageId: portalClientMessageId(req.body?.clientMessageId), body: bodyText, replyToPublicId: typeof req.body?.replyToPublicId === "string" ? req.body.replyToPublicId : null });
+      const message = await sendPortalConversationMessage({ applicationPublicId: req.params.applicationId, portalUserId: req.portal!.user.id, senderName: owned.clientCase.clientName, clientMessageId: portalClientMessageId(req.body?.clientMessageId), body: bodyText, replyToPublicId: typeof req.body?.replyToPublicId === "string" ? req.body.replyToPublicId : null });
       const publicId = message.publicId;
       if (!message.isDuplicate) {
         const db = await getDb();
@@ -930,7 +1162,7 @@ export function registerClientPortalRoutes(app: Express) {
       const message = await sendPortalConversationAttachment({
         applicationPublicId: req.params.applicationId,
         portalUserId: req.portal!.user.id,
-        senderName: req.portal!.user.username,
+        senderName: owned.clientCase.clientName,
         clientMessageId: portalClientMessageId(req.body?.clientMessageId),
         body: typeof req.body?.body === "string" ? req.body.body.trim().slice(0, 10_000) || null : null,
         replyToPublicId: typeof req.body?.replyToPublicId === "string" ? req.body.replyToPublicId : null,
@@ -974,10 +1206,21 @@ export function registerClientPortalRoutes(app: Express) {
     catch (chatError) { return chatRouteError(res, chatError); }
   });
 
+  app.post("/client-api/applications/:applicationId/messages/:messageId/read", writeLimiter, async (req: PortalRequest, res) => {
+    try { return res.json(await markPortalRead(req.params.applicationId, req.portal!.user.id, req.params.messageId, Boolean(req.body?.listened), req.header("x-device-name"))); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.get("/client-api/chat/unread", async (req: PortalRequest, res) => {
+    try { return res.json(await listPortalChatUnread(req.portal!.user.id)); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
   app.get("/client-api/notifications", async (req: PortalRequest, res) => {
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
     const rows = await db.select().from(clientPortalNotifications).where(eq(clientPortalNotifications.portalUserId, req.portal!.user.id)).orderBy(desc(clientPortalNotifications.createdAt)).limit(100);
+    const chatApplications = await resolvePortalChatMessageApplications(req.portal!.user.id, rows.filter(row => row.entityType === "chat_message" && row.entityPublicId).map(row => row.entityPublicId!));
     return res.json(rows.map(row => {
       const attachment = row.entityType === "notification_attachment" && row.entityPublicId
         ? getClientNotificationAttachment(row.entityPublicId)
@@ -989,6 +1232,7 @@ export function registerClientPortalRoutes(app: Express) {
         body: { en: row.bodyEn, ar: row.bodyAr },
         entityType: row.entityType,
         entityPublicId: row.entityPublicId,
+        applicationPublicId: row.entityType === "chat_message" && row.entityPublicId ? chatApplications[row.entityPublicId] ?? null : null,
         attachment: attachment ? {
           publicId: attachment.publicId,
           fileName: attachment.fileName,

@@ -1512,6 +1512,7 @@ export const clientEmployeeSessions = mysqlTable("client_employee_sessions", {
   platform: varchar("platform", { length: 50 }),
   osVersion: varchar("osVersion", { length: 100 }),
   appVersion: varchar("appVersion", { length: 50 }),
+  pushToken: varchar("pushToken", { length: 512 }),
   locale: mysqlEnum("locale", ["en", "ar"]).default("en").notNull(),
   ipAddress: varchar("ipAddress", { length: 64 }),
   expiresAt: timestamp("expiresAt").notNull(),

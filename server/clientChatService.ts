@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { getDb } from "./db";
@@ -6,6 +6,7 @@ import { getUserModuleAccess, isOwner } from "./permissionsRouter";
 import {
   clientCases,
   clientDocuments,
+  clientEmployeeSessions,
   clientChatAttachments,
   clientChatAuditEvents,
   clientChatConversations,
@@ -23,6 +24,7 @@ import {
   clientChatScheduledMessages,
   clientPortalApplications,
   clientPortalDocuments,
+  clientPortalDeliveryOutbox,
   clientPortalMessages,
   clientPortalNotifications,
   clientPortalUsers,
@@ -30,6 +32,7 @@ import {
 } from "../drizzle/schema";
 import { storageGet, storagePut } from "./storage";
 import { decodeChatAttachment, transcribeChatVoice } from "./clientChatMedia";
+import { encodeEmployeeFolderId } from "./clientEmployeeDocuments";
 
 const MESSAGE_LIMIT = 100;
 const EVENT_LIMIT = 250;
@@ -519,6 +522,7 @@ export async function executeScheduledChatMessageByTaskUid(taskUid: string) {
     await db.insert(clientChatEvents).values({ conversationId: scheduled.conversation.id, eventType: "message_created", entityId: message.id, actorParticipantId: scheduled.participant.id, metadata: { visibility: scheduled.scheduled.visibility, scheduled: true }, createdAt: now });
     await insertAudit(db, { conversationId: scheduled.conversation.id, messageId: message.id, actorStaffUserId: scheduled.participant.staffUserId, action: "scheduled_message_sent", metadata: { scheduledMessagePublicId: scheduled.scheduled.publicId } });
     if (scheduled.scheduled.visibility === "client") await notifyPortalChatParticipants({ clientCaseId: scheduled.conversation.clientCaseId, conversationId: scheduled.conversation.id, messagePublicId: message.publicId, kind: "message" });
+    await notifyEmployeeChatParticipants({ clientCaseId: scheduled.conversation.clientCaseId, conversationId: scheduled.conversation.id, messagePublicId: message.publicId, kind: "message", senderStaffUserId: scheduled.participant.staffUserId });
     return { ok: true, sent: true };
   } catch (error) {
     await db.update(clientChatScheduledMessages).set({ status: "scheduled", failureReason: "Delivery retry required", updatedAt: Date.now() }).where(eq(clientChatScheduledMessages.id, scheduled.scheduled.id));
@@ -596,6 +600,83 @@ async function notifyPortalChatParticipants(input: { clientCaseId: number; conve
     }
   } catch (error) {
     console.error("[ClientChat] Client notification failed", { clientCaseId: input.clientCaseId, messagePublicId: input.messagePublicId, error: error instanceof Error ? error.message : "Unknown notification error" });
+  }
+}
+
+export async function notifyEmployeeChatParticipants(input: {
+  clientCaseId: number;
+  conversationId: number;
+  messagePublicId: string;
+  kind: "message" | "attachment";
+  senderStaffUserId?: number | null;
+}) {
+  try {
+    const db = await requireDb();
+    const now = Date.now();
+    const participants = await db.select({
+      staffUserId: clientChatParticipants.staffUserId,
+      muteUntil: clientChatParticipants.muteUntil,
+      preferences: clientChatParticipants.notificationPreferences,
+    }).from(clientChatParticipants).where(and(
+      eq(clientChatParticipants.conversationId, input.conversationId),
+      eq(clientChatParticipants.participantType, "staff"),
+      eq(clientChatParticipants.status, "active"),
+    ));
+    const staffIds = Array.from(new Set(participants
+      .map(row => row.staffUserId)
+      .filter((id): id is number => id != null && id !== input.senderStaffUserId)));
+    if (!staffIds.length) return { notified: 0 };
+    const sessions = await db.select({
+      staffUserId: clientEmployeeSessions.staffUserId,
+      pushToken: clientEmployeeSessions.pushToken,
+    }).from(clientEmployeeSessions).where(and(
+      inArray(clientEmployeeSessions.staffUserId, staffIds),
+      isNull(clientEmployeeSessions.revokedAt),
+      gt(clientEmployeeSessions.expiresAt, new Date()),
+    ));
+    const preferenceByStaff = new Map(participants.map(row => [row.staffUserId, row]));
+    const title = input.kind === "attachment" ? "New secure client attachment" : "New client message";
+    const body = input.kind === "attachment"
+      ? "A secure attachment is waiting in Client Documentation Chat."
+      : "A new message is waiting in Client Documentation Chat.";
+    const data = {
+      type: "client_chat_message",
+      entityType: "chat_message",
+      entityPublicId: input.messagePublicId,
+      employeeFolderId: encodeEmployeeFolderId(input.clientCaseId),
+      target: "chat",
+    };
+    let notified = 0;
+    for (const session of sessions) {
+      const participant = preferenceByStaff.get(session.staffUserId);
+      const preferences = participant?.preferences && typeof participant.preferences === "object"
+        ? participant.preferences as Record<string, boolean>
+        : {};
+      if (!session.pushToken || Boolean(participant?.muteUntil && participant.muteUntil > now) || preferences.push === false) continue;
+      if (!/^(?:Exponent|Expo)PushToken\[[A-Za-z0-9_-]+\]$/.test(session.pushToken)) continue;
+      const tokenHash = createHash("sha256").update(session.pushToken).digest("hex").slice(0, 16);
+      const idempotencyKey = `employee-chat:${input.messagePublicId}:s:${session.staffUserId}:t:${tokenHash}`.slice(0, 191);
+      const [existing] = await db.select({ id: clientPortalDeliveryOutbox.id }).from(clientPortalDeliveryOutbox).where(eq(clientPortalDeliveryOutbox.idempotencyKey, idempotencyKey)).limit(1);
+      if (existing) continue;
+      const [result] = await db.insert(clientPortalDeliveryOutbox).values({ idempotencyKey, eventType: "client_chat_message", channel: "push", recipient: session.pushToken, payload: { title, body, data } });
+      const outboxId = Number((result as { insertId?: number }).insertId || 0);
+      try {
+        const response = await fetch("https://exp.host/--/api/v2/push/send", {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({ to: session.pushToken, title, body, data, sound: "default", channelId: "chat" }),
+        });
+        if (!response.ok) throw new Error(`push_${response.status}`);
+        if (outboxId) await db.update(clientPortalDeliveryOutbox).set({ status: "sent", attempts: 1, processedAt: new Date() }).where(eq(clientPortalDeliveryOutbox.id, outboxId));
+        notified += 1;
+      } catch (pushError) {
+        if (outboxId) await db.update(clientPortalDeliveryOutbox).set({ status: "failed", attempts: 1, lastError: String(pushError).slice(0, 4000) }).where(eq(clientPortalDeliveryOutbox.id, outboxId));
+      }
+    }
+    return { notified };
+  } catch (error) {
+    console.error("[ClientChat] Employee push failed", { clientCaseId: input.clientCaseId, messagePublicId: input.messagePublicId, error: error instanceof Error ? error.message : "Unknown notification error" });
+    return { notified: 0 };
   }
 }
 
@@ -1000,7 +1081,10 @@ export async function sendStaffMessage(input: {
     });
     return { ...created, isDuplicate: false as const };
   });
-  if (!result.isDuplicate && input.visibility === "client") await notifyPortalChatParticipants({ clientCaseId: input.clientCaseId, conversationId: conversation.id, messagePublicId: result.publicId, kind: "message" });
+  if (!result.isDuplicate) {
+    if (input.visibility === "client") await notifyPortalChatParticipants({ clientCaseId: input.clientCaseId, conversationId: conversation.id, messagePublicId: result.publicId, kind: "message" });
+    await notifyEmployeeChatParticipants({ clientCaseId: input.clientCaseId, conversationId: conversation.id, messagePublicId: result.publicId, kind: "message", senderStaffUserId: input.actor.id });
+  }
   return result;
 }
 
@@ -1093,7 +1177,10 @@ export async function sendStaffAttachment(input: ChatAttachmentUpload & {
   if (media.messageType === "voice") await completeVoiceTranscription(db, conversation.id, createdMessageId, attachmentPublicId, stored.key, participant.id, input.visibility);
   const [created] = await db.select().from(clientChatMessages).where(eq(clientChatMessages.id, createdMessageId)).limit(1);
   const enriched = created ? (await enrichStaffMessages(db, participant.id, [created]))[0] : null;
-  if (enriched && input.visibility === "client") await notifyPortalChatParticipants({ clientCaseId: input.clientCaseId, conversationId: conversation.id, messagePublicId: enriched.publicId, kind: "attachment" });
+  if (enriched) {
+    if (input.visibility === "client") await notifyPortalChatParticipants({ clientCaseId: input.clientCaseId, conversationId: conversation.id, messagePublicId: enriched.publicId, kind: "attachment" });
+    await notifyEmployeeChatParticipants({ clientCaseId: input.clientCaseId, conversationId: conversation.id, messagePublicId: enriched.publicId, kind: "attachment", senderStaffUserId: input.actor.id });
+  }
   return enriched ? { ...enriched, isDuplicate: false as const } : null;
 }
 
@@ -1415,25 +1502,37 @@ export async function updatePortalChatPreferences(applicationPublicId: string, p
   return { muteUntil, inApp: input.inApp, push: input.push, conversationStatus: conversation.status };
 }
 
-export async function listPortalConversationMessages(applicationPublicId: string, portalUserId: number) {
+export async function listPortalConversationMessages(applicationPublicId: string, portalUserId: number, beforePublicId?: string, limit = 50) {
   const { db, conversation, participant } = await requirePortalConversation(applicationPublicId, portalUserId, false);
   const hidden = await db.select({ messageId: clientChatHiddenMessages.messageId }).from(clientChatHiddenMessages)
     .where(eq(clientChatHiddenMessages.participantId, participant.id));
   const hiddenIds = new Set(hidden.map(row => row.messageId));
-  const rows = await db.select().from(clientChatMessages).where(and(
-    eq(clientChatMessages.conversationId, conversation.id),
-    eq(clientChatMessages.visibility, "client"),
-  )).orderBy(desc(clientChatMessages.id)).limit(MESSAGE_LIMIT);
-  return projectPortalMessages(db, rows.filter(row => !hiddenIds.has(row.id)).reverse());
+  let beforeId: number | undefined;
+  if (beforePublicId) {
+    const [before] = await db.select({ id: clientChatMessages.id }).from(clientChatMessages).where(and(
+      eq(clientChatMessages.publicId, beforePublicId),
+      eq(clientChatMessages.conversationId, conversation.id),
+      eq(clientChatMessages.visibility, "client"),
+    )).limit(1);
+    if (!before) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid message cursor" });
+    beforeId = before.id;
+  }
+  const predicates = [eq(clientChatMessages.conversationId, conversation.id), eq(clientChatMessages.visibility, "client")];
+  if (beforeId) predicates.push(lt(clientChatMessages.id, beforeId));
+  const rows = await db.select().from(clientChatMessages).where(and(...predicates)).orderBy(desc(clientChatMessages.id)).limit(Math.min(Math.max(limit, 1), MESSAGE_LIMIT));
+  return projectPortalMessages(db, rows.filter(row => !hiddenIds.has(row.id)).reverse(), participant.id);
 }
 
-async function projectPortalMessages(db: Awaited<ReturnType<typeof requireDb>>, rows: Array<typeof clientChatMessages.$inferSelect>) {
+async function projectPortalMessages(db: Awaited<ReturnType<typeof requireDb>>, rows: Array<typeof clientChatMessages.$inferSelect>, viewerParticipantId?: number) {
   const publicIdById = new Map(rows.map(row => [row.id, row.publicId]));
   const messageIds = rows.map(row => row.id);
-  const attachmentRows = messageIds.length ? await db.select().from(clientChatAttachments).where(and(
-    inArray(clientChatAttachments.messageId, messageIds),
-    eq(clientChatAttachments.scanStatus, "clean"),
-  )) : [];
+  const [attachmentRows, receiptRows] = await Promise.all([
+    messageIds.length ? db.select().from(clientChatAttachments).where(and(
+      inArray(clientChatAttachments.messageId, messageIds),
+      eq(clientChatAttachments.scanStatus, "clean"),
+    )) : [],
+    messageIds.length ? db.select().from(clientChatMessageReceipts).where(inArray(clientChatMessageReceipts.messageId, messageIds)) : [],
+  ]);
   const attachmentMap = new Map<number, Array<{
     publicId: string;
     originalFileName: string;
@@ -1460,16 +1559,26 @@ async function projectPortalMessages(db: Awaited<ReturnType<typeof requireDb>>, 
     });
     attachmentMap.set(attachment.messageId, current);
   }
+  const receiptMap = new Map<number, { delivered: number; read: number; listened: number }>();
+  for (const receipt of receiptRows) {
+    const aggregate = receiptMap.get(receipt.messageId) ?? { delivered: 0, read: 0, listened: 0 };
+    if (receipt.deliveredAt) aggregate.delivered += 1;
+    if (receipt.readAt) aggregate.read += 1;
+    if (receipt.listenedAt) aggregate.listened += 1;
+    receiptMap.set(receipt.messageId, aggregate);
+  }
   return rows.map(row => ({
     publicId: row.publicId,
     senderType: row.senderType,
     senderName: row.senderNameSnapshot,
+    isMine: viewerParticipantId != null && row.senderParticipantId === viewerParticipantId,
     messageType: row.messageType,
     body: row.body,
     attachments: row.deletedAt ? [] : attachmentMap.get(row.id) ?? [],
     replyToPublicId: row.replyToMessageId ? publicIdById.get(row.replyToMessageId) ?? null : null,
     isImportant: row.isImportant,
     isPinned: row.isPinned,
+    receiptSummary: receiptMap.get(row.id) ?? { delivered: 0, read: 0, listened: 0 },
     editedAt: row.editedAt,
     deletedAt: row.deletedAt,
     createdAt: row.createdAt,
@@ -1485,10 +1594,10 @@ export async function sendPortalConversationMessage(input: {
   body: string;
   replyToPublicId?: string | null;
 }) {
-  const { db, conversation, participant } = await requirePortalConversation(input.applicationPublicId, input.portalUserId, true);
+  const { db, conversation, participant, owned } = await requirePortalConversation(input.applicationPublicId, input.portalUserId, true);
   const body = input.body.trim();
   if (!body) throw new TRPCError({ code: "BAD_REQUEST", message: "Message cannot be empty" });
-  return db.transaction(async tx => {
+  const result = await db.transaction(async tx => {
     const [duplicate] = await tx.select().from(clientChatMessages).where(eq(clientChatMessages.clientMessageId, input.clientMessageId)).limit(1);
     if (duplicate) {
       if (duplicate.conversationId !== conversation.id || duplicate.senderParticipantId !== participant.id) {
@@ -1528,6 +1637,8 @@ export async function sendPortalConversationMessage(input: {
     await insertAudit(tx, { conversationId: conversation.id, messageId, actorPortalUserId: input.portalUserId, action: "message_created" });
     return { ...created, isDuplicate: false };
   });
+  if (!result.isDuplicate) await notifyEmployeeChatParticipants({ clientCaseId: owned.clientCase.id, conversationId: conversation.id, messagePublicId: result.publicId, kind: "message" });
+  return result;
 }
 
 export async function sendPortalConversationAttachment(input: ChatAttachmentUpload & {
@@ -1535,11 +1646,11 @@ export async function sendPortalConversationAttachment(input: ChatAttachmentUplo
   portalUserId: number;
   senderName: string;
 }) {
-  const { db, conversation, participant } = await requirePortalConversation(input.applicationPublicId, input.portalUserId, true);
+  const { db, conversation, participant, owned } = await requirePortalConversation(input.applicationPublicId, input.portalUserId, true);
   const [duplicate] = await db.select().from(clientChatMessages).where(eq(clientChatMessages.clientMessageId, input.clientMessageId)).limit(1);
   if (duplicate) {
     if (duplicate.conversationId !== conversation.id || duplicate.senderParticipantId !== participant.id) throw new TRPCError({ code: "CONFLICT", message: "Message retry identifier is already in use" });
-    const [projected] = await projectPortalMessages(db, [duplicate]);
+    const [projected] = await projectPortalMessages(db, [duplicate], participant.id);
     return projected ? { ...projected, isDuplicate: true } : null;
   }
   const media = decodeChatAttachment(input);
@@ -1569,7 +1680,8 @@ export async function sendPortalConversationAttachment(input: ChatAttachmentUplo
   });
   if (media.messageType === "voice") await completeVoiceTranscription(db, conversation.id, createdMessageId, attachmentPublicId, stored.key, participant.id, "client");
   const [created] = await db.select().from(clientChatMessages).where(eq(clientChatMessages.id, createdMessageId)).limit(1);
-  const [projected] = created ? await projectPortalMessages(db, [created]) : [];
+  const [projected] = created ? await projectPortalMessages(db, [created], participant.id) : [];
+  if (projected) await notifyEmployeeChatParticipants({ clientCaseId: owned.clientCase.id, conversationId: conversation.id, messagePublicId: projected.publicId, kind: "attachment" });
   return projected ? { ...projected, isDuplicate: false } : null;
 }
 
@@ -1613,7 +1725,7 @@ export async function pollPortalConversation(applicationPublicId: string, portal
     eq(clientChatParticipants.status, "active"),
     gt(clientChatParticipants.typingExpiresAt, now),
   ))).length;
-  const publicMessages = await projectPortalMessages(db, messages);
+  const publicMessages = await projectPortalMessages(db, messages, participant.id);
   const publicIdByMessageId = new Map(messages.map(message => [message.id, message.publicId]));
   return {
     events: visibleEvents.map(event => ({
@@ -1634,4 +1746,87 @@ export async function updatePortalTyping(applicationPublicId: string, portalUser
   await db.update(clientChatParticipants).set({ typingExpiresAt: typing ? now + TYPING_TTL_MS : null, lastSeenAt: now, updatedAt: now }).where(eq(clientChatParticipants.id, participant.id));
   await db.insert(clientChatEvents).values({ conversationId: conversation.id, eventType: "typing_changed", actorParticipantId: participant.id, metadata: { typing }, createdAt: now });
   return { typing, expiresAt: typing ? now + TYPING_TTL_MS : null };
+}
+
+export async function markPortalRead(applicationPublicId: string, portalUserId: number, messagePublicId: string, listened = false, deviceName?: string | null) {
+  const { db, conversation, participant } = await requirePortalConversation(applicationPublicId, portalUserId, false);
+  const [message] = await db.select().from(clientChatMessages).where(and(
+    eq(clientChatMessages.publicId, messagePublicId),
+    eq(clientChatMessages.conversationId, conversation.id),
+    eq(clientChatMessages.visibility, "client"),
+  )).limit(1);
+  if (!message) throw new TRPCError({ code: "NOT_FOUND", message: "Message not found" });
+  if (message.senderParticipantId === participant.id) return { readAt: null, listenedAt: null, ownMessage: true };
+  const now = Date.now();
+  await db.insert(clientChatMessageReceipts).values({
+    messageId: message.id,
+    participantId: participant.id,
+    deliveredAt: now,
+    readAt: now,
+    listenedAt: listened ? now : null,
+    deviceName: deviceName?.slice(0, 255) || null,
+    updatedAt: now,
+  }).onDuplicateKeyUpdate({ set: { deliveredAt: now, readAt: now, ...(listened ? { listenedAt: now } : {}), deviceName: deviceName?.slice(0, 255) || null, updatedAt: now } });
+  await db.update(clientChatParticipants).set({ lastReadMessageId: message.id, lastSeenAt: now, updatedAt: now }).where(eq(clientChatParticipants.id, participant.id));
+  await db.insert(clientChatEvents).values({ conversationId: conversation.id, eventType: "receipt_changed", entityId: message.id, actorParticipantId: participant.id, metadata: { read: true, listened, visibility: "client" }, createdAt: now });
+  return { readAt: now, listenedAt: listened ? now : null, ownMessage: false };
+}
+
+export async function listPortalChatUnread(portalUserId: number) {
+  const db = await requireDb();
+  const participants = await db.select({
+    participantId: clientChatParticipants.id,
+    conversationId: clientChatParticipants.conversationId,
+    lastReadMessageId: clientChatParticipants.lastReadMessageId,
+    applicationPublicId: clientPortalApplications.publicId,
+  }).from(clientChatParticipants)
+    .innerJoin(clientChatConversations, eq(clientChatParticipants.conversationId, clientChatConversations.id))
+    .innerJoin(clientPortalApplications, and(
+      eq(clientPortalApplications.clientCaseId, clientChatConversations.clientCaseId),
+      eq(clientPortalApplications.portalUserId, portalUserId),
+      isNull(clientPortalApplications.accessRevokedAt),
+    ))
+    .where(and(eq(clientChatParticipants.portalUserId, portalUserId), eq(clientChatParticipants.status, "active")));
+  const items: Array<{ applicationPublicId: string; unreadCount: number }> = [];
+  for (const participant of participants) {
+    const [row] = await db.select({ count: sql<number>`count(*)` }).from(clientChatMessages).where(and(
+      eq(clientChatMessages.conversationId, participant.conversationId),
+      eq(clientChatMessages.visibility, "client"),
+      gt(clientChatMessages.id, participant.lastReadMessageId ?? 0),
+      or(isNull(clientChatMessages.senderParticipantId), ne(clientChatMessages.senderParticipantId, participant.participantId)),
+      isNull(clientChatMessages.deletedAt),
+    ));
+    items.push({ applicationPublicId: participant.applicationPublicId, unreadCount: Number(row?.count ?? 0) });
+  }
+  return { total: items.reduce((sum, item) => sum + item.unreadCount, 0), items };
+}
+
+export async function resolvePortalChatMessageApplications(portalUserId: number, messagePublicIds: string[]) {
+  const unique = Array.from(new Set(messagePublicIds.filter(Boolean))).slice(0, 100);
+  if (!unique.length) return {} as Record<string, string>;
+  const db = await requireDb();
+  const rows = await db.select({
+    messagePublicId: clientChatMessages.publicId,
+    applicationPublicId: clientPortalApplications.publicId,
+  }).from(clientChatMessages)
+    .innerJoin(clientChatConversations, eq(clientChatMessages.conversationId, clientChatConversations.id))
+    .innerJoin(clientPortalApplications, and(
+      eq(clientPortalApplications.clientCaseId, clientChatConversations.clientCaseId),
+      eq(clientPortalApplications.portalUserId, portalUserId),
+      isNull(clientPortalApplications.accessRevokedAt),
+    ))
+    .where(and(inArray(clientChatMessages.publicId, unique), eq(clientChatMessages.visibility, "client")));
+  return Object.fromEntries(rows.map(row => [row.messagePublicId, row.applicationPublicId]));
+}
+
+export async function listEmployeeChatUnread(actor: StaffActor) {
+  const summaries = await listStaffConversationSummaries(actor);
+  const items = summaries.filter(item => item.unreadCount > 0 && !item.muted).map(item => ({
+    folderPublicId: encodeEmployeeFolderId(item.clientCaseId),
+    unreadCount: item.unreadCount,
+    lastMessageAt: item.lastMessageAt,
+    lastMessagePreview: item.lastMessagePreview,
+    inApp: (item.notificationPreferences as Record<string, boolean>).inApp !== false,
+  })).filter(item => item.inApp);
+  return { total: items.reduce((sum, item) => sum + item.unreadCount, 0), items };
 }

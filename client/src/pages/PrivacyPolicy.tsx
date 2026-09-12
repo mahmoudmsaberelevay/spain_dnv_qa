@@ -57,7 +57,9 @@ export default function PrivacyPolicy() {
             <ul className="list-disc pl-6 text-gray-700 space-y-1">
               <li>Customer and client records (names, contact details, application details)</li>
               <li>Uploaded documents and files (passports, contracts, certificates)</li>
-              <li>Notes, messages, tasks, and activity records</li>
+              <li>Notes, secure client-folder chat messages, message attachments, tasks, and activity records</li>
+              <li>Voice notes and automated transcripts when a user chooses to record audio in Client Documentation Chat</li>
+              <li>Chat delivery, read, listened, typing, mute, and notification-preference metadata</li>
               <li>Sales and financial information entered by users</li>
               <li>Contract and invoice data</li>
             </ul>
@@ -74,6 +76,7 @@ export default function PrivacyPolicy() {
             <h3 className="text-lg font-medium text-gray-800 mt-4 mb-2">2.4 Communication Data</h3>
             <ul className="list-disc pl-6 text-gray-700 space-y-1">
               <li>Notification preferences</li>
+              <li>Device push tokens used to deliver privacy-safe service alerts; chat notification previews do not include message content</li>
               <li>Support requests and correspondence</li>
             </ul>
           </section>
@@ -88,6 +91,8 @@ export default function PrivacyPolicy() {
               <li>To process and manage client applications for citizenship and residency programs</li>
               <li>To generate contracts, invoices, and financial reports</li>
               <li>To send notifications, reminders, and service communications</li>
+              <li>To synchronize secure two-way communication between a client and authorized ELEVAY employees inside the assigned Client Documentation folder</li>
+              <li>To transcribe voice notes and provide bilingual transcript assistance when that feature is used</li>
               <li>To improve our services and user experience</li>
               <li>To comply with legal and regulatory obligations</li>
               <li>To detect and prevent security threats</li>
@@ -100,7 +105,7 @@ export default function PrivacyPolicy() {
             <p className="text-gray-700 leading-relaxed">
               Your information is used solely for the operation of the ELEVAY CRM system. We use it to 
               manage client documentation workflows, generate contracts and invoices, track application 
-              progress, manage financial records, and facilitate internal team communication. We do not 
+              progress, manage financial records, and facilitate secure communication between clients and authorized team members. We do not
               sell, rent, or trade your personal information to third parties for marketing purposes.
             </p>
           </section>
@@ -115,6 +120,7 @@ export default function PrivacyPolicy() {
               <li>Database backups are encrypted with AES-256 encryption</li>
               <li>Role-based access control restricts data access to authorized personnel</li>
               <li>Files are stored in secure cloud storage (Amazon S3) with access controls</li>
+              <li>Client chat access is bound to the assigned documentation folder and authorized employee participation, with audit logging</li>
               <li>Regular security audits and activity logging are maintained</li>
               <li>Session management with secure, HTTP-only cookies</li>
             </ul>
@@ -130,6 +136,7 @@ export default function PrivacyPolicy() {
               <li><strong>Email services (Gmail SMTP)</strong> — for sending notifications and reminders</li>
               <li><strong>WhatsApp Business API</strong> — for client communication</li>
               <li><strong>Analytics services</strong> — for understanding platform usage (anonymized)</li>
+              <li><strong>Speech transcription and translation services</strong> — only when a user sends a voice note and a transcript is generated</li>
             </ul>
             <p className="text-gray-700 leading-relaxed mt-3">
               Each third-party service processes data in accordance with their own privacy policies. 

@@ -67,13 +67,15 @@ describe("CRM employee access in ELEVAY Client", () => {
     expect(routes).toContain("isNull(clientPortalApplications.accessRevokedAt)");
   });
 
-  it("keeps employee mobile access read-only", () => {
+  it("keeps employee document access read-only while allowing audited folder-chat participation", () => {
     const routes = read("server/clientPortalRoutes.ts");
     const employeeBlock = routes.slice(routes.indexOf('app.use("/client-api/employee"'), routes.indexOf('app.use("/client-api", portalAuth)'));
     expect(employeeBlock).toContain('app.get("/client-api/employee/folders"');
     expect(employeeBlock).toContain('app.get("/client-api/employee/folders/:folderId/documents"');
-    expect(employeeBlock).not.toContain('app.post("/client-api/employee/folders');
-    expect(employeeBlock).not.toContain('app.put("/client-api/employee/folders');
-    expect(employeeBlock).not.toContain('app.delete("/client-api/employee/folders');
+    expect(employeeBlock).not.toContain('app.post("/client-api/employee/folders/:folderId/documents');
+    expect(employeeBlock).not.toContain('app.put("/client-api/employee/folders/:folderId/documents');
+    expect(employeeBlock).not.toContain('app.delete("/client-api/employee/folders/:folderId/documents');
+    expect(employeeBlock).toContain('app.post("/client-api/employee/folders/:folderId/chat/messages"');
+    expect(employeeBlock).toContain('app.post("/client-api/employee/folders/:folderId/chat/attachments"');
   });
 });
