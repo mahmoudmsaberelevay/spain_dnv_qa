@@ -4,7 +4,7 @@
 **Prepared on:** 10 September 2026  
 **Status:** Approved architecture using adaptive polling on the existing Autoscale hosting.
 
-**Implementation review — 12 September 2026:** The canonical schema, shared staff/portal service, CRM Chat tab, staff Expo mobile screen, advanced message controls, bounded multi-file media queues, voice transcripts, unread summaries, notification preferences, assignment, governance, moderation, exports, and Heartbeat-backed scheduled messages are implemented and validated. All 24 existing Client Documentation folders now have exactly one conversation. Final publication is pending only the web checkpoint recorded at the end of this task.
+**Implementation review — 12 September 2026:** The canonical schema, shared staff/portal service, CRM Chat tab, staff Expo mobile screen, advanced message controls, bounded multi-file media queues, voice transcripts, unread summaries, notification preferences, assignment, governance, moderation, exports, and Heartbeat-backed scheduled messages are implemented and validated. All 24 existing Client Documentation folders now have exactly one conversation. The cohesive web milestone is published in checkpoint `397fa5c1`; the connected staff mobile repository is updated through commit `bd6c69e`.
 
 ## 1. Executive Summary
 

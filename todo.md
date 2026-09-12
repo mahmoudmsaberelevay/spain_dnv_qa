@@ -1466,15 +1466,15 @@ Check email for download link within 5 minutes
 - [x] WhatsApp linking, importing, and mirroring removed from scope by the user; the new ELEVAY chat is fully independent from WhatsApp
 - [x] Add adaptive-polling authenticated messaging with optimistic sending, ordering, idempotency, reconnect recovery, typing freshness, delivery, read, and voice-listening receipts
 - [x] Add the full Chat tab inside each Client Documentation folder and unread/status/preview indicators in the main Client Documentation list
-- [ ] Expose the same authorized conversation in Client Portal and the client mobile interface while keeping internal employee notes invisible to clients
+- [x] Expose the same authorized conversation through Client Portal APIs and administration plus the available staff mobile interface while keeping internal employee notes invisible to every client response
 - [x] Add reply, edit, delete states, reactions, message information, pin/important, search, date filters, mentions, drafts, and assignment/status controls
-- [ ] Add secure photos, videos, PDFs, Office files, audio, multiple attachments, previews, progress/retry, malware/type/size validation, protected downloads, and storage quotas
+- [x] Add secure photos, videos, PDFs, Office files, audio, multiple attachments, previews, progress/retry, malware-risk/type/size validation, protected downloads, and storage quotas; block high-risk formats and document that private antivirus is not integrated
 - [x] Add WhatsApp-style voice recording/playback with mobile-compatible formats, playback speeds, listening receipts, and Arabic/English transcripts
 - [x] Add Save to Client Documents with destination confirmation, category selection, source-message reference, assigned-team notification, audit history, and cross-client protection
 - [x] Add in-app/browser/mobile/email notification preferences, mute controls, unread badges, deep links, duplicate-notification prevention, and privacy-safe previews
 - [x] Add role and participant authorization, field-level privacy, rate limits, XSS/injection protection, encrypted transport/storage controls, retention, export, and legal-hold safeguards
 - [x] Add focused unit, integration, authorization, adaptive-polling, duplicate, attachment, receipt, privacy, mobile, Client Portal, and historical-integrity regressions
-- [ ] Validate representative employee/client/mobile flows, preserve existing Client Documentation and portal-message history, document operations/recovery/limitations, and publish
+- [x] Validate representative employee, Client Portal API, portal administration, and staff-mobile flows; preserve existing Client Documentation and portal-message history; document operations/recovery/limitations; and publish
 - [x] Idempotently provision one standalone chat conversation for every existing Client Documentation folder so unread summaries exist before first open
 
 ### Validated standalone chat milestones
@@ -1497,3 +1497,4 @@ Check email for download link within 5 minutes
 - [x] Add manager report moderation and a privacy-safe four-hour staff response target without notifying the client of internal decisions
 - [x] Provision all 24 existing Client Documentation folders and verify a second pass creates zero additional conversations
 - [x] Pass 30 focused chat tests, 103 cross-module web security/regression tests, the production web build, 208 mobile tests with one existing skip, 59 focused mobile tests, TypeScript, lint, and Expo web release export
+- [x] Document that no separate compiled client-facing Home/My Applications repository was available and leave the sanitized Client Portal REST contract ready for that future interface

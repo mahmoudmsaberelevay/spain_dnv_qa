@@ -3,7 +3,9 @@
 **Prepared for:** ELEVAY Citizenship & Residency  
 **Prepared by:** Manus AI  
 **Date:** 12 September 2026  
-**Release type:** Additive, ELEVAY-owned client communication system using adaptive polling
+**Release type:** Additive, ELEVAY-owned client communication system using adaptive polling  
+**Published web checkpoint:** `397fa5c1`  
+**Staff mobile repository commit:** `bd6c69e`
 
 ## Executive Summary
 
