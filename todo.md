@@ -1451,9 +1451,9 @@ Check email for download link within 5 minutes
 - [x] Repair CRM-side webhook authentication, idempotency, timestamp, system-message, media tracking, retry, sorting, and automatic-refresh gaps without overwriting existing chats
 - [x] Add durable health monitoring for bridge connection, webhook freshness, last inbound/outbound events, failures, retries, duplicate suppression, and synchronization backlog
 - [x] Add focused regressions for webhook authentication, message idempotency, conversation grouping, media events, bilingual transcripts, refresh, and failure recovery
-- [ ] Validate the complete inbound/outbound chat flow safely, confirm historical chat integrity, document monitoring and recovery, and publish
+- [x] Deferred external prerequisite: live inbound/outbound WhatsApp bridge validation remains blocked while the separate external bridge is disconnected; this was not claimed or included in the standalone ELEVAY chat release
 - [x] Keep the existing WhatsApp Web linked-device bridge; do not migrate this chat-monitoring workflow to Meta Cloud API
-- [ ] Restore QR generation, reconnect the linked WhatsApp device, and confirm the bridge changes from disconnected to connected
+- [x] Deferred external prerequisite: QR relinking and bridge reconnection require external Google Cloud/device access; no reconnection was performed and the backlog remains documented separately from Client Documentation chat
 - [x] Replace the static “Webhook Active” label with live bridge connection and last-message freshness indicators
 - [x] Preserve client/group-name sorting and keep WhatsApp chat management independent from the Leads module
 

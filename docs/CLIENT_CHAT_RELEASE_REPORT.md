@@ -92,3 +92,5 @@ The database remains the source of truth. Existing legacy portal and WhatsApp ta
 ## Conclusion
 
 The web CRM and staff mobile chat milestone is cohesive, security-focused, and ready for controlled production use. It preserves existing Client Documentation, Client Portal, Financial, Contracting, and WhatsApp data. The two explicit follow-ups are connecting a separate client-facing Home/My Applications UI when that repository is supplied and integrating a private antivirus service if ELEVAY later approves one.
+
+The unrelated WhatsApp Web bridge remains an external deferred prerequisite: it was not reconnected, QR-linked, or used by this release. Its disconnected-state backlog remains separate and does not affect the ELEVAY-owned Client Documentation conversation system.
