@@ -2,7 +2,7 @@ import type { Express, NextFunction, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
 import { ZodError } from "zod";
 import { createHash, randomBytes, randomUUID } from "crypto";
-import { and, asc, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { createNotification, getDb } from "./db";
 import { storageGet, storagePut } from "./storage";
 import {
@@ -20,6 +20,7 @@ import {
   clientPortalUsers,
   publicAfterSettlementServices,
   publicServiceProviders,
+  users,
 } from "../drizzle/schema";
 import {
   authenticatePortalRequest,
@@ -39,6 +40,27 @@ import { replaceClientPortalAssignments } from "./clientPortalAssignmentService"
 import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPolicy";
 import { decodeProviderCoverUpload, providerCoverStorageKey, type ProviderCoverUpload } from "./clientPortalProviderMedia";
 import { comparePrograms, PROGRAM_COMPARISON_OPTIONS } from "./programComparisonService";
+import { verifyPassword as verifyEmployeePassword } from "./_core/auth-email";
+import { auditCtxFromReq, writeAuditLog } from "./auditLog";
+import {
+  authenticateEmployeeMobileRequest,
+  createEmployeeMobileSession,
+  hasFullClientDocsAccess,
+  isAllowedEmployeeEmail,
+  revokeEmployeeMobileSession,
+  rotateEmployeeMobileSession,
+  serializeEmployeeProfile,
+  updateEmployeeMobileLocale,
+  type EmployeeMobileContext,
+} from "./clientEmployeeAuth";
+import {
+  getEmployeeDocumentAccess,
+  getEmployeeFolderActivity,
+  getEmployeeFolderDetails,
+  getEmployeeFolderDocuments,
+  getEmployeeFolderTimeline,
+  listEmployeeFolders,
+} from "./clientEmployeeDocuments";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const APP_REVIEW_CLIENT_CODE = "APP-REVIEW-001";
@@ -88,6 +110,7 @@ const ALLOWED_MIME = new Map([
 ]);
 
 type PortalRequest = Request & { portal?: PortalRequestContext };
+type EmployeeRequest = Request & { employee?: EmployeeMobileContext };
 
 function error(res: Response, status: number, code: string, message?: string) {
   return res.status(status).json({ error: code, message: message ?? code });
@@ -132,6 +155,13 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
   if (portal.user.mustChangePassword && !["/auth/change-password", "/auth/logout", "/me"].includes(req.path)) {
     return error(res, 403, "password_change_required", "Change the temporary password before continuing");
   }
+  next();
+}
+
+async function employeeAuth(req: EmployeeRequest, res: Response, next: NextFunction) {
+  const employee = await authenticateEmployeeMobileRequest(req);
+  if (!employee) return error(res, 401, "employee_authentication_required");
+  req.employee = employee;
   next();
 }
 
@@ -249,25 +279,47 @@ export function registerClientPortalRoutes(app: Express) {
     const password = typeof body.password === "string" ? body.password : "";
     const db = await getDb();
     if (!db || !identifier || !password || password.length > 128) return error(res, 400, "invalid_credentials");
-    const [user] = await db.select().from(clientPortalUsers).where(or(eq(clientPortalUsers.username, identifier), eq(clientPortalUsers.email, identifier))).limit(1);
-    const valid = user && user.status === "active" && (!user.lockedUntil || user.lockedUntil <= new Date()) && await verifyPortalPassword(password, user.passwordHash);
-    if (!valid) {
-      if (user) {
-        const attempts = user.failedLoginAttempts + 1;
-        await db.update(clientPortalUsers).set({ failedLoginAttempts: attempts >= 5 ? 0 : attempts, lockedUntil: attempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null }).where(eq(clientPortalUsers.id, user.id));
-        await writePortalAudit({ req, portalUserId: user.id, clientCaseId: user.primaryClientCaseId, action: "login", outcome: "denied" });
-      }
-      return error(res, 401, "invalid_credentials");
+    const [portalUser] = await db.select().from(clientPortalUsers).where(or(eq(clientPortalUsers.username, identifier), eq(clientPortalUsers.email, identifier))).limit(1);
+    const portalValid = portalUser && portalUser.status === "active" && (!portalUser.lockedUntil || portalUser.lockedUntil <= new Date()) && await verifyPortalPassword(password, portalUser.passwordHash);
+    if (portalValid) {
+      await db.update(clientPortalUsers).set({ failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() }).where(eq(clientPortalUsers.id, portalUser.id));
+      const session = await createPortalSession({ user: portalUser, req, deviceName: body.deviceName, platform: body.platform, osVersion: body.osVersion, appVersion: body.appVersion });
+      await writePortalAudit({ req, portalUserId: portalUser.id, clientCaseId: portalUser.primaryClientCaseId, action: "login", recordType: "session", recordPublicId: session.sessionId });
+      return res.json({ ...session, mustChangePassword: portalUser.mustChangePassword, user: { publicId: portalUser.publicId, username: portalUser.username, email: portalUser.email, mobile: portalUser.mobile, locale: portalUser.locale, consultant: portalUser.consultant, paralegal: portalUser.paralegal, accountType: portalUser.accountType } });
     }
-    await db.update(clientPortalUsers).set({ failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() }).where(eq(clientPortalUsers.id, user.id));
-    const session = await createPortalSession({ user, req, deviceName: body.deviceName, platform: body.platform, osVersion: body.osVersion, appVersion: body.appVersion });
-    await writePortalAudit({ req, portalUserId: user.id, clientCaseId: user.primaryClientCaseId, action: "login", recordType: "session", recordPublicId: session.sessionId });
-    return res.json({ ...session, mustChangePassword: user.mustChangePassword, user: { publicId: user.publicId, username: user.username, email: user.email, mobile: user.mobile, locale: user.locale, consultant: user.consultant, paralegal: user.paralegal, accountType: user.accountType } });
+
+    const [employee] = await db.select().from(users).where(sql`LOWER(${users.email}) = ${identifier}`).limit(1);
+    const employeeValid = employee?.email
+      && employee.password
+      && isAllowedEmployeeEmail(employee.email)
+      && await hasFullClientDocsAccess(employee)
+      && await verifyEmployeePassword(password, employee.password);
+    if (employeeValid) {
+      return res.json(await createEmployeeMobileSession({
+        user: employee,
+        req,
+        deviceName: body.deviceName,
+        platform: body.platform,
+        osVersion: body.osVersion,
+        appVersion: body.appVersion,
+      }));
+    }
+
+    if (portalUser) {
+      const attempts = portalUser.failedLoginAttempts + 1;
+      await db.update(clientPortalUsers).set({ failedLoginAttempts: attempts >= 5 ? 0 : attempts, lockedUntil: attempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null }).where(eq(clientPortalUsers.id, portalUser.id));
+      await writePortalAudit({ req, portalUserId: portalUser.id, clientCaseId: portalUser.primaryClientCaseId, action: "login", outcome: "denied" });
+    } else if (employee) {
+      await writeAuditLog(auditCtxFromReq(req, employee), "login", "client_employee_session", employee.id, "Denied employee mobile login");
+    }
+    return error(res, 401, "invalid_credentials");
   });
 
   app.post("/client-api/auth/refresh", authLimiter, async (req, res) => {
     const body = safeBody<{ sessionId: string; refreshToken: string }>(req);
     if (typeof body.sessionId !== "string" || typeof body.refreshToken !== "string") return error(res, 400, "invalid_refresh_request");
+    const employeeRotated = await rotateEmployeeMobileSession({ sessionId: body.sessionId, refreshToken: body.refreshToken, req });
+    if (employeeRotated) return res.json(employeeRotated);
     const rotated = await rotatePortalSession({ sessionId: body.sessionId, refreshToken: body.refreshToken, req });
     if (!rotated) return error(res, 401, "session_expired");
     return res.json({ accessToken: rotated.accessToken, accessTokenExpiresIn: rotated.accessTokenExpiresIn, refreshToken: rotated.refreshToken, refreshTokenExpiresAt: rotated.refreshTokenExpiresAt, sessionId: rotated.sessionId, mustChangePassword: rotated.user.mustChangePassword, accountType: rotated.user.accountType });
@@ -299,6 +351,81 @@ export function registerClientPortalRoutes(app: Express) {
     await db.update(clientPortalSessions).set({ revokedAt: new Date() }).where(and(eq(clientPortalSessions.portalUserId, user.id), isNull(clientPortalSessions.revokedAt)));
     await writePortalAudit({ req, portalUserId: user.id, clientCaseId: user.primaryClientCaseId, action: "password_reset_completed" });
     return res.json({ ok: true });
+  });
+
+  app.use("/client-api/employee", employeeAuth);
+
+  app.get("/client-api/employee/me", (req: EmployeeRequest, res) => {
+    return res.json(serializeEmployeeProfile(req.employee!));
+  });
+
+  app.post("/client-api/employee/auth/logout", async (req: EmployeeRequest, res) => {
+    await revokeEmployeeMobileSession(req.employee!, req);
+    return res.json({ ok: true });
+  });
+
+  app.patch("/client-api/employee/me/preferences", writeLimiter, async (req: EmployeeRequest, res) => {
+    const body = safeBody<{ locale: "en" | "ar" }>(req);
+    await updateEmployeeMobileLocale(req.employee!, body.locale === "ar" ? "ar" : "en");
+    return res.json({ ok: true });
+  });
+
+  app.get("/client-api/employee/folders", async (req: EmployeeRequest, res) => {
+    const result = await listEmployeeFolders({
+      search: typeof req.query.search === "string" ? req.query.search : "",
+      page: Number(req.query.page || 1),
+      pageSize: Number(req.query.pageSize || 30),
+    });
+    await writeAuditLog(auditCtxFromReq(req, req.employee!.user), "view", "client_documentation_folders", undefined, `Employee mobile list; page ${result.page}; search ${typeof req.query.search === "string" && req.query.search.trim() ? "used" : "empty"}`);
+    return res.json(result);
+  });
+
+  app.get("/client-api/employee/folders/:folderId", async (req: EmployeeRequest, res) => {
+    const result = await getEmployeeFolderDetails(req.params.folderId);
+    if (!result) return error(res, 404, "documentation_folder_not_found");
+    await writeAuditLog(auditCtxFromReq(req, req.employee!.user), "view", "client_documentation_case", result.clientCode, "Employee mobile folder details viewed");
+    return res.json(result);
+  });
+
+  app.get("/client-api/employee/folders/:folderId/documents", async (req: EmployeeRequest, res) => {
+    const result = await getEmployeeFolderDocuments(req.params.folderId);
+    if (!result) return error(res, 404, "documentation_folder_not_found");
+    return res.json(result);
+  });
+
+  app.get("/client-api/employee/folders/:folderId/process-timeline", async (req: EmployeeRequest, res) => {
+    const result = await getEmployeeFolderTimeline(req.params.folderId);
+    if (!result) return error(res, 404, "documentation_folder_not_found");
+    return res.json(result);
+  });
+
+  app.get("/client-api/employee/folders/:folderId/activity", async (req: EmployeeRequest, res) => {
+    const result = await getEmployeeFolderActivity(req.params.folderId);
+    if (!result) return error(res, 404, "documentation_folder_not_found");
+    return res.json(result);
+  });
+
+  app.get("/client-api/employee/folders/:folderId/documents/:documentId/access", async (req: EmployeeRequest, res) => {
+    const result = await getEmployeeDocumentAccess({
+      folderPublicId: req.params.folderId,
+      documentPublicId: req.params.documentId,
+      context: req.employee!,
+      req,
+    });
+    if (!result) return error(res, 404, "document_not_found");
+    return res.json(result);
+  });
+
+  app.get("/client-api/employee/notification-attachments/:attachmentId/access", async (req: EmployeeRequest, res) => {
+    const attachment = getClientNotificationAttachment(req.params.attachmentId);
+    if (!attachment) return error(res, 404, "attachment_not_found");
+    await writeAuditLog(auditCtxFromReq(req, req.employee!.user), "download", "notification_attachment", attachment.publicId, "Employee mobile notification attachment access");
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({
+      url: `https://elevay.vip${attachment.storagePath}`,
+      fileName: attachment.fileName,
+      mimeType: attachment.mimeType,
+    });
   });
 
   app.use("/client-api", portalAuth);

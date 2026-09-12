@@ -1500,6 +1500,30 @@ export const clientPortalSessions = mysqlTable("client_portal_sessions", {
 export type ClientPortalSession = typeof clientPortalSessions.$inferSelect;
 export type InsertClientPortalSession = typeof clientPortalSessions.$inferInsert;
 
+// CRM employees reuse their existing `users` identity and password hash, but
+// receive an isolated mobile session that can never authenticate client-owned
+// portal routes or the employee web tRPC API.
+export const clientEmployeeSessions = mysqlTable("client_employee_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  staffUserId: int("staffUserId").notNull(),
+  refreshTokenHash: varchar("refreshTokenHash", { length: 255 }).notNull(),
+  deviceName: varchar("deviceName", { length: 255 }),
+  platform: varchar("platform", { length: 50 }),
+  osVersion: varchar("osVersion", { length: 100 }),
+  appVersion: varchar("appVersion", { length: 50 }),
+  locale: mysqlEnum("locale", ["en", "ar"]).default("en").notNull(),
+  ipAddress: varchar("ipAddress", { length: 64 }),
+  expiresAt: timestamp("expiresAt").notNull(),
+  lastSeenAt: timestamp("lastSeenAt").defaultNow().notNull(),
+  revokedAt: timestamp("revokedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  activeStaffSession: index("client_employee_sessions_staff_active_idx").on(table.staffUserId, table.revokedAt, table.expiresAt),
+}));
+export type ClientEmployeeSession = typeof clientEmployeeSessions.$inferSelect;
+export type InsertClientEmployeeSession = typeof clientEmployeeSessions.$inferInsert;
+
 export const clientPortalDocuments = mysqlTable("client_portal_documents", {
   id: int("id").autoincrement().primaryKey(),
   publicId: varchar("publicId", { length: 36 }).notNull().unique(),
