@@ -53,6 +53,8 @@ import { backupDownloadRouter } from "./routers/backupDownload";
 import { aiCouncilRouter } from "./aiCouncilRouter";
 import { clientPortalAdminRouter } from "./clientPortalAdminRouter";
 import { clientPortalDocumentReviewRouter } from "./clientPortalDocumentReviewRouter";
+import { clientChatRouter } from "./clientChatRouter";
+import { ensureClientChatConversationForCase } from "./clientChatService";
 import {
   addClientDocumentationPayment,
   archiveClientDocumentationPayment,
@@ -1664,6 +1666,7 @@ const clientDocsRouter = router({
         throw error;
       }
       await writeAuditLog(auditCtxFromTrpc(ctx), "create", "client_documentation_case", insertId, `Created case with ${input.payments.length} payment schedule item(s)`);
+      await ensureClientChatConversationForCase(insertId, ctx.user.id);
       // Send assignment notification email to paralegal + consultant
       notifyNewClientAssigned(
         input.clientName,
@@ -2539,6 +2542,7 @@ export const appRouter = router({
   admin: adminRouter,
   clientPortalAdmin: clientPortalAdminRouter,
   clientPortalDocumentReview: clientPortalDocumentReviewRouter,
+  clientChat: clientChatRouter,
   support: supportRouter,
 });
 export type AppRouter = typeof appRouter;

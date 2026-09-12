@@ -16,10 +16,11 @@ import { ClientDocumentWorkflowRow } from "@/components/ClientDocumentWorkflowRo
 import { ClientDocumentationSpainMilestones } from "@/components/ClientDocumentationSpainMilestones";
 import { ClientPortalUploadsPanel } from "@/components/ClientPortalUploadsPanel";
 import { ClientStageEvidenceUpload } from "@/components/ClientStageEvidenceUpload";
+import { ClientChatPanel } from "@/components/ClientChatPanel";
 import {
   ArrowLeft, CheckCircle2, Circle, Clock, AlertTriangle,
   FileCheck, CalendarDays, CalendarClock,
-  FileDown, Trash2, Link2, Mail, UserCheck, ShieldCheck
+  FileDown, Trash2, Link2, Mail, UserCheck, ShieldCheck, MessageCircle
 } from "lucide-react";
 
 type ActionType = "receive" | "schengen" | "appointment" | null;
@@ -31,7 +32,7 @@ export default function ClientDocDetail() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated } = useAuth();
   const [activeAction, setActiveAction] = useState<ActionType>(null);
-  const [activeTab, setActiveTab] = useState("main");
+  const [activeTab, setActiveTab] = useState(() => new URLSearchParams(window.location.search).get("tab") === "chat" ? "chat" : "main");
 
   const [receiveDates, setReceiveDates] = useState<Record<number, string>>({});
   const [dateInputs, setDateInputs] = useState<Record<string, string>>({
@@ -614,6 +615,9 @@ export default function ClientDocDetail() {
           <TabsTrigger value="report" className="data-[state=active]:bg-white data-[state=active]:text-gray-900 text-gray-500">
             Report
           </TabsTrigger>
+          <TabsTrigger value="chat" className="data-[state=active]:bg-white data-[state=active]:text-gray-900 text-gray-500">
+            <MessageCircle className="mr-1.5 h-4 w-4" /> Chat
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="main" className="mt-4">
@@ -721,6 +725,10 @@ export default function ClientDocDetail() {
           ) : (
             <p className="text-sm text-gray-400 text-center py-8">Loading report...</p>
           )}
+        </TabsContent>
+
+        <TabsContent value="chat" className="mt-4">
+          <ClientChatPanel clientCaseId={clientId} active={activeTab === "chat"} />
         </TabsContent>
       </Tabs>
 

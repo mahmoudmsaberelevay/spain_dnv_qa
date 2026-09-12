@@ -1518,6 +1518,8 @@ export const clientPortalDocuments = mysqlTable("client_portal_documents", {
   staffComment: text("staffComment"),
   uploadedByPortalUserId: int("uploadedByPortalUserId"),
   uploadedByStaffUserId: int("uploadedByStaffUserId"),
+  sourceChatMessageId: int("sourceChatMessageId"),
+  sourceChatAttachmentId: int("sourceChatAttachmentId"),
   reviewedByUserId: int("reviewedByUserId"),
   reviewedAt: timestamp("reviewedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -1540,6 +1542,304 @@ export const clientPortalMessages = mysqlTable("client_portal_messages", {
 });
 export type ClientPortalMessage = typeof clientPortalMessages.$inferSelect;
 export type InsertClientPortalMessage = typeof clientPortalMessages.$inferInsert;
+
+// ─── Unified ELEVAY Client Chat ───────────────────────────────────────────────
+// One canonical conversation per Client Documentation folder. This subsystem is
+// independent from the WhatsApp module and is shared by staff, Client Portal,
+// and mobile clients through the same authorization service.
+export const clientChatConversations = mysqlTable("client_chat_conversations", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  clientCaseId: int("clientCaseId").notNull(),
+  primaryPortalApplicationId: int("primaryPortalApplicationId"),
+  status: mysqlEnum("status", ["active", "archived", "blocked"]).default("active").notNull(),
+  assignedStaffUserId: int("assignedStaffUserId"),
+  waitingOn: mysqlEnum("waitingOn", ["none", "client", "staff"]).default("none").notNull(),
+  retentionPolicy: mysqlEnum("retentionPolicy", ["indefinite", "seven_years"]).default("indefinite").notNull(),
+  legalHoldAt: bigint("legalHoldAt", { mode: "number" }),
+  legalHoldReason: varchar("legalHoldReason", { length: 500 }),
+  legalHoldByStaffUserId: int("legalHoldByStaffUserId"),
+  lastMessageId: int("lastMessageId"),
+  lastMessageAt: bigint("lastMessageAt", { mode: "number" }),
+  lastClientMessageAt: bigint("lastClientMessageAt", { mode: "number" }),
+  lastStaffMessageAt: bigint("lastStaffMessageAt", { mode: "number" }),
+  createdByStaffUserId: int("createdByStaffUserId"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  uniqueClientCase: uniqueIndex("client_chat_conversations_case_unique").on(table.clientCaseId),
+  statusActivity: index("client_chat_conversations_status_activity_idx").on(table.status, table.lastMessageAt),
+  assignedActivity: index("client_chat_conversations_assigned_activity_idx").on(table.assignedStaffUserId, table.lastMessageAt),
+}));
+export type ClientChatConversation = typeof clientChatConversations.$inferSelect;
+export type InsertClientChatConversation = typeof clientChatConversations.$inferInsert;
+
+export const clientChatParticipants = mysqlTable("client_chat_participants", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  conversationId: int("conversationId").notNull(),
+  participantType: mysqlEnum("participantType", ["staff", "portal"]).notNull(),
+  staffUserId: int("staffUserId"),
+  portalUserId: int("portalUserId"),
+  role: mysqlEnum("role", ["client", "consultant", "paralegal", "manager", "admin", "observer"]).notNull(),
+  status: mysqlEnum("status", ["active", "left", "revoked", "blocked"]).default("active").notNull(),
+  canSend: boolean("canSend").default(true).notNull(),
+  canViewInternal: boolean("canViewInternal").default(false).notNull(),
+  canManage: boolean("canManage").default(false).notNull(),
+  notificationPreferences: json("notificationPreferences"),
+  muteUntil: bigint("muteUntil", { mode: "number" }),
+  lastReadMessageId: int("lastReadMessageId"),
+  clearedThroughMessageId: int("clearedThroughMessageId"),
+  lastSeenAt: bigint("lastSeenAt", { mode: "number" }),
+  typingExpiresAt: bigint("typingExpiresAt", { mode: "number" }),
+  joinedAt: bigint("joinedAt", { mode: "number" }).notNull(),
+  leftAt: bigint("leftAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  uniqueStaffParticipant: uniqueIndex("client_chat_participants_staff_unique").on(table.conversationId, table.staffUserId),
+  uniquePortalParticipant: uniqueIndex("client_chat_participants_portal_unique").on(table.conversationId, table.portalUserId),
+  activeConversation: index("client_chat_participants_active_idx").on(table.conversationId, table.status),
+  staffLookup: index("client_chat_participants_staff_idx").on(table.staffUserId, table.status),
+  portalLookup: index("client_chat_participants_portal_idx").on(table.portalUserId, table.status),
+}));
+export type ClientChatParticipant = typeof clientChatParticipants.$inferSelect;
+export type InsertClientChatParticipant = typeof clientChatParticipants.$inferInsert;
+
+export const clientChatMessages = mysqlTable("client_chat_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  conversationId: int("conversationId").notNull(),
+  clientMessageId: varchar("clientMessageId", { length: 64 }).notNull(),
+  legacyPortalMessageId: int("legacyPortalMessageId"),
+  senderParticipantId: int("senderParticipantId"),
+  senderType: mysqlEnum("senderType", ["client", "staff", "system"]).notNull(),
+  senderNameSnapshot: varchar("senderNameSnapshot", { length: 255 }).notNull(),
+  visibility: mysqlEnum("visibility", ["client", "internal"]).default("client").notNull(),
+  messageType: mysqlEnum("messageType", ["text", "image", "video", "file", "voice", "audio", "system"]).default("text").notNull(),
+  body: text("body"),
+  replyToMessageId: int("replyToMessageId"),
+  isImportant: boolean("isImportant").default(false).notNull(),
+  isPinned: boolean("isPinned").default(false).notNull(),
+  editedAt: bigint("editedAt", { mode: "number" }),
+  deletedAt: bigint("deletedAt", { mode: "number" }),
+  deletedByParticipantId: int("deletedByParticipantId"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  uniqueClientMessage: uniqueIndex("client_chat_messages_client_id_unique").on(table.clientMessageId),
+  uniqueLegacyPortal: uniqueIndex("client_chat_messages_legacy_portal_unique").on(table.legacyPortalMessageId),
+  conversationCursor: index("client_chat_messages_conversation_cursor_idx").on(table.conversationId, table.id),
+  conversationCreated: index("client_chat_messages_conversation_created_idx").on(table.conversationId, table.createdAt),
+  replyLookup: index("client_chat_messages_reply_idx").on(table.replyToMessageId),
+}));
+export type ClientChatMessage = typeof clientChatMessages.$inferSelect;
+export type InsertClientChatMessage = typeof clientChatMessages.$inferInsert;
+
+export const clientChatMessageVersions = mysqlTable("client_chat_message_versions", {
+  id: int("id").autoincrement().primaryKey(),
+  messageId: int("messageId").notNull(),
+  versionNumber: int("versionNumber").notNull(),
+  body: text("body"),
+  editedByParticipantId: int("editedByParticipantId"),
+  editReason: varchar("editReason", { length: 255 }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  uniqueVersion: uniqueIndex("client_chat_message_versions_unique").on(table.messageId, table.versionNumber),
+  messageLookup: index("client_chat_message_versions_message_idx").on(table.messageId, table.createdAt),
+}));
+export type ClientChatMessageVersion = typeof clientChatMessageVersions.$inferSelect;
+export type InsertClientChatMessageVersion = typeof clientChatMessageVersions.$inferInsert;
+
+export const clientChatMessageMentions = mysqlTable("client_chat_message_mentions", {
+  id: int("id").autoincrement().primaryKey(),
+  messageId: int("messageId").notNull(),
+  participantId: int("participantId").notNull(),
+  notifiedAt: bigint("notifiedAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  uniqueMention: uniqueIndex("client_chat_message_mentions_unique").on(table.messageId, table.participantId),
+  participantLookup: index("client_chat_message_mentions_participant_idx").on(table.participantId, table.createdAt),
+}));
+export type ClientChatMessageMention = typeof clientChatMessageMentions.$inferSelect;
+export type InsertClientChatMessageMention = typeof clientChatMessageMentions.$inferInsert;
+
+export const clientChatMessageStars = mysqlTable("client_chat_message_stars", {
+  id: int("id").autoincrement().primaryKey(),
+  messageId: int("messageId").notNull(),
+  participantId: int("participantId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  uniqueStar: uniqueIndex("client_chat_message_stars_unique").on(table.messageId, table.participantId),
+  participantLookup: index("client_chat_message_stars_participant_idx").on(table.participantId, table.createdAt),
+}));
+export type ClientChatMessageStar = typeof clientChatMessageStars.$inferSelect;
+export type InsertClientChatMessageStar = typeof clientChatMessageStars.$inferInsert;
+
+export const clientChatMessageReceipts = mysqlTable("client_chat_message_receipts", {
+  id: int("id").autoincrement().primaryKey(),
+  messageId: int("messageId").notNull(),
+  participantId: int("participantId").notNull(),
+  deliveredAt: bigint("deliveredAt", { mode: "number" }),
+  readAt: bigint("readAt", { mode: "number" }),
+  listenedAt: bigint("listenedAt", { mode: "number" }),
+  deviceName: varchar("deviceName", { length: 255 }),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  uniqueMessageParticipant: uniqueIndex("client_chat_receipts_message_participant_unique").on(table.messageId, table.participantId),
+  participantUnread: index("client_chat_receipts_participant_read_idx").on(table.participantId, table.readAt),
+}));
+export type ClientChatMessageReceipt = typeof clientChatMessageReceipts.$inferSelect;
+export type InsertClientChatMessageReceipt = typeof clientChatMessageReceipts.$inferInsert;
+
+export const clientChatReactions = mysqlTable("client_chat_reactions", {
+  id: int("id").autoincrement().primaryKey(),
+  messageId: int("messageId").notNull(),
+  participantId: int("participantId").notNull(),
+  reaction: varchar("reaction", { length: 32 }).notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  uniqueReaction: uniqueIndex("client_chat_reactions_unique").on(table.messageId, table.participantId, table.reaction),
+  messageLookup: index("client_chat_reactions_message_idx").on(table.messageId),
+}));
+export type ClientChatReaction = typeof clientChatReactions.$inferSelect;
+export type InsertClientChatReaction = typeof clientChatReactions.$inferInsert;
+
+export const clientChatAttachments = mysqlTable("client_chat_attachments", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  messageId: int("messageId").notNull(),
+  fileKey: varchar("fileKey", { length: 1024 }).notNull(),
+  originalFileName: varchar("originalFileName", { length: 255 }).notNull(),
+  safeFileName: varchar("safeFileName", { length: 255 }).notNull(),
+  mimeType: varchar("mimeType", { length: 128 }).notNull(),
+  fileSize: int("fileSize").notNull(),
+  sha256: varchar("sha256", { length: 64 }).notNull(),
+  width: int("width"),
+  height: int("height"),
+  durationMs: int("durationMs"),
+  waveform: json("waveform"),
+  scanStatus: mysqlEnum("scanStatus", ["pending", "clean", "rejected", "failed"]).default("pending").notNull(),
+  transcriptStatus: mysqlEnum("transcriptStatus", ["not_applicable", "pending", "complete", "failed"]).default("not_applicable").notNull(),
+  transcriptOriginal: text("transcriptOriginal"),
+  transcriptArabic: text("transcriptArabic"),
+  transcriptEnglish: text("transcriptEnglish"),
+  savedClientDocumentId: int("savedClientDocumentId"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  uniqueMessageFile: uniqueIndex("client_chat_attachments_message_hash_unique").on(table.messageId, table.sha256),
+  messageLookup: index("client_chat_attachments_message_idx").on(table.messageId),
+  scanLookup: index("client_chat_attachments_scan_idx").on(table.scanStatus, table.createdAt),
+}));
+export type ClientChatAttachment = typeof clientChatAttachments.$inferSelect;
+export type InsertClientChatAttachment = typeof clientChatAttachments.$inferInsert;
+
+export const clientChatHiddenMessages = mysqlTable("client_chat_hidden_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  messageId: int("messageId").notNull(),
+  participantId: int("participantId").notNull(),
+  hiddenAt: bigint("hiddenAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  uniqueHiddenMessage: uniqueIndex("client_chat_hidden_message_unique").on(table.messageId, table.participantId),
+}));
+export type ClientChatHiddenMessage = typeof clientChatHiddenMessages.$inferSelect;
+export type InsertClientChatHiddenMessage = typeof clientChatHiddenMessages.$inferInsert;
+
+export const clientChatDrafts = mysqlTable("client_chat_drafts", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: int("conversationId").notNull(),
+  participantId: int("participantId").notNull(),
+  body: text("body"),
+  replyToMessageId: int("replyToMessageId"),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  uniqueParticipantDraft: uniqueIndex("client_chat_drafts_participant_unique").on(table.conversationId, table.participantId),
+}));
+export type ClientChatDraft = typeof clientChatDrafts.$inferSelect;
+export type InsertClientChatDraft = typeof clientChatDrafts.$inferInsert;
+
+export const clientChatScheduledMessages = mysqlTable("client_chat_scheduled_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  conversationId: int("conversationId").notNull(),
+  senderParticipantId: int("senderParticipantId").notNull(),
+  body: text("body").notNull(),
+  visibility: mysqlEnum("visibility", ["client", "internal"]).default("client").notNull(),
+  scheduledFor: bigint("scheduledFor", { mode: "number" }).notNull(),
+  status: mysqlEnum("status", ["scheduled", "sending", "sent", "cancelled", "failed"]).default("scheduled").notNull(),
+  heartbeatTaskUid: varchar("heartbeatTaskUid", { length: 65 }),
+  sentMessageId: int("sentMessageId"),
+  failureReason: varchar("failureReason", { length: 500 }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  dueStatus: index("client_chat_scheduled_due_idx").on(table.status, table.scheduledFor),
+  taskLookup: uniqueIndex("client_chat_scheduled_task_uid_unique").on(table.heartbeatTaskUid),
+}));
+export type ClientChatScheduledMessage = typeof clientChatScheduledMessages.$inferSelect;
+export type InsertClientChatScheduledMessage = typeof clientChatScheduledMessages.$inferInsert;
+
+export const clientChatMessageReports = mysqlTable("client_chat_message_reports", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  messageId: int("messageId").notNull(),
+  reporterParticipantId: int("reporterParticipantId").notNull(),
+  reason: varchar("reason", { length: 500 }).notNull(),
+  status: mysqlEnum("status", ["open", "reviewed", "dismissed", "actioned"]).default("open").notNull(),
+  reviewedByStaffUserId: int("reviewedByStaffUserId"),
+  reviewedAt: bigint("reviewedAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  reporterLookup: index("client_chat_reports_reporter_idx").on(table.reporterParticipantId, table.status),
+  messageLookup: index("client_chat_reports_message_idx").on(table.messageId),
+}));
+export type ClientChatMessageReport = typeof clientChatMessageReports.$inferSelect;
+export type InsertClientChatMessageReport = typeof clientChatMessageReports.$inferInsert;
+
+export const clientChatAuditEvents = mysqlTable("client_chat_audit_events", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  conversationId: int("conversationId"),
+  messageId: int("messageId"),
+  actorStaffUserId: int("actorStaffUserId"),
+  actorPortalUserId: int("actorPortalUserId"),
+  action: varchar("action", { length: 100 }).notNull(),
+  outcome: mysqlEnum("outcome", ["success", "denied", "failure"]).default("success").notNull(),
+  metadata: json("metadata"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  conversationTime: index("client_chat_audit_conversation_idx").on(table.conversationId, table.createdAt),
+  actionTime: index("client_chat_audit_action_idx").on(table.action, table.createdAt),
+}));
+export type ClientChatAuditEvent = typeof clientChatAuditEvents.$inferSelect;
+export type InsertClientChatAuditEvent = typeof clientChatAuditEvents.$inferInsert;
+
+export const clientChatEvents = mysqlTable("client_chat_events", {
+  id: bigint("id", { mode: "number", unsigned: true }).autoincrement().primaryKey(),
+  conversationId: int("conversationId").notNull(),
+  eventType: mysqlEnum("eventType", [
+    "message_created",
+    "message_edited",
+    "message_deleted",
+    "reaction_changed",
+    "receipt_changed",
+    "typing_changed",
+    "presence_changed",
+    "attachment_changed",
+    "participant_changed",
+    "conversation_changed",
+  ]).notNull(),
+  entityId: int("entityId"),
+  actorParticipantId: int("actorParticipantId"),
+  metadata: json("metadata"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, (table) => ({
+  conversationCursor: index("client_chat_events_conversation_cursor_idx").on(table.conversationId, table.id),
+  conversationTime: index("client_chat_events_conversation_time_idx").on(table.conversationId, table.createdAt),
+}));
+export type ClientChatEvent = typeof clientChatEvents.$inferSelect;
+export type InsertClientChatEvent = typeof clientChatEvents.$inferInsert;
 
 export const clientPortalNotifications = mysqlTable("client_portal_notifications", {
   id: int("id").autoincrement().primaryKey(),

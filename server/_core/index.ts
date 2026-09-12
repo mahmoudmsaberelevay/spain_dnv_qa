@@ -321,6 +321,8 @@ async function startServer() {
   app.post("/api/scheduled/publicContentSync", scheduledPublicContentSyncHandler);
   const { scheduledClientLifecycleRemindersHandler } = await import("../scheduledClientLifecycleRemindersHandler");
   app.post("/api/scheduled/clientLifecycleReminders", scheduledClientLifecycleRemindersHandler);
+  const { scheduledClientChatMessageHandler } = await import("../scheduledClientChatMessageHandler");
+  app.post("/api/scheduled/clientChatMessage", scheduledClientChatMessageHandler);
 
   // Backup list endpoint
   app.get("/api/backup/list", requireBackupAdmin, (req, res) => {

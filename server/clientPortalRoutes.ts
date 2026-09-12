@@ -39,6 +39,17 @@ import { replaceClientPortalAssignments } from "./clientPortalAssignmentService"
 import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPolicy";
 import { decodeProviderCoverUpload, providerCoverStorageKey, type ProviderCoverUpload } from "./clientPortalProviderMedia";
 import { comparePrograms, PROGRAM_COMPARISON_OPTIONS } from "./programComparisonService";
+import {
+  getStaffChatEmailRecipients,
+  getPortalChatPreferences,
+  getPortalAttachmentAccess,
+  listPortalConversationMessages,
+  pollPortalConversation,
+  sendPortalConversationAttachment,
+  sendPortalConversationMessage,
+  updatePortalChatPreferences,
+  updatePortalTyping,
+} from "./clientChatService";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const APP_REVIEW_CLIENT_CODE = "APP-REVIEW-001";
@@ -93,6 +104,16 @@ function error(res: Response, status: number, code: string, message?: string) {
   return res.status(status).json({ error: code, message: message ?? code });
 }
 
+function chatRouteError(res: Response, chatError: unknown) {
+  const code = typeof chatError === "object" && chatError && "code" in chatError ? String(chatError.code) : "";
+  if (code === "NOT_FOUND") return error(res, 404, "application_not_found");
+  if (code === "FORBIDDEN") return error(res, 403, "chat_access_denied");
+  if (code === "BAD_REQUEST") return error(res, 400, "invalid_chat_request");
+  if (code === "CONFLICT") return error(res, 409, "message_retry_conflict");
+  console.error("[ClientChat] Portal route failed", { code: code || "unknown" });
+  return error(res, 500, "chat_unavailable");
+}
+
 function safeBody<T extends object>(req: Request): Partial<T> {
   return req.body && typeof req.body === "object" ? req.body as Partial<T> : {};
 }
@@ -100,6 +121,10 @@ function safeBody<T extends object>(req: Request): Partial<T> {
 function requireString(value: unknown, field: string, max = 500) {
   if (typeof value !== "string" || !value.trim() || value.length > max) throw new Error(`invalid_${field}`);
   return value.trim();
+}
+
+function portalClientMessageId(value: unknown) {
+  return typeof value === "string" && /^[A-Za-z0-9:_-]{8,64}$/.test(value) ? value : `portal:${randomUUID()}`;
 }
 
 function validNewPassword(value: unknown): value is string {
@@ -726,13 +751,27 @@ export function registerClientPortalRoutes(app: Express) {
     }
   });
 
+  app.get("/client-api/applications/:applicationId/messages/preferences", async (req: PortalRequest, res) => {
+    try { return res.json(await getPortalChatPreferences(req.params.applicationId, req.portal!.user.id)); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.patch("/client-api/applications/:applicationId/messages/preferences", writeLimiter, async (req: PortalRequest, res) => {
+    const requestedMute = req.body?.muteUntil == null ? null : Number(req.body.muteUntil);
+    const maxMute = Date.now() + 366 * 24 * 60 * 60_000;
+    if (requestedMute != null && (!Number.isFinite(requestedMute) || requestedMute <= Date.now() || requestedMute > maxMute)) return error(res, 400, "invalid_mute_until");
+    try {
+      return res.json(await updatePortalChatPreferences(req.params.applicationId, req.portal!.user.id, { muteUntil: requestedMute, inApp: req.body?.inApp !== false, push: req.body?.push !== false }));
+    } catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
   app.get("/client-api/applications/:applicationId/messages", async (req: PortalRequest, res) => {
-    const owned = await ownedApplication(req.portal!.user.id, req.params.applicationId);
-    if (!owned) return error(res, 404, "application_not_found");
-    const db = await getDb();
-    if (!db) return error(res, 503, "service_unavailable");
-    const rows = await db.select({ publicId: clientPortalMessages.publicId, senderType: clientPortalMessages.senderType, body: clientPortalMessages.body, attachmentDocumentId: clientPortalMessages.attachmentDocumentId, createdAt: clientPortalMessages.createdAt }).from(clientPortalMessages).where(and(eq(clientPortalMessages.portalApplicationId, owned.application.id), eq(clientPortalMessages.visibility, "client"))).orderBy(asc(clientPortalMessages.createdAt));
-    return res.json(rows);
+    try {
+      const rows = await listPortalConversationMessages(req.params.applicationId, req.portal!.user.id);
+      return res.json(rows.map(row => ({ ...row, attachmentDocumentId: null })));
+    } catch (chatError) {
+      return chatRouteError(res, chatError);
+    }
   });
 
   app.post("/client-api/applications/:applicationId/messages", writeLimiter, async (req: PortalRequest, res) => {
@@ -740,18 +779,72 @@ export function registerClientPortalRoutes(app: Express) {
     if (!owned) return error(res, 404, "application_not_found");
     let bodyText: string;
     try { bodyText = requireString(req.body?.body, "message", 5000); } catch { return error(res, 400, "invalid_message"); }
-    const db = await getDb();
-    if (!db) return error(res, 503, "service_unavailable");
-    const publicId = randomUUID();
-    await db.insert(clientPortalMessages).values({ publicId, portalApplicationId: owned.application.id, senderType: "client", senderPortalUserId: req.portal!.user.id, visibility: "client", body: bodyText });
-    await db.insert(clientPortalNotifications).values({ publicId: randomUUID(), portalUserId: req.portal!.user.id, type: "message_sent", titleEn: "Message sent", titleAr: "تم إرسال الرسالة", bodyEn: "Your message was sent securely to your Elevay team.", bodyAr: "تم إرسال رسالتك بأمان إلى فريق إليفاي.", entityType: "message", entityPublicId: publicId, createdAt: Date.now() });
-    const recipients = staffRecipients(owned.clientCase.consultant, owned.clientCase.paralegal);
-    await Promise.all([
-      queueStaffEmail({ eventType: "client_message", recipients, subject: `New Client Message – ${owned.clientCase.clientName}`, html: `<h2>New Client Message</h2><p><strong>Client:</strong> ${owned.clientCase.clientName}</p><p><strong>Application:</strong> ${owned.application.label || owned.clientCase.applicationType}</p><p><strong>Message:</strong> ${bodyText.replace(/[<>]/g, "").slice(0, 500)}</p><p><a href="https://elevay.vip/admin/client-portal">Open Client Portal Administration</a></p>` }),
-      createNotification({ type: "client_message", title: "New client message", body: `${owned.clientCase.clientName}: ${bodyText.slice(0, 180)}`, entityId: owned.clientCase.id, entityType: "client_case" }),
-    ]);
-    await writePortalAudit({ req, portalUserId: req.portal!.user.id, clientCaseId: owned.clientCase.id, action: "message_sent", recordType: "message", recordPublicId: publicId, correlationId: req.portal!.correlationId });
-    return res.status(201).json({ publicId, createdAt: new Date().toISOString() });
+    try {
+      const message = await sendPortalConversationMessage({ applicationPublicId: req.params.applicationId, portalUserId: req.portal!.user.id, senderName: req.portal!.user.username, clientMessageId: portalClientMessageId(req.body?.clientMessageId), body: bodyText, replyToPublicId: typeof req.body?.replyToPublicId === "string" ? req.body.replyToPublicId : null });
+      const publicId = message.publicId;
+      if (!message.isDuplicate) {
+        const db = await getDb();
+        if (!db) return error(res, 503, "service_unavailable");
+        await db.insert(clientPortalNotifications).values({ publicId: randomUUID(), portalUserId: req.portal!.user.id, type: "message_sent", titleEn: "Message sent", titleAr: "تم إرسال الرسالة", bodyEn: "Your message was sent securely to your Elevay team.", bodyAr: "تم إرسال رسالتك بأمان إلى فريق إليفاي.", entityType: "message", entityPublicId: publicId, createdAt: Date.now() });
+        const recipients = await getStaffChatEmailRecipients(owned.clientCase.id);
+        if (recipients.length) await queueStaffEmail({ eventType: "client_message", recipients, subject: `New Client Message – ${owned.clientCase.clientName}`, html: `<h2>New Client Message</h2><p><strong>Client:</strong> ${owned.clientCase.clientName}</p><p><strong>Application:</strong> ${owned.application.label || owned.clientCase.applicationType}</p><p>A new secure client message is waiting in the ELEVAY conversation. Message content is intentionally omitted from email.</p><p><a href="https://elevay.vip/docs/clients/${owned.clientCase.id}?tab=chat">Open Client Documentation Chat</a></p>` });
+        await writePortalAudit({ req, portalUserId: req.portal!.user.id, clientCaseId: owned.clientCase.id, action: "message_sent", recordType: "message", recordPublicId: publicId, correlationId: req.portal!.correlationId });
+      }
+      return res.status(message.isDuplicate ? 200 : 201).json({ publicId, createdAt: message.createdAt, duplicate: message.isDuplicate });
+    } catch (chatError) {
+      return chatRouteError(res, chatError);
+    }
+  });
+
+  app.post("/client-api/applications/:applicationId/messages/attachments", writeLimiter, async (req: PortalRequest, res) => {
+    const owned = await ownedApplication(req.portal!.user.id, req.params.applicationId);
+    if (!owned) return error(res, 404, "application_not_found");
+    try {
+      const message = await sendPortalConversationAttachment({
+        applicationPublicId: req.params.applicationId,
+        portalUserId: req.portal!.user.id,
+        senderName: req.portal!.user.username,
+        clientMessageId: portalClientMessageId(req.body?.clientMessageId),
+        body: typeof req.body?.body === "string" ? req.body.body.trim().slice(0, 10_000) || null : null,
+        replyToPublicId: typeof req.body?.replyToPublicId === "string" ? req.body.replyToPublicId : null,
+        fileName: requireString(req.body?.fileName, "file_name", 255),
+        mimeType: requireString(req.body?.mimeType, "mime_type", 128),
+        fileSize: Number(req.body?.fileSize),
+        base64: requireString(req.body?.base64, "file", 36 * 1024 * 1024),
+        durationMs: Number.isFinite(Number(req.body?.durationMs)) ? Number(req.body.durationMs) : null,
+      });
+      if (!message) return error(res, 500, "chat_unavailable");
+      if (!message.isDuplicate) {
+        const db = await getDb();
+        if (!db) return error(res, 503, "service_unavailable");
+        await db.insert(clientPortalNotifications).values({ publicId: randomUUID(), portalUserId: req.portal!.user.id, type: "message_sent", titleEn: "Attachment sent", titleAr: "تم إرسال المرفق", bodyEn: "Your attachment was sent securely to your Elevay team.", bodyAr: "تم إرسال المرفق بأمان إلى فريق إليفاي.", entityType: "message", entityPublicId: message.publicId, createdAt: Date.now() });
+        const recipients = await getStaffChatEmailRecipients(owned.clientCase.id);
+        if (recipients.length) await queueStaffEmail({ eventType: "client_message", recipients, subject: `New Client Attachment – ${owned.clientCase.clientName}`, html: `<h2>New Client Attachment</h2><p><strong>Client:</strong> ${owned.clientCase.clientName}</p><p><strong>Application:</strong> ${owned.application.label || owned.clientCase.applicationType}</p><p>A file was sent securely through the ELEVAY client conversation. File content and private storage details are intentionally omitted from email.</p><p><a href="https://elevay.vip/docs/clients/${owned.clientCase.id}?tab=chat">Open Client Documentation Chat</a></p>` });
+        await writePortalAudit({ req, portalUserId: req.portal!.user.id, clientCaseId: owned.clientCase.id, action: "attachment_sent", recordType: "message", recordPublicId: message.publicId, correlationId: req.portal!.correlationId });
+      }
+      return res.status(message.isDuplicate ? 200 : 201).json({ publicId: message.publicId, createdAt: message.createdAt, duplicate: message.isDuplicate });
+    } catch (chatError) {
+      return chatRouteError(res, chatError);
+    }
+  });
+
+  app.get("/client-api/applications/:applicationId/messages/attachments/:attachmentId/access", async (req: PortalRequest, res) => {
+    try {
+      return res.json(await getPortalAttachmentAccess(req.params.applicationId, req.portal!.user.id, req.params.attachmentId));
+    } catch (chatError) {
+      return chatRouteError(res, chatError);
+    }
+  });
+
+  app.get("/client-api/applications/:applicationId/messages/poll", async (req: PortalRequest, res) => {
+    const afterEventId = Math.max(0, Number(req.query.afterEventId ?? 0) || 0);
+    try { return res.json(await pollPortalConversation(req.params.applicationId, req.portal!.user.id, afterEventId)); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.post("/client-api/applications/:applicationId/messages/typing", writeLimiter, async (req: PortalRequest, res) => {
+    try { return res.json(await updatePortalTyping(req.params.applicationId, req.portal!.user.id, Boolean(req.body?.typing))); }
+    catch (chatError) { return chatRouteError(res, chatError); }
   });
 
   app.get("/client-api/notifications", async (req: PortalRequest, res) => {

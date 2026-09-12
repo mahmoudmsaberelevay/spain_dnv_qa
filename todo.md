@@ -1456,3 +1456,44 @@ Check email for download link within 5 minutes
 - [ ] Restore QR generation, reconnect the linked WhatsApp device, and confirm the bridge changes from disconnected to connected
 - [x] Replace the static “Webhook Active” label with live bridge connection and last-message freshness indicators
 - [x] Preserve client/group-name sorting and keep WhatsApp chat management independent from the Leads module
+
+## Client Documentation — Unified Real-Time Client Chat
+- [x] Read and map every requirement in `Pasted_content_08.txt` to the current Client Documentation, Client Portal, mobile, notification, storage, and permission architecture
+- [x] Hosting decision confirmed: use adaptive polling on existing Autoscale hosting; do not require Reserved Hosting or WebSockets
+- [x] Define one authoritative conversation per client documentation folder with enforced client, application, portal user, consultant, paralegal, participant, programme, status, and activity relationships
+- [x] Add additive conversation, participant, message, per-participant receipt, reaction, edit/delete history, attachment, pin, notification preference, presence, and audit schemas without altering existing client records
+- [x] Automatically create or enable the folder conversation when a Client Documentation record is created and prevent duplicate conversations
+- [x] WhatsApp linking, importing, and mirroring removed from scope by the user; the new ELEVAY chat is fully independent from WhatsApp
+- [x] Add adaptive-polling authenticated messaging with optimistic sending, ordering, idempotency, reconnect recovery, typing freshness, delivery, read, and voice-listening receipts
+- [x] Add the full Chat tab inside each Client Documentation folder and unread/status/preview indicators in the main Client Documentation list
+- [ ] Expose the same authorized conversation in Client Portal and the client mobile interface while keeping internal employee notes invisible to clients
+- [x] Add reply, edit, delete states, reactions, message information, pin/important, search, date filters, mentions, drafts, and assignment/status controls
+- [ ] Add secure photos, videos, PDFs, Office files, audio, multiple attachments, previews, progress/retry, malware/type/size validation, protected downloads, and storage quotas
+- [x] Add WhatsApp-style voice recording/playback with mobile-compatible formats, playback speeds, listening receipts, and Arabic/English transcripts
+- [x] Add Save to Client Documents with destination confirmation, category selection, source-message reference, assigned-team notification, audit history, and cross-client protection
+- [x] Add in-app/browser/mobile/email notification preferences, mute controls, unread badges, deep links, duplicate-notification prevention, and privacy-safe previews
+- [x] Add role and participant authorization, field-level privacy, rate limits, XSS/injection protection, encrypted transport/storage controls, retention, export, and legal-hold safeguards
+- [x] Add focused unit, integration, authorization, adaptive-polling, duplicate, attachment, receipt, privacy, mobile, Client Portal, and historical-integrity regressions
+- [ ] Validate representative employee/client/mobile flows, preserve existing Client Documentation and portal-message history, document operations/recovery/limitations, and publish
+- [x] Idempotently provision one standalone chat conversation for every existing Client Documentation folder so unread summaries exist before first open
+
+### Validated standalone chat milestones
+- [x] Route CRM, Client Portal REST, and Client Portal administrator messages through one authoritative folder conversation with active-assignment checks and client-safe projections
+- [x] Add staff web and staff mobile in-folder chat interfaces with foreground-only adaptive polling, optimistic text sends, replies, internal notes, typing, drafts, and receipts
+- [x] Add staff message edit/delete history, reactions, personal stars, manager pins, importance, hide-for-me, reporting, search, and message-information controls
+- [x] Add strict allowlist, extension, signature, declared-size, executable-header, filename, and storage-key privacy controls for single attachment uploads
+- [x] Add secure staff and client attachment access, inline web image/audio/video previews, native mobile image/voice handling, and Arabic/English voice transcripts
+- [x] Add staff Save to Documents destination confirmation with cross-folder authorization and reuse of the existing secure object
+- [x] Add per-folder unread badges and previews, waiting-on indicators, direct Chat links, per-participant mute/channel preferences, manager assignment controls, and privacy-safe conversation monitoring
+- [x] Deliver duplicate-safe Client Portal alerts and preference-aware staff email alerts with protected deep links and no message or attachment content in email
+- [x] Add authorized participant names, approximate presence labels, advanced discovery filters, persisted mentions, and manager-controlled conversation lifecycle state
+- [x] Add bounded five-file web and mobile queues with per-file preparing/uploading/failed states, stable retry identifiers, individual retry/removal controls, and no duplicate attachment messages
+- [x] Enforce a shared 500 MB per-conversation attachment quota for staff and Client Portal uploads and expose privacy-safe usage metrics to authorized staff clients
+- [x] Add 1×, 1.5×, and 2× web and native mobile voice-note playback controls while preserving listened receipts and bilingual transcripts
+- [x] Add Client Portal mute/in-app/push preference endpoints scoped to the active folder assignment and audited without exposing internal identifiers
+- [x] Preserve source chat message and attachment references when linking files into Client Documentation and notify only assigned staff through an internal system event
+- [x] Add manager-controlled indefinite/seven-year policy records, legal holds, privacy-safe CSV exports, and truthful non-destructive retention guidance
+- [x] Add durable Heartbeat-backed scheduled messages with trusted task-UID lookup, retry-safe delivery, pending cancellation, and an explicit annual no-op limitation after first send
+- [x] Add manager report moderation and a privacy-safe four-hour staff response target without notifying the client of internal decisions
+- [x] Provision all 24 existing Client Documentation folders and verify a second pass creates zero additional conversations
+- [x] Pass 30 focused chat tests, 103 cross-module web security/regression tests, the production web build, 208 mobile tests with one existing skip, 59 focused mobile tests, TypeScript, lint, and Expo web release export
