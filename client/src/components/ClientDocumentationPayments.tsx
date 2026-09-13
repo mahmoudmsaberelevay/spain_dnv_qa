@@ -5,12 +5,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { CalendarDays, CheckCircle2, CreditCard, ExternalLink, Link2, Pencil, Plus, ReceiptText, Trash2 } from "lucide-react";
 
 type PaymentForm = {
   paymentName: string;
   amountEur: string;
+  paymentMilestone: "signed" | "submission" | "approval" | "legacy";
   dueDate: string;
   receiptName: string;
   receiptDriveLink: string;
@@ -20,6 +22,7 @@ type PaymentForm = {
 const EMPTY_PAYMENT: PaymentForm = {
   paymentName: "",
   amountEur: "",
+  paymentMilestone: "legacy",
   dueDate: "",
   receiptName: "",
   receiptDriveLink: "",
@@ -40,6 +43,7 @@ function statusClasses(status: string) {
   if (status === "paid") return "bg-emerald-50 text-emerald-700 border-emerald-200";
   if (status === "overdue") return "bg-red-50 text-red-700 border-red-200";
   if (status === "due_today") return "bg-amber-50 text-amber-700 border-amber-200";
+  if (status === "awaiting_milestone") return "bg-violet-50 text-violet-700 border-violet-200";
   return "bg-blue-50 text-blue-700 border-blue-200";
 }
 
@@ -47,7 +51,15 @@ function statusLabel(status: string) {
   if (status === "paid") return "Paid";
   if (status === "overdue") return "Overdue";
   if (status === "due_today") return "Due today";
+  if (status === "awaiting_milestone") return "Awaiting milestone";
   return "Upcoming";
+}
+
+function milestoneLabel(value: string | null | undefined) {
+  if (value === "signed") return "Signed";
+  if (value === "submission") return "Submission";
+  if (value === "approval") return "Approval";
+  return null;
 }
 
 export function ClientDocumentationPayments({
@@ -137,7 +149,8 @@ export function ClientDocumentationPayments({
     setPaymentForm({
       paymentName: payment.paymentName,
       amountEur: String(payment.amountEur),
-      dueDate: payment.dueDate,
+      paymentMilestone: payment.paymentMilestone ?? "legacy",
+      dueDate: payment.dueDate ?? "",
       receiptName: payment.receiptName ?? "",
       receiptDriveLink: payment.receiptDriveLink ?? "",
       notes: payment.notes ?? "",
@@ -147,15 +160,16 @@ export function ClientDocumentationPayments({
 
   function submitPayment() {
     const amountEur = Number(paymentForm.amountEur);
-    if (!paymentForm.paymentName.trim() || !paymentForm.dueDate || !Number.isFinite(amountEur) || amountEur <= 0) {
-      toast.error("Payment name, positive EUR amount, and due date are required");
+    if (!paymentForm.paymentName.trim() || !Number.isFinite(amountEur) || amountEur <= 0 || (paymentForm.paymentMilestone === "legacy" && !paymentForm.dueDate)) {
+      toast.error("Payment name, positive EUR amount, and a legacy due date are required");
       return;
     }
     const input = {
       clientCaseId,
       paymentName: paymentForm.paymentName.trim(),
       amountEur,
-      dueDate: paymentForm.dueDate,
+      paymentMilestone: paymentForm.paymentMilestone === "legacy" ? null : paymentForm.paymentMilestone,
+      dueDate: paymentForm.paymentMilestone === "legacy" ? paymentForm.dueDate : null,
       receiptName: paymentForm.receiptName.trim() || null,
       receiptDriveLink: paymentForm.receiptDriveLink.trim() || null,
       notes: paymentForm.notes.trim() || null,
@@ -208,7 +222,7 @@ export function ClientDocumentationPayments({
           { label: "Paid", value: formatEur(summary?.paidTotalEur ?? 0), tone: "text-emerald-700" },
           { label: "Remaining", value: formatEur(summary?.remainingBalanceEur ?? 0), tone: "text-gray-900" },
           { label: "Due / Overdue", value: formatEur(summary?.dueTotalEur ?? 0), tone: (summary?.dueTotalEur ?? 0) > 0 ? "text-red-700" : "text-gray-900" },
-          { label: "Next Payment", value: summary?.nextPayment ? `${summary.nextPayment.paymentName} · ${summary.nextPayment.dueDate}` : "None", tone: "text-gray-900" },
+          { label: "Next Payment", value: summary?.nextPayment ? `${summary.nextPayment.paymentName} · ${summary.nextPayment.milestoneLabel || summary.nextPayment.dueDate || "Awaiting milestone"}` : "None", tone: "text-gray-900" },
         ].map(item => (
           <div key={item.label} className="bg-gray-50 border border-gray-100 rounded-lg p-3 min-w-0">
             <p className="text-xs text-gray-500">{item.label}</p>
@@ -234,7 +248,7 @@ export function ClientDocumentationPayments({
                 <tr>
                   <th className="text-left font-medium px-3 py-2.5">Payment</th>
                   <th className="text-right font-medium px-3 py-2.5">Amount</th>
-                  <th className="text-left font-medium px-3 py-2.5">Due Date</th>
+                  <th className="text-left font-medium px-3 py-2.5">Application Status / Due Date</th>
                   <th className="text-left font-medium px-3 py-2.5">Status</th>
                   <th className="text-left font-medium px-3 py-2.5">Receipt</th>
                   <th className="text-right font-medium px-3 py-2.5">Actions</th>
@@ -249,7 +263,7 @@ export function ClientDocumentationPayments({
                     </td>
                     <td className="px-3 py-3 text-right font-semibold text-gray-900">{formatEur(payment.amountEur)}</td>
                     <td className="px-3 py-3 text-gray-700">
-                      <span className="flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5 text-gray-400" /> {payment.dueDate}</span>
+                      {payment.paymentMilestone ? <span className="flex items-center gap-1.5 font-medium text-violet-700"><CalendarDays className="w-3.5 h-3.5" /> {milestoneLabel(payment.paymentMilestone)}</span> : <span className="flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5 text-gray-400" /> {payment.dueDate || "No date"}</span>}
                       {payment.paidDate && <span className="text-xs text-emerald-600">Paid {payment.paidDate}</span>}
                     </td>
                     <td className="px-3 py-3"><span className={`text-xs px-2 py-1 rounded-full border font-medium ${statusClasses(payment.status)}`}>{statusLabel(payment.status)}</span></td>
@@ -307,9 +321,10 @@ export function ClientDocumentationPayments({
           <DialogHeader><DialogTitle>{editingPaymentId ? "Edit Payment" : "Add Payment"}</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-1.5 md:col-span-2"><Label>Payment Name</Label><Input value={paymentForm.paymentName} onChange={event => setPaymentForm(current => ({ ...current, paymentName: event.target.value }))} /></div>
+              <div className="space-y-1.5 md:col-span-2"><Label>Payment Name</Label><Input value={paymentForm.paymentName} readOnly={paymentForm.paymentMilestone !== "legacy"} onChange={event => setPaymentForm(current => ({ ...current, paymentName: event.target.value }))} /></div>
               <div className="space-y-1.5"><Label>Amount (EUR)</Label><Input type="number" min="0.01" step="0.01" value={paymentForm.amountEur} onChange={event => setPaymentForm(current => ({ ...current, amountEur: event.target.value }))} /></div>
-              <div className="space-y-1.5"><Label>Due Date</Label><Input type="date" value={paymentForm.dueDate} onChange={event => setPaymentForm(current => ({ ...current, dueDate: event.target.value }))} /></div>
+              <div className="space-y-1.5"><Label>Application Status</Label><Select value={paymentForm.paymentMilestone} disabled={paymentForm.paymentMilestone !== "legacy"}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="signed">Signed</SelectItem><SelectItem value="submission">Submission</SelectItem><SelectItem value="approval">Approval</SelectItem><SelectItem value="legacy">Custom date</SelectItem></SelectContent></Select></div>
+              {paymentForm.paymentMilestone === "legacy" ? <div className="space-y-1.5 md:col-span-2"><Label>Due Date</Label><Input type="date" value={paymentForm.dueDate} onChange={event => setPaymentForm(current => ({ ...current, dueDate: event.target.value }))} /></div> : <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs text-violet-800 md:col-span-2">This fixed payment is linked to the {milestoneLabel(paymentForm.paymentMilestone)} application status instead of a manual date.</div>}
               <div className="space-y-1.5"><Label>Receipt Name (Optional)</Label><Input value={paymentForm.receiptName} onChange={event => setPaymentForm(current => ({ ...current, receiptName: event.target.value }))} /></div>
               <div className="space-y-1.5"><Label>Receipt Drive Link (Optional)</Label><Input type="url" placeholder="https://drive.google.com/..." value={paymentForm.receiptDriveLink} onChange={event => setPaymentForm(current => ({ ...current, receiptDriveLink: event.target.value }))} /></div>
               <div className="space-y-1.5 md:col-span-2"><Label>Notes (Optional)</Label><Textarea value={paymentForm.notes} onChange={event => setPaymentForm(current => ({ ...current, notes: event.target.value }))} /></div>

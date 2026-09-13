@@ -193,6 +193,26 @@ describe("standalone ELEVAY client chat integration", () => {
     expect(panel).toContain('[1, 1.5, 2].map');
   });
 
+  it("shows named delivery, read, and listening receipts and sends message-preview push notifications", () => {
+    expect(service).toContain('receiptDetailsByMessage');
+    expect(service).toContain('displayName: receiptParticipant.participantType === "staff"');
+    expect(service).toContain('deliveredAt: receipt.deliveredAt');
+    expect(service).toContain('readAt: receipt.readAt');
+    expect(service).toContain('listenedAt: receipt.listenedAt');
+    expect(panel).toContain('Listened by ${listened}');
+    expect(panel).toContain('Read by ${read}');
+    expect(panel).toContain('Delivered to ${delivered}');
+    expect(panel).toContain('setInfoMessagePublicId(message.publicId)');
+    expect(service).toContain('getChatNotificationCopy');
+    expect(service).toContain('preview: compactChatPreview(message.body, fallback)');
+    expect(service).toContain('normalizedValue.length > 240');
+    expect(service).toContain('Secure attachment${attachment?.fileName ? `: ${attachment.fileName}` : ""}');
+    expect(service).toContain('pushClientNotification(recipient.portalUserId');
+    expect(service).toContain('applicationPublicId: recipient.applicationPublicId');
+    expect(service).toContain('entityPublicId: input.messagePublicId');
+    expect(service).toContain('client-chat-push:${input.messagePublicId}:u:${recipient.portalUserId}');
+  });
+
   it("provides per-participant unread summaries, mute preferences, and direct folder-chat links", () => {
     expect(service).toContain('listStaffConversationSummaries');
     expect(service).toContain('coalesce(${clientChatParticipants.lastReadMessageId}, 0)');

@@ -65,9 +65,9 @@ function scenarioDb() {
   ];
   const docs = [{ id: 1, clientCaseId: 9, docName: "Passport copy", received: false }];
   const payments = [
-    { id: 1, clientCaseId: 6, paymentName: "Second payment", amountEur: "1000.00", dueDate: "2026-01-25", paidDate: null, archivedAt: null, sortOrder: 2 },
-    { id: 2, clientCaseId: 7, paymentName: "Second payment", amountEur: "1000.00", dueDate: "2026-01-13", paidDate: null, archivedAt: null, sortOrder: 2 },
-    { id: 3, clientCaseId: 11, paymentName: "Third payment", amountEur: "500.00", dueDate: "2026-01-25", paidDate: null, archivedAt: null, sortOrder: 3 },
+    { id: 1, clientCaseId: 6, paymentName: "Second payment", paymentMilestone: "submission", amountEur: "1000.00", dueDate: null, paidDate: null, archivedAt: null, sortOrder: 2 },
+    { id: 2, clientCaseId: 7, paymentName: "Second payment", paymentMilestone: "submission", amountEur: "1000.00", dueDate: null, paidDate: null, archivedAt: null, sortOrder: 2 },
+    { id: 3, clientCaseId: 11, paymentName: "Third payment", paymentMilestone: "approval", amountEur: "500.00", dueDate: null, paidDate: null, archivedAt: null, sortOrder: 3 },
   ];
   const queue: unknown[] = [[{ id: 1, enabled: true }], rows, docs, payments];
   const db: any = {
@@ -86,12 +86,13 @@ describe("client lifecycle reminder engine", () => {
     const keys = deliveries.map(item => item.template.ruleKey);
     expect(keys).toEqual(expect.arrayContaining([
       "appointment_booking_d2", "embassy_inbox_cycle", "embassy_appointment_d3", "schengen_expiry_d30",
-      "embassy_attestation_followup_d15", "second_payment_d12", "second_payment_d7", "flight_ticket_d3",
-      "missing_documents_cycle", "arrival_confirmation_d1", "third_payment_d1", "travel_deadline_d3", "biometrics_48h",
+      "embassy_attestation_followup_d15", "submission_payment_d12", "flight_ticket_d3",
+      "missing_documents_cycle", "arrival_confirmation_d1", "approval_payment_d1", "travel_deadline_d3", "biometrics_48h",
     ]));
     expect(deliveries.filter(item => item.template.notifyStaff).map(item => item.template.ruleKey)).toEqual(expect.arrayContaining([
-      "embassy_attestation_followup_d15", "second_payment_d12", "second_payment_d7", "arrival_confirmation_d1", "third_payment_d1", "travel_deadline_d3",
+      "embassy_attestation_followup_d15", "arrival_confirmation_d1", "travel_deadline_d3",
     ]));
+    expect(deliveries.filter(item => ["submission_payment_d12", "approval_payment_d1"].includes(item.template.ruleKey)).every(item => item.template.notifyStaff === false)).toBe(true);
     const appointmentBooking = deliveries.find(item => item.template.ruleKey === "appointment_booking_d2");
     expect(appointmentBooking?.template).toMatchObject({
       titleEn: "Send the Embassy attestation appointment email",

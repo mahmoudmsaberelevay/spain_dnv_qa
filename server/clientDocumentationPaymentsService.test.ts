@@ -10,6 +10,7 @@ function payment(overrides: Record<string, unknown>) {
     clientCaseId: 10,
     paymentName: "Payment",
     amountEur: "1000.00",
+    paymentMilestone: null,
     dueDate: "2026-09-09",
     paidDate: null,
     receiptName: null,
@@ -59,5 +60,21 @@ describe("Client Documentation payment schedule", () => {
       payment({ dueDate: "2026-09-08" }),
     ], new Date("2026-09-07T22:30:00Z"));
     expect(result.payments[0]?.status).toBe("due_today");
+  });
+
+  it("shows milestone-linked payments without dates as awaiting their application status", () => {
+    const result = calculateClientDocumentationPaymentSummary([
+      payment({ id: 1, paymentName: "First payment", paymentMilestone: "signed", dueDate: null, paidDate: "2026-09-08" }),
+      payment({ id: 2, paymentName: "Second payment", paymentMilestone: "submission", dueDate: null, sortOrder: 1 }),
+      payment({ id: 3, paymentName: "Third payment", paymentMilestone: "approval", dueDate: null, sortOrder: 2 }),
+    ], new Date("2026-09-08T09:00:00Z"));
+
+    expect(result.payments.map(item => [item.paymentName, item.milestoneLabel, item.status])).toEqual([
+      ["First payment", "Signed", "paid"],
+      ["Second payment", "Submission", "awaiting_milestone"],
+      ["Third payment", "Approval", "awaiting_milestone"],
+    ]);
+    expect(result.summary.paidTotalEur).toBe(1000);
+    expect(result.summary.remainingBalanceEur).toBe(2000);
   });
 });

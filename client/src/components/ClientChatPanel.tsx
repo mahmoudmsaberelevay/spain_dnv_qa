@@ -77,6 +77,19 @@ function formatFileSize(bytes: number) {
   return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
+function formatReceiptNames(receipts: Array<{ displayName: string; deliveredAt: number | null; readAt: number | null; listenedAt: number | null }> | undefined) {
+  if (!receipts?.length) return null;
+  const uniqueNames = (items: string[]) => Array.from(new Set(items)).join(", ");
+  const listened = uniqueNames(receipts.filter(receipt => receipt.listenedAt).map(receipt => receipt.displayName));
+  const read = uniqueNames(receipts.filter(receipt => receipt.readAt && !receipt.listenedAt).map(receipt => receipt.displayName));
+  const delivered = uniqueNames(receipts.filter(receipt => receipt.deliveredAt && !receipt.readAt && !receipt.listenedAt).map(receipt => receipt.displayName));
+  return [
+    listened ? `Listened by ${listened}` : null,
+    read ? `Read by ${read}` : null,
+    delivered ? `Delivered to ${delivered}` : null,
+  ].filter(Boolean).join(" · ") || null;
+}
+
 type PendingAttachment = { id: string; file: File; durationMs?: number; status: "queued" | "reading" | "uploading" | "failed" | "complete"; error?: string };
 
 function SecureAudioPreview({ src, onPlaybackStart, onListened }: { src: string; onPlaybackStart: () => void; onListened: () => void }) {
@@ -611,6 +624,7 @@ export function ClientChatPanel({ clientCaseId, active }: Props) {
                 {message.reactions?.length ? <div className="mt-2 flex flex-wrap gap-1">{message.reactions.map((aggregate: any) => <button key={aggregate.reaction} type="button" onClick={() => reactionMutation.mutate({ clientCaseId, messagePublicId: message.publicId, reaction: aggregate.reaction })} className={`rounded-full border px-2 py-0.5 text-xs ${aggregate.reactedByMe ? "border-[#5ba3b8] bg-[#e7f5f8]" : "border-slate-200 bg-white/70"}`}>{aggregate.reaction} {aggregate.count}</button>)}</div> : null}
                 {loadedAudio ? <div className="mt-1 flex justify-end gap-1" aria-label="Voice-note playback speed">{[1, 1.5, 2].map(rate => <button key={rate} type="button" onClick={() => { const audio = document.querySelector(`#chat-message-${message.id} audio`); if (audio instanceof HTMLAudioElement) audio.playbackRate = rate; }} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 hover:bg-[#e7f5f8] hover:text-[#1e7184]">{rate}×</button>)}</div> : null}
                 <footer className="mt-1 flex items-center justify-end gap-1.5 text-[10px] text-slate-400"><span>{formatTime(message.createdAt)}</span>{message.editedAt ? <span>edited</span> : null}{message.pending ? <Clock3 className="h-3 w-3" /> : mine && message.visibility === "client" ? message.receiptSummary?.read > 0 ? <CheckCheck className="h-3.5 w-3.5 text-blue-500" aria-label="Read" /> : message.receiptSummary?.delivered > 0 ? <CheckCheck className="h-3.5 w-3.5" aria-label="Delivered" /> : <Check className="h-3.5 w-3.5" aria-label="Sent" /> : null}</footer>
+                {mine && formatReceiptNames(message.receiptDetails) ? <button type="button" onClick={() => setInfoMessagePublicId(message.publicId)} className="mt-1 block max-w-full truncate text-right text-[10px] font-medium text-[#1e7184] underline-offset-2 hover:underline" title={formatReceiptNames(message.receiptDetails) ?? undefined}>{formatReceiptNames(message.receiptDetails)}</button> : null}
               </article>
             </div>;
           })}

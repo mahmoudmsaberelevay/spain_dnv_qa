@@ -1074,6 +1074,7 @@ export function registerClientPortalRoutes(app: Express) {
       }).from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id)),
       db.select({
         paymentName: clientDocumentationPayments.paymentName,
+        paymentMilestone: clientDocumentationPayments.paymentMilestone,
         paidDate: clientDocumentationPayments.paidDate,
         sortOrder: clientDocumentationPayments.sortOrder,
       }).from(clientDocumentationPayments).where(and(

@@ -17,6 +17,7 @@ import { ClientDocumentationSpainMilestones } from "@/components/ClientDocumenta
 import { ClientPortalUploadsPanel } from "@/components/ClientPortalUploadsPanel";
 import { ClientStageEvidenceUpload } from "@/components/ClientStageEvidenceUpload";
 import { ClientChatPanel } from "@/components/ClientChatPanel";
+import { ClientDocumentationEmployeeAccess } from "@/components/ClientDocumentationEmployeeAccess";
 import {
   ArrowLeft, CheckCircle2, Circle, Clock, AlertTriangle,
   FileCheck, CalendarDays, CalendarClock,
@@ -474,6 +475,8 @@ export default function ClientDocDetail() {
         contractDriveLink={caseData.contractDriveLink}
         finClientId={caseData.finClientId}
       />
+
+      <ClientDocumentationEmployeeAccess clientCaseId={clientId} />
 
       <ClientDocumentationSpainMilestones clientCaseId={clientId} clientCase={caseData} />
 

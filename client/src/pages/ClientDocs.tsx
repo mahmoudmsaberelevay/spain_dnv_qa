@@ -13,13 +13,13 @@ import { toast } from "sonner";
 import { Plus, FolderOpen, User, ChevronRight, FileText, Briefcase, Users, Search, Link2, CreditCard, Trash2, MessageCircle, BellOff } from "lucide-react";
 
 type ChildEntry = { name: string; age: number };
-type PaymentDraft = { paymentName: string; amountEur: string; dueDate: string };
+type PaymentDraft = { paymentName: "First payment" | "Second payment" | "Third payment"; amountEur: string; paymentMilestone: "signed" | "submission" | "approval" };
 
-const createBlankPayments = (): PaymentDraft[] => Array.from({ length: 3 }, () => ({
-  paymentName: "",
-  amountEur: "",
-  dueDate: "",
-}));
+const createBlankPayments = (): PaymentDraft[] => [
+  { paymentName: "First payment", amountEur: "", paymentMilestone: "signed" },
+  { paymentName: "Second payment", amountEur: "", paymentMilestone: "submission" },
+  { paymentName: "Third payment", amountEur: "", paymentMilestone: "approval" },
+];
 
 type FormState = {
   clientName: string;
@@ -179,8 +179,8 @@ export default function ClientDocs() {
       toast.error("Please enter a valid Contract Drive link");
       return;
     }
-    if (form.payments.length === 0 || form.payments.some(payment => !payment.paymentName.trim() || Number(payment.amountEur) <= 0 || !payment.dueDate)) {
-      toast.error("Each payment needs a name, positive EUR amount, and due date");
+    if (form.payments.length !== 3 || form.payments.some(payment => Number(payment.amountEur) <= 0)) {
+      toast.error("Enter a positive EUR amount for First, Second, and Third payment");
       return;
     }
     const uniquePaymentNames = new Set(form.payments.map(payment => payment.paymentName.trim().replace(/\s+/g, " ").toLowerCase()));
@@ -201,9 +201,9 @@ export default function ClientDocs() {
       finClientId: selectedClientId,
       contractDriveLink: form.contractDriveLink.trim(),
       payments: form.payments.map(payment => ({
-        paymentName: payment.paymentName.trim(),
+        paymentName: payment.paymentName,
         amountEur: Number(payment.amountEur),
-        dueDate: payment.dueDate,
+        paymentMilestone: payment.paymentMilestone,
       })),
     });
   };
@@ -442,7 +442,7 @@ export default function ClientDocs() {
                   <Link2 className="w-4 h-4 text-[#1e3a5f]" />
                   <div>
                     <p className="text-sm font-semibold text-[#1e3a5f]">Contract & Payment Schedule</p>
-                    <p className="text-xs text-gray-500">The contract link and every due date are required. You can edit the schedule later.</p>
+                    <p className="text-xs text-gray-500">The three fixed payments are linked to Signed, Submission, and Approval instead of manual due dates.</p>
                   </div>
                 </div>
 
@@ -460,44 +460,24 @@ export default function ClientDocs() {
 
                 <div className="space-y-3">
                   {form.payments.map((payment, index) => (
-                    <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_140px_165px_36px] gap-2 items-end bg-white border border-gray-200 rounded-lg p-3">
+                    <div key={payment.paymentName} className="grid grid-cols-1 md:grid-cols-[1fr_150px_180px] gap-2 items-end bg-white border border-gray-200 rounded-lg p-3">
                       <div className="space-y-1">
                         <Label className="text-xs text-gray-600">Payment Name</Label>
-                        <Input placeholder={`Payment ${index + 1} name`} value={payment.paymentName} onChange={event => handlePaymentUpdate(index, "paymentName", event.target.value)} className="border-gray-300 text-gray-900" />
+                        <Input value={payment.paymentName} readOnly className="border-gray-200 bg-gray-50 text-gray-900" />
                       </div>
                       <div className="space-y-1">
                         <Label className="text-xs text-gray-600">Amount (EUR)</Label>
                         <Input type="number" min="0.01" step="0.01" value={payment.amountEur} onChange={event => handlePaymentUpdate(index, "amountEur", event.target.value)} className="border-gray-300 text-gray-900" />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs text-gray-600">Due Date</Label>
-                        <Input type="date" value={payment.dueDate} onChange={event => handlePaymentUpdate(index, "dueDate", event.target.value)} className="border-gray-300 text-gray-900" />
+                        <Label className="text-xs text-gray-600">Application Status</Label>
+                        <Select value={payment.paymentMilestone} disabled><SelectTrigger className="border-gray-200 bg-gray-50"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="signed">Signed</SelectItem><SelectItem value="submission">Submission</SelectItem><SelectItem value="approval">Approval</SelectItem></SelectContent></Select>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="border-red-200 text-red-600 hover:bg-red-50"
-                        disabled={form.payments.length === 1}
-                        onClick={() => setForm(current => ({ ...current, payments: current.payments.filter((_, paymentIndex) => paymentIndex !== index) }))}
-                        aria-label={`Remove ${payment.paymentName || `payment ${index + 1}`}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
                     </div>
                   ))}
                 </div>
 
-                <div className="flex items-center justify-between gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="border-[#1e3a5f]/30 text-[#1e3a5f] gap-1.5"
-                    onClick={() => setForm(current => ({ ...current, payments: [...current.payments, { paymentName: "", amountEur: "", dueDate: "" }] }))}
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add Payment
-                  </Button>
+                <div className="flex items-center justify-end gap-3">
                   <div className="text-right">
                     <p className="text-xs text-gray-500">Contract Value</p>
                     <p className="text-lg font-semibold text-[#1e3a5f] flex items-center gap-1"><CreditCard className="w-4 h-4" /> €{contractValueEur.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>

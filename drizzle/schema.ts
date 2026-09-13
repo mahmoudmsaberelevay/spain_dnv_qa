@@ -130,6 +130,8 @@ export const contracts = mysqlTable("contracts", {
   status: mysqlEnum("status", ["pending", "signed", "cancelled"]).default("pending").notNull(),
   country: varchar("country", { length: 64 }).default("spain").notNull(),
   consultantName: varchar("consultantName", { length: 128 }),
+  clientOrigin: mysqlEnum("clientOrigin", ["referral", "marketing"]),
+  marketingLeadId: int("marketingLeadId"),
   discountValue: decimal("discountValue", { precision: 10, scale: 2 }).default("0"),
   docUrl: text("docUrl"),
   driveFileId: varchar("driveFileId", { length: 255 }),
@@ -322,7 +324,8 @@ export const clientDocumentationPayments = mysqlTable("clientDocumentationPaymen
   clientCaseId: int("clientCaseId").notNull(),
   paymentName: varchar("paymentName", { length: 160 }).notNull(),
   amountEur: decimal("amountEur", { precision: 12, scale: 2 }).notNull(),
-  dueDate: date("dueDate", { mode: "string" }).notNull(),
+  paymentMilestone: mysqlEnum("paymentMilestone", ["signed", "submission", "approval"]),
+  dueDate: date("dueDate", { mode: "string" }),
   paidDate: date("paidDate", { mode: "string" }),
   receiptName: varchar("receiptName", { length: 255 }),
   receiptDriveLink: text("receiptDriveLink"),
@@ -336,6 +339,7 @@ export const clientDocumentationPayments = mysqlTable("clientDocumentationPaymen
 }, table => [
   index("idx_client_documentation_payments_case").on(table.clientCaseId),
   index("idx_client_documentation_payments_due").on(table.dueDate),
+  index("idx_client_doc_payments_case_milestone").on(table.clientCaseId, table.paymentMilestone, table.archivedAt),
 ]);
 export type ClientDocumentationPayment = typeof clientDocumentationPayments.$inferSelect;
 export type InsertClientDocumentationPayment = typeof clientDocumentationPayments.$inferInsert;

@@ -96,6 +96,10 @@ function paymentByOrdinal(payments: Array<typeof clientDocumentationPayments.$in
   return explicit ?? payments[ordinal - 1] ?? null;
 }
 
+function paymentByMilestone(payments: Array<typeof clientDocumentationPayments.$inferSelect>, milestone: "submission" | "approval", legacyOrdinal: number) {
+  return payments.find(payment => payment.paymentMilestone === milestone) ?? paymentByOrdinal(payments, legacyOrdinal);
+}
+
 async function sendResponsibleStaffNotice(input: { clientCaseId: number; idempotencyKey: string; subject: string; body: string }) {
   const db = await getDb();
   if (!db) throw new Error("DATABASE_UNAVAILABLE");
@@ -300,9 +304,8 @@ export async function runClientLifecycleReminders(now = new Date(), dependencies
     }
     if (submission) {
       const remaining = calendarDaysBetween(today, submission);
-      const second = paymentByOrdinal(casePayments, 2);
-      const secondPaymentTrigger = remaining >= 0 && remaining <= 7 ? 7 : remaining > 7 && remaining <= 12 ? 12 : null;
-      if (second && !second.paidDate && secondPaymentTrigger) reminders.push({ ruleKey: `second_payment_d${secondPaymentTrigger}`, notifyStaff: true, idempotencyKey: `case:${c.id}:second-payment:${submission}:d${secondPaymentTrigger}`, eventType: "payment_reminder", titleEn: secondPaymentTrigger === 7 ? "Second payment overdue" : "Second payment reminder", titleAr: secondPaymentTrigger === 7 ? "الدفعة الثانية متأخرة" : "تذكير بالدفعة الثانية", bodyEn: secondPaymentTrigger === 7 ? `Your second payment of ${second.amountEur} EUR is already due and the critical payment time has passed. Please contact ELEVAY promptly.` : `Your second payment of ${second.amountEur} EUR will be due within 2 days, ahead of your confirmed submission date ${formatDate(submission)}.`, bodyAr: secondPaymentTrigger === 7 ? `الدفعة الثانية بقيمة ${second.amountEur} يورو مستحقة بالفعل وقد تجاوزنا المهلة الحرجة. يرجى التواصل مع إليفاي فوراً.` : `الدفعة الثانية بقيمة ${second.amountEur} يورو ستستحق خلال يومين قبل موعد التقديم المؤكد ${formatDateAr(submission)}.` });
+      const second = paymentByMilestone(casePayments, "submission", 2);
+      if (second && !second.paidDate && remaining >= 0 && remaining <= 12) reminders.push({ ruleKey: "submission_payment_d12", notifyStaff: false, idempotencyKey: `case:${c.id}:submission-payment:${submission}:d12`, eventType: "payment_reminder", titleEn: "Submission payment reminder", titleAr: "تذكير بدفعة التقديم", bodyEn: `Your Second payment of ${second.amountEur} EUR is linked to Submission. Your recorded submission date is ${formatDate(submission)}, within ${remaining} days.`, bodyAr: `الدفعة الثانية بقيمة ${second.amountEur} يورو مرتبطة بمرحلة التقديم. تاريخ التقديم المسجل هو ${formatDateAr(submission)}، خلال ${remaining} يوماً.` });
       if (remaining >= 0 && remaining <= 3 && !c.ticketLink) reminders.push({ ruleKey: "flight_ticket_d3", idempotencyKey: `case:${c.id}:flight-ticket:${submission}:d3`, eventType: "flight_ticket_reminder", titleEn: "Flight ticket reminder", titleAr: "تذكير بتذكرة الطيران", bodyEn: "Your application submission is in 3 days. Please upload or share your Spain flight ticket securely through your application.", bodyAr: "موعد تقديم طلبك بعد 3 أيام. يرجى رفع أو مشاركة تذكرة السفر إلى إسبانيا بأمان من خلال طلبك." });
     }
     if (signed) {
@@ -314,8 +317,8 @@ export async function runClientLifecycleReminders(now = new Date(), dependencies
     if (travel && !c.arrivalConfirmedDate && calendarDaysBetween(travel, today) >= 1) reminders.push({ ruleKey: "arrival_confirmation_d1", notifyStaff: true, idempotencyKey: `case:${c.id}:arrival:${travel}:d1`, eventType: "arrival_confirmation_reminder", titleEn: "Arrival confirmation", titleAr: "تأكيد الوصول", bodyEn: "We hope your journey to Spain went well. Please confirm your arrival through your ELEVAY application.", bodyAr: "نتمنى أن تكون رحلتك إلى إسبانيا قد تمت بخير. يرجى تأكيد وصولك من خلال تطبيق إليفاي." });
     if (approval) {
       const elapsed = calendarDaysBetween(approval, today);
-      const third = paymentByOrdinal(casePayments, 3);
-      if (elapsed >= 1 && third && !third.paidDate) reminders.push({ ruleKey: "third_payment_d1", notifyStaff: true, idempotencyKey: `case:${c.id}:third-payment:${approval}:d1`, eventType: "payment_reminder", titleEn: "Third payment due", titleAr: "استحقاق الدفعة الثالثة", bodyEn: `Your third payment of ${third.amountEur} EUR is due by ${formatDate(third.dueDate)}.`, bodyAr: `الدفعة الثالثة بقيمة ${third.amountEur} يورو مستحقة في ${formatDateAr(third.dueDate)}.` });
+      const third = paymentByMilestone(casePayments, "approval", 3);
+      if (elapsed >= 1 && third && !third.paidDate) reminders.push({ ruleKey: "approval_payment_d1", notifyStaff: false, idempotencyKey: `case:${c.id}:approval-payment:${approval}:d1`, eventType: "payment_reminder", titleEn: "Approval payment reminder", titleAr: "تذكير بدفعة الموافقة", bodyEn: `Your Third payment of ${third.amountEur} EUR is linked to Approval and is now due after your application was approved.`, bodyAr: `الدفعة الثالثة بقيمة ${third.amountEur} يورو مرتبطة بمرحلة الموافقة، وقد أصبحت مستحقة بعد الموافقة على طلبك.` });
       if (elapsed >= 3) {
         const travelBy = dateKey(c.travelByDate) ?? addDays(approval, 30);
         reminders.push({ ruleKey: "travel_deadline_d3", notifyStaff: true, idempotencyKey: `case:${c.id}:travel-deadline:${approval}:d3`, eventType: "travel_deadline_reminder", titleEn: "Travel deadline after approval", titleAr: "موعد السفر بعد الموافقة", bodyEn: `Please plan to travel to Spain by ${formatDate(travelBy)} to complete biometrics and the remaining legal process.`, bodyAr: `يرجى التخطيط للسفر إلى إسبانيا بحلول ${formatDateAr(travelBy)} لاستكمال البصمات والإجراءات القانونية المتبقية.` });

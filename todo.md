@@ -1508,3 +1508,17 @@ Check email for download link within 5 minutes
 - [x] Diagnose the rejected or expired QR attempt, rotate to a replacement linked-device code, and keep the bridge process online during scanning
 - [x] Validate live bridge connection, recent event ingestion, duplicate suppression, media handling, and CRM monitoring while preserving all 1,052 historical messages
 - [x] Document the outcome, remaining external dependencies, and publish only any required CRM-side fixes
+
+## Client Chat, Contract Source, Documentation Access & Milestone Payments
+- [x] Audit current delivery/read/listen receipt projections and ensure every visible receipt identifies the authorized user by display name
+- [x] Add push notification delivery for each client-chat message with a concise privacy-safe message preview and protected deep link
+- [x] Add Contract source question with exact choices Referral and Marketing; show required Lead ID only for Marketing
+- [x] Validate Marketing Lead ID during Contract creation and atomically change the matched Lead stage to Client without duplicating Leads or Contracts
+- [x] Add post-creation Client Documentation control named Employees with access with a multi-select employee list
+- [x] Grant selected employees access to the Client Documentation folder and its chat while preserving existing consultant, paralegal, owner, portal, and internal-note authorization
+- [x] Fix the three initial payment names to First payment, Second payment, and Third payment
+- [x] Replace initial payment due-date linkage with selectable application milestones Signed, Submission, and Approval while preserving legacy payment records
+- [x] Automatically mark Signed-linked payment paid with no client reminder
+- [x] Notify the client 12 days before the recorded submission date for an unpaid Submission-linked payment
+- [x] Notify the client the next day after the application is marked Approved for an unpaid Approval-linked payment
+- [x] Add additive migrations, focused regression tests, authorization and notification validation, responsive UI checks, production build, documentation, and publish

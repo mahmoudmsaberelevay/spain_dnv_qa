@@ -53,6 +53,7 @@ type TimelineDocument = {
 
 type TimelinePayment = {
   paymentName: string;
+  paymentMilestone?: "signed" | "submission" | "approval" | null;
   paidDate?: DateValue;
   sortOrder?: number | null;
 };
@@ -145,6 +146,10 @@ function paymentByOrdinal(payments: TimelinePayment[], ordinal: 2 | 3): Timeline
   return explicit ?? ordered[ordinal - 1] ?? null;
 }
 
+function paymentByMilestone(payments: TimelinePayment[], milestone: "submission" | "approval", legacyOrdinal: 2 | 3): TimelinePayment | null {
+  return payments.find(payment => payment.paymentMilestone === milestone) ?? paymentByOrdinal(payments, legacyOrdinal);
+}
+
 /**
  * Projects the client-safe progress view from authoritative CRM case fields.
  * The result intentionally contains no database IDs, payment amounts, or staff-only data.
@@ -164,19 +169,19 @@ export function projectClientProcessTimeline(input: TimelineProjectionInput): Cl
   const approvalDate = firstDate(clientCase.approvalTransitionAt, clientCase.approvalDate);
   const approvalPlusOne = addDays(approvalDate, 1);
   const approvalPlusThree = addDays(approvalDate, 3);
-  const secondPayment = paymentByOrdinal(payments, 2);
-  const thirdPayment = paymentByOrdinal(payments, 3);
+  const secondPayment = paymentByMilestone(payments, "submission", 2);
+  const thirdPayment = paymentByMilestone(payments, "approval", 3);
   const secondPaymentConfigured = Boolean(secondPayment || clientCase.secondPaymentAmount || asIso(clientCase.secondPaymentDueDate));
   const thirdPaymentConfigured = Boolean(thirdPayment || clientCase.thirdPaymentAmount || asIso(clientCase.thirdPaymentDueDate));
   const secondPaymentPaid = Boolean(asIso(secondPayment?.paidDate) || clientCase.secondPaymentStatus === "paid");
   const thirdPaymentPaid = Boolean(asIso(thirdPayment?.paidDate) || clientCase.thirdPaymentStatus === "paid");
   const expectedSubmissionDate = dateKey(clientCase.expectedSubmissionDate);
-  const secondPaymentThreshold = addDays(expectedSubmissionDate, -10);
+  const secondPaymentThreshold = addDays(expectedSubmissionDate, -12);
   const waitingSecondPayment = Boolean(
     secondPaymentConfigured &&
     !secondPaymentPaid &&
     expectedSubmissionDate &&
-    calendarDaysBetween(today, expectedSubmissionDate) <= 10 &&
+    calendarDaysBetween(today, expectedSubmissionDate) <= 12 &&
     !governmentSubmissionDate,
   );
   const thirdPaymentRequired = Boolean(

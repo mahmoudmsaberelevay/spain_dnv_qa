@@ -10,6 +10,7 @@ const router = readFileSync(resolve(root, "server/routers.ts"), "utf8");
 const createPage = readFileSync(resolve(root, "client/src/pages/ClientDocs.tsx"), "utf8");
 const detailPage = readFileSync(resolve(root, "client/src/pages/ClientDocDetail.tsx"), "utf8");
 const paymentUi = readFileSync(resolve(root, "client/src/components/ClientDocumentationPayments.tsx"), "utf8");
+const milestoneMigration = readFileSync(resolve(root, "drizzle/0078_contract_source_payment_milestones.sql"), "utf8");
 
 describe("Client Documentation contract/payment integration", () => {
   it("uses an additive schedule table and separate contract link", () => {
@@ -44,20 +45,26 @@ describe("Client Documentation contract/payment integration", () => {
     expect(paymentUi).toContain("Paid or receipt-linked history cannot be removed");
   });
 
-  it("starts with three blank manual payment rows and shows derived totals on the profile", () => {
-    expect(createPage).toContain("Array.from({ length: 3 }");
-    expect(createPage).toContain('paymentName: ""');
+  it("starts with three fixed milestone-linked payments and shows derived totals on the profile", () => {
+    expect(createPage).toContain('paymentName: "First payment"');
+    expect(createPage).toContain('paymentName: "Second payment"');
+    expect(createPage).toContain('paymentName: "Third payment"');
     expect(createPage).toContain('amountEur: ""');
-    expect(createPage).not.toContain('paymentName: "First Payment Signing"');
-    expect(createPage).not.toContain('amountEur: "3000"');
+    expect(createPage).toContain('paymentMilestone: "signed"');
+    expect(createPage).toContain('paymentMilestone: "submission"');
+    expect(createPage).toContain('paymentMilestone: "approval"');
+    expect(createPage).not.toContain("Add Payment");
     expect(createPage).toContain("Contract Google Drive Link");
-    expect(createPage).toContain("Add Payment");
+    expect(service).toContain('paidDate: payment.paymentMilestone === "signed" ? cairoDateKey() : null');
+    expect(milestoneMigration).toContain('ADD COLUMN `paymentMilestone`');
+    expect(milestoneMigration).not.toMatch(/\bDROP\b|TRUNCATE|DELETE FROM/i);
     expect(detailPage).toContain("<ClientDocumentationPayments");
     expect(paymentUi).toContain("Contract Value");
     expect(paymentUi).toContain("Paid");
     expect(paymentUi).toContain("Remaining");
     expect(paymentUi).toContain("Due / Overdue");
     expect(paymentUi).toContain("Next Payment");
+    expect(paymentUi).toContain("Application Status / Due Date");
   });
 
   it("keeps Client Documentation planning separate from authoritative Finance transactions", () => {

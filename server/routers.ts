@@ -54,7 +54,7 @@ import { aiCouncilRouter } from "./aiCouncilRouter";
 import { clientPortalAdminRouter } from "./clientPortalAdminRouter";
 import { clientPortalDocumentReviewRouter } from "./clientPortalDocumentReviewRouter";
 import { clientChatRouter } from "./clientChatRouter";
-import { ensureClientChatConversationForCase } from "./clientChatService";
+import { ensureClientChatConversationForCase, listClientDocumentationEmployeeAccess, updateClientDocumentationEmployeeAccess } from "./clientChatService";
 import {
   addClientDocumentationPayment,
   archiveClientDocumentationPayment,
@@ -64,6 +64,7 @@ import {
   setClientDocumentationContractDriveLink,
   updateClientDocumentationPayment,
 } from "./clientDocumentationPaymentsService";
+import { createContractWithClientOrigin, getMarketingLeadForContract } from "./contractLeadService";
 import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
 import {
   recordClientDocumentAuthorityMilestone,
@@ -886,6 +887,16 @@ const contractingRouter = router({
         if (!contract) throw new TRPCError({ code: "NOT_FOUND", message: "Contract not found" });
         return contract;
       }),
+    getMarketingLead: protectedProcedure
+      .input(z.object({ leadId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        try {
+          return await getMarketingLeadForContract(input.leadId);
+        } catch (error) {
+          if (error instanceof Error && error.message === "MARKETING_LEAD_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND", message: "No Lead exists with this Lead ID" });
+          throw error;
+        }
+      }),
     create: protectedProcedure
       .input(z.object({
         clientName: z.string().min(2),
@@ -893,11 +904,24 @@ const contractingRouter = router({
         clientMobile: z.string().min(5),
         familyMembers: z.number().int().min(1),
         consultantName: z.string().optional(),
+        clientOrigin: z.enum(["referral", "marketing"]),
+        marketingLeadId: z.number().int().positive().nullable().optional(),
         country: z.string().default("spain"),
         contractValueOverride: z.number().optional(),
         currency: z.enum(["EUR", "USD"]).default("EUR"),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        if (input.clientOrigin === "marketing") {
+          if (!input.marketingLeadId) throw new TRPCError({ code: "BAD_REQUEST", message: "Enter a valid Marketing Lead ID" });
+          try {
+            const lead = await getMarketingLeadForContract(input.marketingLeadId);
+            if (lead.linkedContract) throw new TRPCError({ code: "CONFLICT", message: `This Lead is already linked to active Contract ${lead.linkedContract.contractCode}` });
+          } catch (error) {
+            if (error instanceof TRPCError) throw error;
+            if (error instanceof Error && error.message === "MARKETING_LEAD_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND", message: "No Lead exists with this Lead ID" });
+            throw error;
+          }
+        }
         const contractCode = await generateContractCode();
         const contractValue = input.contractValueOverride !== undefined
           ? input.contractValueOverride
@@ -907,13 +931,29 @@ const contractingRouter = router({
           input.country, input.contractValueOverride
         );
         const docUrl = await uploadContractToStorage(buffer, contractCode, input.clientName);
-        const contract = await createContract({
-          contractCode, clientName: input.clientName, invoicingName: input.invoicingName,
-          clientMobile: input.clientMobile, familyMembers: input.familyMembers,
-          contractValue: contractValue.toString(), currency: input.currency, status: "pending",
-          country: input.country,
-          docUrl, consultantName: input.consultantName ?? null,
-        });
+        let contract;
+        try {
+          const created = await createContractWithClientOrigin({
+            contract: {
+              contractCode, clientName: input.clientName, invoicingName: input.invoicingName,
+              clientMobile: input.clientMobile, familyMembers: input.familyMembers,
+              contractValue: contractValue.toString(), currency: input.currency, status: "pending",
+              country: input.country,
+              docUrl, consultantName: input.consultantName ?? null,
+            },
+            clientOrigin: input.clientOrigin,
+            marketingLeadId: input.clientOrigin === "marketing" ? input.marketingLeadId : null,
+            actorUserId: ctx.user.id,
+            actorName: ctx.user.name || ctx.user.email || "ELEVAY Team",
+          });
+          contract = created.contract;
+        } catch (error) {
+          if (error instanceof Error && error.message === "MARKETING_LEAD_REQUIRED") throw new TRPCError({ code: "BAD_REQUEST", message: "Enter a valid Marketing Lead ID" });
+          if (error instanceof Error && error.message === "MARKETING_LEAD_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND", message: "No Lead exists with this Lead ID" });
+          if (error instanceof Error && error.message === "MARKETING_LEAD_ALREADY_LINKED") throw new TRPCError({ code: "CONFLICT", message: "This Lead is already linked to an active Contract" });
+          if (error instanceof Error && error.message === "REFERRAL_LEAD_NOT_ALLOWED") throw new TRPCError({ code: "BAD_REQUEST", message: "Referral Contracts cannot include a Marketing Lead ID" });
+          throw error;
+        }
         await notifyNewContract(contractCode, input.clientName, input.familyMembers, contractValue);
         const { createNotification } = await import("./db");
         await createNotification({ type: "contract_created", title: "📄 عقد جديد", body: `تم إنشاء عقد جديد لـ ${input.clientName} (كود: ${contractCode})`, entityId: contract.id, entityType: "contract" });
@@ -1613,15 +1653,22 @@ const clientDocsRouter = router({
       finClientId: z.number().int().positive().nullable().optional(),
       contractDriveLink: clientDocumentationHttpUrl,
       payments: z.array(z.object({
-        paymentName: z.string().trim().min(2).max(160),
+        paymentName: z.enum(["First payment", "Second payment", "Third payment"]),
         amountEur: z.number().positive().max(100000000),
-        dueDate: clientDocumentationIsoDate,
-      })).min(1).max(30).superRefine((payments, ctx) => {
+        paymentMilestone: z.enum(["signed", "submission", "approval"]),
+      })).length(3).superRefine((payments, ctx) => {
         const names = new Set<string>();
+        const milestones = new Set<string>();
         payments.forEach((payment, index) => {
           const key = payment.paymentName.trim().replace(/\s+/g, " ").toLowerCase();
           if (names.has(key)) ctx.addIssue({ code: "custom", path: [index, "paymentName"], message: "Payment names must be unique" });
           names.add(key);
+          if (milestones.has(payment.paymentMilestone)) ctx.addIssue({ code: "custom", path: [index, "paymentMilestone"], message: "Each application milestone can be linked only once" });
+          milestones.add(payment.paymentMilestone);
+        });
+        const expected = ["First payment:signed", "Second payment:submission", "Third payment:approval"];
+        payments.forEach((payment, index) => {
+          if (`${payment.paymentName}:${payment.paymentMilestone}` !== expected[index]) ctx.addIssue({ code: "custom", path: [index], message: "Use First payment = Signed, Second payment = Submission, and Third payment = Approval" });
         });
       }),
     }))
@@ -1729,6 +1776,18 @@ const clientDocsRouter = router({
       return { ...c, documents: docs };
     }),
 
+  employeeAccess: protectedProcedure
+    .input(z.object({ clientCaseId: z.number().int().positive() }))
+    .query(({ ctx, input }) => listClientDocumentationEmployeeAccess(input.clientCaseId, ctx.user)),
+
+  updateEmployeeAccess: protectedProcedure
+    .input(z.object({ clientCaseId: z.number().int().positive(), employeeIds: z.array(z.number().int().positive()).max(100) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await updateClientDocumentationEmployeeAccess(input.clientCaseId, ctx.user, input.employeeIds);
+      await writeAuditLog(auditCtxFromTrpc(ctx), "update", "client_documentation_case", input.clientCaseId, `Updated Employees with access (${result.employeeIds.length} active)`);
+      return result;
+    }),
+
   paymentSchedule: protectedProcedure
     .input(z.object({ clientCaseId: z.number().int().positive() }))
     .query(async ({ input }) => {
@@ -1742,7 +1801,8 @@ const clientDocsRouter = router({
       clientCaseId: z.number().int().positive(),
       paymentName: z.string().trim().min(2).max(160),
       amountEur: z.number().positive().max(100000000),
-      dueDate: clientDocumentationIsoDate,
+      paymentMilestone: z.enum(["signed", "submission", "approval"]).nullable().optional(),
+      dueDate: clientDocumentationIsoDate.nullable().optional(),
       receiptName: z.string().trim().max(255).nullable().optional(),
       receiptDriveLink: clientDocumentationHttpUrl.nullable().optional(),
       notes: z.string().trim().max(2000).nullable().optional(),
@@ -1766,7 +1826,8 @@ const clientDocsRouter = router({
       clientCaseId: z.number().int().positive(),
       paymentName: z.string().trim().min(2).max(160),
       amountEur: z.number().positive().max(100000000),
-      dueDate: clientDocumentationIsoDate,
+      paymentMilestone: z.enum(["signed", "submission", "approval"]).nullable().optional(),
+      dueDate: clientDocumentationIsoDate.nullable().optional(),
       receiptName: z.string().trim().max(255).nullable().optional(),
       receiptDriveLink: clientDocumentationHttpUrl.nullable().optional(),
       notes: z.string().trim().max(2000).nullable().optional(),

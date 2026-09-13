@@ -41,6 +41,8 @@ export default function NewContractDialog({ open, onClose }: Props) {
   const [clientMobile, setClientMobile] = useState("");
   const [familyMembers, setFamilyMembers] = useState<number | "">("");
   const [consultantName, setConsultantName] = useState("");
+  const [clientOrigin, setClientOrigin] = useState<"referral" | "marketing" | "">("");
+  const [marketingLeadId, setMarketingLeadId] = useState("");
   const [contractValueOverride, setContractValueOverride] = useState<number | "">("");
   const [currency, setCurrency] = useState<"EUR" | "USD">("EUR");
   const [result, setResult] = useState<{ contractCode: string; docUrl: string; filename: string; country: string } | null>(null);
@@ -49,6 +51,11 @@ export default function NewContractDialog({ open, onClose }: Props) {
 
   // Load country list from backend
   const { data: countries } = trpc.contracting.contracts.getCountries.useQuery();
+  const parsedMarketingLeadId = Number(marketingLeadId);
+  const marketingLead = trpc.contracting.contracts.getMarketingLead.useQuery(
+    { leadId: Number.isInteger(parsedMarketingLeadId) && parsedMarketingLeadId > 0 ? parsedMarketingLeadId : 1 },
+    { enabled: clientOrigin === "marketing" && Number.isInteger(parsedMarketingLeadId) && parsedMarketingLeadId > 0, retry: false },
+  );
 
   const createMutation = trpc.contracting.contracts.create.useMutation({
     onSuccess: (data) => {
@@ -73,12 +80,22 @@ export default function NewContractDialog({ open, onClose }: Props) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientName.trim() || !invoicingName.trim() || !clientMobile.trim() || !familyMembers || !country) return;
+    if (!clientOrigin) {
+      toast.error("Choose whether the client is Referral or Marketing");
+      return;
+    }
+    if (clientOrigin === "marketing" && (!Number.isInteger(parsedMarketingLeadId) || parsedMarketingLeadId <= 0 || !marketingLead.data || marketingLead.data.linkedContract)) {
+      toast.error(marketingLead.data?.linkedContract ? "This Lead is already linked to an active Contract" : "Enter and verify a valid Marketing Lead ID");
+      return;
+    }
     createMutation.mutate({
       clientName: clientName.trim(),
       invoicingName: invoicingName.trim(),
       clientMobile: clientMobile.trim(),
       familyMembers: Number(familyMembers),
       consultantName: consultantName || undefined,
+      clientOrigin,
+      marketingLeadId: clientOrigin === "marketing" ? parsedMarketingLeadId : null,
       country,
       contractValueOverride: !isSpain && contractValueOverride !== "" ? Number(contractValueOverride) : undefined,
       currency,
@@ -92,6 +109,8 @@ export default function NewContractDialog({ open, onClose }: Props) {
     setClientMobile("");
     setFamilyMembers("");
     setConsultantName("");
+    setClientOrigin("");
+    setMarketingLeadId("");
     setContractValueOverride("");
     setCurrency("EUR");
     setResult(null);
@@ -106,7 +125,9 @@ export default function NewContractDialog({ open, onClose }: Props) {
     clientMobile.trim() &&
     familyMembers &&
     consultantName &&
-    country;
+    country &&
+    clientOrigin &&
+    (clientOrigin === "referral" || (Number.isInteger(parsedMarketingLeadId) && parsedMarketingLeadId > 0 && Boolean(marketingLead.data) && !marketingLead.data?.linkedContract));
 
   const selectedCountryLabel = countries?.find((c) => c.key === country)?.label ?? country;
 
@@ -222,6 +243,19 @@ export default function NewContractDialog({ open, onClose }: Props) {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <Label>Is this client Referral or from Marketing?</Label>
+                <Select value={clientOrigin} onValueChange={(value) => { setClientOrigin(value as "referral" | "marketing"); if (value === "referral") setMarketingLeadId(""); }} disabled={createMutation.isPending}>
+                  <SelectTrigger className="h-10 bg-white"><SelectValue placeholder="Choose Referral or Marketing" /></SelectTrigger>
+                  <SelectContent><SelectItem value="referral">Referral</SelectItem><SelectItem value="marketing">Marketing</SelectItem></SelectContent>
+                </Select>
+                {clientOrigin === "marketing" ? <div className="space-y-2">
+                  <Label htmlFor="marketingLeadId">Lead Number ID</Label>
+                  <Input id="marketingLeadId" type="number" min={1} inputMode="numeric" placeholder="Enter the Lead ID from the Leads module" value={marketingLeadId} onChange={event => setMarketingLeadId(event.target.value.replace(/[^0-9]/g, ""))} disabled={createMutation.isPending} />
+                  {marketingLead.isFetching ? <p className="text-xs text-slate-500">Checking the Leads module…</p> : marketingLead.isError ? <p className="text-xs font-medium text-red-600">{marketingLead.error.message}</p> : marketingLead.data ? <div className={`rounded-lg border px-3 py-2 text-xs ${marketingLead.data.linkedContract ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}><p className="font-semibold">Lead #{marketingLead.data.id} · {marketingLead.data.fullName}</p><p>Current stage: {marketingLead.data.stage}{marketingLead.data.assignedTo ? ` · Assigned to ${marketingLead.data.assignedTo}` : ""}</p>{marketingLead.data.linkedContract ? <p className="mt-1 font-semibold">Already linked to active Contract {marketingLead.data.linkedContract.contractCode}</p> : <p className="mt-1">Creating this Contract will automatically change the Lead stage to Client.</p>}</div> : <p className="text-xs text-slate-500">The Lead must be verified before the Contract can be created.</p>}
+                </div> : null}
               </div>
 
               {/* Family Members */}

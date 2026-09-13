@@ -568,6 +568,83 @@ export async function setStaffChatParticipant(clientCaseId: number, actor: Staff
   return { staffUserId: target.id, active: input.active, role: input.role, primaryAssignee: input.makeAssignee && input.active };
 }
 
+async function requireClientDocumentationAccessManager(clientCaseId: number, actor: StaffActor) {
+  const access = await getUserModuleAccess(actor.id);
+  const elevated = actor.role === "admin" || isOwner(actor);
+  if (access.clientDocs !== "full" && !elevated) throw new TRPCError({ code: "FORBIDDEN", message: "Full Client Documentation access is required to manage employees" });
+  const db = await requireDb();
+  const [clientCase] = await db.select().from(clientCases).where(eq(clientCases.id, clientCaseId)).limit(1);
+  if (!clientCase) throw new TRPCError({ code: "NOT_FOUND", message: "Client Documentation folder not found" });
+  const conversation = await ensureClientChatConversationForCase(clientCaseId, actor.id);
+  return { db, clientCase, conversation };
+}
+
+export async function listClientDocumentationEmployeeAccess(clientCaseId: number, actor: StaffActor) {
+  const { db, clientCase, conversation } = await requireClientDocumentationAccessManager(clientCaseId, actor);
+  const employeeRows = await db.select({ id: users.id, name: users.name, email: users.email, role: users.role }).from(users).orderBy(asc(users.name), asc(users.email));
+  const eligibleRows = await Promise.all(employeeRows.map(async employee => ({ employee, access: await getUserModuleAccess(employee.id) })));
+  const eligible = eligibleRows.filter(row => row.employee.role === "admin" || row.access.clientDocs === "full");
+  const activeParticipants = await db.select({ staffUserId: clientChatParticipants.staffUserId, role: clientChatParticipants.role })
+    .from(clientChatParticipants)
+    .where(and(eq(clientChatParticipants.conversationId, conversation.id), eq(clientChatParticipants.participantType, "staff"), eq(clientChatParticipants.status, "active")));
+  const activeRoleByUser = new Map(activeParticipants.filter(row => row.staffUserId != null).map(row => [row.staffUserId!, row.role]));
+  const assigned = await resolveAssignedStaff(db, clientCase.consultant, clientCase.paralegal);
+  const mandatoryIds = new Set<number>([clientCase.userId, ...assigned.map(item => item.id)]);
+  return eligible.map(row => ({
+    id: row.employee.id,
+    name: row.employee.name || row.employee.email || "ELEVAY Team",
+    email: row.employee.email,
+    selected: activeRoleByUser.has(row.employee.id),
+    mandatory: mandatoryIds.has(row.employee.id),
+    chatRole: activeRoleByUser.get(row.employee.id) ?? "observer",
+  }));
+}
+
+export async function updateClientDocumentationEmployeeAccess(clientCaseId: number, actor: StaffActor, employeeIds: number[]) {
+  const { db, clientCase, conversation } = await requireClientDocumentationAccessManager(clientCaseId, actor);
+  const requestedIds = Array.from(new Set(employeeIds)).slice(0, 100);
+  const employeeRows = await db.select({ id: users.id, role: users.role }).from(users).where(requestedIds.length ? inArray(users.id, requestedIds) : sql`false`);
+  if (employeeRows.length !== requestedIds.length) throw new TRPCError({ code: "BAD_REQUEST", message: "One or more selected employees no longer exist" });
+  for (const employee of employeeRows) {
+    const access = await getUserModuleAccess(employee.id);
+    if (employee.role !== "admin" && access.clientDocs !== "full") throw new TRPCError({ code: "FORBIDDEN", message: "Every selected employee must have full Client Documentation access" });
+  }
+  const assigned = await resolveAssignedStaff(db, clientCase.consultant, clientCase.paralegal);
+  const requiredRoles = new Map<number, "admin" | "consultant" | "paralegal" | "observer">([
+    [clientCase.userId, "admin"],
+    [actor.id, actor.role === "admin" || isOwner(actor) ? "admin" : "observer"],
+    ...assigned.map(item => [item.id, item.role] as const),
+  ]);
+  const targetIds = new Set<number>([...requestedIds, ...Array.from(requiredRoles.keys())]);
+  const now = Date.now();
+  const existing = await db.select({ staffUserId: clientChatParticipants.staffUserId, role: clientChatParticipants.role, canManage: clientChatParticipants.canManage })
+    .from(clientChatParticipants)
+    .where(and(eq(clientChatParticipants.conversationId, conversation.id), eq(clientChatParticipants.participantType, "staff")));
+  const existingByUser = new Map(existing.filter(row => row.staffUserId != null).map(row => [row.staffUserId!, row]));
+
+  await db.transaction(async tx => {
+    for (const staffUserId of Array.from(targetIds)) {
+      const previous = existingByUser.get(staffUserId);
+      const role = requiredRoles.get(staffUserId) ?? previous?.role ?? "observer";
+      const canManage = role === "admin" || role === "manager" || Boolean(previous?.canManage);
+      await tx.insert(clientChatParticipants).values({
+        publicId: randomUUID(), conversationId: conversation.id, participantType: "staff", staffUserId,
+        role, status: "active", canSend: true, canViewInternal: true, canManage,
+        joinedAt: now, leftAt: null, createdAt: now, updatedAt: now,
+      }).onDuplicateKeyUpdate({ set: { role, status: "active", canSend: true, canViewInternal: true, canManage, leftAt: null, updatedAt: now } });
+    }
+    const removableIds = existing.map(row => row.staffUserId).filter((id): id is number => id != null && !targetIds.has(id));
+    if (removableIds.length) await tx.update(clientChatParticipants).set({ status: "revoked", canSend: false, canViewInternal: false, canManage: false, leftAt: now, typingExpiresAt: null, updatedAt: now }).where(and(
+      eq(clientChatParticipants.conversationId, conversation.id),
+      eq(clientChatParticipants.participantType, "staff"),
+      inArray(clientChatParticipants.staffUserId, removableIds),
+    ));
+    await insertAudit(tx, { conversationId: conversation.id, actorStaffUserId: actor.id, action: "folder_employee_access_updated", metadata: { activeEmployeeCount: targetIds.size, removedEmployeeCount: removableIds.length } });
+    await tx.insert(clientChatEvents).values({ conversationId: conversation.id, eventType: "participant_changed", actorParticipantId: null, metadata: { folderAccessUpdated: true }, createdAt: now });
+  });
+  return { employeeIds: Array.from(targetIds).sort((a, b) => a - b) };
+}
+
 export async function updateStaffConversationState(clientCaseId: number, actor: StaffActor, input: { status: "active" | "archived" | "blocked"; waitingOn: "none" | "client" | "staff" }) {
   const { db, conversation, participant } = await requireStaffConversation(clientCaseId, actor, false);
   if (!participant.canManage && actor.role !== "admin" && !isOwner(actor)) throw new TRPCError({ code: "FORBIDDEN", message: "Only conversation managers can change conversation status" });
@@ -907,7 +984,7 @@ async function enrichStaffMessages(
   rows: Array<typeof clientChatMessages.$inferSelect>,
 ) {
   const messageIds = rows.map(row => row.id);
-  if (!messageIds.length) return rows.map(row => ({ ...row, isStarred: false, mentionedMe: false, reactions: [], attachments: [], receiptSummary: { delivered: 0, read: 0, listened: 0 } }));
+  if (!messageIds.length) return rows.map(row => ({ ...row, isStarred: false, mentionedMe: false, reactions: [], attachments: [], receiptSummary: { delivered: 0, read: 0, listened: 0 }, receiptDetails: [] }));
   const [reactionRows, starRows, receiptRows, attachmentRows, mentionRows] = await Promise.all([
     db.select().from(clientChatReactions).where(inArray(clientChatReactions.messageId, messageIds)),
     db.select({ messageId: clientChatMessageStars.messageId }).from(clientChatMessageStars).where(and(
@@ -938,6 +1015,60 @@ async function enrichStaffMessages(
     if (row.readAt) aggregate.read += 1;
     if (row.listenedAt) aggregate.listened += 1;
     receiptMap.set(row.messageId, aggregate);
+  }
+  const receiptParticipantIds = Array.from(new Set(receiptRows.map(row => row.participantId)));
+  const receiptParticipants = receiptParticipantIds.length ? await db.select({
+    id: clientChatParticipants.id,
+    publicId: clientChatParticipants.publicId,
+    conversationId: clientChatParticipants.conversationId,
+    participantType: clientChatParticipants.participantType,
+    role: clientChatParticipants.role,
+    staffUserId: clientChatParticipants.staffUserId,
+    portalUserId: clientChatParticipants.portalUserId,
+  }).from(clientChatParticipants).where(inArray(clientChatParticipants.id, receiptParticipantIds)) : [];
+  const receiptStaffIds = receiptParticipants.map(row => row.staffUserId).filter((id): id is number => id != null);
+  const receiptPortalIds = receiptParticipants.map(row => row.portalUserId).filter((id): id is number => id != null);
+  const receiptConversationIds = Array.from(new Set(receiptParticipants.map(row => row.conversationId)));
+  const [receiptStaffRows, receiptPortalRows, receiptClientRows] = await Promise.all([
+    receiptStaffIds.length ? db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(inArray(users.id, receiptStaffIds)) : [],
+    receiptPortalIds.length ? db.select({ id: clientPortalUsers.id, username: clientPortalUsers.username }).from(clientPortalUsers).where(inArray(clientPortalUsers.id, receiptPortalIds)) : [],
+    receiptConversationIds.length ? db.select({ conversationId: clientChatConversations.id, clientName: clientCases.clientName })
+      .from(clientChatConversations)
+      .innerJoin(clientCases, eq(clientChatConversations.clientCaseId, clientCases.id))
+      .where(inArray(clientChatConversations.id, receiptConversationIds)) : [],
+  ]);
+  const receiptParticipantById = new Map(receiptParticipants.map(row => [row.id, row]));
+  const receiptStaffNameById = new Map(receiptStaffRows.map(row => [row.id, row.name || row.email || "ELEVAY Team"]));
+  const receiptPortalNameById = new Map(receiptPortalRows.map(row => [row.id, row.username || "Client"]));
+  const receiptClientNameByConversation = new Map(receiptClientRows.map(row => [row.conversationId, row.clientName || "Client"]));
+  const senderParticipantByMessage = new Map(rows.map(row => [row.id, row.senderParticipantId]));
+  const receiptDetailsByMessage = new Map<number, Array<{
+    participantPublicId: string;
+    participantType: "staff" | "portal";
+    role: string;
+    displayName: string;
+    deliveredAt: number | null;
+    readAt: number | null;
+    listenedAt: number | null;
+    deviceName: string | null;
+  }>>();
+  for (const receipt of receiptRows) {
+    const receiptParticipant = receiptParticipantById.get(receipt.participantId);
+    if (!receiptParticipant || receipt.participantId === senderParticipantByMessage.get(receipt.messageId)) continue;
+    const current = receiptDetailsByMessage.get(receipt.messageId) ?? [];
+    current.push({
+      participantPublicId: receiptParticipant.publicId,
+      participantType: receiptParticipant.participantType,
+      role: receiptParticipant.role,
+      displayName: receiptParticipant.participantType === "staff"
+        ? receiptStaffNameById.get(receiptParticipant.staffUserId ?? -1) || "ELEVAY Team"
+        : receiptClientNameByConversation.get(receiptParticipant.conversationId) || receiptPortalNameById.get(receiptParticipant.portalUserId ?? -1) || "Client",
+      deliveredAt: receipt.deliveredAt,
+      readAt: receipt.readAt,
+      listenedAt: receipt.listenedAt,
+      deviceName: receipt.deviceName,
+    });
+    receiptDetailsByMessage.set(receipt.messageId, current);
   }
   const attachmentMap = new Map<number, Array<{
     publicId: string;
@@ -978,6 +1109,8 @@ async function enrichStaffMessages(
     reactions: Array.from(reactionMap.get(row.id)?.entries() ?? []).map(([reaction, aggregate]) => ({ reaction, ...aggregate })),
     attachments: row.deletedAt ? [] : attachmentMap.get(row.id) ?? [],
     receiptSummary: receiptMap.get(row.id) ?? { delivered: 0, read: 0, listened: 0 },
+    receiptDetails: (receiptDetailsByMessage.get(row.id) ?? [])
+      .sort((left, right) => (right.listenedAt || right.readAt || right.deliveredAt || 0) - (left.listenedAt || left.readAt || left.deliveredAt || 0)),
   }));
 }
 

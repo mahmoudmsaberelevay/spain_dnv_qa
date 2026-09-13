@@ -7,7 +7,7 @@ function project(clientCase: Record<string, unknown> = {}, documents: Array<Reco
   return projectClientProcessTimeline({
     clientCase,
     documents,
-    payments: payments as Array<{ paymentName: string; paidDate?: string | null; sortOrder?: number }>,
+    payments: payments as Array<{ paymentName: string; paymentMilestone?: "signed" | "submission" | "approval" | null; paidDate?: string | null; sortOrder?: number }>,
     applicationCreatedAt,
     now,
   });
@@ -31,10 +31,10 @@ describe("client process timeline projection", () => {
       secondPaymentStatus: "pending",
     }, [], [
       { paymentName: "First payment", paidDate: "2026-01-01", sortOrder: 1 },
-      { paymentName: "Second payment", paidDate: null, sortOrder: 2 },
+      { paymentName: "Second payment", paymentMilestone: "submission", paidDate: null, sortOrder: 2 },
     ], new Date("2026-02-01T10:00:00Z"));
 
-    expect(timeline[7]).toMatchObject({ key: "waiting_second_payment", status: "current", occurredAt: "2026-01-31" });
+    expect(timeline[7]).toMatchObject({ key: "waiting_second_payment", status: "current", occurredAt: "2026-01-29" });
     expect(timeline[8]).toMatchObject({ key: "ready_to_submit", status: "upcoming" });
   });
 
@@ -47,7 +47,7 @@ describe("client process timeline projection", () => {
     }, [], [
       { paymentName: "First payment", paidDate: "2026-01-01", sortOrder: 1 },
       { paymentName: "Second payment", paidDate: "2026-02-20", sortOrder: 2 },
-      { paymentName: "Third payment", paidDate: null, sortOrder: 3 },
+      { paymentName: "Third payment", paymentMilestone: "approval", paidDate: null, sortOrder: 3 },
     ], new Date("2026-04-02T10:00:00Z"));
 
     expect(timeline[10]).toMatchObject({ key: "submitted_to_government", status: "completed" });
