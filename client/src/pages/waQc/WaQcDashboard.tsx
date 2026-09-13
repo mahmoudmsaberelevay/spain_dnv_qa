@@ -77,7 +77,7 @@ export default function WaQcDashboard() {
               <div>
                 <p className="font-semibold text-foreground">{statusLabel}</p>
                 <p className="text-xs text-muted-foreground mt-1">Last inbound: {formatTime(health?.lastInboundAt)} · Last outbound: {formatTime(health?.lastOutboundAt)} · Checked every 30 seconds</p>
-                {health?.bridge.usesLegacySecret && <p className="text-xs text-amber-600 mt-1">Bridge credential rotation is pending hosting access.</p>}
+                {health?.bridge.usesLegacySecret && <p className="text-xs text-amber-600 mt-1">Bridge connected. Credential rotation remains a recommended maintenance task.</p>}
               </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">

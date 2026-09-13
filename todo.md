@@ -1498,3 +1498,13 @@ Check email for download link within 5 minutes
 - [x] Provision all 24 existing Client Documentation folders and verify a second pass creates zero additional conversations
 - [x] Pass 30 focused chat tests, 103 cross-module web security/regression tests, the production web build, 208 mobile tests with one existing skip, 59 focused mobile tests, TypeScript, lint, and Expo web release export
 - [x] Document that no separate compiled client-facing Home/My Applications repository was available and leave the sanitized Client Portal REST contract ready for that future interface
+
+## WhatsApp Quality Control — Bridge Reconnection
+- [x] Re-read the ELEVAY, persistent-computing, automation, and integration recovery guidance for the existing WhatsApp Web bridge
+- [x] Inspect the current CRM bridge-health state, external service architecture, session persistence, and documented recovery path without changing chat data
+- [x] Do not enable billing, activate paid Google services, purchase hosting, or migrate to Meta Cloud API
+- [x] Open the existing no-cost WhatsApp bridge/desktop QR route and present a fresh linked-device code
+- [x] Securely relink the WhatsApp device by scanning the QR from the user's mobile WhatsApp without exposing session credentials
+- [x] Diagnose the rejected or expired QR attempt, rotate to a replacement linked-device code, and keep the bridge process online during scanning
+- [x] Validate live bridge connection, recent event ingestion, duplicate suppression, media handling, and CRM monitoring while preserving all 1,052 historical messages
+- [x] Document the outcome, remaining external dependencies, and publish only any required CRM-side fixes

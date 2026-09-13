@@ -39,3 +39,25 @@ Sources:
 1. Meta, **WhatsApp webhooks**, updated 26 June 2026: https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview
 2. Meta, **Status messages webhook reference**, updated 21 May 2026: https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/status
 3. Meta, **Webhooks for Groups API**, updated 21 May 2026: https://developers.facebook.com/documentation/business-messaging/whatsapp/groups/webhooks/
+
+## Reconnection Attempt — 13 September 2026
+
+The external endpoint at `35.231.217.0:3001` remains reachable and returns HTTP 200 with `status: disconnected` and `qrReady: false`. The existing bridge therefore still needs a service or VM restart before a fresh linked-device QR can be generated. Google Cloud access was restored using the authorized ELEVAY account, and temporary Cloud Shell access was approved for read-only project and VM discovery before any restart. The available projects include Avatr, Elevay backup, Manus Backup, and Contracts; the bridge-owning project and VM are being identified by the fixed external IP before any resource action.
+
+The `Elevay backup` project is accessible but currently redirects Compute Engine to the API enablement page, so it has not been changed. The temporary Cloud Shell environment provisioned successfully, but its OAuth relay has not yet produced a stable terminal session in the automated browser; discovery therefore continues through the console project list and existing public bridge endpoint without enabling APIs in the wrong project.
+
+The signed-in `mahmoud.saberelevay@gmail.com` account exposes four projects—Avatr, Elevay backup, Manus Backup, and Contracts—and all four redirect Compute Engine to the API enablement page. None can be identified as the running host behind `35.231.217.0`. The original Google sign-in chooser showed `mahmoudsaber.ali3488@gmail.com`; this alternate account is the next recovery path because the current account does not expose the bridge-owning Compute project.
+
+At the user's direction, all cloud billing and paid-service paths were stopped. The existing no-cost QR page at `http://35.231.217.0:3001/qr` is reachable and refreshes automatically, but it remains on **Generating QR code** while `/health` continues to report `disconnected` with `qrReady: false`. No billing action, paid API activation, new hosting, or Meta Cloud API change was made.
+
+The confirmed Google account's **All projects** view contains only Manus Backup, Contracts, Elevay backup, and Avatr; none exposes the bridge VM through Compute Engine. The bridge's direct `/api/restart` request temporarily interrupted the endpoint but did not produce `qrReady: true` after more than two minutes of polling. The QR page remains open and ready to display a code as soon as the existing host process successfully initializes WhatsApp Web.
+
+## Successful No-Cost Reconnection — 13 September 2026
+
+The historical task record confirmed that the bridge runs on the existing Manus Cloud Computer, not on a Google Compute Engine VM. No Google billing, paid API, new hosting, or Meta Cloud API was enabled. The original `wa-bridge.service` was still active, but its saved linked-device session had been logged out. The expired `auth_info` directory was archived privately with root-only permissions, removed, and regenerated through the existing WhatsApp Linked Devices QR process.
+
+The QR page now refreshes automatically every eight seconds while pairing is pending so it follows WhatsApp's rotating code. After the replacement code was scanned, the local health endpoint returned `connected`, `qrReady: false`, and the QR page changed to **WhatsApp Connected**.
+
+A controlled live inbound text produced one accepted bridge event and one duplicate replay event. The database stored exactly one new message, increasing the preserved count from 1,052 to 1,053, while duplicate message identifiers remained zero. The dashboard showed Bridge connected, one accepted event, one deduplicated replay, zero failures, and zero media backlog. All 38 existing conversations remained present.
+
+The recovery procedure and no-cost boundary are recorded in the Cloud Computer's `AGENTS.md`. The only remaining maintenance recommendation is to rotate the legacy shared bridge credential during a separately approved maintenance window; this does not block the current connected synchronization.
