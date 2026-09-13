@@ -6,6 +6,7 @@ const root = resolve(process.cwd());
 const schema = readFileSync(resolve(root, "drizzle/schema.ts"), "utf8");
 const migration = readFileSync(resolve(root, "drizzle/0076_unified_client_chat.sql"), "utf8");
 const governanceMigration = readFileSync(resolve(root, "drizzle/0077_client_chat_governance.sql"), "utf8");
+const permanentRetentionMigration = readFileSync(resolve(root, "drizzle/0080_client_chat_permanent_retention.sql"), "utf8");
 const service = readFileSync(resolve(root, "server/clientChatService.ts"), "utf8");
 const router = readFileSync(resolve(root, "server/clientChatRouter.ts"), "utf8");
 const portalRoutes = readFileSync(resolve(root, "server/clientPortalRoutes.ts"), "utf8");
@@ -182,8 +183,11 @@ describe("standalone ELEVAY client chat integration", () => {
     expect(panel).toContain('Record voice note');
     expect(panel).toContain('Voice transcript');
     expect(panel).toContain('listened: true');
+    expect(panel).toContain('startPlaybackMutation.mutateAsync');
+    expect(panel).toContain('onPlay={onPlaybackStart} onEnded={onListened}');
+    expect(service).toContain('Playback completion proof is required');
     expect(panel).toContain('Save to Docs');
-    expect(panel).toContain('<audio controls');
+    expect(panel).toContain('<audio ref={audioRef} controls');
     expect(panel).toContain('<video controls');
     expect(panel).toContain('Voice-note playback speed');
     expect(panel).toContain('[1, 1.5, 2].map');
@@ -243,8 +247,17 @@ describe("standalone ELEVAY client chat integration", () => {
     expect(governanceMigration).not.toMatch(/\bDROP\b|\bDELETE\b|\bTRUNCATE\b/i);
   });
 
-  it("supports manager-controlled retention, legal hold, and sanitized audited CSV export", () => {
-    expect(schema).toContain('retentionPolicy: mysqlEnum("retentionPolicy", ["indefinite", "seven_years"])');
+  it("enforces permanent history, manual-only removal, legal hold, and sanitized audited CSV export", () => {
+    expect(schema).toContain('retentionPolicy: mysqlEnum("retentionPolicy", ["indefinite"])');
+    expect(schema).not.toContain('"seven_years"');
+    expect(router).toContain('retentionPolicy: z.literal("indefinite")');
+    expect(permanentRetentionMigration).toContain("SET `retentionPolicy` = 'indefinite'");
+    expect(permanentRetentionMigration).toContain("enum('indefinite') NOT NULL DEFAULT 'indefinite'");
+    expect(service).not.toMatch(/delete\(clientChatMessages\)|delete\(clientChatAttachments\)/);
+    expect(scheduledHandler).not.toMatch(/delete|purge|cleanup|retention|expire|ttl/i);
+    expect(service).toContain('This conversation has reached its secure attachment storage quota');
+    expect(service).toContain('Messages cannot be removed while this conversation is under legal hold');
+    expect(service).toMatch(/deleteStaffMessage[\s\S]{0,1600}\.for\("update"\)/);
     expect(schema).toContain('legalHoldAt: bigint("legalHoldAt"');
     expect(service).toContain('Only conversation managers can change retention or legal hold');
     expect(service).toContain('action: "conversation_exported"');
@@ -253,6 +266,8 @@ describe("standalone ELEVAY client chat integration", () => {
     expect(router).toContain('updateGovernance: protectedProcedure');
     expect(router).toContain('exportConversation: protectedProcedure');
     expect(panel).toContain('Chat retention and legal hold');
+    expect(panel).toContain('There is no automatic deletion, expiration, TTL, retention cutoff, or quota cleanup');
+    expect(panel).toContain('storage quotas may block new uploads, but never delete existing messages or attachments');
     expect(panel).toContain('Export CSV');
   });
 

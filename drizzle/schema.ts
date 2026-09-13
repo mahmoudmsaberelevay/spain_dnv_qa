@@ -1580,7 +1580,7 @@ export const clientChatConversations = mysqlTable("client_chat_conversations", {
   status: mysqlEnum("status", ["active", "archived", "blocked"]).default("active").notNull(),
   assignedStaffUserId: int("assignedStaffUserId"),
   waitingOn: mysqlEnum("waitingOn", ["none", "client", "staff"]).default("none").notNull(),
-  retentionPolicy: mysqlEnum("retentionPolicy", ["indefinite", "seven_years"]).default("indefinite").notNull(),
+  retentionPolicy: mysqlEnum("retentionPolicy", ["indefinite"]).default("indefinite").notNull(),
   legalHoldAt: bigint("legalHoldAt", { mode: "number" }),
   legalHoldReason: varchar("legalHoldReason", { length: 500 }),
   legalHoldByStaffUserId: int("legalHoldByStaffUserId"),

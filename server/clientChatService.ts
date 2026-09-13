@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { getDb } from "./db";
@@ -33,6 +33,7 @@ import {
 import { storageGet, storagePut } from "./storage";
 import { decodeChatAttachment, transcribeChatVoice } from "./clientChatMedia";
 import { encodeEmployeeFolderId } from "./clientEmployeeDocuments";
+import { ENV } from "./_core/env";
 
 const MESSAGE_LIMIT = 100;
 const EVENT_LIMIT = 250;
@@ -41,7 +42,172 @@ const EDIT_WINDOW_MS = 15 * 60_000;
 const DELETE_WINDOW_MS = 60 * 60_000;
 const CHAT_CONVERSATION_QUOTA_BYTES = 500 * 1024 * 1024;
 const CLIENT_CHAT_RESPONSE_TARGET_MS = 4 * 60 * 60_000;
+const PLAYBACK_COMPLETION_TOLERANCE_MS = 750;
+const PLAYBACK_PROOF_GRACE_MS = 10 * 60_000;
+const FASTEST_SUPPORTED_PLAYBACK_RATE = 2;
 export const CLIENT_CHAT_REACTIONS = ["👍", "❤️", "🙏", "✅", "🎉", "👀"] as const;
+
+type PlaybackProof = {
+  version: 1;
+  conversationScope: string;
+  messageScope: string;
+  participantScope: string;
+  startedAt: number;
+  durationMs: number;
+};
+
+function playbackProofSignature(payload: string) {
+  if (!ENV.cookieSecret) throw new Error("JWT_SECRET is required for chat playback receipts");
+  return createHmac("sha256", ENV.cookieSecret).update(`client-chat-playback:${payload}`).digest("base64url");
+}
+
+function createPlaybackProof(proof: PlaybackProof) {
+  const payload = Buffer.from(JSON.stringify(proof)).toString("base64url");
+  return `${payload}.${playbackProofSignature(payload)}`;
+}
+
+function playbackScope(kind: "conversation" | "message" | "participant", id: number) {
+  if (!ENV.cookieSecret) throw new Error("JWT_SECRET is required for chat playback receipts");
+  return createHmac("sha256", ENV.cookieSecret).update(`client-chat-playback:${kind}:${id}`).digest("base64url").slice(0, 24);
+}
+
+function assertCompletedPlayback(token: string | null | undefined, expected: { conversationId: number; messageId: number; participantId: number }) {
+  if (!token) throw new TRPCError({ code: "BAD_REQUEST", message: "Playback completion proof is required" });
+  const [payload, suppliedSignature] = token.split(".");
+  if (!payload || !suppliedSignature) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid playback completion proof" });
+  const expectedSignature = playbackProofSignature(payload);
+  const supplied = Buffer.from(suppliedSignature);
+  const expectedBuffer = Buffer.from(expectedSignature);
+  if (supplied.length !== expectedBuffer.length || !timingSafeEqual(supplied, expectedBuffer)) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid playback completion proof" });
+  let proof: PlaybackProof;
+  try {
+    proof = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as PlaybackProof;
+  } catch {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid playback completion proof" });
+  }
+  if (proof.version !== 1
+    || proof.conversationScope !== playbackScope("conversation", expected.conversationId)
+    || proof.messageScope !== playbackScope("message", expected.messageId)
+    || proof.participantScope !== playbackScope("participant", expected.participantId)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Playback completion proof does not match this message" });
+  }
+  const now = Date.now();
+  const minimumCompleteAt = proof.startedAt + Math.max(500, Math.floor(proof.durationMs / FASTEST_SUPPORTED_PLAYBACK_RATE) - PLAYBACK_COMPLETION_TOLERANCE_MS);
+  const expiresAt = proof.startedAt + Math.max(proof.durationMs + PLAYBACK_PROOF_GRACE_MS, PLAYBACK_PROOF_GRACE_MS);
+  if (!Number.isFinite(proof.startedAt) || !Number.isFinite(proof.durationMs) || proof.durationMs < 0 || now < minimumCompleteAt || now > expiresAt) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Audio playback has not completed" });
+  }
+}
+
+function compactChatPreview(value: string | null | undefined, fallback: string) {
+  const normalizedValue = (value ?? "").replace(/\s+/g, " ").trim();
+  if (!normalizedValue) return fallback;
+  return normalizedValue.length > 240 ? `${normalizedValue.slice(0, 237)}…` : normalizedValue;
+}
+
+async function getChatNotificationCopy(db: Awaited<ReturnType<typeof requireDb>>, messagePublicId: string, kind: "message" | "attachment") {
+  const [message] = await db.select({
+    id: clientChatMessages.id,
+    senderName: clientChatMessages.senderNameSnapshot,
+    body: clientChatMessages.body,
+  }).from(clientChatMessages).where(eq(clientChatMessages.publicId, messagePublicId)).limit(1);
+  if (!message) return { senderName: "ELEVAY", preview: kind === "attachment" ? "Secure attachment" : "New message" };
+  const [attachment] = kind === "attachment"
+    ? await db.select({ fileName: clientChatAttachments.originalFileName }).from(clientChatAttachments).where(eq(clientChatAttachments.messageId, message.id)).limit(1)
+    : [];
+  const fallback = kind === "attachment"
+    ? `Secure attachment${attachment?.fileName ? `: ${attachment.fileName}` : ""}`
+    : "New message";
+  return { senderName: message.senderName || "ELEVAY", preview: compactChatPreview(message.body, fallback) };
+}
+
+function affectedRows(result: unknown) {
+  const metadata = Array.isArray(result) ? result[0] : result;
+  return Number((metadata as { affectedRows?: number } | undefined)?.affectedRows || 0);
+}
+
+async function listMessageReceiptDetails(
+  db: Awaited<ReturnType<typeof requireDb>>,
+  conversationId: number,
+  messageId: number,
+  senderParticipantId: number | null,
+) {
+  const rows = await db.select({
+    participantId: clientChatParticipants.id,
+    participantPublicId: clientChatParticipants.publicId,
+    participantType: clientChatParticipants.participantType,
+    role: clientChatParticipants.role,
+    staffUserId: clientChatParticipants.staffUserId,
+    portalUserId: clientChatParticipants.portalUserId,
+    deliveredAt: clientChatMessageReceipts.deliveredAt,
+    readAt: clientChatMessageReceipts.readAt,
+    listenedAt: clientChatMessageReceipts.listenedAt,
+    deviceName: clientChatMessageReceipts.deviceName,
+  }).from(clientChatMessageReceipts)
+    .innerJoin(clientChatParticipants, eq(clientChatMessageReceipts.participantId, clientChatParticipants.id))
+    .where(and(
+      eq(clientChatMessageReceipts.messageId, messageId),
+      eq(clientChatParticipants.conversationId, conversationId),
+    ));
+  const staffIds = rows.map(row => row.staffUserId).filter((id): id is number => id != null);
+  const portalIds = rows.map(row => row.portalUserId).filter((id): id is number => id != null);
+  const [conversation] = await db.select({ clientCaseId: clientChatConversations.clientCaseId }).from(clientChatConversations).where(eq(clientChatConversations.id, conversationId)).limit(1);
+  const [staffRows, portalRows] = await Promise.all([
+    staffIds.length ? db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(inArray(users.id, staffIds)) : [],
+    portalIds.length && conversation ? db.select({ id: clientPortalUsers.id, username: clientPortalUsers.username, clientName: clientCases.clientName })
+      .from(clientPortalUsers)
+      .leftJoin(clientPortalApplications, and(eq(clientPortalApplications.portalUserId, clientPortalUsers.id), eq(clientPortalApplications.clientCaseId, conversation.clientCaseId)))
+      .leftJoin(clientCases, eq(clientCases.id, clientPortalApplications.clientCaseId))
+      .where(inArray(clientPortalUsers.id, portalIds)) : [],
+  ]);
+  const staffNames = new Map(staffRows.map(row => [row.id, row.name || row.email || "ELEVAY Team"]));
+  const portalNames = new Map(portalRows.map(row => [row.id, row.clientName || row.username || "Client"]));
+  return rows.filter(row => row.participantId !== senderParticipantId).map(row => ({
+    participantPublicId: row.participantPublicId,
+    participantType: row.participantType,
+    role: row.role,
+    displayName: row.participantType === "staff"
+      ? staffNames.get(row.staffUserId ?? -1) || "ELEVAY Team"
+      : portalNames.get(row.portalUserId ?? -1) || "Client",
+    deliveredAt: row.deliveredAt,
+    readAt: row.readAt,
+    listenedAt: row.listenedAt,
+    deviceName: row.deviceName,
+  })).sort((left, right) => (right.listenedAt || right.readAt || right.deliveredAt || 0) - (left.listenedAt || left.readAt || left.deliveredAt || 0));
+}
+
+async function markParticipantDelivered(
+  db: Awaited<ReturnType<typeof requireDb>>,
+  input: { conversationId: number; messageId: number; participantId: number; now: number },
+) {
+  return db.transaction(async tx => {
+    const updated = await tx.update(clientChatMessageReceipts).set({ deliveredAt: input.now, updatedAt: input.now }).where(and(
+      eq(clientChatMessageReceipts.messageId, input.messageId),
+      eq(clientChatMessageReceipts.participantId, input.participantId),
+      isNull(clientChatMessageReceipts.deliveredAt),
+    ));
+    let changed = affectedRows(updated) === 1;
+    if (!changed) {
+      const inserted = await tx.insert(clientChatMessageReceipts).ignore().values({
+        messageId: input.messageId,
+        participantId: input.participantId,
+        deliveredAt: input.now,
+        updatedAt: input.now,
+      });
+      changed = affectedRows(inserted) === 1;
+    }
+    if (!changed) return false;
+    await tx.insert(clientChatEvents).values({
+      conversationId: input.conversationId,
+      eventType: "receipt_changed",
+      entityId: input.messageId,
+      actorParticipantId: input.participantId,
+      metadata: { delivered: true },
+      createdAt: input.now,
+    });
+    return true;
+  });
+}
 
 type StaffActor = {
   id: number;
@@ -332,7 +498,7 @@ export async function listStaffConversationSummaries(actor: StaffActor) {
   if (!memberships.length) return [];
   const conversationIds = memberships.map(row => row.conversationId);
   const lastMessageIds = memberships.map(row => row.lastMessageId).filter((id): id is number => id != null);
-  const lastMessages = lastMessageIds.length ? await db.select({ id: clientChatMessages.id, body: clientChatMessages.body, messageType: clientChatMessages.messageType, senderType: clientChatMessages.senderType, deletedAt: clientChatMessages.deletedAt }).from(clientChatMessages).where(inArray(clientChatMessages.id, lastMessageIds)) : [];
+  const lastMessages = lastMessageIds.length ? await db.select({ id: clientChatMessages.id, publicId: clientChatMessages.publicId, body: clientChatMessages.body, messageType: clientChatMessages.messageType, senderType: clientChatMessages.senderType, senderName: clientChatMessages.senderNameSnapshot, deletedAt: clientChatMessages.deletedAt }).from(clientChatMessages).where(inArray(clientChatMessages.id, lastMessageIds)) : [];
   const lastById = new Map(lastMessages.map(message => [message.id, message]));
   const unreadRows = await db.select({ conversationId: clientChatMessages.conversationId, unreadCount: sql<number>`count(*)` })
     .from(clientChatMessages)
@@ -353,8 +519,10 @@ export async function listStaffConversationSummaries(actor: StaffActor) {
       waitingOn: row.waitingOn,
       assignedStaffUserId: row.assignedStaffUserId,
       lastMessageAt: row.lastMessageAt,
+      lastMessagePublicId: last?.publicId ?? null,
       lastMessagePreview: !last ? null : last.deletedAt ? "Message deleted" : last.body?.trim() || (last.messageType === "text" ? "New message" : `New ${last.messageType}`),
       lastSenderType: last?.senderType ?? null,
+      lastSenderName: last?.senderName ?? null,
       unreadCount: unreadByConversation.get(row.conversationId) ?? 0,
       muted: row.muteUntil != null && row.muteUntil > now,
       muteUntil: row.muteUntil,
@@ -410,7 +578,7 @@ export async function updateStaffConversationState(clientCaseId: number, actor: 
   return { status: input.status, waitingOn: input.status === "active" ? input.waitingOn : "none" as const };
 }
 
-export async function updateStaffChatGovernance(clientCaseId: number, actor: StaffActor, input: { retentionPolicy: "indefinite" | "seven_years"; legalHold: boolean; legalHoldReason?: string | null }) {
+export async function updateStaffChatGovernance(clientCaseId: number, actor: StaffActor, input: { retentionPolicy: "indefinite"; legalHold: boolean; legalHoldReason?: string | null }) {
   const { db, conversation, participant } = await requireStaffConversation(clientCaseId, actor, false);
   if (!participant.canManage && actor.role !== "admin" && !isOwner(actor)) throw new TRPCError({ code: "FORBIDDEN", message: "Only conversation managers can change retention or legal hold" });
   const reason = input.legalHold ? input.legalHoldReason?.trim() ?? "" : "";
@@ -577,6 +745,7 @@ async function notifyPortalChatParticipants(input: { clientCaseId: number; conve
   try {
     const db = await requireDb();
     const now = Date.now();
+    const copy = await getChatNotificationCopy(db, input.messagePublicId, input.kind);
     const recipients = await db.select({ portalUserId: clientChatParticipants.portalUserId, muteUntil: clientChatParticipants.muteUntil, preferences: clientChatParticipants.notificationPreferences, applicationPublicId: clientPortalApplications.publicId })
       .from(clientChatParticipants)
       .innerJoin(clientPortalApplications, and(eq(clientPortalApplications.portalUserId, clientChatParticipants.portalUserId), eq(clientPortalApplications.clientCaseId, input.clientCaseId), isNull(clientPortalApplications.accessRevokedAt)))
@@ -584,23 +753,48 @@ async function notifyPortalChatParticipants(input: { clientCaseId: number; conve
     for (const recipient of recipients) {
       if (!recipient.portalUserId) continue;
       const idempotencyKey = `client-chat:${input.messagePublicId}:u:${recipient.portalUserId}`.slice(0, 191);
-      const [existing] = await db.select({ id: clientPortalNotifications.id }).from(clientPortalNotifications).where(eq(clientPortalNotifications.idempotencyKey, idempotencyKey)).limit(1);
-      if (existing) continue;
-      const titleEn = input.kind === "attachment" ? "New secure attachment" : "New ELEVAY message";
-      const titleAr = input.kind === "attachment" ? "مرفق آمن جديد" : "رسالة جديدة من إليفاي";
-      const bodyEn = input.kind === "attachment" ? "A new attachment is available in your secure application chat." : "A new message is available in your secure application chat.";
-      const bodyAr = input.kind === "attachment" ? "يوجد مرفق جديد في محادثة طلبك الآمنة." : "توجد رسالة جديدة في محادثة طلبك الآمنة.";
-      await db.insert(clientPortalNotifications).values({ publicId: randomUUID(), portalUserId: recipient.portalUserId, idempotencyKey, type: "client_chat_message", titleEn, titleAr, bodyEn, bodyAr, entityType: "chat_message", entityPublicId: input.messagePublicId, createdAt: now });
+      const titleEn = `${input.kind === "attachment" ? "Attachment" : "Message"} from ${copy.senderName}`;
+      const titleAr = `${input.kind === "attachment" ? "مرفق" : "رسالة"} من ${copy.senderName}`;
+      const bodyEn = copy.preview;
+      const bodyAr = copy.preview;
+      await db.insert(clientPortalNotifications).ignore().values({ publicId: randomUUID(), portalUserId: recipient.portalUserId, idempotencyKey, type: "client_chat_message", titleEn, titleAr, bodyEn, bodyAr, entityType: "chat_message", entityPublicId: input.messagePublicId, createdAt: now });
       const preferences = recipient.preferences && typeof recipient.preferences === "object" ? recipient.preferences as Record<string, boolean> : {};
       const muted = recipient.muteUntil != null && recipient.muteUntil > now;
       if (!muted && preferences.push !== false && preferences.inApp !== false) {
         const { pushClientNotification } = await import("./clientPortalRoutes");
-        await pushClientNotification(recipient.portalUserId, titleEn, bodyEn, { type: "client_chat_message", applicationPublicId: recipient.applicationPublicId, entityType: "chat_message", entityPublicId: input.messagePublicId });
+        await pushClientNotification(recipient.portalUserId, titleEn, bodyEn, { type: "client_chat_message", applicationPublicId: recipient.applicationPublicId, entityType: "chat_message", entityPublicId: input.messagePublicId }, `client-chat-push:${input.messagePublicId}:u:${recipient.portalUserId}`);
       }
     }
   } catch (error) {
     console.error("[ClientChat] Client notification failed", { clientCaseId: input.clientCaseId, messagePublicId: input.messagePublicId, error: error instanceof Error ? error.message : "Unknown notification error" });
   }
+}
+
+async function claimChatPushDelivery(
+  db: Awaited<ReturnType<typeof requireDb>>,
+  input: { idempotencyKey: string; recipient: string; payload: Record<string, unknown> },
+) {
+  await db.insert(clientPortalDeliveryOutbox).ignore().values({
+    idempotencyKey: input.idempotencyKey,
+    eventType: "client_chat_message",
+    channel: "push",
+    recipient: input.recipient,
+    payload: input.payload,
+  });
+  const [delivery] = await db.select().from(clientPortalDeliveryOutbox)
+    .where(eq(clientPortalDeliveryOutbox.idempotencyKey, input.idempotencyKey))
+    .limit(1);
+  if (!delivery || delivery.status === "sent" || delivery.attempts >= 3) return null;
+  const claim = await db.update(clientPortalDeliveryOutbox).set({
+    status: "pending",
+    attempts: delivery.attempts + 1,
+    lastError: null,
+  }).where(and(
+    eq(clientPortalDeliveryOutbox.id, delivery.id),
+    eq(clientPortalDeliveryOutbox.status, delivery.status),
+    eq(clientPortalDeliveryOutbox.attempts, delivery.attempts),
+  ));
+  return affectedRows(claim) === 1 ? { id: delivery.id, attempts: delivery.attempts + 1 } : null;
 }
 
 export async function notifyEmployeeChatParticipants(input: {
@@ -613,6 +807,7 @@ export async function notifyEmployeeChatParticipants(input: {
   try {
     const db = await requireDb();
     const now = Date.now();
+    const copy = await getChatNotificationCopy(db, input.messagePublicId, input.kind);
     const participants = await db.select({
       staffUserId: clientChatParticipants.staffUserId,
       muteUntil: clientChatParticipants.muteUntil,
@@ -635,10 +830,8 @@ export async function notifyEmployeeChatParticipants(input: {
       gt(clientEmployeeSessions.expiresAt, new Date()),
     ));
     const preferenceByStaff = new Map(participants.map(row => [row.staffUserId, row]));
-    const title = input.kind === "attachment" ? "New secure client attachment" : "New client message";
-    const body = input.kind === "attachment"
-      ? "A secure attachment is waiting in Client Documentation Chat."
-      : "A new message is waiting in Client Documentation Chat.";
+    const title = `${input.kind === "attachment" ? "Attachment" : "Message"} from ${copy.senderName}`;
+    const body = copy.preview;
     const data = {
       type: "client_chat_message",
       entityType: "chat_message",
@@ -656,21 +849,23 @@ export async function notifyEmployeeChatParticipants(input: {
       if (!/^(?:Exponent|Expo)PushToken\[[A-Za-z0-9_-]+\]$/.test(session.pushToken)) continue;
       const tokenHash = createHash("sha256").update(session.pushToken).digest("hex").slice(0, 16);
       const idempotencyKey = `employee-chat:${input.messagePublicId}:s:${session.staffUserId}:t:${tokenHash}`.slice(0, 191);
-      const [existing] = await db.select({ id: clientPortalDeliveryOutbox.id }).from(clientPortalDeliveryOutbox).where(eq(clientPortalDeliveryOutbox.idempotencyKey, idempotencyKey)).limit(1);
-      if (existing) continue;
-      const [result] = await db.insert(clientPortalDeliveryOutbox).values({ idempotencyKey, eventType: "client_chat_message", channel: "push", recipient: session.pushToken, payload: { title, body, data } });
-      const outboxId = Number((result as { insertId?: number }).insertId || 0);
-      try {
-        const response = await fetch("https://exp.host/--/api/v2/push/send", {
-          method: "POST",
-          headers: { "content-type": "application/json", accept: "application/json" },
-          body: JSON.stringify({ to: session.pushToken, title, body, data, sound: "default", channelId: "chat" }),
-        });
-        if (!response.ok) throw new Error(`push_${response.status}`);
-        if (outboxId) await db.update(clientPortalDeliveryOutbox).set({ status: "sent", attempts: 1, processedAt: new Date() }).where(eq(clientPortalDeliveryOutbox.id, outboxId));
-        notified += 1;
-      } catch (pushError) {
-        if (outboxId) await db.update(clientPortalDeliveryOutbox).set({ status: "failed", attempts: 1, lastError: String(pushError).slice(0, 4000) }).where(eq(clientPortalDeliveryOutbox.id, outboxId));
+      while (true) {
+        const delivery = await claimChatPushDelivery(db, { idempotencyKey, recipient: session.pushToken, payload: { title, body, data } });
+        if (!delivery) break;
+        try {
+          const response = await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: { "content-type": "application/json", accept: "application/json" },
+            body: JSON.stringify({ to: session.pushToken, title, body, data, sound: "default", channelId: "chat" }),
+          });
+          if (!response.ok) throw new Error(`push_${response.status}`);
+          await db.update(clientPortalDeliveryOutbox).set({ status: "sent", attempts: delivery.attempts, processedAt: new Date(), lastError: null }).where(eq(clientPortalDeliveryOutbox.id, delivery.id));
+          notified += 1;
+          break;
+        } catch (pushError) {
+          await db.update(clientPortalDeliveryOutbox).set({ status: "failed", attempts: delivery.attempts, lastError: String(pushError).slice(0, 4000) }).where(eq(clientPortalDeliveryOutbox.id, delivery.id));
+          if (delivery.attempts >= 3) break;
+        }
       }
     }
     return { notified };
@@ -698,6 +893,11 @@ export async function listStaffMessages(clientCaseId: number, actor: StaffActor,
     .where(and(...predicates))
     .orderBy(desc(clientChatMessages.id))
     .limit(Math.min(Math.max(limit, 1), MESSAGE_LIMIT));
+  const now = Date.now();
+  for (const message of rows) {
+    if (message.senderParticipantId === participant.id) continue;
+    await markParticipantDelivered(db, { conversationId: conversation.id, messageId: message.id, participantId: participant.id, now });
+  }
   return enrichStaffMessages(db, participant.id, rows.reverse());
 }
 
@@ -841,6 +1041,11 @@ export async function deleteStaffMessage(clientCaseId: number, actor: StaffActor
   }
   const now = Date.now();
   await db.transaction(async tx => {
+    const [lockedConversation] = await tx.select({ legalHoldAt: clientChatConversations.legalHoldAt })
+      .from(clientChatConversations)
+      .where(eq(clientChatConversations.id, conversation.id))
+      .for("update");
+    if (lockedConversation?.legalHoldAt) throw new TRPCError({ code: "FORBIDDEN", message: "Messages cannot be removed while this conversation is under legal hold" });
     await preserveMessageVersion(tx, message, participant.id, "deleted_for_everyone");
     await tx.update(clientChatMessages).set({ body: null, deletedAt: now, deletedByParticipantId: participant.id, updatedAt: now }).where(eq(clientChatMessages.id, message.id));
     await tx.insert(clientChatEvents).values({ conversationId: conversation.id, eventType: "message_deleted", entityId: message.id, actorParticipantId: participant.id, metadata: { visibility: message.visibility }, createdAt: now });
@@ -980,11 +1185,12 @@ export async function resolveStaffMessageReport(clientCaseId: number, actor: Sta
 }
 
 export async function getStaffMessageInfo(clientCaseId: number, actor: StaffActor, messagePublicId: string) {
-  const { db, participant, message } = await requireStaffMessage(clientCaseId, actor, messagePublicId, false);
+  const { db, conversation, participant, message } = await requireStaffMessage(clientCaseId, actor, messagePublicId, false);
   const [enriched] = await enrichStaffMessages(db, participant.id, [message]);
   const versions = await db.select({ versionNumber: clientChatMessageVersions.versionNumber, createdAt: clientChatMessageVersions.createdAt, editReason: clientChatMessageVersions.editReason })
     .from(clientChatMessageVersions).where(eq(clientChatMessageVersions.messageId, message.id)).orderBy(desc(clientChatMessageVersions.versionNumber));
-  return { message: enriched, versions };
+  const receiptDetails = await listMessageReceiptDetails(db, conversation.id, message.id, message.senderParticipantId);
+  return { message: enriched, receiptDetails, versions };
 }
 
 async function insertMessageMentions(executor: any, input: { conversationId: number; messageId: number; senderParticipantId: number; visibility: "client" | "internal"; participantPublicIds?: string[] }) {
@@ -1267,12 +1473,7 @@ export async function pollStaffConversation(clientCaseId: number, actor: StaffAc
 
   for (const message of messages) {
     if (message.senderParticipantId === participant.id) continue;
-    await db.insert(clientChatMessageReceipts).values({
-      messageId: message.id,
-      participantId: participant.id,
-      deliveredAt: now,
-      updatedAt: now,
-    }).onDuplicateKeyUpdate({ set: { deliveredAt: now, updatedAt: now } });
+    await markParticipantDelivered(db, { conversationId: conversation.id, messageId: message.id, participantId: participant.id, now });
   }
   await db.update(clientChatParticipants).set({ lastSeenAt: now, updatedAt: now })
     .where(eq(clientChatParticipants.id, participant.id));
@@ -1307,31 +1508,86 @@ export async function updateStaffTyping(clientCaseId: number, actor: StaffActor,
   return { typing, expiresAt: typing ? now + TYPING_TTL_MS : null };
 }
 
-export async function markStaffRead(clientCaseId: number, actor: StaffActor, messagePublicId: string, listened = false) {
+async function issueAudioPlaybackProof(
+  db: Awaited<ReturnType<typeof requireDb>>,
+  input: { conversationId: number; participantId: number; messagePublicId: string; clientVisibleOnly: boolean },
+) {
+  const predicates = [
+    eq(clientChatMessages.publicId, input.messagePublicId),
+    eq(clientChatMessages.conversationId, input.conversationId),
+    isNull(clientChatMessages.deletedAt),
+  ];
+  if (input.clientVisibleOnly) predicates.push(eq(clientChatMessages.visibility, "client"));
+  const [message] = await db.select().from(clientChatMessages).where(and(...predicates)).limit(1);
+  if (!message) throw new TRPCError({ code: "NOT_FOUND", message: "Message not found" });
+  if (message.senderParticipantId === input.participantId) throw new TRPCError({ code: "BAD_REQUEST", message: "A sender cannot listen-receipt their own message" });
+  if (!["voice", "audio"].includes(message.messageType)) throw new TRPCError({ code: "BAD_REQUEST", message: "Only audio messages can start playback tracking" });
+  const [attachment] = await db.select({ durationMs: clientChatAttachments.durationMs }).from(clientChatAttachments).where(and(
+    eq(clientChatAttachments.messageId, message.id),
+    eq(clientChatAttachments.scanStatus, "clean"),
+  )).limit(1);
+  if (!attachment) throw new TRPCError({ code: "NOT_FOUND", message: "Audio attachment not found" });
+  const startedAt = Date.now();
+  const durationMs = Math.max(500, Math.min(Number(attachment.durationMs || 1_000), 6 * 60 * 60_000));
+  return {
+    playbackToken: createPlaybackProof({
+      version: 1,
+      conversationScope: playbackScope("conversation", input.conversationId),
+      messageScope: playbackScope("message", message.id),
+      participantScope: playbackScope("participant", input.participantId),
+      startedAt,
+      durationMs,
+    }),
+    minimumCompleteAt: startedAt + Math.max(500, Math.floor(durationMs / FASTEST_SUPPORTED_PLAYBACK_RATE) - PLAYBACK_COMPLETION_TOLERANCE_MS),
+  };
+}
+
+export async function startStaffAudioPlayback(clientCaseId: number, actor: StaffActor, messagePublicId: string) {
+  const { db, conversation, participant } = await requireStaffConversation(clientCaseId, actor, false);
+  return issueAudioPlaybackProof(db, { conversationId: conversation.id, participantId: participant.id, messagePublicId, clientVisibleOnly: false });
+}
+
+export async function markStaffRead(clientCaseId: number, actor: StaffActor, messagePublicId: string, listened = false, playbackToken?: string | null) {
   const { db, conversation, participant } = await requireStaffConversation(clientCaseId, actor, false);
   const [message] = await db.select().from(clientChatMessages)
     .where(and(eq(clientChatMessages.publicId, messagePublicId), eq(clientChatMessages.conversationId, conversation.id))).limit(1);
   if (!message) throw new TRPCError({ code: "NOT_FOUND", message: "Message not found" });
+  if (message.senderParticipantId === participant.id) return { readAt: null, listenedAt: null, ownMessage: true };
+  if (listened && !["voice", "audio"].includes(message.messageType)) throw new TRPCError({ code: "BAD_REQUEST", message: "Only audio messages can be marked as listened" });
+  if (listened) assertCompletedPlayback(playbackToken, { conversationId: conversation.id, messageId: message.id, participantId: participant.id });
   const now = Date.now();
+  const [existing] = await db.select({
+    deliveredAt: clientChatMessageReceipts.deliveredAt,
+    readAt: clientChatMessageReceipts.readAt,
+    listenedAt: clientChatMessageReceipts.listenedAt,
+  }).from(clientChatMessageReceipts).where(and(
+    eq(clientChatMessageReceipts.messageId, message.id),
+    eq(clientChatMessageReceipts.participantId, participant.id),
+  )).limit(1);
+  const deliveredAt = existing?.deliveredAt ?? now;
+  const readAt = existing?.readAt ?? now;
+  const listenedAt = existing?.listenedAt ?? (listened ? now : null);
   await db.insert(clientChatMessageReceipts).values({
     messageId: message.id,
     participantId: participant.id,
-    deliveredAt: now,
-    readAt: now,
-    listenedAt: listened ? now : null,
+    deliveredAt,
+    readAt,
+    listenedAt,
     updatedAt: now,
-  }).onDuplicateKeyUpdate({ set: { deliveredAt: now, readAt: now, ...(listened ? { listenedAt: now } : {}), updatedAt: now } });
+  }).onDuplicateKeyUpdate({ set: { deliveredAt, readAt, listenedAt, updatedAt: now } });
   await db.update(clientChatParticipants).set({ lastReadMessageId: message.id, lastSeenAt: now, updatedAt: now })
     .where(eq(clientChatParticipants.id, participant.id));
-  await db.insert(clientChatEvents).values({
-    conversationId: conversation.id,
-    eventType: "receipt_changed",
-    entityId: message.id,
-    actorParticipantId: participant.id,
-    metadata: { read: true, listened },
-    createdAt: now,
-  });
-  return { readAt: now, listenedAt: listened ? now : null };
+  if (!existing?.readAt || (listened && !existing?.listenedAt)) {
+    await db.insert(clientChatEvents).values({
+      conversationId: conversation.id,
+      eventType: "receipt_changed",
+      entityId: message.id,
+      actorParticipantId: participant.id,
+      metadata: { read: true, listened: Boolean(listenedAt) },
+      createdAt: now,
+    });
+  }
+  return { readAt, listenedAt, ownMessage: false };
 }
 
 export async function upsertStaffDraft(clientCaseId: number, actor: StaffActor, body: string, replyToMessageId?: number | null) {
@@ -1520,18 +1776,58 @@ export async function listPortalConversationMessages(applicationPublicId: string
   const predicates = [eq(clientChatMessages.conversationId, conversation.id), eq(clientChatMessages.visibility, "client")];
   if (beforeId) predicates.push(lt(clientChatMessages.id, beforeId));
   const rows = await db.select().from(clientChatMessages).where(and(...predicates)).orderBy(desc(clientChatMessages.id)).limit(Math.min(Math.max(limit, 1), MESSAGE_LIMIT));
+  const now = Date.now();
+  for (const message of rows) {
+    if (message.senderParticipantId === participant.id) continue;
+    await markParticipantDelivered(db, { conversationId: conversation.id, messageId: message.id, participantId: participant.id, now });
+  }
   return projectPortalMessages(db, rows.filter(row => !hiddenIds.has(row.id)).reverse(), participant.id);
+}
+
+export async function getPortalMessageInfo(applicationPublicId: string, portalUserId: number, messagePublicId: string) {
+  const { db, conversation, participant } = await requirePortalConversation(applicationPublicId, portalUserId, false);
+  const [message] = await db.select().from(clientChatMessages).where(and(
+    eq(clientChatMessages.publicId, messagePublicId),
+    eq(clientChatMessages.conversationId, conversation.id),
+    eq(clientChatMessages.visibility, "client"),
+  )).limit(1);
+  if (!message) throw new TRPCError({ code: "NOT_FOUND", message: "Message not found" });
+  const [projected] = await projectPortalMessages(db, [message], participant.id);
+  const receiptDetails = message.senderType === "client" && message.senderParticipantId === participant.id
+    ? (await listMessageReceiptDetails(db, conversation.id, message.id, message.senderParticipantId))
+      .filter(receipt => receipt.participantType === "staff")
+      .map(receipt => ({
+        participantPublicId: receipt.participantPublicId,
+        participantType: receipt.participantType,
+        displayName: receipt.displayName,
+        deliveredAt: receipt.deliveredAt,
+        readAt: receipt.readAt,
+        listenedAt: receipt.listenedAt,
+      }))
+    : [];
+  return { message: projected, receiptDetails, versions: [] };
 }
 
 async function projectPortalMessages(db: Awaited<ReturnType<typeof requireDb>>, rows: Array<typeof clientChatMessages.$inferSelect>, viewerParticipantId?: number) {
   const publicIdById = new Map(rows.map(row => [row.id, row.publicId]));
   const messageIds = rows.map(row => row.id);
+  const receiptMessageIds = rows.filter(row => row.senderType === "client" && row.senderParticipantId === viewerParticipantId).map(row => row.id);
   const [attachmentRows, receiptRows] = await Promise.all([
     messageIds.length ? db.select().from(clientChatAttachments).where(and(
       inArray(clientChatAttachments.messageId, messageIds),
       eq(clientChatAttachments.scanStatus, "clean"),
     )) : [],
-    messageIds.length ? db.select().from(clientChatMessageReceipts).where(inArray(clientChatMessageReceipts.messageId, messageIds)) : [],
+    receiptMessageIds.length ? db.select({
+      messageId: clientChatMessageReceipts.messageId,
+      deliveredAt: clientChatMessageReceipts.deliveredAt,
+      readAt: clientChatMessageReceipts.readAt,
+      listenedAt: clientChatMessageReceipts.listenedAt,
+    }).from(clientChatMessageReceipts)
+      .innerJoin(clientChatParticipants, eq(clientChatMessageReceipts.participantId, clientChatParticipants.id))
+      .where(and(
+        inArray(clientChatMessageReceipts.messageId, receiptMessageIds),
+        eq(clientChatParticipants.participantType, "staff"),
+      )) : [],
   ]);
   const attachmentMap = new Map<number, Array<{
     publicId: string;
@@ -1578,7 +1874,9 @@ async function projectPortalMessages(db: Awaited<ReturnType<typeof requireDb>>, 
     replyToPublicId: row.replyToMessageId ? publicIdById.get(row.replyToMessageId) ?? null : null,
     isImportant: row.isImportant,
     isPinned: row.isPinned,
-    receiptSummary: receiptMap.get(row.id) ?? { delivered: 0, read: 0, listened: 0 },
+    receiptSummary: row.senderType === "client" && row.senderParticipantId === viewerParticipantId
+      ? receiptMap.get(row.id) ?? { delivered: 0, read: 0, listened: 0 }
+      : { delivered: 0, read: 0, listened: 0 },
     editedAt: row.editedAt,
     deletedAt: row.deletedAt,
     createdAt: row.createdAt,
@@ -1715,8 +2013,7 @@ export async function pollPortalConversation(applicationPublicId: string, portal
     : [];
   for (const message of messages) {
     if (message.senderParticipantId === participant.id) continue;
-    await db.insert(clientChatMessageReceipts).values({ messageId: message.id, participantId: participant.id, deliveredAt: now, updatedAt: now })
-      .onDuplicateKeyUpdate({ set: { deliveredAt: now, updatedAt: now } });
+    await markParticipantDelivered(db, { conversationId: conversation.id, messageId: message.id, participantId: participant.id, now });
   }
   await db.update(clientChatParticipants).set({ lastSeenAt: now, updatedAt: now }).where(eq(clientChatParticipants.id, participant.id));
   const typingStaffCount = (await db.select({ id: clientChatParticipants.id }).from(clientChatParticipants).where(and(
@@ -1748,7 +2045,12 @@ export async function updatePortalTyping(applicationPublicId: string, portalUser
   return { typing, expiresAt: typing ? now + TYPING_TTL_MS : null };
 }
 
-export async function markPortalRead(applicationPublicId: string, portalUserId: number, messagePublicId: string, listened = false, deviceName?: string | null) {
+export async function startPortalAudioPlayback(applicationPublicId: string, portalUserId: number, messagePublicId: string) {
+  const { db, conversation, participant } = await requirePortalConversation(applicationPublicId, portalUserId, false);
+  return issueAudioPlaybackProof(db, { conversationId: conversation.id, participantId: participant.id, messagePublicId, clientVisibleOnly: true });
+}
+
+export async function markPortalRead(applicationPublicId: string, portalUserId: number, messagePublicId: string, listened = false, deviceName?: string | null, playbackToken?: string | null) {
   const { db, conversation, participant } = await requirePortalConversation(applicationPublicId, portalUserId, false);
   const [message] = await db.select().from(clientChatMessages).where(and(
     eq(clientChatMessages.publicId, messagePublicId),
@@ -1757,19 +2059,34 @@ export async function markPortalRead(applicationPublicId: string, portalUserId: 
   )).limit(1);
   if (!message) throw new TRPCError({ code: "NOT_FOUND", message: "Message not found" });
   if (message.senderParticipantId === participant.id) return { readAt: null, listenedAt: null, ownMessage: true };
+  if (listened && !["voice", "audio"].includes(message.messageType)) throw new TRPCError({ code: "BAD_REQUEST", message: "Only audio messages can be marked as listened" });
+  if (listened) assertCompletedPlayback(playbackToken, { conversationId: conversation.id, messageId: message.id, participantId: participant.id });
   const now = Date.now();
+  const [existing] = await db.select({
+    deliveredAt: clientChatMessageReceipts.deliveredAt,
+    readAt: clientChatMessageReceipts.readAt,
+    listenedAt: clientChatMessageReceipts.listenedAt,
+  }).from(clientChatMessageReceipts).where(and(
+    eq(clientChatMessageReceipts.messageId, message.id),
+    eq(clientChatMessageReceipts.participantId, participant.id),
+  )).limit(1);
+  const deliveredAt = existing?.deliveredAt ?? now;
+  const readAt = existing?.readAt ?? now;
+  const listenedAt = existing?.listenedAt ?? (listened ? now : null);
   await db.insert(clientChatMessageReceipts).values({
     messageId: message.id,
     participantId: participant.id,
-    deliveredAt: now,
-    readAt: now,
-    listenedAt: listened ? now : null,
+    deliveredAt,
+    readAt,
+    listenedAt,
     deviceName: deviceName?.slice(0, 255) || null,
     updatedAt: now,
-  }).onDuplicateKeyUpdate({ set: { deliveredAt: now, readAt: now, ...(listened ? { listenedAt: now } : {}), deviceName: deviceName?.slice(0, 255) || null, updatedAt: now } });
+  }).onDuplicateKeyUpdate({ set: { deliveredAt, readAt, listenedAt, deviceName: deviceName?.slice(0, 255) || null, updatedAt: now } });
   await db.update(clientChatParticipants).set({ lastReadMessageId: message.id, lastSeenAt: now, updatedAt: now }).where(eq(clientChatParticipants.id, participant.id));
-  await db.insert(clientChatEvents).values({ conversationId: conversation.id, eventType: "receipt_changed", entityId: message.id, actorParticipantId: participant.id, metadata: { read: true, listened, visibility: "client" }, createdAt: now });
-  return { readAt: now, listenedAt: listened ? now : null, ownMessage: false };
+  if (!existing?.readAt || (listened && !existing?.listenedAt)) {
+    await db.insert(clientChatEvents).values({ conversationId: conversation.id, eventType: "receipt_changed", entityId: message.id, actorParticipantId: participant.id, metadata: { read: true, listened: Boolean(listenedAt), visibility: "client" }, createdAt: now });
+  }
+  return { readAt, listenedAt, ownMessage: false };
 }
 
 export async function listPortalChatUnread(portalUserId: number) {
@@ -1825,7 +2142,9 @@ export async function listEmployeeChatUnread(actor: StaffActor) {
     folderPublicId: encodeEmployeeFolderId(item.clientCaseId),
     unreadCount: item.unreadCount,
     lastMessageAt: item.lastMessageAt,
+    lastMessagePublicId: item.lastMessagePublicId,
     lastMessagePreview: item.lastMessagePreview,
+    lastSenderName: item.lastSenderName,
     inApp: (item.notificationPreferences as Record<string, boolean>).inApp !== false,
   })).filter(item => item.inApp);
   return { total: items.reduce((sum, item) => sum + item.unreadCount, 0), items };

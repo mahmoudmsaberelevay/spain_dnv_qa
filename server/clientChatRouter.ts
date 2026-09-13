@@ -34,6 +34,7 @@ import {
   saveStaffAttachmentToDocuments,
   setStaffMessageFlag,
   setStaffChatParticipant,
+  startStaffAudioPlayback,
   toggleStaffReaction,
   toggleStaffStar,
   updateStaffTyping,
@@ -81,9 +82,13 @@ export const clientChatRouter = router({
     .input(z.object({ clientCaseId: z.number().int().positive(), typing: z.boolean() }))
     .mutation(({ ctx, input }) => updateStaffTyping(input.clientCaseId, ctx.user, input.typing)),
 
+  startPlayback: protectedProcedure
+    .input(z.object({ clientCaseId: z.number().int().positive(), messagePublicId: z.string().uuid() }))
+    .mutation(({ ctx, input }) => startStaffAudioPlayback(input.clientCaseId, ctx.user, input.messagePublicId)),
+
   markRead: protectedProcedure
-    .input(z.object({ clientCaseId: z.number().int().positive(), messagePublicId: z.string().uuid(), listened: z.boolean().default(false) }))
-    .mutation(({ ctx, input }) => markStaffRead(input.clientCaseId, ctx.user, input.messagePublicId, input.listened)),
+    .input(z.object({ clientCaseId: z.number().int().positive(), messagePublicId: z.string().uuid(), listened: z.boolean().default(false), playbackToken: z.string().max(2_000).nullable().optional() }))
+    .mutation(({ ctx, input }) => markStaffRead(input.clientCaseId, ctx.user, input.messagePublicId, input.listened, input.playbackToken)),
 
   saveDraft: protectedProcedure
     .input(z.object({ clientCaseId: z.number().int().positive(), body: z.string().max(10_000), replyToMessageId: z.number().int().positive().nullable().optional() }))
@@ -194,7 +199,7 @@ export const clientChatRouter = router({
     .mutation(({ ctx, input }) => updateStaffConversationState(input.clientCaseId, ctx.user, input)),
 
   updateGovernance: protectedProcedure
-    .input(z.object({ clientCaseId: z.number().int().positive(), retentionPolicy: z.enum(["indefinite", "seven_years"]), legalHold: z.boolean(), legalHoldReason: z.string().trim().max(500).nullable().optional() }))
+    .input(z.object({ clientCaseId: z.number().int().positive(), retentionPolicy: z.literal("indefinite"), legalHold: z.boolean(), legalHoldReason: z.string().trim().max(500).nullable().optional() }))
     .mutation(({ ctx, input }) => updateStaffChatGovernance(input.clientCaseId, ctx.user, input)),
 
   exportConversation: protectedProcedure

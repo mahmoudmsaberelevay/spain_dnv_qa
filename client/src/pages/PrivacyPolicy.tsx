@@ -76,7 +76,7 @@ export default function PrivacyPolicy() {
             <h3 className="text-lg font-medium text-gray-800 mt-4 mb-2">2.4 Communication Data</h3>
             <ul className="list-disc pl-6 text-gray-700 space-y-1">
               <li>Notification preferences</li>
-              <li>Device push tokens used to deliver privacy-safe service alerts; chat notification previews do not include message content</li>
+              <li>Device push tokens used to deliver service alerts; at the user's request, chat notifications may show the sender name and a concise message or attachment preview, subject to the device's notification-preview settings</li>
               <li>Support requests and correspondence</li>
             </ul>
           </section>
@@ -194,6 +194,12 @@ export default function PrivacyPolicy() {
               our services. After account deletion, we may retain certain records for up to 7 years where 
               required for legal, accounting, or regulatory compliance purposes. Anonymized usage data may 
               be retained indefinitely for analytical purposes.
+            </p>
+            <p className="mt-3 text-gray-700 leading-relaxed">
+              Canonical client-folder Chat messages and attachments are retained indefinitely. They are not
+              removed by an automatic age limit, TTL, storage-quota cleanup, or scheduled purge. Chat content
+              may be removed only through an authorized manual action, including a verified account-deletion
+              request where applicable; required audit and legal records may remain protected.
             </p>
           </section>
 

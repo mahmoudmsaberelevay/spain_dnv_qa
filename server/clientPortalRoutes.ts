@@ -69,8 +69,10 @@ import {
   getStaffAttachmentAccess,
   getStaffConversation,
   getStaffChatEmailRecipients,
+  getStaffMessageInfo,
   getPortalChatPreferences,
   getPortalAttachmentAccess,
+  getPortalMessageInfo,
   listEmployeeChatUnread,
   listPortalConversationMessages,
   listPortalChatUnread,
@@ -84,6 +86,8 @@ import {
   sendPortalConversationMessage,
   sendStaffAttachment,
   sendStaffMessage,
+  startPortalAudioPlayback,
+  startStaffAudioPlayback,
   toggleStaffReaction,
   toggleStaffStar,
   updateStaffChatPreferences,
@@ -303,7 +307,12 @@ async function queueStaffEmail(input: { eventType: string; recipients: string[];
   }
 }
 
-export async function pushClientNotification(portalUserId: number, title: string, body: string, data: Record<string, string>) {
+function deliveryAffectedRows(result: unknown) {
+  const metadata = Array.isArray(result) ? result[0] : result;
+  return Number((metadata as { affectedRows?: number } | undefined)?.affectedRows || 0);
+}
+
+export async function pushClientNotification(portalUserId: number, title: string, body: string, data: Record<string, string>, idempotencyKeyBase?: string) {
   const db = await getDb();
   if (!db) return;
   const [portalUser] = await db.select({ preferences: clientPortalUsers.notificationPreferences }).from(clientPortalUsers).where(eq(clientPortalUsers.id, portalUserId)).limit(1);
@@ -314,14 +323,43 @@ export async function pushClientNotification(portalUserId: number, title: string
   const sessions = await db.select({ token: clientPortalSessions.pushToken }).from(clientPortalSessions).where(and(eq(clientPortalSessions.portalUserId, portalUserId), isNull(clientPortalSessions.revokedAt), gt(clientPortalSessions.expiresAt, new Date())));
   const tokens = sessions.map(row => row.token).filter((token): token is string => Boolean(token && /^(?:Exponent|Expo)PushToken\[/.test(token)));
   for (const token of tokens) {
-    const [result] = await db.insert(clientPortalDeliveryOutbox).values({ eventType: data.type || "portal_notification", channel: "push", recipient: token, payload: { title, body, data } });
-    const outboxId = Number((result as { insertId?: number }).insertId || 0);
-    try {
-      const response = await fetch("https://exp.host/--/api/v2/push/send", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ to: token, title, body, data, sound: "default", ...(data.type === "client_chat_message" ? { channelId: "chat" } : {}) }) });
-      if (!response.ok) throw new Error(`push_${response.status}`);
-      if (outboxId) await db.update(clientPortalDeliveryOutbox).set({ status: "sent", attempts: 1, processedAt: new Date() }).where(eq(clientPortalDeliveryOutbox.id, outboxId));
-    } catch (pushError) {
-      if (outboxId) await db.update(clientPortalDeliveryOutbox).set({ status: "failed", attempts: 1, lastError: String(pushError).slice(0, 4000) }).where(eq(clientPortalDeliveryOutbox.id, outboxId));
+    const idempotencyKey = idempotencyKeyBase
+      ? `${idempotencyKeyBase}:t:${createHash("sha256").update(token).digest("hex").slice(0, 16)}`.slice(0, 191)
+      : null;
+    if (idempotencyKey) {
+      await db.insert(clientPortalDeliveryOutbox).ignore().values({ idempotencyKey, eventType: data.type || "portal_notification", channel: "push", recipient: token, payload: { title, body, data } });
+    }
+    const [delivery] = idempotencyKey
+      ? await db.select().from(clientPortalDeliveryOutbox).where(eq(clientPortalDeliveryOutbox.idempotencyKey, idempotencyKey)).limit(1)
+      : [];
+    if (delivery?.status === "sent" || (delivery?.attempts ?? 0) >= 3) continue;
+    let outboxId = delivery?.id ?? 0;
+    let attempts = delivery?.attempts ?? 0;
+    if (delivery) {
+      const claim = await db.update(clientPortalDeliveryOutbox).set({ status: "pending", attempts: attempts + 1, lastError: null }).where(and(
+        eq(clientPortalDeliveryOutbox.id, delivery.id),
+        eq(clientPortalDeliveryOutbox.status, delivery.status),
+        eq(clientPortalDeliveryOutbox.attempts, attempts),
+      ));
+      if (deliveryAffectedRows(claim) !== 1) continue;
+      attempts += 1;
+    } else {
+      const [result] = await db.insert(clientPortalDeliveryOutbox).values({ eventType: data.type || "portal_notification", channel: "push", recipient: token, payload: { title, body, data }, attempts: 1 });
+      outboxId = Number((result as { insertId?: number }).insertId || 0);
+      attempts = 1;
+    }
+    while (attempts <= 3) {
+      try {
+        const response = await fetch("https://exp.host/--/api/v2/push/send", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ to: token, title, body, data, sound: "default", ...(data.type === "client_chat_message" ? { channelId: "chat" } : {}) }) });
+        if (!response.ok) throw new Error(`push_${response.status}`);
+        if (outboxId) await db.update(clientPortalDeliveryOutbox).set({ status: "sent", attempts, processedAt: new Date(), lastError: null }).where(eq(clientPortalDeliveryOutbox.id, outboxId));
+        break;
+      } catch (pushError) {
+        if (outboxId) await db.update(clientPortalDeliveryOutbox).set({ status: "failed", attempts, lastError: String(pushError).slice(0, 4000) }).where(eq(clientPortalDeliveryOutbox.id, outboxId));
+        if (!idempotencyKey || attempts >= 3) break;
+        attempts += 1;
+        if (outboxId) await db.update(clientPortalDeliveryOutbox).set({ status: "pending", attempts, lastError: null }).where(eq(clientPortalDeliveryOutbox.id, outboxId));
+      }
     }
   }
 }
@@ -475,13 +513,16 @@ export function registerClientPortalRoutes(app: Express) {
       return res.json(unread.items.map(item => ({
         publicId: `employee-chat-${createHash("sha256").update(`${req.employee!.user.id}:${item.folderPublicId}`).digest("hex").slice(0, 24)}`,
         type: "client_chat_message",
-        title: { en: "Unread client chat", ar: "محادثة عميل غير مقروءة" },
+        title: {
+          en: item.lastSenderName ? `Message from ${item.lastSenderName}` : "Unread client chat",
+          ar: item.lastSenderName ? `رسالة من ${item.lastSenderName}` : "محادثة عميل غير مقروءة",
+        },
         body: {
-          en: `${item.unreadCount} unread ${item.unreadCount === 1 ? "message" : "messages"}${item.lastMessagePreview ? ` — ${item.lastMessagePreview}` : ""}`,
-          ar: `${item.unreadCount} ${item.unreadCount === 1 ? "رسالة غير مقروءة" : "رسائل غير مقروءة"}`,
+          en: item.lastMessagePreview || `${item.unreadCount} unread ${item.unreadCount === 1 ? "message" : "messages"}`,
+          ar: item.lastMessagePreview || `${item.unreadCount} ${item.unreadCount === 1 ? "رسالة غير مقروءة" : "رسائل غير مقروءة"}`,
         },
         entityType: "chat_message",
-        entityPublicId: null,
+        entityPublicId: item.lastMessagePublicId,
         employeeFolderId: item.folderPublicId,
         isRead: false,
         readAt: null,
@@ -573,10 +614,25 @@ export function registerClientPortalRoutes(app: Express) {
     catch (chatError) { return chatRouteError(res, chatError); }
   });
 
+  app.post("/client-api/employee/folders/:folderId/chat/messages/:messageId/playback-start", writeLimiter, async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    try { return res.json(await startStaffAudioPlayback(clientCaseId, employeeChatActor(req), req.params.messageId)); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
   app.post("/client-api/employee/folders/:folderId/chat/messages/:messageId/read", writeLimiter, async (req: EmployeeRequest, res) => {
     const clientCaseId = employeeChatCaseId(req, res);
     if (!clientCaseId) return;
-    try { return res.json(await markStaffRead(clientCaseId, employeeChatActor(req), req.params.messageId, Boolean(req.body?.listened))); }
+    const playbackToken = typeof req.body?.playbackToken === "string" ? req.body.playbackToken : null;
+    try { return res.json(await markStaffRead(clientCaseId, employeeChatActor(req), req.params.messageId, Boolean(req.body?.listened), playbackToken)); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.get("/client-api/employee/folders/:folderId/chat/messages/:messageId/info", async (req: EmployeeRequest, res) => {
+    const clientCaseId = employeeChatCaseId(req, res);
+    if (!clientCaseId) return;
+    try { return res.json(await getStaffMessageInfo(clientCaseId, employeeChatActor(req), req.params.messageId)); }
     catch (chatError) { return chatRouteError(res, chatError); }
   });
 
@@ -1141,10 +1197,10 @@ export function registerClientPortalRoutes(app: Express) {
     try {
       const message = await sendPortalConversationMessage({ applicationPublicId: req.params.applicationId, portalUserId: req.portal!.user.id, senderName: owned.clientCase.clientName, clientMessageId: portalClientMessageId(req.body?.clientMessageId), body: bodyText, replyToPublicId: typeof req.body?.replyToPublicId === "string" ? req.body.replyToPublicId : null });
       const publicId = message.publicId;
+      const db = await getDb();
+      if (!db) return error(res, 503, "service_unavailable");
+      await db.insert(clientPortalNotifications).ignore().values({ publicId: randomUUID(), portalUserId: req.portal!.user.id, idempotencyKey: `client-chat-sent:${publicId}:u:${req.portal!.user.id}`.slice(0, 191), type: "message_sent", titleEn: "Message sent", titleAr: "تم إرسال الرسالة", bodyEn: "Your message was sent securely to your Elevay team.", bodyAr: "تم إرسال رسالتك بأمان إلى فريق إليفاي.", entityType: "message", entityPublicId: publicId, createdAt: Date.now() });
       if (!message.isDuplicate) {
-        const db = await getDb();
-        if (!db) return error(res, 503, "service_unavailable");
-        await db.insert(clientPortalNotifications).values({ publicId: randomUUID(), portalUserId: req.portal!.user.id, type: "message_sent", titleEn: "Message sent", titleAr: "تم إرسال الرسالة", bodyEn: "Your message was sent securely to your Elevay team.", bodyAr: "تم إرسال رسالتك بأمان إلى فريق إليفاي.", entityType: "message", entityPublicId: publicId, createdAt: Date.now() });
         const recipients = await getStaffChatEmailRecipients(owned.clientCase.id);
         if (recipients.length) await queueStaffEmail({ eventType: "client_message", recipients, subject: `New Client Message – ${owned.clientCase.clientName}`, html: `<h2>New Client Message</h2><p><strong>Client:</strong> ${owned.clientCase.clientName}</p><p><strong>Application:</strong> ${owned.application.label || owned.clientCase.applicationType}</p><p>A new secure client message is waiting in the ELEVAY conversation. Message content is intentionally omitted from email.</p><p><a href="https://elevay.vip/docs/clients/${owned.clientCase.id}?tab=chat">Open Client Documentation Chat</a></p>` });
         await writePortalAudit({ req, portalUserId: req.portal!.user.id, clientCaseId: owned.clientCase.id, action: "message_sent", recordType: "message", recordPublicId: publicId, correlationId: req.portal!.correlationId });
@@ -1173,10 +1229,10 @@ export function registerClientPortalRoutes(app: Express) {
         durationMs: Number.isFinite(Number(req.body?.durationMs)) ? Number(req.body.durationMs) : null,
       });
       if (!message) return error(res, 500, "chat_unavailable");
+      const db = await getDb();
+      if (!db) return error(res, 503, "service_unavailable");
+      await db.insert(clientPortalNotifications).ignore().values({ publicId: randomUUID(), portalUserId: req.portal!.user.id, idempotencyKey: `client-chat-sent:${message.publicId}:u:${req.portal!.user.id}`.slice(0, 191), type: "message_sent", titleEn: "Attachment sent", titleAr: "تم إرسال المرفق", bodyEn: "Your attachment was sent securely to your Elevay team.", bodyAr: "تم إرسال المرفق بأمان إلى فريق إليفاي.", entityType: "message", entityPublicId: message.publicId, createdAt: Date.now() });
       if (!message.isDuplicate) {
-        const db = await getDb();
-        if (!db) return error(res, 503, "service_unavailable");
-        await db.insert(clientPortalNotifications).values({ publicId: randomUUID(), portalUserId: req.portal!.user.id, type: "message_sent", titleEn: "Attachment sent", titleAr: "تم إرسال المرفق", bodyEn: "Your attachment was sent securely to your Elevay team.", bodyAr: "تم إرسال المرفق بأمان إلى فريق إليفاي.", entityType: "message", entityPublicId: message.publicId, createdAt: Date.now() });
         const recipients = await getStaffChatEmailRecipients(owned.clientCase.id);
         if (recipients.length) await queueStaffEmail({ eventType: "client_message", recipients, subject: `New Client Attachment – ${owned.clientCase.clientName}`, html: `<h2>New Client Attachment</h2><p><strong>Client:</strong> ${owned.clientCase.clientName}</p><p><strong>Application:</strong> ${owned.application.label || owned.clientCase.applicationType}</p><p>A file was sent securely through the ELEVAY client conversation. File content and private storage details are intentionally omitted from email.</p><p><a href="https://elevay.vip/docs/clients/${owned.clientCase.id}?tab=chat">Open Client Documentation Chat</a></p>` });
         await writePortalAudit({ req, portalUserId: req.portal!.user.id, clientCaseId: owned.clientCase.id, action: "attachment_sent", recordType: "message", recordPublicId: message.publicId, correlationId: req.portal!.correlationId });
@@ -1206,8 +1262,19 @@ export function registerClientPortalRoutes(app: Express) {
     catch (chatError) { return chatRouteError(res, chatError); }
   });
 
+  app.post("/client-api/applications/:applicationId/messages/:messageId/playback-start", writeLimiter, async (req: PortalRequest, res) => {
+    try { return res.json(await startPortalAudioPlayback(req.params.applicationId, req.portal!.user.id, req.params.messageId)); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
   app.post("/client-api/applications/:applicationId/messages/:messageId/read", writeLimiter, async (req: PortalRequest, res) => {
-    try { return res.json(await markPortalRead(req.params.applicationId, req.portal!.user.id, req.params.messageId, Boolean(req.body?.listened), req.header("x-device-name"))); }
+    const playbackToken = typeof req.body?.playbackToken === "string" ? req.body.playbackToken : null;
+    try { return res.json(await markPortalRead(req.params.applicationId, req.portal!.user.id, req.params.messageId, Boolean(req.body?.listened), req.header("x-device-name"), playbackToken)); }
+    catch (chatError) { return chatRouteError(res, chatError); }
+  });
+
+  app.get("/client-api/applications/:applicationId/messages/:messageId/info", async (req: PortalRequest, res) => {
+    try { return res.json(await getPortalMessageInfo(req.params.applicationId, req.portal!.user.id, req.params.messageId)); }
     catch (chatError) { return chatRouteError(res, chatError); }
   });
 
