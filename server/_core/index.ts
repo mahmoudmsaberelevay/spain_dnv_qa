@@ -96,7 +96,8 @@ async function startServer() {
           namespace: "android_app",
           package_name: "com.elevay.client",
           sha256_cert_fingerprints: [
-            "D7:1E:11:BB:98:F3:2A:6F:FB:AC:12:F2:A7:86:E8:C7:16:FE:E5:D6:F1:AC:99:E8:B1:9D:BD:B5:31:37:DE:E7"
+            "D7:1E:11:BB:98:F3:2A:6F:FB:AC:12:F2:A7:86:E8:C7:16:FE:E5:D6:F1:AC:99:E8:B1:9D:BD:B5:31:37:DE:E7",
+            "4D:48:21:19:C8:EE:FA:87:88:77:F0:E1:2B:EB:8E:0D:83:8D:4B:0C:40:2E:2C:3A:30:F1:4F:3B:C7:C0:CC:D8"
           ]
         }
       }
