@@ -106,7 +106,7 @@ export async function pullLandingPayloadFromAliases(
 
       const responseError = new Error(`LANDING_PULL_${response.status}`);
       lastError = responseError;
-      if (index === 0 && response.status === 404) continue;
+      if (index === 0 && [401, 403, 404, 405].includes(response.status)) continue;
       throw responseError;
     } catch (error) {
       lastError = error;

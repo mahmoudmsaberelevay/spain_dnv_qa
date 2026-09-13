@@ -1522,3 +1522,12 @@ Check email for download link within 5 minutes
 - [x] Notify the client 12 days before the recorded submission date for an unpaid Submission-linked payment
 - [x] Notify the client the next day after the application is marked Approved for an unpaid Approval-linked payment
 - [x] Add additive migrations, focused regression tests, authorization and notification validation, responsive UI checks, production build, documentation, and publish
+
+## Spain DNV Landing Reconciliation Attention Alert
+- [x] Inspect the midnight Cairo reconciliation run and identify why one qualified submission was attempted but neither synchronized nor matched
+- [ ] Confirm the affected submission's current inquiry and Lead linkage using privacy-safe identifiers and counts only
+- [x] Repair the existing server-to-server reconciliation path if required without exposing credentials or weakening deduplication
+- [ ] Safely retry the single submission through the authoritative idempotent ingestion path
+- [ ] Verify exactly one inquiry outcome and one conservative Lead linkage with source `Spain_landing page`, zero duplicate Leads, and zero Meta attribution or outbox artifacts
+- [ ] Verify the next six-hour scheduled run and attention-alert logic no longer report the resolved submission as pending
+- [ ] Add focused regressions, production validation, documentation, and publish only if code changes are required

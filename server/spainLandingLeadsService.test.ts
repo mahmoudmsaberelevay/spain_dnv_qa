@@ -73,6 +73,23 @@ describe("Spain landing page to ELEVAY Leads ingestion", () => {
     expect(fetcher).toHaveBeenNthCalledWith(2, SPAIN_LANDING_PULL_FALLBACK_URL, expect.any(Object));
   });
 
+  it("falls back to the public compatibility handler when authentication middleware blocks the routed alias", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(validPayload), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+
+    await expect(pullLandingPayloadFromAliases(27, "opaque-token", fetcher as typeof fetch))
+      .resolves.toEqual(validPayload);
+    expect(fetcher).toHaveBeenNthCalledWith(1, SPAIN_LANDING_PULL_URL, expect.any(Object));
+    expect(fetcher).toHaveBeenNthCalledWith(2, SPAIN_LANDING_PULL_FALLBACK_URL, expect.any(Object));
+  });
+
   it("registers the dedicated endpoint before generic website ingestion, tRPC, static files, and SPA fallback", () => {
     const indexSource = fs.readFileSync(path.join(projectRoot, "server/_core/index.ts"), "utf8");
     const dedicated = indexSource.indexOf("registerSpainLandingLeadRoutes(app)");
