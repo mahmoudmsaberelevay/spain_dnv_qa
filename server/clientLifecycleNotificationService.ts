@@ -274,6 +274,7 @@ export async function runClientLifecycleReminders(now = new Date(), dependencies
     const reminders: ReminderTemplate[] = [];
     const signed = dateKey(c.clientPortalSignedAt);
     const embassyEmail = dateKey(c.embassyEmailDate);
+    const schengenAppointment = dateKey(c.schengenAppointmentDate);
     const appointment = dateKey(c.embassyAppointmentDate);
     const submission = dateKey(c.expectedSubmissionDate);
     const approval = dateKey(c.approvalDate);
@@ -287,6 +288,9 @@ export async function runClientLifecycleReminders(now = new Date(), dependencies
       const elapsed = calendarDaysBetween(embassyEmail, today);
       const cycle = Math.floor(elapsed / 3);
       if (cycle >= 1) reminders.push({ ruleKey: "embassy_inbox_cycle", idempotencyKey: `case:${c.id}:embassy-inbox:${embassyEmail}:c${cycle}`, eventType: "embassy_inbox_reminder", titleEn: "Check your Embassy email", titleAr: "تحقق من بريد السفارة", bodyEn: "Please check your email inbox and junk folder for an Embassy reply. This reminder stops when the appointment is confirmed.", bodyAr: "يرجى التحقق من صندوق الوارد والبريد غير المرغوب فيه بحثاً عن رد السفارة. سيتوقف التذكير عند تأكيد الموعد." });
+    }
+    if (c.schengenVisaValid === false && embassyEmail && !schengenAppointment && calendarDaysBetween(embassyEmail, today) >= 2) {
+      reminders.push({ ruleKey: "schengen_appointment_booking_d2", idempotencyKey: `case:${c.id}:schengen-appointment-booking:${embassyEmail}:d2`, eventType: "schengen_appointment_booking_reminder", titleEn: "Book your Schengen visa appointment", titleAr: "احجز موعد تأشيرة شنغن", bodyEn: "You do not have a valid Schengen visa. Please book a Schengen visa appointment and share the appointment date with ELEVAY through your application.", bodyAr: "ليس لديك تأشيرة شنغن سارية. يرجى حجز موعد لتأشيرة شنغن ومشاركة تاريخ الموعد مع إليفاي من خلال طلبك." });
     }
     if (appointment) {
       const remaining = calendarDaysBetween(today, appointment);

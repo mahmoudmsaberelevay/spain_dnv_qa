@@ -1531,3 +1531,12 @@ Check email for download link within 5 minutes
 - [ ] Verify exactly one inquiry outcome and one conservative Lead linkage with source `Spain_landing page`, zero duplicate Leads, and zero Meta attribution or outbox artifacts
 - [ ] Verify the next six-hour scheduled run and attention-alert logic no longer report the resolved submission as pending
 - [ ] Add focused regressions, production validation, documentation, and publish only if code changes are required
+
+## Client Documentation — Conditional Schengen Appointment Workflow
+- [x] Audit the existing Schengen visa indicator, Embassy Email date, Client Documentation detail form, client timeline, portal projection, and lifecycle notification engine
+- [x] Add a legacy-safe field to record whether the client currently has a valid Schengen visa
+- [x] Add a conditional Client Documentation entry named Schengen Appointment Date for clients without a valid Schengen visa
+- [x] Insert the Schengen Appointment step in the staff and client timelines immediately after Embassy Email and only when the no-visa rule applies
+- [x] Send one idempotent client reminder on the second day after Embassy Email asking the client to book a Schengen visa appointment
+- [x] Stop showing the reminder as outstanding once a Schengen Appointment Date is recorded, without deleting notification history
+- [x] Add additive migration, focused workflow/notification/portal regressions, responsive verification, production build, documentation, and publish

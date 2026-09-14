@@ -16,6 +16,7 @@ const baseCase = {
   appointmentBookingSubmittedAt: new Date("2026-01-01T12:00:00Z"),
   embassyAppointmentDate: null,
   embassyEmailDate: null,
+  schengenAppointmentDate: null,
   embassyReplyConfirmedAt: null,
   schengenVisaValid: false,
   schengenExpiryDate: null,
@@ -62,6 +63,10 @@ function scenarioDb() {
     row(11, { approvalDate: date("2026-01-19") }),
     row(12, { approvalDate: date("2026-01-17") }),
     row(13, { biometricsAppointmentDate: "2026-01-22", biometricsAppointmentTime: "09:30", biometricsLocation: "Madrid Police Office", biometricsStatus: "confirmed" }),
+    row(14, { embassyEmailDate: date("2026-01-18"), schengenVisaValid: true }),
+    row(15, { embassyEmailDate: date("2026-01-18"), schengenAppointmentDate: date("2026-01-19") }),
+    row(16, { embassyEmailDate: date("2026-01-18") }),
+    row(17, { embassyEmailDate: date("2026-01-19") }),
   ];
   const docs = [{ id: 1, clientCaseId: 9, docName: "Passport copy", received: false }];
   const payments = [
@@ -86,6 +91,7 @@ describe("client lifecycle reminder engine", () => {
     const keys = deliveries.map(item => item.template.ruleKey);
     expect(keys).toEqual(expect.arrayContaining([
       "appointment_booking_d2", "embassy_inbox_cycle", "embassy_appointment_d3", "schengen_expiry_d30",
+      "schengen_appointment_booking_d2",
       "embassy_attestation_followup_d15", "submission_payment_d12", "flight_ticket_d3",
       "missing_documents_cycle", "arrival_confirmation_d1", "approval_payment_d1", "travel_deadline_d3", "biometrics_48h",
     ]));
@@ -108,7 +114,16 @@ describe("client lifecycle reminder engine", () => {
     });
     expect(appointmentBooking?.template.bodyEn).toBe("Dear Mr. Client 1\n\nnow you will need to send an email to the Spanish Embassy to book an attestation appointment\n\nyou can find an attached word file here you can just copy the subject and add it to the email subject field and also copy the mail body and just change you personal data Name and Passport Number");
     expect(result.sent).toBe(deliveries.length);
-    expect(result.linkedApplications).toBe(13);
+    const schengenAppointmentReminders = deliveries
+      .filter(item => item.template.ruleKey === "schengen_appointment_booking_d2")
+      .map(item => item.clientCaseId);
+    expect(schengenAppointmentReminders).toEqual(expect.arrayContaining([2, 5, 16]));
+    expect(schengenAppointmentReminders).not.toEqual(expect.arrayContaining([14, 15, 17]));
+    expect(deliveries.find(item => item.clientCaseId === 16 && item.template.ruleKey === "schengen_appointment_booking_d2")?.template).toMatchObject({
+      eventType: "schengen_appointment_booking_reminder",
+      titleEn: "Book your Schengen visa appointment",
+    });
+    expect(result.linkedApplications).toBe(17);
   });
 
   it("suppresses duplicate delivery when the same run is retried", async () => {

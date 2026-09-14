@@ -23,6 +23,27 @@ describe("client process timeline projection", () => {
     expect(Object.keys(timeline[0]).sort()).toEqual(["key", "occurredAt", "position", "status", "titleAr", "titleEn"].sort());
   });
 
+  it("inserts Schengen Appointment immediately after Embassy Email only for a client without a valid Schengen visa", () => {
+    const required = project({
+      schengenVisaValid: false,
+      embassyEmailDate: "2026-01-02",
+      schengenAppointmentDate: "2026-01-05",
+    });
+    const notRequired = project({ schengenVisaValid: true, embassyEmailDate: "2026-01-02" });
+
+    expect(required).toHaveLength(18);
+    expect(required.slice(0, 4).map(item => item.key)).toEqual([
+      "contract_signed",
+      "embassy_email",
+      "schengen_appointment",
+      "document_preparation",
+    ]);
+    expect(required[2]).toMatchObject({ position: 3, status: "current", occurredAt: "2026-01-05" });
+    expect(notRequired).toHaveLength(17);
+    expect(notRequired.some(item => item.key === "schengen_appointment")).toBe(false);
+    expect(notRequired[2]).toMatchObject({ key: "document_preparation", position: 3 });
+  });
+
   it("makes the second-payment window current and keeps Ready to Submit in the future while unpaid", () => {
     const timeline = project({
       applicationTimezone: "Africa/Cairo",

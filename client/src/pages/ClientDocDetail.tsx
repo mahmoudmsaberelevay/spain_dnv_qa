@@ -24,7 +24,7 @@ import {
   FileDown, Trash2, Link2, Mail, UserCheck, ShieldCheck, MessageCircle
 } from "lucide-react";
 
-type ActionType = "receive" | "schengen" | "appointment" | null;
+type ActionType = "receive" | "schengen" | "schengenAppointment" | "appointment" | null;
 type Stage = "preparation" | "spain_team_received" | "submission" | "approved";
 
 export default function ClientDocDetail() {
@@ -38,6 +38,7 @@ export default function ClientDocDetail() {
   const [receiveDates, setReceiveDates] = useState<Record<number, string>>({});
   const [dateInputs, setDateInputs] = useState<Record<string, string>>({
     schengenDate: "",
+    schengenAppointmentDate: "",
     embassyAppointmentDate: "",
   });
   // Stage workflow state
@@ -225,7 +226,7 @@ export default function ClientDocDetail() {
     receiveMutation.mutate({ clientCaseId: clientId, items });
   };
 
-  const handleDatesSubmit = (field: "schengenDate" | "embassyAppointmentDate") => {
+  const handleDatesSubmit = (field: "schengenDate" | "schengenAppointmentDate" | "embassyAppointmentDate") => {
     const val = dateInputs[field];
     if (!val) { toast.error("Please select a date"); return; }
     datesMutation.mutate({ id: clientId, [field]: val });
@@ -490,6 +491,9 @@ export default function ClientDocDetail() {
               <p className="text-xs text-blue-700 mt-0.5">
                 Sent on: <strong>{new Date(caseData.embassyEmailDate).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}</strong>
                 <span className="ml-2 text-blue-500">— Follow-up reminder will be sent 15 days after this date</span>
+                {!caseData.schengenVisaValid && !caseData.schengenAppointmentDate ? (
+                  <span className="block mt-1 font-medium text-purple-700">Schengen booking reminder: second day after this email</span>
+                ) : null}
               </p>
             ) : (
               <p className="text-xs text-blue-500 mt-0.5">No date recorded yet. Set the date when the email was sent.</p>
@@ -566,10 +570,11 @@ export default function ClientDocDetail() {
       </div>
 
       {/* Dates row */}
-      {(data.schengenDate || data.embassyAppointmentDate || data.expectedSubmissionDate) && (
-        <div className="grid grid-cols-3 gap-3">
+      {(data.schengenDate || caseData.schengenAppointmentDate || data.embassyAppointmentDate || data.expectedSubmissionDate) && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
             { label: "Schengen Expiry", value: data.schengenDate, color: "border-purple-200 bg-purple-50 text-purple-800" },
+            ...(!caseData.schengenVisaValid ? [{ label: "Schengen Appointment", value: caseData.schengenAppointmentDate, color: "border-violet-200 bg-violet-50 text-violet-800" }] : []),
             { label: "Embassy Appointment", value: data.embassyAppointmentDate, color: "border-cyan-200 bg-cyan-50 text-cyan-800" },
             { label: "Expected Submission", value: data.expectedSubmissionDate, color: "border-emerald-200 bg-emerald-50 text-emerald-800" },
           ].filter(d => d.value).map(d => (
@@ -584,10 +589,11 @@ export default function ClientDocDetail() {
       {/* Action buttons */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {[
-          { action: "receive" as ActionType, icon: FileCheck, label: "Receive Documents", count: notReceived.length, bg: "bg-[#1e3a5f] hover:bg-[#16304f]" },
-          { action: "schengen" as ActionType, icon: CalendarDays, label: "Schengen Date", count: null, bg: "bg-purple-700 hover:bg-purple-800" },
-          { action: "appointment" as ActionType, icon: CalendarClock, label: "Embassy Appointment", count: null, bg: "bg-cyan-700 hover:bg-cyan-800" },
-        ].map(btn => (
+          { action: "receive" as ActionType, icon: FileCheck, label: "Receive Documents", count: notReceived.length, bg: "bg-[#1e3a5f] hover:bg-[#16304f]", visible: true },
+          { action: "schengen" as ActionType, icon: CalendarDays, label: "Schengen Expiry", count: null, bg: "bg-purple-700 hover:bg-purple-800", visible: Boolean(caseData.schengenVisaValid) },
+          { action: "schengenAppointment" as ActionType, icon: CalendarClock, label: "Schengen Appointment Date", count: null, bg: "bg-violet-700 hover:bg-violet-800", visible: !caseData.schengenVisaValid },
+          { action: "appointment" as ActionType, icon: CalendarClock, label: "Embassy Appointment", count: null, bg: "bg-cyan-700 hover:bg-cyan-800", visible: true },
+        ].filter(btn => btn.visible).map(btn => (
           <button
             key={btn.action}
             onClick={() => openAction(btn.action)}
@@ -806,6 +812,31 @@ export default function ClientDocDetail() {
             disabled={datesMutation.isPending}
           >
             {datesMutation.isPending ? "Saving..." : "Save Date"}
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* Schengen Appointment Date — only for clients without a valid Schengen visa */}
+      <Dialog open={activeAction === "schengenAppointment"} onOpenChange={o => !o && setActiveAction(null)}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">Schengen Appointment Date</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-gray-500 -mt-2">Record the appointment booked after the Embassy Email. The booking reminder stops once this date is saved.</p>
+          <input
+            type="date"
+            value={dateInputs.schengenAppointmentDate}
+            min={caseData.embassyEmailDate ?? undefined}
+            onChange={e => setDateInputs(prev => ({ ...prev, schengenAppointmentDate: e.target.value }))}
+            className="w-full border border-gray-300 text-gray-900 rounded-lg px-3 py-2 mt-2 bg-white focus:outline-none focus:border-[#1e3a5f]"
+          />
+          {!caseData.embassyEmailDate ? <p className="text-xs text-amber-700">Set the Embassy Email date first so the workflow order is auditable.</p> : null}
+          <Button
+            className="w-full bg-violet-700 hover:bg-violet-800 text-white mt-2"
+            onClick={() => handleDatesSubmit("schengenAppointmentDate")}
+            disabled={!caseData.embassyEmailDate || datesMutation.isPending}
+          >
+            {datesMutation.isPending ? "Saving..." : "Save Schengen Appointment"}
           </Button>
         </DialogContent>
       </Dialog>

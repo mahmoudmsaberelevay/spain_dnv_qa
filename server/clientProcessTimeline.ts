@@ -14,6 +14,8 @@ type DateValue = Date | string | null | undefined;
 type TimelineCase = {
   stage?: string | null;
   embassyEmailDate?: DateValue;
+  schengenVisaValid?: boolean | null;
+  schengenAppointmentDate?: DateValue;
   spainTeamReceivedDate?: DateValue;
   spanishTeamSubmittedAt?: DateValue;
   translationDate?: DateValue;
@@ -210,6 +212,11 @@ export function projectClientProcessTimeline(input: TimelineProjectionInput): Cl
   const definitions: TimelineDefinition[] = [
     { key: "contract_signed", position: 1, titleEn: "Contract Signed", titleAr: "تم توقيع العقد", reached: Boolean(asIso(clientCase.clientPortalSignedAt) || asIso(applicationCreatedAt)), occurredAt: firstDate(clientCase.clientPortalSignedAt, applicationCreatedAt) },
     { key: "embassy_email", position: 2, titleEn: "Embassy Email", titleAr: "بريد السفارة", reached: Boolean(asIso(clientCase.embassyEmailDate)), occurredAt: asIso(clientCase.embassyEmailDate) },
+  ];
+  if (clientCase.schengenVisaValid === false) {
+    definitions.push({ key: "schengen_appointment", position: 3, titleEn: "Schengen Appointment", titleAr: "موعد شنغن", reached: Boolean(asIso(clientCase.schengenAppointmentDate)), occurredAt: asIso(clientCase.schengenAppointmentDate) });
+  }
+  definitions.push(
     { key: "document_preparation", position: 3, titleEn: "Document Preparation", titleAr: "تجهيز المستندات", reached: documents.some(document => Boolean(document.received || document.receivedDate)), occurredAt: receivedDate },
     { key: "mofa_attestation", position: 4, titleEn: "MOFA Attestation", titleAr: "تصديق وزارة الخارجية", reached: documents.some(document => Boolean(document.mofaSubmitted || document.mofaSubmittedDate)), occurredAt: mofaDate },
     { key: "embassy_attestation", position: 5, titleEn: "Embassy Attestation", titleAr: "تصديق السفارة", reached: documents.some(document => Boolean(document.embassySubmitted || document.embassySubmittedDate)), occurredAt: embassyDate },
@@ -225,13 +232,14 @@ export function projectClientProcessTimeline(input: TimelineProjectionInput): Cl
     { key: "biometrics_done", position: 15, titleEn: "Biometrics Done", titleAr: "تمت البصمات", reached: biometricsDone, occurredAt: asIso(clientCase.biometricsDate) },
     { key: "card_ready_collection", position: 16, titleEn: "Card Ready for Collection", titleAr: "البطاقة جاهزة للاستلام", reached: cardReady, occurredAt: asIso(clientCase.residencyCardReadyDate) },
     { key: "card_received", position: 17, titleEn: "Card Received", titleAr: "تم استلام البطاقة", reached: cardReceived, occurredAt: cardReceived ? asIso(clientCase.updatedAt) : null },
-  ];
+  );
 
   const highestReachedIndex = Math.max(0, ...definitions.map((item, index) => item.reached ? index : -1));
   const processComplete = highestReachedIndex === definitions.length - 1 && definitions[highestReachedIndex].reached;
 
   return definitions.map(({ reached: _reached, ...item }, index) => ({
     ...item,
+    position: index + 1,
     status: index < highestReachedIndex || (processComplete && index === highestReachedIndex)
       ? "completed"
       : index === highestReachedIndex

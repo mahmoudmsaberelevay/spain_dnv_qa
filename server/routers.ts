@@ -2009,15 +2009,26 @@ const clientDocsRouter = router({
     .input(z.object({
       id: z.number(),
       schengenDate: z.string().nullable().optional(),
+      schengenAppointmentDate: z.string().nullable().optional(),
       embassyAppointmentDate: z.string().nullable().optional(),
       expectedSubmissionDate: z.string().nullable().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const c = await getClientCase(input.id);
       if (!c) throw new TRPCError({ code: "NOT_FOUND" });
-      const update: Record<string, Date | null> = {};
+      const update: Record<string, Date | string | null> = {};
       if (input.schengenDate !== undefined)
         update.schengenDate = input.schengenDate ? new Date(input.schengenDate) : null;
+      if (input.schengenAppointmentDate !== undefined) {
+        if (input.schengenAppointmentDate && c.schengenVisaValid) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Schengen Appointment Date is only available when the client has no valid Schengen visa" });
+        }
+        const embassyEmailDate = c.embassyEmailDate ? String(c.embassyEmailDate).slice(0, 10) : null;
+        if (input.schengenAppointmentDate && embassyEmailDate && input.schengenAppointmentDate < embassyEmailDate) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Schengen Appointment Date cannot be before the Embassy Email date" });
+        }
+        update.schengenAppointmentDate = input.schengenAppointmentDate ?? null;
+      }
       if (input.embassyAppointmentDate !== undefined)
         update.embassyAppointmentDate = input.embassyAppointmentDate ? new Date(input.embassyAppointmentDate) : null;
       if (input.expectedSubmissionDate !== undefined)
@@ -2025,6 +2036,7 @@ const clientDocsRouter = router({
       await updateClientCase(input.id, update as any);
       const { recordClientLifecycleEvent } = await import("./clientLifecycleNotificationService");
       const actor = { type: "staff" as const, staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" };
+      if (input.schengenAppointmentDate) await recordClientLifecycleEvent({ clientCaseId: input.id, eventType: "schengen_appointment_confirmed", idempotencyKey: `case:${input.id}:schengen-appointment:${input.schengenAppointmentDate}`, actor, titleEn: "Schengen appointment date recorded", titleAr: "تم تسجيل موعد شنغن", bodyEn: `Your Schengen appointment is recorded for ${input.schengenAppointmentDate}.`, bodyAr: `تم تسجيل موعد شنغن الخاص بك بتاريخ ${input.schengenAppointmentDate}.` });
       if (input.embassyAppointmentDate) await recordClientLifecycleEvent({ clientCaseId: input.id, eventType: "embassy_appointment_confirmed", idempotencyKey: `case:${input.id}:embassy-appointment:${input.embassyAppointmentDate}`, actor, titleEn: "Embassy appointment confirmed", titleAr: "تم تأكيد موعد السفارة", bodyEn: `Your Embassy appointment is confirmed for ${input.embassyAppointmentDate}.`, bodyAr: `تم تأكيد موعدك في السفارة بتاريخ ${input.embassyAppointmentDate}.` });
       if (input.expectedSubmissionDate) await recordClientLifecycleEvent({ clientCaseId: input.id, eventType: "submission_date_scheduled", idempotencyKey: `case:${input.id}:submission-scheduled:${input.expectedSubmissionDate}`, actor, titleEn: "Application submission scheduled", titleAr: "تم تحديد موعد تقديم الطلب", bodyEn: `Your application is scheduled for submission on ${input.expectedSubmissionDate}.`, bodyAr: `تم تحديد موعد تقديم طلبك بتاريخ ${input.expectedSubmissionDate}.` });
       return { success: true };
@@ -2245,6 +2257,15 @@ const clientDocsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const c = await getClientCase(input.id);
       if (!c) throw new TRPCError({ code: "NOT_FOUND" });
+      if (c.schengenAppointmentDate) {
+        const appointmentDate = String(c.schengenAppointmentDate).slice(0, 10);
+        if (!input.embassyEmailDate) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Clear the Schengen Appointment Date before removing the Embassy Email date" });
+        }
+        if (input.embassyEmailDate > appointmentDate) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Embassy Email date cannot be after the Schengen Appointment Date" });
+        }
+      }
       await updateClientCase(input.id, { embassyEmailDate: input.embassyEmailDate ?? null } as any);
       if (input.embassyEmailDate) {
         const { recordClientLifecycleEvent } = await import("./clientLifecycleNotificationService");
@@ -2297,7 +2318,7 @@ const clientDocsRouter = router({
       if (!c) throw new TRPCError({ code: "NOT_FOUND" });
       await updateClientCase(input.id, {
         schengenVisaValid: input.schengenVisaValid,
-        schengenExpiryDate: (input.schengenExpiryDate ? new Date(input.schengenExpiryDate) : null) as any,
+        schengenExpiryDate: (input.schengenVisaValid && input.schengenExpiryDate ? new Date(input.schengenExpiryDate) : null) as any,
       } as any);
       return { success: true };
     }),

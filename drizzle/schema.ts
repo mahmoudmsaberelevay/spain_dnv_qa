@@ -223,6 +223,8 @@ export const clientCases = mysqlTable("clientCases", {
   schengenExpiryDate: date("schengenExpiryDate"),
   // Embassy attestation email date (for 15-day reminder)
   embassyEmailDate: date("embassyEmailDate"),
+  // Required only when the client has no valid Schengen visa
+  schengenAppointmentDate: date("schengenAppointmentDate"),
   // Google Drive link for client documents folder
   driveLink: text("driveLink"),
   // Dedicated Google Drive link for the signed client contract
