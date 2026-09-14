@@ -54,6 +54,14 @@ function allowRequest(req: Request) {
   return current.count <= 60;
 }
 
+export function classifySpainLandingProcessingError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (/^(DB_UNAVAILABLE|SUBMISSION_ID_MISMATCH|LANDING_(?:PULL_[0-9]{3}|CLAIM_FAILED|PHONE_NORMALIZATION_FAILED|LEAD_LOOKUP_FAILED|PROCESSING_FAILED))$/.test(message)) {
+    return message;
+  }
+  return "LANDING_PROCESSING_FAILED";
+}
+
 function fingerprint(payload: LandingPayload) {
   return crypto.createHash("sha256").update(JSON.stringify({
     submissionId: payload.submissionId,
@@ -237,7 +245,10 @@ export async function ingestSpainLandingSubmission(
       let leadId = match.leadId;
       let outcome: "created" | "matched" = "matched";
       if (!leadId) {
-        const [created] = await tx.insert(leads).values({
+        const normalizedPhone = normalizeMetaPhone(payload.phoneE164);
+        const normalizedEmail = normalizeMetaEmail(payload.email || undefined) || null;
+        if (!normalizedPhone) throw new Error("LANDING_PHONE_NORMALIZATION_FAILED");
+        await tx.insert(leads).values({
           fullName: payload.fullName.trim(),
           phone: payload.phoneE164,
           email: payload.email?.trim() || null,
@@ -249,8 +260,8 @@ export async function ingestSpainLandingSubmission(
           utmSource: SPAIN_LANDING_SOURCE,
           utmMedium: "landing_page",
           utmCampaign: "spain_digital_nomad",
-          normalizedPhone: normalizeMetaPhone(payload.phoneE164),
-          normalizedEmail: normalizeMetaEmail(payload.email || undefined) || null,
+          normalizedPhone,
+          normalizedEmail,
           firstReceivedAt: now,
           gdprConsent: true,
           consentTimestamp: Date.parse(payload.submittedAt),
@@ -264,7 +275,14 @@ export async function ingestSpainLandingSubmission(
           createdAt: now,
           updatedAt: now,
         });
-        leadId = Number((created as { insertId?: number }).insertId);
+        const [createdLead] = await tx.select({ id: leads.id }).from(leads)
+          .where(and(
+            eq(leads.isMetaTestLead, false),
+            eq(leads.normalizedPhone, normalizedPhone),
+          ))
+          .limit(1);
+        if (!createdLead) throw new Error("LANDING_LEAD_LOOKUP_FAILED");
+        leadId = createdLead.id;
         outcome = "created";
       }
 
@@ -324,10 +342,11 @@ export async function ingestSpainLandingSubmission(
         });
       }
     }
+    const processingErrorCode = classifySpainLandingProcessingError(error);
     await db.update(spainLandingInquiries).set({
       status: "failed",
       processingToken: null,
-      lastErrorCode: "LANDING_PROCESSING_FAILED",
+      lastErrorCode: processingErrorCode,
       updatedAt: Date.now(),
     }).where(and(
       eq(spainLandingInquiries.externalSubmissionId, submissionId),
@@ -351,9 +370,7 @@ export function registerSpainLandingLeadRoutes(app: Express) {
       const result = await ingestSpainLandingSubmission(parsed.data.submissionId, parsed.data.pullToken);
       return res.status(result.outcome === "manual_review" ? 202 : 200).json(result);
     } catch (error) {
-      const code = error instanceof Error && /^(LANDING_PULL_|SUBMISSION_ID_MISMATCH)/.test(error.message)
-        ? error.message
-        : "LANDING_INGESTION_FAILED";
+      const code = classifySpainLandingProcessingError(error);
       console.warn(`[Spain Landing Ingestion] ${code}`);
       return res.status(code.startsWith("LANDING_PULL_4") ? 401 : 503).json({ error: "Submission could not be synchronized" });
     }

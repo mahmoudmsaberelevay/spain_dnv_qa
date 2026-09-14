@@ -1526,7 +1526,7 @@ Check email for download link within 5 minutes
 ## Spain DNV Landing Reconciliation Attention Alert
 - [x] Inspect the midnight Cairo reconciliation run and identify why one qualified submission was attempted but neither synchronized nor matched
 - [ ] Confirm the affected submission's current inquiry and Lead linkage using privacy-safe identifiers and counts only
-- [x] Repair the existing server-to-server reconciliation path if required without exposing credentials or weakening deduplication
+- [x] Repair the server-to-server 403 fallback and TiDB-safe Lead linkage without exposing credentials or weakening deduplication
 - [ ] Safely retry the single submission through the authoritative idempotent ingestion path
 - [ ] Verify exactly one inquiry outcome and one conservative Lead linkage with source `Spain_landing page`, zero duplicate Leads, and zero Meta attribution or outbox artifacts
 - [ ] Verify the next six-hour scheduled run and attention-alert logic no longer report the resolved submission as pending

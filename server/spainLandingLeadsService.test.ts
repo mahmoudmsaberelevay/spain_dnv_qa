@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { describe, expect, it, vi } from "vitest";
 import {
+  classifySpainLandingProcessingError,
   landingPayloadSchema,
   pullLandingPayloadFromAliases,
   resolveSpainLandingContactMatch,
@@ -112,5 +113,21 @@ describe("Spain landing page to ELEVAY Leads ingestion", () => {
     expect(service).not.toContain("enqueueMappedMetaEvent");
     expect(service).not.toContain("sendMetaEvent");
     expect(service).not.toContain("META_CRM_PRODUCTION_ENABLED");
+  });
+
+  it("resolves newly inserted Leads without relying on driver-specific insert IDs", () => {
+    const service = fs.readFileSync(path.join(projectRoot, "server/spainLandingLeadsService.ts"), "utf8");
+    expect(service).not.toContain(".insertId");
+    expect(service).toContain("eq(leads.normalizedPhone, normalizedPhone)");
+    expect(service).toContain('throw new Error("LANDING_LEAD_LOOKUP_FAILED")');
+  });
+
+  it("exposes only approved operational error codes and sanitizes unknown database errors", () => {
+    expect(classifySpainLandingProcessingError(new Error("LANDING_LEAD_LOOKUP_FAILED")))
+      .toBe("LANDING_LEAD_LOOKUP_FAILED");
+    expect(classifySpainLandingProcessingError(new Error("LANDING_PHONE_NORMALIZATION_FAILED")))
+      .toBe("LANDING_PHONE_NORMALIZATION_FAILED");
+    expect(classifySpainLandingProcessingError(new Error("raw database details")))
+      .toBe("LANDING_PROCESSING_FAILED");
   });
 });
