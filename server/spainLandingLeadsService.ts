@@ -15,16 +15,51 @@ export const SPAIN_LANDING_PULL_URL =
 export const SPAIN_LANDING_PULL_FALLBACK_URL =
   "https://elevayconsult-yttdaxru.manus.space/api/integrations/spain-dnv-leads/pull";
 
+const SPAIN_LANDING_CALLING_CODES = {
+  AE: "971",
+  SA: "966",
+  KW: "965",
+  QA: "974",
+  OM: "968",
+  EG: "20",
+} as const;
+
+type SpainLandingPhoneCountry = keyof typeof SPAIN_LANDING_CALLING_CODES;
+
+export function canonicalizeSpainLandingPhone(
+  value: string,
+  phoneCountry: SpainLandingPhoneCountry,
+): string | null {
+  const callingCode = SPAIN_LANDING_CALLING_CODES[phoneCountry];
+  let digits = value.replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (!digits.startsWith(callingCode)) return null;
+
+  if (digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+
+  let subscriber = digits.slice(callingCode.length);
+  const redundantInternationalPrefix = `00${callingCode}`;
+  if (subscriber.startsWith(redundantInternationalPrefix)) {
+    subscriber = subscriber.slice(redundantInternationalPrefix.length);
+  } else if (subscriber.startsWith(callingCode)) {
+    subscriber = subscriber.slice(callingCode.length);
+  }
+  if (subscriber.startsWith("0")) subscriber = subscriber.slice(1);
+
+  const canonicalDigits = `${callingCode}${subscriber}`;
+  return /^[1-9]\d{7,14}$/.test(canonicalDigits) ? `+${canonicalDigits}` : null;
+}
+
 const requestSchema = z.object({
   submissionId: z.number().int().positive().max(2_147_483_647),
   pullToken: z.string().min(32).max(256),
 }).strict();
 
-export const landingPayloadSchema = z.object({
+const landingPayloadTransportSchema = z.object({
   submissionId: z.number().int().positive().max(2_147_483_647),
   fullName: z.string().trim().min(2).max(256),
   email: z.union([z.string().trim().email().max(320), z.literal(""), z.null()]).optional(),
-  phoneE164: z.string().trim().min(6).max(40).regex(/^\+[1-9]\d{5,14}$/),
+  phoneE164: z.string().trim().min(6).max(40).regex(/^\+?[0-9\s()\-]+$/),
   phoneCountry: z.enum(["AE", "SA", "KW", "QA", "OM", "EG"]),
   language: z.enum(["en", "ar"]),
   lookingFor: z.literal("residency_investment_business_financial"),
@@ -35,6 +70,19 @@ export const landingPayloadSchema = z.object({
   source: z.literal("Spain DNV qualification landing page"),
   submittedAt: z.string().datetime(),
 }).strict();
+
+export const landingPayloadSchema = landingPayloadTransportSchema.transform((payload, ctx) => {
+  const canonicalPhone = canonicalizeSpainLandingPhone(payload.phoneE164, payload.phoneCountry);
+  if (!canonicalPhone) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["phoneE164"],
+      message: "Landing phone cannot be normalized to the selected country",
+    });
+    return z.NEVER;
+  }
+  return { ...payload, phoneE164: canonicalPhone };
+});
 
 type LandingPayload = z.infer<typeof landingPayloadSchema>;
 type DbLike = NonNullable<Awaited<ReturnType<typeof getDb>>>;

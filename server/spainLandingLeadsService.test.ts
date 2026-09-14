@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { describe, expect, it, vi } from "vitest";
 import {
+  canonicalizeSpainLandingPhone,
   classifySpainLandingProcessingError,
   landingPayloadSchema,
   pullLandingPayloadFromAliases,
@@ -35,6 +36,22 @@ describe("Spain landing page to ELEVAY Leads ingestion", () => {
     expect(() => landingPayloadSchema.parse({ ...validPayload, lookingFor: "tourist_or_schengen" })).toThrow();
     expect(() => landingPayloadSchema.parse({ ...validPayload, consentConfirmed: false })).toThrow();
     expect(() => landingPayloadSchema.parse({ ...validPayload, unexpected: "field" })).toThrow();
+  });
+
+  it("canonicalizes the selected country exactly once and rejects unrecoverable international numbers", () => {
+    expect(canonicalizeSpainLandingPhone("+2000201012345678", "EG")).toBe("+201012345678");
+    expect(canonicalizeSpainLandingPhone("+201012345678", "EG")).toBe("+201012345678");
+    expect(canonicalizeSpainLandingPhone("00971501234567", "AE")).toBe("+971501234567");
+    expect(canonicalizeSpainLandingPhone("+971501234567", "EG")).toBeNull();
+    expect(canonicalizeSpainLandingPhone("+2012", "EG")).toBeNull();
+  });
+
+  it("repairs a redundant international prefix before strict payload acceptance", () => {
+    expect(landingPayloadSchema.parse({
+      ...validPayload,
+      phoneCountry: "EG",
+      phoneE164: "+2000201012345678",
+    }).phoneE164).toBe("+201012345678");
   });
 
   it("uses phone precedence, email fallback, and manual review for ambiguous or conflicting matches", () => {
