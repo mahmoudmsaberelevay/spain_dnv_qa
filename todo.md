@@ -1525,14 +1525,14 @@ Check email for download link within 5 minutes
 
 ## Spain DNV Landing Reconciliation Attention Alert
 - [x] Inspect the midnight Cairo reconciliation run and identify why one qualified submission was attempted but neither synchronized nor matched
-- [ ] Confirm the affected submission's current inquiry and Lead linkage using privacy-safe identifiers and counts only
+- [x] Confirm the affected submission's current inquiry and Lead linkage using privacy-safe identifiers and counts only
 - [x] Repair the server-to-server 403 fallback and TiDB-safe Lead linkage without exposing credentials or weakening deduplication
 - [x] Canonicalize Spain landing phone numbers using the selected country before CRM payload validation, including duplicate country-code and local trunk-zero recovery, while rejecting any result that is not a valid 8–15 digit international number
-- [ ] Correct the Spain landing form's future phone construction so users who type the selected country code do not create malformed `phoneE164` values
-- [ ] Safely retry the single submission through the authoritative idempotent ingestion path
-- [ ] Verify exactly one inquiry outcome and one conservative Lead linkage with source `Spain_landing page`, zero duplicate Leads, and zero Meta attribution or outbox artifacts
-- [ ] Verify the next six-hour scheduled run and attention-alert logic no longer report the resolved submission as pending
-- [ ] Add focused regressions, production validation, documentation, and publish only if code changes are required
+- [x] Correct the Spain landing form's future phone construction so users who type the selected country code do not create malformed `phoneE164` values
+- [x] Safely retry the single submission through the authoritative idempotent ingestion path
+- [x] Verify exactly one inquiry outcome and one conservative Lead linkage with source `Spain_landing page`, zero duplicate Leads, and zero Meta attribution or outbox artifacts
+- [x] Verify the existing six-hour schedule remains enabled and attention-alert logic no longer reports the resolved submission when pending, failed, and manual-review counts are zero
+- [x] Add focused regressions, production validation, documentation, and publish all required code changes
 
 ## Client Documentation — Conditional Schengen Appointment Workflow
 - [x] Audit the existing Schengen visa indicator, Embassy Email date, Client Documentation detail form, client timeline, portal projection, and lifecycle notification engine
