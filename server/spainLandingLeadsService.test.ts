@@ -118,7 +118,9 @@ describe("Spain landing page to ELEVAY Leads ingestion", () => {
   it("resolves newly inserted Leads without relying on driver-specific insert IDs", () => {
     const service = fs.readFileSync(path.join(projectRoot, "server/spainLandingLeadsService.ts"), "utf8");
     expect(service).not.toContain(".insertId");
-    expect(service).toContain("eq(leads.normalizedPhone, normalizedPhone)");
+    expect(service).toContain(".onDuplicateKeyUpdate({");
+    expect(service).toContain("set: { id: sql`${leads.id}` }");
+    expect(service).toContain("const postInsertMatch = await findUniqueRealLead(tx, payload)");
     expect(service).toContain('throw new Error("LANDING_LEAD_LOOKUP_FAILED")');
   });
 

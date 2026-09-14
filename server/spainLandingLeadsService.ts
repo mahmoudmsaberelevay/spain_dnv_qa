@@ -274,16 +274,29 @@ export async function ingestSpainLandingSubmission(
           leadScore: 0,
           createdAt: now,
           updatedAt: now,
+        }).onDuplicateKeyUpdate({
+          set: { id: sql`${leads.id}` },
         });
-        const [createdLead] = await tx.select({ id: leads.id }).from(leads)
-          .where(and(
-            eq(leads.isMetaTestLead, false),
-            eq(leads.normalizedPhone, normalizedPhone),
-          ))
+        const postInsertMatch = await findUniqueRealLead(tx, payload);
+        if (postInsertMatch.matchMethod === "manual_review") {
+          await tx.update(spainLandingInquiries).set({
+            leadId: null,
+            matchMethod: "manual_review",
+            status: "manual_review",
+            processingToken: null,
+            payloadFingerprint,
+            lastErrorCode: "AMBIGUOUS_CONTACT_MATCH",
+            processedAt: now,
+            updatedAt: now,
+          }).where(eq(spainLandingInquiries.id, claim.id));
+          return { success: true as const, outcome: "manual_review" as const, leadId: null, duplicate: false };
+        }
+        if (!postInsertMatch.leadId) throw new Error("LANDING_LEAD_LOOKUP_FAILED");
+        leadId = postInsertMatch.leadId;
+        const [resolvedLead] = await tx.select({ createdAt: leads.createdAt }).from(leads)
+          .where(eq(leads.id, leadId))
           .limit(1);
-        if (!createdLead) throw new Error("LANDING_LEAD_LOOKUP_FAILED");
-        leadId = createdLead.id;
-        outcome = "created";
+        outcome = resolvedLead?.createdAt === now ? "created" : "matched";
       }
 
       await tx.update(spainLandingInquiries).set({
