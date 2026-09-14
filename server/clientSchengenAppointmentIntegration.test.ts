@@ -7,6 +7,8 @@ const routers = readFileSync(new URL("./routers.ts", import.meta.url), "utf8");
 const lifecycle = readFileSync(new URL("./clientLifecycleNotificationService.ts", import.meta.url), "utf8");
 const timeline = readFileSync(new URL("./clientProcessTimeline.ts", import.meta.url), "utf8");
 const detail = readFileSync(new URL("../client/src/pages/ClientDocDetail.tsx", import.meta.url), "utf8");
+const portalRoutes = readFileSync(new URL("./clientPortalRoutes.ts", import.meta.url), "utf8");
+const employeeDocuments = readFileSync(new URL("./clientEmployeeDocuments.ts", import.meta.url), "utf8");
 
 describe("Client Documentation conditional Schengen appointment workflow", () => {
   it("adds one nullable appointment field through an additive migration", () => {
@@ -46,5 +48,14 @@ describe("Client Documentation conditional Schengen appointment workflow", () =>
     expect(detail).toContain("visible: !caseData.schengenVisaValid");
     expect(detail).toContain("second day after this email");
     expect(detail).toContain("The booking reminder stops once this date is saved.");
+  });
+
+  it("exposes the same appointment state to client and employee mobile folder details", () => {
+    for (const source of [portalRoutes, employeeDocuments]) {
+      expect(source).toContain("hasSchengenVisa");
+      expect(source).toContain("requiresSchengenAppointment");
+      expect(source).toContain("schengenAppointmentDate");
+      expect(source).toContain("embassyEmailSentAt");
+    }
   });
 });

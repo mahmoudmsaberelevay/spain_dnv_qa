@@ -142,6 +142,10 @@ export async function getEmployeeFolderDetails(publicId: string) {
       childrenIncluded: applicants.length ? applicants.filter(applicant => applicant.relation === "child").length : legacyChildren,
     },
     dates: {
+      hasSchengenVisa: clientCase.schengenVisaValid,
+      requiresSchengenAppointment: clientCase.schengenVisaValid === false,
+      schengenAppointmentDate: clientCase.schengenAppointmentDate,
+      embassyEmailSentAt: clientCase.embassyEmailDate,
       expectedSubmissionDate: clientCase.expectedSubmissionDate,
       spainTeamReceivedDate: clientCase.spainTeamReceivedDate,
       translatorSubmittedDate: clientCase.translationDate,
