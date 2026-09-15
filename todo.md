@@ -1542,3 +1542,11 @@ Check email for download link within 5 minutes
 - [x] Send one idempotent client reminder on the second day after Embassy Email asking the client to book a Schengen visa appointment
 - [x] Stop showing the reminder as outstanding once a Schengen Appointment Date is recorded, without deleting notification history
 - [x] Add additive migration, focused workflow/notification/portal regressions, responsive verification, production build, documentation, and publish
+
+## Client 26089 — Net Contract Value Reconciliation
+- [x] Audit client 26089 across Contracting, contract discount, receipts, invoices, Financial Client Database, paid amount, and remaining balance using privacy-safe values
+- [x] Confirm the authoritative calculation is €12,000 original contract value minus €2,000 discount equals €10,000 net contract value
+- [x] Identify and repair any contract-value or synchronization path that ignores the one-time discount or uses the gross value downstream
+- [x] Safely reconcile client 26089 in Contracting and the Financial Client Database without changing receipt payment history or paid amounts
+- [x] Verify remaining balance equals €10,000 net contract value minus authoritative paid receipts and remains consistent across both modules
+- [x] Add focused regressions, production count/value checks, responsive interface verification, documentation, and publish any required code or data correction

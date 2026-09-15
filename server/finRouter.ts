@@ -236,11 +236,9 @@ const finClientsRouter = router({
       });
       // Notify team that a Finance client was manually added
       notifyFinClientAdded(
+        input.clientCode ?? "",
         input.name,
-        input.clientCode,
-        input.consultant,
-        cvEur,
-        "manual"
+        input.program ?? "Spain Nomad"
       ).catch(() => {});
       return newClient;
     }),
@@ -315,7 +313,8 @@ const finClientsRouter = router({
       const headers = [
         "Client Code", "Name", "Phone", "Email", "Program",
         "Signing Date", "Consultant", "Sales Person",
-        "Contract Value (EUR)", "Paid Amount (EUR)", "Remaining Amount (EUR)",
+        "Original Contract Value (EUR)", "Discount (EUR)", "Net Contract Value (EUR)",
+        "Paid Amount (EUR)", "Remaining Amount (EUR)",
         "Family Members", "Stage", "Is Legacy",
       ];
       const escape = (v: unknown) => {
@@ -333,7 +332,9 @@ const finClientsRouter = router({
         escape(c.signingDate ? new Date(c.signingDate).toISOString().slice(0, 10) : ""),
         escape(c.consultant),
         escape(c.salesPerson),
-        escape(c.contractValueEur),
+        escape(c.originalContractValueEur),
+        escape(c.discountValue),
+        escape(c.finalContractValueEur),
         escape(c.paidAmountEur),
         escape(c.remainingAmountEur),
         escape(c.familyMembers),

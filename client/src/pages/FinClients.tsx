@@ -227,7 +227,9 @@ export default function FinClients() {
       const rows = sorted.map(c => {
         const remaining = Number(c.remainingAmountEur ?? 0);
         const paid = Number(c.paidAmountEur ?? 0);
-        const contractVal = Number(c.contractValueEur ?? 0);
+        const netContractValue = Number(c.finalContractValueEur ?? c.contractValueEur ?? 0);
+        const discountValue = Number(c.discountValue ?? 0);
+        const originalContractValue = Number(c.originalContractValueEur ?? (netContractValue + discountValue));
         const remainingStr = remaining < 0
           ? `€ ${fmtEur(Math.abs(remaining))} (overpaid)`
           : remaining === 0 ? "Fully Paid"
@@ -238,7 +240,9 @@ export default function FinClients() {
           <td style="border:1px solid #e5e7eb;padding:6px 8px;font-size:12px;font-weight:500">${c.name}</td>
           <td style="border:1px solid #e5e7eb;padding:6px 8px;font-size:11px">${c.program || "Spain Nomad"}</td>
           <td style="border:1px solid #e5e7eb;padding:6px 8px;font-size:11px">${c.consultant || "—"}</td>
-          <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px">${contractVal > 0 ? `€ ${fmtEur(contractVal)}` : "—"}</td>
+          <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px">${originalContractValue > 0 ? `€ ${fmtEur(originalContractValue)}` : "—"}</td>
+          <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;color:#b45309">${discountValue > 0 ? `- € ${fmtEur(discountValue)}` : "—"}</td>
+          <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;font-weight:600;color:#1d4ed8">${netContractValue > 0 ? `€ ${fmtEur(netContractValue)}` : "—"}</td>
           <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;color:#15803d">${paid > 0 ? `€ ${fmtEur(paid)}` : "—"}</td>
           <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;font-weight:600;color:${remainingColor}">${remainingStr}</td>
           <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;color:#dc2626">${Number(c.totalDirectCostEgp) > 0 ? 'EGP ' + Number(c.totalDirectCostEgp).toLocaleString('en-US',{maximumFractionDigits:0}) : '\u2014'}</td>
@@ -259,7 +263,7 @@ export default function FinClients() {
     table { width: 100%; border-collapse: collapse; }
     thead tr { background: #1e293b; color: white; }
     thead th { padding: 8px; font-size: 11px; text-align: left; border: 1px solid #334155; }
-    thead th:nth-child(5), thead th:nth-child(6), thead th:nth-child(7) { text-align: right; }
+    thead th:nth-child(5), thead th:nth-child(6), thead th:nth-child(7), thead th:nth-child(8), thead th:nth-child(9) { text-align: right; }
     tbody tr:nth-child(even) { background: #f8fafc; }
     @media print { body { margin: 10px; } }
   </style>
@@ -274,7 +278,9 @@ export default function FinClients() {
     <thead>
       <tr>
         <th>Code</th><th>Client Name</th><th>Program</th><th>Consultant</th>
-        <th style="text-align:right">Contract Value</th>
+        <th style="text-align:right">Original Contract Value</th>
+        <th style="text-align:right">Discount</th>
+        <th style="text-align:right">Net Contract Value</th>
         <th style="text-align:right">Paid</th>
         <th style="text-align:right">Remaining Due</th>
         <th style="text-align:right">Direct Cost</th>
@@ -486,8 +492,8 @@ export default function FinClients() {
             <SelectItem value="program_asc">Program: A → Z</SelectItem>
             <SelectItem value="signingDate_desc">Signing Date: Newest</SelectItem>
             <SelectItem value="signingDate_asc">Signing Date: Oldest</SelectItem>
-            <SelectItem value="contractValueEur_desc">Contract Value: High → Low</SelectItem>
-            <SelectItem value="contractValueEur_asc">Contract Value: Low → High</SelectItem>
+            <SelectItem value="contractValueEur_desc">Net Contract Value: High → Low</SelectItem>
+            <SelectItem value="contractValueEur_asc">Net Contract Value: Low → High</SelectItem>
             <SelectItem value="paidAmountEur_desc">Paid: High → Low</SelectItem>
             <SelectItem value="paidAmountEur_asc">Paid: Low → High</SelectItem>
             <SelectItem value="remainingAmountEur_desc">Remaining: High → Low</SelectItem>
@@ -527,9 +533,10 @@ export default function FinClients() {
                       <span className="flex items-center">Consultant <SortIcon field="consultant" sortField={sortField} sortDir={sortDir} /></span>
                     </th>
                     <th className={`${thClass} text-right`} onClick={() => handleSort("contractValueEur")}>
-                      <span className="flex items-center justify-end">Contract Value <SortIcon field="contractValueEur" sortField={sortField} sortDir={sortDir} /></span>
+                      <span className="flex items-center justify-end">Original Contract Value <SortIcon field="contractValueEur" sortField={sortField} sortDir={sortDir} /></span>
                     </th>
-                    <th className="text-right py-3 px-4 font-semibold text-muted-foreground">After Discount</th>
+                    <th className="text-right py-3 px-4 font-semibold text-muted-foreground">Discount</th>
+                    <th className="text-right py-3 px-4 font-semibold text-muted-foreground">Net Contract Value</th>
                     <th className={`${thClass} text-right`} onClick={() => handleSort("paidAmountEur")}>
                       <span className="flex items-center justify-end">Paid (€) <SortIcon field="paidAmountEur" sortField={sortField} sortDir={sortDir} /></span>
                     </th>
@@ -548,7 +555,9 @@ export default function FinClients() {
                   {sortedClients.map((c) => {
                     const remaining = Number(c.remainingAmountEur ?? 0);
                     const paid = Number(c.paidAmountEur ?? 0);
-                    const contractVal = Number(c.finalContractValueEur ?? c.contractValueEur ?? 0);
+                    const netContractValue = Number(c.finalContractValueEur ?? c.contractValueEur ?? 0);
+                    const discountValue = Number(c.discountValue ?? 0);
+                    const originalContractValue = Number(c.originalContractValueEur ?? (netContractValue + discountValue));
                     const isNegative = remaining < 0;
                     return (
                       <tr key={c.id} className="border-b border-muted/40 hover:bg-muted/20 transition-colors">
@@ -573,18 +582,14 @@ export default function FinClients() {
                         <td className="py-3 px-4 text-muted-foreground">{c.consultant || "—"}</td>
                         <td className="py-3 px-4 text-right font-medium">
                           <div>
-                            {contractVal > 0 ? `€ ${fmtEur(contractVal)}` : "—"}
-                            {c.discountValue && Number(c.discountValue) > 0 && (
-                              <div className="text-xs text-muted-foreground">
-                                (- € {fmtEur(c.discountValue)})
-                              </div>
-                            )}
+                            {originalContractValue > 0 ? `€ ${fmtEur(originalContractValue)}` : "—"}
                           </div>
                         </td>
+                        <td className="py-3 px-4 text-right font-medium text-amber-700">
+                          {discountValue > 0 ? `- € ${fmtEur(discountValue)}` : "—"}
+                        </td>
                         <td className="py-3 px-4 text-right font-semibold text-blue-700">
-                          {c.discountValue && Number(c.discountValue) > 0
-                            ? `€ ${fmtEur(contractVal - Number(c.discountValue))}`
-                            : contractVal > 0 ? `€ ${fmtEur(contractVal)}` : "—"}
+                          {netContractValue > 0 ? `€ ${fmtEur(netContractValue)}` : "—"}
                         </td>
                         <td className="py-3 px-4 text-right text-green-700 font-medium">
                           {paid > 0 ? `€ ${fmtEur(paid)}` : "—"}
@@ -703,7 +708,9 @@ export default function FinClients() {
                   <tfoot>
                     <tr className="border-t-2 border-primary/30 bg-primary/5 font-semibold text-sm">
                       <td className="py-3 px-4 text-xs font-bold text-primary" colSpan={4}>GRAND TOTAL — ALL {(total ?? 0).toLocaleString()} CLIENTS</td>
-                      <td className="py-3 px-4 text-right">{Number(grandTotals.totalContractValueEur) > 0 ? `€ ${fmtEur(grandTotals.totalContractValueEur)}` : "—"}</td>
+                      <td className="py-3 px-4 text-right">{Number(grandTotals.totalOriginalContractValueEur) > 0 ? `€ ${fmtEur(grandTotals.totalOriginalContractValueEur)}` : "—"}</td>
+                      <td className="py-3 px-4 text-right text-amber-700">{Number(grandTotals.totalDiscountEur) > 0 ? `- € ${fmtEur(grandTotals.totalDiscountEur)}` : "—"}</td>
+                      <td className="py-3 px-4 text-right text-blue-700">{Number(grandTotals.totalNetContractValueEur ?? grandTotals.totalContractValueEur) > 0 ? `€ ${fmtEur(grandTotals.totalNetContractValueEur ?? grandTotals.totalContractValueEur)}` : "—"}</td>
                       <td className="py-3 px-4 text-right text-green-700">{Number(grandTotals.totalPaidEur) > 0 ? `€ ${fmtEur(grandTotals.totalPaidEur)}` : "—"}</td>
                       <td className="py-3 px-4 text-right text-blue-700">{Number(grandTotals.totalPaidEgp) > 0 ? `EGP ${Number(grandTotals.totalPaidEgp).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</td>
                       <td className="py-3 px-4 text-right text-red-600">{`€ ${fmtEur(grandTotals.totalRemainingEur)}`}</td>
@@ -717,6 +724,7 @@ export default function FinClients() {
                           return <span className={profit >= 0 ? "text-green-600" : "text-red-600"}>{profit >= 0 ? "+" : "-"}EGP {Math.abs(profit).toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>;
                         })()}
                       </td>
+                      <td className="py-3 px-4"></td>
                       <td className="py-3 px-4"></td>
                       <td className="py-3 px-4"></td>
                     </tr>
@@ -799,7 +807,7 @@ export default function FinClients() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Contract Value (€)</Label>
+                <Label>Net Contract Value (€)</Label>
                 <Input type="number" placeholder="8000" value={form.contractValueEur} onChange={e => setForm(f => ({ ...f, contractValueEur: e.target.value }))} />
               </div>
               <div>

@@ -208,6 +208,7 @@ export async function listFinClients(opts?: { search?: string; consultant?: stri
     isLegacy: finClients.isLegacy,
     contractUrl: finClients.contractUrl,
     discountValue: sql<number>`COALESCE((SELECT CAST(discountValue AS DECIMAL(10,2)) FROM contracts WHERE id = ${finClients.contractId}), 0)`,
+    originalContractValueEur: sql<number>`CAST(COALESCE(${finClients.contractValueEur}, 0) AS DECIMAL(12,2)) + COALESCE((SELECT CAST(discountValue AS DECIMAL(10,2)) FROM contracts WHERE id = ${finClients.contractId}), 0)`,
     finalContractValueEur: finClients.contractValueEur,
     totalDirectCostEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'expense'), 0)`,
     totalDirectIncomeEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'income'), 0)`,
@@ -234,6 +235,9 @@ export async function getFinClientTotals(opts?: { search?: string; consultant?: 
   addSigningDateConditions(conditions, opts);
   const [row] = await db.select({
     totalContractValueEur: sql<number>`COALESCE(SUM(CAST(${finClients.contractValueEur} AS DECIMAL(15,2))), 0)`,
+    totalOriginalContractValueEur: sql<number>`COALESCE(SUM(CAST(COALESCE(${finClients.contractValueEur}, 0) AS DECIMAL(15,2)) + COALESCE((SELECT CAST(discountValue AS DECIMAL(10,2)) FROM contracts WHERE id = ${finClients.contractId}), 0)), 0)`,
+    totalDiscountEur: sql<number>`COALESCE(SUM(COALESCE((SELECT CAST(discountValue AS DECIMAL(10,2)) FROM contracts WHERE id = ${finClients.contractId}), 0)), 0)`,
+    totalNetContractValueEur: sql<number>`COALESCE(SUM(CAST(${finClients.contractValueEur} AS DECIMAL(15,2))), 0)`,
     totalPaidEur: sql<number>`COALESCE(SUM(CAST(${finClients.paidAmountEur} AS DECIMAL(15,2))), 0)`,
     totalPaidEgp: sql<number>`COALESCE(SUM(CAST(${finClients.paidAmountEgp} AS DECIMAL(15,2))), 0)`,
     totalRemainingEur: sql<number>`COALESCE(SUM(CAST(${finClients.remainingAmountEur} AS DECIMAL(15,2))), 0)`,

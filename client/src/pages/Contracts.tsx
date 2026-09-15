@@ -70,8 +70,8 @@ function computeDateRange(preset: DateRangePreset): { dateFrom?: Date; dateTo?: 
 
 function exportToCSV(rows: any[], filename: string) {
   const headers = [
-    "Contract Code", "Client Name", "Family Members", "Contract Value (EUR)",
-    "Discount (EUR)", "Consultant", "Status", "Date",
+    "Contract Code", "Client Name", "Family Members", "Original Contract Value (EUR)",
+    "Discount (EUR)", "Net Contract Value (EUR)", "Consultant", "Status", "Date",
   ];
   const csvRows = [
     headers.join(","),
@@ -80,8 +80,9 @@ function exportToCSV(rows: any[], filename: string) {
         c.contractCode,
         `"${c.clientName}"`,
         c.familyMembers,
-        Number(c.contractValue).toFixed(2),
+        (Number(c.contractValue) + Number(c.discountValue ?? 0)).toFixed(2),
         Number(c.discountValue ?? 0).toFixed(2),
+        Number(c.contractValue).toFixed(2),
         `"${c.consultantName ?? ""}"`,
         c.status,
         c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "",
@@ -365,8 +366,9 @@ export default function Contracts() {
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-6 py-3">Contract Code</th>
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Client Name</th>
                     <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Family</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Value</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Original Value</th>
                     <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Discount</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Net Contract Value</th>
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Consultant</th>
                     <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Date</th>
                     <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Status</th>
@@ -394,7 +396,7 @@ export default function Contracts() {
                         </div>
                       </td>
                       <td className="px-4 py-4 text-right">
-                        <span className="text-sm font-semibold">{formatCurrency(Number(contract.contractValue), "EUR")}</span>
+                        <span className="text-sm font-semibold">{formatCurrency(Number(contract.contractValue) + Number((contract as any).discountValue ?? 0), "EUR")}</span>
                       </td>
                       <td className="px-4 py-4 text-right">
                         {Number((contract as any).discountValue ?? 0) > 0 ? (
@@ -404,6 +406,9 @@ export default function Contracts() {
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <span className="text-sm font-semibold text-blue-700">{formatCurrency(Number(contract.contractValue), "EUR")}</span>
                       </td>
                       <td className="px-4 py-4">
                         <span className="text-xs text-muted-foreground">{(contract as any).consultantName ?? "—"}</span>
