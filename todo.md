@@ -1550,3 +1550,15 @@ Check email for download link within 5 minutes
 - [x] Safely reconcile client 26089 in Contracting and the Financial Client Database without changing receipt payment history or paid amounts
 - [x] Verify remaining balance equals €10,000 net contract value minus authoritative paid receipts and remains consistent across both modules
 - [x] Add focused regressions, production count/value checks, responsive interface verification, documentation, and publish any required code or data correction
+
+## ELEVAY Full Windows Desktop Application
+- [x] Audit the full CRM route, module, authentication, permission, upload, download, print, notification, integration, and automation surface for desktop compatibility
+- [x] Implement the confirmed connected architecture for Windows 10/11 x64, keeping production data and secrets on the existing server while providing complete live CRM access
+- [x] Define Windows session, navigation, external-link, file-download, file-upload, printing, notification, update, and failure-recovery behavior
+- [x] Implement the branded ELEVAY desktop application shell with access to every existing authorized module and subpage
+- [x] Add hardened window/navigation controls, certificate checks, permission prompts, download handling, printing, and safe external-browser routing
+- [x] Add Windows installer metadata, icons, versioning, uninstall support, and packaging configuration
+- [x] Produce an unsigned installer unless a Windows code-signing certificate is supplied, and document the expected Unknown Publisher warning
+- [x] Add automated tests and non-mutating validation for critical modules and desktop-specific behaviors
+- [x] Build and inspect the Windows `.exe` installer and document installation, security boundaries, updates, and maintenance
+- [x] Publish the related CRM compatibility changes, if any, and deliver the verified Windows installer

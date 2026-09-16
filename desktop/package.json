@@ -1,0 +1,73 @@
+{
+  "name": "elevay-desktop",
+  "productName": "ELEVAY",
+  "version": "1.0.0",
+  "description": "Secure connected Windows desktop application for the ELEVAY CRM",
+  "author": "ELEVAY Citizenship and Residency Planning",
+  "private": true,
+  "type": "module",
+  "main": "src/main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "ELEVAY_DESKTOP_SMOKE=1 electron .",
+    "test": "vitest run",
+    "pack:win": "electron-builder --win dir --x64",
+    "dist:win": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "44.4.1",
+    "electron-builder": "26.15.3",
+    "vitest": "5.0.1"
+  },
+  "build": {
+    "appId": "com.elevay.desktop",
+    "productName": "ELEVAY",
+    "copyright": "Copyright © 2026 ELEVAY",
+    "asar": true,
+    "compression": "maximum",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://elevay.vip/",
+        "channel": "latest",
+        "publishAutoUpdate": false
+      }
+    ],
+    "files": [
+      "src/**/*",
+      "assets/elevay.ico",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "src/main.mjs"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/elevay.ico",
+      "artifactName": "ELEVAY-Setup-${version}-${arch}.${ext}",
+      "verifyUpdateCodeSignature": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "differentialPackage": false,
+      "shortcutName": "ELEVAY",
+      "uninstallDisplayName": "ELEVAY Desktop"
+    }
+  }
+}
