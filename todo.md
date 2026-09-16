@@ -1562,3 +1562,10 @@ Check email for download link within 5 minutes
 - [x] Add automated tests and non-mutating validation for critical modules and desktop-specific behaviors
 - [x] Build and inspect the Windows `.exe` installer and document installation, security boundaries, updates, and maintenance
 - [x] Publish the related CRM compatibility changes, if any, and deliver the verified Windows installer
+
+## User Access — Madonna Full Administrator Authority
+- [x] Identify Madonna’s single authoritative ELEVAY user account and audit current role, group, module, and page permissions without exposing credentials
+- [x] Define full administrator authority across all operational modules while preserving Mahmoud’s explicit owner-only account and system-ownership safeguards
+- [x] Grant Madonna the administrator role and full module/page permissions without creating or merging unrelated accounts
+- [x] Validate protected admin actions, Contracting deletion authority, Finance full access, WhatsApp Quality Control access, settings visibility, and duplicate-account safety
+- [x] Complete focused authorization checks, document the change, review this checklist, and publish the verified access update
