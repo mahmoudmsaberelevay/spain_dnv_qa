@@ -11,12 +11,14 @@ import { sendEmail } from "./backupEmailService";
 import { notifyOwner } from "./_core/notification";
 import { getDb } from "./db";
 import { storageGet, storagePut } from "./storage";
-import { resolveSystemNotificationRecipients } from "./systemNotificationRecipients";
+import { normalizeEmailRecipients } from "./systemNotificationRecipients";
 
 const gzip = promisify(gzipCallback);
 const CAIRO_TIME_ZONE = "Africa/Cairo";
 const PROCESSING_STALE_AFTER_MS = 10 * 60 * 1000;
-export const BACKUP_NOTIFICATION_EMAILS = resolveSystemNotificationRecipients("other", [
+// Backup delivery is an explicit owner-approved exception to the general
+// executive-notification filter: both addresses must receive every backup result.
+export const BACKUP_NOTIFICATION_EMAILS = normalizeEmailRecipients([
   "mahmoud.saberelevay@gmail.com",
   "mahmoud.saber@elevay.com",
 ]);

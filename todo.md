@@ -1584,3 +1584,14 @@ Check email for download link within 5 minutes
 - [x] Add Marwa to Client Documentation assignment and Client Portal staff-notification recipient resolution
 - [x] Apply the additive live database migration without changing existing cases or assignments
 - [x] Complete focused regressions, database integrity verification, production build, documentation, and checkpoint
+
+## Scheduled Full-System Database Backup — 17 September 2026 Recovery
+- [x] Audit the active schedule, missing playbook, authoritative backup service, encryption, retention, and notification behavior
+- [x] Restore `/home/ubuntu/backup_final.sh` as a fail-fast mode-700 wrapper backed by a source-controlled canonical script
+- [x] Preserve the current all-table SQL export and authenticated AES-256-GCM encryption implementation instead of restoring obsolete AES-CBC logic
+- [x] Restore backup notifications to the two explicitly approved Mahmoud addresses without widening other notification categories
+- [x] Run one controlled full backup and confirm two successful notification deliveries
+- [x] Authenticate, decrypt, decompress, and inspect the new artifact; confirm all 121 live database tables are present with zero missing tables
+- [x] Correct the active schedule to Monday through Thursday at 18:00 Africa/Cairo using six-field cron `0 0 18 * * 1-4`
+- [x] Confirm a second out-of-window playbook execution exits cleanly and creates no duplicate backup or email
+- [x] Run focused backup regressions, production build, integrity checks, documentation, and checkpoint

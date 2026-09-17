@@ -35,11 +35,14 @@ describe("scheduled database backup security contract", () => {
     expect(first).toBe(retry);
   });
 
-  it("does not email Mahmoud or Ziad for the unrelated scheduled-backup category", () => {
-    expect([...BACKUP_NOTIFICATION_EMAILS]).toEqual([]);
+  it("emails only the two explicitly approved backup recipients", () => {
+    expect([...BACKUP_NOTIFICATION_EMAILS]).toEqual([
+      "mahmoud.saberelevay@gmail.com",
+      "mahmoud.saber@elevay.com",
+    ]);
   });
 
-  it("skips executive email delivery without exposing a restoration credential", async () => {
+  it("delivers to both approved recipients without exposing a restoration credential", async () => {
     const send = vi.fn().mockResolvedValue(true);
     const result = await sendBackupNotifications(
       "elevay-backup-2026-09-07.sql.gz.enc",
@@ -48,8 +51,8 @@ describe("scheduled database backup security contract", () => {
       Date.parse("2026-09-07T15:00:00Z"),
       send,
     );
-    expect(result).toMatchObject({ successCount: 0, failureCount: 0 });
-    expect(send).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ successCount: 2, failureCount: 0 });
+    expect(send).toHaveBeenCalledTimes(2);
     for (const [message] of send.mock.calls) {
       expect(`${message.subject}\n${message.html}\n${message.text}`).not.toMatch(/password\s*[:=]|3488|aes-256-cbc/i);
     }
