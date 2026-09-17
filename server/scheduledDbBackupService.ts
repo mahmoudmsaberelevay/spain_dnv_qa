@@ -45,8 +45,8 @@ export function isCairoBackupWindow(now: number) {
   return cairoParts(now).hour === 18;
 }
 
-export function makeBackupRunKey(taskUid: string, now: number) {
-  return `db-backup:${taskUid}:${cairoParts(now).date}`;
+export function makeBackupRunKey(_taskUid: string, now: number) {
+  return `db-backup:primary-database-backup:${cairoParts(now).date}`;
 }
 
 function getNextBackupInfo(now = Date.now()) {
@@ -102,9 +102,22 @@ export async function getDatabaseBackupStatus(now = Date.now()) {
   };
 }
 
-function isDuplicateKeyError(error: unknown) {
-  const candidate = error as { code?: string; errno?: number; message?: string };
-  return candidate?.code === "ER_DUP_ENTRY" || candidate?.errno === 1062 || /duplicate/i.test(candidate?.message ?? "");
+export function isDuplicateKeyError(error: unknown) {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  for (let depth = 0; depth < 6 && current && !seen.has(current); depth += 1) {
+    seen.add(current);
+    const candidate = current as { code?: string; errno?: number; message?: string; cause?: unknown };
+    if (
+      candidate.code === "ER_DUP_ENTRY"
+      || candidate.errno === 1062
+      || /duplicate entry|duplicate key|unique constraint|er_dup_entry/i.test(candidate.message ?? "")
+    ) {
+      return true;
+    }
+    current = candidate.cause;
+  }
+  return false;
 }
 
 function classifyBackupError(error: unknown) {
@@ -248,7 +261,7 @@ export async function executeScheduledDatabaseBackup(taskUid: string, now = Date
       const sql = await exportDatabaseAsSql(db);
       const compressed = await gzip(Buffer.from(sql, "utf8"), { level: 9 });
       const encrypted = encryptBackupBuffer(compressed);
-      const fileName = `elevay-backup-${cairoParts(now).date}.sql.gz.enc`;
+      const fileName = `elevay-backup-${cairoParts(now).date}-run-${run.id}.sql.gz.enc`;
       const stored = await storagePut(`backups/scheduled/${fileName}`, encrypted, "application/octet-stream");
       artifactKey = stored.key;
       artifactSizeBytes = encrypted.length;

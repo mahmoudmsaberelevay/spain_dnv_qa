@@ -1595,3 +1595,15 @@ Check email for download link within 5 minutes
 - [x] Correct the active schedule to Monday through Thursday at 18:00 Africa/Cairo using six-field cron `0 0 18 * * 1-4`
 - [x] Confirm a second out-of-window playbook execution exits cleanly and creates no duplicate backup or email
 - [x] Run focused backup regressions, production build, integrity checks, documentation, and checkpoint
+
+## Scheduled Full-System Backup — 18:00 Collision Repair
+- [x] Confirm the authoritative 18:00 backup succeeded with one encrypted artifact and two successful email notifications
+- [x] Identify wrapped database duplicate-key errors as the cause of the second invocation’s failure response
+- [x] Make duplicate detection traverse nested query-layer causes and recognize MySQL/TiDB duplicate indicators
+- [x] Replace trigger-specific daily run keys with one stable primary-backup key per Cairo date
+- [x] Consolidate the primary backup database binding to the active scheduled task and correct schedule metadata
+- [x] Use immutable run-specific encrypted storage keys to prevent same-day overwrite or cache collisions
+- [x] Repair today’s artifact under an immutable key without resending notification emails
+- [x] Authenticate, decrypt, decompress, and inspect the repaired artifact; confirm all 121 live database tables and zero missing tables
+- [x] Confirm repeated exact-playbook execution returns existing success without duplicate artifact or email
+- [x] Run focused regressions, production build, integrity checks, documentation, and checkpoint

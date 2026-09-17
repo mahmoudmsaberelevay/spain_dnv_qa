@@ -18,6 +18,7 @@ describe("scheduled full-system database backup playbook", () => {
     expect(runner).toContain("executeScheduledDatabaseBackup");
     expect(service).toContain("encryptBackupBuffer(compressed)");
     expect(service).toContain("BACKUP_ENCRYPTION_METADATA.algorithm");
+    expect(service).toContain("-run-${run.id}.sql.gz.enc");
   });
 
   it("exports every table for complete restoration rather than selected modules only", () => {

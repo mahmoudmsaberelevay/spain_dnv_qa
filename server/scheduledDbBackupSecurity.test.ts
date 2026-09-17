@@ -8,6 +8,7 @@ import {
 } from "./backupEncryption";
 import {
   BACKUP_NOTIFICATION_EMAILS,
+  isDuplicateKeyError,
   isCairoBackupWindow,
   makeBackupRunKey,
   sendBackupNotifications,
@@ -31,8 +32,17 @@ describe("scheduled database backup security contract", () => {
 
   it("uses one idempotency key per Cairo calendar date", () => {
     const first = makeBackupRunKey("task", Date.parse("2026-09-07T15:00:00Z"));
-    const retry = makeBackupRunKey("task", Date.parse("2026-09-07T15:59:59Z"));
+    const retry = makeBackupRunKey("different-trigger", Date.parse("2026-09-07T15:59:59Z"));
     expect(first).toBe(retry);
+    expect(first).toBe("db-backup:primary-database-backup:2026-09-07");
+  });
+
+  it("recognizes duplicate-key errors wrapped by the query layer", () => {
+    const wrapped = new Error("Failed query: insert into database_backup_runs", {
+      cause: Object.assign(new Error("Duplicate entry for run key"), { code: "ER_DUP_ENTRY", errno: 1062 }),
+    });
+    expect(isDuplicateKeyError(wrapped)).toBe(true);
+    expect(isDuplicateKeyError(new Error("Database connection timed out"))).toBe(false);
   });
 
   it("emails only the two explicitly approved backup recipients", () => {
