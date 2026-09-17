@@ -213,7 +213,7 @@ export const clientCases = mysqlTable("clientCases", {
   clientCode: varchar("clientCode", { length: 64 }).notNull(),
   applicationType: mysqlEnum("applicationType", ["freelancer", "business_owner"]).notNull(),
   maritalStatus: mysqlEnum("maritalStatus", ["single", "family"]).notNull(),
-  paralegal: mysqlEnum("paralegal", ["Madonna", "Monica", "Marina"]),
+  paralegal: mysqlEnum("paralegal", ["Madonna", "Monica", "Marina", "Marwa"]),
   consultant: mysqlEnum("consultant", ["Mahmoud", "Ziad", "Fouad", "Kirolos"]).notNull(),
   schengenDate: timestamp("schengenDate"),
   embassyAppointmentDate: timestamp("embassyAppointmentDate"),

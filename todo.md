@@ -1575,3 +1575,12 @@ Check email for download link within 5 minutes
 - [x] Correct any missing administrator navigation or authorization condition so Madonna can open and use Client Portal Administration
 - [x] Validate the page and representative protected management procedures non-mutatively while preserving client accounts, passwords, documentation assignments, providers, and services
 - [x] Add focused regressions, document the access boundary, review this checklist, and publish the verified Client Portal access update
+
+## User Access — Marwa Client Documentation Paralegal
+- [x] Audit Marwa’s single staff account, employee role, current module access, and duplicate-account state
+- [x] Confirm Marwa is an active Paralegal and preserve her standard user role without administrator or owner authority
+- [x] Add Marwa as a valid assignable paralegal in Client Documentation storage, server validation, the case assignment dialog, and dashboard filtering
+- [x] Synchronize full Client Documentation module and legacy page permissions for Marwa without widening Financial, Backup, AI Council, or owner-only access
+- [x] Add Marwa to Client Documentation assignment and Client Portal staff-notification recipient resolution
+- [x] Apply the additive live database migration without changing existing cases or assignments
+- [x] Complete focused regressions, database integrity verification, production build, documentation, and checkpoint

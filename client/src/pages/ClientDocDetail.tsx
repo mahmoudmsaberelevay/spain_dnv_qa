@@ -875,7 +875,7 @@ export default function ClientDocDetail() {
           </DialogHeader>
           <p className="text-xs text-gray-400 -mt-2">Select the paralegal responsible for this client's documentation</p>
           <div className="mt-3 space-y-2">
-            {["Madonna", "Monica", "Marina"].map(p => (
+            {["Madonna", "Monica", "Marina", "Marwa"].map(p => (
               <div
                 key={p}
                 onClick={() => setSelectedParalegal(p)}
