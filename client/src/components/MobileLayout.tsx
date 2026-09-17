@@ -71,6 +71,19 @@ const TABS = [
   { id: "more", label: "More", icon: MoreHorizontal, path: "__more__" },
 ] as const;
 
+const MOBILE_PERMISSION_OWNER_EMAILS = new Set([
+  "mahmoud.saberelevay@gmail.com",
+  "mahmoud.saber@elevay.com",
+]);
+
+export function canAccessMobileClientPortalAdmin(user?: { role?: string | null } | null) {
+  return user?.role === "admin";
+}
+
+export function canAccessMobileOwnerPermissions(user?: { email?: string | null } | null) {
+  return MOBILE_PERMISSION_OWNER_EMAILS.has((user?.email ?? "").trim().toLowerCase());
+}
+
 // Full sidebar modules with subpages (mirrors DashboardLayout)
 export const MOBILE_SIDEBAR_MODULES = [
   {
@@ -377,16 +390,42 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
 
               {/* Extra links */}
               <div className="px-2 mt-3 pt-3 border-t border-border/50">
-                <button
-                  onClick={() => { setLocation("/admin/permissions"); setShowSidebar(false); }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
-                    location.startsWith("/admin") ? "bg-primary/10 text-primary" : "hover:bg-accent text-foreground"
-                  )}
-                >
-                  <Shield className="h-4.5 w-4.5 shrink-0" strokeWidth={1.5} />
-                  <span className="text-[13px] font-medium">Admin & Security</span>
-                </button>
+                {canAccessMobileClientPortalAdmin(user) && (
+                  <>
+                    <button
+                      onClick={() => { setLocation("/admin/security"); setShowSidebar(false); }}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
+                        location === "/admin/security" ? "bg-primary/10 text-primary" : "hover:bg-accent text-foreground"
+                      )}
+                    >
+                      <Shield className="h-4.5 w-4.5 shrink-0" strokeWidth={1.5} />
+                      <span className="text-[13px] font-medium">Security & Audit</span>
+                    </button>
+                    <button
+                      onClick={() => { setLocation("/admin/client-portal"); setShowSidebar(false); }}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
+                        location === "/admin/client-portal" ? "bg-primary/10 text-primary" : "hover:bg-accent text-foreground"
+                      )}
+                    >
+                      <Users className="h-4.5 w-4.5 shrink-0" strokeWidth={1.5} />
+                      <span className="text-[13px] font-medium">Client Portal</span>
+                    </button>
+                  </>
+                )}
+                {canAccessMobileOwnerPermissions(user) && (
+                  <button
+                    onClick={() => { setLocation("/admin/permissions"); setShowSidebar(false); }}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
+                      location === "/admin/permissions" ? "bg-primary/10 text-primary" : "hover:bg-accent text-foreground"
+                    )}
+                  >
+                    <SettingsIcon className="h-4.5 w-4.5 shrink-0" strokeWidth={1.5} />
+                    <span className="text-[13px] font-medium">Permissions</span>
+                  </button>
+                )}
                 <button
                   onClick={() => { setLocation("/profile"); setShowSidebar(false); }}
                   className={cn(

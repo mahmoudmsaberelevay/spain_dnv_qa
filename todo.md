@@ -1569,3 +1569,9 @@ Check email for download link within 5 minutes
 - [x] Grant Madonna the administrator role and full module/page permissions without creating or merging unrelated accounts
 - [x] Validate protected admin actions, Contracting deletion authority, Finance full access, WhatsApp Quality Control access, settings visibility, and duplicate-account safety
 - [x] Complete focused authorization checks, document the change, review this checklist, and publish the verified access update
+
+## User Access — Madonna Client Portal Administration
+- [x] Audit the Client Portal Administration desktop/mobile navigation, route, frontend role check, backend admin procedures, and Madonna’s current role without changing portal records
+- [x] Correct any missing administrator navigation or authorization condition so Madonna can open and use Client Portal Administration
+- [x] Validate the page and representative protected management procedures non-mutatively while preserving client accounts, passwords, documentation assignments, providers, and services
+- [x] Add focused regressions, document the access boundary, review this checklist, and publish the verified Client Portal access update

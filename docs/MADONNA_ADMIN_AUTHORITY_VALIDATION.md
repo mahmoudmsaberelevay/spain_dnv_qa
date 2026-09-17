@@ -29,3 +29,9 @@ Mahmoud remains the platform owner. Owner-only permission management and ownersh
 The production reconciliation confirmed one authoritative Madonna account, the administrator role, 10 of 10 module permissions at full access, 29 of 29 page permissions at full access, all six Leads permissions enabled, and no duplicate permission keys. Thirty-four focused authorization, AI Council, secure backup, Client Chat, and session regressions passed. Source checks confirmed that Contracting deletion and other operational administration use the administrator-role gate, while the Permissions Manager continues to use the separate owner-only gate.
 
 Madonna should sign out and sign in again before testing the new access, ensuring any previously cached authorization state is refreshed.
+
+## Client Portal Administration Follow-up
+
+The Client Portal Administration backend and desktop navigation already used the administrator role, so Madonna’s promoted account was authorized for the complete protected procedure surface. The remaining gap was mobile navigation: the generic mobile administrator link opened the owner-only Permissions Manager instead of an administrator destination.
+
+Mobile administrators now receive separate **Security & Audit** and **Client Portal** entries. The **Permissions** entry remains visible only to the explicit platform-owner identities. The Client Portal page and its Accounts, Programs, Providers, After Settlement Services, and Sync tabs were verified without creating, editing, disabling, deleting, messaging, synchronizing, or otherwise changing any portal data.
