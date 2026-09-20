@@ -33,6 +33,7 @@ const BOTH_EXECUTIVES_EVENTS = new Set([
   "receipt_created",
   "receipt_signed",
   "receipt_paid",
+  "news_digest_import_failed",
 ]);
 
 function splitRecipients(input: EmailRecipients): string[] {

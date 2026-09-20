@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { newsDigestSettings } from "../drizzle/schema";
 import { sdk } from "./_core/sdk";
 import { getDb } from "./db";
+import { sendNewsDigestFailureAlert } from "./emailService";
 import { runNewsDigestImport } from "./newsDigestService";
 
 export function isCairoNewsDigestTime(now = new Date()) {
@@ -44,6 +45,11 @@ export async function scheduledNewsDigestHandler(req: Request, res: Response) {
     return res.json({ ok: true, skipped: "outside_cairo_0930_window" });
   }
   if (!settings.gmailRefreshTokenEncrypted) {
+    const attemptedAt = new Date();
+    const errorMessage = "Gmail authorization is required for the Daily Digest importer.";
+    await db.update(newsDigestSettings).set({ lastAttemptAt: attemptedAt, lastError: errorMessage }).where(eq(newsDigestSettings.id, 1));
+    const alertSent = await sendNewsDigestFailureAlert({ attemptedAt, errorMessage });
+    if (!alertSent) console.error("[NewsDigest] Gmail authorization alert email could not be sent");
     return res.status(409).json({ error: "gmail_connection_required" });
   }
   try {

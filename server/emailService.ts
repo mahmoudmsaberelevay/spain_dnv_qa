@@ -3,6 +3,7 @@ import {
   getSystemNotificationFromHeader,
   normalizeEmailRecipients,
   resolveSystemNotificationRecipients,
+  ZIAD_NOTIFICATION_RECIPIENTS,
 } from "./systemNotificationRecipients";
 // Team email mapping
 export const TEAM_EMAIL_MAP: Record<string, string> = {
@@ -75,6 +76,29 @@ export async function sendClientPortalActivityEmail(
   html: string,
 ) {
   return sendEmail(recipients, subject, html);
+}
+
+/** Alert system administrators when the scheduled News importer fails. */
+export async function sendNewsDigestFailureAlert(input: {
+  attemptedAt: Date;
+  errorMessage: string;
+}) {
+  const safeError = input.errorMessage.replace(/[<>]/g, "").slice(0, 2000);
+  const attemptedAt = input.attemptedAt.toISOString();
+  const html = `
+    <h2>ELEVAY Daily Digest import failed</h2>
+    <p>The automated News importer could not complete its latest run.</p>
+    <p><strong>Attempted at (UTC):</strong> ${attemptedAt}</p>
+    <p><strong>Error:</strong> ${safeError}</p>
+    <p><a href="https://elevay.vip/api/admin/news/status-page">Open the News importer status page</a></p>
+    <p style="color:#667085;font-size:12px">This alert contains operational metadata only; no Gmail tokens or message bodies are included.</p>
+  `;
+  return sendEmail(
+    [...MAHMOUD_EMAILS, ...ZIAD_NOTIFICATION_RECIPIENTS],
+    "[ELEVAY Alert] Daily Digest News import failed",
+    html,
+    { eventType: "news_digest_import_failed" },
+  );
 }
 
 /** Send a short-lived password reset deep link for the dedicated client app. */

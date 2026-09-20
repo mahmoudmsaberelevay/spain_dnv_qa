@@ -13,6 +13,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { getDb } from "./db";
+import { sendNewsDigestFailureAlert } from "./emailService";
 
 export const NEWS_SOURCE_MAILBOX = "mahmoud.saberelevay@gmail.com";
 export const NEWS_SUBJECT_TRIGGER = "Daily Digest";
@@ -138,9 +139,16 @@ export async function connectNewsGmail(code: string) {
 
 export async function getNewsGmailConnectionStatus() {
   const settings = await ensureSettings();
+  const connected = Boolean(settings.gmailRefreshTokenEncrypted && settings.gmailConnectedEmail === NEWS_SOURCE_MAILBOX);
+  const authorizationIssue = !connected
+    ? "Gmail authorization is required for the Daily Digest importer."
+    : settings.lastError && /gmail|google|oauth|authorization|credential|token|access|invalid_grant/i.test(settings.lastError)
+      ? settings.lastError
+      : null;
   return {
     configured: Boolean((ENV.newsGmailClientId || ENV.googleClientId) && (ENV.newsGmailClientSecret || ENV.googleClientSecret)),
-    connected: Boolean(settings.gmailRefreshTokenEncrypted && settings.gmailConnectedEmail === NEWS_SOURCE_MAILBOX),
+    connected,
+    authorizationIssue,
     email: settings.gmailConnectedEmail,
     sourceMailbox: settings.sourceMailbox,
     subjectTrigger: settings.subjectTrigger,
@@ -417,7 +425,13 @@ export async function runNewsDigestImport() {
     await db.update(newsDigestSettings).set({ lastSuccessfulAt: new Date(), lastError: null }).where(eq(newsDigestSettings.id, 1));
     return { messagesChecked: messages.length, articlesFound, articlesInserted: inserted.length, articlesRemoved: removed, ...delivery };
   } catch (error) {
-    await db.update(newsDigestSettings).set({ lastError: String(error).slice(0, 4000) }).where(eq(newsDigestSettings.id, 1));
+    const errorMessage = String(error).slice(0, 4000);
+    await db.update(newsDigestSettings).set({ lastError: errorMessage }).where(eq(newsDigestSettings.id, 1));
+    const alertSent = await sendNewsDigestFailureAlert({
+      attemptedAt,
+      errorMessage,
+    });
+    if (!alertSent) console.error("[NewsDigest] Failure alert email could not be sent");
     throw error;
   }
 }
