@@ -7,6 +7,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, FileText } from "lucide-react";
 import { useState, useMemo } from "react";
 import FinReport from "./FinReport";
+import {
+  FINANCIAL_REPORT_ALL_TIME_LABEL,
+  isWithinFinancialDateRange,
+} from "@shared/financialDateRange";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -67,21 +71,40 @@ export default function FinReports() {
 }
 
 function DateFilters({ dateFrom, dateTo, setDateFrom, setDateTo }: { dateFrom: string; dateTo: string; setDateFrom: (v: string) => void; setDateTo: (v: string) => void }) {
+  const periodLabel = dateFrom || dateTo
+    ? `${dateFrom || "Beginning"} → ${dateTo || "Today"}`
+    : FINANCIAL_REPORT_ALL_TIME_LABEL;
+
   return (
-    <div className="flex items-center gap-3 flex-wrap">
-      <div>
-        <label className="text-xs font-medium text-muted-foreground">From</label>
-        <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-[160px]" />
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">From</label>
+          <Input
+            type="date"
+            value={dateFrom}
+            onInput={e => setDateFrom(e.currentTarget.value)}
+            onChange={e => setDateFrom(e.target.value)}
+            className="w-[160px]"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">To</label>
+          <Input
+            type="date"
+            value={dateTo}
+            onInput={e => setDateTo(e.currentTarget.value)}
+            onChange={e => setDateTo(e.target.value)}
+            className="w-[160px]"
+          />
+        </div>
+        {(dateFrom || dateTo) && (
+          <Button variant="ghost" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); }} className="mt-4">
+            Clear
+          </Button>
+        )}
       </div>
-      <div>
-        <label className="text-xs font-medium text-muted-foreground">To</label>
-        <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-[160px]" />
-      </div>
-      {(dateFrom || dateTo) && (
-        <Button variant="ghost" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); }} className="mt-4">
-          Clear
-        </Button>
-      )}
+      <p className="text-xs text-muted-foreground" data-testid="financial-report-period">Period: {periodLabel}</p>
     </div>
   );
 }
@@ -91,12 +114,9 @@ function ExpenseReport({ categoryMap, accountMap, dateFrom, dateTo, setDateFrom,
 
   const filtered = useMemo(() => {
     if (!transactions) return [];
-    return transactions.filter(tx => {
-      const d = new Date(tx.transactionDate);
-      if (dateFrom && d < new Date(dateFrom)) return false;
-      if (dateTo && d > new Date(dateTo + "T23:59:59")) return false;
-      return true;
-    });
+    return transactions.filter(tx =>
+      isWithinFinancialDateRange(tx.transactionDate, dateFrom || undefined, dateTo || undefined)
+    );
   }, [transactions, dateFrom, dateTo]);
 
   const total = filtered.reduce((s, tx) => s + Number(tx.amount), 0);
@@ -175,12 +195,9 @@ function IncomeReport({ categoryMap, accountMap, dateFrom, dateTo, setDateFrom, 
 
   const filtered = useMemo(() => {
     if (!transactions) return [];
-    return transactions.filter(tx => {
-      const d = new Date(tx.transactionDate);
-      if (dateFrom && d < new Date(dateFrom)) return false;
-      if (dateTo && d > new Date(dateTo + "T23:59:59")) return false;
-      return true;
-    });
+    return transactions.filter(tx =>
+      isWithinFinancialDateRange(tx.transactionDate, dateFrom || undefined, dateTo || undefined)
+    );
   }, [transactions, dateFrom, dateTo]);
 
   const total = filtered.reduce((s, tx) => s + Number(tx.amount), 0);
@@ -252,20 +269,42 @@ function IncomeReport({ categoryMap, accountMap, dateFrom, dateTo, setDateFrom, 
 }
 
 function AccountStatement({ accounts, accountId, setAccountId, dateFrom, dateTo, setDateFrom, setDateTo, accountMap, categoryMap }: any) {
-  const { data: statement, isLoading } = trpc.financial.reports.accountStatement.useQuery(
+  const { data: statement, isLoading, isFetching } = trpc.financial.reports.accountStatement.useQuery(
     { accountId: Number(accountId), dateFrom: dateFrom || undefined, dateTo: dateTo || undefined },
     { enabled: !!accountId }
   );
 
   const acc = accountId ? accountMap.get(Number(accountId)) : null;
   const [exporting, setExporting] = useState(false);
+  const visibleTransactions = useMemo(
+    () => (statement?.transactions ?? []).filter((tx: any) =>
+      isWithinFinancialDateRange(tx.transactionDate, dateFrom || undefined, dateTo || undefined)
+    ),
+    [statement?.transactions, dateFrom, dateTo],
+  );
+  const visibleTotals = useMemo(() => {
+    let totalIn = 0;
+    let totalOut = 0;
+    for (const tx of visibleTransactions) {
+      const isIn = (tx.type === "income" && tx.accountId === Number(accountId)) ||
+        (tx.type === "transfer" && tx.toAccountId === Number(accountId));
+      const isOut = (tx.type === "expense" && tx.accountId === Number(accountId)) ||
+        (tx.type === "transfer" && tx.fromAccountId === Number(accountId));
+      const amount = Number(tx.amount);
+      const converted = tx.convertedAmount ? Number(tx.convertedAmount) : null;
+      if (isIn) totalIn += tx.type === "transfer" && converted ? converted : amount;
+      if (isOut) totalOut += amount;
+    }
+    return { totalIn, totalOut };
+  }, [visibleTransactions, accountId]);
+  const visibleOpeningBalance = Number(statement?.currentBalance ?? 0) - visibleTotals.totalIn + visibleTotals.totalOut;
 
   function handleExportPdf() {
     if (!statement || !acc) return;
     setExporting(true);
-    const dateRange = [dateFrom, dateTo].filter(Boolean).join(" → ") || "All Dates";
-    let pdfRunBal = Number(statement.openingBalance ?? 0);
-    const rows = (statement.transactions ?? []).map((tx: any) => {
+    const dateRange = [dateFrom, dateTo].filter(Boolean).join(" → ") || FINANCIAL_REPORT_ALL_TIME_LABEL;
+    let pdfRunBal = visibleOpeningBalance;
+    const rows = visibleTransactions.map((tx: any) => {
       const isIn = (tx.type === "income" && tx.accountId === Number(accountId)) ||
         (tx.type === "transfer" && tx.toAccountId === Number(accountId));
       const isOut = (tx.type === "expense" && tx.accountId === Number(accountId)) ||
@@ -312,9 +351,9 @@ function AccountStatement({ accounts, accountId, setAccountId, dateFrom, dateTo,
 </div>
 <div class="summary">
   <div class="summary-box"><div class="label">Current Balance</div><div class="value">${acc.currency} ${fmt(Number(statement.currentBalance ?? 0))}</div></div>
-  <div class="summary-box"><div class="label">Total In</div><div class="value" style="color:#16a34a">${fmt(Number(statement.totalIn ?? 0))}</div></div>
-  <div class="summary-box"><div class="label">Total Out</div><div class="value" style="color:#dc2626">${fmt(Number(statement.totalOut ?? 0))}</div></div>
-  <div class="summary-box"><div class="label">Transactions</div><div class="value">${statement.transactions?.length ?? 0}</div></div>
+  <div class="summary-box"><div class="label">Total In</div><div class="value" style="color:#16a34a">${fmt(visibleTotals.totalIn)}</div></div>
+  <div class="summary-box"><div class="label">Total Out</div><div class="value" style="color:#dc2626">${fmt(visibleTotals.totalOut)}</div></div>
+  <div class="summary-box"><div class="label">Transactions</div><div class="value">${visibleTransactions.length}</div></div>
 </div>
 <table><thead><tr><th>Date</th><th>Description</th><th>Type</th><th style="text-align:right">In</th><th style="text-align:right">Out</th><th style="text-align:right">Balance</th></tr></thead><tbody>${rows}</tbody></table>
 <div class="footer">Elevay — Confidential &nbsp;|&nbsp; Generated on ${new Date().toISOString()}</div>
@@ -349,9 +388,9 @@ function AccountStatement({ accounts, accountId, setAccountId, dateFrom, dateTo,
           <DateFilters dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} />
         </div>
         {accountId && statement && (
-          <Button onClick={handleExportPdf} disabled={exporting} className="bg-[#8b0000] hover:bg-[#6b0000] text-white gap-2">
+          <Button onClick={handleExportPdf} disabled={exporting || isFetching} className="bg-[#8b0000] hover:bg-[#6b0000] text-white gap-2">
             <FileText className="w-4 h-4" />
-            {exporting ? "Generating..." : "Export PDF"}
+            {exporting ? "Generating..." : isFetching ? "Updating..." : "Export PDF"}
           </Button>
         )}
       </div>
@@ -379,13 +418,13 @@ function AccountStatement({ accounts, accountId, setAccountId, dateFrom, dateTo,
             <Card className="border-0 shadow-sm">
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground">Total In</p>
-                <p className="text-lg font-bold text-green-600">{fmt(Number(statement?.totalIn ?? 0))}</p>
+                <p className="text-lg font-bold text-green-600">{fmt(visibleTotals.totalIn)}</p>
               </CardContent>
             </Card>
             <Card className="border-0 shadow-sm">
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground">Total Out</p>
-                <p className="text-lg font-bold text-red-600">{fmt(Number(statement?.totalOut ?? 0))}</p>
+                <p className="text-lg font-bold text-red-600">{fmt(visibleTotals.totalOut)}</p>
               </CardContent>
             </Card>
           </div>
@@ -393,7 +432,9 @@ function AccountStatement({ accounts, accountId, setAccountId, dateFrom, dateTo,
           {/* Transaction list */}
           <Card className="border-0 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Statement ({statement?.transactions?.length ?? 0} transactions)</CardTitle>
+              <CardTitle className="text-sm">
+                Statement ({visibleTransactions.length} transactions){isFetching ? " — Updating…" : ""}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -410,8 +451,8 @@ function AccountStatement({ accounts, accountId, setAccountId, dateFrom, dateTo,
                   </thead>
                   <tbody>
                     {(() => {
-                      let runBal = Number(statement?.openingBalance ?? 0);
-                      return (statement?.transactions ?? []).map((tx: any) => {
+                      let runBal = visibleOpeningBalance;
+                      return visibleTransactions.map((tx: any) => {
                         const isIn = (tx.type === "income" && tx.accountId === Number(accountId)) ||
                           (tx.type === "transfer" && tx.toAccountId === Number(accountId));
                         const isOut = (tx.type === "expense" && tx.accountId === Number(accountId)) ||

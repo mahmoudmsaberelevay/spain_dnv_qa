@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import FinFilterBar, { FinFilters } from "@/components/FinFilterBar";
 import { FileDown, FileSpreadsheet, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
+import { calendarDateToDateOnly } from "@shared/financialDateRange";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -35,8 +36,8 @@ export default function FinReport() {
   // Build query params
   const queryParams = useMemo(() => ({
     type: txType === "all" ? undefined : txType as "income" | "expense",
-    from: filters.from,
-    to: filters.to,
+    from: calendarDateToDateOnly(filters.from),
+    to: calendarDateToDateOnly(filters.to),
     categoryId: entityType === "category" && entityId ? Number(entityId) : filters.categoryId,
     employeeId: entityType === "employee" && entityId ? Number(entityId) : filters.employeeId,
     finClientId: entityType === "client" && entityId ? Number(entityId) : filters.finClientId,

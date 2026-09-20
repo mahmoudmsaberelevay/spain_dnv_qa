@@ -15,6 +15,7 @@ import {
   getFinancialSummary,
 } from "./finDb";
 import { notifyFinClientAdded } from "./emailService";
+import { normalizeFinancialDateRange } from "../shared/financialDateRange";
 
 // ─── Access Control ──────────────────────────────────────────────────────────
 const ADMIN_EMAILS = [
@@ -34,6 +35,10 @@ const LIMITED_EMAILS = [
 ];
 
 type FinRole = "admin" | "readonly" | "limited" | "none";
+const financialDateBoundarySchema = z.union([
+  z.date(),
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+]).optional();
 
 function getFinRole(email?: string | null): FinRole {
   if (!email) return "none";
@@ -506,8 +511,8 @@ const transactionsRouter = router({
     .input(z.object({
       type: z.enum(["income", "expense", "transfer"]).optional(),
       accountId: z.number().optional(),
-      from: z.date().optional(),
-      to: z.date().optional(),
+      from: financialDateBoundarySchema,
+      to: financialDateBoundarySchema,
       limit: z.number().optional(),
       offset: z.number().optional(),
       categoryId: z.number().optional(),
@@ -517,19 +522,27 @@ const transactionsRouter = router({
       sortField: z.enum(["transactionDate", "amount", "description", "type"]).optional(),
       sortDir: z.enum(["asc", "desc"]).optional(),
     }).optional())
-    .query(async ({ input }) => listTransactions(input ?? undefined)),
+    .query(async ({ input }) => {
+      if (!input) return listTransactions();
+      const range = normalizeFinancialDateRange(input.from, input.to);
+      return listTransactions({ ...input, from: range.from, to: range.to });
+    }),
   count: finReadProcedure
     .input(z.object({
       type: z.enum(["income", "expense", "transfer"]).optional(),
       accountId: z.number().optional(),
-      from: z.date().optional(),
-      to: z.date().optional(),
+      from: financialDateBoundarySchema,
+      to: financialDateBoundarySchema,
       categoryId: z.number().optional(),
       employeeId: z.number().optional(),
       finClientId: z.number().optional(),
       descriptionSearch: z.string().optional(),
     }).optional())
-    .query(async ({ input }) => countTransactions(input ?? undefined)),
+    .query(async ({ input }) => {
+      if (!input) return countTransactions();
+      const range = normalizeFinancialDateRange(input.from, input.to);
+      return countTransactions({ ...input, from: range.from, to: range.to });
+    }),
 
   createIncome: finWriteProcedure
     .input(z.object({
@@ -798,16 +811,17 @@ const reportsRouter = router({
   accountStatement: finReadProcedure
     .input(z.object({
       accountId: z.number(),
-      dateFrom: z.string().optional(),
-      dateTo: z.string().optional(),
+      dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     }))
     .query(async ({ input }) => {
       const account = await getAccountById(input.accountId);
       if (!account) throw new TRPCError({ code: "NOT_FOUND", message: "Account not found" });
+      const range = normalizeFinancialDateRange(input.dateFrom, input.dateTo);
       const statement = await getAccountStatement(
         input.accountId,
-        input.dateFrom ? new Date(input.dateFrom) : undefined,
-        input.dateTo ? new Date(input.dateTo) : undefined,
+        range.from,
+        range.to,
       );
       const totalIn = statement.filter(tx =>
         (tx.type === "income" && tx.accountId === input.accountId) ||
@@ -830,6 +844,8 @@ const reportsRouter = router({
         openingBalance,
         totalIn,
         totalOut,
+        appliedDateFrom: range.fromDateOnly,
+        appliedDateTo: range.toDateOnly,
         transactions: statement,
       };
     }),

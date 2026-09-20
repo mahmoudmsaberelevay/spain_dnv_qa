@@ -8,6 +8,7 @@ import { CalendarIcon, X, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { format } from "date-fns";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { FINANCIAL_REPORT_ALL_TIME_LABEL } from "@shared/financialDateRange";
 
 export type SortField = "transactionDate" | "amount" | "description" | "type";
 export type SortDir = "asc" | "desc";
@@ -67,6 +68,20 @@ export default function FinFilterBar({ filters, onChange, show = {}, sortColumns
   const hasFilters = !!(filters.from || filters.to || filters.categoryId || filters.employeeId || filters.finClientId || filters.descriptionSearch);
 
   const clearAll = () => onChange({ sortField: filters.sortField, sortDir: filters.sortDir });
+  const selectFrom = (date?: Date) => {
+    if (date && filters.to && date > filters.to) {
+      onChange({ ...filters, from: date, to: date });
+      return;
+    }
+    onChange({ ...filters, from: date });
+  };
+  const selectTo = (date?: Date) => {
+    if (date && filters.from && date < filters.from) {
+      onChange({ ...filters, from: date, to: date });
+      return;
+    }
+    onChange({ ...filters, to: date });
+  };
 
   const toggleSort = (field: SortField) => {
     if (filters.sortField === field) {
@@ -105,7 +120,7 @@ export default function FinFilterBar({ filters, onChange, show = {}, sortColumns
                 <Calendar
                   mode="single"
                   selected={filters.from}
-                  onSelect={d => onChange({ ...filters, from: d ?? undefined })}
+                  onSelect={selectFrom}
                   initialFocus
                 />
               </PopoverContent>
@@ -121,7 +136,7 @@ export default function FinFilterBar({ filters, onChange, show = {}, sortColumns
                 <Calendar
                   mode="single"
                   selected={filters.to}
-                  onSelect={d => onChange({ ...filters, to: d ?? undefined })}
+                  onSelect={selectTo}
                   initialFocus
                 />
               </PopoverContent>
@@ -230,6 +245,13 @@ export default function FinFilterBar({ filters, onChange, show = {}, sortColumns
           <Button variant="ghost" size="sm" className="text-xs gap-1 text-muted-foreground" onClick={clearAll}>
             <X className="h-3.5 w-3.5" /> Clear filters
           </Button>
+        )}
+        {s.dateRange && (
+          <span className="text-xs text-muted-foreground" data-testid="financial-filter-period">
+            Period: {filters.from || filters.to
+              ? `${filters.from ? format(filters.from, "dd MMM yyyy") : "Beginning"} → ${filters.to ? format(filters.to, "dd MMM yyyy") : "Today"}`
+              : FINANCIAL_REPORT_ALL_TIME_LABEL}
+          </span>
         )}
       </div>
 

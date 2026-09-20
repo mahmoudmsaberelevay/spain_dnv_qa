@@ -1607,3 +1607,13 @@ Check email for download link within 5 minutes
 - [x] Authenticate, decrypt, decompress, and inspect the repaired artifact; confirm all 121 live database tables and zero missing tables
 - [x] Confirm repeated exact-playbook execution returns existing success without duplicate artifact or email
 - [x] Run focused regressions, production build, integrity checks, documentation, and checkpoint
+
+## Financial Reports — Date Filter Repair
+- [x] Reproduce the Account Statement date-filter behavior against the active `/finance/reports` route
+- [x] Preserve **All Time** as the explicit default for all Financial Reports
+- [x] Add one shared date-only range rule with inclusive start and end-of-day boundaries
+- [x] Apply normalized dates to transaction list/count, Account Statement, and Detailed Report queries
+- [x] Prevent Account Statement from displaying or exporting stale out-of-range rows during refresh
+- [x] Recalculate visible report totals, counts, and running balances from the filtered rows
+- [x] Verify All Expenses, All Income, Account Statement, and Detailed Report behavior non-mutatively
+- [x] Complete focused regressions, changed-file diagnostics, production build, documentation, and checkpoint
