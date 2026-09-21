@@ -32,6 +32,15 @@ export type CaribbeanTimelineStep = {
   detailEn: string;
 };
 
+export type ClientMobileTimelineStep = {
+  key: string;
+  position: number;
+  titleEn: string;
+  titleAr: string;
+  status: "completed" | "current" | "upcoming";
+  occurredAt: string | null;
+};
+
 const stageRank: Record<CaribbeanJourneyStage, number> = {
   questionnaire: 0,
   document_collection: 1,
@@ -104,4 +113,26 @@ export function projectCaribbeanTimeline(input: {
     currentStage: firstActive,
     paymentDueDates: { submission: submissionPaymentDueDate, approval: approvalPaymentDueDate },
   };
+}
+
+/**
+ * The native client folder screen consumes a stable array-based process
+ * timeline. Keep the detailed Caribbean projection above for CRM and web
+ * clients, while adapting it at the mobile REST boundary.
+ */
+export function projectCaribbeanMobileTimeline(
+  input: Parameters<typeof projectCaribbeanTimeline>[0],
+): ClientMobileTimelineStep[] {
+  return projectCaribbeanTimeline(input).stages.map((step, index) => ({
+    key: step.key,
+    position: step.order || index + 1,
+    titleEn: step.titleEn,
+    titleAr: step.titleAr,
+    status: step.status === "active" ? "current" : step.status === "completed" ? "completed" : "upcoming",
+    occurredAt: step.date instanceof Date
+      ? (Number.isNaN(step.date.getTime()) ? null : step.date.toISOString())
+      : typeof step.date === "string" && !Number.isNaN(new Date(step.date).getTime())
+        ? step.date
+        : null,
+  }));
 }
