@@ -18,6 +18,8 @@ import { ClientPortalUploadsPanel } from "@/components/ClientPortalUploadsPanel"
 import { ClientStageEvidenceUpload } from "@/components/ClientStageEvidenceUpload";
 import { ClientChatPanel } from "@/components/ClientChatPanel";
 import { ClientDocumentationEmployeeAccess } from "@/components/ClientDocumentationEmployeeAccess";
+import { CaribbeanClientDocumentationPanel } from "@/components/CaribbeanClientDocumentationPanel";
+import { clientDocumentationProgramLabel, isCaribbeanDocumentationProgram } from "@shared/clientDocumentationPrograms";
 import {
   ArrowLeft, CheckCircle2, Circle, Clock, AlertTriangle,
   FileCheck, CalendarDays, CalendarClock,
@@ -58,7 +60,7 @@ export default function ClientDocDetail() {
   const [showSpouseDialog, setShowSpouseDialog] = useState(false);
   const [spouseNameInput, setSpouseNameInput] = useState("");
   const [showChildrenDialog, setShowChildrenDialog] = useState(false);
-  const [childrenEdit, setChildrenEdit] = useState<{ name: string; age: number }[]>([]);
+  const [childrenEdit, setChildrenEdit] = useState<{ name: string; age: number; relationship?: "child" | "dependent_parent" | "other" }[]>([]);
   const [showPortalFolderDialog, setShowPortalFolderDialog] = useState(false);
   const [selectedPortalUser, setSelectedPortalUser] = useState("");
 
@@ -269,6 +271,7 @@ export default function ClientDocDetail() {
   );
 
   const caseData = data as any;
+  const isCaribbean = isCaribbeanDocumentationProgram(caseData.program);
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6 bg-white min-h-screen">
@@ -280,7 +283,7 @@ export default function ClientDocDetail() {
         <div>
           <h1 className="text-xl font-semibold text-gray-900">{data.clientName}</h1>
           <p className="text-xs text-gray-400 mt-0.5">
-            {data.clientCode} · {data.applicationType === "freelancer" ? "Freelancer" : "Business Owner"} · {data.maritalStatus === "family" ? "Family" : "Single"}
+            {data.clientCode} · {clientDocumentationProgramLabel(caseData.program)}{!isCaribbean ? ` · ${data.applicationType === "freelancer" ? "Freelancer" : "Business Owner"}` : ""} · {data.maritalStatus === "family" ? "Family" : "Single"}
           </p>
         </div>
         <div className="ml-auto flex items-center gap-3 flex-wrap justify-end">
@@ -316,8 +319,8 @@ export default function ClientDocDetail() {
             <Trash2 className="w-3.5 h-3.5" />
             حذف العميل
           </Button>
-          {/* Stage Selector */}
-          <select
+          {/* Spain Stage Selector */}
+          {!isCaribbean && <select
             value={caseData.stage ?? "preparation"}
             onChange={e => {
               const newStage = e.target.value as Stage;
@@ -342,7 +345,7 @@ export default function ClientDocDetail() {
             <option value="spain_team_received">🇪🇸 Spain Team Received</option>
             <option value="submission">📤 Submission</option>
             <option value="approved">✅ Approved</option>
-          </select>
+          </select>}
         </div>
       </div>
 
@@ -369,8 +372,8 @@ export default function ClientDocDetail() {
           <p className="text-xs text-gray-400 mb-1">Consultant</p>
           <span className="text-sm font-medium text-gray-800">{data.consultant}</span>
         </div>
-        {/* Schengen Visa */}
-        <div>
+        {/* Schengen Visa (Spain only) */}
+        {!isCaribbean && <div>
           <p className="text-xs text-gray-400 mb-1">Schengen Visa</p>
           <div className="flex items-center gap-2">
             {caseData.schengenVisaValid ? (
@@ -394,7 +397,7 @@ export default function ClientDocDetail() {
               Edit
             </button>
           </div>
-        </div>
+        </div>}
         {/* Google Drive Link */}
         <div>
           <p className="text-xs text-gray-400 mb-1">Google Drive</p>
@@ -443,15 +446,15 @@ export default function ClientDocDetail() {
             </div>
           </div>
         )}
-        {/* Children (family only) */}
-        {caseData.maritalStatus === "family" && (
+        {/* Children / dependants */}
+        {(caseData.maritalStatus === "family" || isCaribbean) && (
           <div>
-            <p className="text-xs text-gray-400 mb-1">Children</p>
+            <p className="text-xs text-gray-400 mb-1">{isCaribbean ? "Dependants" : "Children"}</p>
             <div className="flex items-center gap-2">
               {(() => {
                 const kids = (() => { try { return JSON.parse((caseData as any).childrenData ?? "[]"); } catch { return []; } })();
                 return kids.length > 0 ? (
-                  <span className="text-sm font-medium text-gray-800">{kids.length} child{kids.length !== 1 ? "ren" : ""}</span>
+                  <span className="text-sm font-medium text-gray-800">{kids.length} {isCaribbean ? `dependant${kids.length !== 1 ? "s" : ""}` : `child${kids.length !== 1 ? "ren" : ""}`}</span>
                 ) : (
                   <span className="text-sm text-gray-400 italic">None</span>
                 );
@@ -479,8 +482,13 @@ export default function ClientDocDetail() {
 
       <ClientDocumentationEmployeeAccess clientCaseId={clientId} />
 
-      <ClientDocumentationSpainMilestones clientCaseId={clientId} clientCase={caseData} />
+      {isCaribbean ? (
+        <CaribbeanClientDocumentationPanel clientCaseId={clientId} clientCase={caseData} receivedDocuments={receivedCount} totalDocuments={totalDocs} />
+      ) : (
+        <ClientDocumentationSpainMilestones clientCaseId={clientId} clientCase={caseData} />
+      )}
 
+      {!isCaribbean && <>
       {/* ── Embassy Attestation Email Date Panel ── */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -542,6 +550,7 @@ export default function ClientDocDetail() {
           </div>
         </div>
       )}
+      </>}
 
       {/* Progress bar */}
       <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
@@ -555,12 +564,14 @@ export default function ClientDocDetail() {
             style={{ width: `${progressPct}%` }}
           />
         </div>
-        <div className="grid grid-cols-3 gap-3 mt-4">
-          {[
+        <div className={`grid ${isCaribbean ? "grid-cols-1" : "grid-cols-3"} gap-3 mt-4`}>
+          {(isCaribbean ? [
+            { label: "Received", value: `${receivedCount}/${totalDocs}`, color: "text-[#1e3a5f]" },
+          ] : [
             { label: "Received", value: `${receivedCount}/${totalDocs}`, color: "text-[#1e3a5f]" },
             { label: "MOFA Done", value: `${mofaCount}/${totalDocs}`, color: "text-amber-600" },
             { label: "Embassy Done", value: `${embassyCount}/${totalDocs}`, color: "text-orange-600" },
-          ].map(s => (
+          ]).map(s => (
             <div key={s.label} className="text-center">
               <p className={`text-lg font-semibold ${s.color}`}>{s.value}</p>
               <p className="text-xs text-gray-400">{s.label}</p>
@@ -570,7 +581,7 @@ export default function ClientDocDetail() {
       </div>
 
       {/* Dates row */}
-      {(data.schengenDate || caseData.schengenAppointmentDate || data.embassyAppointmentDate || data.expectedSubmissionDate) && (
+      {!isCaribbean && (data.schengenDate || caseData.schengenAppointmentDate || data.embassyAppointmentDate || data.expectedSubmissionDate) && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
             { label: "Schengen Expiry", value: data.schengenDate, color: "border-purple-200 bg-purple-50 text-purple-800" },
@@ -590,9 +601,9 @@ export default function ClientDocDetail() {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {[
           { action: "receive" as ActionType, icon: FileCheck, label: "Receive Documents", count: notReceived.length, bg: "bg-[#1e3a5f] hover:bg-[#16304f]", visible: true },
-          { action: "schengen" as ActionType, icon: CalendarDays, label: "Schengen Expiry", count: null, bg: "bg-purple-700 hover:bg-purple-800", visible: Boolean(caseData.schengenVisaValid) },
-          { action: "schengenAppointment" as ActionType, icon: CalendarClock, label: "Schengen Appointment Date", count: null, bg: "bg-violet-700 hover:bg-violet-800", visible: !caseData.schengenVisaValid },
-          { action: "appointment" as ActionType, icon: CalendarClock, label: "Embassy Appointment", count: null, bg: "bg-cyan-700 hover:bg-cyan-800", visible: true },
+          { action: "schengen" as ActionType, icon: CalendarDays, label: "Schengen Expiry", count: null, bg: "bg-purple-700 hover:bg-purple-800", visible: !isCaribbean && Boolean(caseData.schengenVisaValid) },
+          { action: "schengenAppointment" as ActionType, icon: CalendarClock, label: "Schengen Appointment Date", count: null, bg: "bg-violet-700 hover:bg-violet-800", visible: !isCaribbean && !caseData.schengenVisaValid },
+          { action: "appointment" as ActionType, icon: CalendarClock, label: "Embassy Appointment", count: null, bg: "bg-cyan-700 hover:bg-cyan-800", visible: !isCaribbean },
         ].filter(btn => btn.visible).map(btn => (
           <button
             key={btn.action}
@@ -1272,29 +1283,32 @@ export default function ClientDocDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Children Edit Dialog */}
+      {/* Children / Dependants Edit Dialog */}
       <Dialog open={showChildrenDialog} onOpenChange={setShowChildrenDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-gray-900">Edit Children</DialogTitle>
+            <DialogTitle className="text-gray-900">Edit {isCaribbean ? "Dependants" : "Children"}</DialogTitle>
           </DialogHeader>
           <div className="py-3 space-y-4">
             <div className="flex items-center gap-2">
-              <Label className="text-gray-700 text-sm">Number of Children</Label>
+              <Label className="text-gray-700 text-sm">Number of {isCaribbean ? "Dependants" : "Children"}</Label>
               <div className="flex items-center gap-2 ml-auto">
                 <Button type="button" variant="outline" size="sm" className="w-8 h-8 p-0"
                   onClick={() => setChildrenEdit(e => e.slice(0, Math.max(0, e.length - 1)))}
                   disabled={childrenEdit.length <= 0}>−</Button>
                 <span className="w-8 text-center font-medium">{childrenEdit.length}</span>
                 <Button type="button" variant="outline" size="sm" className="w-8 h-8 p-0"
-                  onClick={() => setChildrenEdit(e => [...e, { name: "", age: 10 }])}>+</Button>
+                  onClick={() => setChildrenEdit(e => [...e, { name: "", age: 10, relationship: "child" }])}>+</Button>
               </div>
             </div>
             {childrenEdit.length > 0 && (
               <div className="space-y-3">
                 {childrenEdit.map((child, idx) => (
-                  <div key={idx} className="flex items-center gap-3">
-                    <span className="text-sm text-gray-600 w-14 shrink-0">Child {idx + 1}</span>
+                  <div key={idx} className="grid grid-cols-1 sm:grid-cols-[7rem_1fr_7rem_auto] items-center gap-3">
+                    {isCaribbean ? <Select value={child.relationship ?? "child"} onValueChange={value => setChildrenEdit(arr => arr.map((c, i) => i === idx ? { ...c, relationship: value as "child" | "dependent_parent" | "other" } : c))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value="child">Child</SelectItem><SelectItem value="dependent_parent">Parent</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent>
+                    </Select> : <span className="text-sm text-gray-600 w-14 shrink-0">Child {idx + 1}</span>}
                     <Input
                       placeholder="Name (optional)"
                       value={child.name}
@@ -1303,7 +1317,7 @@ export default function ClientDocDetail() {
                     />
                     <div className="flex items-center gap-1 shrink-0">
                       <Input
-                        type="number" min={0} max={50}
+                        type="number" min={0} max={120}
                         value={child.age}
                         onChange={e => setChildrenEdit(arr => arr.map((c, i) => i === idx ? { ...c, age: parseInt(e.target.value) || 0 } : c))}
                         className="border-gray-300 text-gray-900 w-16 text-center"

@@ -72,6 +72,10 @@ import {
   setClientDocumentEvidenceLink,
   updateSpainCaseStage,
 } from "./clientDocumentationSpainWorkflow";
+import { getCaribbeanQuestionnaire } from "./caribbeanQuestionnaireService";
+import { CARIBBEAN_JOURNEY_STAGES, CLIENT_DOCUMENTATION_PROGRAMS, clientDocumentationProgramLabel, isCaribbeanDocumentationProgram } from "../shared/clientDocumentationPrograms";
+import { getCaribbeanDocumentChecklist } from "../shared/caribbeanDocumentChecklist";
+import { advanceCaribbeanCaseToLegalizationWhenComplete, CARIBBEAN_TIMELINE_DATE_FIELDS, updateCaribbeanDocumentationTimeline } from "./caribbeanDocumentationWorkflow";
 
 const MOFA_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/mofa_stamp_a1afffba.png";
 const SPAIN_EMBASSY_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/spain_embassy_stamp_cf83213b.png";
@@ -1642,11 +1646,12 @@ const clientDocsRouter = router({
     .input(z.object({
       clientName: z.string().min(1),
       clientCode: z.string().min(1),
+      program: z.enum(CLIENT_DOCUMENTATION_PROGRAMS).default("spain"),
       applicationType: z.enum(["freelancer", "business_owner"]),
       maritalStatus: z.enum(["single", "family"]),
       paralegal: z.enum(["Madonna", "Monica", "Marina", "Marwa"]).optional(),
       consultant: z.enum(["Mahmoud", "Ziad", "Fouad", "Kirolos"]),
-      children: z.array(z.object({ name: z.string().optional().default(""), age: z.number().int().min(0) })).optional().default([]),
+      children: z.array(z.object({ name: z.string().optional().default(""), age: z.number().int().min(0).max(120), relationship: z.enum(["child", "dependent_parent", "other"]).optional().default("child") })).max(20).optional().default([]),
       spouseName: z.string().optional(),
       schengenVisaValid: z.boolean().optional().default(false),
       schengenExpiryDate: z.string().optional(),
@@ -1673,8 +1678,10 @@ const clientDocsRouter = router({
       }),
     }))
     .mutation(async ({ ctx, input }) => {
-      const childrenData: ChildEntry[] = input.children.map(c => ({ name: c.name ?? "", age: c.age, ageRange: c.age < 18 ? "0-17" as const : "18-26" as const }));
-      const checklist = getDocChecklist(input.applicationType, input.maritalStatus, childrenData);
+      const childrenData: ChildEntry[] = input.children.map(c => ({ name: c.name ?? "", age: c.age, relationship: c.relationship, ageRange: c.age < 18 ? "0-17" as const : "18-26" as const }));
+      const checklist = input.program === "spain"
+        ? getDocChecklist(input.applicationType, input.maritalStatus, childrenData)
+        : getCaribbeanDocumentChecklist({ maritalStatus: input.maritalStatus, spouseName: input.spouseName, dependents: input.children });
       const documents = checklist.map(d => ({
         docKey: d.docKey,
         docName: d.docName,
@@ -1689,6 +1696,7 @@ const clientDocsRouter = router({
           clientCase: {
             clientName: input.clientName.trim(),
             clientCode: input.clientCode.trim(),
+            program: input.program,
             applicationType: input.applicationType,
             maritalStatus: input.maritalStatus,
             paralegal: input.paralegal ?? null,
@@ -1700,6 +1708,8 @@ const clientDocsRouter = router({
             spouseName: input.spouseName?.trim() || null,
             schengenVisaValid: input.schengenVisaValid ?? false,
             schengenExpiryDate: (input.schengenExpiryDate || null) as any,
+            caribbeanJourneyStage: isCaribbeanDocumentationProgram(input.program) ? "questionnaire" : null,
+            questionnaireVersion: null,
           },
           documents,
           payments: input.payments,
@@ -1718,7 +1728,7 @@ const clientDocsRouter = router({
       notifyNewClientAssigned(
         input.clientName,
         input.clientCode,
-        input.applicationType,
+        clientDocumentationProgramLabel(input.program),
         input.maritalStatus,
         input.paralegal ?? null,
         input.consultant,
@@ -1729,13 +1739,21 @@ const clientDocsRouter = router({
   updateChildren: protectedProcedure
     .input(z.object({
       id: z.number(),
-      children: z.array(z.object({ name: z.string().optional().default(""), age: z.number().int().min(0) })),
+      children: z.array(z.object({ name: z.string().optional().default(""), age: z.number().int().min(0).max(120), relationship: z.enum(["child", "dependent_parent", "other"]).optional().default("child") })).max(20),
     }))
     .mutation(async ({ input }) => {
       const c = await getClientCase(input.id);
       if (!c) throw new TRPCError({ code: "NOT_FOUND" });
-      const childrenData: ChildEntry[] = input.children.map(ch => ({ name: ch.name ?? "", age: ch.age, ageRange: ch.age < 18 ? "0-17" as const : "18-26" as const }));
-      await updateClientCase(input.id, { childrenData: childrenData as any });
+      const childrenData: ChildEntry[] = input.children.map(ch => ({ name: ch.name ?? "", age: ch.age, relationship: ch.relationship, ageRange: ch.age < 18 ? "0-17" as const : "18-26" as const }));
+      await updateClientCase(input.id, { childrenData: JSON.stringify(childrenData) });
+      if (isCaribbeanDocumentationProgram(c.program)) {
+        const desired = getCaribbeanDocumentChecklist({ maritalStatus: c.maritalStatus, spouseName: c.spouseName, dependents: input.children });
+        const existing = await getClientDocuments(input.id);
+        const existingKeys = new Set(existing.map(document => document.docKey));
+        const missing = desired.filter(document => !existingKeys.has(document.docKey));
+        if (missing.length) await createClientDocuments(missing.map(document => ({ ...document, clientCaseId: input.id })));
+        return { success: true, addedDocuments: missing.length };
+      }
       // Remove old per-child docs
       const { getDb } = await import("./db");
       const db = await getDb();
@@ -1774,6 +1792,22 @@ const clientDocsRouter = router({
       if (!c) throw new TRPCError({ code: "NOT_FOUND" });
       const docs = await getClientDocuments(input.id);
       return { ...c, documents: docs };
+    }),
+
+  questionnaire: protectedProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .query(({ input }) => getCaribbeanQuestionnaire(input.id)),
+
+  updateCaribbeanTimeline: protectedProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      stage: z.enum(CARIBBEAN_JOURNEY_STAGES),
+      dates: z.object(Object.fromEntries(CARIBBEAN_TIMELINE_DATE_FIELDS.map(field => [field, z.string().nullable().optional()])) as Record<typeof CARIBBEAN_TIMELINE_DATE_FIELDS[number], z.ZodOptional<z.ZodNullable<z.ZodString>>>).partial(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await updateCaribbeanDocumentationTimeline({ clientCaseId: input.id, stage: input.stage, dates: input.dates, actor: { staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" } });
+      await writeAuditLog(auditCtxFromTrpc(ctx), "update", "caribbean_client_timeline", input.id, `Changed stage to ${input.stage}`);
+      return result;
     }),
 
   employeeAccess: protectedProcedure
@@ -1981,6 +2015,7 @@ const clientDocsRouter = router({
           await recordClientLifecycleEvent({ clientCaseId: input.clientCaseId, eventType: "document_received", idempotencyKey: `document:${item.docId}:received:${item.receivedDate}`, actor: { type: "staff", staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" }, titleEn: "Document received by ELEVAY", titleAr: "استلمت إليفاي المستند", bodyEn: `${document.docName} was received on ${item.receivedDate}.`, bodyAr: `تم استلام مستند ${document.docName} بتاريخ ${item.receivedDate}.`, entityType: "checklist_document", entityPublicId: document.docKey });
         }
       }
+      await advanceCaribbeanCaseToLegalizationWhenComplete(input.clientCaseId, { staffUserId: ctx.user.id, name: ctx.user.name || ctx.user.email || "ELEVAY Team" });
       return { success: true };
     }),
 

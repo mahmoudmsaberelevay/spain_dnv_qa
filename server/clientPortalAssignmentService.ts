@@ -10,6 +10,7 @@ import {
   clientPortalSessions,
   clientPortalUsers,
 } from "../drizzle/schema";
+import { clientDocumentationProgramLabel } from "../shared/clientDocumentationPrograms";
 
 export type ReplaceClientPortalAssignmentsInput = {
   portalUserPublicId: string;
@@ -67,7 +68,7 @@ export async function replaceClientPortalAssignments(input: ReplaceClientPortalA
       if (current) {
         if (changePlan.restoreIds.includes(current.id)) restored.push(clientCase.id);
         await tx.update(clientPortalApplications).set({
-          label: `${clientCase.applicationType} – ${clientCase.clientName}`,
+          label: `${clientDocumentationProgramLabel(clientCase.program)} – ${clientCase.clientName}`,
           isPrimary,
           accessRevokedAt: null,
           accessRevokedBy: null,
@@ -78,7 +79,7 @@ export async function replaceClientPortalAssignments(input: ReplaceClientPortalA
           publicId: applicationPublicId,
           portalUserId: portalUser.id,
           clientCaseId: clientCase.id,
-          label: `${clientCase.applicationType} – ${clientCase.clientName}`,
+          label: `${clientDocumentationProgramLabel(clientCase.program)} – ${clientCase.clientName}`,
           isPrimary,
         });
         const [application] = await tx.select().from(clientPortalApplications).where(eq(clientPortalApplications.publicId, applicationPublicId)).limit(1);

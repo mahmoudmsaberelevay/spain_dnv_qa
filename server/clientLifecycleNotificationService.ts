@@ -14,6 +14,7 @@ import {
 import { getDb } from "./db";
 import { getTeamNotificationEmail, sendClientPortalActivityEmail } from "./emailService";
 import { embassyAppointmentBookingMessage } from "./clientNotificationAttachments";
+import { isCaribbeanDocumentationProgram } from "../shared/clientDocumentationPrograms";
 
 export type LifecycleActor = {
   type: "staff" | "client" | "system";
@@ -258,7 +259,7 @@ export async function runClientLifecycleReminders(now = new Date(), dependencies
   const docs = await db.select().from(clientDocuments).orderBy(asc(clientDocuments.id));
   const payments = await db.select().from(clientDocumentationPayments).where(isNull(clientDocumentationPayments.archivedAt)).orderBy(asc(clientDocumentationPayments.sortOrder), asc(clientDocumentationPayments.id));
   const docsByCase = new Map<number, Array<typeof clientDocuments.$inferSelect>>();
-  const paymentsByCase = new Map<number, Array<typeof clientDocumentationPayments.$inferSelect>>();
+    const paymentsByCase = new Map<number, Array<typeof clientDocumentationPayments.$inferSelect>>();
   const claimAndSend = dependencies.claimAndSend ?? claimAndSendReminder;
   docs.forEach(doc => docsByCase.set(doc.clientCaseId, [...(docsByCase.get(doc.clientCaseId) ?? []), doc]));
   payments.forEach(payment => paymentsByCase.set(payment.clientCaseId, [...(paymentsByCase.get(payment.clientCaseId) ?? []), payment]));
@@ -268,6 +269,7 @@ export async function runClientLifecycleReminders(now = new Date(), dependencies
   for (const row of unique) {
     const c = row.clientCase;
     const timeZone = c.applicationTimezone || "Africa/Cairo";
+    const isCaribbean = isCaribbeanDocumentationProgram(c.program);
     const today = dateKeyInTimezone(now, timeZone);
     const caseDocs = docsByCase.get(c.id) ?? [];
     const casePayments = paymentsByCase.get(c.id) ?? [];
@@ -281,36 +283,36 @@ export async function runClientLifecycleReminders(now = new Date(), dependencies
     const travel = dateKey(c.travelDate);
     const biometrics = dateKey(c.biometricsAppointmentDate);
 
-    if (signed && calendarDaysBetween(signed, today) >= 2 && !c.appointmentBookingSubmittedAt && !appointment) {
+    if (!isCaribbean && signed && calendarDaysBetween(signed, today) >= 2 && !c.appointmentBookingSubmittedAt && !appointment) {
       reminders.push({ ruleKey: "appointment_booking_d2", idempotencyKey: `case:${c.id}:appointment-booking:${signed}:d2`, eventType: "appointment_booking_reminder", ...embassyAppointmentBookingMessage(c.clientName) });
     }
-    if (embassyEmail && !appointment && !c.embassyReplyConfirmedAt) {
+    if (!isCaribbean && embassyEmail && !appointment && !c.embassyReplyConfirmedAt) {
       const elapsed = calendarDaysBetween(embassyEmail, today);
       const cycle = Math.floor(elapsed / 3);
       if (cycle >= 1) reminders.push({ ruleKey: "embassy_inbox_cycle", idempotencyKey: `case:${c.id}:embassy-inbox:${embassyEmail}:c${cycle}`, eventType: "embassy_inbox_reminder", titleEn: "Check your Embassy email", titleAr: "تحقق من بريد السفارة", bodyEn: "Please check your email inbox and junk folder for an Embassy reply. This reminder stops when the appointment is confirmed.", bodyAr: "يرجى التحقق من صندوق الوارد والبريد غير المرغوب فيه بحثاً عن رد السفارة. سيتوقف التذكير عند تأكيد الموعد." });
     }
-    if (c.schengenVisaValid === false && embassyEmail && !schengenAppointment && calendarDaysBetween(embassyEmail, today) >= 2) {
+    if (!isCaribbean && c.schengenVisaValid === false && embassyEmail && !schengenAppointment && calendarDaysBetween(embassyEmail, today) >= 2) {
       reminders.push({ ruleKey: "schengen_appointment_booking_d2", idempotencyKey: `case:${c.id}:schengen-appointment-booking:${embassyEmail}:d2`, eventType: "schengen_appointment_booking_reminder", titleEn: "Book your Schengen visa appointment", titleAr: "احجز موعد تأشيرة شنغن", bodyEn: "You do not have a valid Schengen visa. Please book a Schengen visa appointment and share the appointment date with ELEVAY through your application.", bodyAr: "ليس لديك تأشيرة شنغن سارية. يرجى حجز موعد لتأشيرة شنغن ومشاركة تاريخ الموعد مع إليفاي من خلال طلبك." });
     }
-    if (appointment) {
+    if (!isCaribbean && appointment) {
       const remaining = calendarDaysBetween(today, appointment);
       const appointmentTrigger = remaining >= 0 && remaining <= 1 ? 1 : remaining > 1 && remaining <= 3 ? 3 : null;
       if (appointmentTrigger) reminders.push({ ruleKey: `embassy_appointment_d${appointmentTrigger}`, idempotencyKey: `case:${c.id}:embassy-appointment:${appointment}:d${appointmentTrigger}`, eventType: "embassy_appointment_reminder", titleEn: "Embassy appointment reminder", titleAr: "تذكير بموعد السفارة", bodyEn: `Your Embassy appointment is on ${formatDate(appointment)} (${appointmentTrigger === 1 ? "tomorrow" : "in 3 days"}).`, bodyAr: `موعدك في السفارة يوم ${formatDateAr(appointment)} (${appointmentTrigger === 1 ? "غداً" : "بعد 3 أيام"}).` });
     }
     const schengenExpiry = dateKey(c.schengenExpiryDate);
-    if (c.schengenVisaValid && schengenExpiry) {
+    if (!isCaribbean && c.schengenVisaValid && schengenExpiry) {
       const remaining = calendarDaysBetween(today, schengenExpiry);
       const schengenTrigger = remaining >= 0 && remaining <= 20 ? 20 : remaining > 20 && remaining <= 30 ? 30 : null;
       if (schengenTrigger) reminders.push({ ruleKey: `schengen_expiry_d${schengenTrigger}`, idempotencyKey: `case:${c.id}:schengen:${schengenExpiry}:d${schengenTrigger}`, eventType: "schengen_expiry_reminder", titleEn: schengenTrigger === 20 ? "Urgent: Schengen visa expires in 20 days" : "Schengen visa expires in 30 days", titleAr: schengenTrigger === 20 ? "عاجل: تأشيرة شنغن تنتهي خلال 20 يوماً" : "تأشيرة شنغن تنتهي خلال 30 يوماً", bodyEn: `Your Schengen visa expires on ${formatDate(schengenExpiry)}. Please review your travel plan with ELEVAY.`, bodyAr: `تنتهي تأشيرة شنغن الخاصة بك في ${formatDateAr(schengenExpiry)}. يرجى مراجعة خطة السفر مع إليفاي.` });
     }
-    if (embassyEmail && !c.embassyReplyConfirmedAt && calendarDaysBetween(embassyEmail, today) >= 15) {
+    if (!isCaribbean && embassyEmail && !c.embassyReplyConfirmedAt && calendarDaysBetween(embassyEmail, today) >= 15) {
       reminders.push({ ruleKey: "embassy_attestation_followup_d15", notifyStaff: true, idempotencyKey: `case:${c.id}:embassy-followup:${embassyEmail}:d15`, eventType: "embassy_attestation_followup", titleEn: "Embassy attestation follow-up", titleAr: "متابعة تصديق السفارة", bodyEn: "No Embassy attestation reply has been confirmed after 15 days. Please contact your ELEVAY consultant for the latest update.", bodyAr: "لم يتم تأكيد رد السفارة بشأن التصديق بعد 15 يوماً. يرجى التواصل مع مستشار إليفاي لمعرفة آخر المستجدات." });
     }
     if (submission) {
       const remaining = calendarDaysBetween(today, submission);
       const second = paymentByMilestone(casePayments, "submission", 2);
       if (second && !second.paidDate && remaining >= 0 && remaining <= 12) reminders.push({ ruleKey: "submission_payment_d12", notifyStaff: false, idempotencyKey: `case:${c.id}:submission-payment:${submission}:d12`, eventType: "payment_reminder", titleEn: "Submission payment reminder", titleAr: "تذكير بدفعة التقديم", bodyEn: `Your Second payment of ${second.amountEur} EUR is linked to Submission. Your recorded submission date is ${formatDate(submission)}, within ${remaining} days.`, bodyAr: `الدفعة الثانية بقيمة ${second.amountEur} يورو مرتبطة بمرحلة التقديم. تاريخ التقديم المسجل هو ${formatDateAr(submission)}، خلال ${remaining} يوماً.` });
-      if (remaining >= 0 && remaining <= 3 && !c.ticketLink) reminders.push({ ruleKey: "flight_ticket_d3", idempotencyKey: `case:${c.id}:flight-ticket:${submission}:d3`, eventType: "flight_ticket_reminder", titleEn: "Flight ticket reminder", titleAr: "تذكير بتذكرة الطيران", bodyEn: "Your application submission is in 3 days. Please upload or share your Spain flight ticket securely through your application.", bodyAr: "موعد تقديم طلبك بعد 3 أيام. يرجى رفع أو مشاركة تذكرة السفر إلى إسبانيا بأمان من خلال طلبك." });
+      if (!isCaribbean && remaining >= 0 && remaining <= 3 && !c.ticketLink) reminders.push({ ruleKey: "flight_ticket_d3", idempotencyKey: `case:${c.id}:flight-ticket:${submission}:d3`, eventType: "flight_ticket_reminder", titleEn: "Flight ticket reminder", titleAr: "تذكير بتذكرة الطيران", bodyEn: "Your application submission is in 3 days. Please upload or share your Spain flight ticket securely through your application.", bodyAr: "موعد تقديم طلبك بعد 3 أيام. يرجى رفع أو مشاركة تذكرة السفر إلى إسبانيا بأمان من خلال طلبك." });
     }
     if (signed) {
       const missing = caseDocs.filter(doc => !doc.received).map(doc => doc.docName).sort();
@@ -323,12 +325,12 @@ export async function runClientLifecycleReminders(now = new Date(), dependencies
       const elapsed = calendarDaysBetween(approval, today);
       const third = paymentByMilestone(casePayments, "approval", 3);
       if (elapsed >= 1 && third && !third.paidDate) reminders.push({ ruleKey: "approval_payment_d1", notifyStaff: false, idempotencyKey: `case:${c.id}:approval-payment:${approval}:d1`, eventType: "payment_reminder", titleEn: "Approval payment reminder", titleAr: "تذكير بدفعة الموافقة", bodyEn: `Your Third payment of ${third.amountEur} EUR is linked to Approval and is now due after your application was approved.`, bodyAr: `الدفعة الثالثة بقيمة ${third.amountEur} يورو مرتبطة بمرحلة الموافقة، وقد أصبحت مستحقة بعد الموافقة على طلبك.` });
-      if (elapsed >= 3) {
+      if (!isCaribbean && elapsed >= 3) {
         const travelBy = dateKey(c.travelByDate) ?? addDays(approval, 30);
         reminders.push({ ruleKey: "travel_deadline_d3", notifyStaff: true, idempotencyKey: `case:${c.id}:travel-deadline:${approval}:d3`, eventType: "travel_deadline_reminder", titleEn: "Travel deadline after approval", titleAr: "موعد السفر بعد الموافقة", bodyEn: `Please plan to travel to Spain by ${formatDate(travelBy)} to complete biometrics and the remaining legal process.`, bodyAr: `يرجى التخطيط للسفر إلى إسبانيا بحلول ${formatDateAr(travelBy)} لاستكمال البصمات والإجراءات القانونية المتبقية.` });
       }
     }
-    if (biometrics && c.biometricsStatus === "confirmed" && calendarDaysBetween(today, biometrics) >= 0 && calendarDaysBetween(today, biometrics) <= 2) reminders.push({ ruleKey: "biometrics_48h", idempotencyKey: `case:${c.id}:biometrics:${biometrics}:${c.biometricsAppointmentTime || "0900"}:48h`, eventType: "biometrics_reminder", titleEn: "Biometrics appointment reminder", titleAr: "تذكير بموعد البصمات", bodyEn: `Reminder: your biometrics appointment is in 48 hours on ${formatDate(biometrics)}${c.biometricsAppointmentTime ? ` at ${c.biometricsAppointmentTime}` : ""}${c.biometricsLocation ? ` at ${c.biometricsLocation}` : ""}.`, bodyAr: `تذكير: موعد البصمات بعد 48 ساعة يوم ${formatDateAr(biometrics)}${c.biometricsAppointmentTime ? ` الساعة ${c.biometricsAppointmentTime}` : ""}${c.biometricsLocation ? ` في ${c.biometricsLocation}` : ""}.` });
+    if (!isCaribbean && biometrics && c.biometricsStatus === "confirmed" && calendarDaysBetween(today, biometrics) >= 0 && calendarDaysBetween(today, biometrics) <= 2) reminders.push({ ruleKey: "biometrics_48h", idempotencyKey: `case:${c.id}:biometrics:${biometrics}:${c.biometricsAppointmentTime || "0900"}:48h`, eventType: "biometrics_reminder", titleEn: "Biometrics appointment reminder", titleAr: "تذكير بموعد البصمات", bodyEn: `Reminder: your biometrics appointment is in 48 hours on ${formatDate(biometrics)}${c.biometricsAppointmentTime ? ` at ${c.biometricsAppointmentTime}` : ""}${c.biometricsLocation ? ` at ${c.biometricsLocation}` : ""}.`, bodyAr: `تذكير: موعد البصمات بعد 48 ساعة يوم ${formatDateAr(biometrics)}${c.biometricsAppointmentTime ? ` الساعة ${c.biometricsAppointmentTime}` : ""}${c.biometricsLocation ? ` في ${c.biometricsLocation}` : ""}.` });
 
     evaluated += reminders.length;
     for (const template of reminders) {

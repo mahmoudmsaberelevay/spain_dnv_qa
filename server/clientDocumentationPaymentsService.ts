@@ -8,6 +8,7 @@ import {
   type InsertClientDocument,
 } from "../drizzle/schema";
 import { getDb } from "./db";
+import { isCaribbeanDocumentationProgram } from "../shared/clientDocumentationPrograms";
 
 export type ClientDocumentationPaymentInput = {
   paymentName: string;
@@ -29,6 +30,13 @@ function normalizeName(value: string) {
 function dateKey(value: string | Date) {
   if (typeof value === "string") return value.slice(0, 10);
   return value.toISOString().slice(0, 10);
+}
+
+function shiftDateKey(value: string | Date, days: number) {
+  const source = dateKey(value);
+  const date = new Date(`${source}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function milestoneLabel(value: string | null | undefined) {
@@ -155,7 +163,7 @@ export async function getClientDocumentationPaymentSchedule(clientCaseId: number
     db.select().from(clientDocumentationPayments)
       .where(and(eq(clientDocumentationPayments.clientCaseId, clientCaseId), isNull(clientDocumentationPayments.archivedAt)))
       .orderBy(asc(clientDocumentationPayments.sortOrder), asc(clientDocumentationPayments.dueDate), asc(clientDocumentationPayments.id)),
-    db.select({ expectedSubmissionDate: clientCases.expectedSubmissionDate, submissionDate: clientCases.submissionDate, approvalDate: clientCases.approvalDate }).from(clientCases).where(eq(clientCases.id, clientCaseId)).limit(1),
+    db.select({ program: clientCases.program, expectedSubmissionDate: clientCases.expectedSubmissionDate, submissionDate: clientCases.submissionDate, approvalDate: clientCases.approvalDate }).from(clientCases).where(eq(clientCases.id, clientCaseId)).limit(1),
   ]);
   const hydrated = payments.map(payment => {
     const milestoneDate = payment.paymentMilestone === "submission"
@@ -163,7 +171,14 @@ export async function getClientDocumentationPaymentSchedule(clientCaseId: number
       : payment.paymentMilestone === "approval"
         ? clientCase?.approvalDate ?? null
         : null;
-    return { ...payment, dueDate: payment.dueDate ?? (milestoneDate ? dateKey(milestoneDate) : null) };
+    const calculatedMilestoneDate = milestoneDate
+      ? isCaribbeanDocumentationProgram(clientCase?.program) && payment.paymentMilestone === "submission"
+        ? shiftDateKey(milestoneDate, -12)
+        : isCaribbeanDocumentationProgram(clientCase?.program) && payment.paymentMilestone === "approval"
+          ? shiftDateKey(milestoneDate, 1)
+          : dateKey(milestoneDate)
+      : null;
+    return { ...payment, dueDate: payment.dueDate ?? calculatedMilestoneDate };
   });
   return calculateClientDocumentationPaymentSummary(hydrated, now);
 }

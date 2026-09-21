@@ -1654,3 +1654,22 @@ Check email for download link within 5 minutes
 - [x] Preserve every existing Lead, ordinary note, task, activity, attribution, and contact record
 - [x] Verify the protected API, indexed filters, desktop form, All Leads result, and phone-width layout without adding test data
 - [x] Complete 35 focused regressions, changed-file diagnostics, production build, documentation, and checkpoint
+
+## Client Documentation — Caribbean Programs, Questionnaire, Checklist, and Timeline
+- [x] Add Spain, Grenada, Dominica, St. Kitts, St. Lucia, and Antigua to Client Documentation creation
+- [x] Preserve all 26 existing cases as Spain and keep the existing Spain workflow unchanged
+- [x] Extract and model the complete attached 17-page citizenship questionnaire
+- [x] Build a secure public Client Portal questionnaire with one question at a time, draft resume, final review, and immutable submission
+- [x] Present repeatable questionnaire tables one row at a time with Previous, Next, Add Row, and Remove Row controls
+- [x] Store submitted answers in the authoritative Client Documentation case and expose organized staff review
+- [x] Collect each Caribbean dependant's relationship, name, and exact age during case creation
+- [x] Generate the attached 27-item master checklist plus spouse and age/relationship-dependent documents
+- [x] Add the requested 13-step Caribbean citizenship timeline to CRM and client interfaces
+- [x] Auto-start Document Collection after questionnaire submission and Legalization after all checklist documents are received
+- [x] Auto-advance to In Process when the planned submission date is saved
+- [x] Calculate Submission Payment 12 days before submission and Approval Payment the day after approval
+- [x] Give consultants and paralegals stage and milestone-date controls with chronology validation
+- [x] Keep Spain-only Schengen, MOFA, Embassy, travel, biometrics, and residency reminders out of Caribbean cases
+- [x] Apply additive TiDB-safe migration 0085 without creating test cases or modifying existing client records
+- [x] Verify desktop and phone interfaces, 41 focused regressions, changed-file diagnostics, production build, and release documentation
+- [x] Save final restorable WebDev checkpoint

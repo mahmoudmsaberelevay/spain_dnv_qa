@@ -211,6 +211,7 @@ export const clientCases = mysqlTable("clientCases", {
   finClientId: int("finClientId"),
   clientName: varchar("clientName", { length: 255 }).notNull(),
   clientCode: varchar("clientCode", { length: 64 }).notNull(),
+  program: mysqlEnum("program", ["spain", "grenada", "dominica", "st_kitts", "st_lucia", "antigua"]).default("spain").notNull(),
   applicationType: mysqlEnum("applicationType", ["freelancer", "business_owner"]).notNull(),
   maritalStatus: mysqlEnum("maritalStatus", ["single", "family"]).notNull(),
   paralegal: mysqlEnum("paralegal", ["Madonna", "Monica", "Marina", "Marwa"]),
@@ -284,6 +285,16 @@ export const clientCases = mysqlTable("clientCases", {
   hotelLink: text("hotelLink"),
   arrivalConfirmedDate: date("arrivalConfirmedDate", { mode: "string" }),
   residencyCardReadyDate: date("residencyCardReadyDate", { mode: "string" }),
+  // Caribbean citizenship journeys begin with the client-owned questionnaire.
+  // The later Collecting Data checklist is intentionally deferred until supplied.
+  caribbeanJourneyStage: mysqlEnum("caribbeanJourneyStage", ["questionnaire", "document_collection", "legalization", "in_process", "submitted", "approved", "naturalization_issuing", "naturalization_issued", "passports_issuing", "passports_issued"]),
+  questionnaireSubmittedAt: timestamp("questionnaireSubmittedAt"),
+  questionnaireVersion: varchar("questionnaireVersion", { length: 64 }),
+  caribbeanLegalizationStartedAt: timestamp("caribbeanLegalizationStartedAt"),
+  naturalizationIssuingDate: date("naturalizationIssuingDate", { mode: "string" }),
+  naturalizationIssuedDate: date("naturalizationIssuedDate", { mode: "string" }),
+  passportsIssuingDate: date("passportsIssuingDate", { mode: "string" }),
+  passportsIssuedDate: date("passportsIssuedDate", { mode: "string" }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -1479,6 +1490,28 @@ export const clientPortalApplications = mysqlTable("client_portal_applications",
 }));
 export type ClientPortalApplication = typeof clientPortalApplications.$inferSelect;
 export type InsertClientPortalApplication = typeof clientPortalApplications.$inferInsert;
+
+export const clientApplicationQuestionnaires = mysqlTable("client_application_questionnaires", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  clientCaseId: int("clientCaseId").notNull(),
+  questionnaireVersion: varchar("questionnaireVersion", { length: 64 }).notNull(),
+  status: mysqlEnum("status", ["draft", "submitted"]).default("draft").notNull(),
+  answers: json("answers").notNull(),
+  currentStepKey: varchar("currentStepKey", { length: 191 }),
+  startedByPortalUserId: int("startedByPortalUserId"),
+  submittedByPortalUserId: int("submittedByPortalUserId"),
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  lastSavedAt: timestamp("lastSavedAt").defaultNow().notNull(),
+  submittedAt: timestamp("submittedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  uniqueClientCase: uniqueIndex("client_application_questionnaires_case_unique").on(table.clientCaseId),
+  statusIndex: index("client_application_questionnaires_status_idx").on(table.status, table.updatedAt),
+}));
+export type ClientApplicationQuestionnaire = typeof clientApplicationQuestionnaires.$inferSelect;
+export type InsertClientApplicationQuestionnaire = typeof clientApplicationQuestionnaires.$inferInsert;
 
 export const clientPortalApplicants = mysqlTable("client_portal_applicants", {
   id: int("id").autoincrement().primaryKey(),

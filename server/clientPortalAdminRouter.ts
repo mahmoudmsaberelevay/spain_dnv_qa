@@ -12,6 +12,7 @@ import { recordClientLifecycleEvent } from "./clientLifecycleNotificationService
 import { runPublicContentSync } from "./publicContentService";
 import { replaceClientPortalAssignments } from "./clientPortalAssignmentService";
 import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPolicy";
+import { clientDocumentationProgramLabel } from "../shared/clientDocumentationPrograms";
 import { decodeProviderCoverUpload, MAX_PROVIDER_COVER_BYTES, providerCoverStorageKey } from "./clientPortalProviderMedia";
 import { listStaffMessages, sendStaffMessage } from "./clientChatService";
 import {
@@ -101,7 +102,7 @@ export const clientPortalAdminRouter = router({
   listClientCases: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-    return db.select({ id: clientCases.id, clientCode: clientCases.clientCode, clientName: clientCases.clientName, applicationType: clientCases.applicationType, consultant: clientCases.consultant, paralegal: clientCases.paralegal, stage: clientCases.stage }).from(clientCases).orderBy(asc(clientCases.clientName)).limit(1000);
+    return db.select({ id: clientCases.id, clientCode: clientCases.clientCode, clientName: clientCases.clientName, program: clientCases.program, applicationType: clientCases.applicationType, consultant: clientCases.consultant, paralegal: clientCases.paralegal, stage: clientCases.stage, caribbeanJourneyStage: clientCases.caribbeanJourneyStage }).from(clientCases).orderBy(asc(clientCases.clientName)).limit(1000);
   }),
 
   listAccounts: adminProcedure.query(async () => {
@@ -153,7 +154,7 @@ export const clientPortalAdminRouter = router({
         if (!createdUser) throw new Error("CLIENT_PORTAL_ACCOUNT_INSERT_FAILED");
         for (const clientCase of cases) {
           const applicationPublicId = randomUUID();
-          await tx.insert(clientPortalApplications).values({ publicId: applicationPublicId, portalUserId: createdUser.id, clientCaseId: clientCase.id, label: `${clientCase.applicationType} – ${clientCase.clientName}`, isPrimary: clientCase.id === input.primaryCaseId });
+          await tx.insert(clientPortalApplications).values({ publicId: applicationPublicId, portalUserId: createdUser.id, clientCaseId: clientCase.id, label: `${clientDocumentationProgramLabel(clientCase.program)} – ${clientCase.clientName}`, isPrimary: clientCase.id === input.primaryCaseId });
           const [application] = await tx.select().from(clientPortalApplications).where(eq(clientPortalApplications.publicId, applicationPublicId)).limit(1);
           if (!application) throw new Error("CLIENT_PORTAL_ASSIGNMENT_INSERT_FAILED");
           await tx.insert(clientPortalApplicants).values({ publicId: randomUUID(), portalApplicationId: application.id, relation: "main", fullName: clientCase.clientName });
@@ -215,7 +216,7 @@ export const clientPortalAdminRouter = router({
     }
     if (input.makePrimary) await db.update(clientPortalApplications).set({ isPrimary: false }).where(eq(clientPortalApplications.portalUserId, portalUser.id));
     const publicId = randomUUID();
-    await db.insert(clientPortalApplications).values({ publicId, portalUserId: portalUser.id, clientCaseId: clientCase.id, label: `${clientCase.applicationType} – ${clientCase.clientName}`, isPrimary: input.makePrimary });
+    await db.insert(clientPortalApplications).values({ publicId, portalUserId: portalUser.id, clientCaseId: clientCase.id, label: `${clientDocumentationProgramLabel(clientCase.program)} – ${clientCase.clientName}`, isPrimary: input.makePrimary });
     if (input.makePrimary) {
       await db.update(clientPortalUsers).set({ primaryClientCaseId: clientCase.id, consultant: clientCase.consultant, paralegal: clientCase.paralegal }).where(eq(clientPortalUsers.id, portalUser.id));
       await db.update(clientPortalSessions).set({ revokedAt: new Date() }).where(and(eq(clientPortalSessions.portalUserId, portalUser.id), isNull(clientPortalSessions.revokedAt)));

@@ -10,9 +10,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Plus, FolderOpen, User, ChevronRight, FileText, Briefcase, Users, Search, Link2, CreditCard, Trash2, MessageCircle, BellOff } from "lucide-react";
+import { Plus, FolderOpen, User, ChevronRight, FileText, Briefcase, Users, Search, Link2, CreditCard, MessageCircle, BellOff, Globe2 } from "lucide-react";
+import { CLIENT_DOCUMENTATION_PROGRAMS, CLIENT_DOCUMENTATION_PROGRAM_LABELS, clientDocumentationProgramLabel, isCaribbeanDocumentationProgram, type ClientDocumentationProgram } from "@shared/clientDocumentationPrograms";
 
-type ChildEntry = { name: string; age: number };
+type ChildEntry = { name: string; age: number; relationship: "child" | "dependent_parent" | "other" };
 type PaymentDraft = { paymentName: "First payment" | "Second payment" | "Third payment"; amountEur: string; paymentMilestone: "signed" | "submission" | "approval" };
 
 const createBlankPayments = (): PaymentDraft[] => [
@@ -24,6 +25,7 @@ const createBlankPayments = (): PaymentDraft[] => [
 type FormState = {
   clientName: string;
   clientCode: string;
+  program: ClientDocumentationProgram;
   applicationType: "freelancer" | "business_owner" | "";
   maritalStatus: "single" | "family" | "";
   consultant: "Mahmoud" | "Ziad" | "Fouad" | "Kirolos" | "";
@@ -39,6 +41,7 @@ type FormState = {
 const createEmptyForm = (): FormState => ({
   clientName: "",
   clientCode: "",
+  program: "spain",
   applicationType: "",
   maritalStatus: "",
   consultant: "",
@@ -127,8 +130,8 @@ export default function ClientDocs() {
     setForm(f => ({
       ...f,
       maritalStatus: v as any,
-      numberOfKids: v === "single" ? 0 : f.numberOfKids,
-      children: v === "single" ? [] : f.children,
+      numberOfKids: v === "single" && f.program === "spain" ? 0 : f.numberOfKids,
+      children: v === "single" && f.program === "spain" ? [] : f.children,
     }));
   };
 
@@ -137,7 +140,7 @@ export default function ClientDocs() {
     const clamped = Math.max(0, Math.min(20, count));
     setForm(f => {
       const existing = f.children.slice(0, clamped);
-      const extra: ChildEntry[] = Array.from({ length: Math.max(0, clamped - existing.length) }, () => ({ name: "", age: 10 }));
+      const extra: ChildEntry[] = Array.from({ length: Math.max(0, clamped - existing.length) }, () => ({ name: "", age: 10, relationship: "child" }));
       return { ...f, numberOfKids: clamped, children: [...existing, ...extra] };
     });
   };
@@ -160,15 +163,15 @@ export default function ClientDocs() {
   const contractValueEur = form.payments.reduce((total, payment) => total + (Number(payment.amountEur) || 0), 0);
 
   const handleCreate = () => {
-    if (!form.clientName || !form.clientCode || !form.applicationType || !form.maritalStatus || !form.consultant) {
+    if (!form.clientName || !form.clientCode || (form.program === "spain" && !form.applicationType) || !form.maritalStatus || !form.consultant) {
       toast.error("Please fill in all required fields");
       return;
     }
-    if (form.schengenVisaValid === null) {
+    if (form.program === "spain" && form.schengenVisaValid === null) {
       toast.error("Please indicate whether the client has a valid Schengen visa");
       return;
     }
-    if (form.schengenVisaValid && !form.schengenExpiryDate) {
+    if (form.program === "spain" && form.schengenVisaValid && !form.schengenExpiryDate) {
       toast.error("Please enter the Schengen visa expiry date");
       return;
     }
@@ -191,13 +194,14 @@ export default function ClientDocs() {
     createMutation.mutate({
       clientName: form.clientName,
       clientCode: form.clientCode,
-      applicationType: form.applicationType as "freelancer" | "business_owner",
+      program: form.program,
+      applicationType: form.program === "spain" ? form.applicationType as "freelancer" | "business_owner" : "business_owner",
       maritalStatus: form.maritalStatus as "single" | "family",
       consultant: form.consultant as "Mahmoud" | "Ziad" | "Fouad" | "Kirolos",
       spouseName: form.spouseName || undefined,
-      children: form.maritalStatus === "family" ? form.children : [],
-      schengenVisaValid: form.schengenVisaValid ?? false,
-      schengenExpiryDate: form.schengenVisaValid ? form.schengenExpiryDate : undefined,
+      children: form.maritalStatus === "family" || isCaribbeanDocumentationProgram(form.program) ? form.children : [],
+      schengenVisaValid: form.program === "spain" ? form.schengenVisaValid ?? false : false,
+      schengenExpiryDate: form.program === "spain" && form.schengenVisaValid ? form.schengenExpiryDate : undefined,
       finClientId: selectedClientId,
       contractDriveLink: form.contractDriveLink.trim(),
       payments: form.payments.map(payment => ({
@@ -208,11 +212,13 @@ export default function ClientDocs() {
     });
   };
 
-  const getTypeLabel = (type: string) =>
-    type === "freelancer" ? "Freelancer" : type === "business_owner" ? "Business Owner" : type;
+  const getTypeLabel = (program: string, type: string) =>
+    program === "spain" ? (type === "freelancer" ? "Spain · Freelancer" : "Spain · Business Owner") : clientDocumentationProgramLabel(program);
 
-  const getTypeBadge = (type: string) =>
-    type === "freelancer"
+  const getTypeBadge = (program: string, type: string) =>
+    program !== "spain"
+      ? "bg-cyan-50 text-cyan-800 border-cyan-200"
+      : type === "freelancer"
       ? "bg-blue-100 text-blue-800 border-blue-200"
       : "bg-amber-100 text-amber-800 border-amber-200";
 
@@ -297,9 +303,33 @@ export default function ClientDocs() {
                 )}
               </div>
 
+              <div className="space-y-1.5">
+                <Label className="text-gray-700 text-sm font-medium">Program</Label>
+                <Select
+                  value={form.program}
+                  onValueChange={value => setForm(current => ({
+                    ...current,
+                    program: value as ClientDocumentationProgram,
+                    applicationType: value === "spain" ? current.applicationType : "business_owner",
+                    schengenVisaValid: value === "spain" ? current.schengenVisaValid : false,
+                    schengenExpiryDate: value === "spain" ? current.schengenExpiryDate : "",
+                  }))}
+                >
+                  <SelectTrigger className="border-gray-300 text-gray-900 bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-white border-gray-200">
+                    {CLIENT_DOCUMENTATION_PROGRAMS.map(program => (
+                      <SelectItem key={program} value={program} className="text-gray-900">{CLIENT_DOCUMENTATION_PROGRAM_LABELS[program]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {isCaribbeanDocumentationProgram(form.program) && (
+                  <p className="text-xs text-cyan-700">The journey starts with the secure Questionnaire Form, then moves to Collecting Data after submission.</p>
+                )}
+              </div>
+
               {/* Application Type + Marital Status */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {form.program === "spain" && <div className="space-y-1.5">
                   <Label className="text-gray-700 text-sm font-medium">Application Type</Label>
                   <Select value={form.applicationType} onValueChange={v => setForm(f => ({ ...f, applicationType: v as any }))}>
                     <SelectTrigger className="border-gray-300 text-gray-900 bg-white">
@@ -310,7 +340,7 @@ export default function ClientDocs() {
                       <SelectItem value="business_owner" className="text-gray-900">Business Owner</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                </div>}
                 <div className="space-y-1.5">
                   <Label className="text-gray-700 text-sm font-medium">Marital Status</Label>
                   <Select value={form.maritalStatus} onValueChange={handleMaritalChange}>
@@ -325,95 +355,70 @@ export default function ClientDocs() {
                 </div>
               </div>
 
-              {/* ── Family section (only for family) ── */}
-              {form.maritalStatus === "family" && (
+              {/* ── Family/dependant section ── */}
+              {(form.maritalStatus === "family" || isCaribbeanDocumentationProgram(form.program)) && (
                 <div className="border border-[#1e3a5f]/20 rounded-lg p-4 bg-[#1e3a5f]/5 space-y-4">
                   <div className="flex items-center gap-2 mb-1">
                     <Users className="w-4 h-4 text-[#1e3a5f]" />
-                    <span className="text-sm font-medium text-[#1e3a5f]">Family Details</span>
+                    <span className="text-sm font-medium text-[#1e3a5f]">{isCaribbeanDocumentationProgram(form.program) ? "Family and Dependant Details" : "Family Details"}</span>
                   </div>
 
-                  {/* Spouse name */}
-                  <div className="space-y-1.5">
-                    <Label className="text-gray-700 text-sm">Spouse Name (Optional)</Label>
-                    <Input
-                      placeholder="Enter spouse / wife name..."
-                      value={form.spouseName}
-                      onChange={e => setForm(f => ({ ...f, spouseName: e.target.value }))}
-                      className="border-gray-300 text-gray-900 bg-white"
-                    />
-                  </div>
+                  {form.maritalStatus === "family" && (
+                    <div className="space-y-1.5">
+                      <Label className="text-gray-700 text-sm">Spouse Name (Optional)</Label>
+                      <Input
+                        placeholder="Enter spouse / wife name..."
+                        value={form.spouseName}
+                        onChange={e => setForm(f => ({ ...f, spouseName: e.target.value }))}
+                        className="border-gray-300 text-gray-900 bg-white"
+                      />
+                    </div>
+                  )}
 
-                  {/* Number of kids */}
                   <div className="space-y-1.5">
-                    <Label className="text-gray-700 text-sm">Number of Children</Label>
+                    <Label className="text-gray-700 text-sm">{isCaribbeanDocumentationProgram(form.program) ? "Number of Dependants" : "Number of Children"}</Label>
                     <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="w-8 h-8 p-0 border-gray-300 text-gray-700"
-                        onClick={() => handleKidsCountChange(form.numberOfKids - 1)}
-                        disabled={form.numberOfKids <= 0}
-                      >
-                        −
-                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="w-8 h-8 p-0 border-gray-300 text-gray-700" onClick={() => handleKidsCountChange(form.numberOfKids - 1)} disabled={form.numberOfKids <= 0}>−</Button>
                       <span className="w-8 text-center text-gray-900 font-medium">{form.numberOfKids}</span>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="w-8 h-8 p-0 border-gray-300 text-gray-700"
-                        onClick={() => handleKidsCountChange(form.numberOfKids + 1)}
-                      >
-                        +
-                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="w-8 h-8 p-0 border-gray-300 text-gray-700" onClick={() => handleKidsCountChange(form.numberOfKids + 1)}>+</Button>
                     </div>
                   </div>
 
-                  {/* Per-child name + exact age inputs */}
                   {form.children.length > 0 && (
                     <div className="space-y-3 pt-1">
-                      <p className="text-xs text-gray-500 font-medium">Enter name and exact age for each child:</p>
+                      <p className="text-xs text-gray-500 font-medium">Enter the relationship, name, and exact age for each {isCaribbeanDocumentationProgram(form.program) ? "dependant" : "child"}:</p>
                       {form.children.map((child, idx) => (
-                        <div key={idx} className="flex items-center gap-3">
-                          <span className="text-sm text-gray-600 w-14 shrink-0">Child {idx + 1}</span>
-                          <Input
-                            placeholder="Name (optional)"
-                            value={child.name}
-                            onChange={e => handleChildUpdate(idx, "name", e.target.value)}
-                            className="border-gray-300 text-gray-900 bg-white flex-1"
-                          />
+                        <div key={idx} className="grid grid-cols-1 sm:grid-cols-[7rem_1fr_7rem_auto] items-center gap-3">
+                          {isCaribbeanDocumentationProgram(form.program) ? (
+                            <Select value={child.relationship} onValueChange={value => handleChildUpdate(idx, "relationship", value)}>
+                              <SelectTrigger className="border-gray-300 text-gray-900 bg-white"><SelectValue /></SelectTrigger>
+                              <SelectContent className="bg-white border-gray-200">
+                                <SelectItem value="child">Child</SelectItem>
+                                <SelectItem value="dependent_parent">Parent</SelectItem>
+                                <SelectItem value="other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : <span className="text-sm text-gray-600 w-14 shrink-0">Child {idx + 1}</span>}
+                          <Input placeholder={isCaribbeanDocumentationProgram(form.program) ? "Dependant name" : "Name (optional)"} value={child.name} onChange={e => handleChildUpdate(idx, "name", e.target.value)} className="border-gray-300 text-gray-900 bg-white flex-1" />
                           <div className="flex items-center gap-1 shrink-0">
-                            <Input
-                              type="number"
-                              min={0}
-                              max={50}
-                              value={child.age}
-                              onChange={e => handleChildUpdate(idx, "age", parseInt(e.target.value) || 0)}
-                              className="border-gray-300 text-gray-900 bg-white w-16 text-center"
-                            />
+                            <Input type="number" min={0} max={120} value={child.age} onChange={e => handleChildUpdate(idx, "age", parseInt(e.target.value) || 0)} className="border-gray-300 text-gray-900 bg-white w-16 text-center" />
                             <span className="text-xs text-gray-500">yrs</span>
                           </div>
-                          <span className="text-xs shrink-0 px-1.5 py-0.5 rounded-full font-medium"
-                            style={{ background: child.age < 18 ? '#dbeafe' : '#ede9fe', color: child.age < 18 ? '#1d4ed8' : '#6d28d9' }}>
-                            {child.age < 18 ? "Under 18" : "18+"}
-                          </span>
+                          <span className="text-xs shrink-0 px-1.5 py-0.5 rounded-full font-medium" style={{ background: child.age < 18 ? '#dbeafe' : '#ede9fe', color: child.age < 18 ? '#1d4ed8' : '#6d28d9' }}>{child.age < 18 ? "Under 18" : "18+"}</span>
                         </div>
                       ))}
                     </div>
                   )}
 
-                  {/* Document hint */}
                   {form.children.length > 0 && (
-                    <div className="text-xs text-gray-500 pt-1 space-y-0.5 border-t border-[#1e3a5f]/10 pt-2">
+                    <div className="text-xs text-gray-500 space-y-0.5 border-t border-[#1e3a5f]/10 pt-2">
                       <p className="font-medium text-gray-600">Documents that will be added:</p>
                       {form.children.map((child, idx) => (
                         <p key={idx}>
-                          {child.name ? child.name : `Child ${idx + 1}`} ({child.age} yrs):{" "}
-                          {child.age < 18
-                            ? "Birth Certificate"
-                            : "Police Certificate + Education Enrollment + Single Record"}
+                          {child.name ? child.name : `${isCaribbeanDocumentationProgram(form.program) ? "Dependant" : "Child"} ${idx + 1}`} ({child.age} yrs):{" "}
+                          {isCaribbeanDocumentationProgram(form.program)
+                            ? child.age < 5 ? "Identity documents and photographs" : child.age < 16 ? "Identity, medical, immunisation, and education documents" : child.age < 18 ? "Child documents plus police clearances" : "Adult documents, police/medical records, address and support evidence"
+                            : child.age < 18 ? "Birth Certificate" : "Police Certificate + Education Enrollment + Single Record"}
                         </p>
                       ))}
                     </div>
@@ -485,8 +490,8 @@ export default function ClientDocs() {
                 </div>
               </div>
 
-              {/* ── Schengen Visa Section ── */}
-              <div className="border border-amber-200 rounded-lg p-4 bg-amber-50 space-y-3">
+              {/* ── Schengen Visa Section (Spain only) ── */}
+              {form.program === "spain" && <div className="border border-amber-200 rounded-lg p-4 bg-amber-50 space-y-3">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-amber-800">🛂 Schengen Visa</span>
                 </div>
@@ -531,7 +536,7 @@ export default function ClientDocs() {
                 {form.schengenVisaValid === false && (
                   <p className="text-xs text-amber-700">No Schengen visa — reminders will not be sent for visa expiry.</p>
                 )}
-              </div>
+              </div>}
 
               <Button
                 className="w-full bg-[#1e3a5f] hover:bg-[#16304f] text-white mt-2"
@@ -547,11 +552,11 @@ export default function ClientDocs() {
 
       {/* Stats bar */}
       {clients && clients.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {[
             { label: "Total Clients", value: clients.length, icon: User, color: "text-[#1e3a5f] bg-[#1e3a5f]/10" },
-            { label: "Freelancers", value: clients.filter(c => c.applicationType === "freelancer").length, icon: FileText, color: "text-blue-700 bg-blue-50" },
-            { label: "Business Owners", value: clients.filter(c => c.applicationType === "business_owner").length, icon: Briefcase, color: "text-amber-700 bg-amber-50" },
+            { label: "Spain", value: clients.filter(c => (c.program ?? "spain") === "spain").length, icon: FileText, color: "text-blue-700 bg-blue-50" },
+            { label: "Caribbean", value: clients.filter(c => isCaribbeanDocumentationProgram(c.program)).length, icon: Globe2, color: "text-cyan-700 bg-cyan-50" },
           ].map(stat => (
             <div key={stat.label} className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-3 shadow-sm">
               <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${stat.color}`}>
@@ -596,8 +601,8 @@ export default function ClientDocs() {
                 <div className="flex items-center gap-2">
                   {chat?.muted ? <BellOff className="h-4 w-4 text-gray-400" aria-label="Conversation muted" /> : null}
                   {chat?.unreadCount ? <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#1e7184] text-white text-[11px] font-bold inline-flex items-center justify-center" aria-label={`${chat.unreadCount} unread chat messages`}>{chat.unreadCount > 99 ? "99+" : chat.unreadCount}</span> : null}
-                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${getTypeBadge(client.applicationType)}`}>
-                    {getTypeLabel(client.applicationType)}
+                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${getTypeBadge(client.program ?? "spain", client.applicationType)}`}>
+                    {getTypeLabel(client.program ?? "spain", client.applicationType)}
                   </span>
                   <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-[#1e3a5f] transition-colors" />
                 </div>

@@ -12,6 +12,9 @@ export type DocDef = {
 
 export type ChildEntry = {
   ageRange: "0-17" | "18-26";
+  name?: string;
+  age?: number;
+  relationship?: "child" | "dependent_parent" | "other";
 };
 
 // ─── Freelancer — Main Applicant ──────────────────────────────────────────────

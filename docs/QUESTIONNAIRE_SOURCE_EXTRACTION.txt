@@ -1,0 +1,524 @@
+SOURCE: /home/ubuntu/upload/QUESTIONNAIRE.docx
+
+P1: Please complete and sign the questionnaire in its entirety. Write “N/A” when a question is not applicable.
+
+TABLE 1
+  R1: SECTION I. PERSONAL INFORMATION – MAIN APPLICANT || SECTION I. PERSONAL INFORMATION – MAIN APPLICANT || SECTION I. PERSONAL INFORMATION – MAIN APPLICANT || SECTION I. PERSONAL INFORMATION – MAIN APPLICANT || SECTION I. PERSONAL INFORMATION – MAIN APPLICANT
+  R2: A. Main Applicant Details || A. Main Applicant Details || A. Main Applicant Details || A. Main Applicant Details || A. Main Applicant Details
+  R3: A1. Surname/Family Name || A1. Surname/Family Name ||  ||  || 
+  R4: A2. First/Given Name || A2. First/Given Name ||  ||  || 
+  R5: A3. Other names /Alias || A3. Other names /Alias ||  ||  || 
+  R6: A4. Date of birth (day/month/year) || A4. Date of birth (day/month/year) ||  ||  || 
+  R7: A5. Place and Country of Birth || A5. Place and Country of Birth ||  ||  || 
+  R8: A6. Citizenship at Birth || A6. Citizenship at Birth ||  ||  || 
+  R9: A7. Present Citizenship || A7. Present Citizenship ||  ||  || 
+  R10: A8. Other Citizenship || A8. Other Citizenship ||  ||  || 
+  R11: A9. Languages you Speak and Write (also indicate level: FLUENT, BASIC, NATIVE) || A9. Languages you Speak and Write (also indicate level: FLUENT, BASIC, NATIVE) ||  ||  || 
+  R12: A10. Identity Card Number & Issuing Country || A10. Identity Card Number & Issuing Country ||  ||  || 
+  R13: A11. Social Security Number & Issuing Country || A11. Social Security Number & Issuing Country ||  ||  || 
+  R14: A12. Driving License Number & Issuing Country || A12. Driving License Number & Issuing Country ||  ||  || 
+  R15: A13. Expiry Date || A13. Expiry Date ||  ||  || 
+  R16: A14. Height || A14. Height ||  ||  || 
+  R17: A15. Weight || A15. Weight ||  ||  || 
+  R18: A16. Hair Color || A16. Hair Color ||  ||  || 
+  R19: A17. Eye Color || A17. Eye Color ||  ||  || 
+  R20: A18. Distinguishing Marks || A18. Distinguishing Marks ||  ||  || 
+  R21: B. Address and Contact Details || B. Address and Contact Details ||  ||  || 
+  R22: B1. Current Residential Address || B1. Current Residential Address ||  ||  || 
+  R23: B2. DATE since Residing in the CURRENT Address (dd/mm/yy) || B2. DATE since Residing in the CURRENT Address (dd/mm/yy) ||  ||  || 
+  R24: B3. Permanent Residential Address || B3. Permanent Residential Address ||  ||  || 
+  R25: B4. DATE since Residing in the PERMANENT Address (dd/mm/yy) || B4. DATE since Residing in the PERMANENT Address (dd/mm/yy) ||  ||  || 
+  R26: B5. Permanent Telephone Number/ Home Landline || B5. Permanent Telephone Number/ Home Landline ||  ||  || 
+  R27: B6. Mobile number || B6. Mobile number ||  ||  || 
+  R28: B7. Other Telephone Number || B7. Other Telephone Number ||  ||  || 
+  R29: B8. Fax Number || B8. Fax Number ||  ||  || 
+  R30: B9. Email Address || B9. Email Address ||  ||  || 
+  R31: C. Employment Details || C. Employment Details ||  ||  || 
+  R32: C1. Current Occupation || C1. Current Occupation ||  ||  || 
+  R33: C2. Occupation by Training || C2. Occupation by Training ||  ||  || 
+  R34: C3. Name of Company || C3. Name of Company ||  ||  || 
+  R35: C4. Company Address || C4. Company Address ||  ||  || 
+  R36: C5. Telephone Number || C5. Telephone Number ||  ||  || 
+  R37: C6. Fax Number || C6. Fax Number ||  ||  || 
+  R38: C7. Most important person/companies with whom you do business || C7. Most important person/companies with whom you do business ||  ||  || 
+  R39: D. Business Details || D. Business Details ||  ||  || 
+  R40: D1. Name of Business || D1. Name of Business ||  ||  || 
+  R41: D2. Business Address || D2. Business Address ||  ||  || 
+  R42: D3. Nature of Business || D3. Nature of Business ||  ||  || 
+  R43: D4. Telephone Number || D4. Telephone Number ||  ||  || 
+  R44: D5. Fax Number || D5. Fax Number ||  ||  || 
+  R45: D6. Most important person/companies with whom you do business || D6. Most important person/companies with whom you do business ||  ||  || 
+  R46: E. Source of Income || E. Source of Income ||  ||  || 
+  R47: E1. Main Sources of Income || E1. Main Sources of Income ||  ||  || 
+  R48: E2. Annual Net income in US Dollars (average during past 3 yrs.) More than 100,000 More than 500,000 More than 1 million || E2. Annual Net income in US Dollars (average during past 3 yrs.) More than 100,000 More than 500,000 More than 1 million ||  ||  || 
+  R49: E3. Current Total Personal Net Assets in US Dollars. More than 500,000 More than 2 million More than 10 million || E3. Current Total Personal Net Assets in US Dollars. More than 500,000 More than 2 million More than 10 million ||  ||  || 
+  R50: E4. Estimated Net Worth (asset minus liabilities in USD) || E4. Estimated Net Worth (asset minus liabilities in USD) ||  ||  || 
+  R51: E5. Main Geographical Jurisdiction in which the own business is conducted (if any) || E5. Main Geographical Jurisdiction in which the own business is conducted (if any) ||  ||  || 
+  R52: E6. Please provide a summarize statement of how you have accumulated your Total Net Worth by listing the main acquisitions/dispositions and events || E6. Please provide a summarize statement of how you have accumulated your Total Net Worth by listing the main acquisitions/dispositions and events ||  ||  || 
+  R53: E7. Fixed Assets (USD) || E7. Fixed Assets (USD) ||  ||  || 
+  R54: E8. Savings / Deposits (USD) || E8. Savings / Deposits (USD) ||  ||  || 
+  R55: E9. Investments (e.g. stocks, shares, bonds, debentures, etc.) || E9. Investments (e.g. stocks, shares, bonds, debentures, etc.) ||  ||  || 
+  R56: E10. Real Estate Holdings || E10. Real Estate Holdings ||  ||  || 
+  R57: E11. Business Assets || E11. Business Assets ||  ||  || 
+  R58: E12. Liabilities || E12. Liabilities || E12. Liabilities || E12. Liabilities || E12. Liabilities
+  R59: E13. Outstanding Long Term Loans (e.g. mortgage, car loan, personal loan, etc) || E13. Outstanding Long Term Loans (e.g. mortgage, car loan, personal loan, etc) ||  ||  || 
+  R60: E14. Outstanding Short Term (e.g. credit card bills, tax liability) || E14. Outstanding Short Term (e.g. credit card bills, tax liability) ||  ||  || 
+  R61: F. Licenses || F. Licenses || F. Licenses || F. Licenses || F. Licenses
+  R62: List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any || List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any || List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any || List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any || List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any
+  R63: F1. License Name || F2. License Number || F3. Licensing Body || F3. Licensing Body || F4. Date Held
+  R64: F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why) || F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why) || F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why) || F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why) || F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why)
+  R65: G. Spouse Details || G. Spouse Details || G. Spouse Details ||  || 
+  R66: G1. Full Name (after marriage) || G1. Full Name (after marriage) || G1. Full Name (after marriage) ||  || 
+  R67: G2. Full Name (before marriage) || G2. Full Name (before marriage) || G2. Full Name (before marriage) ||  || 
+  R68: G3. Date of Birth (dd/mm/yy) || G3. Date of Birth (dd/mm/yy) || G3. Date of Birth (dd/mm/yy) ||  || 
+  R69: G4. Place of Birth (City & Country) || G4. Place of Birth (City & Country) || G4. Place of Birth (City & Country) ||  || 
+  R70: G5. Place of Marriage || G5. Place of Marriage || G5. Place of Marriage ||  || 
+  R71: G6. Date of Marriage (dd/mm/yy) || G6. Date of Marriage (dd/mm/yy) || G6. Date of Marriage (dd/mm/yy) ||  || 
+  R72: H. Previous Spouse Details (if applicable) || H. Previous Spouse Details (if applicable) || H. Previous Spouse Details (if applicable) ||  || 
+  R73: H1. Full Name (after marriage) || H1. Full Name (after marriage) || H1. Full Name (after marriage) ||  || 
+  R74: H2. Full Name (before marriage) || H2. Full Name (before marriage) || H2. Full Name (before marriage) ||  || 
+  R75: H3. Date of Birth (dd/mm/yy) || H3. Date of Birth (dd/mm/yy) || H3. Date of Birth (dd/mm/yy) ||  || 
+  R76: H4. Place of Birth (City & Country) || H4. Place of Birth (City & Country) || H4. Place of Birth (City & Country) ||  || 
+  R77: H5. Place of Marriage || H5. Place of Marriage || H5. Place of Marriage ||  || 
+  R78: H6. Date of Marriage || H6. Date of Marriage || H6. Date of Marriage ||  || 
+  R79: H7. Date of Divorce || H7. Date of Divorce || H7. Date of Divorce ||  || 
+  R80: H8. Period of Marriage (indicate the no. of years & months of marriage) || H8. Period of Marriage (indicate the no. of years & months of marriage) || H8. Period of Marriage (indicate the no. of years & months of marriage) ||  || 
+  R81: SECTION II. MAIN APPLICANT’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”). || SECTION II. MAIN APPLICANT’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”). || SECTION II. MAIN APPLICANT’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”). || SECTION II. MAIN APPLICANT’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”). || SECTION II. MAIN APPLICANT’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”).
+  R82: II.A. MAIN APPLICANT’s Parents || II.A. MAIN APPLICANT’s Parents || II.A. MAIN APPLICANT’s Parents || II.A. MAIN APPLICANT’s Parents || II.A. MAIN APPLICANT’s Parents
+  R83: A1.1 FATHER Surname/Family Name || A1.1 FATHER Surname/Family Name ||  ||  || 
+  R84: A1.2 First/Given Name || A1.2 First/Given Name ||  ||  || 
+  R85: A1.3 Date of birth (dd/mm/yy) || A1.3 Date of birth (dd/mm/yy) ||  ||  || 
+  R86: A1.3 Place & Country of Birth || A1.3 Place & Country of Birth ||  ||  || 
+  R87: A1.4 Citizenship || A1.4 Citizenship ||  ||  || 
+  R88: A1.5 Deceased/Alive || A1.5 Deceased/Alive ||  ||  || 
+  R89: A1.6 Current Occupation || A1.6 Current Occupation ||  ||  || 
+  R90: A1.7 Home Telephone Number || A1.7 Home Telephone Number ||  ||  || 
+  R91: A1.8 Mobile Number || A1.8 Mobile Number ||  ||  || 
+  R92: A1.9 Complete Residential Address || A1.9 Complete Residential Address ||  ||  || 
+  R93: A1.10 Date since Residing at Current Address (dd/mm/yy) || A1.10 Date since Residing at Current Address (dd/mm/yy) ||  ||  || 
+  R94: A1.11 Passport Number || A1.11 Passport Number ||  ||  || 
+  R95: A1.12 Issuing Country || A1.12 Issuing Country ||  ||  || 
+  R96: A1.13 Date of Marriage || A1.13 Date of Marriage ||  ||  || 
+  R97: A1.14 Place & Country of Marriage || A1.14 Place & Country of Marriage ||  ||  || 
+  R98: A2.1 MOTHER Surname/Family Name || A2.1 MOTHER Surname/Family Name ||  ||  || 
+  R99: A2.2. First/Given Name || A2.2. First/Given Name ||  ||  || 
+  R100: A2.3 Date of birth (day/month/year) || A2.3 Date of birth (day/month/year) ||  ||  || 
+  R101: A2.4 Place & Country of Birth || A2.4 Place & Country of Birth ||  ||  || 
+  R102: A2.5 Citizenship || A2.5 Citizenship ||  ||  || 
+  R103: A2.6 Current Occupation || A2.6 Current Occupation ||  ||  || 
+  R104: A2.7 Complete Residential Address || A2.7 Complete Residential Address ||  ||  || 
+  R105: A2.8 Date since Residing at Current Address (dd/mm/yy) || A2.8 Date since Residing at Current Address (dd/mm/yy) ||  ||  || 
+  R106: A2.9 Passport Number || A2.9 Passport Number ||  ||  || 
+  R107: A2.10. Issuing Country || A2.10. Issuing Country ||  ||  || 
+  R108: II.A. MAIN APPLICANT’s Grandparents details from your father side || II.A. MAIN APPLICANT’s Grandparents details from your father side || II.A. MAIN APPLICANT’s Grandparents details from your father side || II.A. MAIN APPLICANT’s Grandparents details from your father side || II.A. MAIN APPLICANT’s Grandparents details from your father side
+  R109: A1.1 Grandfather Surname/Family Name || A1.1 Grandfather Surname/Family Name ||  ||  || 
+  R110: A1.2 First/Given Name || A1.2 First/Given Name ||  ||  || 
+  R111: A1.3 Date of birth (dd/mm/yy) || A1.3 Date of birth (dd/mm/yy) ||  ||  || 
+  R112: A1.3 Place & Country of Birth || A1.3 Place & Country of Birth ||  ||  || 
+  R113: A2.1 Grandmother Surname/Family Name || A2.1 Grandmother Surname/Family Name ||  ||  || 
+  R114: A2.2. First/Given Name || A2.2. First/Given Name ||  ||  || 
+  R115: A2.3 Date of birth (day/month/year) || A2.3 Date of birth (day/month/year) ||  ||  || 
+  R116: A2.4 Place & Country of Birth || A2.4 Place & Country of Birth ||  ||  || 
+
+TABLE 2
+  R1: B. Brothers and Sisters (including half, step and adopted brothers and sisters) || B. Brothers and Sisters (including half, step and adopted brothers and sisters)
+  R2: B1.1 Surname/Family Name (1) || 
+  R3: B1.2 First/Given Name || 
+  R4: B1.3 Other Names (known as) || 
+  R5: B1.4 Gender || 
+  R6: B1.5 Date of Birth (dd/mm/yy) || 
+  R7: B1.6. Place & Country of Birth || 
+  R8: B1.7 Citizenship || 
+  R9: B1.8 Complete Residential Address || 
+  R10: B1.9 Marital Status || 
+  R11: B1.10 Current Occupation || 
+  R12: B1.11 Passport Number || 
+  R13: B1.12 Issuing Country || 
+  R14: B2.1 Surname/Family Name (2) || 
+  R15: B2.2 First/Given Name || 
+  R16: B2.3 Other Names (known as) || 
+  R17: B2.4 Gender || 
+  R18: B2.5 Date of Birth (dd/mm/yy) || 
+  R19: B2.6 Place & Country of Birth || 
+  R20: B2.7 Citizenship || 
+  R21: B2.8 Complete Residential Address || 
+  R22: B2.9 Marital Status || 
+  R23: B2.10 Current Occupation || 
+  R24: B2.11 Passport Number || 
+  R25: B2.12 Issuing Country || 
+  R26: B3.1 Surname/Family Name (3) || 
+  R27: B3.2 First/Given Name || 
+  R28: B3.3 Other Names (known as) || 
+  R29: B3.4 Gender || 
+  R30: B3.5 Date of Birth (dd/mm/yy) || 
+  R31: B3.6 Place & Country of Birth || 
+  R32: B3.7 Citizenship || 
+  R33: B3.8 Complete Residential Address || 
+  R34: B3.9 Marital Status || 
+  R35: B3.10 Current Occupation || 
+  R36: B3.11 Passport Number || 
+  R37: B3.12 Issuing Country || 
+  R38: B4.1 Surname/Family Name (4) || 
+  R39: B4.2 First/Given Name || 
+  R40: B4.3 Other Names (known as) || 
+  R41: B4.4 Gender || 
+  R42: B4.5 Date of Birth (dd/mm/yy) || 
+  R43: B4.6 Place & Country of Birth || 
+  R44: B4.7 Citizenship || 
+  R45: B4.8 Complete Residential Address || 
+  R46: B4.9 Marital Status || 
+  R47: B4.10 Current Occupation || 
+  R48: B4.11 Passport Number || 
+  R49: B4.12 Issuing Country || 
+
+TABLE 3
+  R1: C. CHILDREN || 
+  R2: C1.1 Surname/Family Name (2) || 
+  R3: C1.2 First/Given Name || 
+  R4: C1.3 Gender || 
+  R5: C1.4 Date of Birth (dd/mm/yy) || 
+  R6: C1.5 Place & Country of Birth || 
+  R7: C1.6 Citizenship || 
+  R8: C1.7 Country of Residence || 
+  R9: C1.8 Home Telephone Number || 
+  R10: C1.9 Mobile Number || 
+  R11: C1.10 Passport Number || 
+  R12: C1.11 Issuing Country || 
+  R13: C1.12 Email Address || 
+  R14: C1. 13 Height || 
+  R15: C1.14 Weight || 
+  R16: C1.15 Hair Color || 
+  R17: C1.16 Eye Color || 
+  R18: C1.17 Distinguishing Marks || 
+  R19: C2.1 Surname/Family Name (2) || 
+  R20: C2.2 First/Given Name || 
+  R21: C2.3 Gender || 
+  R22: C2.4 Date of Birth (dd/mm/yy) || 
+  R23: C2.5 Place & Country of Birth || 
+  R24: C2.6 Citizenship || 
+  R25: C2.7 Country of Residence || 
+  R26: C2.8 Home Telephone Number || 
+  R27: C2.9 Mobile Number || 
+  R28: C2.10 Passport Number || 
+  R29: C2.11 Issuing Country || 
+  R30: C2.12 Email Address || 
+  R31: C1. 13 Height || 
+  R32: C1.14 Weight || 
+  R33: C1.15 Hair Color || 
+  R34: C1.16 Eye Color || 
+  R35: C1.17 Distinguishing Marks || 
+  R36: C3.1 Surname/Family Name (3) || 
+  R37: C3.2 First/Given Name || 
+  R38: C3.3 Gender || 
+  R39: C3.4 Date of Birth (dd/mm/yy) || 
+  R40: C3.5 Place & Country of Birth || 
+  R41: C3.6 Citizenship || 
+  R42: C3.7 Country of residence || 
+  R43: C3.8 Home Telephone Number || 
+  R44: C3.9 Mobile Number || 
+  R45: C3.10 Passport Number || 
+  R46: C3.11 Issuing Country || 
+  R47: C3.12 Email Address || 
+  R48: C1. 13 Height || 
+  R49: C1.14 Weight || 
+  R50: C1.15 Hair Color || 
+  R51: C1.16 Eye Color || 
+  R52: C1.17 Distinguishing Marks || 
+  R53: C4.1 Surname/Family Name (4) || 
+  R54: C4.2 First/Given Name || 
+  R55: C4.3 Gender || 
+  R56: C4.4 Date of Birth (dd/mm/yy) || 
+  R57: C4.5 Place & Country of Birth || 
+  R58: C4.6 Citizenship || 
+  R59: C4.7 Country of residence || 
+  R60: C4.8 Home Telephone Number || 
+  R61: C4.9 Mobile Number || 
+  R62: C4.10 Passport Number || 
+  R63: C4.11 Issuing Country || 
+  R64: C4.12 Email Address || 
+  R65: C1. 13 Height || 
+  R66: C1.14 Weight || 
+  R67: C1.15 Hair Color || 
+  R68: C1.16 Eye Color || 
+  R69: C1.17 Distinguishing Marks || 
+  R70: C4.1 Surname/Family Name (4) || 
+  R71: C4.2 First/Given Name || 
+  R72: C4.3 Gender || 
+  R73: C4.4 Date of Birth (dd/mm/yy) || 
+  R74: C4.5 Place & Country of Birth || 
+  R75: C4.6 Citizenship || 
+  R76: C4.7 Country of residence || 
+  R77: C4.8 Home Telephone Number || 
+  R78: C4.9 Mobile Number || 
+  R79: C4.10 Passport Number || 
+  R80: C4.11 Issuing Country || 
+  R81: C4.12 Email Address || 
+  R82: C1. 13 Height || 
+  R83: C1.14 Weight || 
+  R84: C1.15 Hair Color || 
+  R85: C1.16 Eye Color || 
+  R86: C1.17 Distinguishing Marks || 
+
+TABLE 4
+  R1: SECTION III. ADDRESS INFORMATION - MAIN APPLICANT List of address where you have lived for the past 10 years. (start with the current residence) || SECTION III. ADDRESS INFORMATION - MAIN APPLICANT List of address where you have lived for the past 10 years. (start with the current residence) || SECTION III. ADDRESS INFORMATION - MAIN APPLICANT List of address where you have lived for the past 10 years. (start with the current residence) || SECTION III. ADDRESS INFORMATION - MAIN APPLICANT List of address where you have lived for the past 10 years. (start with the current residence) || SECTION III. ADDRESS INFORMATION - MAIN APPLICANT List of address where you have lived for the past 10 years. (start with the current residence) || SECTION III. ADDRESS INFORMATION - MAIN APPLICANT List of address where you have lived for the past 10 years. (start with the current residence)
+  R2: From (month/year) || To (month/year) || To (month/year) || Street name/number, Bldg. name/number, Villa name/number, town/city, postal code, country || Street name/number, Bldg. name/number, Villa name/number, town/city, postal code, country || Street name/number, Bldg. name/number, Villa name/number, town/city, postal code, country
+  R3: SECTION IV. EDUCATION INFORMATION – MAIN APPLICANT Details of all the Education have had and qualifications obtained. || SECTION IV. EDUCATION INFORMATION – MAIN APPLICANT Details of all the Education have had and qualifications obtained. || SECTION IV. EDUCATION INFORMATION – MAIN APPLICANT Details of all the Education have had and qualifications obtained. || SECTION IV. EDUCATION INFORMATION – MAIN APPLICANT Details of all the Education have had and qualifications obtained. || SECTION IV. EDUCATION INFORMATION – MAIN APPLICANT Details of all the Education have had and qualifications obtained. || SECTION IV. EDUCATION INFORMATION – MAIN APPLICANT Details of all the Education have had and qualifications obtained.
+  R4: From (month/year) || From (month/year) || To (month/year) || Name of School || Location (City & Country) || Qualification/ Diploma Obtained
+  R5:  ||  ||  ||  ||  || Primary/Elementary
+  R6:  ||  ||  ||  ||  || Secondary/High School
+  R7:  ||  ||  ||  ||  || Bachelor
+  R8:  ||  ||  ||  ||  || Master
+  R9:  ||  ||  ||  ||  || PhD
+
+TABLE 5
+  R1: SECTION V. EMPLOYMENT INFORMATION – MAIN APPLICANT Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – MAIN APPLICANT Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – MAIN APPLICANT Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – MAIN APPLICANT Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – MAIN APPLICANT Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – MAIN APPLICANT Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)
+  R2: From (month/year) || To (month/year) || Occupation || Name of Employer/ Company || Complete Address || Type of business || Type of business
+
+TABLE 6
+  R1: Contact Person In Case of Emergency || Contact Person In Case of Emergency
+  R2: Full Name || 
+  R3: Complete Address || 
+  R4: Telephone/Mobile Number || 
+  R5: Email || 
+  R6: Relationship || 
+
+P2: Please provide a detailed explanation of the reason(s) that you are seeking to obtain an alternative citizenship.
+
+P3: __________________________________________________________________________________
+
+P4: Kindly fill-out the following if the SPOUSE & DEPENDENTS are INCLUDED IN THE APPLICATION
+
+TABLE 7
+  R1: SECTION I. PERSONAL INFORMATION - SPOUSE || SECTION I. PERSONAL INFORMATION - SPOUSE || SECTION I. PERSONAL INFORMATION - SPOUSE || SECTION I. PERSONAL INFORMATION - SPOUSE || SECTION I. PERSONAL INFORMATION - SPOUSE
+  R2: A. Spouse Details || A. Spouse Details || A. Spouse Details || A. Spouse Details || A. Spouse Details
+  R3: A1. Surname/Family Name || A1. Surname/Family Name ||  ||  || 
+  R4: A2. First/Given Name || A2. First/Given Name ||  ||  || 
+  R5: A3. Other names /Alias || A3. Other names /Alias ||  ||  || 
+  R6: A4. Date of birth (day/month/year) || A4. Date of birth (day/month/year) ||  ||  || 
+  R7: A5. Place and Country of Birth || A5. Place and Country of Birth ||  ||  || 
+  R8: A6. Citizenship at Birth || A6. Citizenship at Birth ||  ||  || 
+  R9: A7. Present Citizenship || A7. Present Citizenship ||  ||  || 
+  R10: A8. Other Citizenship || A8. Other Citizenship ||  ||  || 
+  R11: A9. Languages you Speak and Write || A9. Languages you Speak and Write ||  ||  || 
+  R12: A10. Identity Card Number & Issuing Country || A10. Identity Card Number & Issuing Country ||  ||  || 
+  R13: A11. Social Security Number & Issuing Country || A11. Social Security Number & Issuing Country ||  ||  || 
+  R14: A12. Driving License Number & Issuing Country || A12. Driving License Number & Issuing Country ||  ||  || 
+  R15: A13. Expiry Date || A13. Expiry Date ||  ||  || 
+  R16: A14. Height || A14. Height ||  ||  || 
+  R17: A15. Weight || A15. Weight ||  ||  || 
+  R18: A16. Hair Color || A16. Hair Color ||  ||  || 
+  R19: A17. Eye Color || A17. Eye Color ||  ||  || 
+  R20: A18. Distinguishing Marks || A18. Distinguishing Marks ||  ||  || 
+  R21: B. Address and Contact Details || B. Address and Contact Details ||  ||  || 
+  R22: B1. Current Residential Address || B1. Current Residential Address ||  ||  || 
+  R23: B2. DATE since Residing in the CURRENT Address (dd/mm/yy) || B2. DATE since Residing in the CURRENT Address (dd/mm/yy) ||  ||  || 
+  R24: B3. Permanent Residential Address || B3. Permanent Residential Address ||  ||  || 
+  R25: B4. DATE since Residing in the PERMANENT Address (dd/mm/yy) || B4. DATE since Residing in the PERMANENT Address (dd/mm/yy) ||  ||  || 
+  R26: B5. Permanent Telephone Number/ Home Landline || B5. Permanent Telephone Number/ Home Landline ||  ||  || 
+  R27: B6. Mobile number || B6. Mobile number ||  ||  || 
+  R28: B7. Other Telephone Number || B7. Other Telephone Number ||  ||  || 
+  R29: B8. Fax Number || B8. Fax Number ||  ||  || 
+  R30: B9. Email Address || B9. Email Address ||  ||  || 
+  R31: C. Employment Details (if applicable) || C. Employment Details (if applicable) ||  ||  || 
+  R32: C1. Current Occupation || C1. Current Occupation ||  ||  || 
+  R33: C2. Occupation by Training || C2. Occupation by Training ||  ||  || 
+  R34: C3. Name of Company || C3. Name of Company ||  ||  || 
+  R35: C4. Company Address || C4. Company Address ||  ||  || 
+  R36: C5. Telephone Number || C5. Telephone Number ||  ||  || 
+  R37: C6. Fax Number || C6. Fax Number ||  ||  || 
+  R38: C7. Most important person/companies with whom you do business || C7. Most important person/companies with whom you do business ||  ||  || 
+  R39: D. Business Details (if applicable) || D. Business Details (if applicable) ||  ||  || 
+  R40: D1. Name of Business || D1. Name of Business ||  ||  || 
+  R41: D2. Business Address || D2. Business Address ||  ||  || 
+  R42: D3. Nature of Business || D3. Nature of Business ||  ||  || 
+  R43: D4. Telephone Number || D4. Telephone Number ||  ||  || 
+  R44: D5. Fax Number || D5. Fax Number ||  ||  || 
+  R45: D6. Most important person/companies with whom you do business || D6. Most important person/companies with whom you do business ||  ||  || 
+  R46: E. Source of Income (if applicable) || E. Source of Income (if applicable) ||  ||  || 
+  R47: E1. Main Sources of Income || E1. Main Sources of Income ||  ||  || 
+  R48: E2. Gross Annual Net Income in US Dollars (average during past 3 years) || E2. Gross Annual Net Income in US Dollars (average during past 3 years) ||  ||  || 
+  R49: E3. Current Total Personal Net Assets in US Dollars (average during past 3 years) || E3. Current Total Personal Net Assets in US Dollars (average during past 3 years) ||  ||  || 
+  R50: E4. Estimated Net Worth (asset minus liabilities in USD) || E4. Estimated Net Worth (asset minus liabilities in USD) ||  ||  || 
+  R51: E5. Main Geographical Jurisdiction in which the own business is conducted (if any) || E5. Main Geographical Jurisdiction in which the own business is conducted (if any) ||  ||  || 
+  R52: E6. Please provide a summarize statement of how you have accumulated your Total Net Worth by listing the main acquisitions/dispositions and events || E6. Please provide a summarize statement of how you have accumulated your Total Net Worth by listing the main acquisitions/dispositions and events ||  ||  || 
+  R53: E7. Fixed Assets (USD) || E7. Fixed Assets (USD) ||  ||  || 
+  R54: E8. Savings / Deposits (USD) || E8. Savings / Deposits (USD) ||  ||  || 
+  R55: E9. Investments (e.g. stocks, shares, bonds, debentures, etc.) || E9. Investments (e.g. stocks, shares, bonds, debentures, etc.) ||  ||  || 
+  R56: E10. Real Estate Holdings || E10. Real Estate Holdings ||  ||  || 
+  R57: E11. Business Assets || E11. Business Assets ||  ||  || 
+  R58: E12. Liabilities || E12. Liabilities || E12. Liabilities || E12. Liabilities || E12. Liabilities
+  R59: E13. Outstanding Long Term Loans (e.g. mortgage, car loan, personal loan, etc) || E13. Outstanding Long Term Loans (e.g. mortgage, car loan, personal loan, etc) ||  ||  || 
+  R60: E14. Outstanding Short Term (e.g. credit card bills, tax liability) || E14. Outstanding Short Term (e.g. credit card bills, tax liability) ||  ||  || 
+  R61: F. Licenses (if applicable) || F. Licenses (if applicable) || F. Licenses (if applicable) || F. Licenses (if applicable) || F. Licenses (if applicable)
+  R62: List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any || List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any || List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any || List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any || List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any
+  R63: F1. License Name || F2. License Number || F3. Licensing Body || F3. Licensing Body || F4. Date Held
+  R64: F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why) || F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why) || F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why) || F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why) || F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why)
+  R65: G. Previous Spouse Details (if applicable) || G. Previous Spouse Details (if applicable) || G. Previous Spouse Details (if applicable) ||  || 
+  R66: G1. Full Name (after marriage) || G1. Full Name (after marriage) || G1. Full Name (after marriage) ||  || 
+  R67: G2. Full Name (before marriage) || G2. Full Name (before marriage) || G2. Full Name (before marriage) ||  || 
+  R68: G3. Date of Birth (dd/mm/yy) || G3. Date of Birth (dd/mm/yy) || G3. Date of Birth (dd/mm/yy) ||  || 
+  R69: G4. Place of Birth (City & Country) || G4. Place of Birth (City & Country) || G4. Place of Birth (City & Country) ||  || 
+  R70: G5. Place of Marriage || G5. Place of Marriage || G5. Place of Marriage ||  || 
+  R71: G6. Date of Marriage || G6. Date of Marriage || G6. Date of Marriage ||  || 
+  R72: G7. Date of Divorce || G7. Date of Divorce || G7. Date of Divorce ||  || 
+  R73: G8. Period of Marriage (indicate the no. of years & months of marriage) || G8. Period of Marriage (indicate the no. of years & months of marriage) || G8. Period of Marriage (indicate the no. of years & months of marriage) ||  || 
+  R74: SECTION II. SPOUSE’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”). || SECTION II. SPOUSE’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”). || SECTION II. SPOUSE’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”). || SECTION II. SPOUSE’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”). || SECTION II. SPOUSE’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”).
+  R75: II.A. SPOUSE’s Parents || II.A. SPOUSE’s Parents || II.A. SPOUSE’s Parents || II.A. SPOUSE’s Parents || II.A. SPOUSE’s Parents
+  R76: A1.1 FATHER Surname/Family Name || A1.1 FATHER Surname/Family Name ||  ||  || 
+  R77: A1.2 First/Given Name || A1.2 First/Given Name ||  ||  || 
+  R78: A1.3 Date of birth (dd/mm/yy) || A1.3 Date of birth (dd/mm/yy) ||  ||  || 
+  R79: A1.3 Place & Country of Birth || A1.3 Place & Country of Birth ||  ||  || 
+  R80: A1.4 Citizenship || A1.4 Citizenship ||  ||  || 
+  R81: A1.5 Deceased/Alive || A1.5 Deceased/Alive ||  ||  || 
+  R82: A1.6 Current Occupation || A1.6 Current Occupation ||  ||  || 
+  R83: A1.7 Home Telephone Number || A1.7 Home Telephone Number ||  ||  || 
+  R84: A1.8 Mobile Number || A1.8 Mobile Number ||  ||  || 
+  R85: A1.9 Complete Residential Address || A1.9 Complete Residential Address ||  ||  || 
+  R86: A1.10 Date since Residing at Current Address (dd/mm/yy) || A1.10 Date since Residing at Current Address (dd/mm/yy) ||  ||  || 
+  R87: A1.11 Passport Number || A1.11 Passport Number ||  ||  || 
+  R88: A1.12 Issuing Country || A1.12 Issuing Country ||  ||  || 
+  R89: A1.13 Date of Marriage || A1.13 Date of Marriage ||  ||  || 
+  R90: A1.14 Place & Country of Marriage || A1.14 Place & Country of Marriage ||  ||  || 
+  R91: A2.1 MOTHER Surname/Family Name || A2.1 MOTHER Surname/Family Name ||  ||  || 
+  R92: A2.2. First/Given Name || A2.2. First/Given Name ||  ||  || 
+  R93: A2.3 Date of birth (day/month/year) || A2.3 Date of birth (day/month/year) ||  ||  || 
+  R94: A2.4 Place & Country of Birth || A2.4 Place & Country of Birth ||  ||  || 
+  R95: A2.5 Citizenship || A2.5 Citizenship ||  ||  || 
+  R96: A2.6 Current Occupation || A2.6 Current Occupation ||  ||  || 
+  R97: A2.7 Complete Residential Address || A2.7 Complete Residential Address ||  ||  || 
+  R98: A2.8 Date since Residing at Current Address (dd/mm/yy) || A2.8 Date since Residing at Current Address (dd/mm/yy) ||  ||  || 
+  R99: A2.9 Passport Number || A2.9 Passport Number ||  ||  || 
+  R100: A2.10. Issuing Country || A2.10. Issuing Country ||  ||  || 
+  R101: II.A. GRANDPARENTS DETAILS FROM YOUR FATHER SIDE || II.A. GRANDPARENTS DETAILS FROM YOUR FATHER SIDE || II.A. GRANDPARENTS DETAILS FROM YOUR FATHER SIDE || II.A. GRANDPARENTS DETAILS FROM YOUR FATHER SIDE || II.A. GRANDPARENTS DETAILS FROM YOUR FATHER SIDE
+  R102: A1.1 Grandfather Surname/Family Name || A1.1 Grandfather Surname/Family Name ||  ||  || 
+  R103: A1.2 First/Given Name || A1.2 First/Given Name ||  ||  || 
+  R104: A1.3 Date of birth (dd/mm/yy) || A1.3 Date of birth (dd/mm/yy) ||  ||  || 
+  R105: A1.3 Place & Country of Birth || A1.3 Place & Country of Birth ||  ||  || 
+  R106: A2.1 Grandmother Surname/Family Name || A2.1 Grandmother Surname/Family Name ||  ||  || 
+  R107: A2.2. First/Given Name || A2.2. First/Given Name ||  ||  || 
+  R108: A2.3 Date of birth (day/month/year) || A2.3 Date of birth (day/month/year) ||  ||  || 
+  R109: A2.4 Place & Country of Birth || A2.4 Place & Country of Birth ||  ||  || 
+  R110: B. Brothers and Sisters (including half, step and adopted brothers and sisters) || B. Brothers and Sisters (including half, step and adopted brothers and sisters) || B. Brothers and Sisters (including half, step and adopted brothers and sisters) || B. Brothers and Sisters (including half, step and adopted brothers and sisters) || B. Brothers and Sisters (including half, step and adopted brothers and sisters)
+  R111: B1.1 Surname/Family Name (1) || B1.1 Surname/Family Name (1) ||  ||  || 
+  R112: B1.2 First/Given Name || B1.2 First/Given Name ||  ||  || 
+  R113: B1.3 Other Names (known as) || B1.3 Other Names (known as) ||  ||  || 
+  R114: B1.4 Gender || B1.4 Gender ||  ||  || 
+  R115: B1.5 Date of Birth (dd/mm/yy) || B1.5 Date of Birth (dd/mm/yy) ||  ||  || 
+  R116: B1.6. Place & Country of Birth || B1.6. Place & Country of Birth ||  ||  || 
+  R117: B1.7 Citizenship || B1.7 Citizenship ||  ||  || 
+  R118: B1.8 Complete Residential Address || B1.8 Complete Residential Address ||  ||  || 
+  R119: B1.9 Marital Status || B1.9 Marital Status ||  ||  || 
+  R120: B1.10 Current Occupation || B1.10 Current Occupation ||  ||  || 
+  R121: B1.11 Passport Number || B1.11 Passport Number ||  ||  || 
+  R122: B1.12 Issuing Country || B1.12 Issuing Country ||  ||  || 
+  R123: B2.1 Surname/Family Name (2) || B2.1 Surname/Family Name (2) ||  ||  || 
+  R124: B2.2 First/Given Name || B2.2 First/Given Name ||  ||  || 
+  R125: B2.3 Other Names (known as) || B2.3 Other Names (known as) ||  ||  || 
+  R126: B2.4 Gender || B2.4 Gender ||  ||  || 
+  R127: B2.5 Date of Birth (dd/mm/yy) || B2.5 Date of Birth (dd/mm/yy) ||  ||  || 
+  R128: B2.6 Place & Country of Birth || B2.6 Place & Country of Birth ||  ||  || 
+  R129: B2.7 Citizenship || B2.7 Citizenship ||  ||  || 
+  R130: B2.8 Complete Residential Address || B2.8 Complete Residential Address ||  ||  || 
+  R131: B2.9 Marital Status || B2.9 Marital Status ||  ||  || 
+  R132: B2.10 Current Occupation || B2.10 Current Occupation ||  ||  || 
+  R133: B2.11 Passport Number || B2.11 Passport Number ||  ||  || 
+  R134: B2.12 Issuing Country || B2.12 Issuing Country ||  ||  || 
+  R135: B3.1 Surname/Family Name (3) || B3.1 Surname/Family Name (3) ||  ||  || 
+  R136: B3.2 First/Given Name || B3.2 First/Given Name ||  ||  || 
+  R137: B3.3 Other Names (known as) || B3.3 Other Names (known as) ||  ||  || 
+  R138: B3.4 Gender || B3.4 Gender ||  ||  || 
+  R139: B3.5 Date of Birth (dd/mm/yy) || B3.5 Date of Birth (dd/mm/yy) ||  ||  || 
+  R140: B3.6 Place & Country of Birth || B3.6 Place & Country of Birth ||  ||  || 
+  R141: B3.7 Citizenship || B3.7 Citizenship ||  ||  || 
+  R142: B3.8 Complete Residential Address || B3.8 Complete Residential Address ||  ||  || 
+  R143: B3.9 Marital Status || B3.9 Marital Status ||  ||  || 
+  R144: B3.10 Current Occupation || B3.10 Current Occupation ||  ||  || 
+  R145: B3.11 Passport Number || B3.11 Passport Number ||  ||  || 
+  R146: B3.12 Issuing Country || B3.12 Issuing Country ||  ||  || 
+
+TABLE 8
+  R1: SECTION III. ADDRESS INFORMATION - SPOUSE (if not the same with the Main Applicant) List of address where you have lived for the past 10 years (start with the current residence) || SECTION III. ADDRESS INFORMATION - SPOUSE (if not the same with the Main Applicant) List of address where you have lived for the past 10 years (start with the current residence) || SECTION III. ADDRESS INFORMATION - SPOUSE (if not the same with the Main Applicant) List of address where you have lived for the past 10 years (start with the current residence)
+  R2: From (month/year) || To (month/year) || Street name/number, Bldg. name/number, Villa name/number, town/city, postal code, country
+
+TABLE 9
+  R1: SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained || SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained || SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained || SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained || SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained || SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained || SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained || SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained || SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained || SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained || SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained
+  R2: DEPENDENTS || ELEMENTARY [Name of School / DATES (from-to) / City & Country] || ELEMENTARY [Name of School / DATES (from-to) / City & Country] || ELEMENTARY [Name of School / DATES (from-to) / City & Country] || HIGH SCHOOL [Name of School / DATES (from-to) / City & Country] || HIGH SCHOOL [Name of School / DATES (from-to) / City & Country] || HIGH SCHOOL [Name of School / DATES (from-to) / City & Country] || COLLEGE / UNIVERSITY [Name of School / DATES (from-to) / City & Country] || COLLEGE / UNIVERSITY [Name of School / DATES (from-to) / City & Country] || MASTERS / PhD [Name of School / DATES (from-to) / City & Country] || MASTERS / PhD [Name of School / DATES (from-to) / City & Country]
+  R3: SPOUSE ||  ||  ||  ||  ||  ||  ||  ||  ||  || 
+  R4: Child 1 ||  ||  ||  ||  ||  ||  ||  ||  ||  || 
+  R5: Child 2 ||  ||  ||  ||  ||  ||  ||  ||  ||  || 
+  R6: Child 3 ||  ||  ||  ||  ||  ||  ||  ||  ||  || 
+  R7: Child 4 ||  ||  ||  ||  ||  ||  ||  ||  ||  || 
+  R8: SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed) || SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)
+  R9: From (month/year) || From (month/year) || To (month/year) || Occupation || Occupation || Name of Employer/ Company || Complete Address || Complete Address || Type of business || Type of business
+
+P5: DECLARATIONS
+
+P6: NOTE: If any of the family members answers “yes” from questions 1-23 kindly explain on a separate page.s
+
+TABLE 10
+  R1:  || YES || NO
+  R2: 1: Have you ever arrested, charged, convicted, found guilty or been expunged of any offence (s) against the law in any country? (except for minor traffic citations) ||  || 
+  R3: 2: Have you ever been denied any category of visa to a country with which the concerned country you’re applying for has visa free access and have not been successful in subsequently obtaining such a visa? If yes, note date, city, county, state and country in which you were denied the visa. _____________________________________________________________________ ||  || 
+  R4: 3: Have you ever had a visa cancelled? ||  || 
+  R5: 4: Have you ever been declared bankrupt by a court? If yes, note the date, city, county, state and country in which the court declared you bankrupt. _____________________________________________________________________ ||  || 
+  R6: 5: Have you ever been involved personally, or as a director in any bankruptcy, insolvency or liquidation proceedings? ||  || 
+  R7: 6: Have you ever testified before a grand jury or investigative hearing or probe? ||  || 
+  R8: 7: Have any charges or accusations of illegal activity of any nature been made against you in any country? ||  || 
+  R9: 8: Have you ever been the subject of any criminal investigation? ||  || 
+  R10: 9: Have you ever been considered to be a potential national security risk in a country? ||  || 
+  R11: 10: Have you ever been sentenced to serve a period of time in detention or been on probation? ||  || 
+  R12: 11: Have you ever received a pardon for any criminal offense? If yes, note the date, city, county, state and country in which you received the pardon. _____________________________________________________________________ ||  || 
+  R13: 12: Have you ever had a civil or criminal record expunged or sealed by a court order? ||  || 
+  R14: 13: Have you ever been subpoenaed to appear to testify before a federal, state, our county grand jury, board or commission?abHav ||  || 
+  R15: 14: Has a criminal indictment, information or complaint ever been returned against you, but for which you were not arrested or in which you were named as an un-indicted co-party? ||  || 
+  R16: 15: Have you, as an individual, or as an owner, partner, director or officer of any partnership, corporation or entity, ever been a party to a lawsuit as either a plaintiff or defendant? (other than divorces) ||  || 
+  R17: 16: Have you ever been involved, directly or indirectly, in the financing of terrorism or in any terrorist or criminal organization? ||  || 
+  R18: 17: Have you ever been unlawfully present in or been deported from any country, or sought to assist others to do the same? ||  || 
+  R19: 18: Have you ever applied for citizenship in any country for which the citizenship has not been granted? ||  || 
+  R20: 19: Have you ever been the subject or any order, judgment or decree of any federal or state authority barring, suspending, or otherwise limiting your right to engage in any professional or business practice or activity? ||  || 
+  R21: 20: Are you a Politically Exposed Person (PEP)? (A (A PEP may be a past or current government office holders, or individuals who are or were formerly entrusted with high-level public functions. For example, senior officers, heads of state of government, senior judicial or military officials, officials of political parties and senior executives of state-owned enterprises (SOE). PEP definition includes family members and close associates of a primary PEP). ||  || 
+  R22: 21: Have you ever been declared by a court or qualified health practitioner to be mentally incapacitated? ||  || 
+  R23: 22: Are there any other business activities in which you are engaged that have not already been disclosed on this form? ||  || 
+  R24: 23: To the best of your knowledge, have you ever been under investigation by any law enforcement agency or tax authority in any country? ||  || 
+  R25: 24: I confirm that my wealth has been obtained from completely legitimate sources, and is not, whether directly or indirectly, from the proceeds of criminal activity of any kind. ||  || 
+  R26: 25: I can confirm that I am fully compliant with my national, regional and global tax obligations. ||  || 
+
+P7: *If you have answered YES to any questions other than in number 24 or 25, please provide with further detail. Clearly indicate the number for which the details are being provided in each case.
+
+P8: إقرارات و تعهدات:
+
+P9: أ. يلنزم العميل بالافصاح عن اي رفض تأشيره قد تم الحصول عليها فى السنوات السابقة.
+
+P10: ب. يلتزم العميل بعدم التقدم بطلب للحصول على تأشيرة للدول التى يسمح لجواز البلد المقدم ايها بالسفر اليها بدون تأشيرة
+
+P11: ج. الافصاح عن كافة المعلومات و المستندات :
+
+P12: . يلتزم العميل بالافصاح عن كافة المعلومات الخاصة بتقديم الملف
+
+P13: . يلتزم العميل بأخطارنا ما اذا كانت هناك سابقة سلبية خاصة بة او باحد افراد عائلتة.
+
+P14: . يلتزم العميل بتزويدنا بالاوراق و المعلومات التى تخص الشركات الخاصة به لتشمل:,
+
+P15: (الرخص التجارية, الرخص الصناعية, او اى رخص مهنية اخرى الخ سواء, كانت الشركة/الرخصة فعالة او غير فعالة)
+
+P16: Undertakings and Pledges:
+
+P17: a. The applicant shall disclose his/her visa refusal cases in the year(s) prior to the date of his/her application.
+
+P18: b. The applicant shall not submit a visa application to a country has a free visa entry with the concerned country you are applying to.
+
+P19: c. Information and documents disclosure:
+
+P20: The Client shall disclose all information related to his/her application.
+
+P21: The Clients shall inform us whether they or any of their family members have any negative precedent(s).
+
+P22: The applicant shall provide ELEVAY with documents and information on his companies, including:
+
+P23: (Commercial licenses, industrial licenses, or any other professional licenses etc. whether the company/license is valid or invalid)
+
+P24: DECLARATION
+
+P25: I HEREBY DECLARE THAT THE DETAILS FURNISHED ABOVE ARE TRUE AND CORRECT TO THE BEST OF MY KNOWLEDGE AND BELIEF AND I UNDERTAKE TO INFORM YOU OF ANY CHANGES THEREIN, IMMEDIATELY. IN CASE ANY OF THE ABOVE INFORMATION IS FOUND TO BE FALSE OR UTRUE OR MISLEADING OR MISREPRESENTING, I AM AWARE THAT I MAY BE HELD LIABLE FOR IT.
+
+P26: CLIENT’S SIGNATURE: …………………………………….. Date…………………………

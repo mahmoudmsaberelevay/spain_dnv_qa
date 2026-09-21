@@ -1,0 +1,2937 @@
+{
+  "source": "/home/ubuntu/upload/QUESTIONNAIRE.docx",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "index": 1,
+      "text": "Please complete and sign the questionnaire in its entirety. Write “N/A” when a question is not applicable."
+    },
+    {
+      "type": "table",
+      "index": 1,
+      "rows": [
+        [
+          "SECTION I. PERSONAL INFORMATION – MAIN APPLICANT",
+          "SECTION I. PERSONAL INFORMATION – MAIN APPLICANT",
+          "SECTION I. PERSONAL INFORMATION – MAIN APPLICANT",
+          "SECTION I. PERSONAL INFORMATION – MAIN APPLICANT",
+          "SECTION I. PERSONAL INFORMATION – MAIN APPLICANT"
+        ],
+        [
+          "A. Main Applicant Details",
+          "A. Main Applicant Details",
+          "A. Main Applicant Details",
+          "A. Main Applicant Details",
+          "A. Main Applicant Details"
+        ],
+        [
+          "A1. Surname/Family Name",
+          "A1. Surname/Family Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2. First/Given Name",
+          "A2. First/Given Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A3. Other names /Alias",
+          "A3. Other names /Alias",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A4. Date of birth (day/month/year)",
+          "A4. Date of birth (day/month/year)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A5. Place and Country of Birth",
+          "A5. Place and Country of Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A6. Citizenship at Birth",
+          "A6. Citizenship at Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A7. Present Citizenship",
+          "A7. Present Citizenship",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A8. Other Citizenship",
+          "A8. Other Citizenship",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A9. Languages you Speak and Write (also indicate level: FLUENT, BASIC, NATIVE)",
+          "A9. Languages you Speak and Write (also indicate level: FLUENT, BASIC, NATIVE)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A10. Identity Card Number & Issuing Country",
+          "A10. Identity Card Number & Issuing Country",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A11. Social Security Number & Issuing Country",
+          "A11. Social Security Number & Issuing Country",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A12. Driving License Number & Issuing Country",
+          "A12. Driving License Number & Issuing Country",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A13. Expiry Date",
+          "A13. Expiry Date",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A14. Height",
+          "A14. Height",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A15. Weight",
+          "A15. Weight",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A16. Hair Color",
+          "A16. Hair Color",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A17. Eye Color",
+          "A17. Eye Color",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A18. Distinguishing Marks",
+          "A18. Distinguishing Marks",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B. Address and Contact Details",
+          "B. Address and Contact Details",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B1. Current Residential Address",
+          "B1. Current Residential Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2. DATE since Residing in the CURRENT Address (dd/mm/yy)",
+          "B2. DATE since Residing in the CURRENT Address (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3. Permanent Residential Address",
+          "B3. Permanent Residential Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B4. DATE since Residing in the PERMANENT Address (dd/mm/yy)",
+          "B4. DATE since Residing in the PERMANENT Address (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B5. Permanent Telephone Number/ Home Landline",
+          "B5. Permanent Telephone Number/ Home Landline",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B6. Mobile number",
+          "B6. Mobile number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B7. Other Telephone Number",
+          "B7. Other Telephone Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B8. Fax Number",
+          "B8. Fax Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B9. Email Address",
+          "B9. Email Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C. Employment Details",
+          "C. Employment Details",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C1. Current Occupation",
+          "C1. Current Occupation",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C2. Occupation by Training",
+          "C2. Occupation by Training",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C3. Name of Company",
+          "C3. Name of Company",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C4. Company Address",
+          "C4. Company Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C5. Telephone Number",
+          "C5. Telephone Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C6. Fax Number",
+          "C6. Fax Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C7. Most important person/companies with whom you do business",
+          "C7. Most important person/companies with whom you do business",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D. Business Details",
+          "D. Business Details",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D1. Name of Business",
+          "D1. Name of Business",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D2. Business Address",
+          "D2. Business Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D3. Nature of Business",
+          "D3. Nature of Business",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D4. Telephone Number",
+          "D4. Telephone Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D5. Fax Number",
+          "D5. Fax Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D6. Most important person/companies with whom you do business",
+          "D6. Most important person/companies with whom you do business",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E. Source of Income",
+          "E. Source of Income",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E1. Main Sources of Income",
+          "E1. Main Sources of Income",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E2. Annual Net income in US Dollars (average during past 3 yrs.) More than 100,000 More than 500,000 More than 1 million",
+          "E2. Annual Net income in US Dollars (average during past 3 yrs.) More than 100,000 More than 500,000 More than 1 million",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E3. Current Total Personal Net Assets in US Dollars. More than 500,000 More than 2 million More than 10 million",
+          "E3. Current Total Personal Net Assets in US Dollars. More than 500,000 More than 2 million More than 10 million",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E4. Estimated Net Worth (asset minus liabilities in USD)",
+          "E4. Estimated Net Worth (asset minus liabilities in USD)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E5. Main Geographical Jurisdiction in which the own business is conducted (if any)",
+          "E5. Main Geographical Jurisdiction in which the own business is conducted (if any)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E6. Please provide a summarize statement of how you have accumulated your Total Net Worth by listing the main acquisitions/dispositions and events",
+          "E6. Please provide a summarize statement of how you have accumulated your Total Net Worth by listing the main acquisitions/dispositions and events",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E7. Fixed Assets (USD)",
+          "E7. Fixed Assets (USD)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E8. Savings / Deposits (USD)",
+          "E8. Savings / Deposits (USD)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E9. Investments (e.g. stocks, shares, bonds, debentures, etc.)",
+          "E9. Investments (e.g. stocks, shares, bonds, debentures, etc.)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E10. Real Estate Holdings",
+          "E10. Real Estate Holdings",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E11. Business Assets",
+          "E11. Business Assets",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E12. Liabilities",
+          "E12. Liabilities",
+          "E12. Liabilities",
+          "E12. Liabilities",
+          "E12. Liabilities"
+        ],
+        [
+          "E13. Outstanding Long Term Loans (e.g. mortgage, car loan, personal loan, etc)",
+          "E13. Outstanding Long Term Loans (e.g. mortgage, car loan, personal loan, etc)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E14. Outstanding Short Term (e.g. credit card bills, tax liability)",
+          "E14. Outstanding Short Term (e.g. credit card bills, tax liability)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "F. Licenses",
+          "F. Licenses",
+          "F. Licenses",
+          "F. Licenses",
+          "F. Licenses"
+        ],
+        [
+          "List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any",
+          "List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any",
+          "List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any",
+          "List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any",
+          "List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any"
+        ],
+        [
+          "F1. License Name",
+          "F2. License Number",
+          "F3. Licensing Body",
+          "F3. Licensing Body",
+          "F4. Date Held"
+        ],
+        [
+          "F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why)",
+          "F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why)",
+          "F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why)",
+          "F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why)",
+          "F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why)"
+        ],
+        [
+          "G. Spouse Details",
+          "G. Spouse Details",
+          "G. Spouse Details",
+          "",
+          ""
+        ],
+        [
+          "G1. Full Name (after marriage)",
+          "G1. Full Name (after marriage)",
+          "G1. Full Name (after marriage)",
+          "",
+          ""
+        ],
+        [
+          "G2. Full Name (before marriage)",
+          "G2. Full Name (before marriage)",
+          "G2. Full Name (before marriage)",
+          "",
+          ""
+        ],
+        [
+          "G3. Date of Birth (dd/mm/yy)",
+          "G3. Date of Birth (dd/mm/yy)",
+          "G3. Date of Birth (dd/mm/yy)",
+          "",
+          ""
+        ],
+        [
+          "G4. Place of Birth (City & Country)",
+          "G4. Place of Birth (City & Country)",
+          "G4. Place of Birth (City & Country)",
+          "",
+          ""
+        ],
+        [
+          "G5. Place of Marriage",
+          "G5. Place of Marriage",
+          "G5. Place of Marriage",
+          "",
+          ""
+        ],
+        [
+          "G6. Date of Marriage (dd/mm/yy)",
+          "G6. Date of Marriage (dd/mm/yy)",
+          "G6. Date of Marriage (dd/mm/yy)",
+          "",
+          ""
+        ],
+        [
+          "H. Previous Spouse Details (if applicable)",
+          "H. Previous Spouse Details (if applicable)",
+          "H. Previous Spouse Details (if applicable)",
+          "",
+          ""
+        ],
+        [
+          "H1. Full Name (after marriage)",
+          "H1. Full Name (after marriage)",
+          "H1. Full Name (after marriage)",
+          "",
+          ""
+        ],
+        [
+          "H2. Full Name (before marriage)",
+          "H2. Full Name (before marriage)",
+          "H2. Full Name (before marriage)",
+          "",
+          ""
+        ],
+        [
+          "H3. Date of Birth (dd/mm/yy)",
+          "H3. Date of Birth (dd/mm/yy)",
+          "H3. Date of Birth (dd/mm/yy)",
+          "",
+          ""
+        ],
+        [
+          "H4. Place of Birth (City & Country)",
+          "H4. Place of Birth (City & Country)",
+          "H4. Place of Birth (City & Country)",
+          "",
+          ""
+        ],
+        [
+          "H5. Place of Marriage",
+          "H5. Place of Marriage",
+          "H5. Place of Marriage",
+          "",
+          ""
+        ],
+        [
+          "H6. Date of Marriage",
+          "H6. Date of Marriage",
+          "H6. Date of Marriage",
+          "",
+          ""
+        ],
+        [
+          "H7. Date of Divorce",
+          "H7. Date of Divorce",
+          "H7. Date of Divorce",
+          "",
+          ""
+        ],
+        [
+          "H8. Period of Marriage (indicate the no. of years & months of marriage)",
+          "H8. Period of Marriage (indicate the no. of years & months of marriage)",
+          "H8. Period of Marriage (indicate the no. of years & months of marriage)",
+          "",
+          ""
+        ],
+        [
+          "SECTION II. MAIN APPLICANT’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”).",
+          "SECTION II. MAIN APPLICANT’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”).",
+          "SECTION II. MAIN APPLICANT’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”).",
+          "SECTION II. MAIN APPLICANT’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”).",
+          "SECTION II. MAIN APPLICANT’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”)."
+        ],
+        [
+          "II.A. MAIN APPLICANT’s Parents",
+          "II.A. MAIN APPLICANT’s Parents",
+          "II.A. MAIN APPLICANT’s Parents",
+          "II.A. MAIN APPLICANT’s Parents",
+          "II.A. MAIN APPLICANT’s Parents"
+        ],
+        [
+          "A1.1 FATHER Surname/Family Name",
+          "A1.1 FATHER Surname/Family Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.2 First/Given Name",
+          "A1.2 First/Given Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.3 Date of birth (dd/mm/yy)",
+          "A1.3 Date of birth (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.3 Place & Country of Birth",
+          "A1.3 Place & Country of Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.4 Citizenship",
+          "A1.4 Citizenship",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.5 Deceased/Alive",
+          "A1.5 Deceased/Alive",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.6 Current Occupation",
+          "A1.6 Current Occupation",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.7 Home Telephone Number",
+          "A1.7 Home Telephone Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.8 Mobile Number",
+          "A1.8 Mobile Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.9 Complete Residential Address",
+          "A1.9 Complete Residential Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.10 Date since Residing at Current Address (dd/mm/yy)",
+          "A1.10 Date since Residing at Current Address (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.11 Passport Number",
+          "A1.11 Passport Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.12 Issuing Country",
+          "A1.12 Issuing Country",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.13 Date of Marriage",
+          "A1.13 Date of Marriage",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.14 Place & Country of Marriage",
+          "A1.14 Place & Country of Marriage",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.1 MOTHER Surname/Family Name",
+          "A2.1 MOTHER Surname/Family Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.2. First/Given Name",
+          "A2.2. First/Given Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.3 Date of birth (day/month/year)",
+          "A2.3 Date of birth (day/month/year)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.4 Place & Country of Birth",
+          "A2.4 Place & Country of Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.5 Citizenship",
+          "A2.5 Citizenship",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.6 Current Occupation",
+          "A2.6 Current Occupation",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.7 Complete Residential Address",
+          "A2.7 Complete Residential Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.8 Date since Residing at Current Address (dd/mm/yy)",
+          "A2.8 Date since Residing at Current Address (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.9 Passport Number",
+          "A2.9 Passport Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.10. Issuing Country",
+          "A2.10. Issuing Country",
+          "",
+          "",
+          ""
+        ],
+        [
+          "II.A. MAIN APPLICANT’s Grandparents details from your father side",
+          "II.A. MAIN APPLICANT’s Grandparents details from your father side",
+          "II.A. MAIN APPLICANT’s Grandparents details from your father side",
+          "II.A. MAIN APPLICANT’s Grandparents details from your father side",
+          "II.A. MAIN APPLICANT’s Grandparents details from your father side"
+        ],
+        [
+          "A1.1 Grandfather Surname/Family Name",
+          "A1.1 Grandfather Surname/Family Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.2 First/Given Name",
+          "A1.2 First/Given Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.3 Date of birth (dd/mm/yy)",
+          "A1.3 Date of birth (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.3 Place & Country of Birth",
+          "A1.3 Place & Country of Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.1 Grandmother Surname/Family Name",
+          "A2.1 Grandmother Surname/Family Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.2. First/Given Name",
+          "A2.2. First/Given Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.3 Date of birth (day/month/year)",
+          "A2.3 Date of birth (day/month/year)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.4 Place & Country of Birth",
+          "A2.4 Place & Country of Birth",
+          "",
+          "",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "table",
+      "index": 2,
+      "rows": [
+        [
+          "B. Brothers and Sisters (including half, step and adopted brothers and sisters)",
+          "B. Brothers and Sisters (including half, step and adopted brothers and sisters)"
+        ],
+        [
+          "B1.1 Surname/Family Name (1)",
+          ""
+        ],
+        [
+          "B1.2 First/Given Name",
+          ""
+        ],
+        [
+          "B1.3 Other Names (known as)",
+          ""
+        ],
+        [
+          "B1.4 Gender",
+          ""
+        ],
+        [
+          "B1.5 Date of Birth (dd/mm/yy)",
+          ""
+        ],
+        [
+          "B1.6. Place & Country of Birth",
+          ""
+        ],
+        [
+          "B1.7 Citizenship",
+          ""
+        ],
+        [
+          "B1.8 Complete Residential Address",
+          ""
+        ],
+        [
+          "B1.9 Marital Status",
+          ""
+        ],
+        [
+          "B1.10 Current Occupation",
+          ""
+        ],
+        [
+          "B1.11 Passport Number",
+          ""
+        ],
+        [
+          "B1.12 Issuing Country",
+          ""
+        ],
+        [
+          "B2.1 Surname/Family Name (2)",
+          ""
+        ],
+        [
+          "B2.2 First/Given Name",
+          ""
+        ],
+        [
+          "B2.3 Other Names (known as)",
+          ""
+        ],
+        [
+          "B2.4 Gender",
+          ""
+        ],
+        [
+          "B2.5 Date of Birth (dd/mm/yy)",
+          ""
+        ],
+        [
+          "B2.6 Place & Country of Birth",
+          ""
+        ],
+        [
+          "B2.7 Citizenship",
+          ""
+        ],
+        [
+          "B2.8 Complete Residential Address",
+          ""
+        ],
+        [
+          "B2.9 Marital Status",
+          ""
+        ],
+        [
+          "B2.10 Current Occupation",
+          ""
+        ],
+        [
+          "B2.11 Passport Number",
+          ""
+        ],
+        [
+          "B2.12 Issuing Country",
+          ""
+        ],
+        [
+          "B3.1 Surname/Family Name (3)",
+          ""
+        ],
+        [
+          "B3.2 First/Given Name",
+          ""
+        ],
+        [
+          "B3.3 Other Names (known as)",
+          ""
+        ],
+        [
+          "B3.4 Gender",
+          ""
+        ],
+        [
+          "B3.5 Date of Birth (dd/mm/yy)",
+          ""
+        ],
+        [
+          "B3.6 Place & Country of Birth",
+          ""
+        ],
+        [
+          "B3.7 Citizenship",
+          ""
+        ],
+        [
+          "B3.8 Complete Residential Address",
+          ""
+        ],
+        [
+          "B3.9 Marital Status",
+          ""
+        ],
+        [
+          "B3.10 Current Occupation",
+          ""
+        ],
+        [
+          "B3.11 Passport Number",
+          ""
+        ],
+        [
+          "B3.12 Issuing Country",
+          ""
+        ],
+        [
+          "B4.1 Surname/Family Name (4)",
+          ""
+        ],
+        [
+          "B4.2 First/Given Name",
+          ""
+        ],
+        [
+          "B4.3 Other Names (known as)",
+          ""
+        ],
+        [
+          "B4.4 Gender",
+          ""
+        ],
+        [
+          "B4.5 Date of Birth (dd/mm/yy)",
+          ""
+        ],
+        [
+          "B4.6 Place & Country of Birth",
+          ""
+        ],
+        [
+          "B4.7 Citizenship",
+          ""
+        ],
+        [
+          "B4.8 Complete Residential Address",
+          ""
+        ],
+        [
+          "B4.9 Marital Status",
+          ""
+        ],
+        [
+          "B4.10 Current Occupation",
+          ""
+        ],
+        [
+          "B4.11 Passport Number",
+          ""
+        ],
+        [
+          "B4.12 Issuing Country",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "table",
+      "index": 3,
+      "rows": [
+        [
+          "C. CHILDREN",
+          ""
+        ],
+        [
+          "C1.1 Surname/Family Name (2)",
+          ""
+        ],
+        [
+          "C1.2 First/Given Name",
+          ""
+        ],
+        [
+          "C1.3 Gender",
+          ""
+        ],
+        [
+          "C1.4 Date of Birth (dd/mm/yy)",
+          ""
+        ],
+        [
+          "C1.5 Place & Country of Birth",
+          ""
+        ],
+        [
+          "C1.6 Citizenship",
+          ""
+        ],
+        [
+          "C1.7 Country of Residence",
+          ""
+        ],
+        [
+          "C1.8 Home Telephone Number",
+          ""
+        ],
+        [
+          "C1.9 Mobile Number",
+          ""
+        ],
+        [
+          "C1.10 Passport Number",
+          ""
+        ],
+        [
+          "C1.11 Issuing Country",
+          ""
+        ],
+        [
+          "C1.12 Email Address",
+          ""
+        ],
+        [
+          "C1. 13 Height",
+          ""
+        ],
+        [
+          "C1.14 Weight",
+          ""
+        ],
+        [
+          "C1.15 Hair Color",
+          ""
+        ],
+        [
+          "C1.16 Eye Color",
+          ""
+        ],
+        [
+          "C1.17 Distinguishing Marks",
+          ""
+        ],
+        [
+          "C2.1 Surname/Family Name (2)",
+          ""
+        ],
+        [
+          "C2.2 First/Given Name",
+          ""
+        ],
+        [
+          "C2.3 Gender",
+          ""
+        ],
+        [
+          "C2.4 Date of Birth (dd/mm/yy)",
+          ""
+        ],
+        [
+          "C2.5 Place & Country of Birth",
+          ""
+        ],
+        [
+          "C2.6 Citizenship",
+          ""
+        ],
+        [
+          "C2.7 Country of Residence",
+          ""
+        ],
+        [
+          "C2.8 Home Telephone Number",
+          ""
+        ],
+        [
+          "C2.9 Mobile Number",
+          ""
+        ],
+        [
+          "C2.10 Passport Number",
+          ""
+        ],
+        [
+          "C2.11 Issuing Country",
+          ""
+        ],
+        [
+          "C2.12 Email Address",
+          ""
+        ],
+        [
+          "C1. 13 Height",
+          ""
+        ],
+        [
+          "C1.14 Weight",
+          ""
+        ],
+        [
+          "C1.15 Hair Color",
+          ""
+        ],
+        [
+          "C1.16 Eye Color",
+          ""
+        ],
+        [
+          "C1.17 Distinguishing Marks",
+          ""
+        ],
+        [
+          "C3.1 Surname/Family Name (3)",
+          ""
+        ],
+        [
+          "C3.2 First/Given Name",
+          ""
+        ],
+        [
+          "C3.3 Gender",
+          ""
+        ],
+        [
+          "C3.4 Date of Birth (dd/mm/yy)",
+          ""
+        ],
+        [
+          "C3.5 Place & Country of Birth",
+          ""
+        ],
+        [
+          "C3.6 Citizenship",
+          ""
+        ],
+        [
+          "C3.7 Country of residence",
+          ""
+        ],
+        [
+          "C3.8 Home Telephone Number",
+          ""
+        ],
+        [
+          "C3.9 Mobile Number",
+          ""
+        ],
+        [
+          "C3.10 Passport Number",
+          ""
+        ],
+        [
+          "C3.11 Issuing Country",
+          ""
+        ],
+        [
+          "C3.12 Email Address",
+          ""
+        ],
+        [
+          "C1. 13 Height",
+          ""
+        ],
+        [
+          "C1.14 Weight",
+          ""
+        ],
+        [
+          "C1.15 Hair Color",
+          ""
+        ],
+        [
+          "C1.16 Eye Color",
+          ""
+        ],
+        [
+          "C1.17 Distinguishing Marks",
+          ""
+        ],
+        [
+          "C4.1 Surname/Family Name (4)",
+          ""
+        ],
+        [
+          "C4.2 First/Given Name",
+          ""
+        ],
+        [
+          "C4.3 Gender",
+          ""
+        ],
+        [
+          "C4.4 Date of Birth (dd/mm/yy)",
+          ""
+        ],
+        [
+          "C4.5 Place & Country of Birth",
+          ""
+        ],
+        [
+          "C4.6 Citizenship",
+          ""
+        ],
+        [
+          "C4.7 Country of residence",
+          ""
+        ],
+        [
+          "C4.8 Home Telephone Number",
+          ""
+        ],
+        [
+          "C4.9 Mobile Number",
+          ""
+        ],
+        [
+          "C4.10 Passport Number",
+          ""
+        ],
+        [
+          "C4.11 Issuing Country",
+          ""
+        ],
+        [
+          "C4.12 Email Address",
+          ""
+        ],
+        [
+          "C1. 13 Height",
+          ""
+        ],
+        [
+          "C1.14 Weight",
+          ""
+        ],
+        [
+          "C1.15 Hair Color",
+          ""
+        ],
+        [
+          "C1.16 Eye Color",
+          ""
+        ],
+        [
+          "C1.17 Distinguishing Marks",
+          ""
+        ],
+        [
+          "C4.1 Surname/Family Name (4)",
+          ""
+        ],
+        [
+          "C4.2 First/Given Name",
+          ""
+        ],
+        [
+          "C4.3 Gender",
+          ""
+        ],
+        [
+          "C4.4 Date of Birth (dd/mm/yy)",
+          ""
+        ],
+        [
+          "C4.5 Place & Country of Birth",
+          ""
+        ],
+        [
+          "C4.6 Citizenship",
+          ""
+        ],
+        [
+          "C4.7 Country of residence",
+          ""
+        ],
+        [
+          "C4.8 Home Telephone Number",
+          ""
+        ],
+        [
+          "C4.9 Mobile Number",
+          ""
+        ],
+        [
+          "C4.10 Passport Number",
+          ""
+        ],
+        [
+          "C4.11 Issuing Country",
+          ""
+        ],
+        [
+          "C4.12 Email Address",
+          ""
+        ],
+        [
+          "C1. 13 Height",
+          ""
+        ],
+        [
+          "C1.14 Weight",
+          ""
+        ],
+        [
+          "C1.15 Hair Color",
+          ""
+        ],
+        [
+          "C1.16 Eye Color",
+          ""
+        ],
+        [
+          "C1.17 Distinguishing Marks",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "table",
+      "index": 4,
+      "rows": [
+        [
+          "SECTION III. ADDRESS INFORMATION - MAIN APPLICANT List of address where you have lived for the past 10 years. (start with the current residence)",
+          "SECTION III. ADDRESS INFORMATION - MAIN APPLICANT List of address where you have lived for the past 10 years. (start with the current residence)",
+          "SECTION III. ADDRESS INFORMATION - MAIN APPLICANT List of address where you have lived for the past 10 years. (start with the current residence)",
+          "SECTION III. ADDRESS INFORMATION - MAIN APPLICANT List of address where you have lived for the past 10 years. (start with the current residence)",
+          "SECTION III. ADDRESS INFORMATION - MAIN APPLICANT List of address where you have lived for the past 10 years. (start with the current residence)",
+          "SECTION III. ADDRESS INFORMATION - MAIN APPLICANT List of address where you have lived for the past 10 years. (start with the current residence)"
+        ],
+        [
+          "From (month/year)",
+          "To (month/year)",
+          "To (month/year)",
+          "Street name/number, Bldg. name/number, Villa name/number, town/city, postal code, country",
+          "Street name/number, Bldg. name/number, Villa name/number, town/city, postal code, country",
+          "Street name/number, Bldg. name/number, Villa name/number, town/city, postal code, country"
+        ],
+        [
+          "SECTION IV. EDUCATION INFORMATION – MAIN APPLICANT Details of all the Education have had and qualifications obtained.",
+          "SECTION IV. EDUCATION INFORMATION – MAIN APPLICANT Details of all the Education have had and qualifications obtained.",
+          "SECTION IV. EDUCATION INFORMATION – MAIN APPLICANT Details of all the Education have had and qualifications obtained.",
+          "SECTION IV. EDUCATION INFORMATION – MAIN APPLICANT Details of all the Education have had and qualifications obtained.",
+          "SECTION IV. EDUCATION INFORMATION – MAIN APPLICANT Details of all the Education have had and qualifications obtained.",
+          "SECTION IV. EDUCATION INFORMATION – MAIN APPLICANT Details of all the Education have had and qualifications obtained."
+        ],
+        [
+          "From (month/year)",
+          "From (month/year)",
+          "To (month/year)",
+          "Name of School",
+          "Location (City & Country)",
+          "Qualification/ Diploma Obtained"
+        ],
+        [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "Primary/Elementary"
+        ],
+        [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "Secondary/High School"
+        ],
+        [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "Bachelor"
+        ],
+        [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "Master"
+        ],
+        [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "PhD"
+        ]
+      ]
+    },
+    {
+      "type": "table",
+      "index": 5,
+      "rows": [
+        [
+          "SECTION V. EMPLOYMENT INFORMATION – MAIN APPLICANT Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – MAIN APPLICANT Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – MAIN APPLICANT Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – MAIN APPLICANT Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – MAIN APPLICANT Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – MAIN APPLICANT Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)"
+        ],
+        [
+          "From (month/year)",
+          "To (month/year)",
+          "Occupation",
+          "Name of Employer/ Company",
+          "Complete Address",
+          "Type of business",
+          "Type of business"
+        ]
+      ]
+    },
+    {
+      "type": "table",
+      "index": 6,
+      "rows": [
+        [
+          "Contact Person In Case of Emergency",
+          "Contact Person In Case of Emergency"
+        ],
+        [
+          "Full Name",
+          ""
+        ],
+        [
+          "Complete Address",
+          ""
+        ],
+        [
+          "Telephone/Mobile Number",
+          ""
+        ],
+        [
+          "Email",
+          ""
+        ],
+        [
+          "Relationship",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "index": 2,
+      "text": "Please provide a detailed explanation of the reason(s) that you are seeking to obtain an alternative citizenship."
+    },
+    {
+      "type": "paragraph",
+      "index": 3,
+      "text": "__________________________________________________________________________________"
+    },
+    {
+      "type": "paragraph",
+      "index": 4,
+      "text": "Kindly fill-out the following if the SPOUSE & DEPENDENTS are INCLUDED IN THE APPLICATION"
+    },
+    {
+      "type": "table",
+      "index": 7,
+      "rows": [
+        [
+          "SECTION I. PERSONAL INFORMATION - SPOUSE",
+          "SECTION I. PERSONAL INFORMATION - SPOUSE",
+          "SECTION I. PERSONAL INFORMATION - SPOUSE",
+          "SECTION I. PERSONAL INFORMATION - SPOUSE",
+          "SECTION I. PERSONAL INFORMATION - SPOUSE"
+        ],
+        [
+          "A. Spouse Details",
+          "A. Spouse Details",
+          "A. Spouse Details",
+          "A. Spouse Details",
+          "A. Spouse Details"
+        ],
+        [
+          "A1. Surname/Family Name",
+          "A1. Surname/Family Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2. First/Given Name",
+          "A2. First/Given Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A3. Other names /Alias",
+          "A3. Other names /Alias",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A4. Date of birth (day/month/year)",
+          "A4. Date of birth (day/month/year)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A5. Place and Country of Birth",
+          "A5. Place and Country of Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A6. Citizenship at Birth",
+          "A6. Citizenship at Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A7. Present Citizenship",
+          "A7. Present Citizenship",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A8. Other Citizenship",
+          "A8. Other Citizenship",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A9. Languages you Speak and Write",
+          "A9. Languages you Speak and Write",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A10. Identity Card Number & Issuing Country",
+          "A10. Identity Card Number & Issuing Country",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A11. Social Security Number & Issuing Country",
+          "A11. Social Security Number & Issuing Country",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A12. Driving License Number & Issuing Country",
+          "A12. Driving License Number & Issuing Country",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A13. Expiry Date",
+          "A13. Expiry Date",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A14. Height",
+          "A14. Height",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A15. Weight",
+          "A15. Weight",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A16. Hair Color",
+          "A16. Hair Color",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A17. Eye Color",
+          "A17. Eye Color",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A18. Distinguishing Marks",
+          "A18. Distinguishing Marks",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B. Address and Contact Details",
+          "B. Address and Contact Details",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B1. Current Residential Address",
+          "B1. Current Residential Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2. DATE since Residing in the CURRENT Address (dd/mm/yy)",
+          "B2. DATE since Residing in the CURRENT Address (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3. Permanent Residential Address",
+          "B3. Permanent Residential Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B4. DATE since Residing in the PERMANENT Address (dd/mm/yy)",
+          "B4. DATE since Residing in the PERMANENT Address (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B5. Permanent Telephone Number/ Home Landline",
+          "B5. Permanent Telephone Number/ Home Landline",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B6. Mobile number",
+          "B6. Mobile number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B7. Other Telephone Number",
+          "B7. Other Telephone Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B8. Fax Number",
+          "B8. Fax Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B9. Email Address",
+          "B9. Email Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C. Employment Details (if applicable)",
+          "C. Employment Details (if applicable)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C1. Current Occupation",
+          "C1. Current Occupation",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C2. Occupation by Training",
+          "C2. Occupation by Training",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C3. Name of Company",
+          "C3. Name of Company",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C4. Company Address",
+          "C4. Company Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C5. Telephone Number",
+          "C5. Telephone Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C6. Fax Number",
+          "C6. Fax Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "C7. Most important person/companies with whom you do business",
+          "C7. Most important person/companies with whom you do business",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D. Business Details (if applicable)",
+          "D. Business Details (if applicable)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D1. Name of Business",
+          "D1. Name of Business",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D2. Business Address",
+          "D2. Business Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D3. Nature of Business",
+          "D3. Nature of Business",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D4. Telephone Number",
+          "D4. Telephone Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D5. Fax Number",
+          "D5. Fax Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "D6. Most important person/companies with whom you do business",
+          "D6. Most important person/companies with whom you do business",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E. Source of Income (if applicable)",
+          "E. Source of Income (if applicable)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E1. Main Sources of Income",
+          "E1. Main Sources of Income",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E2. Gross Annual Net Income in US Dollars (average during past 3 years)",
+          "E2. Gross Annual Net Income in US Dollars (average during past 3 years)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E3. Current Total Personal Net Assets in US Dollars (average during past 3 years)",
+          "E3. Current Total Personal Net Assets in US Dollars (average during past 3 years)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E4. Estimated Net Worth (asset minus liabilities in USD)",
+          "E4. Estimated Net Worth (asset minus liabilities in USD)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E5. Main Geographical Jurisdiction in which the own business is conducted (if any)",
+          "E5. Main Geographical Jurisdiction in which the own business is conducted (if any)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E6. Please provide a summarize statement of how you have accumulated your Total Net Worth by listing the main acquisitions/dispositions and events",
+          "E6. Please provide a summarize statement of how you have accumulated your Total Net Worth by listing the main acquisitions/dispositions and events",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E7. Fixed Assets (USD)",
+          "E7. Fixed Assets (USD)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E8. Savings / Deposits (USD)",
+          "E8. Savings / Deposits (USD)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E9. Investments (e.g. stocks, shares, bonds, debentures, etc.)",
+          "E9. Investments (e.g. stocks, shares, bonds, debentures, etc.)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E10. Real Estate Holdings",
+          "E10. Real Estate Holdings",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E11. Business Assets",
+          "E11. Business Assets",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E12. Liabilities",
+          "E12. Liabilities",
+          "E12. Liabilities",
+          "E12. Liabilities",
+          "E12. Liabilities"
+        ],
+        [
+          "E13. Outstanding Long Term Loans (e.g. mortgage, car loan, personal loan, etc)",
+          "E13. Outstanding Long Term Loans (e.g. mortgage, car loan, personal loan, etc)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "E14. Outstanding Short Term (e.g. credit card bills, tax liability)",
+          "E14. Outstanding Short Term (e.g. credit card bills, tax liability)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "F. Licenses (if applicable)",
+          "F. Licenses (if applicable)",
+          "F. Licenses (if applicable)",
+          "F. Licenses (if applicable)",
+          "F. Licenses (if applicable)"
+        ],
+        [
+          "List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any",
+          "List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any",
+          "List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any",
+          "List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any",
+          "List all valid and expired Professional Licenses that you hold, may hold or have held (e.g. real estate, gambling, and financial services) – if applicable/any"
+        ],
+        [
+          "F1. License Name",
+          "F2. License Number",
+          "F3. Licensing Body",
+          "F3. Licensing Body",
+          "F4. Date Held"
+        ],
+        [
+          "F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why)",
+          "F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why)",
+          "F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why)",
+          "F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why)",
+          "F5. Have you ever had any disciplinary actions taken against you in respect to any of these licenses? (if Yes, explain what and why)"
+        ],
+        [
+          "G. Previous Spouse Details (if applicable)",
+          "G. Previous Spouse Details (if applicable)",
+          "G. Previous Spouse Details (if applicable)",
+          "",
+          ""
+        ],
+        [
+          "G1. Full Name (after marriage)",
+          "G1. Full Name (after marriage)",
+          "G1. Full Name (after marriage)",
+          "",
+          ""
+        ],
+        [
+          "G2. Full Name (before marriage)",
+          "G2. Full Name (before marriage)",
+          "G2. Full Name (before marriage)",
+          "",
+          ""
+        ],
+        [
+          "G3. Date of Birth (dd/mm/yy)",
+          "G3. Date of Birth (dd/mm/yy)",
+          "G3. Date of Birth (dd/mm/yy)",
+          "",
+          ""
+        ],
+        [
+          "G4. Place of Birth (City & Country)",
+          "G4. Place of Birth (City & Country)",
+          "G4. Place of Birth (City & Country)",
+          "",
+          ""
+        ],
+        [
+          "G5. Place of Marriage",
+          "G5. Place of Marriage",
+          "G5. Place of Marriage",
+          "",
+          ""
+        ],
+        [
+          "G6. Date of Marriage",
+          "G6. Date of Marriage",
+          "G6. Date of Marriage",
+          "",
+          ""
+        ],
+        [
+          "G7. Date of Divorce",
+          "G7. Date of Divorce",
+          "G7. Date of Divorce",
+          "",
+          ""
+        ],
+        [
+          "G8. Period of Marriage (indicate the no. of years & months of marriage)",
+          "G8. Period of Marriage (indicate the no. of years & months of marriage)",
+          "G8. Period of Marriage (indicate the no. of years & months of marriage)",
+          "",
+          ""
+        ],
+        [
+          "SECTION II. SPOUSE’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”).",
+          "SECTION II. SPOUSE’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”).",
+          "SECTION II. SPOUSE’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”).",
+          "SECTION II. SPOUSE’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”).",
+          "SECTION II. SPOUSE’s FAMILY INFORMATION (if any family member is deceased, only give their names and write “deceased” in the field “Place & Country of Birth”)."
+        ],
+        [
+          "II.A. SPOUSE’s Parents",
+          "II.A. SPOUSE’s Parents",
+          "II.A. SPOUSE’s Parents",
+          "II.A. SPOUSE’s Parents",
+          "II.A. SPOUSE’s Parents"
+        ],
+        [
+          "A1.1 FATHER Surname/Family Name",
+          "A1.1 FATHER Surname/Family Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.2 First/Given Name",
+          "A1.2 First/Given Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.3 Date of birth (dd/mm/yy)",
+          "A1.3 Date of birth (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.3 Place & Country of Birth",
+          "A1.3 Place & Country of Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.4 Citizenship",
+          "A1.4 Citizenship",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.5 Deceased/Alive",
+          "A1.5 Deceased/Alive",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.6 Current Occupation",
+          "A1.6 Current Occupation",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.7 Home Telephone Number",
+          "A1.7 Home Telephone Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.8 Mobile Number",
+          "A1.8 Mobile Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.9 Complete Residential Address",
+          "A1.9 Complete Residential Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.10 Date since Residing at Current Address (dd/mm/yy)",
+          "A1.10 Date since Residing at Current Address (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.11 Passport Number",
+          "A1.11 Passport Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.12 Issuing Country",
+          "A1.12 Issuing Country",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.13 Date of Marriage",
+          "A1.13 Date of Marriage",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.14 Place & Country of Marriage",
+          "A1.14 Place & Country of Marriage",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.1 MOTHER Surname/Family Name",
+          "A2.1 MOTHER Surname/Family Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.2. First/Given Name",
+          "A2.2. First/Given Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.3 Date of birth (day/month/year)",
+          "A2.3 Date of birth (day/month/year)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.4 Place & Country of Birth",
+          "A2.4 Place & Country of Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.5 Citizenship",
+          "A2.5 Citizenship",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.6 Current Occupation",
+          "A2.6 Current Occupation",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.7 Complete Residential Address",
+          "A2.7 Complete Residential Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.8 Date since Residing at Current Address (dd/mm/yy)",
+          "A2.8 Date since Residing at Current Address (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.9 Passport Number",
+          "A2.9 Passport Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.10. Issuing Country",
+          "A2.10. Issuing Country",
+          "",
+          "",
+          ""
+        ],
+        [
+          "II.A. GRANDPARENTS DETAILS FROM YOUR FATHER SIDE",
+          "II.A. GRANDPARENTS DETAILS FROM YOUR FATHER SIDE",
+          "II.A. GRANDPARENTS DETAILS FROM YOUR FATHER SIDE",
+          "II.A. GRANDPARENTS DETAILS FROM YOUR FATHER SIDE",
+          "II.A. GRANDPARENTS DETAILS FROM YOUR FATHER SIDE"
+        ],
+        [
+          "A1.1 Grandfather Surname/Family Name",
+          "A1.1 Grandfather Surname/Family Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.2 First/Given Name",
+          "A1.2 First/Given Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.3 Date of birth (dd/mm/yy)",
+          "A1.3 Date of birth (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A1.3 Place & Country of Birth",
+          "A1.3 Place & Country of Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.1 Grandmother Surname/Family Name",
+          "A2.1 Grandmother Surname/Family Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.2. First/Given Name",
+          "A2.2. First/Given Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.3 Date of birth (day/month/year)",
+          "A2.3 Date of birth (day/month/year)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "A2.4 Place & Country of Birth",
+          "A2.4 Place & Country of Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B. Brothers and Sisters (including half, step and adopted brothers and sisters)",
+          "B. Brothers and Sisters (including half, step and adopted brothers and sisters)",
+          "B. Brothers and Sisters (including half, step and adopted brothers and sisters)",
+          "B. Brothers and Sisters (including half, step and adopted brothers and sisters)",
+          "B. Brothers and Sisters (including half, step and adopted brothers and sisters)"
+        ],
+        [
+          "B1.1 Surname/Family Name (1)",
+          "B1.1 Surname/Family Name (1)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B1.2 First/Given Name",
+          "B1.2 First/Given Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B1.3 Other Names (known as)",
+          "B1.3 Other Names (known as)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B1.4 Gender",
+          "B1.4 Gender",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B1.5 Date of Birth (dd/mm/yy)",
+          "B1.5 Date of Birth (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B1.6. Place & Country of Birth",
+          "B1.6. Place & Country of Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B1.7 Citizenship",
+          "B1.7 Citizenship",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B1.8 Complete Residential Address",
+          "B1.8 Complete Residential Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B1.9 Marital Status",
+          "B1.9 Marital Status",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B1.10 Current Occupation",
+          "B1.10 Current Occupation",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B1.11 Passport Number",
+          "B1.11 Passport Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B1.12 Issuing Country",
+          "B1.12 Issuing Country",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2.1 Surname/Family Name (2)",
+          "B2.1 Surname/Family Name (2)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2.2 First/Given Name",
+          "B2.2 First/Given Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2.3 Other Names (known as)",
+          "B2.3 Other Names (known as)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2.4 Gender",
+          "B2.4 Gender",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2.5 Date of Birth (dd/mm/yy)",
+          "B2.5 Date of Birth (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2.6 Place & Country of Birth",
+          "B2.6 Place & Country of Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2.7 Citizenship",
+          "B2.7 Citizenship",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2.8 Complete Residential Address",
+          "B2.8 Complete Residential Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2.9 Marital Status",
+          "B2.9 Marital Status",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2.10 Current Occupation",
+          "B2.10 Current Occupation",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2.11 Passport Number",
+          "B2.11 Passport Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B2.12 Issuing Country",
+          "B2.12 Issuing Country",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3.1 Surname/Family Name (3)",
+          "B3.1 Surname/Family Name (3)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3.2 First/Given Name",
+          "B3.2 First/Given Name",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3.3 Other Names (known as)",
+          "B3.3 Other Names (known as)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3.4 Gender",
+          "B3.4 Gender",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3.5 Date of Birth (dd/mm/yy)",
+          "B3.5 Date of Birth (dd/mm/yy)",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3.6 Place & Country of Birth",
+          "B3.6 Place & Country of Birth",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3.7 Citizenship",
+          "B3.7 Citizenship",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3.8 Complete Residential Address",
+          "B3.8 Complete Residential Address",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3.9 Marital Status",
+          "B3.9 Marital Status",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3.10 Current Occupation",
+          "B3.10 Current Occupation",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3.11 Passport Number",
+          "B3.11 Passport Number",
+          "",
+          "",
+          ""
+        ],
+        [
+          "B3.12 Issuing Country",
+          "B3.12 Issuing Country",
+          "",
+          "",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "table",
+      "index": 8,
+      "rows": [
+        [
+          "SECTION III. ADDRESS INFORMATION - SPOUSE (if not the same with the Main Applicant) List of address where you have lived for the past 10 years (start with the current residence)",
+          "SECTION III. ADDRESS INFORMATION - SPOUSE (if not the same with the Main Applicant) List of address where you have lived for the past 10 years (start with the current residence)",
+          "SECTION III. ADDRESS INFORMATION - SPOUSE (if not the same with the Main Applicant) List of address where you have lived for the past 10 years (start with the current residence)"
+        ],
+        [
+          "From (month/year)",
+          "To (month/year)",
+          "Street name/number, Bldg. name/number, Villa name/number, town/city, postal code, country"
+        ]
+      ]
+    },
+    {
+      "type": "table",
+      "index": 9,
+      "rows": [
+        [
+          "SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained",
+          "SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained",
+          "SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained",
+          "SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained",
+          "SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained",
+          "SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained",
+          "SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained",
+          "SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained",
+          "SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained",
+          "SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained",
+          "SECTION IV. EDUCATION INFORMATION – SPOUSE & DEPENDENTS Details of all the Education of the SPOUSE & DEPENDENTS have had and qualifications obtained"
+        ],
+        [
+          "DEPENDENTS",
+          "ELEMENTARY [Name of School / DATES (from-to) / City & Country]",
+          "ELEMENTARY [Name of School / DATES (from-to) / City & Country]",
+          "ELEMENTARY [Name of School / DATES (from-to) / City & Country]",
+          "HIGH SCHOOL [Name of School / DATES (from-to) / City & Country]",
+          "HIGH SCHOOL [Name of School / DATES (from-to) / City & Country]",
+          "HIGH SCHOOL [Name of School / DATES (from-to) / City & Country]",
+          "COLLEGE / UNIVERSITY [Name of School / DATES (from-to) / City & Country]",
+          "COLLEGE / UNIVERSITY [Name of School / DATES (from-to) / City & Country]",
+          "MASTERS / PhD [Name of School / DATES (from-to) / City & Country]",
+          "MASTERS / PhD [Name of School / DATES (from-to) / City & Country]"
+        ],
+        [
+          "SPOUSE",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        [
+          "Child 1",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        [
+          "Child 2",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        [
+          "Child 3",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        [
+          "Child 4",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        [
+          "SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)",
+          "SECTION V. EMPLOYMENT INFORMATION – SPOUSE (if applicable) Details of all your employment history, including any periods of unemployment / Write ALL your companies name, including active and inactive (if self employed)"
+        ],
+        [
+          "From (month/year)",
+          "From (month/year)",
+          "To (month/year)",
+          "Occupation",
+          "Occupation",
+          "Name of Employer/ Company",
+          "Complete Address",
+          "Complete Address",
+          "Type of business",
+          "Type of business"
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "index": 5,
+      "text": "DECLARATIONS"
+    },
+    {
+      "type": "paragraph",
+      "index": 6,
+      "text": "NOTE: If any of the family members answers “yes” from questions 1-23 kindly explain on a separate page.s"
+    },
+    {
+      "type": "table",
+      "index": 10,
+      "rows": [
+        [
+          "",
+          "YES",
+          "NO"
+        ],
+        [
+          "1: Have you ever arrested, charged, convicted, found guilty or been expunged of any offence (s) against the law in any country? (except for minor traffic citations)",
+          "",
+          ""
+        ],
+        [
+          "2: Have you ever been denied any category of visa to a country with which the concerned country you’re applying for has visa free access and have not been successful in subsequently obtaining such a visa? If yes, note date, city, county, state and country in which you were denied the visa. _____________________________________________________________________",
+          "",
+          ""
+        ],
+        [
+          "3: Have you ever had a visa cancelled?",
+          "",
+          ""
+        ],
+        [
+          "4: Have you ever been declared bankrupt by a court? If yes, note the date, city, county, state and country in which the court declared you bankrupt. _____________________________________________________________________",
+          "",
+          ""
+        ],
+        [
+          "5: Have you ever been involved personally, or as a director in any bankruptcy, insolvency or liquidation proceedings?",
+          "",
+          ""
+        ],
+        [
+          "6: Have you ever testified before a grand jury or investigative hearing or probe?",
+          "",
+          ""
+        ],
+        [
+          "7: Have any charges or accusations of illegal activity of any nature been made against you in any country?",
+          "",
+          ""
+        ],
+        [
+          "8: Have you ever been the subject of any criminal investigation?",
+          "",
+          ""
+        ],
+        [
+          "9: Have you ever been considered to be a potential national security risk in a country?",
+          "",
+          ""
+        ],
+        [
+          "10: Have you ever been sentenced to serve a period of time in detention or been on probation?",
+          "",
+          ""
+        ],
+        [
+          "11: Have you ever received a pardon for any criminal offense? If yes, note the date, city, county, state and country in which you received the pardon. _____________________________________________________________________",
+          "",
+          ""
+        ],
+        [
+          "12: Have you ever had a civil or criminal record expunged or sealed by a court order?",
+          "",
+          ""
+        ],
+        [
+          "13: Have you ever been subpoenaed to appear to testify before a federal, state, our county grand jury, board or commission?abHav",
+          "",
+          ""
+        ],
+        [
+          "14: Has a criminal indictment, information or complaint ever been returned against you, but for which you were not arrested or in which you were named as an un-indicted co-party?",
+          "",
+          ""
+        ],
+        [
+          "15: Have you, as an individual, or as an owner, partner, director or officer of any partnership, corporation or entity, ever been a party to a lawsuit as either a plaintiff or defendant? (other than divorces)",
+          "",
+          ""
+        ],
+        [
+          "16: Have you ever been involved, directly or indirectly, in the financing of terrorism or in any terrorist or criminal organization?",
+          "",
+          ""
+        ],
+        [
+          "17: Have you ever been unlawfully present in or been deported from any country, or sought to assist others to do the same?",
+          "",
+          ""
+        ],
+        [
+          "18: Have you ever applied for citizenship in any country for which the citizenship has not been granted?",
+          "",
+          ""
+        ],
+        [
+          "19: Have you ever been the subject or any order, judgment or decree of any federal or state authority barring, suspending, or otherwise limiting your right to engage in any professional or business practice or activity?",
+          "",
+          ""
+        ],
+        [
+          "20: Are you a Politically Exposed Person (PEP)? (A (A PEP may be a past or current government office holders, or individuals who are or were formerly entrusted with high-level public functions. For example, senior officers, heads of state of government, senior judicial or military officials, officials of political parties and senior executives of state-owned enterprises (SOE). PEP definition includes family members and close associates of a primary PEP).",
+          "",
+          ""
+        ],
+        [
+          "21: Have you ever been declared by a court or qualified health practitioner to be mentally incapacitated?",
+          "",
+          ""
+        ],
+        [
+          "22: Are there any other business activities in which you are engaged that have not already been disclosed on this form?",
+          "",
+          ""
+        ],
+        [
+          "23: To the best of your knowledge, have you ever been under investigation by any law enforcement agency or tax authority in any country?",
+          "",
+          ""
+        ],
+        [
+          "24: I confirm that my wealth has been obtained from completely legitimate sources, and is not, whether directly or indirectly, from the proceeds of criminal activity of any kind.",
+          "",
+          ""
+        ],
+        [
+          "25: I can confirm that I am fully compliant with my national, regional and global tax obligations.",
+          "",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "index": 7,
+      "text": "*If you have answered YES to any questions other than in number 24 or 25, please provide with further detail. Clearly indicate the number for which the details are being provided in each case."
+    },
+    {
+      "type": "paragraph",
+      "index": 8,
+      "text": "إقرارات و تعهدات:"
+    },
+    {
+      "type": "paragraph",
+      "index": 9,
+      "text": "أ. يلنزم العميل بالافصاح عن اي رفض تأشيره قد تم الحصول عليها فى السنوات السابقة."
+    },
+    {
+      "type": "paragraph",
+      "index": 10,
+      "text": "ب. يلتزم العميل بعدم التقدم بطلب للحصول على تأشيرة للدول التى يسمح لجواز البلد المقدم ايها بالسفر اليها بدون تأشيرة"
+    },
+    {
+      "type": "paragraph",
+      "index": 11,
+      "text": "ج. الافصاح عن كافة المعلومات و المستندات :"
+    },
+    {
+      "type": "paragraph",
+      "index": 12,
+      "text": ". يلتزم العميل بالافصاح عن كافة المعلومات الخاصة بتقديم الملف"
+    },
+    {
+      "type": "paragraph",
+      "index": 13,
+      "text": ". يلتزم العميل بأخطارنا ما اذا كانت هناك سابقة سلبية خاصة بة او باحد افراد عائلتة."
+    },
+    {
+      "type": "paragraph",
+      "index": 14,
+      "text": ". يلتزم العميل بتزويدنا بالاوراق و المعلومات التى تخص الشركات الخاصة به لتشمل:,"
+    },
+    {
+      "type": "paragraph",
+      "index": 15,
+      "text": "(الرخص التجارية, الرخص الصناعية, او اى رخص مهنية اخرى الخ سواء, كانت الشركة/الرخصة فعالة او غير فعالة)"
+    },
+    {
+      "type": "paragraph",
+      "index": 16,
+      "text": "Undertakings and Pledges:"
+    },
+    {
+      "type": "paragraph",
+      "index": 17,
+      "text": "a. The applicant shall disclose his/her visa refusal cases in the year(s) prior to the date of his/her application."
+    },
+    {
+      "type": "paragraph",
+      "index": 18,
+      "text": "b. The applicant shall not submit a visa application to a country has a free visa entry with the concerned country you are applying to."
+    },
+    {
+      "type": "paragraph",
+      "index": 19,
+      "text": "c. Information and documents disclosure:"
+    },
+    {
+      "type": "paragraph",
+      "index": 20,
+      "text": "The Client shall disclose all information related to his/her application."
+    },
+    {
+      "type": "paragraph",
+      "index": 21,
+      "text": "The Clients shall inform us whether they or any of their family members have any negative precedent(s)."
+    },
+    {
+      "type": "paragraph",
+      "index": 22,
+      "text": "The applicant shall provide ELEVAY with documents and information on his companies, including:"
+    },
+    {
+      "type": "paragraph",
+      "index": 23,
+      "text": "(Commercial licenses, industrial licenses, or any other professional licenses etc. whether the company/license is valid or invalid)"
+    },
+    {
+      "type": "paragraph",
+      "index": 24,
+      "text": "DECLARATION"
+    },
+    {
+      "type": "paragraph",
+      "index": 25,
+      "text": "I HEREBY DECLARE THAT THE DETAILS FURNISHED ABOVE ARE TRUE AND CORRECT TO THE BEST OF MY KNOWLEDGE AND BELIEF AND I UNDERTAKE TO INFORM YOU OF ANY CHANGES THEREIN, IMMEDIATELY. IN CASE ANY OF THE ABOVE INFORMATION IS FOUND TO BE FALSE OR UTRUE OR MISLEADING OR MISREPRESENTING, I AM AWARE THAT I MAY BE HELD LIABLE FOR IT."
+    },
+    {
+      "type": "paragraph",
+      "index": 26,
+      "text": "CLIENT’S SIGNATURE: …………………………………….. Date…………………………"
+    }
+  ]
+}

@@ -34,11 +34,15 @@ import {
   type PortalRequestContext,
 } from "./clientPortalAuth";
 import { projectClientProcessTimeline } from "./clientProcessTimeline";
+import { projectCaribbeanTimeline, type CaribbeanTimelinePayment } from "../shared/caribbeanTimeline";
 import { getClientNotificationAttachment } from "./clientNotificationAttachments";
 import { sendClientPortalActivityEmail, sendClientPortalPasswordResetEmail } from "./emailService";
 import { resolveSystemNotificationRecipients } from "./systemNotificationRecipients";
 import { replaceClientPortalAssignments } from "./clientPortalAssignmentService";
 import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPolicy";
+import { clientDocumentationProgramLabel, isCaribbeanDocumentationProgram } from "../shared/clientDocumentationPrograms";
+import { CARIBBEAN_QUESTIONNAIRE_VERSION } from "../shared/caribbeanQuestionnaire";
+import { getCaribbeanQuestionnaire, saveCaribbeanQuestionnaireDraft, submitCaribbeanQuestionnaire } from "./caribbeanQuestionnaireService";
 import { decodeProviderCoverUpload, providerCoverStorageKey, type ProviderCoverUpload } from "./clientPortalProviderMedia";
 import { comparePrograms, PROGRAM_COMPARISON_OPTIONS } from "./programComparisonService";
 import { verifyPassword as verifyEmployeePassword } from "./_core/auth-email";
@@ -269,7 +273,10 @@ async function ownedApplication(portalUserId: number, applicationPublicId: strin
   return row ?? null;
 }
 
-function workflowProjection(clientCase: typeof clientCases.$inferSelect, receivedCount: number, totalDocuments: number) {
+function workflowProjection(clientCase: typeof clientCases.$inferSelect, receivedCount: number, totalDocuments: number, payments: CaribbeanTimelinePayment[] = []) {
+  if (isCaribbeanDocumentationProgram(clientCase.program)) {
+    return projectCaribbeanTimeline({ clientCase, receivedDocuments: receivedCount, totalDocuments, payments });
+  }
   const spainTeamReceived = clientCase.stage === "spain_team_received" || clientCase.stage === "submission" || clientCase.stage === "approved";
   const submitted = clientCase.stage === "submission" || clientCase.stage === "approved";
   const approved = clientCase.stage === "approved";
@@ -1031,7 +1038,7 @@ export function registerClientPortalRoutes(app: Express) {
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
     const rows = await db.select({ application: clientPortalApplications, clientCase: clientCases }).from(clientPortalApplications).innerJoin(clientCases, eq(clientPortalApplications.clientCaseId, clientCases.id)).where(and(eq(clientPortalApplications.portalUserId, req.portal!.user.id), isNull(clientPortalApplications.accessRevokedAt))).orderBy(desc(clientPortalApplications.isPrimary), desc(clientPortalApplications.createdAt));
-    return res.json(rows.map(({ application, clientCase }) => ({ publicId: application.publicId, label: application.label || clientCase.clientName, clientCode: clientCase.clientCode, applicationType: clientCase.applicationType, stage: clientCase.stage, consultant: clientCase.consultant, paralegal: clientCase.paralegal, isPrimary: application.isPrimary, updatedAt: clientCase.updatedAt })));
+    return res.json(rows.map(({ application, clientCase }) => ({ publicId: application.publicId, label: application.label || clientCase.clientName, clientCode: clientCase.clientCode, program: clientCase.program, programLabel: clientDocumentationProgramLabel(clientCase.program), applicationType: clientCase.applicationType, stage: isCaribbeanDocumentationProgram(clientCase.program) ? clientCase.caribbeanJourneyStage ?? "questionnaire" : clientCase.stage, questionnaireStatus: clientCase.questionnaireSubmittedAt ? "submitted" : "not_started", consultant: clientCase.consultant, paralegal: clientCase.paralegal, isPrimary: application.isPrimary, updatedAt: clientCase.updatedAt })));
   });
 
   app.get("/client-api/applications/:applicationId", async (req: PortalRequest, res) => {
@@ -1047,7 +1054,60 @@ export function registerClientPortalRoutes(app: Express) {
     const legacyFamilyMembers = (owned.clientCase.spouseName?.trim() ? 1 : 0) + legacyChildren;
     const familyMemberCount = applicants.length ? portalFamilyMembers.length : legacyFamilyMembers;
     const clientSummary = { clientName: owned.clientCase.clientName, householdType: owned.clientCase.maritalStatus, familyMemberCount, totalApplicants: Math.max(1, applicants.length || familyMemberCount + 1), spouseIncluded: applicants.length ? applicants.some(applicant => applicant.relation === "spouse") : Boolean(owned.clientCase.spouseName?.trim()), childrenIncluded: applicants.length ? applicants.filter(applicant => applicant.relation === "child").length : legacyChildren };
-    return res.json({ publicId: owned.application.publicId, label: owned.application.label || owned.clientCase.clientName, clientCode: owned.clientCase.clientCode, applicationType: owned.clientCase.applicationType, stage: owned.clientCase.stage, consultant: owned.clientCase.consultant, paralegal: owned.clientCase.paralegal, clientSummary, dates: { hasSchengenVisa: owned.clientCase.schengenVisaValid, requiresSchengenAppointment: owned.clientCase.schengenVisaValid === false, schengenAppointmentDate: owned.clientCase.schengenAppointmentDate, embassyEmailSentAt: owned.clientCase.embassyEmailDate, expectedSubmissionDate: owned.clientCase.expectedSubmissionDate, spainTeamReceivedDate: owned.clientCase.spainTeamReceivedDate, translatorSubmittedDate: owned.clientCase.translationDate, submissionDate: owned.clientCase.submissionDate, expectedApprovalDate: owned.clientCase.expectedApprovalDate, approvalDate: owned.clientCase.approvalDate, travelDate: owned.clientCase.travelDate, arrivalConfirmedDate: owned.clientCase.arrivalConfirmedDate, biometricsAppointmentDate: owned.clientCase.biometricsAppointmentDate, biometricsCompletedDate: owned.clientCase.biometricsDate, bankAccountCompletedDate: owned.clientCase.bankAccountCompletedDate, residencyCardReadyDate: owned.clientCase.residencyCardReadyDate }, links: { submissionReceipt: owned.clientCase.submissionReceiptLink, approvalLetter: owned.clientCase.approvalLetterLink, ticket: owned.clientCase.ticketLink, hotel: owned.clientCase.hotelLink }, applicants, documentationFolder: folder });
+    return res.json({ publicId: owned.application.publicId, label: owned.application.label || owned.clientCase.clientName, clientCode: owned.clientCase.clientCode, program: owned.clientCase.program, programLabel: clientDocumentationProgramLabel(owned.clientCase.program), applicationType: owned.clientCase.applicationType, stage: isCaribbeanDocumentationProgram(owned.clientCase.program) ? owned.clientCase.caribbeanJourneyStage ?? "questionnaire" : owned.clientCase.stage, questionnaireStatus: owned.clientCase.questionnaireSubmittedAt ? "submitted" : "not_started", questionnaireVersion: owned.clientCase.questionnaireVersion ?? CARIBBEAN_QUESTIONNAIRE_VERSION, consultant: owned.clientCase.consultant, paralegal: owned.clientCase.paralegal, clientSummary, dates: { hasSchengenVisa: owned.clientCase.schengenVisaValid, requiresSchengenAppointment: owned.clientCase.schengenVisaValid === false, schengenAppointmentDate: owned.clientCase.schengenAppointmentDate, embassyEmailSentAt: owned.clientCase.embassyEmailDate, expectedSubmissionDate: owned.clientCase.expectedSubmissionDate, spainTeamReceivedDate: owned.clientCase.spainTeamReceivedDate, translatorSubmittedDate: owned.clientCase.translationDate, submissionDate: owned.clientCase.submissionDate, expectedApprovalDate: owned.clientCase.expectedApprovalDate, approvalDate: owned.clientCase.approvalDate, travelDate: owned.clientCase.travelDate, arrivalConfirmedDate: owned.clientCase.arrivalConfirmedDate, biometricsAppointmentDate: owned.clientCase.biometricsAppointmentDate, biometricsCompletedDate: owned.clientCase.biometricsDate, bankAccountCompletedDate: owned.clientCase.bankAccountCompletedDate, residencyCardReadyDate: owned.clientCase.residencyCardReadyDate }, links: { submissionReceipt: owned.clientCase.submissionReceiptLink, approvalLetter: owned.clientCase.approvalLetterLink, ticket: owned.clientCase.ticketLink, hotel: owned.clientCase.hotelLink }, applicants, documentationFolder: folder });
+  });
+
+  app.get("/client-api/applications/:applicationId/questionnaire", async (req: PortalRequest, res) => {
+    const owned = await ownedApplication(req.portal!.user.id, req.params.applicationId);
+    if (!owned) return error(res, 404, "application_not_found");
+    if (!isCaribbeanDocumentationProgram(owned.clientCase.program)) return error(res, 400, "questionnaire_not_available");
+    try {
+      return res.json(await getCaribbeanQuestionnaire(owned.clientCase.id));
+    } catch (questionnaireError) {
+      console.error("[ClientQuestionnaire] Read failed", { code: questionnaireError instanceof Error ? questionnaireError.message : "unknown" });
+      return error(res, 500, "questionnaire_unavailable");
+    }
+  });
+
+  app.put("/client-api/applications/:applicationId/questionnaire/draft", writeLimiter, async (req: PortalRequest, res) => {
+    const owned = await ownedApplication(req.portal!.user.id, req.params.applicationId);
+    if (!owned) return error(res, 404, "application_not_found");
+    if (!isCaribbeanDocumentationProgram(owned.clientCase.program)) return error(res, 400, "questionnaire_not_available");
+    try {
+      return res.json(await saveCaribbeanQuestionnaireDraft({
+        clientCaseId: owned.clientCase.id,
+        portalUserId: req.portal!.user.id,
+        answers: req.body?.answers,
+        currentStepKey: req.body?.currentStepKey,
+      }));
+    } catch (questionnaireError) {
+      const code = typeof questionnaireError === "object" && questionnaireError && "code" in questionnaireError ? String(questionnaireError.code) : "";
+      if (code === "CONFLICT") return error(res, 409, "questionnaire_already_submitted");
+      if (code === "PAYLOAD_TOO_LARGE") return error(res, 413, "questionnaire_too_large");
+      if (code === "BAD_REQUEST") return error(res, 400, "invalid_questionnaire");
+      console.error("[ClientQuestionnaire] Draft save failed", { code: questionnaireError instanceof Error ? questionnaireError.message : "unknown" });
+      return error(res, 500, "questionnaire_save_failed");
+    }
+  });
+
+  app.post("/client-api/applications/:applicationId/questionnaire/submit", writeLimiter, async (req: PortalRequest, res) => {
+    const owned = await ownedApplication(req.portal!.user.id, req.params.applicationId);
+    if (!owned) return error(res, 404, "application_not_found");
+    if (!isCaribbeanDocumentationProgram(owned.clientCase.program)) return error(res, 400, "questionnaire_not_available");
+    try {
+      return res.json(await submitCaribbeanQuestionnaire({
+        clientCaseId: owned.clientCase.id,
+        portalUserId: req.portal!.user.id,
+        actorName: req.portal!.user.username,
+        answers: req.body?.answers,
+      }));
+    } catch (questionnaireError) {
+      const code = typeof questionnaireError === "object" && questionnaireError && "code" in questionnaireError ? String(questionnaireError.code) : "";
+      if (code === "PAYLOAD_TOO_LARGE") return error(res, 413, "questionnaire_too_large");
+      if (code === "BAD_REQUEST") return error(res, 400, "questionnaire_incomplete", questionnaireError instanceof Error ? questionnaireError.message : undefined);
+      console.error("[ClientQuestionnaire] Submission failed", { code: questionnaireError instanceof Error ? questionnaireError.message : "unknown" });
+      return error(res, 500, "questionnaire_submit_failed");
+    }
   });
 
   app.get("/client-api/applications/:applicationId/workflow", async (req: PortalRequest, res) => {
@@ -1055,8 +1115,11 @@ export function registerClientPortalRoutes(app: Express) {
     if (!owned) return error(res, 404, "application_not_found");
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
-    const checklist = await db.select().from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id));
-    return res.json(workflowProjection(owned.clientCase, checklist.filter(item => item.received).length, checklist.length));
+    const [checklist, payments] = await Promise.all([
+      db.select().from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id)),
+      db.select({ paymentName: clientDocumentationPayments.paymentName, paymentMilestone: clientDocumentationPayments.paymentMilestone, amountEur: clientDocumentationPayments.amountEur, paidDate: clientDocumentationPayments.paidDate }).from(clientDocumentationPayments).where(and(eq(clientDocumentationPayments.clientCaseId, owned.clientCase.id), isNull(clientDocumentationPayments.archivedAt))),
+    ]);
+    return res.json(workflowProjection(owned.clientCase, checklist.filter(item => item.received).length, checklist.length, payments));
   });
 
   app.get("/client-api/applications/:applicationId/process-timeline", async (req: PortalRequest, res) => {
@@ -1083,6 +1146,14 @@ export function registerClientPortalRoutes(app: Express) {
         isNull(clientDocumentationPayments.archivedAt),
       )).orderBy(asc(clientDocumentationPayments.sortOrder), asc(clientDocumentationPayments.id)),
     ]);
+    if (isCaribbeanDocumentationProgram(owned.clientCase.program)) {
+      return res.json(projectCaribbeanTimeline({
+        clientCase: owned.clientCase,
+        receivedDocuments: documents.filter(document => document.received).length,
+        totalDocuments: documents.length,
+        payments,
+      }));
+    }
     return res.json(projectClientProcessTimeline({
       clientCase: owned.clientCase,
       documents,

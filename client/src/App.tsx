@@ -11,6 +11,7 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsConditions from "./pages/TermsConditions";
 import SupportPage from "./pages/SupportPage";
 import AccountDeletion from "./pages/AccountDeletion";
+import ClientQuestionnaire from "./pages/ClientQuestionnaire";
 import TeamChat from "./pages/TeamChat";
 import BroadcastCenter from "./pages/BroadcastCenter";
 import Settings from "./pages/Settings";
@@ -118,6 +119,9 @@ function Router() {
       </Route>
       <Route path="/account-deletion">
         <AccountDeletion />
+      </Route>
+      <Route path="/client-questionnaire">
+        <ClientQuestionnaire />
       </Route>
       {/* Login page */}
       <Route path="/login">
