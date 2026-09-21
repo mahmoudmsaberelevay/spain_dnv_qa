@@ -1628,3 +1628,16 @@ Check email for download link within 5 minutes
 - [x] Apply inclusive Cairo-aware date bounds to both Commission list and count queries
 - [x] Verify This Year, Custom Range, reversed bounds, pagination count, Clear behavior, and automatic form source non-mutatively
 - [x] Complete 38 focused regressions, changed-file diagnostics, production build, documentation, and checkpoint
+
+## Leads Module — Task Type, Lead Scope, and Lifecycle Filters
+- [x] Audit the existing Tasks page and preserve all 5,065 task records without modifying task history
+- [x] Add a specific Task Type filter for Call, WhatsApp, Email, Meeting, Document Request, and Other
+- [x] Add an All Leads or Selected Leads scope with searchable multi-selection by Lead name or ID
+- [x] Keep the existing owner filter and add task-note or Lead search
+- [x] Add mutually exclusive All, Completed, Pending, Coming, and Overdue lifecycle views
+- [x] Define Pending as due today, Coming as due after today, and Overdue as past due and still open using Cairo business-day boundaries
+- [x] Show live counts that recompute with the active task, Lead, owner, and search filters
+- [x] Add bounded 50, 100, and 200 record pagination for the 5,065-task history
+- [x] Exclude Meta Test Leads from operational task results and Lead-selection options
+- [x] Verify all filters against live data on desktop and mobile without changing any Lead or task record
+- [x] Complete 10 focused regressions, changed-file diagnostics, production build, documentation, and checkpoint

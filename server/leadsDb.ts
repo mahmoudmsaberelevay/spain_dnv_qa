@@ -1,7 +1,12 @@
 import { getDb } from "./db";
 import { leads, leadActivities, leadNotes, leadTasks } from "../drizzle/schema";
-import { eq, desc, like, or, and, sql, inArray, count } from "drizzle-orm";
+import { eq, desc, asc, like, or, and, sql, inArray, count } from "drizzle-orm";
 import type { InsertLead, InsertLeadActivity, InsertLeadNote, InsertLeadTask } from "../drizzle/schema";
+import {
+  getLeadTaskDayBounds,
+  type LeadTaskLifecycle,
+  type LeadTaskLifecycleCounts,
+} from "../shared/leadTaskLifecycle";
 
 const now = () => Date.now();
 const operationalLeadCondition = eq(leads.isMetaTestLead, false);
@@ -508,30 +513,178 @@ export async function getTodayActivityReport() {
 }
 
 // ─── All Tasks (for Tasks page) ───────────────────────────────────────────────
-export async function getAllTasksWithLeads(filters: { assignedTo?: string } = {}) {
+export type LeadTaskPageFilters = {
+  assignedTo?: string;
+  taskType?: string;
+  search?: string;
+  leadIds?: number[];
+  lifecycle?: LeadTaskLifecycle;
+  page?: number;
+  pageSize?: number;
+  now?: number;
+};
+
+function buildLeadTaskLifecycleCondition(
+  lifecycle: LeadTaskLifecycle,
+  todayStart: number,
+  todayEnd: number,
+) {
+  if (lifecycle === "completed") return eq(leadTasks.completed, true);
+  if (lifecycle === "overdue") {
+    return and(eq(leadTasks.completed, false), sql`${leadTasks.dueDate} < ${todayStart}`);
+  }
+  if (lifecycle === "pending") {
+    return and(
+      eq(leadTasks.completed, false),
+      sql`${leadTasks.dueDate} >= ${todayStart}`,
+      sql`${leadTasks.dueDate} <= ${todayEnd}`,
+    );
+  }
+  if (lifecycle === "coming") {
+    return and(eq(leadTasks.completed, false), sql`${leadTasks.dueDate} > ${todayEnd}`);
+  }
+  return undefined;
+}
+
+export async function getLeadTaskFilterOptions() {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  const conditions: any[] = [eq(leadTasks.completed, false)];
-  if (filters.assignedTo) conditions.push(eq(leadTasks.assignedTo, filters.assignedTo));
-  const rows = await db
+
+  const [leadRows, taskTypeRows] = await Promise.all([
+    db
+      .select({ id: leads.id, fullName: leads.fullName })
+      .from(leadTasks)
+      .innerJoin(leads, eq(leadTasks.leadId, leads.id))
+      .where(operationalLeadCondition)
+      .groupBy(leads.id, leads.fullName)
+      .orderBy(asc(leads.fullName), asc(leads.id)),
+    db
+      .select({ taskType: leadTasks.taskType, taskCount: count() })
+      .from(leadTasks)
+      .innerJoin(leads, eq(leadTasks.leadId, leads.id))
+      .where(operationalLeadCondition)
+      .groupBy(leadTasks.taskType)
+      .orderBy(asc(leadTasks.taskType)),
+  ]);
+
+  return {
+    leads: leadRows,
+    taskTypes: taskTypeRows.map(row => ({
+      taskType: row.taskType,
+      taskCount: Number(row.taskCount),
+    })),
+  };
+}
+
+export async function getAllTasksWithLeads(filters: LeadTaskPageFilters = {}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  const lifecycle = filters.lifecycle ?? "all";
+  const page = Math.max(1, filters.page ?? 1);
+  const pageSize = Math.min(200, Math.max(25, filters.pageSize ?? 100));
+  const offset = (page - 1) * pageSize;
+  const { start: todayStart, end: todayEnd } = getLeadTaskDayBounds(filters.now);
+
+  const baseConditions: any[] = [operationalLeadCondition];
+  if (filters.assignedTo) baseConditions.push(eq(leadTasks.assignedTo, filters.assignedTo));
+  if (filters.taskType) baseConditions.push(eq(leadTasks.taskType, filters.taskType as any));
+  if (filters.leadIds) {
+    if (filters.leadIds.length === 0) {
+      return {
+        tasks: [],
+        total: 0,
+        page,
+        pageSize,
+        totalPages: 1,
+        lifecycleCounts: { all: 0, completed: 0, pending: 0, coming: 0, overdue: 0 },
+      };
+    }
+    baseConditions.push(inArray(leadTasks.leadId, filters.leadIds));
+  }
+  if (filters.search?.trim()) {
+    const search = `%${filters.search.trim()}%`;
+    baseConditions.push(or(
+      like(leadTasks.notes, search),
+      like(leads.fullName, search),
+      sql`CAST(${leads.id} AS CHAR) LIKE ${search}`,
+    ));
+  }
+
+  const lifecycleCondition = buildLeadTaskLifecycleCondition(lifecycle, todayStart, todayEnd);
+  const rowConditions = lifecycleCondition
+    ? [...baseConditions, lifecycleCondition]
+    : baseConditions;
+  const baseWhere = and(...baseConditions);
+  const rowWhere = and(...rowConditions);
+  const ordering = lifecycle === "completed"
+    ? [desc(leadTasks.completedAt), desc(leadTasks.id)]
+    : lifecycle === "all"
+      ? [
+          asc(sql`CASE WHEN ${leadTasks.completed} = FALSE THEN 0 ELSE 1 END`),
+          asc(leadTasks.dueDate),
+          desc(leadTasks.id),
+        ]
+      : [asc(leadTasks.dueDate), desc(leadTasks.id)];
+
+  const lifecycleCountsQuery = db
     .select({
-      id: leadTasks.id,
-      leadId: leadTasks.leadId,
-      assignedTo: leadTasks.assignedTo,
-      createdBy: leadTasks.createdBy,
-      taskType: leadTasks.taskType,
-      dueDate: leadTasks.dueDate,
-      completed: leadTasks.completed,
-      completedAt: leadTasks.completedAt,
-      notes: leadTasks.notes,
-      createdAt: leadTasks.createdAt,
-      leadName: leads.fullName,
-      leadStage: leads.stage,
-      leadPhone: leads.phone,
+      all: count(),
+      completed: sql<number>`SUM(CASE WHEN ${leadTasks.completed} = TRUE THEN 1 ELSE 0 END)`,
+      pending: sql<number>`SUM(CASE WHEN ${leadTasks.completed} = FALSE AND ${leadTasks.dueDate} >= ${todayStart} AND ${leadTasks.dueDate} <= ${todayEnd} THEN 1 ELSE 0 END)`,
+      coming: sql<number>`SUM(CASE WHEN ${leadTasks.completed} = FALSE AND ${leadTasks.dueDate} > ${todayEnd} THEN 1 ELSE 0 END)`,
+      overdue: sql<number>`SUM(CASE WHEN ${leadTasks.completed} = FALSE AND ${leadTasks.dueDate} < ${todayStart} THEN 1 ELSE 0 END)`,
     })
     .from(leadTasks)
     .innerJoin(leads, eq(leadTasks.leadId, leads.id))
-    .where(and(...conditions))
-    .orderBy(leadTasks.dueDate);
-  return rows;
+    .where(baseWhere);
+
+  const [rows, [{ total }], [rawLifecycleCounts]] = await Promise.all([
+    db
+      .select({
+        id: leadTasks.id,
+        leadId: leadTasks.leadId,
+        assignedTo: leadTasks.assignedTo,
+        createdBy: leadTasks.createdBy,
+        taskType: leadTasks.taskType,
+        dueDate: leadTasks.dueDate,
+        completed: leadTasks.completed,
+        completedAt: leadTasks.completedAt,
+        notes: leadTasks.notes,
+        createdAt: leadTasks.createdAt,
+        leadName: leads.fullName,
+        leadStage: leads.stage,
+        leadPhone: leads.phone,
+      })
+      .from(leadTasks)
+      .innerJoin(leads, eq(leadTasks.leadId, leads.id))
+      .where(rowWhere)
+      .orderBy(...ordering)
+      .limit(pageSize)
+      .offset(offset),
+    db
+      .select({ total: count() })
+      .from(leadTasks)
+      .innerJoin(leads, eq(leadTasks.leadId, leads.id))
+      .where(rowWhere),
+    lifecycleCountsQuery,
+  ]);
+
+  const lifecycleCounts: LeadTaskLifecycleCounts = {
+    all: Number(rawLifecycleCounts?.all ?? 0),
+    completed: Number(rawLifecycleCounts?.completed ?? 0),
+    pending: Number(rawLifecycleCounts?.pending ?? 0),
+    coming: Number(rawLifecycleCounts?.coming ?? 0),
+    overdue: Number(rawLifecycleCounts?.overdue ?? 0),
+  };
+
+  const totalNumber = Number(total ?? 0);
+  return {
+    tasks: rows,
+    total: totalNumber,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(totalNumber / pageSize)),
+    lifecycleCounts,
+  };
 }

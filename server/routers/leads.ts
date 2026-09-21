@@ -8,7 +8,8 @@ import {
   createLead, getLeadById, listLeads, updateLead, deleteLead,
   addLeadActivity, getLeadActivities,
   addLeadNote, getLeadNotes, updateLeadNote, deleteLeadNote, getLeadNoteById,
-  createLeadTask, getLeadTasks, completeLeadTask, deleteLeadTask, getAllTasksWithLeads,
+  createLeadTask, getLeadTasks, completeLeadTask, deleteLeadTask,
+  getAllTasksWithLeads, getLeadTaskFilterOptions,
   getLeadStageCounts, getLeadSourceCounts, getLeadProgramCounts,
   getMonthlyLeadConversions, getLeadTotalCount,
   getLeadCampaignCounts, getLeadFormCounts,
@@ -825,9 +826,20 @@ export const leadsRouter = router({
     }),
 
   // ── All Tasks (Tasks page) ─────────────────────────────────────────────────
+  getTaskFilterOptions: protectedProcedure
+    .query(async () => getLeadTaskFilterOptions()),
+
   getAllTasks: protectedProcedure
-    .input(z.object({ assignedTo: z.string().optional() }).optional())
-    .query(async ({ input }) => getAllTasksWithLeads({ assignedTo: input?.assignedTo })),
+    .input(z.object({
+      assignedTo: z.string().max(255).optional(),
+      taskType: z.enum(TASK_TYPES).optional(),
+      search: z.string().max(255).optional(),
+      leadIds: z.array(z.number().int().positive()).max(300).optional(),
+      lifecycle: z.enum(["all", "completed", "pending", "coming", "overdue"]).optional(),
+      page: z.number().int().positive().optional(),
+      pageSize: z.number().int().min(25).max(200).optional(),
+    }).optional())
+    .query(async ({ input }) => getAllTasksWithLeads(input ?? undefined)),
 
   // ── Analytics ───────────────────────────────────────────────────────────────
   analytics: router({
