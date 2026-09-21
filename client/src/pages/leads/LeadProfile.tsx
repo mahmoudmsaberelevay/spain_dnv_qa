@@ -18,8 +18,9 @@ import {
   ArrowLeft, Phone, Mail, Globe, User, Calendar, Flag, Star,
   MessageSquare, CheckSquare, Clock, Pin, AlertCircle, Trash2,
   Plus, Edit2, PhoneCall, Send, MessageCircle, Zap, ChevronDown,
-  ChevronRight, Shield,
+  ChevronRight, Shield, Video, MapPin,
 } from "lucide-react";
+import { getLeadSpecialNoteLabel, type LeadSpecialNoteType } from "../../../../shared/leadSpecialNote";
 
 const STAGES = [
   { value: "fresh", label: "Fresh", color: "bg-blue-100 text-blue-700 border-blue-200" },
@@ -106,6 +107,9 @@ export default function LeadProfile() {
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [editNoteText, setEditNoteText] = useState("");
   const [editNoteImportant, setEditNoteImportant] = useState(false);
+  const [showSpecialNoteDialog, setShowSpecialNoteDialog] = useState(false);
+  const [specialNoteType, setSpecialNoteType] = useState<LeadSpecialNoteType>("zoom_meeting");
+  const [specialNoteText, setSpecialNoteText] = useState("");
   const [showTaskDialog, setShowTaskDialog] = useState(false);
   const [taskForm, setTaskForm] = useState({ taskType: "call" as typeof TASK_TYPES[number], dueDate: "", notes: "", assignedTo: "" });
 
@@ -158,6 +162,27 @@ export default function LeadProfile() {
     onError: (e) => toast.error(e.message),
   });
 
+  const setSpecialNote = trpc.leads.specialNote.set.useMutation({
+    onSuccess: () => {
+      utils.leads.get.invalidate({ id: leadId });
+      utils.leads.list.invalidate();
+      utils.leads.activities.list.invalidate({ leadId });
+      setShowSpecialNoteDialog(false);
+      toast.success("Special Note saved and kept visible on this Lead.");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const clearSpecialNote = trpc.leads.specialNote.clear.useMutation({
+    onSuccess: () => {
+      utils.leads.get.invalidate({ id: leadId });
+      utils.leads.list.invalidate();
+      utils.leads.activities.list.invalidate({ leadId });
+      toast.success("Special Note cleared.");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const createTask = trpc.leads.tasks.create.useMutation({
     onSuccess: () => { utils.leads.tasks.list.invalidate({ leadId }); utils.leads.activities.list.invalidate({ leadId }); setShowTaskDialog(false); setTaskForm({ taskType: "call", dueDate: "", notes: "", assignedTo: "" }); toast.success("Task created"); },
     onError: (e) => toast.error(e.message),
@@ -204,11 +229,20 @@ export default function LeadProfile() {
   // WhatsApp number: prefer whatsapp field, fallback to phone
   const waNumber = (lead.whatsapp || lead.phone || "").replace(/\D/g, "");
   const waUrl = waNumber ? `https://wa.me/${waNumber}` : null;
+  const specialNoteLabel = getLeadSpecialNoteLabel(lead.specialNoteType);
+  const currentSpecialNoteType = lead.specialNoteType;
+  const currentSpecialNoteText = lead.specialNote;
+
+  function openSpecialNoteDialog() {
+    setSpecialNoteType(currentSpecialNoteType ?? "zoom_meeting");
+    setSpecialNoteText(currentSpecialNoteText ?? "");
+    setShowSpecialNoteDialog(true);
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start gap-4">
+      <div className="flex items-start gap-4 flex-wrap">
         <Button variant="ghost" size="icon" onClick={() => navigate("/leads")}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
@@ -241,7 +275,16 @@ export default function LeadProfile() {
           </p>
         </div>
         {/* Stage Change + Owner Change */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant={lead.specialNoteType ? "default" : "outline"}
+            size="sm"
+            className="flex items-center gap-1.5"
+            onClick={openSpecialNoteDialog}
+          >
+            <AlertCircle className="w-4 h-4" />
+            Add Special Note
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -261,6 +304,53 @@ export default function LeadProfile() {
           </Select>
         </div>
       </div>
+
+      {lead.specialNoteType && specialNoteLabel && (
+        <Card className="border-amber-300 bg-amber-50 shadow-sm dark:border-amber-700 dark:bg-amber-950/30">
+          <CardContent className="p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="mt-0.5 rounded-full bg-amber-100 p-2 text-amber-700 dark:bg-amber-900/60 dark:text-amber-200">
+                  {lead.specialNoteType === "zoom_meeting"
+                    ? <Video className="w-4 h-4" />
+                    : <MapPin className="w-4 h-4" />}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200">Special Note</span>
+                    <Badge className="border-amber-300 bg-white text-amber-800 hover:bg-white dark:bg-amber-950 dark:text-amber-200">
+                      {specialNoteLabel}
+                    </Badge>
+                  </div>
+                  <p className="mt-2 whitespace-pre-wrap text-sm font-medium text-foreground">{lead.specialNote}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {lead.specialNoteSetBy ? `Added by ${lead.specialNoteSetBy}` : "Added by ELEVAY user"}
+                    {lead.specialNoteUpdatedAt ? ` · ${new Date(lead.specialNoteUpdatedAt).toLocaleString()}` : ""}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button size="sm" variant="outline" onClick={openSpecialNoteDialog}>
+                  <Edit2 className="w-3.5 h-3.5 mr-1" /> Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                  disabled={clearSpecialNote.isPending}
+                  onClick={() => {
+                    if (window.confirm("Clear this Special Note? The Lead and ordinary notes will not be changed.")) {
+                      clearSpecialNote.mutate({ leadId });
+                    }
+                  }}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Details */}
@@ -665,6 +755,49 @@ export default function LeadProfile() {
           </Card>
         </div>
       </div>
+
+      {/* Add / Edit Special Note Dialog */}
+      <Dialog open={showSpecialNoteDialog} onOpenChange={setShowSpecialNoteDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Special Note</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Special Note Type</Label>
+              <Select value={specialNoteType} onValueChange={value => setSpecialNoteType(value as LeadSpecialNoteType)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="zoom_meeting">Zoom Meeting</SelectItem>
+                  <SelectItem value="physical_meeting">Physical Meeting</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Special Note</Label>
+              <Textarea
+                value={specialNoteText}
+                onChange={event => setSpecialNoteText(event.target.value)}
+                placeholder="Add the meeting details that must remain visible for this Lead…"
+                rows={4}
+                maxLength={4000}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              This note remains highlighted on the Lead profile and appears in All Leads until it is cleared.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSpecialNoteDialog(false)}>Cancel</Button>
+            <Button
+              disabled={!specialNoteText.trim() || setSpecialNote.isPending}
+              onClick={() => setSpecialNote.mutate({ leadId, type: specialNoteType, note: specialNoteText.trim() })}
+            >
+              {setSpecialNote.isPending ? "Saving…" : "Save Special Note"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add Task Dialog */}
       <Dialog open={showTaskDialog} onOpenChange={setShowTaskDialog}>

@@ -25,6 +25,7 @@ import { getSystemNotificationFromHeader, isAllowedSystemEmailSender } from "../
 import { enqueueMappedMetaCrmEvent, normalizeMetaEmail, normalizeMetaPhone } from "../metaLeadsService";
 import { findLeadContactMatch } from "../leadContactMatcher";
 import { isLeadContactUniqueViolation } from "../leadContactIdentity";
+import { LEAD_SPECIAL_NOTE_LABELS, LEAD_SPECIAL_NOTE_TYPES } from "../../shared/leadSpecialNote";
 
 const STAGES = [
   "fresh", "contacted", "qualified", "prospect", "client", "dormant", "resubmit",
@@ -202,6 +203,7 @@ export const leadsRouter = router({
       metaAd: z.string().optional(),
       metaSyncStatus: z.string().optional(),
       metaEventStatus: z.string().optional(),
+      specialNote: z.enum(["any", ...LEAD_SPECIAL_NOTE_TYPES]).optional(),
       page: z.number().int().min(1).optional(),
       pageSize: z.number().int().min(10).max(300).optional(),
     }).optional())
@@ -228,6 +230,7 @@ export const leadsRouter = router({
       metaAd: z.string().optional(),
       metaSyncStatus: z.string().optional(),
       metaEventStatus: z.string().optional(),
+      specialNote: z.enum(["any", ...LEAD_SPECIAL_NOTE_TYPES]).optional(),
     }).optional())
     .query(async ({ input }) => {
       const result = await listLeads({ ...input, page: 1, pageSize: 10000 });
@@ -539,6 +542,55 @@ export const leadsRouter = router({
       .mutation(async ({ input }) => {
         await updateLeadNote(input.id, { isPinned: input.isPinned });
         return { success: true };
+      }),
+  }),
+
+  specialNote: router({
+    set: protectedProcedure
+      .input(z.object({
+        leadId: z.number().int().positive(),
+        type: z.enum(LEAD_SPECIAL_NOTE_TYPES),
+        note: z.string().trim().min(1).max(4000),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const lead = await getLeadById(input.leadId);
+        if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
+        const updatedAt = Date.now();
+        const setBy = ctx.user.name ?? ctx.user.email ?? "ELEVAY user";
+        await updateLead(input.leadId, {
+          specialNoteType: input.type,
+          specialNote: input.note,
+          specialNoteSetBy: setBy,
+          specialNoteUpdatedAt: updatedAt,
+        });
+        await addLeadActivity({
+          leadId: input.leadId,
+          userId: ctx.user.id,
+          activityType: "note_added",
+          description: `Special Note (${LEAD_SPECIAL_NOTE_LABELS[input.type]}) added by ${setBy}`,
+        });
+        return { success: true, updatedAt };
+      }),
+
+    clear: protectedProcedure
+      .input(z.object({ leadId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const lead = await getLeadById(input.leadId);
+        if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
+        if (!lead.specialNoteType) return { success: true, cleared: false };
+        await updateLead(input.leadId, {
+          specialNoteType: null,
+          specialNote: null,
+          specialNoteSetBy: null,
+          specialNoteUpdatedAt: null,
+        });
+        await addLeadActivity({
+          leadId: input.leadId,
+          userId: ctx.user.id,
+          activityType: "note_added",
+          description: `Special Note cleared by ${ctx.user.name ?? ctx.user.email ?? "ELEVAY user"}`,
+        });
+        return { success: true, cleared: true };
       }),
   }),
 

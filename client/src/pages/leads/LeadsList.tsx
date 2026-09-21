@@ -16,10 +16,12 @@ import { toast } from "sonner";
 import { Plus, Search, Phone, Mail, User, Calendar, Download,
   Filter, X, Trash2, CheckSquare, Square, MinusSquare, RefreshCw, LayoutList,
   ChevronLeft, ChevronRight, Tag, UserCheck, Columns3, Save, BookOpen, AlertTriangle,
+  Video, MapPin,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import { getLeadSpecialNoteLabel, type LeadSpecialNoteFilter } from "../../../../shared/leadSpecialNote";
 
 const STAGES = [
   { value: "fresh", label: "Fresh", color: "bg-blue-100 text-blue-700 border-blue-200" },
@@ -96,6 +98,7 @@ export default function LeadsList() {
   const [metaAdFilter, setMetaAdFilter] = useState("all");
   const [metaSyncStatusFilter, setMetaSyncStatusFilter] = useState("all");
   const [metaEventStatusFilter, setMetaEventStatusFilter] = useState("all");
+  const [specialNoteFilter, setSpecialNoteFilter] = useState<"all" | LeadSpecialNoteFilter>("all");
   const [showHistoricalSyncConfirm, setShowHistoricalSyncConfirm] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [createdFrom, setCreatedFrom] = useState("");
@@ -198,6 +201,7 @@ export default function LeadsList() {
       setSourceFilter(f.source ?? "all");
       setProgramFilter(f.program ?? "all");
       setAssignedFilter(f.assignedTo ?? "all");
+      setSpecialNoteFilter(f.specialNote ?? "all");
       setCreatedFrom(f.createdFrom ?? "");
       setCreatedTo(f.createdTo ?? "");
       setActivityTypeFilter(f.activityTypes ?? []);
@@ -211,6 +215,7 @@ export default function LeadsList() {
       source: sourceFilter !== "all" ? sourceFilter : undefined,
       program: programFilter !== "all" ? programFilter : undefined,
       assignedTo: assignedFilter !== "all" ? assignedFilter : undefined,
+      specialNote: specialNoteFilter !== "all" ? specialNoteFilter : undefined,
       createdFrom: createdFrom || undefined,
       createdTo: createdTo || undefined,
       activityTypes: activityTypeFilter.length > 0 ? activityTypeFilter : undefined,
@@ -258,6 +263,7 @@ export default function LeadsList() {
     metaAd: metaAdFilter !== "all" ? metaAdFilter : undefined,
     metaSyncStatus: metaSyncStatusFilter !== "all" ? metaSyncStatusFilter : undefined,
     metaEventStatus: metaEventStatusFilter !== "all" ? metaEventStatusFilter : undefined,
+    specialNote: specialNoteFilter !== "all" ? specialNoteFilter : undefined,
     dateFrom: createdFrom ? new Date(createdFrom).getTime() : undefined,
     dateTo: createdTo ? new Date(createdTo + "T23:59:59").getTime() : undefined,
     lastActivityFrom: lastActivityFrom ? new Date(lastActivityFrom).getTime() : undefined,
@@ -266,23 +272,24 @@ export default function LeadsList() {
     pageSize,
   }), [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter,
     campaignFilter, metaAdsetFilter, metaAdFilter, metaSyncStatusFilter, metaEventStatusFilter,
-    createdFrom, createdTo, lastActivityFrom, lastActivityTo, page, pageSize]);
+    specialNoteFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo, page, pageSize]);
 
   // Reset page and selection when non-page filters change
   useEffect(() => {
-    const key = JSON.stringify({ debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, metaAdsetFilter, metaAdFilter, metaSyncStatusFilter, metaEventStatusFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo });
+    const key = JSON.stringify({ debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, metaAdsetFilter, metaAdFilter, metaSyncStatusFilter, metaEventStatusFilter, specialNoteFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo });
     if (prevFiltersRef.current && prevFiltersRef.current !== key) {
       setPage(1);
       setSelectedIds(new Set());
       setAllPagesSelected(false);
     }
     prevFiltersRef.current = key;
-  }, [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, metaAdsetFilter, metaAdFilter, metaSyncStatusFilter, metaEventStatusFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
+  }, [debouncedSearch, stageFilter, sourceFilter, programFilter, assignedFilter, metaFormFilter, campaignFilter, metaAdsetFilter, metaAdFilter, metaSyncStatusFilter, metaEventStatusFilter, specialNoteFilter, createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
 
-  const hasActiveFilters = stageFilter !== "all" || sourceFilter !== "all" || programFilter !== "all" || assignedFilter !== "all" || metaFormFilter !== "all" || !!campaignFilter || metaAdsetFilter !== "all" || metaAdFilter !== "all" || metaSyncStatusFilter !== "all" || metaEventStatusFilter !== "all" || createdFrom || createdTo || lastActivityFrom || lastActivityTo;
+  const hasActiveFilters = stageFilter !== "all" || sourceFilter !== "all" || programFilter !== "all" || assignedFilter !== "all" || specialNoteFilter !== "all" || metaFormFilter !== "all" || !!campaignFilter || metaAdsetFilter !== "all" || metaAdFilter !== "all" || metaSyncStatusFilter !== "all" || metaEventStatusFilter !== "all" || createdFrom || createdTo || lastActivityFrom || lastActivityTo;
 
   function clearAllFilters() {
     setStageFilter("all"); setSourceFilter("all"); setProgramFilter("all"); setAssignedFilter("all");
+    setSpecialNoteFilter("all");
     setMetaFormFilter("all"); setCampaignFilter("");
     setMetaAdsetFilter("all"); setMetaAdFilter("all"); setMetaSyncStatusFilter("all"); setMetaEventStatusFilter("all");
     setCreatedFrom(""); setCreatedTo(""); setLastActivityFrom(""); setLastActivityTo("");
@@ -581,6 +588,18 @@ export default function LeadsList() {
             <SelectContent>
               <SelectItem value="all">All Team</SelectItem>
               {TEAM.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={specialNoteFilter} onValueChange={value => setSpecialNoteFilter(value as "all" | LeadSpecialNoteFilter)}>
+            <SelectTrigger className="w-52" aria-label="Special Note filter">
+              <AlertTriangle className="w-3.5 h-3.5 mr-1.5 text-amber-600" />
+              <SelectValue placeholder="Special Notes" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Leads</SelectItem>
+              <SelectItem value="any">Any Special Note</SelectItem>
+              <SelectItem value="zoom_meeting">Zoom Meeting</SelectItem>
+              <SelectItem value="physical_meeting">Physical Meeting</SelectItem>
             </SelectContent>
           </Select>
           {/* Advanced Filters toggle */}
@@ -898,9 +917,27 @@ export default function LeadsList() {
                     </td>
                     <td className="p-0">
                       <a href={`/leads/${lead.id}`} onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); navigate(`/leads/${lead.id}`); } }} className="block px-4 py-3 font-medium text-foreground hover:no-underline">
-                        <span className="inline-flex items-center gap-2">
-                          {lead.fullName}
-                          {lead.isMetaTestLead && <Badge variant="secondary" className="border-amber-300 bg-amber-50 text-amber-900">Meta Test</Badge>}
+                        <span className="flex flex-col items-start gap-1">
+                          <span className="inline-flex flex-wrap items-center gap-2">
+                            {lead.fullName}
+                            {lead.isMetaTestLead && <Badge variant="secondary" className="border-amber-300 bg-amber-50 text-amber-900">Meta Test</Badge>}
+                            {lead.specialNoteType && (
+                              <Badge
+                                variant="outline"
+                                className="gap-1 border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+                              >
+                                {lead.specialNoteType === "zoom_meeting"
+                                  ? <Video className="w-3 h-3" />
+                                  : <MapPin className="w-3 h-3" />}
+                                {getLeadSpecialNoteLabel(lead.specialNoteType)}
+                              </Badge>
+                            )}
+                          </span>
+                          {lead.specialNoteType && lead.specialNote && (
+                            <span className="max-w-80 truncate text-xs font-normal text-amber-700 dark:text-amber-300" title={lead.specialNote}>
+                              Special Note: {lead.specialNote}
+                            </span>
+                          )}
                         </span>
                       </a>
                     </td>

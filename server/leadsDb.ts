@@ -45,6 +45,7 @@ export async function listLeads(filters?: {
   metaAd?: string;
   metaSyncStatus?: string;
   metaEventStatus?: string;
+  specialNote?: "any" | "zoom_meeting" | "physical_meeting";
   page?: number;
   pageSize?: number;
 }) {
@@ -87,7 +88,12 @@ export async function listLeads(filters?: {
       SELECT 1 FROM meta_crm_event_log event_log
       WHERE event_log.leadId = ${leads.id}
         AND event_log.status = ${filters.metaEventStatus}
-    )`);
+      )`);
+  }
+  if (filters?.specialNote === "any") {
+    conditions.push(sql`${leads.specialNoteType} IS NOT NULL`);
+  } else if (filters?.specialNote) {
+    conditions.push(eq(leads.specialNoteType, filters.specialNote));
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;

@@ -1641,3 +1641,16 @@ Check email for download link within 5 minutes
 - [x] Exclude Meta Test Leads from operational task results and Lead-selection options
 - [x] Verify all filters against live data on desktop and mobile without changing any Lead or task record
 - [x] Complete 10 focused regressions, changed-file diagnostics, production build, documentation, and checkpoint
+
+## Leads Module — Persistent Special Notes
+- [x] Audit all 9,585 Leads and 6,063 ordinary Lead notes before the additive migration
+- [x] Add the exact **Add Special Note** action to every Lead profile
+- [x] Restrict Special Note types to **Zoom Meeting** and **Physical Meeting**
+- [x] Store one current persistent Special Note per Lead with responsible user and update time
+- [x] Keep the current Special Note highlighted near the top of the Lead profile until edited or cleared
+- [x] Show the Special Note type and text beside every marked Lead in All Leads
+- [x] Add All Leads filters for Any Special Note, Zoom Meeting, and Physical Meeting
+- [x] Include the Special Note filter in shared presets, Clear All, pagination, and cross-page Lead selection
+- [x] Preserve every existing Lead, ordinary note, task, activity, attribution, and contact record
+- [x] Verify the protected API, indexed filters, desktop form, All Leads result, and phone-width layout without adding test data
+- [x] Complete 35 focused regressions, changed-file diagnostics, production build, documentation, and checkpoint

@@ -985,12 +985,17 @@ export const leads = mysqlTable("leads", {
   leadScore: int("leadScore").default(0),
   priority: mysqlEnum("priority", ["low", "medium", "high"]).default("medium"),
   notes: text("notes"),
+  specialNoteType: mysqlEnum("specialNoteType", ["zoom_meeting", "physical_meeting"]),
+  specialNote: text("specialNote"),
+  specialNoteSetBy: varchar("specialNoteSetBy", { length: 255 }),
+  specialNoteUpdatedAt: bigint("specialNoteUpdatedAt", { mode: "number" }),
   lastContactAt: bigint("lastContactAt", { mode: "number" }),
   createdAt: bigint("createdAt", { mode: "number" }).notNull(),
   updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
 }, table => ({
   normalizedPhoneIdentityUnique: uniqueIndex("leads_test_normalized_phone_uq").on(table.isMetaTestLead, table.normalizedPhone),
   normalizedEmailIdentityUnique: uniqueIndex("leads_test_normalized_email_uq").on(table.isMetaTestLead, table.normalizedEmail),
+  specialNoteTypeIndex: index("leads_special_note_type_idx").on(table.specialNoteType),
 }));
 export type Lead = typeof leads.$inferSelect;
 export type InsertLead = typeof leads.$inferInsert;
