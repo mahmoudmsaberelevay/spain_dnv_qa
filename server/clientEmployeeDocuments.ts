@@ -13,6 +13,9 @@ import { ENV } from "./_core/env";
 import { auditCtxFromReq, writeAuditLog } from "./auditLog";
 import type { EmployeeMobileContext } from "./clientEmployeeAuth";
 import { projectClientProcessTimeline } from "./clientProcessTimeline";
+import { normalizeMobileProcessTimeline } from "./mobileProcessTimeline";
+import { projectCaribbeanTimeline } from "../shared/caribbeanTimeline";
+import { isCaribbeanDocumentationProgram } from "../shared/clientDocumentationPrograms";
 import { getDb } from "./db";
 import { storageGet } from "./storage";
 import type { Request } from "express";
@@ -250,11 +253,21 @@ export async function getEmployeeFolderTimeline(publicId: string) {
     }).from(clientDocuments).where(eq(clientDocuments.clientCaseId, clientCase.id)),
     db.select({
       paymentName: clientDocumentationPayments.paymentName,
+      paymentMilestone: clientDocumentationPayments.paymentMilestone,
+      amountEur: clientDocumentationPayments.amountEur,
       paidDate: clientDocumentationPayments.paidDate,
       sortOrder: clientDocumentationPayments.sortOrder,
     }).from(clientDocumentationPayments).where(and(eq(clientDocumentationPayments.clientCaseId, clientCase.id), sql`${clientDocumentationPayments.archivedAt} IS NULL`)).orderBy(asc(clientDocumentationPayments.sortOrder), asc(clientDocumentationPayments.id)),
     db.select({ createdAt: clientPortalApplications.createdAt }).from(clientPortalApplications).where(eq(clientPortalApplications.clientCaseId, clientCase.id)).orderBy(asc(clientPortalApplications.createdAt)).limit(1),
   ]);
+  if (isCaribbeanDocumentationProgram(clientCase.program)) {
+    return normalizeMobileProcessTimeline(projectCaribbeanTimeline({
+      clientCase,
+      receivedDocuments: documents.filter(document => document.received).length,
+      totalDocuments: documents.length,
+      payments,
+    }));
+  }
   return projectClientProcessTimeline({ clientCase, documents, payments, applicationCreatedAt: applications[0]?.createdAt ?? clientCase.createdAt });
 }
 

@@ -1673,3 +1673,16 @@ Check email for download link within 5 minutes
 - [x] Apply additive TiDB-safe migration 0085 without creating test cases or modifying existing client records
 - [x] Verify desktop and phone interfaces, 41 focused regressions, changed-file diagnostics, production build, and release documentation
 - [x] Save final restorable WebDev checkpoint
+
+## Client Portal — Backend-Only Mobile Process Timeline Compatibility
+- [x] Preserve the rich `/client-api/applications/:applicationId/workflow` response unchanged
+- [x] Preserve the existing Spain process-timeline array projection exactly
+- [x] Normalize Caribbean client process timelines to the installed mobile array contract
+- [x] Make employee folder timelines program-aware and use the same Caribbean normalizer
+- [x] Map `order` to `position`, `date` to `occurredAt`, `active` to `current`, and `pending` to `upcoming`
+- [x] Return null for missing or invalid dates and safely normalize null, empty, malformed, or extended workflow fields
+- [x] Preserve safe behavior when a folder has no linked portal application or an application ID is unavailable
+- [x] Add focused backend regressions and pass 41 tests across seven relevant suites
+- [x] Run `pnpm check`, isolate zero changed-file diagnostics from 83 existing baseline diagnostics, pass the production build, and pass `git diff --check`
+- [x] Confirm no database record, permission, authentication, chat, News, Spain workflow, or mobile repository was changed
+- [x] Save the final CRM-only checkpoint

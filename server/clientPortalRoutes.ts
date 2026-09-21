@@ -34,6 +34,7 @@ import {
   type PortalRequestContext,
 } from "./clientPortalAuth";
 import { projectClientProcessTimeline } from "./clientProcessTimeline";
+import { normalizeMobileProcessTimeline } from "./mobileProcessTimeline";
 import { projectCaribbeanTimeline, type CaribbeanTimelinePayment } from "../shared/caribbeanTimeline";
 import { getClientNotificationAttachment } from "./clientNotificationAttachments";
 import { sendClientPortalActivityEmail, sendClientPortalPasswordResetEmail } from "./emailService";
@@ -1147,12 +1148,12 @@ export function registerClientPortalRoutes(app: Express) {
       )).orderBy(asc(clientDocumentationPayments.sortOrder), asc(clientDocumentationPayments.id)),
     ]);
     if (isCaribbeanDocumentationProgram(owned.clientCase.program)) {
-      return res.json(projectCaribbeanTimeline({
+      return res.json(normalizeMobileProcessTimeline(projectCaribbeanTimeline({
         clientCase: owned.clientCase,
         receivedDocuments: documents.filter(document => document.received).length,
         totalDocuments: documents.length,
         payments,
-      }));
+      })));
     }
     return res.json(projectClientProcessTimeline({
       clientCase: owned.clientCase,
