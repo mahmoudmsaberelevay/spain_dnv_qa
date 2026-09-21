@@ -44,6 +44,7 @@ import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPoli
 import { clientDocumentationProgramLabel, isCaribbeanDocumentationProgram } from "../shared/clientDocumentationPrograms";
 import { CARIBBEAN_QUESTIONNAIRE_VERSION } from "../shared/caribbeanQuestionnaire";
 import { getCaribbeanQuestionnaire, saveCaribbeanQuestionnaireDraft, submitCaribbeanQuestionnaire } from "./caribbeanQuestionnaireService";
+import { consumeQuestionnaireLaunch, createQuestionnaireLaunch, QuestionnaireLaunchError } from "./clientQuestionnaireLaunch";
 import { decodeProviderCoverUpload, providerCoverStorageKey, type ProviderCoverUpload } from "./clientPortalProviderMedia";
 import { comparePrograms, PROGRAM_COMPARISON_OPTIONS } from "./programComparisonService";
 import { verifyPassword as verifyEmployeePassword } from "./_core/auth-email";
@@ -748,6 +749,19 @@ export function registerClientPortalRoutes(app: Express) {
     });
   });
 
+  app.post("/client-api/questionnaire/launch", authLimiter, async (req, res) => {
+    const body = safeBody<{ token: string }>(req);
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      return res.json(await consumeQuestionnaireLaunch({ token: body.token, req }));
+    } catch (launchError) {
+      const status = launchError instanceof QuestionnaireLaunchError ? launchError.status : 500;
+      const code = launchError instanceof QuestionnaireLaunchError ? launchError.code : "questionnaire_launch_failed";
+      if (status >= 500) console.error("[ClientQuestionnaire] Launch failed", { code });
+      return error(res, status, code);
+    }
+  });
+
   app.use("/client-api", portalAuth);
 
   app.get("/client-api/program-comparisons/options", (_req: PortalRequest, res) => {
@@ -1180,8 +1194,37 @@ export function registerClientPortalRoutes(app: Express) {
     const folderItems = await db.select({ internalId: clientDocuments.id, docKey: clientDocuments.docKey, docName: clientDocuments.docName, category: clientDocuments.category, received: clientDocuments.received, receivedDate: clientDocuments.receivedDate, documentLink: clientDocuments.documentLink, requiresMofa: clientDocuments.requiresMofa, mofaSubmitted: clientDocuments.mofaSubmitted, mofaSubmittedDate: clientDocuments.mofaSubmittedDate, mofaReceived: clientDocuments.mofaReceived, mofaReceivedDate: clientDocuments.mofaReceivedDate, requiresEmbassy: clientDocuments.requiresEmbassy, embassySubmitted: clientDocuments.embassySubmitted, embassySubmittedDate: clientDocuments.embassySubmittedDate, embassyReceived: clientDocuments.embassyReceived, embassyReceivedDate: clientDocuments.embassyReceivedDate }).from(clientDocuments).where(eq(clientDocuments.clientCaseId, owned.clientCase.id)).orderBy(asc(clientDocuments.category), asc(clientDocuments.id));
     const rows = await db.select({ document: clientPortalDocuments, applicantName: clientPortalApplicants.fullName }).from(clientPortalDocuments).leftJoin(clientPortalApplicants, eq(clientPortalDocuments.applicantId, clientPortalApplicants.id)).where(and(eq(clientPortalDocuments.portalApplicationId, owned.application.id), eq(clientPortalDocuments.visibleToClient, true))).orderBy(desc(clientPortalDocuments.createdAt));
     const uploads = rows.map(({ document, applicantName }) => ({ publicId: document.publicId, checklistDocumentKey: folderItems.find(item => item.internalId === document.clientDocumentId)?.docKey ?? null, documentType: document.documentType, fileName: document.fileName, mimeType: document.mimeType, fileSize: document.fileSize, source: document.source, reviewStatus: document.reviewStatus, clientComment: document.clientComment, applicantName, createdAt: document.createdAt }));
-    const items = folderItems.map(({ internalId: _internalId, ...item }) => ({ ...item, linkedUploads: uploads.filter(upload => upload.checklistDocumentKey === item.docKey) }));
-    return res.json({ folder: { name: `${owned.clientCase.clientName} – Documentation`, clientCode: owned.clientCase.clientCode, total: folderItems.length, received: folderItems.filter(item => item.received).length, items }, uploads });
+    const persistedItems = folderItems.map(({ internalId: _internalId, ...item }) => ({ ...item, linkedUploads: uploads.filter(upload => upload.checklistDocumentKey === item.docKey) }));
+    let items = persistedItems;
+    if (isCaribbeanDocumentationProgram(owned.clientCase.program)) {
+      const launch = await createQuestionnaireLaunch({
+        portalUserId: req.portal!.user.id,
+        portalApplicationId: owned.application.id,
+        clientCaseId: owned.clientCase.id,
+        sourceSessionId: req.portal!.session.id,
+      });
+      items = [{
+        docKey: "client_questionnaire",
+        docName: "Client Questionnaire",
+        category: "main",
+        received: Boolean(owned.clientCase.questionnaireSubmittedAt),
+        receivedDate: owned.clientCase.questionnaireSubmittedAt,
+        documentLink: launch.url,
+        requiresMofa: false,
+        mofaSubmitted: false,
+        mofaSubmittedDate: null,
+        mofaReceived: false,
+        mofaReceivedDate: null,
+        requiresEmbassy: false,
+        embassySubmitted: false,
+        embassySubmittedDate: null,
+        embassyReceived: false,
+        embassyReceivedDate: null,
+        linkedUploads: [],
+      }, ...persistedItems];
+      res.setHeader("Cache-Control", "no-store");
+    }
+    return res.json({ folder: { name: `${owned.clientCase.clientName} – Documentation`, clientCode: owned.clientCase.clientCode, total: items.length, received: items.filter(item => item.received).length, items }, uploads });
   });
 
   app.get("/client-api/documents/:documentId/access", async (req: PortalRequest, res) => {

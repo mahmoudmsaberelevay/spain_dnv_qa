@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, ClipboardList, Loader2, LogOut, Plus, Save, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, ClipboardList, Loader2, LogOut, Plus, Save, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   CARIBBEAN_QUESTIONNAIRE_STEPS,
   normalizeCaribbeanQuestionnaireAnswers,
-  visibleCaribbeanQuestionnaireSteps,
+  questionnaireStepSummary,
+  validateCaribbeanQuestionnaire,
   type CaribbeanQuestionnaireAnswers,
   type QuestionnaireRowField,
   type QuestionnaireStep,
@@ -20,9 +21,15 @@ import { isCaribbeanDocumentationProgram } from "@shared/clientDocumentationProg
 
 const SESSION_KEY = "elevay_client_questionnaire_session";
 
+function launchTokenFromLocation() {
+  const queryToken = new URLSearchParams(window.location.search).get("launch");
+  if (queryToken) return queryToken;
+  return new URLSearchParams(window.location.hash.replace(/^#/, "")).get("launch");
+}
+
 type PortalSession = { accessToken: string; refreshToken: string; sessionId: string };
 type PortalApplication = { publicId: string; label: string; clientCode: string; program: string; programLabel: string; stage: string; questionnaireStatus: string };
-type QuestionnaireState = { status: "not_started" | "draft" | "submitted"; answers: CaribbeanQuestionnaireAnswers; currentStepKey: string | null; programLabel: string; journeyStage: string; submittedAt: string | null };
+type QuestionnaireState = { status: "not_started" | "draft" | "submitted"; answers: CaribbeanQuestionnaireAnswers; currentStepKey: string | null; programLabel: string; journeyStage: string; submittedAt: string | null; stepCount?: number; steps?: QuestionnaireStep[] };
 type ClientWorkflow = { progressPercent: number; stages: Array<{ key: string; order: number; titleEn: string; status: "completed" | "active" | "pending"; date: string | null; dueDate?: string | null; detailEn: string }> };
 
 function readSession(): PortalSession | null {
@@ -80,8 +87,15 @@ export default function ClientQuestionnaire() {
   const [answers, setAnswers] = useState<CaribbeanQuestionnaireAnswers>({});
   const [stepIndex, setStepIndex] = useState(0);
   const [rowIndex, setRowIndex] = useState(0);
-  const [loading, setLoading] = useState(Boolean(session));
+  const [loading, setLoading] = useState(Boolean(session) || Boolean(launchTokenFromLocation()));
   const [saving, setSaving] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [launchError, setLaunchError] = useState<string | null>(null);
+  const saveQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
+  const pendingSaveCountRef = useRef(0);
+  const questionnaireLoadedRef = useRef(false);
+  const editVersionRef = useRef(0);
+  const savedVersionRef = useRef(0);
 
   const api = async (path: string, init: RequestInit = {}, allowRefresh = true): Promise<Response> => {
     const active = session ?? readSession();
@@ -114,22 +128,52 @@ export default function ClientQuestionnaire() {
   };
 
   useEffect(() => {
-    if (session) void loadApplications();
+    const launchToken = launchTokenFromLocation();
+    if (!launchToken) {
+      if (session) void loadApplications();
+      return;
+    }
+    setLoading(true);
+    fetch("/client-api/questionnaire/launch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: launchToken }),
+    }).then(async response => {
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.message || body?.error || "This questionnaire link is invalid or has expired.");
+      const next: PortalSession = { accessToken: body.accessToken, refreshToken: body.refreshToken, sessionId: body.sessionId };
+      saveSession(next);
+      setSession(next);
+      setApplicationId(body.applicationId);
+      window.history.replaceState({}, "", body.redirectPath || "/client-questionnaire");
+    }).catch(() => {
+      saveSession(null);
+      setSession(null);
+      setLaunchError("This secure questionnaire link is invalid, expired, already used, or no longer authorized.");
+    }).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (!applicationId) return;
+    questionnaireLoadedRef.current = false;
+    setQuestionnaire(null);
     setLoading(true);
     api(`/client-api/applications/${applicationId}/questionnaire`)
       .then(async response => {
         if (!response.ok) throw new Error("questionnaire_unavailable");
         const data = await response.json() as QuestionnaireState;
+        const normalizedAnswers = normalizeCaribbeanQuestionnaireAnswers(data.answers);
+        const definedSteps = data.steps?.length ? data.steps : CARIBBEAN_QUESTIONNAIRE_STEPS;
+        const visible = definedSteps.filter(step => !step.appliesWhen || normalizedAnswers[step.appliesWhen.key] === step.appliesWhen.equals);
         setQuestionnaire(data);
-        setAnswers(normalizeCaribbeanQuestionnaireAnswers(data.answers));
-        const visible = visibleCaribbeanQuestionnaireSteps(normalizeCaribbeanQuestionnaireAnswers(data.answers));
+        setAnswers(normalizedAnswers);
         const resumedIndex = Math.max(0, visible.findIndex(step => step.key === data.currentStepKey));
         setStepIndex(resumedIndex);
         setRowIndex(0);
+        setReviewing(false);
+        editVersionRef.current = 0;
+        savedVersionRef.current = 0;
+        questionnaireLoadedRef.current = true;
       })
       .catch(() => toast.error("The questionnaire could not be loaded."))
       .finally(() => setLoading(false));
@@ -142,7 +186,8 @@ export default function ClientQuestionnaire() {
     }).catch(() => undefined);
   }, [applicationId, questionnaire?.status]);
 
-  const visibleSteps = useMemo(() => visibleCaribbeanQuestionnaireSteps(answers), [answers]);
+  const definedSteps = questionnaire?.steps?.length ? questionnaire.steps : CARIBBEAN_QUESTIONNAIRE_STEPS;
+  const visibleSteps = useMemo(() => definedSteps.filter(step => !step.appliesWhen || answers[step.appliesWhen.key] === step.appliesWhen.equals), [answers, definedSteps]);
   const currentStep = visibleSteps[Math.min(stepIndex, Math.max(0, visibleSteps.length - 1))];
   const progress = visibleSteps.length ? Math.round(((stepIndex + 1) / visibleSteps.length) * 100) : 0;
 
@@ -174,24 +219,54 @@ export default function ClientQuestionnaire() {
     setApplicationId(null);
   };
 
-  const updateAnswer = (key: string, value: unknown) => setAnswers(current => ({ ...current, [key]: value }));
-
-  const saveDraft = async (nextStepKey = currentStep?.key) => {
-    if (!applicationId || !currentStep) return false;
-    setSaving(true);
-    try {
-      const response = await api(`/client-api/applications/${applicationId}/questionnaire/draft`, { method: "PUT", body: JSON.stringify({ answers, currentStepKey: nextStepKey }) });
-      if (!response.ok) throw new Error("Your draft could not be saved");
-      const data = await response.json() as QuestionnaireState;
-      setQuestionnaire(data);
-      return true;
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Your draft could not be saved");
-      return false;
-    } finally {
-      setSaving(false);
-    }
+  const updateAnswer = (key: string, value: unknown) => {
+    editVersionRef.current += 1;
+    setAnswers(current => ({ ...current, [key]: value }));
   };
+
+  const persistDraft = (snapshot: CaribbeanQuestionnaireAnswers, nextStepKey = currentStep?.key, silent = false) => {
+    if (!applicationId || !nextStepKey || questionnaire?.status === "submitted") return Promise.resolve(false);
+    const snapshotVersion = editVersionRef.current;
+    const run = async () => {
+      pendingSaveCountRef.current += 1;
+      setSaving(true);
+      try {
+        const response = await api(`/client-api/applications/${applicationId}/questionnaire/draft`, { method: "PUT", body: JSON.stringify({ answers: snapshot, currentStepKey: nextStepKey }) });
+        if (!response.ok) throw new Error("Your draft could not be saved");
+        const data = await response.json() as QuestionnaireState;
+        setQuestionnaire(data);
+        savedVersionRef.current = Math.max(savedVersionRef.current, snapshotVersion);
+        return true;
+      } catch (error) {
+        if (!silent) toast.error(error instanceof Error ? error.message : "Your draft could not be saved");
+        return false;
+      } finally {
+        pendingSaveCountRef.current = Math.max(0, pendingSaveCountRef.current - 1);
+        if (pendingSaveCountRef.current === 0) setSaving(false);
+      }
+    };
+    const queued = saveQueueRef.current.then(run, run);
+    saveQueueRef.current = queued;
+    return queued;
+  };
+
+  const saveDraft = (nextStepKey = currentStep?.key) => persistDraft(answers, nextStepKey);
+
+  useEffect(() => {
+    if (!questionnaireLoadedRef.current || editVersionRef.current <= savedVersionRef.current || !currentStep || questionnaire?.status === "submitted") return;
+    const autosave = window.setTimeout(() => {
+      if (editVersionRef.current > savedVersionRef.current) void persistDraft(answers, currentStep.key, true);
+    }, 2500);
+    return () => window.clearTimeout(autosave);
+  }, [answers, applicationId, currentStep?.key, questionnaire?.status]);
+
+  useEffect(() => {
+    if (!questionnaireLoadedRef.current || editVersionRef.current <= savedVersionRef.current || !currentStep || questionnaire?.status === "submitted") return;
+    const periodicSave = window.setInterval(() => {
+      if (editVersionRef.current > savedVersionRef.current) void persistDraft(answers, currentStep.key, true);
+    }, 20_000);
+    return () => window.clearInterval(periodicSave);
+  }, [answers, applicationId, currentStep?.key, questionnaire?.status]);
 
   const next = async () => {
     if (!currentStep || !stepComplete(currentStep, answers)) {
@@ -204,6 +279,48 @@ export default function ClientQuestionnaire() {
       setRowIndex(0);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
+  };
+
+  const previous = async () => {
+    if (!currentStep || stepIndex === 0) return;
+    const previousStep = visibleSteps[stepIndex - 1];
+    if (!previousStep || !await persistDraft(answers, previousStep.key)) return;
+    setStepIndex(index => Math.max(0, index - 1));
+    setRowIndex(0);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const skipCurrent = async () => {
+    if (!currentStep?.optional) return;
+    const nextAnswers = { ...answers, [currentStep.key]: currentStep.type === "repeatable" ? [] : "" };
+    delete nextAnswers[`${currentStep.key}.details`];
+    const nextVisibleSteps = definedSteps.filter(step => !step.appliesWhen || nextAnswers[step.appliesWhen.key] === step.appliesWhen.equals);
+    const nextStep = nextVisibleSteps[stepIndex + 1];
+    editVersionRef.current += 1;
+    setAnswers(nextAnswers);
+    if (nextStep && await persistDraft(nextAnswers, nextStep.key)) {
+      setStepIndex(index => index + 1);
+      setRowIndex(0);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const openReview = async () => {
+    if (!currentStep || !stepComplete(currentStep, answers)) {
+      toast.error("Please complete this required question before reviewing your answers.");
+      return;
+    }
+    const validation = validateCaribbeanQuestionnaire(answers);
+    if (!validation.valid) {
+      const missingPath = validation.missing[0] ?? "";
+      const missingIndex = visibleSteps.findIndex(step => missingPath === step.key || missingPath.startsWith(`${step.key}.`));
+      if (missingIndex >= 0) setStepIndex(missingIndex);
+      toast.error("Please complete all required questions before final review.");
+      return;
+    }
+    if (!await persistDraft(answers, currentStep.key)) return;
+    setReviewing(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const submit = async () => {
@@ -225,6 +342,12 @@ export default function ClientQuestionnaire() {
     }
   };
 
+  if (loading) return <div className="min-h-screen bg-[#f4f8fa] grid place-items-center"><Loader2 className="h-8 w-8 animate-spin text-[#5BA3B8]" /></div>;
+
+  if (launchError) {
+    return <div className="min-h-screen bg-[#f4f8fa] p-4 flex items-center justify-center"><Card className="w-full max-w-md border-0 shadow-xl"><CardContent className="space-y-4 p-8 text-center"><ShieldCheck className="mx-auto h-12 w-12 text-rose-600" /><h1 className="text-2xl font-bold text-[#1A3A5C]">Questionnaire link unavailable</h1><p className="text-sm text-slate-600">{launchError}</p><p className="text-xs text-slate-500">Return to the ELEVAY app and open Client Questionnaire again to receive a fresh secure link.</p></CardContent></Card></div>;
+  }
+
   if (!session) {
     return <div className="min-h-screen bg-[#f4f8fa] p-4 flex items-center justify-center">
       <Card className="w-full max-w-md border-0 shadow-xl">
@@ -238,8 +361,6 @@ export default function ClientQuestionnaire() {
     </div>;
   }
 
-  if (loading) return <div className="min-h-screen bg-[#f4f8fa] grid place-items-center"><Loader2 className="h-8 w-8 animate-spin text-[#5BA3B8]" /></div>;
-
   if (!applicationId) {
     return <div className="min-h-screen bg-[#f4f8fa] p-4 md:p-10"><div className="mx-auto max-w-3xl space-y-5">
       <div className="flex items-center justify-between"><div><p className="text-sm font-semibold tracking-[0.2em] text-[#5BA3B8]">ELEVAY</p><h1 className="text-3xl font-bold text-[#1A3A5C]">Choose an application</h1></div><Button variant="outline" onClick={logout}><LogOut className="mr-2 h-4 w-4" />Sign out</Button></div>
@@ -251,6 +372,10 @@ export default function ClientQuestionnaire() {
     return <div className="min-h-screen bg-[#f4f8fa] p-4 md:p-10"><div className="mx-auto max-w-3xl space-y-5"><Card className="border-0 shadow-xl"><CardContent className="p-8 text-center space-y-5"><div className="mx-auto h-16 w-16 rounded-full bg-emerald-100 grid place-items-center"><Check className="h-8 w-8 text-emerald-700" /></div><p className="text-sm font-semibold tracking-[0.2em] text-[#5BA3B8]">{questionnaire.programLabel}</p><h1 className="text-3xl font-bold text-[#1A3A5C]">Questionnaire submitted</h1><p className="text-slate-600">Your information was sent securely to your ELEVAY Client Documentation file.</p><div className="rounded-xl bg-cyan-50 p-5 text-left"><p className="font-semibold text-cyan-900">Next step: Document Collection</p><p className="mt-1 text-sm text-cyan-800">Your checklist is based on your family size and dependant ages. Your consultant and paralegal will guide you through every required document.</p></div></CardContent></Card>
       {workflow && <Card className="border-0 shadow-lg"><CardHeader><div className="flex items-center justify-between"><CardTitle className="text-[#1A3A5C]">Your Application Journey</CardTitle><span className="text-sm font-semibold text-[#5BA3B8]">{workflow.progressPercent}%</span></div></CardHeader><CardContent className="space-y-3">{workflow.stages.map(step => <div key={step.key} className={`rounded-xl border p-4 ${step.status === "completed" ? "border-emerald-200 bg-emerald-50" : step.status === "active" ? "border-cyan-300 bg-cyan-50" : "border-slate-200 bg-white"}`}><div className="flex gap-3">{step.status === "completed" ? <Check className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <span className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 ${step.status === "active" ? "border-cyan-600" : "border-slate-300"}`} />}<div><p className="font-semibold text-slate-900">{step.order}. {step.titleEn}</p><p className="mt-1 text-sm text-slate-600">{step.detailEn}</p>{(step.date || step.dueDate) && <p className="mt-1 text-xs font-medium text-slate-500">{step.date ? `Completed: ${new Date(step.date).toLocaleDateString()}` : `Due: ${new Date(`${step.dueDate}T12:00:00`).toLocaleDateString()}`}</p>}</div></div></div>)}</CardContent></Card>}
       <div className="flex justify-center gap-3"><Button variant="outline" onClick={() => { setApplicationId(null); setQuestionnaire(null); setWorkflow(null); }}>My applications</Button><Button variant="outline" onClick={logout}><LogOut className="mr-2 h-4 w-4" />Sign out</Button></div></div></div>;
+  }
+
+  if (reviewing && questionnaire) {
+    return <div className="min-h-screen bg-[#f4f8fa] text-slate-900"><header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur"><div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3"><div><p className="text-sm font-bold tracking-[0.22em] text-[#5BA3B8]">ELEVAY</p><p className="text-xs text-slate-500">{questionnaire.programLabel} Citizenship</p></div><Button size="sm" variant="ghost" onClick={logout}><LogOut className="mr-2 h-4 w-4" />Sign out</Button></div></header><main className="mx-auto max-w-5xl space-y-5 px-4 py-6 md:py-10"><div><p className="text-sm font-semibold tracking-[0.18em] text-[#5BA3B8]">FINAL REVIEW · المراجعة النهائية</p><h1 className="mt-2 text-3xl font-bold text-[#1A3A5C]">Review your questionnaire</h1><p className="mt-2 text-sm text-slate-600">Confirm every answer before secure submission. You may return to any question to edit it.</p></div><div className="space-y-3">{visibleSteps.map((step, index) => <Card key={step.key} className="border-0 shadow-sm"><CardContent className="flex items-start justify-between gap-4 p-4"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-[#5BA3B8]">{index + 1}. {step.section}</p><p className="mt-1 font-medium text-slate-900">{step.prompt}</p>{step.promptAr && <p dir="rtl" className="mt-1 text-sm text-slate-600">{step.promptAr}</p>}<p className="mt-2 break-words text-sm text-slate-600">{questionnaireStepSummary(step, answers[step.key], answers)}</p></div><Button variant="outline" size="sm" onClick={() => { setReviewing(false); setStepIndex(index); setRowIndex(0); }}>Edit</Button></CardContent></Card>)}</div><div className="sticky bottom-3 flex flex-col-reverse gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:flex-row sm:justify-between"><Button variant="outline" disabled={saving} onClick={() => setReviewing(false)}><ArrowLeft className="mr-2 h-4 w-4" />Back to questionnaire</Button><Button disabled={saving} onClick={() => void submit()} className="bg-emerald-700 hover:bg-emerald-800">{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Submit questionnaire securely</Button></div></main></div>;
   }
 
   if (!currentStep || !questionnaire) return <div className="min-h-screen bg-[#f4f8fa] grid place-items-center"><Card><CardContent className="p-8">The questionnaire is unavailable.</CardContent></Card></div>;
@@ -272,25 +397,32 @@ export default function ClientQuestionnaire() {
     setRowIndex(rows.length);
   };
 
+  const removeRow = () => {
+    if (!activeRows.length) return;
+    const nextRows = activeRows.filter((_, index) => index !== rowIndex);
+    updateAnswer(currentStep.key, nextRows);
+    setRowIndex(index => Math.max(0, Math.min(index, nextRows.length - 1)));
+  };
+
   return <div className="min-h-screen bg-[#f4f8fa] text-slate-900">
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur"><div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3"><div><p className="text-sm font-bold tracking-[0.22em] text-[#5BA3B8]">ELEVAY</p><p className="text-xs text-slate-500">{questionnaire.programLabel} Citizenship</p></div><Button size="sm" variant="ghost" onClick={logout}><LogOut className="mr-2 h-4 w-4" />Sign out</Button></div><div className="h-1 bg-slate-100"><div className="h-full bg-[#5BA3B8] transition-all" style={{ width: `${progress}%` }} /></div></header>
     <main className="mx-auto max-w-5xl px-4 py-6 md:py-10">
-      <div className="mb-5 flex items-center justify-between text-sm text-slate-500"><span>{currentStep.section}</span><span>Question {stepIndex + 1} of {visibleSteps.length} · {progress}%</span></div>
-      <Card className="border-0 shadow-lg"><CardHeader className="border-b border-slate-100 bg-white"><div className="mb-2 flex items-center gap-2 text-[#5BA3B8]"><ClipboardList className="h-5 w-5" /><span className="text-xs font-bold uppercase tracking-widest">One question at a time</span></div><CardTitle className="text-xl md:text-2xl text-[#1A3A5C] leading-snug">{currentStep.prompt}</CardTitle>{currentStep.help && <p className="text-sm text-slate-500">{currentStep.help}</p>}</CardHeader>
+      <div className="mb-5 flex flex-col gap-2 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between"><div><span>{currentStep.section}</span>{currentStep.sectionAr && <span dir="rtl" className="ml-2 text-slate-400">· {currentStep.sectionAr}</span>}</div><span>Question {stepIndex + 1} of {visibleSteps.length} · {progress}%</span></div>
+      <Card className="border-0 shadow-lg"><CardHeader className="border-b border-slate-100 bg-white"><div className="mb-2 flex flex-wrap items-center gap-2 text-[#5BA3B8]"><ClipboardList className="h-5 w-5" /><span className="text-xs font-bold uppercase tracking-widest">One question at a time</span><span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${currentStep.optional ? "bg-slate-100 text-slate-600" : "bg-rose-50 text-rose-700"}`}>{currentStep.optional ? "Optional" : "Required"}</span></div><CardTitle className="text-xl md:text-2xl text-[#1A3A5C] leading-snug">{currentStep.prompt}</CardTitle>{currentStep.promptAr && <p dir="rtl" className="text-lg font-semibold leading-relaxed text-[#1A3A5C]">{currentStep.promptAr}</p>}{currentStep.help && <p className="text-sm text-slate-500">{currentStep.help}</p>}{currentStep.helpAr && <p dir="rtl" className="text-sm text-slate-500">{currentStep.helpAr}</p>}</CardHeader>
         <CardContent className="space-y-5 p-5 md:p-8">
           {(currentStep.type === "text" || currentStep.type === "email" || currentStep.type === "tel" || currentStep.type === "number" || currentStep.type === "date" || currentStep.type === "month") && <Input type={currentStep.type} value={String(answers[currentStep.key] ?? "")} onChange={event => updateAnswer(currentStep.key, event.target.value)} className="h-12 text-base" autoFocus />}
           {currentStep.type === "textarea" && <Textarea value={String(answers[currentStep.key] ?? "")} onChange={event => updateAnswer(currentStep.key, event.target.value)} className="min-h-36 text-base" autoFocus />}
-          {currentStep.type === "select" && <Select value={String(answers[currentStep.key] ?? "")} onValueChange={value => updateAnswer(currentStep.key, value)}><SelectTrigger className="h-12"><SelectValue placeholder="Choose one option" /></SelectTrigger><SelectContent>{currentStep.options?.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent></Select>}
-          {currentStep.type === "yes_no" && <div className="grid grid-cols-2 gap-3"><Button type="button" variant={answers[currentStep.key] === "yes" ? "default" : "outline"} className={answers[currentStep.key] === "yes" ? "h-14 bg-[#1A3A5C]" : "h-14"} onClick={() => updateAnswer(currentStep.key, "yes")}>Yes</Button><Button type="button" variant={answers[currentStep.key] === "no" ? "default" : "outline"} className={answers[currentStep.key] === "no" ? "h-14 bg-[#1A3A5C]" : "h-14"} onClick={() => updateAnswer(currentStep.key, "no")}>No</Button></div>}
+          {currentStep.type === "select" && <Select value={String(answers[currentStep.key] ?? "")} onValueChange={value => updateAnswer(currentStep.key, value)}><SelectTrigger className="h-12"><SelectValue placeholder="Choose one option" /></SelectTrigger><SelectContent>{currentStep.options?.map((option, index) => <SelectItem key={option} value={option}><span>{option}</span>{currentStep.optionsAr?.[index] && <span dir="rtl" className="ml-2 text-slate-500">· {currentStep.optionsAr[index]}</span>}</SelectItem>)}</SelectContent></Select>}
+          {currentStep.type === "yes_no" && <div className="grid grid-cols-2 gap-3"><Button type="button" variant={answers[currentStep.key] === "yes" ? "default" : "outline"} className={answers[currentStep.key] === "yes" ? "h-14 bg-[#1A3A5C]" : "h-14"} onClick={() => updateAnswer(currentStep.key, "yes")}>Yes · نعم</Button><Button type="button" variant={answers[currentStep.key] === "no" ? "default" : "outline"} className={answers[currentStep.key] === "no" ? "h-14 bg-[#1A3A5C]" : "h-14"} onClick={() => updateAnswer(currentStep.key, "no")}>No · لا</Button></div>}
           {currentStep.type === "yes_no" && currentStep.detailRequiredWhenYes && answers[currentStep.key] === "yes" && <Textarea value={String(answers[`${currentStep.key}.details`] ?? "")} onChange={event => updateAnswer(`${currentStep.key}.details`, event.target.value)} placeholder="Provide full details, including dates, places, authorities, and outcomes." className="min-h-32" />}
           {currentStep.type === "acknowledgement" && <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4"><Checkbox checked={answers[currentStep.key] === true} onCheckedChange={checked => updateAnswer(currentStep.key, checked === true)} /><span className="text-sm text-slate-700">I have read, understood, and accept these undertakings.</span></label>}
           {currentStep.type === "signature" && (() => { const signature = answers[currentStep.key] && typeof answers[currentStep.key] === "object" ? answers[currentStep.key] as Record<string, unknown> : {}; const update = (key: string, value: unknown) => updateAnswer(currentStep.key, { ...signature, [key]: value }); return <div className="space-y-4"><div className="space-y-2"><Label>Full legal name</Label><Input value={String(signature.fullName ?? "")} onChange={event => update("fullName", event.target.value)} /></div><div className="space-y-2"><Label>Date</Label><Input type="date" value={String(signature.date ?? "")} onChange={event => update("date", event.target.value)} /></div><label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4"><Checkbox checked={signature.confirmed === true} onCheckedChange={checked => update("confirmed", checked === true)} /><span className="text-sm text-slate-700">I confirm that this typed name is my electronic signature and that the information provided is complete and correct.</span></label></div>; })()}
           {currentStep.type === "repeatable" && <div className="space-y-5">
-            {activeRows.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center"><p className="text-sm text-slate-500">No entries added. You may continue because this table is optional.</p></div> : <div className="space-y-4"><div className="flex items-center justify-between"><span className="text-sm font-semibold text-[#1A3A5C]">Row {rowIndex + 1} of {activeRows.length}</span><div className="flex gap-1"><Button size="icon" variant="outline" disabled={rowIndex === 0} onClick={() => setRowIndex(index => Math.max(0, index - 1))}><ChevronLeft className="h-4 w-4" /></Button><Button size="icon" variant="outline" disabled={rowIndex >= activeRows.length - 1} onClick={() => setRowIndex(index => Math.min(activeRows.length - 1, index + 1))}><ChevronRight className="h-4 w-4" /></Button></div></div>{currentStep.fields?.map(field => <div key={field.key} className="space-y-2"><Label>{field.label}</Label>{field.type === "select" ? <Select value={String(activeRow?.[field.key] ?? "")} onValueChange={value => updateRow(field.key, value)}><SelectTrigger><SelectValue placeholder="Choose" /></SelectTrigger><SelectContent>{field.options?.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent></Select> : field.type === "textarea" ? <Textarea value={String(activeRow?.[field.key] ?? "")} onChange={event => updateRow(field.key, event.target.value)} /> : <Input type={fieldInputType(field)} value={String(activeRow?.[field.key] ?? "")} onChange={event => updateRow(field.key, event.target.value)} />}</div>)}</div>}
-            <Button type="button" variant="outline" onClick={addRow}><Plus className="mr-2 h-4 w-4" />{currentStep.addRowLabel || "Add another row"}</Button>
+            {activeRows.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center"><p className="text-sm text-slate-500">No entries added. You may continue because this table is optional.</p></div> : <div className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold text-[#1A3A5C]">Row {rowIndex + 1} of {activeRows.length}</span><div className="flex gap-1"><Button size="icon" variant="outline" disabled={rowIndex === 0} onClick={() => setRowIndex(index => Math.max(0, index - 1))}><ChevronLeft className="h-4 w-4" /></Button><Button size="icon" variant="outline" disabled={rowIndex >= activeRows.length - 1} onClick={() => setRowIndex(index => Math.min(activeRows.length - 1, index + 1))}><ChevronRight className="h-4 w-4" /></Button><Button size="icon" variant="outline" aria-label="Remove this row" onClick={removeRow}><Trash2 className="h-4 w-4 text-rose-600" /></Button></div></div>{currentStep.fields?.map(field => <div key={field.key} className="space-y-2"><Label>{field.label}{field.labelAr && <span dir="rtl" className="ml-2 font-normal text-slate-500">· {field.labelAr}</span>}</Label>{field.type === "select" ? <Select value={String(activeRow?.[field.key] ?? "")} onValueChange={value => updateRow(field.key, value)}><SelectTrigger><SelectValue placeholder="Choose" /></SelectTrigger><SelectContent>{field.options?.map((option, index) => <SelectItem key={option} value={option}><span>{option}</span>{field.optionsAr?.[index] && <span dir="rtl" className="ml-2 text-slate-500">· {field.optionsAr[index]}</span>}</SelectItem>)}</SelectContent></Select> : field.type === "textarea" ? <Textarea value={String(activeRow?.[field.key] ?? "")} onChange={event => updateRow(field.key, event.target.value)} /> : <Input type={fieldInputType(field)} value={String(activeRow?.[field.key] ?? "")} onChange={event => updateRow(field.key, event.target.value)} />}</div>)}</div>}
+            <Button type="button" variant="outline" onClick={addRow}><Plus className="mr-2 h-4 w-4" />{currentStep.addRowLabel || "Add another row"}{currentStep.addRowLabelAr && <span dir="rtl" className="ml-2">· {currentStep.addRowLabelAr}</span>}</Button>
           </div>}
-          <div className="rounded-xl bg-slate-50 p-4 text-xs text-slate-600 flex gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-[#5BA3B8]" /><span>Your answers are stored in your protected ELEVAY Client Documentation file. Use Next to save each step.</span></div>
-          <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between"><Button variant="outline" disabled={stepIndex === 0 || saving} onClick={() => { setStepIndex(index => Math.max(0, index - 1)); setRowIndex(0); }}><ArrowLeft className="mr-2 h-4 w-4" />Previous</Button><div className="flex gap-2"><Button variant="ghost" disabled={saving} onClick={() => void saveDraft()}><Save className="mr-2 h-4 w-4" />Save draft</Button>{stepIndex < visibleSteps.length - 1 ? <Button disabled={saving} onClick={() => void next()} className="bg-[#1A3A5C] hover:bg-[#14304e]">Next<ArrowRight className="ml-2 h-4 w-4" /></Button> : <Button disabled={saving} onClick={() => void submit()} className="bg-emerald-700 hover:bg-emerald-800">{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Submit questionnaire</Button>}</div></div>
+          <div className="rounded-xl bg-slate-50 p-4 text-xs text-slate-600 flex gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-[#5BA3B8]" /><span>Your answers autosave while you type, every 20 seconds, and whenever you move between questions. Returning later resumes at the last saved question.</span></div>
+          <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between"><Button variant="outline" disabled={stepIndex === 0 || saving} onClick={() => void previous()}><ArrowLeft className="mr-2 h-4 w-4" />Previous</Button><div className="flex flex-wrap justify-end gap-2">{currentStep.optional && stepIndex < visibleSteps.length - 1 && <Button variant="outline" disabled={saving} onClick={() => void skipCurrent()}>Skip optional question</Button>}<Button variant="ghost" disabled={saving} onClick={() => void saveDraft()}><Save className="mr-2 h-4 w-4" />Save draft</Button>{stepIndex < visibleSteps.length - 1 ? <Button disabled={saving} onClick={() => void next()} className="bg-[#1A3A5C] hover:bg-[#14304e]">Next<ArrowRight className="ml-2 h-4 w-4" /></Button> : <Button disabled={saving} onClick={() => void openReview()} className="bg-[#1A3A5C] hover:bg-[#14304e]">Review answers<ArrowRight className="ml-2 h-4 w-4" /></Button>}</div></div>
         </CardContent>
       </Card>
     </main>

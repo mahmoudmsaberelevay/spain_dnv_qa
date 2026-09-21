@@ -1,3 +1,5 @@
+import { questionnaireArabic } from "./caribbeanQuestionnaireArabic";
+
 export const CARIBBEAN_QUESTIONNAIRE_VERSION = "2026-09-21-v1";
 
 export type QuestionnaireFieldType =
@@ -17,21 +19,29 @@ export type QuestionnaireFieldType =
 export type QuestionnaireRowField = {
   key: string;
   label: string;
+  labelAr?: string;
   type?: Exclude<QuestionnaireFieldType, "repeatable" | "signature" | "acknowledgement">;
   options?: string[];
+  optionsAr?: string[];
 };
 
 export type QuestionnaireStep = {
   key: string;
   section: string;
+  sectionAr?: string;
   title: string;
+  titleAr?: string;
   prompt: string;
+  promptAr?: string;
   type: QuestionnaireFieldType;
   options?: string[];
+  optionsAr?: string[];
   optional?: boolean;
   help?: string;
+  helpAr?: string;
   fields?: QuestionnaireRowField[];
   addRowLabel?: string;
+  addRowLabelAr?: string;
   detailRequiredWhenYes?: boolean;
   confirmationRequired?: boolean;
   appliesWhen?: { key: string; equals: string };
@@ -43,7 +53,25 @@ const q = (
   prompt: string,
   type: QuestionnaireFieldType = "text",
   extra: Partial<QuestionnaireStep> = {},
-): QuestionnaireStep => ({ key, section, title: prompt, prompt, type, ...extra });
+): QuestionnaireStep => ({
+  key,
+  section,
+  sectionAr: questionnaireArabic(section),
+  title: prompt,
+  titleAr: questionnaireArabic(prompt),
+  prompt,
+  promptAr: questionnaireArabic(prompt),
+  type,
+  ...extra,
+  helpAr: extra.help ? questionnaireArabic(extra.help) : undefined,
+  optionsAr: extra.options?.map(questionnaireArabic),
+  fields: extra.fields?.map(field => ({
+    ...field,
+    labelAr: questionnaireArabic(field.label),
+    optionsAr: field.options?.map(questionnaireArabic),
+  })),
+  addRowLabelAr: extra.addRowLabel ? questionnaireArabic(extra.addRowLabel) : undefined,
+});
 
 const mainPersonal: QuestionnaireStep[] = [
   q("main.surname", "Main Applicant · Personal Information", "Surname / Family Name"),
