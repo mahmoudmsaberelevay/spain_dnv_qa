@@ -19,6 +19,8 @@ const routes = readFileSync(resolve(process.cwd(), "server/clientPortalRoutes.ts
 const page = readFileSync(resolve(process.cwd(), "client/src/pages/ClientQuestionnaire.tsx"), "utf8");
 const migration = readFileSync(resolve(process.cwd(), "drizzle/0086_client_questionnaire_launch_tokens.sql"), "utf8");
 const launchService = readFileSync(resolve(process.cwd(), "server/clientQuestionnaireLaunch.ts"), "utf8");
+const serverEntry = readFileSync(resolve(process.cwd(), "server/_core/index.ts"), "utf8");
+const appleAssociation = readFileSync(resolve(process.cwd(), "client/public/.well-known/apple-app-site-association"), "utf8");
 
 function validLaunchRecord() {
   const now = new Date("2026-09-21T10:00:00.000Z");
@@ -62,6 +64,15 @@ describe("Client Questionnaire virtual document link", () => {
     expect(launchRoute).toBeGreaterThan(0);
     expect(launchRoute).toBeLessThan(authBoundary);
     expect(routes.slice(launchRoute, authBoundary)).toContain("consumeQuestionnaireLaunch");
+  });
+
+  it("keeps the HTTPS questionnaire in the browser instead of the legacy unmatched native route", () => {
+    for (const association of [serverEntry, appleAssociation]) {
+      expect(association).toMatch(/"\/": "\/client-questionnaire",\s*"?exclude"?: true/);
+      expect(association).toContain('"/": "/*"');
+    }
+    expect(launchService).toContain("https://elevay.vip/client-questionnaire#launch=");
+    expect(launchService).not.toContain("manuselevaymobile://client-questionnaire");
   });
 });
 

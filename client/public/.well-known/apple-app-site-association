@@ -6,6 +6,7 @@
         "appIDs": ["8M53HJ223G.com.app.elevaymobile"],
         "components": [
           { "/": "/client-app/*", "exclude": true },
+          { "/": "/client-questionnaire", "exclude": true },
           { "/": "/*" }
         ]
       },

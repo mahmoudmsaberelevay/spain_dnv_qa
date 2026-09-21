@@ -61,7 +61,11 @@ async function startServer() {
         details: [
           {
             appIDs: ["8M53HJ223G.com.app.elevaymobile"],
-            components: [{ "/": "/client-app/*", exclude: true }, { "/": "/*" }]
+            components: [
+              { "/": "/client-app/*", exclude: true },
+              { "/": "/client-questionnaire", exclude: true },
+              { "/": "/*" },
+            ]
           },
           {
             appIDs: ["8M53HJ223G.com.elevay.client"],
