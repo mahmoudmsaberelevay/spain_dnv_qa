@@ -76,6 +76,8 @@ import { getCaribbeanQuestionnaire } from "./caribbeanQuestionnaireService";
 import { CARIBBEAN_JOURNEY_STAGES, CLIENT_DOCUMENTATION_PROGRAMS, clientDocumentationProgramLabel, isCaribbeanDocumentationProgram } from "../shared/clientDocumentationPrograms";
 import { getCaribbeanDocumentChecklist } from "../shared/caribbeanDocumentChecklist";
 import { advanceCaribbeanCaseToLegalizationWhenComplete, CARIBBEAN_TIMELINE_DATE_FIELDS, updateCaribbeanDocumentationTimeline } from "./caribbeanDocumentationWorkflow";
+import { CLIENT_DOCUMENTATION_ORIGINS } from "../shared/clientDocumentationOrigins";
+import { resolveClientDocumentationIdentity } from "./clientDocumentationIdentity";
 
 const MOFA_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/mofa_stamp_a1afffba.png";
 const SPAIN_EMBASSY_STAMP_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663524211981/CjqhSqoCBRNxigxoNR3Jk2/spain_embassy_stamp_cf83213b.png";
@@ -1644,8 +1646,9 @@ const clientDocsRouter = router({
   // Create a new client case and auto-generate the document checklist
   create: protectedProcedure
     .input(z.object({
-      clientName: z.string().min(1),
-      clientCode: z.string().min(1),
+      clientOrigin: z.enum(CLIENT_DOCUMENTATION_ORIGINS).default("egypt"),
+      clientName: z.string().trim().max(255).optional(),
+      clientMobile: z.string().trim().max(64).optional(),
       program: z.enum(CLIENT_DOCUMENTATION_PROGRAMS).default("spain"),
       applicationType: z.enum(["freelancer", "business_owner"]),
       maritalStatus: z.enum(["single", "family"]),
@@ -1678,6 +1681,20 @@ const clientDocsRouter = router({
       }),
     }))
     .mutation(async ({ ctx, input }) => {
+      let identity: Awaited<ReturnType<typeof resolveClientDocumentationIdentity>>;
+      try {
+        identity = await resolveClientDocumentationIdentity(input);
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "CLIENT_IDENTITY_INVALID";
+        const messages: Record<string, string> = {
+          EGYPT_FIN_CLIENT_REQUIRED: "Select an existing Egypt client from the Financial Clients database",
+          EGYPT_FIN_CLIENT_NOT_FOUND: "The selected Egypt client is unavailable or has no client code",
+          DUBAI_FIN_CLIENT_NOT_ALLOWED: "Dubai clients must be created independently from the Egypt client database",
+          DUBAI_CLIENT_NAME_REQUIRED: "Enter the Dubai client's name",
+          DUBAI_CLIENT_MOBILE_INVALID: "Enter a valid Dubai client mobile number containing 7 to 15 digits",
+        };
+        throw new TRPCError({ code: "BAD_REQUEST", message: messages[code] ?? "Unable to validate the client identity" });
+      }
       const childrenData: ChildEntry[] = input.children.map(c => ({ name: c.name ?? "", age: c.age, relationship: c.relationship, ageRange: c.age < 18 ? "0-17" as const : "18-26" as const }));
       const checklist = input.program === "spain"
         ? getDocChecklist(input.applicationType, input.maritalStatus, childrenData)
@@ -1694,15 +1711,17 @@ const clientDocsRouter = router({
       try {
         const result = await createClientDocumentationBundle({
           clientCase: {
-            clientName: input.clientName.trim(),
-            clientCode: input.clientCode.trim(),
+            clientName: identity.clientName,
+            clientCode: identity.clientCode,
+            clientOrigin: identity.clientOrigin,
+            clientMobile: identity.clientMobile,
             program: input.program,
             applicationType: input.applicationType,
             maritalStatus: input.maritalStatus,
             paralegal: input.paralegal ?? null,
             consultant: input.consultant,
             userId: ctx.user.id,
-            finClientId: input.finClientId ?? null,
+            finClientId: identity.finClientId,
             contractDriveLink: input.contractDriveLink,
             childrenData: childrenData as any,
             spouseName: input.spouseName?.trim() || null,
@@ -1722,18 +1741,18 @@ const clientDocsRouter = router({
         }
         throw error;
       }
-      await writeAuditLog(auditCtxFromTrpc(ctx), "create", "client_documentation_case", insertId, `Created case with ${input.payments.length} payment schedule item(s)`);
+      await writeAuditLog(auditCtxFromTrpc(ctx), "create", "client_documentation_case", insertId, `Created ${identity.clientOrigin} case with ${input.payments.length} payment schedule item(s)`);
       await ensureClientChatConversationForCase(insertId, ctx.user.id);
       // Send assignment notification email to paralegal + consultant
       notifyNewClientAssigned(
-        input.clientName,
-        input.clientCode,
+        identity.clientName,
+        identity.clientCode,
         clientDocumentationProgramLabel(input.program),
         input.maritalStatus,
         input.paralegal ?? null,
         input.consultant,
       ).catch(err => console.error('[clientDocs.create] email error:', err));
-      return { id: insertId };
+      return { id: insertId, clientCode: identity.clientCode };
     }),
   // Update children data and re-generate per-child documents
   updateChildren: protectedProcedure

@@ -20,10 +20,11 @@ import { ClientChatPanel } from "@/components/ClientChatPanel";
 import { ClientDocumentationEmployeeAccess } from "@/components/ClientDocumentationEmployeeAccess";
 import { CaribbeanClientDocumentationPanel } from "@/components/CaribbeanClientDocumentationPanel";
 import { clientDocumentationProgramLabel, isCaribbeanDocumentationProgram } from "@shared/clientDocumentationPrograms";
+import { clientDocumentationOriginLabel } from "@shared/clientDocumentationOrigins";
 import {
   ArrowLeft, CheckCircle2, Circle, Clock, AlertTriangle,
   FileCheck, CalendarDays, CalendarClock,
-  FileDown, Trash2, Link2, Mail, UserCheck, ShieldCheck, MessageCircle
+  FileDown, Trash2, Link2, Mail, UserCheck, ShieldCheck, MessageCircle, MapPin, Phone
 } from "lucide-react";
 
 type ActionType = "receive" | "schengen" | "schengenAppointment" | "appointment" | null;
@@ -283,7 +284,7 @@ export default function ClientDocDetail() {
         <div>
           <h1 className="text-xl font-semibold text-gray-900">{data.clientName}</h1>
           <p className="text-xs text-gray-400 mt-0.5">
-            {data.clientCode} · {clientDocumentationProgramLabel(caseData.program)}{!isCaribbean ? ` · ${data.applicationType === "freelancer" ? "Freelancer" : "Business Owner"}` : ""} · {data.maritalStatus === "family" ? "Family" : "Single"}
+            {data.clientCode} · {clientDocumentationOriginLabel(caseData.clientOrigin)} · {clientDocumentationProgramLabel(caseData.program)}{!isCaribbean ? ` · ${data.applicationType === "freelancer" ? "Freelancer" : "Business Owner"}` : ""} · {data.maritalStatus === "family" ? "Family" : "Single"}
           </p>
         </div>
         <div className="ml-auto flex items-center gap-3 flex-wrap justify-end">
@@ -351,6 +352,14 @@ export default function ClientDocDetail() {
 
       {/* ── Client Info Panel ── */}
       <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div>
+          <p className="text-xs text-gray-400 mb-1">Client Location</p>
+          <span className="text-sm font-medium text-gray-800 flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-[#1e3a5f]" />{clientDocumentationOriginLabel(caseData.clientOrigin)}</span>
+        </div>
+        {caseData.clientMobile && <div>
+          <p className="text-xs text-gray-400 mb-1">Mobile Number</p>
+          <span className="text-sm font-medium text-gray-800 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-[#1e3a5f]" />{caseData.clientMobile}</span>
+        </div>}
         {/* Paralegal */}
         <div>
           <p className="text-xs text-gray-400 mb-1">Paralegal</p>

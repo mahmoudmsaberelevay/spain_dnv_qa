@@ -1704,3 +1704,16 @@ Check email for download link within 5 minutes
 - [x] Remove validation tokens and temporary sessions; preserve all client, document, chat, activity, and workflow records
 - [x] Pass 98 focused regressions, zero changed-file diagnostics, production build, mobile-repository status, and `git diff --check`
 - [x] Save final restorable WebDev checkpoint
+
+## Client Documentation — Egypt and Dubai Creation Paths
+- [x] Ask Egypt or Dubai as the first step of New Client creation
+- [x] Preserve Egypt creation through authoritative existing Financial Client selection
+- [x] Allow Dubai creation from client name and mobile without selecting or creating an Egypt Financial Client
+- [x] Generate a non-PII Dubai documentation code on the server
+- [x] Continue the existing program, family, consultant, contract-link, payment, Spain, and Caribbean flows unchanged
+- [x] Store and display client origin and mobile in Client Documentation list and detail views
+- [x] Add server-side cross-field validation for Egypt linkage and Dubai name/mobile identity
+- [x] Apply additive migration 0087 and preserve all 28 existing cases as Egypt
+- [x] Verify both rendered form branches without creating a test client
+- [x] Pass 132 relevant regressions, production build, changed-file diagnostics, and `git diff --check`
+- [x] Save final restorable WebDev checkpoint

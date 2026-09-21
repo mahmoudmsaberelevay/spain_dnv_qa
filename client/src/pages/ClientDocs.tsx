@@ -10,8 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Plus, FolderOpen, User, ChevronRight, FileText, Briefcase, Users, Search, Link2, CreditCard, MessageCircle, BellOff, Globe2 } from "lucide-react";
+import { Plus, FolderOpen, User, ChevronRight, FileText, Briefcase, Users, Search, Link2, CreditCard, MessageCircle, BellOff, Globe2, MapPin, Phone } from "lucide-react";
 import { CLIENT_DOCUMENTATION_PROGRAMS, CLIENT_DOCUMENTATION_PROGRAM_LABELS, clientDocumentationProgramLabel, isCaribbeanDocumentationProgram, type ClientDocumentationProgram } from "@shared/clientDocumentationPrograms";
+import { CLIENT_DOCUMENTATION_ORIGIN_LABELS, isValidClientDocumentationMobile, type ClientDocumentationOrigin } from "@shared/clientDocumentationOrigins";
 
 type ChildEntry = { name: string; age: number; relationship: "child" | "dependent_parent" | "other" };
 type PaymentDraft = { paymentName: "First payment" | "Second payment" | "Third payment"; amountEur: string; paymentMilestone: "signed" | "submission" | "approval" };
@@ -23,8 +24,10 @@ const createBlankPayments = (): PaymentDraft[] => [
 ];
 
 type FormState = {
+  clientOrigin: ClientDocumentationOrigin;
   clientName: string;
   clientCode: string;
+  clientMobile: string;
   program: ClientDocumentationProgram;
   applicationType: "freelancer" | "business_owner" | "";
   maritalStatus: "single" | "family" | "";
@@ -39,8 +42,10 @@ type FormState = {
 };
 
 const createEmptyForm = (): FormState => ({
+  clientOrigin: "egypt",
   clientName: "",
   clientCode: "",
+  clientMobile: "",
   program: "spain",
   applicationType: "",
   maritalStatus: "",
@@ -67,7 +72,7 @@ export default function ClientDocs() {
   // Search finClients for the dropdown
   const { data: searchResults } = trpc.reports.clientSearch.search.useQuery(
     { query: clientSearch },
-    { enabled: clientSearch.length > 0 || showClientDropdown }
+    { enabled: form.clientOrigin === "egypt" && (clientSearch.length > 0 || showClientDropdown) }
   );
 
   // Close dropdown on outside click
@@ -162,8 +167,29 @@ export default function ClientDocs() {
 
   const contractValueEur = form.payments.reduce((total, payment) => total + (Number(payment.amountEur) || 0), 0);
 
+  const handleClientOriginChange = (clientOrigin: ClientDocumentationOrigin) => {
+    setForm(current => ({
+      ...current,
+      clientOrigin,
+      clientName: "",
+      clientCode: "",
+      clientMobile: "",
+    }));
+    setClientSearch("");
+    setSelectedClientId(null);
+    setShowClientDropdown(false);
+  };
+
   const handleCreate = () => {
-    if (!form.clientName || !form.clientCode || (form.program === "spain" && !form.applicationType) || !form.maritalStatus || !form.consultant) {
+    if (form.clientOrigin === "egypt" && !selectedClientId) {
+      toast.error("Select an existing Egypt client");
+      return;
+    }
+    if (form.clientOrigin === "dubai" && (!form.clientName.trim() || !isValidClientDocumentationMobile(form.clientMobile))) {
+      toast.error("Enter the Dubai client's name and a valid mobile number");
+      return;
+    }
+    if ((form.program === "spain" && !form.applicationType) || !form.maritalStatus || !form.consultant) {
       toast.error("Please fill in all required fields");
       return;
     }
@@ -192,8 +218,9 @@ export default function ClientDocs() {
       return;
     }
     createMutation.mutate({
-      clientName: form.clientName,
-      clientCode: form.clientCode,
+      clientOrigin: form.clientOrigin,
+      clientName: form.clientOrigin === "dubai" ? form.clientName.trim() : undefined,
+      clientMobile: form.clientOrigin === "dubai" ? form.clientMobile.trim() : undefined,
       program: form.program,
       applicationType: form.program === "spain" ? form.applicationType as "freelancer" | "business_owner" : "business_owner",
       maritalStatus: form.maritalStatus as "single" | "family",
@@ -202,7 +229,7 @@ export default function ClientDocs() {
       children: form.maritalStatus === "family" || isCaribbeanDocumentationProgram(form.program) ? form.children : [],
       schengenVisaValid: form.program === "spain" ? form.schengenVisaValid ?? false : false,
       schengenExpiryDate: form.program === "spain" && form.schengenVisaValid ? form.schengenExpiryDate : undefined,
-      finClientId: selectedClientId,
+      finClientId: form.clientOrigin === "egypt" ? selectedClientId : null,
       contractDriveLink: form.contractDriveLink.trim(),
       payments: form.payments.map(payment => ({
         paymentName: payment.paymentName,
@@ -242,66 +269,109 @@ export default function ClientDocs() {
               <DialogTitle className="text-gray-900 text-lg font-semibold">Create Client Case</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-2">
-              {/* Client Search & Select */}
-              <div className="space-y-1.5" ref={clientSearchRef}>
-                <Label className="text-gray-700 text-sm font-medium">Select Client</Label>
-                <div className="relative">
+              <div className="space-y-2">
+                <Label className="text-gray-700 text-sm font-medium">Where is the client based?</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  {(["egypt", "dubai"] as const).map(origin => {
+                    const selected = form.clientOrigin === origin;
+                    return (
+                      <button
+                        key={origin}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => { if (!selected) handleClientOriginChange(origin); }}
+                        className={`rounded-xl border p-3 text-left transition-all duration-200 active:scale-[0.97] ${selected ? "border-[#1e3a5f] bg-[#1e3a5f]/5 shadow-sm" : "border-gray-200 bg-white hover:border-[#1e3a5f]/40"}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <MapPin className={`h-4 w-4 ${selected ? "text-[#1e3a5f]" : "text-gray-400"}`} />
+                          <span className="text-sm font-semibold text-gray-900">{CLIENT_DOCUMENTATION_ORIGIN_LABELS[origin]}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500">{origin === "egypt" ? "Choose an existing Financial Client" : "Create a new documentation identity"}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {form.clientOrigin === "egypt" ? (
+                <div className="space-y-1.5" ref={clientSearchRef}>
+                  <Label className="text-gray-700 text-sm font-medium">Select Existing Egypt Client</Label>
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      placeholder="Search by name or code..."
-                      value={clientSearch}
-                      onChange={e => {
-                        setClientSearch(e.target.value);
-                        setShowClientDropdown(true);
-                        if (!e.target.value) {
-                          setSelectedClientId(null);
-                          setForm(f => ({ ...f, clientName: "", clientCode: "" }));
-                        }
-                      }}
-                      onFocus={() => setShowClientDropdown(true)}
-                      className="pl-9 border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-[#1e3a5f] focus:ring-[#1e3a5f]"
-                    />
-                  </div>
-                  {showClientDropdown && (searchResults?.length ?? 0) > 0 && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                      {searchResults?.map((client) => (
-                        <button
-                          key={client.id}
-                          type="button"
-                          className={`w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center justify-between transition-colors ${
-                            selectedClientId === client.id ? "bg-[#1e3a5f]/5 border-l-2 border-[#1e3a5f]" : ""
-                          }`}
-                          onClick={() => {
-                            setForm(f => ({ ...f, clientName: client.name, clientCode: client.clientCode || "" }));
-                            setClientSearch(client.name);
-                            setSelectedClientId(client.id);
-                            setShowClientDropdown(false);
-                          }}
-                        >
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">{client.name}</div>
-                            <div className="text-xs text-gray-500">{client.clientCode || "No code"}</div>
-                          </div>
-                          <span className="text-xs text-gray-400 font-mono">{client.clientCode}</span>
-                        </button>
-                      ))}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search by name, code, mobile, or email..."
+                        value={clientSearch}
+                        onChange={e => {
+                          setClientSearch(e.target.value);
+                          setShowClientDropdown(true);
+                          if (!e.target.value) {
+                            setSelectedClientId(null);
+                            setForm(f => ({ ...f, clientName: "", clientCode: "", clientMobile: "" }));
+                          }
+                        }}
+                        onFocus={() => setShowClientDropdown(true)}
+                        className="pl-9 border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-[#1e3a5f] focus:ring-[#1e3a5f]"
+                      />
                     </div>
-                  )}
-                  {showClientDropdown && clientSearch.length > 0 && (searchResults?.length ?? 0) === 0 && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-center text-sm text-gray-500">
-                      No clients found matching "{clientSearch}"
+                    {showClientDropdown && (searchResults?.length ?? 0) > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {searchResults?.map((client) => (
+                          <button
+                            key={client.id}
+                            type="button"
+                            className={`w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center justify-between transition-colors ${selectedClientId === client.id ? "bg-[#1e3a5f]/5 border-l-2 border-[#1e3a5f]" : ""}`}
+                            onClick={() => {
+                              setForm(f => ({ ...f, clientName: client.name, clientCode: client.clientCode || "", clientMobile: client.phone || "" }));
+                              setClientSearch(client.name);
+                              setSelectedClientId(client.id);
+                              setShowClientDropdown(false);
+                            }}
+                          >
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{client.name}</div>
+                              <div className="text-xs text-gray-500">{client.clientCode || "No code"}{client.phone ? ` · ${client.phone}` : ""}</div>
+                            </div>
+                            <span className="text-xs text-gray-400 font-mono">{client.clientCode}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {showClientDropdown && clientSearch.length > 0 && (searchResults?.length ?? 0) === 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-center text-sm text-gray-500">
+                        No Egypt clients found matching "{clientSearch}"
+                      </div>
+                    )}
+                  </div>
+                  {selectedClientId && (
+                    <div className="flex items-center gap-2 mt-1.5 px-2 py-1.5 bg-green-50 border border-green-200 rounded-md">
+                      <User className="h-3.5 w-3.5 text-green-600" />
+                      <span className="text-xs text-green-700 font-medium">{form.clientName}</span>
+                      <span className="text-xs text-green-600 font-mono">({form.clientCode})</span>
                     </div>
                   )}
                 </div>
-                {selectedClientId && (
-                  <div className="flex items-center gap-2 mt-1.5 px-2 py-1.5 bg-green-50 border border-green-200 rounded-md">
-                    <User className="h-3.5 w-3.5 text-green-600" />
-                    <span className="text-xs text-green-700 font-medium">{form.clientName}</span>
-                    <span className="text-xs text-green-600 font-mono">({form.clientCode})</span>
+              ) : (
+                <div className="rounded-xl border border-cyan-200 bg-cyan-50/60 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-cyan-900">New Dubai Client</p>
+                    <p className="text-xs text-cyan-700">Enter the client's identity first. The CRM will generate a Dubai documentation code automatically.</p>
                   </div>
-                )}
-              </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-gray-700 text-sm font-medium">Client Name <span className="text-red-500">*</span></Label>
+                      <Input value={form.clientName} onChange={event => setForm(current => ({ ...current, clientName: event.target.value }))} placeholder="Enter full client name" className="border-gray-300 bg-white text-gray-900" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-gray-700 text-sm font-medium">Mobile Number <span className="text-red-500">*</span></Label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input type="tel" value={form.clientMobile} onChange={event => setForm(current => ({ ...current, clientMobile: event.target.value }))} placeholder="+971 50 123 4567" className="pl-9 border-gray-300 bg-white text-gray-900" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <Label className="text-gray-700 text-sm font-medium">Program</Label>
@@ -595,7 +665,8 @@ export default function ClientDocs() {
                   </div>
                   <div>
                     <p className="text-gray-900 font-medium text-sm">{client.clientName}</p>
-                    <p className="text-gray-400 text-xs mt-0.5">{client.clientCode}</p>
+                    <p className="text-gray-400 text-xs mt-0.5">{client.clientCode} · {CLIENT_DOCUMENTATION_ORIGIN_LABELS[client.clientOrigin === "dubai" ? "dubai" : "egypt"]}</p>
+                    {client.clientMobile && <p className="text-gray-400 text-xs mt-0.5">{client.clientMobile}</p>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

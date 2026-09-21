@@ -211,6 +211,8 @@ export const clientCases = mysqlTable("clientCases", {
   finClientId: int("finClientId"),
   clientName: varchar("clientName", { length: 255 }).notNull(),
   clientCode: varchar("clientCode", { length: 64 }).notNull(),
+  clientOrigin: mysqlEnum("clientOrigin", ["egypt", "dubai"]).default("egypt").notNull(),
+  clientMobile: varchar("clientMobile", { length: 64 }),
   program: mysqlEnum("program", ["spain", "grenada", "dominica", "st_kitts", "st_lucia", "antigua"]).default("spain").notNull(),
   applicationType: mysqlEnum("applicationType", ["freelancer", "business_owner"]).notNull(),
   maritalStatus: mysqlEnum("maritalStatus", ["single", "family"]).notNull(),
