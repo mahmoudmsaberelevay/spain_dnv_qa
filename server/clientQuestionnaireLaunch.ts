@@ -88,7 +88,12 @@ export async function createQuestionnaireLaunch(input: {
     expiresAt,
   });
   return {
-    url: `https://elevay.vip/client-questionnaire#launch=${encodeURIComponent(token)}`,
+    // The native app is associated with elevay.vip, including legacy cached
+    // catch-all rules. www.elevay.vip is intentionally not an associated app
+    // domain, so the existing binary opens this secure web questionnaire in
+    // Safari; the host redirects to the same ELEVAY page while preserving the
+    // URL fragment token.
+    url: `https://www.elevay.vip/client-questionnaire#launch=${encodeURIComponent(token)}`,
     expiresAt: expiresAt.toISOString(),
   };
 }

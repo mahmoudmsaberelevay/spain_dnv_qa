@@ -1205,7 +1205,7 @@ export function registerClientPortalRoutes(app: Express) {
       });
       items = [{
         docKey: "client_questionnaire",
-        docName: "Client Questionnaire",
+        docName: "Client Questionnaire — https://elevay.vip/client-questionnaire",
         category: "main",
         received: Boolean(owned.clientCase.questionnaireSubmittedAt),
         receivedDate: owned.clientCase.questionnaireSubmittedAt,

@@ -52,7 +52,7 @@ describe("Client Questionnaire virtual document link", () => {
     expect(documentRoute).toContain("ownedApplication(req.portal!.user.id, req.params.applicationId)");
     expect(documentRoute).toContain("isCaribbeanDocumentationProgram(owned.clientCase.program)");
     expect(documentRoute).toContain('docKey: "client_questionnaire"');
-    expect(documentRoute).toContain('docName: "Client Questionnaire"');
+    expect(documentRoute).toContain('docName: "Client Questionnaire — https://elevay.vip/client-questionnaire"');
     expect(documentRoute).toContain("documentLink: launch.url");
     expect(documentRoute).toContain("items = persistedItems");
     expect(documentRoute).toContain('res.setHeader("Cache-Control", "no-store")');
@@ -71,7 +71,7 @@ describe("Client Questionnaire virtual document link", () => {
       expect(association).toMatch(/"\/": "\/client-questionnaire",\s*"?exclude"?: true/);
       expect(association).toContain('"/": "/*"');
     }
-    expect(launchService).toContain("https://elevay.vip/client-questionnaire#launch=");
+    expect(launchService).toContain("https://www.elevay.vip/client-questionnaire#launch=");
     expect(launchService).not.toContain("manuselevaymobile://client-questionnaire");
   });
 });
