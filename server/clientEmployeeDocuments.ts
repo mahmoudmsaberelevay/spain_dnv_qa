@@ -13,8 +13,9 @@ import { ENV } from "./_core/env";
 import { auditCtxFromReq, writeAuditLog } from "./auditLog";
 import type { EmployeeMobileContext } from "./clientEmployeeAuth";
 import { projectClientProcessTimeline } from "./clientProcessTimeline";
-import { projectCaribbeanMobileTimeline } from "../shared/caribbeanTimeline";
-import { clientDocumentationProgramLabel, isCaribbeanDocumentationProgram } from "../shared/clientDocumentationPrograms";
+import { normalizeMobileProcessTimeline } from "./mobileProcessTimeline";
+import { projectCaribbeanTimeline } from "../shared/caribbeanTimeline";
+import { isCaribbeanDocumentationProgram } from "../shared/clientDocumentationPrograms";
 import { getDb } from "./db";
 import { storageGet } from "./storage";
 import type { Request } from "express";
@@ -55,13 +56,8 @@ function applicationProjection(clientCase: typeof clientCases.$inferSelect) {
     publicId: encodeEmployeeFolderId(clientCase.id),
     label: clientCase.clientName,
     clientCode: clientCase.clientCode,
-    program: clientCase.program,
-    programLabel: clientDocumentationProgramLabel(clientCase.program),
     applicationType: clientCase.applicationType,
-    stage: isCaribbeanDocumentationProgram(clientCase.program)
-      ? clientCase.caribbeanJourneyStage ?? "questionnaire"
-      : clientCase.stage,
-    questionnaireStatus: clientCase.questionnaireSubmittedAt ? "submitted" as const : "not_started" as const,
+    stage: clientCase.stage,
     consultant: clientCase.consultant,
     paralegal: clientCase.paralegal,
     isPrimary: false,
@@ -265,12 +261,12 @@ export async function getEmployeeFolderTimeline(publicId: string) {
     db.select({ createdAt: clientPortalApplications.createdAt }).from(clientPortalApplications).where(eq(clientPortalApplications.clientCaseId, clientCase.id)).orderBy(asc(clientPortalApplications.createdAt)).limit(1),
   ]);
   if (isCaribbeanDocumentationProgram(clientCase.program)) {
-    return projectCaribbeanMobileTimeline({
+    return normalizeMobileProcessTimeline(projectCaribbeanTimeline({
       clientCase,
       receivedDocuments: documents.filter(document => document.received).length,
       totalDocuments: documents.length,
       payments,
-    });
+    }));
   }
   return projectClientProcessTimeline({ clientCase, documents, payments, applicationCreatedAt: applications[0]?.createdAt ?? clientCase.createdAt });
 }

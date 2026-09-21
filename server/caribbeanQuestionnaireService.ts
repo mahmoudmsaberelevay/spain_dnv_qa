@@ -9,7 +9,7 @@ import {
   validateCaribbeanQuestionnaire,
   type CaribbeanQuestionnaireAnswers,
 } from "../shared/caribbeanQuestionnaire";
-import { clientDocumentationProgramLabel, isCaribbeanDocumentationProgram } from "../shared/clientDocumentationPrograms";
+import { clientDocumentationProgramLabel, isCaribbeanDocumentationProgram, type ClientDocumentationProgram } from "../shared/clientDocumentationPrograms";
 import { getDb } from "./db";
 import { recordClientLifecycleEvent } from "./clientLifecycleNotificationService";
 
@@ -23,6 +23,14 @@ function validateCurrentStepKey(value: unknown) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid questionnaire step" });
   }
   return value;
+}
+
+export function serializeClientQuestionnaireSteps() {
+  return CARIBBEAN_QUESTIONNAIRE_STEPS.map(step => ({
+    ...step,
+    required: step.optional !== true,
+    fields: step.fields?.map(field => ({ ...field, required: true })),
+  }));
 }
 
 async function requireCaribbeanCase(clientCaseId: number) {
@@ -49,6 +57,8 @@ function serializeQuestionnaire(row: typeof clientApplicationQuestionnaires.$inf
     program: clientCase.program,
     programLabel: clientDocumentationProgramLabel(clientCase.program),
     journeyStage: clientCase.caribbeanJourneyStage ?? "questionnaire",
+    stepCount: CARIBBEAN_QUESTIONNAIRE_STEPS.length,
+    steps: serializeClientQuestionnaireSteps(),
   };
 }
 
@@ -77,6 +87,7 @@ export async function saveCaribbeanQuestionnaireDraft(input: {
     await db.insert(clientApplicationQuestionnaires).values({
       publicId: randomUUID(),
       clientCaseId: input.clientCaseId,
+      program: clientCase.program as Exclude<ClientDocumentationProgram, "spain">,
       questionnaireVersion: CARIBBEAN_QUESTIONNAIRE_VERSION,
       status: "draft",
       answers,
@@ -124,6 +135,7 @@ export async function submitCaribbeanQuestionnaire(input: {
       await tx.insert(clientApplicationQuestionnaires).values({
         publicId,
         clientCaseId: input.clientCaseId,
+        program: clientCase.program as Exclude<ClientDocumentationProgram, "spain">,
         questionnaireVersion: CARIBBEAN_QUESTIONNAIRE_VERSION,
         status: "submitted",
         answers,

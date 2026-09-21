@@ -1491,13 +1491,14 @@ export const clientPortalApplications = mysqlTable("client_portal_applications",
 export type ClientPortalApplication = typeof clientPortalApplications.$inferSelect;
 export type InsertClientPortalApplication = typeof clientPortalApplications.$inferInsert;
 
-export const clientApplicationQuestionnaires = mysqlTable("client_application_questionnaires", {
+export const clientApplicationQuestionnaires = mysqlTable("caribbeanQuestionnaires", {
   id: int("id").autoincrement().primaryKey(),
   publicId: varchar("publicId", { length: 36 }).notNull().unique(),
   clientCaseId: int("clientCaseId").notNull(),
-  questionnaireVersion: varchar("questionnaireVersion", { length: 64 }).notNull(),
+  program: mysqlEnum("program", ["grenada", "dominica", "st_kitts", "st_lucia", "antigua"]).notNull(),
+  questionnaireVersion: varchar("version", { length: 64 }).notNull(),
   status: mysqlEnum("status", ["draft", "submitted"]).default("draft").notNull(),
-  answers: json("answers").notNull(),
+  answers: json("answersJson").notNull(),
   currentStepKey: varchar("currentStepKey", { length: 191 }),
   startedByPortalUserId: int("startedByPortalUserId"),
   submittedByPortalUserId: int("submittedByPortalUserId"),
@@ -1507,11 +1508,29 @@ export const clientApplicationQuestionnaires = mysqlTable("client_application_qu
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
-  uniqueClientCase: uniqueIndex("client_application_questionnaires_case_unique").on(table.clientCaseId),
-  statusIndex: index("client_application_questionnaires_status_idx").on(table.status, table.updatedAt),
+  uniqueClientCase: uniqueIndex("caribbean_questionnaire_case_unique").on(table.clientCaseId),
+  statusIndex: index("caribbean_questionnaire_status_idx").on(table.status, table.updatedAt),
 }));
 export type ClientApplicationQuestionnaire = typeof clientApplicationQuestionnaires.$inferSelect;
 export type InsertClientApplicationQuestionnaire = typeof clientApplicationQuestionnaires.$inferInsert;
+
+export const clientQuestionnaireLaunchTokens = mysqlTable("client_questionnaire_launch_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  publicId: varchar("publicId", { length: 36 }).notNull().unique(),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+  portalUserId: int("portalUserId").notNull(),
+  portalApplicationId: int("portalApplicationId").notNull(),
+  clientCaseId: int("clientCaseId").notNull(),
+  sourceSessionId: int("sourceSessionId").notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  launchLookup: uniqueIndex("client_questionnaire_launch_tokens_hash_unique").on(table.tokenHash),
+  applicationExpiry: index("client_questionnaire_launch_tokens_application_expiry_idx").on(table.portalApplicationId, table.expiresAt, table.usedAt),
+}));
+export type ClientQuestionnaireLaunchToken = typeof clientQuestionnaireLaunchTokens.$inferSelect;
+export type InsertClientQuestionnaireLaunchToken = typeof clientQuestionnaireLaunchTokens.$inferInsert;
 
 export const clientPortalApplicants = mysqlTable("client_portal_applicants", {
   id: int("id").autoincrement().primaryKey(),

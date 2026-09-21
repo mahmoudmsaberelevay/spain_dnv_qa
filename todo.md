@@ -1673,3 +1673,34 @@ Check email for download link within 5 minutes
 - [x] Apply additive TiDB-safe migration 0085 without creating test cases or modifying existing client records
 - [x] Verify desktop and phone interfaces, 41 focused regressions, changed-file diagnostics, production build, and release documentation
 - [x] Save final restorable WebDev checkpoint
+
+## Client Portal — Backend-Only Mobile Process Timeline Compatibility
+- [x] Preserve the rich `/client-api/applications/:applicationId/workflow` response unchanged
+- [x] Preserve the existing Spain process-timeline array projection exactly
+- [x] Normalize Caribbean client process timelines to the installed mobile array contract
+- [x] Make employee folder timelines program-aware and use the same Caribbean normalizer
+- [x] Map `order` to `position`, `date` to `occurredAt`, `active` to `current`, and `pending` to `upcoming`
+- [x] Return null for missing or invalid dates and safely normalize null, empty, malformed, or extended workflow fields
+- [x] Preserve safe behavior when a folder has no linked portal application or an application ID is unavailable
+- [x] Add focused backend regressions and pass 41 tests across seven relevant suites
+- [x] Run `pnpm check`, isolate zero changed-file diagnostics from 83 existing baseline diagnostics, pass the production build, and pass `git diff --check`
+- [x] Confirm no database record, permission, authentication, chat, News, Spain workflow, or mobile repository was changed
+- [x] Save the final CRM-only checkpoint
+
+## Client Questionnaire — Existing Mobile Document-Link Delivery
+- [x] Preserve the native mobile repositories without adding a route or rebuilding the app
+- [x] Add one virtual **Client Questionnaire** item to authorized Caribbean documentation responses only
+- [x] Confirm Spain documentation responses contain no questionnaire item and remain unchanged
+- [x] Use the existing `documentLink` field so the installed app can open the responsive web questionnaire
+- [x] Generate five-minute opaque launch tokens tied to one portal user, application, case, and active source session
+- [x] Store only token hashes, hide tokens in URL fragments, consume each token once, and deny invalid, expired, reused, revoked, or mismatched tokens
+- [x] Preserve the existing protected questionnaire GET, draft PUT, and submit POST endpoints
+- [x] Provide one-question-at-a-time English/Arabic rendering with typed inputs, progress, Back, Next, and optional skipping
+- [x] Present repeatable tables one row at a time with row navigation, Add Row, Remove Row, and complete row preservation
+- [x] Queue draft saves, autosave after edits and periodically, save on navigation, and resume from the saved question
+- [x] Add final required-field validation, complete answer review, direct Edit actions, and immutable submission
+- [x] Align the original Caribbean questionnaire Drizzle model to the live table and add durable start/save metadata additively
+- [x] Verify real authorized launch, token replay denial, Caribbean-only document response, Spain exclusion, and rollback-only draft persistence
+- [x] Remove validation tokens and temporary sessions; preserve all client, document, chat, activity, and workflow records
+- [x] Pass 98 focused regressions, zero changed-file diagnostics, production build, mobile-repository status, and `git diff --check`
+- [x] Save final restorable WebDev checkpoint
