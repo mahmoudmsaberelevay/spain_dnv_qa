@@ -9,6 +9,14 @@ import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Search, X } from "luci
 import { useState, useMemo } from "react";
 import { useRef, useEffect, useCallback } from "react";
 import { toast } from "sonner";
+import {
+  enforceQualifierCommissionMarketingSource,
+  hasPositiveQualifierCommission,
+} from "@shared/commissionSourcePolicy";
+import {
+  CommissionSigningDatePreset,
+  resolveCommissionSigningDateRange,
+} from "@shared/commissionSigningDateFilter";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtEur(n: string | number | null | undefined) {
@@ -91,7 +99,7 @@ const EMPTY_FORM: CommissionForm = {
 };
 
 function formToMutation(form: CommissionForm) {
-  return {
+  return enforceQualifierCommissionMarketingSource({
     clientName: form.clientName,
     seqNumber: form.seqNumber ? Number(form.seqNumber) : undefined,
     status: form.status || undefined,
@@ -126,7 +134,7 @@ function formToMutation(form: CommissionForm) {
     leaderName: form.leaderName || "Mahmoud Saber",
     leaderCommissionAmount: form.leaderCommissionAmount ? Number(form.leaderCommissionAmount) : undefined,
     leaderCommissionDate: parseDate(form.leaderCommissionDate),
-  };
+  });
 }
 
 // ─── Form Section Component ───────────────────────────────────────────────────
@@ -158,22 +166,31 @@ export default function FinCommissions() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [leadSourceFilter, setLeadSourceFilter] = useState("");
+  const [signingDatePreset, setSigningDatePreset] = useState<CommissionSigningDatePreset>("all");
+  const [signingDateFrom, setSigningDateFrom] = useState("");
+  const [signingDateTo, setSigningDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const signingDateRange = useMemo(
+    () => resolveCommissionSigningDateRange(signingDatePreset, signingDateFrom, signingDateTo),
+    [signingDatePreset, signingDateFrom, signingDateTo],
+  );
 
   const filters = useMemo(() => ({
     search: search || undefined,
     status: statusFilter || undefined,
     leadSource: leadSourceFilter || undefined,
+    ...signingDateRange,
     limit: pageSize,
     offset: (page - 1) * pageSize,
-  }), [search, statusFilter, leadSourceFilter, page, pageSize]);
+  }), [search, statusFilter, leadSourceFilter, signingDateRange, page, pageSize]);
 
   const countFilters = useMemo(() => ({
     search: search || undefined,
     status: statusFilter || undefined,
     leadSource: leadSourceFilter || undefined,
-  }), [search, statusFilter, leadSourceFilter]);
+    ...signingDateRange,
+  }), [search, statusFilter, leadSourceFilter, signingDateRange]);
 
   const { data: commissions, isLoading } = trpc.financial.commissions.list.useQuery(filters);
   const { data: total } = trpc.financial.commissions.count.useQuery(countFilters);
@@ -212,6 +229,7 @@ export default function FinCommissions() {
   const [showDialog, setShowDialog] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<CommissionForm>(EMPTY_FORM);
+  const qualifierForcesMarketing = hasPositiveQualifierCommission(form.qualifierCommissionAmount);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   // Client search autocomplete state
   const [clientSearch, setClientSearch] = useState("");
@@ -352,8 +370,61 @@ export default function FinCommissions() {
                 <SelectItem value="Marketing">Marketing</SelectItem>
               </SelectContent>
             </Select>
-            {(search || statusFilter || leadSourceFilter) && (
-              <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setStatusFilter(""); setLeadSourceFilter(""); setPage(1); }}>
+            <Select
+              value={signingDatePreset}
+              onValueChange={value => {
+                setSigningDatePreset(value as CommissionSigningDatePreset);
+                if (value !== "custom") {
+                  setSigningDateFrom("");
+                  setSigningDateTo("");
+                }
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-[175px]" aria-label="Signing date filter">
+                <SelectValue placeholder="Signing Date" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Signing Dates</SelectItem>
+                <SelectItem value="this_day">This Day</SelectItem>
+                <SelectItem value="this_week">This Week</SelectItem>
+                <SelectItem value="this_month">This Month</SelectItem>
+                <SelectItem value="this_year">This Year</SelectItem>
+                <SelectItem value="custom">Custom Range</SelectItem>
+              </SelectContent>
+            </Select>
+            {signingDatePreset === "custom" && (
+              <>
+                <Input
+                  type="date"
+                  aria-label="Commission signing date from"
+                  value={signingDateFrom}
+                  onChange={event => { setSigningDateFrom(event.target.value); setPage(1); }}
+                  className="w-[155px]"
+                />
+                <Input
+                  type="date"
+                  aria-label="Commission signing date to"
+                  value={signingDateTo}
+                  onChange={event => { setSigningDateTo(event.target.value); setPage(1); }}
+                  className="w-[155px]"
+                />
+              </>
+            )}
+            {(search || statusFilter || leadSourceFilter || signingDatePreset !== "all" || signingDateFrom || signingDateTo) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearch("");
+                  setStatusFilter("");
+                  setLeadSourceFilter("");
+                  setSigningDatePreset("all");
+                  setSigningDateFrom("");
+                  setSigningDateTo("");
+                  setPage(1);
+                }}
+              >
                 <X className="h-4 w-4 mr-1" /> Clear
               </Button>
             )}
@@ -542,7 +613,11 @@ export default function FinCommissions() {
                   </Select>
                 </FormField>
                 <FormField label="Lead Source">
-                  <Select value={form.leadSource || "none"} onValueChange={v => fs("leadSource")(v === "none" ? "" : v)}>
+                  <Select
+                    value={qualifierForcesMarketing ? "Marketing" : form.leadSource || "none"}
+                    onValueChange={v => fs("leadSource")(v === "none" ? "" : v)}
+                    disabled={qualifierForcesMarketing}
+                  >
                     <SelectTrigger><SelectValue placeholder="Select source" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">— None —</SelectItem>
@@ -551,6 +626,9 @@ export default function FinCommissions() {
                       <SelectItem value="Marketing">Marketing</SelectItem>
                     </SelectContent>
                   </Select>
+                  {qualifierForcesMarketing && (
+                    <p className="text-xs text-blue-700">Automatically set to Marketing because Qualifier Commission is greater than zero.</p>
+                  )}
                 </FormField>
               </FormRow>
               <FormRow>
@@ -576,7 +654,21 @@ export default function FinCommissions() {
                   </Select>
                 </FormField>
                 <FormField label="Qualifier Commission Amount (EUR)">
-                  <Input type="number" step="0.01" value={form.qualifierCommissionAmount} onChange={f("qualifierCommissionAmount")} placeholder="0.00" />
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.qualifierCommissionAmount}
+                    onChange={e => {
+                      const value = e.target.value;
+                      setForm(prev => ({
+                        ...prev,
+                        qualifierCommissionAmount: value,
+                        leadSource: hasPositiveQualifierCommission(value) ? "Marketing" : prev.leadSource,
+                      }));
+                    }}
+                    placeholder="0.00"
+                  />
                 </FormField>
               </FormRow>
               <FormRow>

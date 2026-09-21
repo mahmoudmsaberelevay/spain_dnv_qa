@@ -1617,3 +1617,14 @@ Check email for download link within 5 minutes
 - [x] Recalculate visible report totals, counts, and running balances from the filtered rows
 - [x] Verify All Expenses, All Income, Account Statement, and Detailed Report behavior non-mutatively
 - [x] Complete focused regressions, changed-file diagnostics, production build, documentation, and checkpoint
+
+## Commission Database — Qualifier Marketing Source and Signing-Date Filters
+- [x] Audit all Commission Database records with positive Qualifier Commission amounts
+- [x] Backfill only qualifying records whose source was empty or not Marketing
+- [x] Confirm all 183 positive Qualifier Commission records now have Marketing source and zero mismatches remain
+- [x] Enforce the Marketing rule in the Commission form, API transformer, and database create/update helpers
+- [x] Preserve existing Marketing records when the Qualifier Commission is empty or zero
+- [x] Add signing-date filters for This Day, This Week, This Month, This Year, and Custom Range
+- [x] Apply inclusive Cairo-aware date bounds to both Commission list and count queries
+- [x] Verify This Year, Custom Range, reversed bounds, pagination count, Clear behavior, and automatic form source non-mutatively
+- [x] Complete 38 focused regressions, changed-file diagnostics, production build, documentation, and checkpoint

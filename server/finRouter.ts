@@ -16,6 +16,7 @@ import {
 } from "./finDb";
 import { notifyFinClientAdded } from "./emailService";
 import { normalizeFinancialDateRange } from "../shared/financialDateRange";
+import { enforceQualifierCommissionMarketingSource } from "../shared/commissionSourcePolicy";
 
 // ─── Access Control ──────────────────────────────────────────────────────────
 const ADMIN_EMAILS = [
@@ -389,42 +390,43 @@ const commissionFieldsSchema = z.object({
   leaderCommissionDate: z.date().optional(),
 });
 function toCommissionDbData(input: z.infer<typeof commissionFieldsSchema>) {
+  const normalizedInput = enforceQualifierCommissionMarketingSource(input);
   return {
-    finClientId: input.finClientId ?? null,
-    clientName: input.clientName,
-    seqNumber: input.seqNumber ?? null,
-    status: input.status ?? "Pending",
-    signingDate: input.signingDate ?? null,
-    contractValue: input.contractValue?.toString() ?? null,
-    leadSource: input.leadSource ?? null,
-    qualifierName: input.qualifierName ?? null,
-    qualifierCommissionAmount: input.qualifierCommissionAmount?.toString() ?? null,
-    qualifierCommissionDate: input.qualifierCommissionDate ?? null,
-    qualifierLeader: input.qualifierLeader ?? null,
-    qualifierLeaderCommissionAmount: input.qualifierLeaderCommissionAmount?.toString() ?? null,
-    qualifierLeaderCommissionDate: input.qualifierLeaderCommissionDate ?? null,
-    paralegalTlCommissionAmount: input.paralegalTlCommissionAmount?.toString() ?? null,
-    paralegalTlCommissionDate: input.paralegalTlCommissionDate ?? null,
-    operationManagerCommissionAmount: input.operationManagerCommissionAmount?.toString() ?? null,
-    operationManagerCommissionDate: input.operationManagerCommissionDate ?? null,
-    paralegal: input.paralegal ?? null,
-    paralegalFirstPaymentAmount: input.paralegalFirstPaymentAmount?.toString() ?? null,
-    paralegalFirstPaymentDate: input.paralegalFirstPaymentDate ?? null,
-    paralegalSecondPaymentAmount: input.paralegalSecondPaymentAmount?.toString() ?? null,
-    paralegalSecondPaymentDate: input.paralegalSecondPaymentDate ?? null,
-    paralegalThirdPaymentAmount: input.paralegalThirdPaymentAmount?.toString() ?? null,
-    paralegalThirdPaymentDate: input.paralegalThirdPaymentDate ?? null,
-    consultant: input.consultant ?? null,
-    consultantTotalPayment: input.consultantTotalPayment?.toString() ?? null,
-    consultantFirstPayment: input.consultantFirstPayment?.toString() ?? null,
-    consultantFirstPaymentDate: input.consultantFirstPaymentDate ?? null,
-    consultantSecondPayment: input.consultantSecondPayment?.toString() ?? null,
-    consultantSecondPaymentDate: input.consultantSecondPaymentDate ?? null,
-    consultantThirdPayment: input.consultantThirdPayment?.toString() ?? null,
-    consultantThirdPaymentDate: input.consultantThirdPaymentDate ?? null,
-    leaderName: input.leaderName ?? "Mahmoud Saber",
-    leaderCommissionAmount: input.leaderCommissionAmount?.toString() ?? null,
-    leaderCommissionDate: input.leaderCommissionDate ?? null,
+    finClientId: normalizedInput.finClientId ?? null,
+    clientName: normalizedInput.clientName,
+    seqNumber: normalizedInput.seqNumber ?? null,
+    status: normalizedInput.status ?? "Pending",
+    signingDate: normalizedInput.signingDate ?? null,
+    contractValue: normalizedInput.contractValue?.toString() ?? null,
+    leadSource: normalizedInput.leadSource ?? null,
+    qualifierName: normalizedInput.qualifierName ?? null,
+    qualifierCommissionAmount: normalizedInput.qualifierCommissionAmount?.toString() ?? null,
+    qualifierCommissionDate: normalizedInput.qualifierCommissionDate ?? null,
+    qualifierLeader: normalizedInput.qualifierLeader ?? null,
+    qualifierLeaderCommissionAmount: normalizedInput.qualifierLeaderCommissionAmount?.toString() ?? null,
+    qualifierLeaderCommissionDate: normalizedInput.qualifierLeaderCommissionDate ?? null,
+    paralegalTlCommissionAmount: normalizedInput.paralegalTlCommissionAmount?.toString() ?? null,
+    paralegalTlCommissionDate: normalizedInput.paralegalTlCommissionDate ?? null,
+    operationManagerCommissionAmount: normalizedInput.operationManagerCommissionAmount?.toString() ?? null,
+    operationManagerCommissionDate: normalizedInput.operationManagerCommissionDate ?? null,
+    paralegal: normalizedInput.paralegal ?? null,
+    paralegalFirstPaymentAmount: normalizedInput.paralegalFirstPaymentAmount?.toString() ?? null,
+    paralegalFirstPaymentDate: normalizedInput.paralegalFirstPaymentDate ?? null,
+    paralegalSecondPaymentAmount: normalizedInput.paralegalSecondPaymentAmount?.toString() ?? null,
+    paralegalSecondPaymentDate: normalizedInput.paralegalSecondPaymentDate ?? null,
+    paralegalThirdPaymentAmount: normalizedInput.paralegalThirdPaymentAmount?.toString() ?? null,
+    paralegalThirdPaymentDate: normalizedInput.paralegalThirdPaymentDate ?? null,
+    consultant: normalizedInput.consultant ?? null,
+    consultantTotalPayment: normalizedInput.consultantTotalPayment?.toString() ?? null,
+    consultantFirstPayment: normalizedInput.consultantFirstPayment?.toString() ?? null,
+    consultantFirstPaymentDate: normalizedInput.consultantFirstPaymentDate ?? null,
+    consultantSecondPayment: normalizedInput.consultantSecondPayment?.toString() ?? null,
+    consultantSecondPaymentDate: normalizedInput.consultantSecondPaymentDate ?? null,
+    consultantThirdPayment: normalizedInput.consultantThirdPayment?.toString() ?? null,
+    consultantThirdPaymentDate: normalizedInput.consultantThirdPaymentDate ?? null,
+    leaderName: normalizedInput.leaderName ?? "Mahmoud Saber",
+    leaderCommissionAmount: normalizedInput.leaderCommissionAmount?.toString() ?? null,
+    leaderCommissionDate: normalizedInput.leaderCommissionDate ?? null,
   };
 }
 // ─── Commissions Router ────────────────────────────────────────────────────────
@@ -434,17 +436,37 @@ const commissionsRouter = router({
       status: z.string().optional(),
       leadSource: z.string().optional(),
       search: z.string().optional(),
+      signingDateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      signingDateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       limit: z.number().optional(),
       offset: z.number().optional(),
     }).optional())
-    .query(async ({ input }) => listCommissions(input ?? undefined)),
+    .query(async ({ input }) => {
+      if (!input) return listCommissions();
+      const range = normalizeFinancialDateRange(input.signingDateFrom, input.signingDateTo);
+      return listCommissions({
+        ...input,
+        signingDateFrom: range.from,
+        signingDateTo: range.to,
+      });
+    }),
   count: finReadProcedure
     .input(z.object({
       status: z.string().optional(),
       leadSource: z.string().optional(),
       search: z.string().optional(),
+      signingDateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      signingDateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     }).optional())
-    .query(async ({ input }) => countCommissions(input ?? undefined)),
+    .query(async ({ input }) => {
+      if (!input) return countCommissions();
+      const range = normalizeFinancialDateRange(input.signingDateFrom, input.signingDateTo);
+      return countCommissions({
+        ...input,
+        signingDateFrom: range.from,
+        signingDateTo: range.to,
+      });
+    }),
   create: finWriteProcedure
     .input(commissionFieldsSchema)
     .mutation(async ({ input }) => createCommission(toCommissionDbData(input))),

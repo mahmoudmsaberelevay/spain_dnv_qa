@@ -5,6 +5,7 @@ import {
   InsertFinAccount, InsertFinCategory, InsertFinEmployee, InsertFinClient, InsertFinCommission, InsertFinTransaction,
   clientCases, appSettings, contracts,
 } from "../drizzle/schema";
+import { enforceQualifierCommissionMarketingSource } from "../shared/commissionSourcePolicy";
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
 export async function listAccounts() {
@@ -429,6 +430,8 @@ export async function listCommissions(filters?: {
   status?: string;
   leadSource?: string;
   search?: string;
+  signingDateFrom?: Date;
+  signingDateTo?: Date;
   limit?: number;
   offset?: number;
 }) {
@@ -437,6 +440,8 @@ export async function listCommissions(filters?: {
   if (filters?.status) conditions.push(eq(finCommissions.status, filters.status as "Pending" | "Started" | "Cancelled"));
   if (filters?.leadSource) conditions.push(eq(finCommissions.leadSource, filters.leadSource as "Sales Mining" | "Referal" | "Marketing"));
   if (filters?.search) conditions.push(sql`${finCommissions.clientName} LIKE ${`%${filters.search}%`}`);
+  if (filters?.signingDateFrom) conditions.push(gte(finCommissions.signingDate, filters.signingDateFrom));
+  if (filters?.signingDateTo) conditions.push(lte(finCommissions.signingDate, filters.signingDateTo));
   const q = db.select().from(finCommissions)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(asc(finCommissions.seqNumber), asc(finCommissions.id));
@@ -444,24 +449,42 @@ export async function listCommissions(filters?: {
   if (filters?.offset) q.offset(filters.offset);
   return q;
 }
-export async function countCommissions(filters?: { status?: string; leadSource?: string; search?: string }) {
+export async function countCommissions(filters?: {
+  status?: string;
+  leadSource?: string;
+  search?: string;
+  signingDateFrom?: Date;
+  signingDateTo?: Date;
+}) {
   const db = await getDb(); if (!db) return 0;
   const conditions: ReturnType<typeof eq>[] = [];
   if (filters?.status) conditions.push(eq(finCommissions.status, filters.status as "Pending" | "Started" | "Cancelled"));
   if (filters?.leadSource) conditions.push(eq(finCommissions.leadSource, filters.leadSource as "Sales Mining" | "Referal" | "Marketing"));
   if (filters?.search) conditions.push(sql`${finCommissions.clientName} LIKE ${`%${filters.search}%`}`);
+  if (filters?.signingDateFrom) conditions.push(gte(finCommissions.signingDate, filters.signingDateFrom));
+  if (filters?.signingDateTo) conditions.push(lte(finCommissions.signingDate, filters.signingDateTo));
   const [row] = await db.select({ count: sql<number>`COUNT(*)` }).from(finCommissions)
     .where(conditions.length ? and(...conditions) : undefined);
   return Number(row?.count ?? 0);
 }
 export async function createCommission(data: InsertFinCommission) {
   const db = await getDb(); if (!db) return null;
-  const [result] = await db.insert(finCommissions).values(data);
-  return { id: result.insertId, ...data };
+  const normalizedData = enforceQualifierCommissionMarketingSource(data);
+  const [result] = await db.insert(finCommissions).values(normalizedData);
+  return { id: result.insertId, ...normalizedData };
 }
 export async function updateCommission(id: number, data: Partial<InsertFinCommission>) {
   const db = await getDb(); if (!db) return null;
-  await db.update(finCommissions).set(data).where(eq(finCommissions.id, id));
+  const [existing] = await db.select({
+    qualifierCommissionAmount: finCommissions.qualifierCommissionAmount,
+  }).from(finCommissions).where(eq(finCommissions.id, id));
+  const normalizedData = enforceQualifierCommissionMarketingSource({
+    ...data,
+    qualifierCommissionAmount: data.qualifierCommissionAmount === undefined
+      ? existing?.qualifierCommissionAmount
+      : data.qualifierCommissionAmount,
+  });
+  await db.update(finCommissions).set(normalizedData).where(eq(finCommissions.id, id));
   const rows = await db.select().from(finCommissions).where(eq(finCommissions.id, id));
   return rows[0] ?? null;
 }
