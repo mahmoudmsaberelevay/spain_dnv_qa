@@ -407,14 +407,40 @@ export const CARIBBEAN_QUESTIONNAIRE_STEPS: QuestionnaireStep[] = [
 
 export type CaribbeanQuestionnaireAnswers = Record<string, unknown>;
 
+export function isQuestionnaireDefinition(value: unknown): value is QuestionnaireStep[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 2_000) return false;
+  const seen = new Set<string>();
+  for (const step of value) {
+    if (!step || typeof step !== "object" || Array.isArray(step)) return false;
+    const candidate = step as Partial<QuestionnaireStep>;
+    if (
+      typeof candidate.key !== "string"
+      || candidate.key.length === 0
+      || candidate.key.length > 191
+      || seen.has(candidate.key)
+      || typeof candidate.section !== "string"
+      || candidate.section.length === 0
+      || typeof candidate.prompt !== "string"
+      || candidate.prompt.length === 0
+      || typeof candidate.type !== "string"
+    ) return false;
+    seen.add(candidate.key);
+  }
+  return true;
+}
+
+export function resolveQuestionnaireDefinition(value: unknown): QuestionnaireStep[] {
+  return isQuestionnaireDefinition(value) ? value : CARIBBEAN_QUESTIONNAIRE_STEPS;
+}
+
 function boundedText(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.slice(0, maxLength) : "";
 }
 
-export function normalizeCaribbeanQuestionnaireAnswers(input: unknown): CaribbeanQuestionnaireAnswers {
+export function normalizeQuestionnaireAnswersForDefinition(input: unknown, definition: QuestionnaireStep[]): CaribbeanQuestionnaireAnswers {
   const source = input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : {};
   const normalized: CaribbeanQuestionnaireAnswers = {};
-  for (const step of CARIBBEAN_QUESTIONNAIRE_STEPS) {
+  for (const step of definition) {
     const value = source[step.key];
     if (step.type === "repeatable") {
       normalized[step.key] = (Array.isArray(value) ? value : []).slice(0, 50).map(row => {
@@ -440,11 +466,19 @@ export function normalizeCaribbeanQuestionnaireAnswers(input: unknown): Caribbea
   return normalized;
 }
 
-export function visibleCaribbeanQuestionnaireSteps(answers: CaribbeanQuestionnaireAnswers) {
-  return CARIBBEAN_QUESTIONNAIRE_STEPS.filter(step => {
+export function normalizeCaribbeanQuestionnaireAnswers(input: unknown): CaribbeanQuestionnaireAnswers {
+  return normalizeQuestionnaireAnswersForDefinition(input, CARIBBEAN_QUESTIONNAIRE_STEPS);
+}
+
+export function visibleQuestionnaireStepsForDefinition(answers: CaribbeanQuestionnaireAnswers, definition: QuestionnaireStep[]) {
+  return definition.filter(step => {
     if (!step.appliesWhen) return true;
     return answers[step.appliesWhen.key] === step.appliesWhen.equals;
   });
+}
+
+export function visibleCaribbeanQuestionnaireSteps(answers: CaribbeanQuestionnaireAnswers) {
+  return visibleQuestionnaireStepsForDefinition(answers, CARIBBEAN_QUESTIONNAIRE_STEPS);
 }
 
 function hasValue(value: unknown) {
@@ -456,9 +490,9 @@ function rowHasAnyValue(row: unknown, fields: QuestionnaireRowField[]) {
   return fields.some(field => hasValue((row as Record<string, unknown>)[field.key]));
 }
 
-export function validateCaribbeanQuestionnaire(answers: CaribbeanQuestionnaireAnswers) {
+export function validateQuestionnaireForDefinition(answers: CaribbeanQuestionnaireAnswers, definition: QuestionnaireStep[]) {
   const missing: string[] = [];
-  for (const step of visibleCaribbeanQuestionnaireSteps(answers)) {
+  for (const step of visibleQuestionnaireStepsForDefinition(answers, definition)) {
     const value = answers[step.key];
     if (step.type === "repeatable") {
       const rows = Array.isArray(value) ? value.filter(row => rowHasAnyValue(row, step.fields ?? [])) : [];
@@ -490,6 +524,10 @@ export function validateCaribbeanQuestionnaire(answers: CaribbeanQuestionnaireAn
     if (!step.optional && !hasValue(value)) missing.push(step.key);
   }
   return { valid: missing.length === 0, missing };
+}
+
+export function validateCaribbeanQuestionnaire(answers: CaribbeanQuestionnaireAnswers) {
+  return validateQuestionnaireForDefinition(answers, CARIBBEAN_QUESTIONNAIRE_STEPS);
 }
 
 export function questionnaireStepSummary(step: QuestionnaireStep, value: unknown, answers: CaribbeanQuestionnaireAnswers) {

@@ -9,6 +9,14 @@ const assets = [
     source: join(projectRoot, "server", "spain_dnv_contract_template_2026_09_22.docx"),
     destination: join(projectRoot, "dist", "spain_dnv_contract_template_2026_09_22.docx"),
   },
+  {
+    source: join(projectRoot, "server", "questionnaire-font-regular.ttf"),
+    destination: join(projectRoot, "dist", "questionnaire-font-regular.ttf"),
+  },
+  {
+    source: join(projectRoot, "server", "questionnaire-font-bold.ttf"),
+    destination: join(projectRoot, "dist", "questionnaire-font-bold.ttf"),
+  },
 ];
 
 function sha256(buffer) {

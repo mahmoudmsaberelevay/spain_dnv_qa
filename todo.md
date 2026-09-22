@@ -1755,3 +1755,20 @@ Check email for download link within 5 minutes
 - [x] Pass the production build, deployment, and `git diff --check`
 - [x] Remove temporary verification scripts and sessions without changing questionnaire answers
 - [x] Save final restorable corrective checkpoint
+
+## Client Documentation — Questionnaire PDF Export
+- [x] Add **Export Questionnaire PDF** to every started Caribbean questionnaire in the CRM
+- [x] Export both in-progress drafts and submitted questionnaires directly from Client Documentation
+- [x] Include client/program identity, questionnaire version and status, timestamps, every question, every answer, and all repeatable rows
+- [x] Preserve required/optional labels, bilingual question metadata, branded headers, page numbers, and export provenance
+- [x] Protect exports with authenticated Client Documentation module access and audit every successful download without logging answers
+- [x] Add immutable questionnaire-definition snapshots so current and future versions export their original questions accurately
+- [x] Backfill existing questionnaires with the current versioned definition without changing answers, status, saved step, or timestamps
+- [x] Keep meaningful compatibility fields outside the snapshot and omit empty compatibility-only fields
+- [x] Bundle and hash-verify Unicode PDF fonts in the production server build
+- [x] Generate PDFs from every live questionnaire and visually verify the branded first page, repeatable rows, and final declaration
+- [x] Verify the authenticated CRM button downloads a valid 44-page submitted questionnaire PDF
+- [x] Remove temporary PDFs and verification scripts containing client data
+- [x] Pass 45 focused regressions, zero feature diagnostics, the production build, and `git diff --check`
+- [x] Confirm no answers, statuses, client records, contracts, payments, documents, chats, or Financial records were changed
+- [x] Save final restorable WebDev checkpoint

@@ -1499,6 +1499,7 @@ export const clientApplicationQuestionnaires = mysqlTable("caribbeanQuestionnair
   clientCaseId: int("clientCaseId").notNull(),
   program: mysqlEnum("program", ["grenada", "dominica", "st_kitts", "st_lucia", "antigua"]).notNull(),
   questionnaireVersion: varchar("version", { length: 64 }).notNull(),
+  questionnaireDefinition: json("definitionJson"),
   status: mysqlEnum("status", ["draft", "submitted"]).default("draft").notNull(),
   answers: json("answersJson").notNull(),
   currentStepKey: varchar("currentStepKey", { length: 191 }),

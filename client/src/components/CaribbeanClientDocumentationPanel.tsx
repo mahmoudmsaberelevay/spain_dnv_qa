@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, CheckCircle2, Circle, ClipboardCopy, FileText, Loader2, Settings2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, Circle, ClipboardCopy, Download, FileText, Loader2, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -72,6 +72,23 @@ export function CaribbeanClientDocumentationPanel({ clientCaseId, clientCase, re
     },
     onError: error => toast.error(error.message),
   });
+  const exportQuestionnairePdf = trpc.clientDocs.exportQuestionnairePdf.useMutation({
+    onSuccess: result => {
+      const binary = window.atob(result.dataBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+      const url = URL.createObjectURL(new Blob([bytes], { type: result.mimeType }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = result.fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast.success(`Questionnaire PDF exported (${result.answeredCount}/${result.questionCount} answered)`);
+    },
+    onError: error => toast.error(error.message),
+  });
 
   const saveTimeline = () => updateTimeline.mutate({
     id: clientCaseId,
@@ -86,7 +103,8 @@ export function CaribbeanClientDocumentationPanel({ clientCaseId, clientCase, re
   };
 
   const answers = (questionnaire?.answers ?? {}) as CaribbeanQuestionnaireAnswers;
-  const sections = Array.from(new Set(CARIBBEAN_QUESTIONNAIRE_STEPS.map(step => step.section)));
+  const questionnaireSteps = questionnaire?.steps ?? CARIBBEAN_QUESTIONNAIRE_STEPS;
+  const sections = Array.from(new Set(questionnaireSteps.map(step => step.section)));
 
   return <div className="space-y-5">
     <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
@@ -116,9 +134,9 @@ export function CaribbeanClientDocumentationPanel({ clientCaseId, clientCase, re
     </div>
 
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="mb-4 flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><FileText className="h-4 w-4 text-[#1e3a5f]" /><h3 className="font-semibold text-gray-900">Client Questionnaire</h3></div><p className="mt-1 text-xs text-gray-500">Every answer is stored in this protected Client Documentation case.</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${questionnaire?.status === "submitted" ? "bg-emerald-100 text-emerald-800" : questionnaire?.status === "draft" ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-700"}`}>{questionnaire?.status === "submitted" ? "Submitted" : questionnaire?.status === "draft" ? "Draft in progress" : "Not started"}</span></div>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex items-center gap-2"><FileText className="h-4 w-4 text-[#1e3a5f]" /><h3 className="font-semibold text-gray-900">Client Questionnaire</h3></div><p className="mt-1 text-xs text-gray-500">Every answer is stored in this protected Client Documentation case.</p></div><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${questionnaire?.status === "submitted" ? "bg-emerald-100 text-emerald-800" : questionnaire?.status === "draft" ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-700"}`}>{questionnaire?.status === "submitted" ? "Submitted" : questionnaire?.status === "draft" ? "Draft in progress" : "Not started"}</span><Button size="sm" variant="outline" onClick={() => exportQuestionnairePdf.mutate({ id: clientCaseId })} disabled={!questionnaire || questionnaire.status === "not_started" || exportQuestionnairePdf.isPending}>{exportQuestionnairePdf.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}Export Questionnaire PDF</Button></div></div>
       {questionnaireLoading ? <Loader2 className="h-5 w-5 animate-spin text-[#5BA3B8]" /> : questionnaire?.status === "not_started" ? <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">Share the protected questionnaire link after assigning this Documentation folder to a Client Portal account.</div> : <div className="space-y-3">{sections.map(section => {
-        const steps = CARIBBEAN_QUESTIONNAIRE_STEPS.filter(step => step.section === section);
+        const steps = questionnaireSteps.filter(step => step.section === section);
         const answered = steps.filter(step => questionnaireStepSummary(step, answers[step.key], answers) !== "Not answered").length;
         return <details key={section} className="rounded-lg border border-gray-200"><summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-gray-800">{section} <span className="ml-2 text-xs font-normal text-gray-400">{answered}/{steps.length}</span></summary><div className="space-y-3 border-t border-gray-100 px-4 py-3">{steps.map(step => <div key={step.key}><p className="text-xs font-medium text-gray-500">{step.prompt}</p><p className="mt-0.5 whitespace-pre-wrap text-sm text-gray-900">{questionnaireStepSummary(step, answers[step.key], answers)}</p>{step.type === "repeatable" && Array.isArray(answers[step.key]) && (answers[step.key] as Array<Record<string, unknown>>).map((row, index) => <div key={index} className="mt-2 rounded-md bg-gray-50 p-2 text-xs text-gray-700">{step.fields?.map(field => <p key={field.key}><strong>{field.label}:</strong> {String(row[field.key] ?? "") || "—"}</p>)}</div>)}</div>)}</div></details>;
       })}</div>}

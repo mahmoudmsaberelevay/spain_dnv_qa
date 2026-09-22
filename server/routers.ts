@@ -43,7 +43,7 @@ import { generateWorkflowDocx } from "./workflowDocxGenerator";
 import { financialRouter } from "./finRouter";
 import { settlementRouter } from "./settlementRouter";
 import { chatRouter, broadcastRouter } from "./chatRouter";
-import { permissionsRouter } from "./permissionsRouter";
+import { getUserModuleAccess, isOwner, permissionsRouter } from "./permissionsRouter";
 import { adminRouter } from "./routers/admin";
 import { waQcRouter } from "./waQcRouter";
 import { marketingRouter } from "./marketingRouter";
@@ -73,6 +73,7 @@ import {
   updateSpainCaseStage,
 } from "./clientDocumentationSpainWorkflow";
 import { getCaribbeanQuestionnaire } from "./caribbeanQuestionnaireService";
+import { generateQuestionnairePdf } from "./questionnairePdfGenerator";
 import { CARIBBEAN_JOURNEY_STAGES, CLIENT_DOCUMENTATION_PROGRAMS, clientDocumentationProgramLabel, isCaribbeanDocumentationProgram } from "../shared/clientDocumentationPrograms";
 import { getCaribbeanDocumentChecklist } from "../shared/caribbeanDocumentChecklist";
 import { advanceCaribbeanCaseToLegalizationWhenComplete, CARIBBEAN_TIMELINE_DATE_FIELDS, updateCaribbeanDocumentationTimeline } from "./caribbeanDocumentationWorkflow";
@@ -1822,6 +1823,46 @@ const clientDocsRouter = router({
   questionnaire: protectedProcedure
     .input(z.object({ id: z.number().int().positive() }))
     .query(({ input }) => getCaribbeanQuestionnaire(input.id)),
+
+  exportQuestionnairePdf: protectedProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const access = await getUserModuleAccess(ctx.user.id);
+      if (ctx.user.role !== "admin" && !isOwner(ctx.user) && access.clientDocs === "none") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Client Documentation access is required to export this questionnaire" });
+      }
+      const clientCase = await getClientCase(input.id);
+      if (!clientCase) throw new TRPCError({ code: "NOT_FOUND", message: "Client Documentation case not found" });
+      const questionnaire = await getCaribbeanQuestionnaire(input.id);
+      if (questionnaire.status === "not_started" || !questionnaire.publicId) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The client has not started this questionnaire yet" });
+      }
+      const result = await generateQuestionnairePdf({
+        client: {
+          name: clientCase.clientName,
+          code: clientCase.clientCode,
+          programLabel: questionnaire.programLabel,
+        },
+        questionnaire,
+        generatedBy: ctx.user.name || ctx.user.email || "ELEVAY Team",
+      });
+      await writeAuditLog(
+        auditCtxFromTrpc(ctx),
+        "export",
+        "client_questionnaire_pdf",
+        input.id,
+        `Exported questionnaire ${questionnaire.version} (${questionnaire.status}; ${result.answeredCount}/${result.questionCount} answered)`,
+      );
+      return {
+        fileName: result.fileName,
+        mimeType: "application/pdf" as const,
+        dataBase64: result.buffer.toString("base64"),
+        version: questionnaire.version,
+        status: questionnaire.status,
+        questionCount: result.questionCount,
+        answeredCount: result.answeredCount,
+      };
+    }),
 
   updateCaribbeanTimeline: protectedProcedure
     .input(z.object({
