@@ -1312,7 +1312,7 @@ export function registerClientPortalRoutes(app: Express) {
     let bodyText: string;
     try { bodyText = requireString(req.body?.body, "message", 5000); } catch { return error(res, 400, "invalid_message"); }
     try {
-      const message = await sendPortalConversationMessage({ applicationPublicId: req.params.applicationId, portalUserId: req.portal!.user.id, senderName: owned.clientCase.clientName, clientMessageId: portalClientMessageId(req.body?.clientMessageId), body: bodyText, replyToPublicId: typeof req.body?.replyToPublicId === "string" ? req.body.replyToPublicId : null });
+      const message = await sendPortalConversationMessage({ applicationPublicId: req.params.applicationId, portalUserId: req.portal!.user.id, senderName: req.portal!.user.username, clientMessageId: portalClientMessageId(req.body?.clientMessageId), body: bodyText, replyToPublicId: typeof req.body?.replyToPublicId === "string" ? req.body.replyToPublicId : null });
       const publicId = message.publicId;
       const db = await getDb();
       if (!db) return error(res, 503, "service_unavailable");
@@ -1335,7 +1335,7 @@ export function registerClientPortalRoutes(app: Express) {
       const message = await sendPortalConversationAttachment({
         applicationPublicId: req.params.applicationId,
         portalUserId: req.portal!.user.id,
-        senderName: owned.clientCase.clientName,
+        senderName: req.portal!.user.username,
         clientMessageId: portalClientMessageId(req.body?.clientMessageId),
         body: typeof req.body?.body === "string" ? req.body.body.trim().slice(0, 10_000) || null : null,
         replyToPublicId: typeof req.body?.replyToPublicId === "string" ? req.body.replyToPublicId : null,

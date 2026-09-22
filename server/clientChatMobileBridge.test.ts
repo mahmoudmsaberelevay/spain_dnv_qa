@@ -34,10 +34,10 @@ describe("ELEVAY client app canonical chat bridge", () => {
     expect(service).toContain("transcribeChatVoice");
   });
 
-  it("shows CRM employee names and authoritative client case names rather than account aliases", () => {
+  it("shows CRM employee names and the authenticated portal username rather than the assigned folder name", () => {
     expect(service).toContain('senderNameSnapshot: input.actor.name?.trim() || input.actor.email?.trim() || "ELEVAY Team"');
-    expect(routes).toContain('senderName: owned.clientCase.clientName');
-    expect(routes).not.toContain('senderName: req.portal!.user.username');
+    expect(routes).toContain('senderName: req.portal!.user.username');
+    expect(routes).not.toContain('senderName: owned.clientCase.clientName');
   });
 
   it("fans new messages out to every other active participant with the requested concise sender and content preview", () => {
