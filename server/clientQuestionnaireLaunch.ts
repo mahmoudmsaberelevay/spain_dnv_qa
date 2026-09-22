@@ -15,6 +15,7 @@ import { getDb } from "./db";
 const LAUNCH_TOKEN_TTL_MS = 5 * 60 * 1000;
 const LAUNCH_TOKEN_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+export const PERMANENT_QUESTIONNAIRE_URL = "https://elevay.vip/client-questionnaire";
 
 export class QuestionnaireLaunchError extends Error {
   constructor(public readonly code: string, public readonly status: number) {

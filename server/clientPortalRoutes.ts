@@ -44,7 +44,7 @@ import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPoli
 import { clientDocumentationProgramLabel, isCaribbeanDocumentationProgram } from "../shared/clientDocumentationPrograms";
 import { CARIBBEAN_QUESTIONNAIRE_VERSION } from "../shared/caribbeanQuestionnaire";
 import { getCaribbeanQuestionnaire, saveCaribbeanQuestionnaireDraft, submitCaribbeanQuestionnaire } from "./caribbeanQuestionnaireService";
-import { consumeQuestionnaireLaunch, createQuestionnaireLaunch, QuestionnaireLaunchError } from "./clientQuestionnaireLaunch";
+import { consumeQuestionnaireLaunch, PERMANENT_QUESTIONNAIRE_URL, QuestionnaireLaunchError } from "./clientQuestionnaireLaunch";
 import { decodeProviderCoverUpload, providerCoverStorageKey, type ProviderCoverUpload } from "./clientPortalProviderMedia";
 import { comparePrograms, PROGRAM_COMPARISON_OPTIONS } from "./programComparisonService";
 import { verifyPassword as verifyEmployeePassword } from "./_core/auth-email";
@@ -1197,19 +1197,13 @@ export function registerClientPortalRoutes(app: Express) {
     const persistedItems = folderItems.map(({ internalId: _internalId, ...item }) => ({ ...item, linkedUploads: uploads.filter(upload => upload.checklistDocumentKey === item.docKey) }));
     let items = persistedItems;
     if (isCaribbeanDocumentationProgram(owned.clientCase.program)) {
-      const launch = await createQuestionnaireLaunch({
-        portalUserId: req.portal!.user.id,
-        portalApplicationId: owned.application.id,
-        clientCaseId: owned.clientCase.id,
-        sourceSessionId: req.portal!.session.id,
-      });
       items = [{
         docKey: "client_questionnaire",
-        docName: "Client Questionnaire — https://elevay.vip/client-questionnaire",
+        docName: "Client Questionnaire",
         category: "main",
         received: Boolean(owned.clientCase.questionnaireSubmittedAt),
         receivedDate: owned.clientCase.questionnaireSubmittedAt,
-        documentLink: launch.url,
+        documentLink: PERMANENT_QUESTIONNAIRE_URL,
         requiresMofa: false,
         mofaSubmitted: false,
         mofaSubmittedDate: null,

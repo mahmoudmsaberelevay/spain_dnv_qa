@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   affectedQuestionnaireLaunchRows,
   isValidQuestionnaireLaunchToken,
+  PERMANENT_QUESTIONNAIRE_URL,
   questionnaireLaunchRecordIsEligible,
   questionnaireLaunchTokenHash,
 } from "./clientQuestionnaireLaunch";
@@ -52,8 +53,9 @@ describe("Client Questionnaire virtual document link", () => {
     expect(documentRoute).toContain("ownedApplication(req.portal!.user.id, req.params.applicationId)");
     expect(documentRoute).toContain("isCaribbeanDocumentationProgram(owned.clientCase.program)");
     expect(documentRoute).toContain('docKey: "client_questionnaire"');
-    expect(documentRoute).toContain('docName: "Client Questionnaire — https://elevay.vip/client-questionnaire"');
-    expect(documentRoute).toContain("documentLink: launch.url");
+    expect(documentRoute).toContain('docName: "Client Questionnaire"');
+    expect(documentRoute).toContain("documentLink: PERMANENT_QUESTIONNAIRE_URL");
+    expect(PERMANENT_QUESTIONNAIRE_URL).toBe("https://elevay.vip/client-questionnaire");
     expect(documentRoute).toContain("items = persistedItems");
     expect(documentRoute).toContain('res.setHeader("Cache-Control", "no-store")');
   });
@@ -73,6 +75,7 @@ describe("Client Questionnaire virtual document link", () => {
     }
     expect(launchService).toContain("https://www.elevay.vip/client-questionnaire#launch=");
     expect(launchService).not.toContain("manuselevaymobile://client-questionnaire");
+    expect(launchService).toContain('PERMANENT_QUESTIONNAIRE_URL = "https://elevay.vip/client-questionnaire"');
   });
 });
 
