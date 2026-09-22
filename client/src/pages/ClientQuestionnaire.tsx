@@ -22,6 +22,42 @@ import { isCaribbeanDocumentationProgram } from "@shared/clientDocumentationProg
 const SESSION_KEY = "elevay_client_questionnaire_session";
 const DRAFT_SAVE_MAX_ATTEMPTS = 3;
 const DRAFT_SAVE_RETRY_DELAY_MS = 700;
+const LOCAL_DRAFT_KEY_PREFIX = "elevay_questionnaire_pending_v1:";
+
+type LocalQuestionnaireDraft = {
+  applicationId: string;
+  answers: CaribbeanQuestionnaireAnswers;
+  currentStepKey: string;
+  updatedAt: number;
+};
+
+function localDraftKey(applicationId: string) {
+  return `${LOCAL_DRAFT_KEY_PREFIX}${applicationId}`;
+}
+
+function readLocalDraft(applicationId: string): LocalQuestionnaireDraft | null {
+  try {
+    const raw = localStorage.getItem(localDraftKey(applicationId));
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<LocalQuestionnaireDraft>;
+    if (value.applicationId !== applicationId || typeof value.updatedAt !== "number" || typeof value.currentStepKey !== "string" || !value.answers || typeof value.answers !== "object") return null;
+    return { applicationId, answers: value.answers as CaribbeanQuestionnaireAnswers, currentStepKey: value.currentStepKey, updatedAt: value.updatedAt };
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalDraft(applicationId: string, answers: CaribbeanQuestionnaireAnswers, currentStepKey: string) {
+  try {
+    localStorage.setItem(localDraftKey(applicationId), JSON.stringify({ applicationId, answers, currentStepKey, updatedAt: Date.now() } satisfies LocalQuestionnaireDraft));
+  } catch {
+    // The CRM retry path remains authoritative if browser storage is blocked.
+  }
+}
+
+function clearLocalDraft(applicationId: string) {
+  try { localStorage.removeItem(localDraftKey(applicationId)); } catch { /* storage may be unavailable */ }
+}
 
 function launchTokenFromLocation() {
   const queryToken = new URLSearchParams(window.location.search).get("launch");
@@ -31,7 +67,7 @@ function launchTokenFromLocation() {
 
 type PortalSession = { accessToken: string; refreshToken: string; sessionId: string };
 type PortalApplication = { publicId: string; label: string; clientCode: string; program: string; programLabel: string; stage: string; questionnaireStatus: string };
-type QuestionnaireState = { status: "not_started" | "draft" | "submitted"; answers: CaribbeanQuestionnaireAnswers; currentStepKey: string | null; programLabel: string; journeyStage: string; submittedAt: string | null; stepCount?: number; steps?: QuestionnaireStep[] };
+type QuestionnaireState = { status: "not_started" | "draft" | "submitted"; answers: CaribbeanQuestionnaireAnswers; currentStepKey: string | null; lastSavedAt: string | null; programLabel: string; journeyStage: string; submittedAt: string | null; stepCount?: number; steps?: QuestionnaireStep[] };
 type ClientWorkflow = { progressPercent: number; stages: Array<{ key: string; order: number; titleEn: string; status: "completed" | "active" | "pending"; date: string | null; dueDate?: string | null; detailEn: string }> };
 
 function readSession(): PortalSession | null {
@@ -95,6 +131,7 @@ export default function ClientQuestionnaire() {
   const [rowIndex, setRowIndex] = useState(0);
   const [loading, setLoading] = useState(Boolean(session) || Boolean(launchTokenFromLocation()));
   const [saving, setSaving] = useState(false);
+  const [syncState, setSyncState] = useState<"saved" | "pending" | "saving" | "local">("saved");
   const [reviewing, setReviewing] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const saveQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
@@ -168,17 +205,25 @@ export default function ClientQuestionnaire() {
       .then(async response => {
         if (!response.ok) throw new Error("questionnaire_unavailable");
         const data = await response.json() as QuestionnaireState;
-        const normalizedAnswers = normalizeCaribbeanQuestionnaireAnswers(data.answers);
-        const definedSteps = data.steps?.length ? data.steps : CARIBBEAN_QUESTIONNAIRE_STEPS;
+        const localDraft = readLocalDraft(applicationId);
+        const serverSavedAt = data.lastSavedAt ? Date.parse(data.lastSavedAt) : 0;
+        const hasNewerLocalDraft = Boolean(localDraft && localDraft.updatedAt > serverSavedAt && data.status !== "submitted");
+        if (localDraft && !hasNewerLocalDraft) clearLocalDraft(applicationId);
+        const effectiveData = hasNewerLocalDraft && localDraft
+          ? { ...data, answers: normalizeCaribbeanQuestionnaireAnswers(localDraft.answers), currentStepKey: localDraft.currentStepKey }
+          : data;
+        const normalizedAnswers = normalizeCaribbeanQuestionnaireAnswers(effectiveData.answers);
+        const definedSteps = effectiveData.steps?.length ? effectiveData.steps : CARIBBEAN_QUESTIONNAIRE_STEPS;
         const visible = definedSteps.filter(step => !step.appliesWhen || normalizedAnswers[step.appliesWhen.key] === step.appliesWhen.equals);
-        setQuestionnaire(data);
+        setQuestionnaire(effectiveData);
         setAnswers(normalizedAnswers);
-        const resumedIndex = Math.max(0, visible.findIndex(step => step.key === data.currentStepKey));
+        const resumedIndex = Math.max(0, visible.findIndex(step => step.key === effectiveData.currentStepKey));
         setStepIndex(resumedIndex);
         setRowIndex(0);
         setReviewing(false);
-        editVersionRef.current = 0;
+        editVersionRef.current = hasNewerLocalDraft ? 1 : 0;
         savedVersionRef.current = 0;
+        setSyncState(hasNewerLocalDraft ? "pending" : "saved");
         questionnaireLoadedRef.current = true;
       })
       .catch(() => toast.error("The questionnaire could not be loaded."))
@@ -227,7 +272,12 @@ export default function ClientQuestionnaire() {
 
   const updateAnswer = (key: string, value: unknown) => {
     editVersionRef.current += 1;
-    setAnswers(current => ({ ...current, [key]: value }));
+    setSyncState("pending");
+    setAnswers(current => {
+      const next = { ...current, [key]: value };
+      if (applicationId && currentStep?.key) writeLocalDraft(applicationId, next, currentStep.key);
+      return next;
+    });
   };
 
   const saveDraftWithRetry = async (snapshot: CaribbeanQuestionnaireAnswers, nextStepKey: string) => {
@@ -260,12 +310,22 @@ export default function ClientQuestionnaire() {
     const run = async () => {
       pendingSaveCountRef.current += 1;
       setSaving(true);
+      setSyncState("saving");
+      const localAtStart = applicationId ? readLocalDraft(applicationId)?.updatedAt ?? 0 : 0;
       try {
         const data = await saveDraftWithRetry(snapshot, nextStepKey);
         setQuestionnaire(data);
         savedVersionRef.current = Math.max(savedVersionRef.current, snapshotVersion);
+        const localAfterSave = applicationId ? readLocalDraft(applicationId) : null;
+        if (!localAfterSave || localAfterSave.updatedAt <= localAtStart) {
+          if (applicationId) clearLocalDraft(applicationId);
+          setSyncState("saved");
+        } else {
+          setSyncState("pending");
+        }
         return true;
       } catch (error) {
+        setSyncState("local");
         if (!silent) toast.error(error instanceof Error ? error.message : "Your draft could not be saved");
         return false;
       } finally {
@@ -296,6 +356,16 @@ export default function ClientQuestionnaire() {
     return () => window.clearInterval(periodicSave);
   }, [answers, applicationId, currentStep?.key, questionnaire?.status]);
 
+  useEffect(() => {
+    const retryPendingDraft = () => {
+      if (!applicationId || questionnaire?.status === "submitted") return;
+      const localDraft = readLocalDraft(applicationId);
+      if (localDraft) void persistDraft(localDraft.answers, localDraft.currentStepKey, true);
+    };
+    window.addEventListener("online", retryPendingDraft);
+    return () => window.removeEventListener("online", retryPendingDraft);
+  }, [applicationId, questionnaire?.status]);
+
   const next = async () => {
     if (!currentStep || !stepComplete(currentStep, answers)) {
       toast.error("Please complete this question before continuing.");
@@ -325,6 +395,8 @@ export default function ClientQuestionnaire() {
     const nextVisibleSteps = definedSteps.filter(step => !step.appliesWhen || nextAnswers[step.appliesWhen.key] === step.appliesWhen.equals);
     const nextStep = nextVisibleSteps[stepIndex + 1];
     editVersionRef.current += 1;
+    setSyncState("pending");
+    if (applicationId && nextStep?.key) writeLocalDraft(applicationId, nextAnswers, nextStep.key);
     setAnswers(nextAnswers);
     if (nextStep && await persistDraft(nextAnswers, nextStep.key)) {
       setStepIndex(index => index + 1);
@@ -449,7 +521,7 @@ export default function ClientQuestionnaire() {
             {activeRows.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center"><p className="text-sm text-slate-500">No entries added. You may continue because this table is optional.</p></div> : <div className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold text-[#1A3A5C]">Row {rowIndex + 1} of {activeRows.length}</span><div className="flex gap-1"><Button size="icon" variant="outline" disabled={rowIndex === 0} onClick={() => setRowIndex(index => Math.max(0, index - 1))}><ChevronLeft className="h-4 w-4" /></Button><Button size="icon" variant="outline" disabled={rowIndex >= activeRows.length - 1} onClick={() => setRowIndex(index => Math.min(activeRows.length - 1, index + 1))}><ChevronRight className="h-4 w-4" /></Button><Button size="icon" variant="outline" aria-label="Remove this row" onClick={removeRow}><Trash2 className="h-4 w-4 text-rose-600" /></Button></div></div>{currentStep.fields?.map(field => <div key={field.key} className="space-y-2"><Label>{field.label}{field.labelAr && <span dir="rtl" className="ml-2 font-normal text-slate-500">· {field.labelAr}</span>}</Label>{field.type === "select" ? <Select value={String(activeRow?.[field.key] ?? "")} onValueChange={value => updateRow(field.key, value)}><SelectTrigger><SelectValue placeholder="Choose" /></SelectTrigger><SelectContent>{field.options?.map((option, index) => <SelectItem key={option} value={option}><span>{option}</span>{field.optionsAr?.[index] && <span dir="rtl" className="ml-2 text-slate-500">· {field.optionsAr[index]}</span>}</SelectItem>)}</SelectContent></Select> : field.type === "textarea" ? <Textarea value={String(activeRow?.[field.key] ?? "")} onChange={event => updateRow(field.key, event.target.value)} /> : <Input type={fieldInputType(field)} value={String(activeRow?.[field.key] ?? "")} onChange={event => updateRow(field.key, event.target.value)} />}</div>)}</div>}
             <Button type="button" variant="outline" onClick={addRow}><Plus className="mr-2 h-4 w-4" />{currentStep.addRowLabel || "Add another row"}{currentStep.addRowLabelAr && <span dir="rtl" className="ml-2">· {currentStep.addRowLabelAr}</span>}</Button>
           </div>}
-          <div className="rounded-xl bg-slate-50 p-4 text-xs text-slate-600 flex gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-[#5BA3B8]" /><span>Your answers autosave while you type, every 20 seconds, and whenever you move between questions. Returning later resumes at the last saved question.</span></div>
+          <div className="rounded-xl bg-slate-50 p-4 text-xs text-slate-600 flex gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-[#5BA3B8]" /><span>Your answers are kept on this device until ELEVAY confirms them. {syncState === "saved" ? "Saved to ELEVAY." : syncState === "saving" ? "Saving to ELEVAY…" : syncState === "local" ? "Saved on this device; ELEVAY will retry automatically." : "Pending sync with ELEVAY."} Autosave continues while you type and when you move between questions.</span></div>
           <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between"><Button variant="outline" disabled={stepIndex === 0 || saving} onClick={() => void previous()}><ArrowLeft className="mr-2 h-4 w-4" />Previous</Button><div className="flex flex-wrap justify-end gap-2">{currentStep.optional && stepIndex < visibleSteps.length - 1 && <Button variant="outline" disabled={saving} onClick={() => void skipCurrent()}>Skip optional question</Button>}<Button variant="ghost" disabled={saving} onClick={() => void saveDraft()}><Save className="mr-2 h-4 w-4" />Save draft</Button>{stepIndex < visibleSteps.length - 1 ? <Button disabled={saving} onClick={() => void next()} className="bg-[#1A3A5C] hover:bg-[#14304e]">Next<ArrowRight className="ml-2 h-4 w-4" /></Button> : <Button disabled={saving} onClick={() => void openReview()} className="bg-[#1A3A5C] hover:bg-[#14304e]">Review answers<ArrowRight className="ml-2 h-4 w-4" /></Button>}</div></div>
         </CardContent>
       </Card>

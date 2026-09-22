@@ -157,8 +157,13 @@ describe("responsive questionnaire contract", () => {
     expect(page).toContain("DRAFT_SAVE_MAX_ATTEMPTS = 3");
     expect(page).toContain("saveDraftWithRetry");
     expect(page).toContain("response.status !== 429 && response.status < 500");
+    expect(page).toContain("LOCAL_DRAFT_KEY_PREFIX");
+    expect(page).toContain("writeLocalDraft");
+    expect(page).toContain("readLocalDraft");
+    expect(page).toContain("Saved on this device; ELEVAY will retry automatically.");
+    expect(page).toContain('window.addEventListener("online", retryPendingDraft)');
     expect(page).toContain("persistDraft(answers, currentStep.key, true)");
-    expect(page).toContain("data.currentStepKey");
+    expect(page).toContain("effectiveData.currentStepKey");
     expect(page).toContain("await persistDraft(answers, previousStep.key)");
     expect(page).toContain("await saveDraft(nextStep.key)");
     expect(page).toContain("Skip optional question");
