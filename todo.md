@@ -1732,3 +1732,13 @@ Check email for download link within 5 minutes
 - [x] Pass seven focused regressions, preserve the 83 unrelated baseline TypeScript diagnostics, pass the production build, and pass `git diff --check`
 - [x] Confirm no existing contract, receipt, invoice, client, or financial record was modified
 - [x] Save final restorable WebDev checkpoint
+
+## Contracting — Spain DNV Production Template Asset Correction
+- [x] Reproduce the reported production `ENOENT` and confirm the source template existed while the built `dist` asset was missing
+- [x] Add a deterministic post-build server asset copier for the approved Spain Word template
+- [x] Verify the copied `dist` asset byte size and SHA-256 match the approved source exactly
+- [x] Fail the production build if a required runtime asset is missing or copied incorrectly
+- [x] Add regression coverage for the build command, runtime path, source/destination mapping, and approved template hash
+- [x] Pass eight focused regressions, production build, zero runtime-fix TypeScript diagnostics, and `git diff --check`
+- [x] Confirm the failed create request occurred before persistence and did not create a contract or change Financial data
+- [x] Save and deploy the corrective WebDev checkpoint
