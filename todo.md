@@ -1717,3 +1717,18 @@ Check email for download link within 5 minutes
 - [x] Verify both rendered form branches without creating a test client
 - [x] Pass 132 relevant regressions, production build, changed-file diagnostics, and `git diff --check`
 - [x] Save final restorable WebDev checkpoint
+
+## Contracting — Spain Digital Nomad Contract Template Replacement
+- [x] Audit the supplied 19-page `NewspainDNV.docx` and identify exactly three highlighted variables
+- [x] Map the highlighted Arabic client name, total family members, and total contract value to authoritative Contracting fields
+- [x] Replace both occurrences of the sample Arabic client name, including the legal appendix repetition
+- [x] Convert the approved source into a versioned local template with explicit fail-closed placeholders
+- [x] Remove yellow highlighting only from the variable fields and preserve all approved clauses, formatting, appendices, letterheads, footers, and pagination
+- [x] Replace the previous session-scoped Spain template URL without changing any citizenship-program template
+- [x] Make new Spain contracts use the existing family pricing ladder and any explicit authoritative value override
+- [x] Make Re-download preserve the stored contract country, family size, Arabic name, and total contract value
+- [x] Generate and visually inspect a fictional 19-page sample on the party, financial, appendix, and final declaration pages
+- [x] Confirm no sample identity, unresolved placeholder, or variable highlight remains in generated output
+- [x] Pass seven focused regressions, preserve the 83 unrelated baseline TypeScript diagnostics, pass the production build, and pass `git diff --check`
+- [x] Confirm no existing contract, receipt, invoice, client, or financial record was modified
+- [x] Save final restorable WebDev checkpoint

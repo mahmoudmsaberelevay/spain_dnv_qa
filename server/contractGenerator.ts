@@ -1,6 +1,17 @@
 import axios from "axios";
 import { storagePut, storageGet } from "./storage";
 import PizZip from "pizzip";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+
+export const SPAIN_DNV_TEMPLATE_VERSION = "2026-09-22";
+export const SPAIN_DNV_TEMPLATE_PATH = fileURLToPath(
+  new URL("./spain_dnv_contract_template_2026_09_22.docx", import.meta.url),
+);
+
+const SPAIN_CLIENT_NAME_PLACEHOLDER = "{{CLIENT_NAME_AR}}";
+const SPAIN_FAMILY_MEMBERS_PLACEHOLDER = "{{FAMILY_MEMBERS}}";
+const SPAIN_CONTRACT_VALUE_PLACEHOLDER = "{{CONTRACT_VALUE}}";
 
 // ── Appendix ───────────────────────────────────────────────────────────────
 // The Spain contract appendix (ملحق) is stored in S3 and appended after the
@@ -163,14 +174,14 @@ function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
 
 // ── Template registry ──────────────────────────────────────────────────────
 // Keys match the `country` field stored in the contracts table.
-// The Spain template is fetched from an external CDN; the others are stored in
-// the project's own S3 bucket via manus-upload-file --webdev.
-const TEMPLATE_REGISTRY: Record<string, { url?: string; storageKey?: string; label: string }> = {
+// The approved Spain template is versioned locally; the citizenship templates
+// remain in their existing external or project-owned storage locations.
+const TEMPLATE_REGISTRY: Record<string, { url?: string; storageKey?: string; localPath?: string; label: string }> = {
   spain: {
-    // Modified Spain Nomad contract template with client name and contract value placeholders
-    // Placeholders replaced dynamically: فيفيان نوناي بشاي جرجس -> client name, 13,000 -> calculated value
-    // Updated 2026-07-28: Removed discount line (يطبق خصم اجمالي ٢٠٠٠ يورو)
-    url: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663524211981/ByrNqlUpsWvEhVkR.docx",
+    // Approved NewspainDNV.docx supplied on 2026-09-22. The versioned source
+    // is committed with the generator so production never depends on an
+    // expiring session upload URL.
+    localPath: SPAIN_DNV_TEMPLATE_PATH,
     label: "Spain Digital Nomad Visa",
   },
   egypt: {
@@ -206,7 +217,9 @@ async function getTemplate(country: string): Promise<Buffer> {
 
   let buffer: Buffer;
 
-  if (entry.storageKey) {
+  if (entry.localPath) {
+    buffer = await readFile(entry.localPath);
+  } else if (entry.storageKey) {
     const { url } = await storageGet(entry.storageKey);
     const response = await axios.get(url, { responseType: "arraybuffer", timeout: 30000 });
     buffer = Buffer.from(response.data);
@@ -281,6 +294,24 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
+function replaceExactPlaceholder(xml: string, placeholder: string, value: string, expectedCount: number): string {
+  const count = xml.split(placeholder).length - 1;
+  if (count !== expectedCount) {
+    throw new Error(
+      `Spain DNV template ${SPAIN_DNV_TEMPLATE_VERSION} expected ${expectedCount} occurrence(s) of ${placeholder}, found ${count}`,
+    );
+  }
+  return xml.split(placeholder).join(escapeXml(value));
+}
+
+function formatContractValue(value: number): string {
+  if (!Number.isFinite(value) || value < 0) throw new Error("Invalid contract value");
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 // ── Main generator ─────────────────────────────────────────────────────────
 export async function generateContractDoc(
   clientName: string,
@@ -307,31 +338,29 @@ export async function generateContractDoc(
     docXml = docXml.replace(/\d{1,2}\/\d{1,2}\/20\d{2}/, todayDate);
   }
 
-    // ── Client name ───────────────────────────────────────────────────────────
+  // ── Client name ───────────────────────────────────────────────────────────
   if (country === "spain") {
-    // The Spain template has the placeholder client name "فيفيان نوناي بشاي جرجس"
-    // in the الطرف الثاني section. Replace it with the actual client name in Arabic.
-    const CLIENT_NAME_PLACEHOLDER = "\u0641\u064a\u0641\u064a\u0627\u0646 \u0646\u0648\u0646\u0627\u064a \u0628\u0634\u0627\u064a \u062c\u0631\u062c\u0633";
-    docXml = docXml.replace(new RegExp(CLIENT_NAME_PLACEHOLDER, "g"), escapeXml(clientName));
-    // Fallback: also try the 18-space placeholder in case older template is cached
-    const SPACE_PLACEHOLDER = "                  "; // 18 spaces
-    docXml = docXml.replace(SPACE_PLACEHOLDER, escapeXml(clientName));
+    // The approved template intentionally contains the Arabic client name in
+    // both the party section and the legal appendix.
+    docXml = replaceExactPlaceholder(docXml, SPAIN_CLIENT_NAME_PLACEHOLDER, clientName, 2);
   } else {
     // Citizenship templates (Egypt, Dominica, St Kitts, Grenada) use "Inset The Client Name"
     docXml = replaceAndClean(docXml, "Inset The Client Name", clientName);
   }
   // ── Family members & contract value (Spain only) ──────────────────────────
-  // Replace the contract total amount based on family size.
-  // Pricing: 1 member = 12,000 | 2 members = 13,000 | 3-4 = 14,000 | 5+ = 15,000
-  // Template has "13,000" as placeholder. Replace with calculated amount.
   if (country === "spain") {
-    // Replace {{FAMILY_MEMBERS}} if present (newer templates)
-    docXml = docXml.replace("{{FAMILY_MEMBERS}}", familyMembers.toString());
-    // Replace {{CONTRACT_VALUE}} if present (newer templates)
-    docXml = docXml.replace("{{CONTRACT_VALUE}}", contractValue.toLocaleString("en-US"));
-    // Replace the hardcoded "13,000" in the contract value section
-    // This handles the template that has "13,000 EUR" as the placeholder amount
-    docXml = docXml.replace("13,000", contractValue.toLocaleString("en-US"));
+    docXml = replaceExactPlaceholder(
+      docXml,
+      SPAIN_FAMILY_MEMBERS_PLACEHOLDER,
+      familyMembers.toString(),
+      1,
+    );
+    docXml = replaceExactPlaceholder(
+      docXml,
+      SPAIN_CONTRACT_VALUE_PLACEHOLDER,
+      formatContractValue(contractValue),
+      1,
+    );
   }
 
   zip.file("word/document.xml", docXml);

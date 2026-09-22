@@ -1067,7 +1067,13 @@ const contractingRouter = router({
       .mutation(async ({ input }) => {
         const contract = await getContractById(input.id);
         if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
-        const { buffer, filename } = await generateContractDoc(contract.clientName, contract.familyMembers, contract.contractCode);
+        const { buffer, filename } = await generateContractDoc(
+          contract.clientName,
+          contract.familyMembers,
+          contract.contractCode,
+          contract.country ?? "spain",
+          Number(contract.contractValue),
+        );
         const docUrl = await uploadContractToStorage(buffer, contract.contractCode, contract.clientName);
         await updateContractDocUrl(contract.id, docUrl);
         return { docUrl, filename };
