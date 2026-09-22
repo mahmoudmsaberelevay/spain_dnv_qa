@@ -154,6 +154,9 @@ describe("responsive questionnaire contract", () => {
   it("autosaves edits and navigation, resumes by currentStepKey, supports optional skip and row removal, and requires final review", () => {
     expect(page).toContain("window.setTimeout");
     expect(page).toContain("window.setInterval");
+    expect(page).toContain("DRAFT_SAVE_MAX_ATTEMPTS = 3");
+    expect(page).toContain("saveDraftWithRetry");
+    expect(page).toContain("response.status !== 429 && response.status < 500");
     expect(page).toContain("persistDraft(answers, currentStep.key, true)");
     expect(page).toContain("data.currentStepKey");
     expect(page).toContain("await persistDraft(answers, previousStep.key)");
@@ -162,5 +165,14 @@ describe("responsive questionnaire contract", () => {
     expect(page).toContain("const removeRow = () =>");
     expect(page).toContain("Review your questionnaire");
     expect(page).toContain("Submit questionnaire securely");
+  });
+
+  it("uses a scoped per-user allowance for frequent authenticated questionnaire autosaves", () => {
+    const draftRoute = routes.slice(routes.indexOf('app.put("/client-api/applications/:applicationId/questionnaire/draft"'), routes.indexOf('app.post("/client-api/applications/:applicationId/questionnaire/submit"'));
+    expect(routes).toContain("const questionnaireDraftLimiter = rateLimit");
+    expect(routes).toContain("max: 90");
+    expect(routes).toContain("portal-questionnaire:");
+    expect(draftRoute).toContain("questionnaireDraftLimiter");
+    expect(draftRoute).not.toContain("writeLimiter");
   });
 });

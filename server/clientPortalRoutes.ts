@@ -403,6 +403,18 @@ function staffRecipients(consultant?: string | null, paralegal?: string | null) 
 export function registerClientPortalRoutes(app: Express) {
   const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, message: { error: "too_many_attempts" } });
   const writeLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: "too_many_requests" } });
+  // The questionnaire intentionally autosaves as the client moves through a
+  // long form. Scope this allowance to the already-authenticated portal user
+  // so an active Safari session cannot be throttled by another client sharing
+  // the same mobile-network IP address.
+  const questionnaireDraftLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 90,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: req => `portal-questionnaire:${(req as PortalRequest).portal?.user.id ?? "unauthenticated"}`,
+    message: { error: "questionnaire_save_rate_limited" },
+  });
   const comparisonLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false, message: { error: "comparison_rate_limit", message: "Please wait before generating another comparison." } });
 
   app.post("/client-api/auth/login", authLimiter, async (req, res) => {
@@ -1084,7 +1096,7 @@ export function registerClientPortalRoutes(app: Express) {
     }
   });
 
-  app.put("/client-api/applications/:applicationId/questionnaire/draft", writeLimiter, async (req: PortalRequest, res) => {
+  app.put("/client-api/applications/:applicationId/questionnaire/draft", questionnaireDraftLimiter, async (req: PortalRequest, res) => {
     const owned = await ownedApplication(req.portal!.user.id, req.params.applicationId);
     if (!owned) return error(res, 404, "application_not_found");
     if (!isCaribbeanDocumentationProgram(owned.clientCase.program)) return error(res, 400, "questionnaire_not_available");

@@ -20,6 +20,8 @@ import {
 import { isCaribbeanDocumentationProgram } from "@shared/clientDocumentationPrograms";
 
 const SESSION_KEY = "elevay_client_questionnaire_session";
+const DRAFT_SAVE_MAX_ATTEMPTS = 3;
+const DRAFT_SAVE_RETRY_DELAY_MS = 700;
 
 function launchTokenFromLocation() {
   const queryToken = new URLSearchParams(window.location.search).get("launch");
@@ -52,6 +54,10 @@ function fieldInputType(field: QuestionnaireRowField) {
 
 function blankRow(step: QuestionnaireStep) {
   return Object.fromEntries((step.fields ?? []).map(field => [field.key, ""]));
+}
+
+function pause(ms: number) {
+  return new Promise<void>(resolve => window.setTimeout(resolve, ms));
 }
 
 function stepComplete(step: QuestionnaireStep, answers: CaribbeanQuestionnaireAnswers) {
@@ -224,6 +230,30 @@ export default function ClientQuestionnaire() {
     setAnswers(current => ({ ...current, [key]: value }));
   };
 
+  const saveDraftWithRetry = async (snapshot: CaribbeanQuestionnaireAnswers, nextStepKey: string) => {
+    let lastFailure: unknown;
+    for (let attempt = 1; attempt <= DRAFT_SAVE_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const response = await api(`/client-api/applications/${applicationId}/questionnaire/draft`, {
+          method: "PUT",
+          body: JSON.stringify({ answers: snapshot, currentStepKey: nextStepKey }),
+        });
+        if (response.ok) return await response.json() as QuestionnaireState;
+        // Invalid data, a submitted questionnaire, or an authorization loss
+        // must be surfaced rather than retried. Short network/server pressure
+        // failures are safe to retry because the whole draft is idempotent.
+        if (response.status !== 429 && response.status < 500) {
+          throw new Error("Your draft could not be saved");
+        }
+        lastFailure = new Error("Your draft could not be saved");
+      } catch (error) {
+        lastFailure = error;
+      }
+      if (attempt < DRAFT_SAVE_MAX_ATTEMPTS) await pause(DRAFT_SAVE_RETRY_DELAY_MS * attempt);
+    }
+    throw lastFailure instanceof Error ? lastFailure : new Error("Your draft could not be saved");
+  };
+
   const persistDraft = (snapshot: CaribbeanQuestionnaireAnswers, nextStepKey = currentStep?.key, silent = false) => {
     if (!applicationId || !nextStepKey || questionnaire?.status === "submitted") return Promise.resolve(false);
     const snapshotVersion = editVersionRef.current;
@@ -231,9 +261,7 @@ export default function ClientQuestionnaire() {
       pendingSaveCountRef.current += 1;
       setSaving(true);
       try {
-        const response = await api(`/client-api/applications/${applicationId}/questionnaire/draft`, { method: "PUT", body: JSON.stringify({ answers: snapshot, currentStepKey: nextStepKey }) });
-        if (!response.ok) throw new Error("Your draft could not be saved");
-        const data = await response.json() as QuestionnaireState;
+        const data = await saveDraftWithRetry(snapshot, nextStepKey);
         setQuestionnaire(data);
         savedVersionRef.current = Math.max(savedVersionRef.current, snapshotVersion);
         return true;
