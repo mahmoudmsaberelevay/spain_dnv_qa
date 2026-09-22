@@ -1742,3 +1742,16 @@ Check email for download link within 5 minutes
 - [x] Pass eight focused regressions, production build, zero runtime-fix TypeScript diagnostics, and `git diff --check`
 - [x] Confirm the failed create request occurred before persistence and did not create a contract or change Financial data
 - [x] Save and deploy the corrective WebDev checkpoint
+
+## Client Questionnaire — Yasser Permanent Link Correction
+- [x] Identify Yasser’s active St. Kitts Client Portal assignment and confirm the expired-link condition
+- [x] Confirm Yasser’s questionnaire draft, saved current step, and saved answers remain intact
+- [x] Replace generated five-minute questionnaire document links with the permanent `https://elevay.vip/client-questionnaire` address
+- [x] Keep the permanent address protected by Client Portal login and assigned-application authorization
+- [x] Ensure the permanent address contains no client name, code, application ID, token, or expiry
+- [x] Preserve server-side autosave and resume from the last saved question
+- [x] Verify Yasser’s authenticated production folder returns the permanent address
+- [x] Pass 41 focused questionnaire, Caribbean workflow, and mobile timeline tests
+- [x] Pass the production build, deployment, and `git diff --check`
+- [x] Remove temporary verification scripts and sessions without changing questionnaire answers
+- [x] Save final restorable corrective checkpoint
