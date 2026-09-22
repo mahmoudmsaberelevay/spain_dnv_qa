@@ -338,7 +338,7 @@ export default function ClientQuestionnaire() {
     return queued;
   };
 
-  const saveDraft = (nextStepKey = currentStep?.key) => persistDraft(answers, nextStepKey);
+  const saveDraft = (nextStepKey = currentStep?.key, silent = false) => persistDraft(answers, nextStepKey, silent);
 
   useEffect(() => {
     if (!questionnaireLoadedRef.current || editVersionRef.current <= savedVersionRef.current || !currentStep || questionnaire?.status === "submitted") return;
@@ -372,17 +372,22 @@ export default function ClientQuestionnaire() {
       return;
     }
     const nextStep = visibleSteps[stepIndex + 1];
-    if (nextStep && await saveDraft(nextStep.key)) {
-      setStepIndex(index => index + 1);
-      setRowIndex(0);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    if (!nextStep) return;
+    if (applicationId) writeLocalDraft(applicationId, answers, nextStep.key);
+    const saved = await saveDraft(nextStep.key, true);
+    if (!saved) toast.message("Answer kept safely on this device. ELEVAY will sync it automatically.");
+    setStepIndex(index => index + 1);
+    setRowIndex(0);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const previous = async () => {
     if (!currentStep || stepIndex === 0) return;
     const previousStep = visibleSteps[stepIndex - 1];
-    if (!previousStep || !await persistDraft(answers, previousStep.key)) return;
+    if (!previousStep) return;
+    if (applicationId) writeLocalDraft(applicationId, answers, previousStep.key);
+    const saved = await persistDraft(answers, previousStep.key, true);
+    if (!saved) toast.message("Answer kept safely on this device. ELEVAY will sync it automatically.");
     setStepIndex(index => Math.max(0, index - 1));
     setRowIndex(0);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -398,11 +403,12 @@ export default function ClientQuestionnaire() {
     setSyncState("pending");
     if (applicationId && nextStep?.key) writeLocalDraft(applicationId, nextAnswers, nextStep.key);
     setAnswers(nextAnswers);
-    if (nextStep && await persistDraft(nextAnswers, nextStep.key)) {
-      setStepIndex(index => index + 1);
-      setRowIndex(0);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    if (!nextStep) return;
+    const saved = await persistDraft(nextAnswers, nextStep.key, true);
+    if (!saved) toast.message("Answer kept safely on this device. ELEVAY will sync it automatically.");
+    setStepIndex(index => index + 1);
+    setRowIndex(0);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const openReview = async () => {
@@ -418,7 +424,9 @@ export default function ClientQuestionnaire() {
       toast.error("Please complete all required questions before final review.");
       return;
     }
-    if (!await persistDraft(answers, currentStep.key)) return;
+    if (applicationId) writeLocalDraft(applicationId, answers, currentStep.key);
+    const saved = await persistDraft(answers, currentStep.key, true);
+    if (!saved) toast.message("All answers are retained on this device. Reconnect to ELEVAY before final submission.");
     setReviewing(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };

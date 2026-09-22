@@ -162,10 +162,12 @@ describe("responsive questionnaire contract", () => {
     expect(page).toContain("readLocalDraft");
     expect(page).toContain("Saved on this device; ELEVAY will retry automatically.");
     expect(page).toContain('window.addEventListener("online", retryPendingDraft)');
+    expect(page).toContain("Answer kept safely on this device. ELEVAY will sync it automatically.");
+    expect(page).toContain("All answers are retained on this device. Reconnect to ELEVAY before final submission.");
     expect(page).toContain("persistDraft(answers, currentStep.key, true)");
     expect(page).toContain("effectiveData.currentStepKey");
-    expect(page).toContain("await persistDraft(answers, previousStep.key)");
-    expect(page).toContain("await saveDraft(nextStep.key)");
+    expect(page).toContain("await persistDraft(answers, previousStep.key, true)");
+    expect(page).toContain("await saveDraft(nextStep.key, true)");
     expect(page).toContain("Skip optional question");
     expect(page).toContain("const removeRow = () =>");
     expect(page).toContain("Review your questionnaire");
