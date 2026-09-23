@@ -1800,7 +1800,7 @@ Check email for download link within 5 minutes
 - [x] Save and mirror the source checkpoint to the private GitHub repository
 - [x] Build the universal DMG on a native macOS runner
 - [x] Verify the DMG, application bundle, both CPU slices, and live ELEVAY smoke behavior
-- [ ] Download the release artifact, record its SHA-256, and deliver it to Mahmoud
+- [x] Download the release artifact, verify its SHA-256, and deliver it to Mahmoud
 
 ## User Access — Minerva and Lea Client Documentation Paralegals
 - [x] Confirm one existing standard user account for each requested ELEVAY email
