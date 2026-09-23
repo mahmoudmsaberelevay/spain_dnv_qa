@@ -1,7 +1,8 @@
 import { getDb } from "./db";
-import { leads, leadActivities, leadNotes, leadTasks } from "../drizzle/schema";
+import { finEmployees, leads, leadActivities, leadNotes, leadTasks } from "../drizzle/schema";
 import { eq, desc, asc, like, or, and, sql, inArray, count } from "drizzle-orm";
 import type { InsertLead, InsertLeadActivity, InsertLeadNote, InsertLeadTask } from "../drizzle/schema";
+import { buildLeadPersonnelOptions } from "../shared/leadPersonnel";
 import {
   getLeadTaskDayBounds,
   type LeadTaskLifecycle,
@@ -12,6 +13,24 @@ const now = () => Date.now();
 const operationalLeadCondition = eq(leads.isMetaTestLead, false);
 
 // ─── Leads ────────────────────────────────────────────────────────────────────
+
+export async function listLeadPersonnelOptions() {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  const employeeRows = await db
+    .select({
+      id: finEmployees.id,
+      name: finEmployees.name,
+      role: finEmployees.role,
+      isActive: finEmployees.isActive,
+    })
+    .from(finEmployees)
+    .where(eq(finEmployees.isActive, true))
+    .orderBy(asc(finEmployees.name), asc(finEmployees.id));
+
+  return buildLeadPersonnelOptions(employeeRows);
+}
 
 export async function createLead(data: Omit<InsertLead, "createdAt" | "updatedAt">) {
   const db = await getDb();

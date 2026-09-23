@@ -17,6 +17,7 @@ import {
   CommissionSigningDatePreset,
   resolveCommissionSigningDateRange,
 } from "@shared/commissionSigningDateFilter";
+import { isLeadQualifierRole } from "@shared/leadPersonnel";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtEur(n: string | number | null | undefined) {
@@ -252,7 +253,7 @@ export default function FinCommissions() {
   );
 
   // Employee lists by role
-  const csList = employees?.filter(e => e.role === "CS" || e.role === "CS TL") ?? [];
+  const csList = employees?.filter(e => e.isActive && isLeadQualifierRole(e.role)) ?? [];
   const csTlList = employees?.filter(e => e.role === "CS TL") ?? [];
   const paralegalList = employees?.filter(e => e.role === "Paralegal" || e.role === "Operation TL" || e.role === "Operation Manager") ?? [];
   const consultantList = employees?.filter(e =>

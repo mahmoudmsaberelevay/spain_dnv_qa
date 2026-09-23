@@ -49,11 +49,6 @@ const SOURCES = [
   "Instagram", "LinkedIn", "TikTok", "YouTube", "Email Campaign", "Other",
 ];
 
-const TEAM = [
-  "Mahmoud Saber", "Fouad", "Kirolos", "Ziad El Shurafa", "Madonna Adel",
-  "Monica Sobhy", "Marina Kamel", "Nouran Mamdouh", "Hager Hany", "Eman Ahmed", "Marwa Abdallah", "Basmala Shereef",
-];
-
 const PRIORITY_COLORS: Record<string, string> = {
   high: "bg-red-100 text-red-700 border-red-200",
   medium: "bg-amber-100 text-amber-700 border-amber-200",
@@ -225,6 +220,7 @@ export default function LeadsList() {
   // ── Dynamic settings ──────────────────────────────────────────────────────
   const { data: dynamicPrograms = [] } = trpc.leadsSettings.listPrograms.useQuery();
   const { data: dynamicSources = [] } = trpc.leadsSettings.listSources.useQuery();
+  const { data: personnelOptions } = trpc.leads.personnelOptions.useQuery();
 
   const allPrograms = useMemo(() => {
     const fromSettings = dynamicPrograms.filter(p => p.isActive).map(p => p.name);
@@ -249,6 +245,15 @@ export default function LeadsList() {
   // ── Meta attribution filter options ───────────────────────────────────────
   const { data: metaFilterOptions } = trpc.leads.metaFilterOptions.useQuery();
   const metaForms = metaFilterOptions?.forms ?? [];
+  const leadOwnerNames = useMemo(
+    () => (personnelOptions?.owners ?? []).map(employee => employee.name),
+    [personnelOptions?.owners],
+  );
+  const leadOwnerFilterNames = useMemo(
+    () => Array.from(new Set([...leadOwnerNames, ...(metaFilterOptions?.consultants ?? [])]))
+      .sort((left, right) => left.localeCompare(right, "en", { sensitivity: "base" })),
+    [leadOwnerNames, metaFilterOptions?.consultants],
+  );
 
   // ── Build query filters ───────────────────────────────────────────────────
   const filters = useMemo(() => ({
@@ -587,7 +592,7 @@ export default function LeadsList() {
             <SelectTrigger className="w-44"><SelectValue placeholder="Assigned To" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Team</SelectItem>
-              {TEAM.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              {leadOwnerFilterNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={specialNoteFilter} onValueChange={value => setSpecialNoteFilter(value as "all" | LeadSpecialNoteFilter)}>
@@ -1169,8 +1174,8 @@ export default function LeadsList() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__unassign__">— Unassign —</SelectItem>
-                {TEAM.map(t => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                {leadOwnerNames.map(name => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1265,7 +1270,7 @@ export default function LeadsList() {
                 <Select value={form.assignedTo} onValueChange={v => setForm(f => ({ ...f, assignedTo: v }))}>
                   <SelectTrigger className="mt-1"><SelectValue placeholder="Select…" /></SelectTrigger>
                   <SelectContent>
-                    {TEAM.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    {leadOwnerNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,6 @@ const STAGES = [
 ] as const;
 
 const TASK_TYPES = ["call", "whatsapp", "email", "meeting", "document_request", "other"] as const;
-const TEAM = ["Mahmoud", "Fouad", "Kirolos", "Ziad", "Madonna", "Monica", "Marina", "Nouran", "Hager", "Eman", "Marwa", "Basmala"];
 
 const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
   created: <Plus className="w-3.5 h-3.5" />,
@@ -101,6 +100,14 @@ export default function LeadProfile() {
   const { data: tasks = [] } = trpc.leads.tasks.list.useQuery({ leadId });
   const { data: presets = [] } = trpc.leadsSettings.listActivityPresets.useQuery();
   const { data: metaContext } = trpc.leads.metaContext.useQuery({ leadId });
+  const { data: personnelOptions } = trpc.leads.personnelOptions.useQuery();
+  const leadOwnerNames = useMemo(
+    () => Array.from(new Set([
+      ...(personnelOptions?.owners ?? []).map(employee => employee.name),
+      ...(lead?.assignedTo ? [lead.assignedTo] : []),
+    ])).sort((left, right) => left.localeCompare(right, "en", { sensitivity: "base" })),
+    [lead?.assignedTo, personnelOptions?.owners],
+  );
 
   const [newNote, setNewNote] = useState("");
   const [noteImportant, setNoteImportant] = useState(false);
@@ -822,7 +829,7 @@ export default function LeadProfile() {
               <Select value={taskForm.assignedTo} onValueChange={v => setTaskForm(f => ({ ...f, assignedTo: v }))}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select…" /></SelectTrigger>
                 <SelectContent>
-                  {TEAM.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  {leadOwnerNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -946,7 +953,7 @@ export default function LeadProfile() {
                 <SelectValue placeholder="Select team member" />
               </SelectTrigger>
               <SelectContent>
-                {TEAM.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                {leadOwnerNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

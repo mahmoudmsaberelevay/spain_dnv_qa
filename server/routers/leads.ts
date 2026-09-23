@@ -16,6 +16,7 @@ import {
   bulkDeleteLeads, getLeadsByIds,
   bulkUpdateLeadsStage, bulkUpdateLeadsOwner,
   getNewLeadsReport, getStageChangeReport, getUserActivityReport, getTodayActivityReport,
+  listLeadPersonnelOptions,
 } from "../leadsDb";
 import { listActivityPresets, listLeadIntegrations } from "../leadsSettingsDb";
 import { syncOneIntegrationById } from "../metaLeadSync";
@@ -36,6 +37,8 @@ const STAGES = [
 const TASK_TYPES = ["call", "whatsapp", "email", "meeting", "document_request", "other"] as const;
 
 export const leadsRouter = router({
+  personnelOptions: protectedProcedure.query(async () => listLeadPersonnelOptions()),
+
   // ── CRUD ────────────────────────────────────────────────────────────────────
   create: protectedProcedure
     .input(z.object({

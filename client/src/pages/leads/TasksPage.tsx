@@ -38,11 +38,6 @@ import {
   type LeadTaskLifecycleCounts,
 } from "../../../../shared/leadTaskLifecycle";
 
-const TEAM = [
-  "Mahmoud", "Fouad", "Kirolos", "Ziad", "Madonna",
-  "Monica", "Marina", "Nouran", "Hager", "Eman", "Marwa", "Basmala",
-];
-
 const TASK_TYPES = ["call", "whatsapp", "email", "meeting", "document_request", "other"] as const;
 const MAX_SELECTED_LEADS = 300;
 
@@ -276,7 +271,12 @@ export default function TasksPage() {
   );
 
   const { data: filterOptions, isLoading: areOptionsLoading } = trpc.leads.getTaskFilterOptions.useQuery();
+  const { data: personnelOptions } = trpc.leads.personnelOptions.useQuery();
   const leadOptions = filterOptions?.leads ?? [];
+  const leadOwnerNames = useMemo(
+    () => (personnelOptions?.owners ?? []).map(employee => employee.name),
+    [personnelOptions?.owners],
+  );
   const taskTypeCounts = useMemo(
     () => new Map((filterOptions?.taskTypes ?? []).map(option => [option.taskType, option.taskCount])),
     [filterOptions?.taskTypes],
@@ -536,7 +536,7 @@ export default function TasksPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Owners</SelectItem>
-              {TEAM.map(name => (
+              {leadOwnerNames.map(name => (
                 <SelectItem key={name} value={name}>{name}</SelectItem>
               ))}
             </SelectContent>

@@ -1798,8 +1798,8 @@ Check email for download link within 5 minutes
 - [x] Add a native macOS build workflow with DMG verification, bundle checks, universal-architecture checks, SHA-256 generation, and private artifact upload
 - [x] Expand focused desktop regressions from 11 to 15 tests
 - [x] Save and mirror the source checkpoint to the private GitHub repository
-- [ ] Build the universal DMG on a native macOS runner
-- [ ] Verify the DMG, application bundle, both CPU slices, and live ELEVAY smoke behavior
+- [x] Build the universal DMG on a native macOS runner
+- [x] Verify the DMG, application bundle, both CPU slices, and live ELEVAY smoke behavior
 - [ ] Download the release artifact, record its SHA-256, and deliver it to Mahmoud
 
 ## User Access — Minerva and Lea Client Documentation Paralegals
@@ -1813,3 +1813,13 @@ Check email for download link within 5 minutes
 - [x] Pass 50 focused regressions, the production build, the changed-line diagnostic review, and `git diff --check`
 - [x] Verify both names in the authenticated assignment interface after deployment
 - [x] Save the final restorable checkpoint
+
+## Leads — Employee-backed Owners and Abdelrahman Qualifier
+- [x] Confirm Abdelrahman already exists as one active employee with the Qualifier role
+- [x] Correct qualifier-role matching so `Qualifier`, `Qualifier TL`, `CS`, and `CS TL` are recognized consistently
+- [x] Replace hard-coded Lead Owner lists with active employee-backed choices in All Leads, Lead Profile, and Tasks
+- [x] Keep historical owner values available in the All Leads filter without reassigning existing Leads
+- [x] Exclude inactive employees and non-person accounting entries that have no employee role
+- [x] Pass 22 focused regressions, the production build, zero changed-file TypeScript diagnostics, and `git diff --check`
+- [ ] Verify Abdelrahman and the full active employee roster in the authenticated interface
+- [ ] Save the final restorable checkpoint
