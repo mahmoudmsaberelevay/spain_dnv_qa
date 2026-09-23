@@ -16,12 +16,12 @@ import {
   bulkDeleteLeads, getLeadsByIds,
   bulkUpdateLeadsStage, bulkUpdateLeadsOwner,
   getNewLeadsReport, getStageChangeReport, getUserActivityReport, getTodayActivityReport,
-  listLeadPersonnelOptions,
+  listLeadPersonnelOptions, resolveLeadOwnerIdentity,
 } from "../leadsDb";
 import { listActivityPresets, listLeadIntegrations } from "../leadsSettingsDb";
 import { syncOneIntegrationById } from "../metaLeadSync";
 import { writeAuditLog, auditCtxFromTrpc } from "../auditLog";
-import { sendLeadAssignmentNotification, TEAM_EMAIL_MAP } from "../emailService";
+import { getTeamNotificationEmail, sendLeadAssignmentNotification } from "../emailService";
 import { getSystemNotificationFromHeader, isAllowedSystemEmailSender } from "../systemNotificationRecipients";
 import { enqueueMappedMetaCrmEvent, normalizeMetaEmail, normalizeMetaPhone } from "../metaLeadsService";
 import { findLeadContactMatch } from "../leadContactMatcher";
@@ -96,10 +96,13 @@ export const leadsRouter = router({
       // Validate stage if provided
       const VALID_STAGES = ["fresh","contacted","qualified","prospect","client","dormant","resubmit","not_qualified_budget","not_qualified_work","not_qualified_study","not_qualified_criminal","not_qualified_other"];
       const importedStage = (input.stage && VALID_STAGES.includes(input.stage) ? input.stage : "fresh") as "fresh" | "contacted" | "qualified" | "prospect" | "client" | "dormant" | "resubmit" | "not_qualified_budget" | "not_qualified_work" | "not_qualified_study" | "not_qualified_criminal" | "not_qualified_other";
+      const ownerIdentity = await resolveLeadOwnerIdentity(input.assignedTo);
       let id: number;
       try {
         id = await createLead({
           ...input,
+          assignedTo: ownerIdentity?.name,
+          assignedConsultantUserId: ownerIdentity?.userId ?? undefined,
           email: input.email || undefined,
           normalizedEmail: normalizeMetaEmail(input.email),
           normalizedPhone: normalizeMetaPhone(input.phone || input.whatsapp),
@@ -125,12 +128,12 @@ export const leadsRouter = router({
         activityType: "created",
         description: `Lead created by ${ctx.user.name ?? "system"}`,
       });
-      if (input.assignedTo) {
+      if (ownerIdentity) {
         await addLeadActivity({
           leadId: id,
           userId: ctx.user.id,
           activityType: "assigned",
-          description: `Assigned to ${input.assignedTo}`,
+          description: `Assigned to ${ownerIdentity.name}`,
         });
       }
       return { id, created: true as const, duplicate: false as const, matchMethod: null };
@@ -284,8 +287,15 @@ export const leadsRouter = router({
       const { id, ...data } = input;
       const lead = await getLeadById(id);
       if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
+      const ownerIdentity = input.assignedTo !== undefined
+        ? await resolveLeadOwnerIdentity(input.assignedTo)
+        : undefined;
       await updateLead(id, {
         ...data,
+        ...(ownerIdentity !== undefined ? {
+          assignedTo: ownerIdentity?.name,
+          assignedConsultantUserId: ownerIdentity?.userId ?? null,
+        } : {}),
         ...(input.email !== undefined ? { normalizedEmail: normalizeMetaEmail(input.email) } : {}),
         ...(input.phone !== undefined || input.whatsapp !== undefined
           ? { normalizedPhone: normalizeMetaPhone(input.phone || input.whatsapp || lead.phone || lead.whatsapp) }
@@ -341,28 +351,33 @@ export const leadsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const lead = await getLeadById(input.id);
       if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
+      const ownerIdentity = await resolveLeadOwnerIdentity(input.assignedTo);
+      if (!ownerIdentity) throw new TRPCError({ code: "BAD_REQUEST", message: "Select a valid Lead owner." });
       const prevOwner = lead.assignedTo;
-      await updateLead(input.id, { assignedTo: input.assignedTo });
+      await updateLead(input.id, {
+        assignedTo: ownerIdentity.name,
+        assignedConsultantUserId: ownerIdentity.userId,
+      });
       await addLeadActivity({
         leadId: input.id,
         userId: ctx.user.id,
         activityType: "assigned",
-        description: `Assigned to ${input.assignedTo} by ${ctx.user.name ?? "system"}`,
+        description: `Assigned to ${ownerIdentity.name} by ${ctx.user.name ?? "system"}`,
       });
       // Send email notification to the new owner if their email is known and owner changed
-      if (input.assignedTo !== prevOwner) {
+      if (ownerIdentity.name !== prevOwner) {
         await createNotification({
           type: "lead_assigned",
           title: "New Lead Assigned",
-          body: `${lead.fullName} was assigned to ${input.assignedTo}`,
+          body: `${lead.fullName} was assigned to ${ownerIdentity.name}`,
           entityId: input.id,
           entityType: "lead",
         });
-        const ownerEmail = TEAM_EMAIL_MAP[input.assignedTo];
+        const ownerEmail = ownerIdentity.email ?? getTeamNotificationEmail(ownerIdentity.name);
         if (ownerEmail) {
           const origin = input.origin ?? "https://elevay.vip";
           sendLeadAssignmentNotification({
-            ownerName: input.assignedTo,
+            ownerName: ownerIdentity.name,
             ownerEmail,
             leadId: input.id,
             leadName: lead.fullName,
@@ -612,7 +627,12 @@ export const leadsRouter = router({
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const id = await createLeadTask({ ...input, createdBy: ctx.user.name ?? undefined });
+        const ownerIdentity = await resolveLeadOwnerIdentity(input.assignedTo);
+        const id = await createLeadTask({
+          ...input,
+          assignedTo: ownerIdentity?.name,
+          createdBy: ctx.user.name ?? undefined,
+        });
         await addLeadActivity({
           leadId: input.leadId,
           userId: ctx.user.id,
@@ -680,8 +700,10 @@ export const leadsRouter = router({
       assignedTo: z.string().nullable(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const updated = await bulkUpdateLeadsOwner(input.ids, input.assignedTo);
-      await writeAuditLog(auditCtxFromTrpc(ctx), "bulk_update", "leads", undefined, `Owner → ${input.assignedTo ?? "Unassigned"} for ${updated} leads: [${input.ids.join(",")}]`);
+      const ownerIdentity = await resolveLeadOwnerIdentity(input.assignedTo);
+      const assignedTo = ownerIdentity?.name ?? null;
+      const updated = await bulkUpdateLeadsOwner(input.ids, assignedTo, ownerIdentity?.userId ?? null);
+      await writeAuditLog(auditCtxFromTrpc(ctx), "bulk_update", "leads", undefined, `Owner → ${assignedTo ?? "Unassigned"} for ${updated} leads: [${input.ids.join(",")}]`);
       return { updated };
     }),
 

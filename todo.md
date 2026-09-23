@@ -1823,3 +1823,16 @@ Check email for download link within 5 minutes
 - [x] Pass 22 focused regressions, the production build, zero changed-file TypeScript diagnostics, and `git diff --check`
 - [x] Verify Abdelrahman and the full active employee roster in the authenticated interface
 - [x] Save the final restorable checkpoint
+
+## Leads — Historical Owner Data Merge into Current User Accounts
+- [x] Audit every distinct historical Lead owner and Lead task assignee against active employees and authenticated users
+- [x] Match old short-name and spelling variants only where the current user identity is unambiguous
+- [x] Merge `Nouran`, `Nouran Mamdouh`, and employee spelling `Nourhan Mamdouh` into `nouran.mamdouh@elevay.com`
+- [x] Consolidate Nouran's 4,760 Leads and 1,420 Lead tasks under `Nouran Mamdouh` and authenticated user ID `12484156`
+- [x] Consolidate the unambiguous Basmala, Eman, Fouad, Hager, Mahmoud, Marwa, and Ziad owner aliases into their current ELEVAY user identities
+- [x] Restore and correct `assignedConsultantUserId` on all 7,001 assigned Leads without changing Lead history
+- [x] Preserve all 9,620 Leads and all 5,258 Lead tasks, including statuses, due dates, completion state, notes, activities, contacts, and timestamps
+- [x] Make future Lead creation, editing, single assignment, bulk assignment, and task creation store the canonical username and supported user ID
+- [x] Pass 37 focused regressions, the production build, zero changed-file TypeScript diagnostics, and `git diff --check`
+- [ ] Verify canonical usernames and restored counts in the authenticated Leads interface
+- [ ] Save the final restorable checkpoint

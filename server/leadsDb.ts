@@ -1,8 +1,11 @@
 import { getDb } from "./db";
-import { finEmployees, leads, leadActivities, leadNotes, leadTasks } from "../drizzle/schema";
+import { finEmployees, leads, leadActivities, leadNotes, leadTasks, users } from "../drizzle/schema";
 import { eq, desc, asc, like, or, and, sql, inArray, count } from "drizzle-orm";
 import type { InsertLead, InsertLeadActivity, InsertLeadNote, InsertLeadTask } from "../drizzle/schema";
-import { buildLeadPersonnelOptions } from "../shared/leadPersonnel";
+import {
+  buildLeadPersonnelOptions,
+  resolveCanonicalLeadOwnerIdentity,
+} from "../shared/leadPersonnel";
 import {
   getLeadTaskDayBounds,
   type LeadTaskLifecycle,
@@ -18,18 +21,37 @@ export async function listLeadPersonnelOptions() {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
 
-  const employeeRows = await db
-    .select({
-      id: finEmployees.id,
-      name: finEmployees.name,
-      role: finEmployees.role,
-      isActive: finEmployees.isActive,
-    })
-    .from(finEmployees)
-    .where(eq(finEmployees.isActive, true))
-    .orderBy(asc(finEmployees.name), asc(finEmployees.id));
+  const [employeeRows, userRows] = await Promise.all([
+    db
+      .select({
+        id: finEmployees.id,
+        name: finEmployees.name,
+        role: finEmployees.role,
+        isActive: finEmployees.isActive,
+      })
+      .from(finEmployees)
+      .where(eq(finEmployees.isActive, true))
+      .orderBy(asc(finEmployees.name), asc(finEmployees.id)),
+    db
+      .select({ id: users.id, name: users.name, email: users.email })
+      .from(users)
+      .orderBy(asc(users.name), asc(users.id)),
+  ]);
 
-  return buildLeadPersonnelOptions(employeeRows);
+  return buildLeadPersonnelOptions(employeeRows, userRows);
+}
+
+export async function resolveLeadOwnerIdentity(assignedTo: string | null | undefined) {
+  const normalizedName = assignedTo?.trim();
+  if (!normalizedName) return null;
+
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const userRows = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .orderBy(asc(users.name), asc(users.id));
+  return resolveCanonicalLeadOwnerIdentity(normalizedName, userRows);
 }
 
 export async function createLead(data: Omit<InsertLead, "createdAt" | "updatedAt">) {
@@ -197,7 +219,11 @@ export async function bulkUpdateLeadsStage(ids: number[], stage: string) {
 }
 
 /** Bulk update assignedTo for multiple leads */
-export async function bulkUpdateLeadsOwner(ids: number[], assignedTo: string | null) {
+export async function bulkUpdateLeadsOwner(
+  ids: number[],
+  assignedTo: string | null,
+  assignedConsultantUserId: number | null = null,
+) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   if (ids.length === 0) return 0;
@@ -206,7 +232,7 @@ export async function bulkUpdateLeadsOwner(ids: number[], assignedTo: string | n
   for (let i = 0; i < ids.length; i += batchSize) {
     const batch = ids.slice(i, i + batchSize);
     await db.update(leads)
-      .set({ assignedTo: assignedTo ?? null, updatedAt: now() })
+      .set({ assignedTo: assignedTo ?? null, assignedConsultantUserId, updatedAt: now() })
       .where(inArray(leads.id, batch));
     updated += batch.length;
   }
