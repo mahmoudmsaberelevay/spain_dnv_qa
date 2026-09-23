@@ -1797,7 +1797,19 @@ Check email for download link within 5 minutes
 - [x] Add a drag-to-Applications DMG layout, macOS 13 minimum version, and explicit microphone usage description
 - [x] Add a native macOS build workflow with DMG verification, bundle checks, universal-architecture checks, SHA-256 generation, and private artifact upload
 - [x] Expand focused desktop regressions from 11 to 15 tests
-- [ ] Save and mirror the source checkpoint to the private GitHub repository
+- [x] Save and mirror the source checkpoint to the private GitHub repository
 - [ ] Build the universal DMG on a native macOS runner
 - [ ] Verify the DMG, application bundle, both CPU slices, and live ELEVAY smoke behavior
 - [ ] Download the release artifact, record its SHA-256, and deliver it to Mahmoud
+
+## User Access — Minerva and Lea Client Documentation Paralegals
+- [x] Confirm one existing standard user account for each requested ELEVAY email
+- [x] Confirm both accounts retain non-admin authority and their existing unrelated module permissions
+- [x] Classify Minerva and Lea as active Paralegals in the employee directory
+- [x] Synchronize full Client Documentation module and legacy view, create, and edit permissions
+- [x] Add Minerva and Lea to Client Documentation storage, server validation, assignment, and dashboard filtering
+- [x] Route assigned-case and Client Portal staff notifications to their ELEVAY addresses
+- [x] Apply the additive live enum migration without reassigning any existing Client Documentation folder
+- [x] Pass 50 focused regressions, the production build, the changed-line diagnostic review, and `git diff --check`
+- [x] Verify both names in the authenticated assignment interface after deployment
+- [ ] Save the final restorable checkpoint

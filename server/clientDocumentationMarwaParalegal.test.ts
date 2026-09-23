@@ -12,17 +12,17 @@ const permissionsRouter = readFileSync(new URL("./permissionsRouter.ts", import.
 
 describe("Marwa Client Documentation paralegal access", () => {
   it("allows Marwa in the stored Client Documentation paralegal enum", () => {
-    expect(schema).toContain('mysqlEnum("paralegal", ["Madonna", "Monica", "Marina", "Marwa"])');
+    expect(schema).toContain('mysqlEnum("paralegal", ["Madonna", "Monica", "Marina", "Marwa", "Minerva", "Lea"])');
     expect(migration).toContain("ENUM('Madonna','Monica','Marina','Marwa') NULL");
   });
 
   it("accepts Marwa when creating or reassigning a documentation case", () => {
-    expect(router.match(/z\.enum\(\["Madonna", "Monica", "Marina", "Marwa"\]\)/g)).toHaveLength(2);
+    expect(router.match(/z\.enum\(\["Madonna", "Monica", "Marina", "Marwa", "Minerva", "Lea"\]\)/g)).toHaveLength(2);
   });
 
   it("shows Marwa in the assignment dialog and dashboard filter", () => {
-    expect(detail).toContain('["Madonna", "Monica", "Marina", "Marwa"].map');
-    expect(dashboard).toContain('const PARALEGALS = ["All", "Madonna", "Monica", "Marina", "Marwa"]');
+    expect(detail).toContain('["Madonna", "Monica", "Marina", "Marwa", "Minerva", "Lea"].map');
+    expect(dashboard).toContain('const PARALEGALS = ["All", "Madonna", "Monica", "Marina", "Marwa", "Minerva", "Lea"]');
   });
 
   it("routes assignment and portal notifications to Marwa", () => {

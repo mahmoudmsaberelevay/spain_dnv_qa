@@ -216,7 +216,7 @@ export const clientCases = mysqlTable("clientCases", {
   program: mysqlEnum("program", ["spain", "grenada", "dominica", "st_kitts", "st_lucia", "antigua"]).default("spain").notNull(),
   applicationType: mysqlEnum("applicationType", ["freelancer", "business_owner"]).notNull(),
   maritalStatus: mysqlEnum("maritalStatus", ["single", "family"]).notNull(),
-  paralegal: mysqlEnum("paralegal", ["Madonna", "Monica", "Marina", "Marwa"]),
+  paralegal: mysqlEnum("paralegal", ["Madonna", "Monica", "Marina", "Marwa", "Minerva", "Lea"]),
   consultant: mysqlEnum("consultant", ["Mahmoud", "Ziad", "Fouad", "Kirolos"]).notNull(),
   schengenDate: timestamp("schengenDate"),
   embassyAppointmentDate: timestamp("embassyAppointmentDate"),

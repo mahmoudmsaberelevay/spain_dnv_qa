@@ -1659,7 +1659,7 @@ const clientDocsRouter = router({
       program: z.enum(CLIENT_DOCUMENTATION_PROGRAMS).default("spain"),
       applicationType: z.enum(["freelancer", "business_owner"]),
       maritalStatus: z.enum(["single", "family"]),
-      paralegal: z.enum(["Madonna", "Monica", "Marina", "Marwa"]).optional(),
+      paralegal: z.enum(["Madonna", "Monica", "Marina", "Marwa", "Minerva", "Lea"]).optional(),
       consultant: z.enum(["Mahmoud", "Ziad", "Fouad", "Kirolos"]),
       children: z.array(z.object({ name: z.string().optional().default(""), age: z.number().int().min(0).max(120), relationship: z.enum(["child", "dependent_parent", "other"]).optional().default("child") })).max(20).optional().default([]),
       spouseName: z.string().optional(),
@@ -2329,7 +2329,7 @@ const clientDocsRouter = router({
   updateParalegal: protectedProcedure
     .input(z.object({
       id: z.number(),
-      paralegal: z.enum(["Madonna", "Monica", "Marina", "Marwa"]).nullable(),
+      paralegal: z.enum(["Madonna", "Monica", "Marina", "Marwa", "Minerva", "Lea"]).nullable(),
     }))
     .mutation(async ({ input }) => {
       const c = await getClientCase(input.id);

@@ -43,7 +43,7 @@ function DeadlineBadge({ days, label }: { days: number | null; label: string }) 
   );
 }
 
-const PARALEGALS = ["All", "Madonna", "Monica", "Marina", "Marwa"];
+const PARALEGALS = ["All", "Madonna", "Monica", "Marina", "Marwa", "Minerva", "Lea"];
 const CONSULTANTS = ["All", "Mahmoud", "Ziad", "Fouad", "Kirolos"];
 const STAGE_OPTIONS = [
   { value: "all", label: "All Stages" },

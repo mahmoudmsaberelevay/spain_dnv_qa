@@ -12,6 +12,8 @@ export const TEAM_EMAIL_MAP: Record<string, string> = {
   "Monica Sobhy": "monica.sobhy@elevay.com",
   "Marina Kamel": "marina.kamel@elevay.com",
   "Marwa Abdallah": "marwa.abdallah@elevay.com",
+  "Minerva Aguilar": "minerva.aguilar@elevay.com",
+  "Lea Guerrero": "lea.guerrero@elevay.com",
   "Fouad Abdo": "fouad.abdo@elevay.com",
   "Kirolos Nabil": "kirlos.nabil@elevay.com",
   "Ziad Elshurafa": "ziad.elshurafa@elevay.com",

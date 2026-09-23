@@ -396,6 +396,8 @@ function staffRecipients(consultant?: string | null, paralegal?: string | null) 
     Monica: "monica.sobhy@elevay.com", "Monica Sobhy": "monica.sobhy@elevay.com",
     Marina: "marina.kamel@elevay.com", "Marina Kamel": "marina.kamel@elevay.com",
     Marwa: "marwa.abdallah@elevay.com", "Marwa Abdallah": "marwa.abdallah@elevay.com",
+    Minerva: "minerva.aguilar@elevay.com", "Minerva Aguilar": "minerva.aguilar@elevay.com",
+    Lea: "lea.guerrero@elevay.com", "Lea Guerrero": "lea.guerrero@elevay.com",
   };
   return resolveSystemNotificationRecipients("other", [consultant && map[consultant], paralegal && map[paralegal]].filter((value): value is string => Boolean(value)));
 }
