@@ -71,10 +71,64 @@ jobs:
           shasum -a 256 "$dmg" | sed 's#desktop/release/##' > desktop/release-artifact/SHA256SUMS.txt
           cat desktop/release-artifact/SHA256SUMS.txt
 
+          mkdir -p desktop/release-chunks
+          dmg_name="$(basename "$dmg")"
+          split -b 60m -a 2 "$dmg" "desktop/release-chunks/${dmg_name}.part-"
+          touch \
+            "desktop/release-chunks/${dmg_name}.part-aa" \
+            "desktop/release-chunks/${dmg_name}.part-ab" \
+            "desktop/release-chunks/${dmg_name}.part-ac" \
+            "desktop/release-chunks/${dmg_name}.part-ad"
+          test ! -e "desktop/release-chunks/${dmg_name}.part-ae"
+          cp desktop/release-artifact/SHA256SUMS.txt desktop/release-chunks/
+          (cd desktop/release-chunks && shasum -a 256 "${dmg_name}.part-"* > CHUNKS_SHA256SUMS.txt)
+
       - name: Upload universal DMG
         uses: actions/upload-artifact@v4
         with:
           name: ELEVAY-macOS-universal-DMG
           path: desktop/release-artifact/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload universal DMG chunk aa
+        uses: actions/upload-artifact@v4
+        with:
+          name: ELEVAY-macOS-universal-DMG-part-aa
+          path: desktop/release-chunks/*.part-aa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload universal DMG chunk ab
+        uses: actions/upload-artifact@v4
+        with:
+          name: ELEVAY-macOS-universal-DMG-part-ab
+          path: desktop/release-chunks/*.part-ab
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload universal DMG chunk ac
+        uses: actions/upload-artifact@v4
+        with:
+          name: ELEVAY-macOS-universal-DMG-part-ac
+          path: desktop/release-chunks/*.part-ac
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload universal DMG chunk ad
+        uses: actions/upload-artifact@v4
+        with:
+          name: ELEVAY-macOS-universal-DMG-part-ad
+          path: desktop/release-chunks/*.part-ad
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload DMG checksum manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: ELEVAY-macOS-universal-DMG-checksums
+          path: |
+            desktop/release-chunks/SHA256SUMS.txt
+            desktop/release-chunks/CHUNKS_SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14

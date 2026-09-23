@@ -129,6 +129,11 @@ describe("ELEVAY connected desktop integration", () => {
     expect(workflow).toContain("grep -qw x86_64");
     expect(workflow).toContain("grep -qw arm64");
     expect(workflow).toContain("actions/upload-artifact@v4");
+    expect(workflow).toContain("split -b 60m -a 2");
+    expect(workflow).toContain("CHUNKS_SHA256SUMS.txt");
+    for (const suffix of ["aa", "ab", "ac", "ad"]) {
+      expect(workflow).toContain(`ELEVAY-macOS-universal-DMG-part-${suffix}`);
+    }
   });
 
   it("uses a self-contained recovery page that never stores CRM data offline", () => {
