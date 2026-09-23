@@ -1812,4 +1812,4 @@ Check email for download link within 5 minutes
 - [x] Apply the additive live enum migration without reassigning any existing Client Documentation folder
 - [x] Pass 50 focused regressions, the production build, the changed-line diagnostic review, and `git diff --check`
 - [x] Verify both names in the authenticated assignment interface after deployment
-- [ ] Save the final restorable checkpoint
+- [x] Save the final restorable checkpoint
