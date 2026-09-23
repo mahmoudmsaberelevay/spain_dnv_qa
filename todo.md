@@ -1821,5 +1821,5 @@ Check email for download link within 5 minutes
 - [x] Keep historical owner values available in the All Leads filter without reassigning existing Leads
 - [x] Exclude inactive employees and non-person accounting entries that have no employee role
 - [x] Pass 22 focused regressions, the production build, zero changed-file TypeScript diagnostics, and `git diff --check`
-- [ ] Verify Abdelrahman and the full active employee roster in the authenticated interface
-- [ ] Save the final restorable checkpoint
+- [x] Verify Abdelrahman and the full active employee roster in the authenticated interface
+- [x] Save the final restorable checkpoint
