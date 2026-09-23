@@ -1834,5 +1834,5 @@ Check email for download link within 5 minutes
 - [x] Preserve all 9,620 Leads and all 5,258 Lead tasks, including statuses, due dates, completion state, notes, activities, contacts, and timestamps
 - [x] Make future Lead creation, editing, single assignment, bulk assignment, and task creation store the canonical username and supported user ID
 - [x] Pass 37 focused regressions, the production build, zero changed-file TypeScript diagnostics, and `git diff --check`
-- [ ] Verify canonical usernames and restored counts in the authenticated Leads interface
-- [ ] Save the final restorable checkpoint
+- [x] Verify canonical usernames and restored counts in the authenticated Leads interface
+- [x] Save the final restorable checkpoint
