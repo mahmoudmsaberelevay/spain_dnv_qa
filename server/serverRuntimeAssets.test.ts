@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const projectRoot = new URL("../", import.meta.url);
 const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const copyScript = readFileSync(new URL("../scripts/copy-server-assets.mjs", import.meta.url), "utf8");
-const sourceTemplate = readFileSync(new URL("./spain_dnv_contract_template_2026_09_22.docx", import.meta.url));
+const sourceTemplate = readFileSync(new URL("./spain_dnv_contract_template_2026_09_23.docx", import.meta.url));
 const questionnaireRegularFont = readFileSync(new URL("./questionnaire-font-regular.ttf", import.meta.url));
 const questionnaireBoldFont = readFileSync(new URL("./questionnaire-font-bold.ttf", import.meta.url));
 
@@ -17,11 +17,11 @@ describe("production server runtime assets", () => {
   it("copies the approved Spain template beside dist/index.js after every production build", () => {
     expect(projectRoot.pathname).toContain("spain_dnv_qa");
     expect(packageJson.scripts.build).toContain("node scripts/copy-server-assets.mjs");
-    expect(copyScript).toContain('"server", "spain_dnv_contract_template_2026_09_22.docx"');
-    expect(copyScript).toContain('"dist", "spain_dnv_contract_template_2026_09_22.docx"');
+    expect(copyScript).toContain('"server", "spain_dnv_contract_template_2026_09_23.docx"');
+    expect(copyScript).toContain('"dist", "spain_dnv_contract_template_2026_09_23.docx"');
     expect(copyScript).toContain("sourceHash !== destinationHash");
     expect(sourceTemplate.length).toBeGreaterThan(100_000);
-    expect(sha256(sourceTemplate)).toBe("d753f9b43c4f3f5783056e3b4a7a72760c6b9ef8155ac36e99a740eee9542cce");
+    expect(sha256(sourceTemplate)).toBe("2445f48c8cbade8dff11ba8577b3288287ba049cb2e326f883ccbfe4379bae14");
   });
 
   it("copies hash-verified Unicode fonts required by questionnaire PDFs", () => {

@@ -1772,3 +1772,17 @@ Check email for download link within 5 minutes
 - [x] Pass 45 focused regressions, zero feature diagnostics, the production build, and `git diff --check`
 - [x] Confirm no answers, statuses, client records, contracts, payments, documents, chats, or Financial records were changed
 - [x] Save final restorable WebDev checkpoint
+
+## Contracting — Spain DNV Template Replacement (23 September 2026)
+- [x] Audit the newly supplied 20-page `SpainDNV.docx` and verify its Word package integrity
+- [x] Map the three conceptual yellow fields despite duplicated internal Word layout runs
+- [x] Replace the Arabic client name in both the party section and repeated annex occurrence
+- [x] Replace the family-member count and authoritative total contract value exactly once each
+- [x] Convert the approved source to versioned fail-closed placeholders and remove only variable yellow highlights
+- [x] Point the active generator and production asset copier to template version `2026-09-23`
+- [x] Preserve the existing Spain family pricing ladder and explicit stored-value override behavior
+- [x] Generate a fictional 20-page sample and visually verify pages 1, 6, 18, and 20
+- [x] Confirm no supplied sample identity, unresolved placeholder, or yellow variable highlight remains
+- [x] Pass nine focused regressions, zero changed-file diagnostics, production build, hash verification, and `git diff --check`
+- [x] Confirm no existing contract, receipt, invoice, client, payment, or Financial record was changed
+- [x] Save final restorable WebDev checkpoint

@@ -18,12 +18,12 @@ describe("Spain Digital Nomad approved contract template", () => {
     const template = readFileSync(SPAIN_DNV_TEMPLATE_PATH);
     const xml = documentXml(template);
 
-    expect(SPAIN_DNV_TEMPLATE_VERSION).toBe("2026-09-22");
+    expect(SPAIN_DNV_TEMPLATE_VERSION).toBe("2026-09-23");
     expect(template.length).toBeGreaterThan(100_000);
     expect(xml.match(/\{\{CLIENT_NAME_AR\}\}/g)).toHaveLength(2);
     expect(xml.match(/\{\{FAMILY_MEMBERS\}\}/g)).toHaveLength(1);
     expect(xml.match(/\{\{CONTRACT_VALUE\}\}/g)).toHaveLength(1);
-    expect(xml).not.toContain("محمد مصطفي");
+    expect(xml).not.toContain("جورج صبحى جوده سلامه");
     expect(xml).not.toContain('<w:highlight w:val="yellow"/>');
   });
 
@@ -46,7 +46,7 @@ describe("Spain Digital Nomad approved contract template", () => {
     expect(xml).not.toContain("{{CLIENT_NAME_AR}}");
     expect(xml).not.toContain("{{FAMILY_MEMBERS}}");
     expect(xml).not.toContain("{{CONTRACT_VALUE}}");
-    expect(xml).not.toContain("محمد مصطفي");
+    expect(xml).not.toContain("جورج صبحى جوده سلامه");
     expect(xml).not.toContain('<w:highlight w:val="yellow"/>');
   });
 

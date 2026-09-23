@@ -4,9 +4,9 @@ import PizZip from "pizzip";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-export const SPAIN_DNV_TEMPLATE_VERSION = "2026-09-22";
+export const SPAIN_DNV_TEMPLATE_VERSION = "2026-09-23";
 export const SPAIN_DNV_TEMPLATE_PATH = fileURLToPath(
-  new URL("./spain_dnv_contract_template_2026_09_22.docx", import.meta.url),
+  new URL("./spain_dnv_contract_template_2026_09_23.docx", import.meta.url),
 );
 
 const SPAIN_CLIENT_NAME_PLACEHOLDER = "{{CLIENT_NAME_AR}}";
@@ -178,7 +178,7 @@ function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
 // remain in their existing external or project-owned storage locations.
 const TEMPLATE_REGISTRY: Record<string, { url?: string; storageKey?: string; localPath?: string; label: string }> = {
   spain: {
-    // Approved NewspainDNV.docx supplied on 2026-09-22. The versioned source
+    // Approved SpainDNV.docx supplied on 2026-09-23. The versioned source
     // is committed with the generator so production never depends on an
     // expiring session upload URL.
     localPath: SPAIN_DNV_TEMPLATE_PATH,
