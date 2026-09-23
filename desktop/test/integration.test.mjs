@@ -115,9 +115,11 @@ describe("ELEVAY connected desktop integration", () => {
   it("uses a native macOS runner to validate the DMG and both universal slices", () => {
     const workflow = readProject(".github/workflows/build-macos-dmg.yml");
     const projectPackage = JSON.parse(readProject("package.json"));
+    const workspace = readDesktop("pnpm-workspace.yaml");
     expect(workflow).toContain("runs-on: macos-14");
     expect(workflow).toContain("pnpm/action-setup@v4");
     expect(projectPackage.packageManager).toMatch(/^pnpm@10\.4\.1\+/);
+    expect(workspace).toMatch(/packages:\s*\n\s*- ['"]?\.['"]?/);
     expect(workflow).not.toContain("version: 10.4.1");
     expect(workflow).not.toContain("corepack prepare");
     expect(workflow).toContain("pnpm --dir desktop test");
