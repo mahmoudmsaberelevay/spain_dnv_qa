@@ -1,8 +1,8 @@
 {
   "name": "elevay-desktop",
   "productName": "ELEVAY",
-  "version": "1.0.0",
-  "description": "Secure connected Windows desktop application for the ELEVAY CRM",
+  "version": "1.1.0",
+  "description": "Secure connected Windows and macOS desktop application for the ELEVAY CRM",
   "author": "ELEVAY Citizenship and Residency Planning",
   "private": true,
   "type": "module",
@@ -12,7 +12,9 @@
     "smoke": "ELEVAY_DESKTOP_SMOKE=1 electron .",
     "test": "vitest run",
     "pack:win": "electron-builder --win dir --x64",
-    "dist:win": "electron-builder --win nsis --x64"
+    "dist:win": "electron-builder --win nsis --x64",
+    "pack:mac": "electron-builder --mac dir --universal",
+    "dist:mac": "electron-builder --mac dmg --universal"
   },
   "devDependencies": {
     "electron": "44.4.1",
@@ -40,6 +42,8 @@
     "files": [
       "src/**/*",
       "assets/elevay.ico",
+      "assets/elevay-mac.png",
+      "assets/elevay.icns",
       "package.json"
     ],
     "extraMetadata": {
@@ -68,6 +72,49 @@
       "differentialPackage": false,
       "shortcutName": "ELEVAY",
       "uninstallDisplayName": "ELEVAY Desktop"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "icon": "assets/elevay.icns",
+      "category": "public.app-category.business",
+      "minimumSystemVersion": "13.0.0",
+      "darkModeSupport": true,
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "artifactName": "ELEVAY-${version}-${arch}.${ext}",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "ELEVAY uses the microphone only when an authorized user records a voice message inside the CRM."
+      }
+    },
+    "dmg": {
+      "title": "ELEVAY ${version}",
+      "icon": "assets/elevay.icns",
+      "iconSize": 128,
+      "window": {
+        "width": 560,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 160,
+          "y": 190,
+          "type": "file"
+        },
+        {
+          "x": 400,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     }
   }
 }

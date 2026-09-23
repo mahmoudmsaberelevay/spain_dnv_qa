@@ -14,7 +14,8 @@
     "desktop:install": "pnpm --dir desktop install",
     "desktop:start": "pnpm --dir desktop start",
     "desktop:test": "pnpm --dir desktop test",
-    "desktop:build:win": "pnpm --dir desktop dist:win"
+    "desktop:build:win": "pnpm --dir desktop dist:win",
+    "desktop:build:mac": "pnpm --dir desktop dist:mac"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",

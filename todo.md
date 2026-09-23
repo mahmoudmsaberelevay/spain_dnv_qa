@@ -1786,3 +1786,18 @@ Check email for download link within 5 minutes
 - [x] Pass nine focused regressions, zero changed-file diagnostics, production build, hash verification, and `git diff --check`
 - [x] Confirm no existing contract, receipt, invoice, client, payment, or Financial record was changed
 - [x] Save final restorable WebDev checkpoint
+
+## Connected Desktop — Universal macOS DMG
+- [x] Audit the existing connected Windows Electron shell and preserve its live CRM security model
+- [x] Confirm Electron 44 officially supports macOS Ventura and later on Intel and Apple Silicon
+- [x] Configure one universal macOS application containing x86_64 and arm64 slices
+- [x] Add a branded 1024px PNG and structurally valid ICNS icon without changing official logo colors
+- [x] Add native macOS About, Edit, View, Window, print, reload, navigation, fullscreen, dock, and lifecycle behavior
+- [x] Preserve non-persistent sign-in, HTTPS-only navigation, certificate rejection, native downloads, microphone-only media, external-link safety, and offline recovery
+- [x] Add a drag-to-Applications DMG layout, macOS 13 minimum version, and explicit microphone usage description
+- [x] Add a native macOS build workflow with DMG verification, bundle checks, universal-architecture checks, SHA-256 generation, and private artifact upload
+- [x] Expand focused desktop regressions from 11 to 15 tests
+- [ ] Save and mirror the source checkpoint to the private GitHub repository
+- [ ] Build the universal DMG on a native macOS runner
+- [ ] Verify the DMG, application bundle, both CPU slices, and live ELEVAY smoke behavior
+- [ ] Download the release artifact, record its SHA-256, and deliver it to Mahmoud

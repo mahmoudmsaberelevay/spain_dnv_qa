@@ -1,42 +1,50 @@
-# ELEVAY Connected Windows Desktop Application
+# ELEVAY Connected Desktop Application
 
-The ELEVAY desktop application is a secure Windows shell for the authoritative production CRM at `https://elevay.vip`. It does not create a separate local database or copy server credentials to staff computers. Every module, permission check, data update, automation, webhook, notification, upload, download, and report continues to use the existing live ELEVAY backend.
+The ELEVAY desktop application is a secure connected shell for the authoritative production CRM at `https://elevay.vip`. It does not create a separate local database or copy server credentials to staff computers. Every module, permission check, data update, automation, webhook, notification, upload, download, report, questionnaire, contract, and integration continues to use the same live ELEVAY backend.
 
-## Supported Platform
+## Supported Platforms
 
-The initial release targets Windows 10 and Windows 11 on x64 processors. The installer is generated as `ELEVAY-Setup-1.0.0-x64.exe` and installs per Windows user with optional installation-directory selection, Start Menu integration, a desktop shortcut, and normal uninstall support.
+| Platform | Architecture | Installer | Minimum operating system |
+| --- | --- | --- | --- |
+| Windows | x64 | NSIS `.exe` | Windows 10 or Windows 11 |
+| macOS | Universal: Intel x86_64 + Apple Silicon arm64 | `.dmg` | macOS 13 Ventura |
 
-| Release item | Verified value |
-| --- | --- |
-| Application version | 1.0.0 |
-| Installer | `ELEVAY-Setup-1.0.0-x64.exe` |
-| Architecture | Windows x64 |
-| Installer format | Unicode NSIS self-extracting `.exe` |
-| Installer size | Approximately 96 MB |
-| SHA-256 | `9f77201fcf3406bf4041a2cc0e1d2cfc5ac4bc1407f0529164373248fafbc886` |
+The macOS release contains both processor architectures in one application. It runs natively on Intel Macs and Apple Silicon Macs without requiring Rosetta.
+
+## Full-System Parity
+
+The desktop application always loads the live CRM, so it exposes the same Contracting, Client Documentation, Financial, Leads, Marketing, Reporting, Client Portal Administration, Security and Audit, WhatsApp Quality Control, AI Council, backup, chat, and other authorized pages as the website. Role, module, page, and owner-only permissions remain authoritative. Installing the desktop app never grants a user additional access.
+
+Web-system changes become available automatically because the shell connects to the production CRM. A new desktop installer is required only when the Electron shell, security policy, native icon, or packaging behavior changes.
 
 ## Security Boundaries
 
-The app uses Chromium sandboxing, context isolation, disabled Node.js access in pages, a minimal preload bridge, HTTPS-only ELEVAY navigation, blocked certificate exceptions, no embedded database credentials, no generic IPC bridge, blocked webviews, and a non-persistent desktop browser session. The non-persistent session means staff must sign in again after fully closing the desktop application, matching the existing ELEVAY password-each-session policy.
+The app uses Chromium sandboxing, context isolation, disabled Node.js access in pages, a minimal preload bridge, HTTPS-only ELEVAY navigation, blocked certificate exceptions, no embedded database credentials, no generic IPC bridge, blocked webviews, and a non-persistent desktop browser session. Staff must sign in again after fully closing the desktop application, matching the existing ELEVAY password-each-session policy.
 
-Normal ELEVAY pages remain inside the app. External HTTPS links, email links, and telephone links open through Windows. Dangerous top-level schemes such as `javascript:`, `data:`, arbitrary `file:`, and non-HTTPS web navigation are blocked. Only ELEVAY can request desktop notifications, clipboard writing, fullscreen, and microphone audio. Camera and geolocation requests are denied.
+Normal ELEVAY pages remain inside the app. External HTTPS links, email links, and telephone links open in the operating system’s default application. Dangerous top-level schemes such as `javascript:`, `data:`, arbitrary `file:`, and non-HTTPS web navigation are blocked. Only ELEVAY can request desktop notifications, clipboard writing, fullscreen, and microphone audio. Camera and geolocation requests are denied.
 
-Downloads initiated by an authenticated ELEVAY page open a native Save dialog. Existing browser-based PDF printing and report printing use the Windows print dialog. File uploads continue to use the existing secure web forms and S3-backed server routes.
+Downloads initiated by an authenticated ELEVAY page open a native Save dialog. Existing PDF and report printing uses the native operating-system print dialog. File uploads continue to use the existing secure web forms and S3-backed server routes.
+
+## Native macOS Experience
+
+The macOS build includes a branded ELEVAY dock icon, About panel, native application menu, standard Edit commands, Cmd+R reload, Cmd+P print, Cmd+[ back, Cmd+] forward, fullscreen, minimize, zoom, window activation, single-instance behavior, and macOS-native Save dialogs. The app follows the normal macOS lifecycle: closing the final window leaves the app available in the dock, and clicking the dock icon creates a new window when needed.
 
 ## Build and Test
 
-From the repository root, install the isolated desktop dependencies with `pnpm desktop:install`. Run focused security tests with `pnpm desktop:test`. Launch the desktop shell against production with `pnpm desktop:start`. Build the Windows installer with `pnpm desktop:build:win`.
+From the repository root, install the isolated desktop dependencies with `pnpm desktop:install`. Run focused desktop security and integration regressions with `pnpm desktop:test`. Launch the connected shell against production with `pnpm desktop:start`.
 
-The unsigned installer may trigger a Windows Unknown Publisher warning. A future release can be signed without changing application behavior when ELEVAY provides a valid Windows code-signing certificate.
+Build the Windows installer with `pnpm desktop:build:win`. Build the universal macOS DMG on a Mac with `pnpm desktop:build:mac`. The checked-in `Build ELEVAY macOS DMG` workflow runs on a native macOS runner, executes the desktop tests, creates the DMG, verifies it with `hdiutil`, mounts it read-only, validates the bundle identifier and microphone usage description, confirms both x86_64 and arm64 executable slices with `lipo`, generates SHA-256 checksums, and uploads the release artifact.
 
-The release passed eleven focused desktop tests covering trusted origins, blocked schemes, restricted permissions, filename sanitization, non-persistent sessions, Electron isolation, certificate-error rejection, native downloads and printing, external-link handling, major CRM route families, installer metadata, and the offline recovery page. A real Electron smoke run loaded `https://elevay.vip/` with the title `Elevay CRM`. The existing web production build also completed successfully. The installer and its embedded application archive both passed structural integrity checks, and the packaged application contained only the intended desktop source, icon, and package metadata; no server secret names were present.
+## macOS Installation
 
-## Installation
+Open the DMG and drag **ELEVAY** into **Applications**. The initial DMG is intentionally unsigned because no Apple Developer ID certificate or notarization credentials are stored in the repository. On first launch, macOS Gatekeeper may block the app. Control-click **ELEVAY** in Applications, choose **Open**, then confirm **Open**. Only use a DMG whose filename and SHA-256 match the published release record.
 
-Copy `ELEVAY-Setup-1.0.0-x64.exe` to the Windows 10 or Windows 11 computer and open it. If Windows displays an Unknown Publisher warning, choose **More info** and then **Run anyway** only after confirming the filename and SHA-256 value above. Select the installation folder, complete the wizard, and open **ELEVAY** from the desktop shortcut or Start Menu. Sign in with the same authorized ELEVAY account used on the website. Closing the complete desktop application ends its local browser session, so the user signs in again on the next launch.
+For frictionless double-click installation, automatic Gatekeeper trust, and broad external distribution, a future release should be signed with an ELEVAY-owned Apple Developer ID Application certificate and notarized by Apple. Signing changes distribution trust only; it does not change CRM features or permissions.
 
-The connected application requires internet access. It must not be redistributed outside authorized ELEVAY staff. Existing role and page permissions remain authoritative: installing the desktop app never grants access to a module that the same account cannot access at `elevay.vip`.
+## Windows Installation
+
+Copy `ELEVAY-Setup-1.0.0-x64.exe` to a Windows 10 or Windows 11 computer and open it. If Windows displays an Unknown Publisher warning, choose **More info** and then **Run anyway** only after confirming the expected filename and SHA-256. Select the installation folder, complete the wizard, and open **ELEVAY** from the desktop shortcut or Start Menu.
 
 ## Release Model
 
-Web-system features update immediately because the desktop app always loads the live ELEVAY CRM. A new installer is required only when the desktop shell, security policy, icon, or installer behavior changes. The application requires internet access; its offline page deliberately does not expose or store client, financial, contract, lead, chat, or documentation data.
+The connected application requires internet access and must not be redistributed outside authorized ELEVAY staff. Its offline page deliberately does not expose or store client, financial, contract, lead, chat, or documentation data. macOS and Windows installers are excluded from source control and delivered as release artifacts with SHA-256 checksums.

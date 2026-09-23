@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   session,
   shell,
 } from "electron";
@@ -19,10 +20,12 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const OFFLINE_FILE = path.join(__dirname, "offline.html");
-const ICON_FILE = path.join(__dirname, "..", "assets", "elevay.ico");
+const WINDOWS_ICON_FILE = path.join(__dirname, "..", "assets", "elevay.ico");
+const MACOS_ICON_FILE = path.join(__dirname, "..", "assets", "elevay-mac.png");
 const SESSION_PARTITION = "elevay-desktop-session";
 const APP_ID = "com.elevay.desktop";
 const SMOKE_TEST = process.env.ELEVAY_DESKTOP_SMOKE === "1";
+const IS_MACOS = process.platform === "darwin";
 
 let mainWindow = null;
 let appSession = null;
@@ -81,7 +84,7 @@ function handleNavigation(event, value) {
 
 function hardenWindow(window) {
   const contents = window.webContents;
-  window.setMenuBarVisibility(false);
+  if (!IS_MACOS) window.setMenuBarVisibility(false);
 
   contents.on("will-attach-webview", event => event.preventDefault());
   contents.on("will-navigate", handleNavigation);
@@ -125,16 +128,90 @@ function hardenWindow(window) {
       void contents.print({ printBackground: true });
       return;
     }
-    if (input.alt && input.key === "Left" && contents.canGoBack()) {
+    if ((input.alt && input.key === "Left" || (IS_MACOS && input.meta && input.key === "[")) && contents.canGoBack()) {
       event.preventDefault();
       contents.goBack();
       return;
     }
-    if (input.alt && input.key === "Right" && contents.canGoForward()) {
+    if ((input.alt && input.key === "Right" || (IS_MACOS && input.meta && input.key === "]")) && contents.canGoForward()) {
       event.preventDefault();
       contents.goForward();
     }
   });
+}
+
+function installApplicationMenu() {
+  if (!IS_MACOS) {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+
+  const reload = () => mainWindow?.webContents.reloadIgnoringCache();
+  const print = () => void mainWindow?.webContents.print({ printBackground: true });
+  const navigateBack = () => {
+    if (mainWindow?.webContents.canGoBack()) mainWindow.webContents.goBack();
+  };
+  const navigateForward = () => {
+    if (mainWindow?.webContents.canGoForward()) mainWindow.webContents.goForward();
+  };
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {
+      label: app.name,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    },
+    {
+      label: "File",
+      submenu: [
+        { label: "Print…", accelerator: "CmdOrCtrl+P", click: print },
+        { type: "separator" },
+        { role: "close" },
+      ],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "pasteAndMatchStyle" },
+        { role: "delete" },
+        { role: "selectAll" },
+      ],
+    },
+    {
+      label: "View",
+      submenu: [
+        { label: "Back", accelerator: "CmdOrCtrl+[", click: navigateBack },
+        { label: "Forward", accelerator: "CmdOrCtrl+]", click: navigateForward },
+        { label: "Reload ELEVAY", accelerator: "CmdOrCtrl+R", click: reload },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ],
+    },
+    {
+      label: "Window",
+      submenu: [
+        { role: "minimize" },
+        { role: "zoom" },
+        { type: "separator" },
+        { role: "front" },
+      ],
+    },
+  ]));
 }
 
 async function showOfflinePage() {
@@ -208,7 +285,7 @@ function createMainWindow() {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: "#07111f",
-    icon: ICON_FILE,
+    ...(!IS_MACOS && { icon: WINDOWS_ICON_FILE }),
     webPreferences: secureWebPreferences(),
   });
 
@@ -271,9 +348,17 @@ if (!hasSingleInstanceLock) {
   });
 
   app.whenReady().then(() => {
+    app.setAboutPanelOptions({
+      applicationName: "ELEVAY",
+      applicationVersion: app.getVersion(),
+      version: app.getVersion(),
+      copyright: "Copyright © 2026 ELEVAY",
+    });
+    if (IS_MACOS && app.dock) app.dock.setIcon(MACOS_ICON_FILE);
     appSession = session.fromPartition(SESSION_PARTITION);
     configureSession(appSession);
     createMainWindow();
+    installApplicationMenu();
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
