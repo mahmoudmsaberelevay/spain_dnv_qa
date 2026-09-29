@@ -2866,6 +2866,14 @@ export const marketingWeeklyResultsSettings = mysqlTable("marketing_weekly_resul
   contentMixJson: mediumtext("contentMixJson").notNull(),
   allocationRulesJson: mediumtext("allocationRulesJson").notNull(),
   learningEnabled: boolean("learningEnabled").notNull().default(true),
+  targetLikes30d: bigint("targetLikes30d", { mode: "number" }).notNull().default(0),
+  targetViews30d: bigint("targetViews30d", { mode: "number" }).notNull().default(0),
+  targetLeads30d: bigint("targetLeads30d", { mode: "number" }).notNull().default(0),
+  targetQualifiedLeads30d: bigint("targetQualifiedLeads30d", { mode: "number" }).notNull().default(0),
+  targetSignedClients30d: bigint("targetSignedClients30d", { mode: "number" }).notNull().default(0),
+  targetCostPerLeadEgp: decimal("targetCostPerLeadEgp", { precision: 14, scale: 2 }).notNull().default("0.00"),
+  targetMaxAdSpend30dEgp: decimal("targetMaxAdSpend30dEgp", { precision: 14, scale: 2 }).notNull().default("0.00"),
+  requestedAutopublishThreshold: int("requestedAutopublishThreshold").notNull().default(90),
   lastScheduleAttemptAt: bigint("lastScheduleAttemptAt", { mode: "number" }),
   lastScheduleStatus: varchar("lastScheduleStatus", { length: 48 }),
   lastChangedByUserId: int("lastChangedByUserId").notNull(),
@@ -2877,6 +2885,34 @@ export const marketingWeeklyResultsSettings = mysqlTable("marketing_weekly_resul
 ]);
 export type MarketingWeeklyResultsSettings = typeof marketingWeeklyResultsSettings.$inferSelect;
 export type InsertMarketingWeeklyResultsSettings = typeof marketingWeeklyResultsSettings.$inferInsert;
+
+// Versioned instructions and official logo references for future creative work.
+// These records never hold credentials and cannot activate generation or publication.
+export const marketingDesignSystemAssets = mysqlTable("marketing_design_system_assets", {
+  id: int("id").autoincrement().primaryKey(),
+  assetKey: varchar("assetKey", { length: 96 }).notNull(),
+  assetType: varchar("assetType", { length: 32 }).notNull(),
+  title: varchar("title", { length: 300 }).notNull(),
+  originalFileName: varchar("originalFileName", { length: 500 }).notNull(),
+  mimeType: varchar("mimeType", { length: 255 }).notNull(),
+  storageKey: varchar("storageKey", { length: 768 }).notNull(),
+  fileUrl: varchar("fileUrl", { length: 2000 }).notNull(),
+  sha256Digest: varchar("sha256Digest", { length: 64 }).notNull(),
+  extractionStatus: varchar("extractionStatus", { length: 48 }).notNull(),
+  extractedText: mediumtext("extractedText"),
+  extractionJson: mediumtext("extractionJson").notNull(),
+  isActive: boolean("isActive").notNull().default(true),
+  uploadedByUserId: int("uploadedByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+  archivedAt: bigint("archivedAt", { mode: "number" }),
+}, table => [
+  uniqueIndex("marketing_design_system_asset_key_unique").on(table.assetKey),
+  index("marketing_design_system_active_type_idx").on(table.assetType, table.isActive, table.archivedAt, table.updatedAt),
+  index("marketing_design_system_digest_idx").on(table.sha256Digest),
+]);
+export type MarketingDesignSystemAsset = typeof marketingDesignSystemAssets.$inferSelect;
+export type InsertMarketingDesignSystemAsset = typeof marketingDesignSystemAssets.$inferInsert;
 
 export const marketingWeeklyResultsPlans = mysqlTable("marketing_weekly_results_plans", {
   id: int("id").autoincrement().primaryKey(),

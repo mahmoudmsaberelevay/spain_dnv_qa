@@ -71,6 +71,23 @@ describe("Weekly Results CRM integration contract", () => {
     expect(WEEKLY_RESULTS_EXECUTION_BOUNDARY).toContain("cannot call an AI provider");
   });
 
+  it("stores reviewable Design System assets and 30-day targets without enabling autopublish", () => {
+    const migration = read("drizzle/0102_agentic_marketing_settings_production.sql");
+    const schema = read("drizzle/schema.ts");
+    const router = read("server/marketingSystemRouter.ts");
+    const page = read("client/src/pages/marketing/WeeklyResults.tsx");
+    expect(migration).toContain("marketing_design_system_assets");
+    expect(migration).toContain("targetMaxAdSpend30dEgp");
+    expect(schema).toContain("marketingDesignSystemAssets");
+    expect(router).toContain("uploadDesignSystemAsset");
+    expect(router).toContain("requireActiveDesignSystemForCreative");
+    expect(router).toContain("requestedAutopublishThreshold");
+    expect(router).toContain("externalOperationsEnabled: false");
+    expect(page).toContain("Design System and official logo");
+    expect(page).toContain("90% approval target is measured as a quality KPI only");
+    expect(page).not.toContain("Automatically publish approved plans");
+  });
+
   it("keeps Weekly Results inside the protected central Agentic Marketing workspace", () => {
     const app = read("client/src/App.tsx");
     const dashboard = read("client/src/pages/marketing/MarketingDashboard.tsx");

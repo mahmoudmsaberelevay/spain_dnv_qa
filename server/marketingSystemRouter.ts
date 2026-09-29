@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { router, protectedProcedure } from "./_core/trpc";
 import { getDb } from "./db";
@@ -25,6 +25,7 @@ import {
   marketingWeeklyResultsPlans,
   marketingWeeklyResultsPreferenceMemories,
   marketingWeeklyResultsSettings,
+  marketingDesignSystemAssets,
   marketingKnowledgeClaims,
   marketingKnowledgeSources,
   marketingInternalProgrammeReferences,
@@ -44,6 +45,7 @@ import {
 import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
 import { isOwner } from "./permissionsRouter";
 import { storagePut } from "./storage";
+import { invokeLLM } from "./_core/llm";
 import {
   getMarketingSystemCapabilities,
   hasMarketingSystemCapability,
@@ -256,11 +258,17 @@ const weeklyResultsContentMixInput = z.object({
   research_update: z.number().int().min(0).max(12), static_post: z.number().int().min(0).max(12), carousel: z.number().int().min(0).max(12), reel: z.number().int().min(0).max(12), image: z.number().int().min(0).max(12), graphic: z.number().int().min(0).max(12), ad_setup: z.number().int().min(0).max(12),
 }).refine(value => Object.values(value).some(count => count > 0), "Choose at least one content-item type.");
 const weeklyResultsSettingsInput = z.object({
-  prepareStartTime: z.string().refine(isValidCairoClockTime, "Use HH:MM Cairo time."), deliveryDeadlineTime: z.string().refine(isValidCairoClockTime, "Use HH:MM Cairo time."), preparationScheduleEnabled: z.boolean(),
+  prepareDayOfWeek: z.number().int().min(0).max(6), prepareStartTime: z.string().refine(isValidCairoClockTime, "Use HH:MM Cairo time."), deliveryDeadlineTime: z.string().refine(isValidCairoClockTime, "Use HH:MM Cairo time."), preparationScheduleEnabled: z.boolean(),
   weeklyGoal: z.string().trim().max(4_000).optional(),
   programPriorities: z.array(z.object({ key: z.string().trim().min(2).max(96).regex(/^[a-z0-9_]+$/), priority: z.number().int().min(1).max(10), note: z.string().trim().max(1_000).optional() })).max(24),
   updatedSourcesNote: z.string().trim().max(8_000).optional(), creativeDirection: z.string().trim().max(8_000).optional(), contentMix: weeklyResultsContentMixInput,
   allocationRules: z.object({ rotationNote: z.string().trim().max(4_000).optional(), platformNote: z.string().trim().max(4_000).optional() }).default({}), learningEnabled: z.boolean(),
+  targetLikes30d: z.number().int().min(0).max(10_000_000_000).default(0), targetViews30d: z.number().int().min(0).max(10_000_000_000).default(0), targetLeads30d: z.number().int().min(0).max(10_000_000_000).default(0), targetQualifiedLeads30d: z.number().int().min(0).max(10_000_000_000).default(0), targetSignedClients30d: z.number().int().min(0).max(10_000_000_000).default(0), targetCostPerLeadEgp: z.number().finite().min(0).max(100_000_000).default(0), targetMaxAdSpend30dEgp: z.number().finite().min(0).max(1_000_000_000).default(0), requestedAutopublishThreshold: z.number().int().min(90).max(100).default(90),
+});
+const designSystemAssetInput = z.object({
+  assetType: z.enum(["design_instruction", "logo"]), title: z.string().trim().min(3).max(300), fileName: z.string().trim().min(1).max(500),
+  mimeType: z.enum(["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/markdown", "text/plain", "image/png", "image/jpeg", "image/webp", "image/svg+xml"]),
+  fileBase64: z.string().min(4).max(14_000_000),
 });
 const weeklyResultsItemInput = z.object({
   itemType: z.enum(WEEKLY_RESULTS_ITEM_TYPES), title: z.string().trim().min(4).max(300), programKey: z.string().trim().min(2).max(96).regex(/^[a-z0-9_]+$/).optional(), objective: z.string().trim().min(8).max(500),
@@ -466,6 +474,14 @@ function defaultWeeklyResultsSettings() {
     contentMix: DEFAULT_WEEKLY_CONTENT_MIX,
     allocationRules: {} as Record<string, string>,
     learningEnabled: true,
+    targetLikes30d: 0,
+    targetViews30d: 0,
+    targetLeads30d: 0,
+    targetQualifiedLeads30d: 0,
+    targetSignedClients30d: 0,
+    targetCostPerLeadEgp: 0,
+    targetMaxAdSpend30dEgp: 0,
+    requestedAutopublishThreshold: 90,
     lastScheduleAttemptAt: null as number | null,
     lastScheduleStatus: "not_scheduled" as string,
     isPersisted: false,
@@ -488,9 +504,72 @@ function parseWeeklyResultsSettings(row: typeof marketingWeeklyResultsSettings.$
     contentMix: parseJson<typeof DEFAULT_WEEKLY_CONTENT_MIX>(row.contentMixJson, DEFAULT_WEEKLY_CONTENT_MIX),
     allocationRules: parseJson<Record<string, string>>(row.allocationRulesJson, {}),
     learningEnabled: row.learningEnabled,
+    targetLikes30d: row.targetLikes30d,
+    targetViews30d: row.targetViews30d,
+    targetLeads30d: row.targetLeads30d,
+    targetQualifiedLeads30d: row.targetQualifiedLeads30d,
+    targetSignedClients30d: row.targetSignedClients30d,
+    targetCostPerLeadEgp: Number(row.targetCostPerLeadEgp),
+    targetMaxAdSpend30dEgp: Number(row.targetMaxAdSpend30dEgp),
+    requestedAutopublishThreshold: row.requestedAutopublishThreshold,
     lastScheduleAttemptAt: row.lastScheduleAttemptAt,
     lastScheduleStatus: row.lastScheduleStatus ?? "not_scheduled",
     isPersisted: true,
+  };
+}
+
+function trimDesignSystemText(value: string): string {
+  return value.replace(/\u0000/g, "").replace(/\s+\n/g, "\n").trim().slice(0, 80_000);
+}
+
+async function extractDesignSystemText(bytes: Buffer, mimeType: string, fileName: string): Promise<string | null> {
+  const lowerName = fileName.toLowerCase();
+  if (mimeType === "text/markdown" || mimeType === "text/plain" || lowerName.endsWith(".md") || lowerName.endsWith(".txt")) return trimDesignSystemText(bytes.toString("utf8"));
+  if (mimeType === "application/pdf" || lowerName.endsWith(".pdf")) {
+    const pdfParseModule: any = await import("pdf-parse");
+    const pdfParse = pdfParseModule.default || pdfParseModule;
+    return trimDesignSystemText((await pdfParse(bytes)).text ?? "") || null;
+  }
+  if (mimeType.includes("wordprocessingml") || lowerName.endsWith(".docx")) {
+    const mammoth = await import("mammoth");
+    return trimDesignSystemText((await mammoth.extractRawText({ buffer: bytes })).value ?? "") || null;
+  }
+  return null;
+}
+
+async function summarizeDesignSystemInstructions(extractedText: string): Promise<{ summary: string; mandatoryRules: string[]; prohibitedRules: string[]; visualDirection: string[] }> {
+  const response = await invokeLLM({
+    model: "gpt-5-mini",
+    messages: [
+      { role: "system", content: "You extract an internal design-system document into precise, traceable creative constraints. Do not invent instructions, claims, facts, people, brands, or legal advice. Preserve uncertainty. Return strictly the requested JSON." },
+      { role: "user", content: `Extract the design instructions from this ELEVAY internal document. This output is for human review and future creative briefs, not for publishing.\n\nDOCUMENT:\n${extractedText.slice(0, 50_000)}` },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "design_system_extraction",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            summary: { type: "string" },
+            mandatoryRules: { type: "array", items: { type: "string" } },
+            prohibitedRules: { type: "array", items: { type: "string" } },
+            visualDirection: { type: "array", items: { type: "string" } },
+          },
+          required: ["summary", "mandatoryRules", "prohibitedRules", "visualDirection"],
+          additionalProperties: false,
+        },
+      },
+    },
+  });
+  const text = typeof response.choices[0]?.message.content === "string" ? response.choices[0].message.content : "";
+  const parsed = JSON.parse(text) as { summary: string; mandatoryRules: string[]; prohibitedRules: string[]; visualDirection: string[] };
+  return {
+    summary: normalizeContentStudioText(parsed.summary).slice(0, 8_000),
+    mandatoryRules: parsed.mandatoryRules.map(normalizeContentStudioText).filter(Boolean).slice(0, 40),
+    prohibitedRules: parsed.prohibitedRules.map(normalizeContentStudioText).filter(Boolean).slice(0, 40),
+    visualDirection: parsed.visualDirection.map(normalizeContentStudioText).filter(Boolean).slice(0, 40),
   };
 }
 function weeklyResultsItemUnsafeField(input: z.infer<typeof weeklyResultsItemInput>): string | null {
@@ -565,6 +644,17 @@ async function requireApprovedCreativeWorkOrder(workOrderId: number, programKey:
     throw new TRPCError({ code: "BAD_REQUEST", message: "The source work order is not anchored to the current active Brand Book." });
   }
   return order;
+}
+
+async function requireActiveDesignSystemForCreative() {
+  const db = await requireDb();
+  const assets = await db.select().from(marketingDesignSystemAssets)
+    .where(and(eq(marketingDesignSystemAssets.isActive, true), isNull(marketingDesignSystemAssets.archivedAt)))
+    .orderBy(desc(marketingDesignSystemAssets.updatedAt));
+  const instructions = assets.find(asset => asset.assetType === "design_instruction");
+  const logo = assets.find(asset => asset.assetType === "logo");
+  if (!instructions || !logo) throw new TRPCError({ code: "BAD_REQUEST", message: "Creative packets require one active Design System instruction document and one active official logo in Settings." });
+  return { instructions, logo };
 }
 
 function validateContentPacketText(input: z.infer<typeof contentPacketInput>) {
@@ -2291,9 +2381,10 @@ export const marketingSystemRouter = router({
     await requireCapability(ctx.user, "create_content_packets");
     validateContentPacketText(input);
     const db = await requireDb();
-    const [order, claims] = await Promise.all([
+    const [order, claims, designSystem] = await Promise.all([
       requireApprovedCreativeWorkOrder(input.workOrderId, input.programKey),
       getApprovedContentClaims(input.claimIds, input.programKey),
+      requireActiveDesignSystemForCreative(),
     ]);
     const orderClaims = new Set(parseJson<number[]>(order.knowledgeClaimIdsJson, []));
     if (claims.some(claim => !orderClaims.has(claim.id))) {
@@ -2344,7 +2435,7 @@ export const marketingSystemRouter = router({
       updatedAt: now,
     });
     const packetId = Number((result as { insertId?: number }).insertId);
-    await appendContentReviewEvent({ packetId, action: "created", toStatus: "draft", actorUserId: ctx.user.id, createdAt: now, payload: { rootPacketKey, versionNumber: 1, workOrderKey: order.workOrderKey, claimCount: claims.length, noProviderCall: true } });
+    await appendContentReviewEvent({ packetId, action: "created", toStatus: "draft", actorUserId: ctx.user.id, createdAt: now, payload: { rootPacketKey, versionNumber: 1, workOrderKey: order.workOrderKey, claimCount: claims.length, designSystemAssetKeys: [designSystem.instructions.assetKey, designSystem.logo.assetKey], noProviderCall: true } });
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_content_packet", packetId, JSON.stringify({ rootPacketKey, workOrderId: order.id, contentType: input.contentType, programKey: input.programKey, contentHash, claimCount: claims.length }));
     return { id: packetId, rootPacketKey, versionNumber: 1, status: "draft" as const, contentHash };
   }),
@@ -2353,10 +2444,11 @@ export const marketingSystemRouter = router({
     await requireCapability(ctx.user, "create_content_packets");
     validateContentPacketText(input);
     const db = await requireDb();
-    const [previous, order, claims] = await Promise.all([
+    const [previous, order, claims, designSystem] = await Promise.all([
       db.select().from(marketingContentPackets).where(eq(marketingContentPackets.id, input.previousPacketId)).limit(1).then(rows => rows[0] ?? null),
       requireApprovedCreativeWorkOrder(input.workOrderId, input.programKey),
       getApprovedContentClaims(input.claimIds, input.programKey),
+      requireActiveDesignSystemForCreative(),
     ]);
     if (!previous) throw new TRPCError({ code: "NOT_FOUND", message: "The content packet to revise was not found." });
     if (previous.createdByUserId !== ctx.user.id && !(await isMarketingSystemAdministrator(ctx.user))) throw new TRPCError({ code: "FORBIDDEN", message: "Only the packet creator or a scoped Agentic Marketing administrator can create a revision." });
@@ -2412,7 +2504,7 @@ export const marketingSystemRouter = router({
     const packetId = Number((result as { insertId?: number }).insertId);
     await db.update(marketingContentPackets).set({ status: "superseded", updatedAt: now, blockedReason: `Superseded by revision ${versionNumber}.` }).where(eq(marketingContentPackets.id, previous.id));
     await appendContentReviewEvent({ packetId: previous.id, action: "superseded", fromStatus: previous.status, toStatus: "superseded", feedback: input.changeSummary, actorUserId: ctx.user.id, createdAt: now, payload: { successorPacketId: packetId, successorVersion: versionNumber } });
-    await appendContentReviewEvent({ packetId, action: "revision_created", toStatus: "draft", feedback: input.changeSummary, actorUserId: ctx.user.id, createdAt: now, payload: { previousPacketId: previous.id, rootPacketKey: previous.rootPacketKey, versionNumber, noProviderCall: true } });
+    await appendContentReviewEvent({ packetId, action: "revision_created", toStatus: "draft", feedback: input.changeSummary, actorUserId: ctx.user.id, createdAt: now, payload: { previousPacketId: previous.id, rootPacketKey: previous.rootPacketKey, versionNumber, designSystemAssetKeys: [designSystem.instructions.assetKey, designSystem.logo.assetKey], noProviderCall: true } });
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_content_packet_revision", packetId, JSON.stringify({ rootPacketKey: previous.rootPacketKey, versionNumber, previousPacketId: previous.id, contentHash }));
     return { id: packetId, rootPacketKey: previous.rootPacketKey, versionNumber, status: "draft" as const, contentHash };
   }),
@@ -2592,11 +2684,12 @@ export const marketingSystemRouter = router({
   getWeeklyResultsWorkspace: protectedProcedure.query(async ({ ctx }) => {
     await requireCapability(ctx.user, "view_weekly_results");
     const db = await requireDb();
-    const [settingsRows, plans, preferences, performance] = await Promise.all([
+    const [settingsRows, plans, preferences, performance, designAssets] = await Promise.all([
       db.select().from(marketingWeeklyResultsSettings).where(eq(marketingWeeklyResultsSettings.settingsKey, "primary-weekly-results")).limit(1),
       db.select().from(marketingWeeklyResultsPlans).orderBy(desc(marketingWeeklyResultsPlans.periodStart), desc(marketingWeeklyResultsPlans.version)).limit(60),
       db.select().from(marketingWeeklyResultsPreferenceMemories).where(eq(marketingWeeklyResultsPreferenceMemories.status, "active")).orderBy(desc(marketingWeeklyResultsPreferenceMemories.updatedAt)).limit(80),
       db.select().from(marketingWeeklyResultsPerformanceSnapshots).orderBy(desc(marketingWeeklyResultsPerformanceSnapshots.periodStart), desc(marketingWeeklyResultsPerformanceSnapshots.recordedAt)).limit(80),
+      db.select().from(marketingDesignSystemAssets).where(eq(marketingDesignSystemAssets.isActive, true)).orderBy(desc(marketingDesignSystemAssets.updatedAt)).limit(20),
     ]);
     const planIds = plans.map(plan => plan.id);
     const items = planIds.length === 0 ? [] : await db.select().from(marketingWeeklyResultsItems)
@@ -2620,9 +2713,66 @@ export const marketingSystemRouter = router({
         })),
       })),
       preferences, performance: performance.map(snapshot => ({ ...snapshot, spendEgp: Number(snapshot.spendEgp) })),
+      designSystem: designAssets.map(asset => ({
+        id: asset.id, assetKey: asset.assetKey, assetType: asset.assetType, title: asset.title, originalFileName: asset.originalFileName,
+        mimeType: asset.mimeType, fileUrl: asset.fileUrl, sha256Digest: asset.sha256Digest, extractionStatus: asset.extractionStatus,
+        extraction: parseJson<Record<string, unknown>>(asset.extractionJson, {}), createdAt: asset.createdAt, updatedAt: asset.updatedAt,
+      })),
       policy: WEEKLY_RESULTS_EXECUTION_BOUNDARY, externalOperationsEnabled: false,
-      scheduler: { kind: "crm_background_schedule", configuredFor: "Saturday, Africa/Cairo", state: "waiting_execution_release", explanation: "The Saturday timing and 10:00 Cairo delivery target are saved in CRM Setup. The job intentionally cannot prepare content through providers until the separate execution-release and provider safety gates are approved." },
+      scheduler: { kind: "crm_background_schedule", configuredFor: "Administrator-selected weekday and time, Africa/Cairo", state: "waiting_execution_release", explanation: "The weekly timing and delivery target are saved in CRM Settings. The job intentionally cannot prepare content through providers until the separate execution-release and provider safety gates are approved." },
     };
+  }),
+
+  uploadDesignSystemAsset: protectedProcedure.input(designSystemAssetInput).mutation(async ({ ctx, input }) => {
+    await requireMarketingSystemAdministrator(ctx.user);
+    const bytes = Buffer.from(input.fileBase64, "base64");
+    if (bytes.length === 0 || bytes.length > 10 * 1024 * 1024) throw new TRPCError({ code: "BAD_REQUEST", message: "Design System files must be between 1 byte and 10 MB." });
+    const isLogo = input.assetType === "logo";
+    if (isLogo && !["image/png", "image/jpeg", "image/webp", "image/svg+xml"].includes(input.mimeType)) throw new TRPCError({ code: "BAD_REQUEST", message: "The official logo must be PNG, JPEG, WebP, or SVG." });
+    if (!isLogo && !["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/markdown", "text/plain"].includes(input.mimeType)) throw new TRPCError({ code: "BAD_REQUEST", message: "Design instructions must be PDF, DOCX, Markdown, or plain text." });
+    const extension = input.fileName.split(".").pop()?.replace(/[^a-zA-Z0-9]/g, "") || "bin";
+    const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+    const assetKey = `design-${input.assetType}-${crypto.randomUUID()}`;
+    const storageKey = `marketing/design-system/${input.assetType}/${assetKey}.${extension}`;
+    const uploaded = await storagePut(storageKey, bytes, input.mimeType);
+    let extractionStatus = isLogo ? "not_applicable" : "review_required";
+    let extractedText: string | null = null;
+    let extraction: Record<string, unknown> = { model: null, summary: null, mandatoryRules: [], prohibitedRules: [], visualDirection: [] };
+    if (!isLogo) {
+      try {
+        extractedText = await extractDesignSystemText(bytes, input.mimeType, input.fileName);
+        const unsafe = extractedText ? findDisallowedWeeklyResultsData(extractedText) : null;
+        if (unsafe) {
+          extraction = { ...extraction, status: "blocked_for_privacy_review", reason: unsafe };
+          extractionStatus = "review_required";
+        } else if (extractedText) {
+          const summary = await summarizeDesignSystemInstructions(extractedText);
+          extraction = { model: "gpt-5-mini", ...summary, sourceTextSha256: crypto.createHash("sha256").update(extractedText).digest("hex") };
+          extractionStatus = "extracted_review_required";
+        }
+      } catch {
+        extraction = { ...extraction, status: "extraction_failed_review_required" };
+      }
+    }
+    const db = await requireDb();
+    const now = Date.now();
+    await db.transaction(async tx => {
+      await tx.update(marketingDesignSystemAssets).set({ isActive: false, updatedAt: now }).where(and(eq(marketingDesignSystemAssets.assetType, input.assetType), eq(marketingDesignSystemAssets.isActive, true)));
+      await tx.insert(marketingDesignSystemAssets).values({ assetKey, assetType: input.assetType, title: normalizeWeeklyResultsText(input.title), originalFileName: input.fileName, mimeType: input.mimeType, storageKey, fileUrl: uploaded.url, sha256Digest: digest, extractionStatus, extractedText, extractionJson: JSON.stringify(extraction), isActive: true, uploadedByUserId: ctx.user.id, createdAt: now, updatedAt: now, archivedAt: null });
+    });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_design_system_asset", assetKey, JSON.stringify({ assetType: input.assetType, sha256: digest, bytes: bytes.length, extractionStatus, model: isLogo ? null : "gpt-5-mini", externalOperationsEnabled: false }));
+    return { assetKey, assetType: input.assetType, extractionStatus, extraction, externalOperationsEnabled: false };
+  }),
+
+  archiveDesignSystemAsset: protectedProcedure.input(z.object({ assetId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    await requireMarketingSystemAdministrator(ctx.user);
+    const db = await requireDb();
+    const now = Date.now();
+    const [asset] = await db.select().from(marketingDesignSystemAssets).where(eq(marketingDesignSystemAssets.id, input.assetId)).limit(1);
+    if (!asset || asset.archivedAt) throw new TRPCError({ code: "NOT_FOUND", message: "Active Design System asset not found." });
+    await db.update(marketingDesignSystemAssets).set({ isActive: false, archivedAt: now, updatedAt: now }).where(eq(marketingDesignSystemAssets.id, asset.id));
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_design_system_asset", asset.assetKey, JSON.stringify({ action: "archived", assetType: asset.assetType, externalOperationsEnabled: false }));
+    return { success: true, externalOperationsEnabled: false };
   }),
 
   saveWeeklyResultsSetup: protectedProcedure.input(weeklyResultsSettingsInput).mutation(async ({ ctx, input }) => {
@@ -2636,13 +2786,15 @@ export const marketingSystemRouter = router({
     const db = await requireDb();
     const now = Date.now();
     const values = {
-      prepareStartTime: input.prepareStartTime, deliveryDeadlineTime: input.deliveryDeadlineTime, preparationScheduleEnabled: input.preparationScheduleEnabled, scheduleState: "waiting_execution_release",
+      prepareDayOfWeek: input.prepareDayOfWeek, prepareStartTime: input.prepareStartTime, deliveryDeadlineTime: input.deliveryDeadlineTime, preparationScheduleEnabled: input.preparationScheduleEnabled, scheduleState: "waiting_execution_release",
       weeklyGoal: input.weeklyGoal ? normalizeWeeklyResultsText(input.weeklyGoal) : null, programPrioritiesJson: JSON.stringify(input.programPriorities), updatedSourcesNote: input.updatedSourcesNote ? normalizeWeeklyResultsText(input.updatedSourcesNote) : null,
       creativeDirection: input.creativeDirection ? normalizeWeeklyResultsText(input.creativeDirection) : null, contentMixJson: JSON.stringify(input.contentMix), allocationRulesJson: JSON.stringify(input.allocationRules), learningEnabled: input.learningEnabled,
+      targetLikes30d: input.targetLikes30d, targetViews30d: input.targetViews30d, targetLeads30d: input.targetLeads30d, targetQualifiedLeads30d: input.targetQualifiedLeads30d, targetSignedClients30d: input.targetSignedClients30d,
+      targetCostPerLeadEgp: input.targetCostPerLeadEgp.toFixed(2), targetMaxAdSpend30dEgp: input.targetMaxAdSpend30dEgp.toFixed(2), requestedAutopublishThreshold: input.requestedAutopublishThreshold,
       lastScheduleStatus: "waiting_execution_release", lastChangedByUserId: ctx.user.id, updatedAt: now,
     };
-    await db.insert(marketingWeeklyResultsSettings).values({ settingsKey: "primary-weekly-results", timezone: "Africa/Cairo", prepareDayOfWeek: 6, ...values, lastScheduleAttemptAt: null, createdAt: now }).onDuplicateKeyUpdate({ set: values });
-    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_results_setup", "primary-weekly-results", JSON.stringify({ timezone: "Africa/Cairo", prepareDayOfWeek: 6, prepareStartTime: input.prepareStartTime, deliveryDeadlineTime: input.deliveryDeadlineTime, executionAllowed: false }));
+    await db.insert(marketingWeeklyResultsSettings).values({ settingsKey: "primary-weekly-results", timezone: "Africa/Cairo", ...values, lastScheduleAttemptAt: null, createdAt: now }).onDuplicateKeyUpdate({ set: values });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_results_setup", "primary-weekly-results", JSON.stringify({ timezone: "Africa/Cairo", prepareDayOfWeek: input.prepareDayOfWeek, prepareStartTime: input.prepareStartTime, deliveryDeadlineTime: input.deliveryDeadlineTime, requestedAutopublishThreshold: input.requestedAutopublishThreshold, executionAllowed: false }));
     return { success: true, scheduleState: "waiting_execution_release" as const, externalOperationsEnabled: false };
   }),
 
@@ -2653,13 +2805,14 @@ export const marketingSystemRouter = router({
     if (unsafeTitle) throw new TRPCError({ code: "BAD_REQUEST", message: `Plan title cannot include ${unsafeTitle}.` });
     const normalizedItems = input.items.map(normalizeWeeklyResultsItem);
     const db = await requireDb();
-    const [settingsRows, latest, preferences, performance] = await Promise.all([
+    const [settingsRows, latest, preferences, performance, designAssets] = await Promise.all([
       db.select().from(marketingWeeklyResultsSettings).where(eq(marketingWeeklyResultsSettings.settingsKey, "primary-weekly-results")).limit(1),
       db.select({ version: marketingWeeklyResultsPlans.version }).from(marketingWeeklyResultsPlans).where(eq(marketingWeeklyResultsPlans.periodStart, input.periodStart)).orderBy(desc(marketingWeeklyResultsPlans.version)).limit(1),
       db.select().from(marketingWeeklyResultsPreferenceMemories).where(eq(marketingWeeklyResultsPreferenceMemories.status, "active")).orderBy(desc(marketingWeeklyResultsPreferenceMemories.updatedAt)).limit(80),
       db.select().from(marketingWeeklyResultsPerformanceSnapshots).orderBy(desc(marketingWeeklyResultsPerformanceSnapshots.periodStart), desc(marketingWeeklyResultsPerformanceSnapshots.recordedAt)).limit(8),
+      db.select().from(marketingDesignSystemAssets).where(eq(marketingDesignSystemAssets.isActive, true)).orderBy(desc(marketingDesignSystemAssets.updatedAt)).limit(20),
     ]);
-    const setup = parseWeeklyResultsSettings(settingsRows[0]);
+    const setup = { ...parseWeeklyResultsSettings(settingsRows[0]), designSystem: designAssets.map(asset => ({ assetKey: asset.assetKey, assetType: asset.assetType, sha256Digest: asset.sha256Digest, extractionStatus: asset.extractionStatus })) };
     const version = (latest[0]?.version ?? 0) + 1;
     const now = Date.now();
     const preferencesSnapshot = preferences.map(preference => ({ scope: preference.scope, scopeKey: preference.scopeKey, preferenceText: preference.preferenceText, updatedAt: preference.updatedAt }));
