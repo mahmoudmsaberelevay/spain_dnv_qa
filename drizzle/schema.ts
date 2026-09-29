@@ -2739,6 +2739,54 @@ export const marketingMetaCampaignPilotProposals = mysqlTable("marketing_meta_ca
 export type MarketingMetaCampaignPilotProposal = typeof marketingMetaCampaignPilotProposals.$inferSelect;
 export type InsertMarketingMetaCampaignPilotProposal = typeof marketingMetaCampaignPilotProposals.$inferInsert;
 
+// Versioned aggregate-only executive snapshots and owner decisions. These records
+// do not contain client, Lead, campaign, spend, or provider-operating data.
+export const marketingWeeklyExecutiveBriefs = mysqlTable("marketing_weekly_executive_briefs", {
+  id: int("id").autoincrement().primaryKey(),
+  briefKey: varchar("briefKey", { length: 96 }).notNull(),
+  periodStart: varchar("periodStart", { length: 10 }).notNull(),
+  version: int("version").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("captured"),
+  snapshotJson: mediumtext("snapshotJson").notNull(),
+  snapshotHash: varchar("snapshotHash", { length: 64 }).notNull(),
+  contextNote: mediumtext("contextNote"),
+  decision: varchar("decision", { length: 48 }),
+  decisionNote: mediumtext("decisionNote"),
+  capturedByUserId: int("capturedByUserId").notNull(),
+  capturedAt: bigint("capturedAt", { mode: "number" }).notNull(),
+  decidedByUserId: int("decidedByUserId"),
+  decidedAt: bigint("decidedAt", { mode: "number" }),
+  stoppedByUserId: int("stoppedByUserId"),
+  stoppedAt: bigint("stoppedAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_weekly_executive_brief_key_unique").on(table.briefKey),
+  uniqueIndex("marketing_weekly_executive_brief_period_version_unique").on(table.periodStart, table.version),
+  index("marketing_weekly_executive_brief_status_period_idx").on(table.status, table.periodStart),
+  index("marketing_weekly_executive_brief_captured_idx").on(table.capturedAt),
+]);
+export type MarketingWeeklyExecutiveBrief = typeof marketingWeeklyExecutiveBriefs.$inferSelect;
+export type InsertMarketingWeeklyExecutiveBrief = typeof marketingWeeklyExecutiveBriefs.$inferInsert;
+
+export const marketingWeeklyExecutiveBriefEvents = mysqlTable("marketing_weekly_executive_brief_events", {
+  id: int("id").autoincrement().primaryKey(),
+  briefId: int("briefId").notNull(),
+  action: varchar("action", { length: 64 }).notNull(),
+  fromStatus: varchar("fromStatus", { length: 32 }),
+  toStatus: varchar("toStatus", { length: 32 }),
+  decision: varchar("decision", { length: 48 }),
+  note: mediumtext("note"),
+  payloadJson: mediumtext("payloadJson").notNull(),
+  actorUserId: int("actorUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, table => [
+  index("marketing_weekly_executive_brief_event_brief_idx").on(table.briefId, table.createdAt),
+  index("marketing_weekly_executive_brief_event_action_idx").on(table.action, table.createdAt),
+]);
+export type MarketingWeeklyExecutiveBriefEvent = typeof marketingWeeklyExecutiveBriefEvents.$inferSelect;
+export type InsertMarketingWeeklyExecutiveBriefEvent = typeof marketingWeeklyExecutiveBriefEvents.$inferInsert;
+
 // ─── MARKETING READY SUMMARIES ─────────────────────────────────────────────────
 export const marketingReadySummaries = mysqlTable("marketing_ready_summaries", {
   id: int("id").autoincrement().primaryKey(),

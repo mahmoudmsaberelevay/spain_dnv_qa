@@ -78,6 +78,14 @@ const tools = [
     badge: "Read-only",
   },
   {
+    icon: ClipboardCheck,
+    title: "Weekly Executive Brief & Decision Log",
+    description: "Capture a manual aggregate readiness snapshot and record Mahmoud’s internal planning decision. It cannot schedule, email, connect Meta, publish, spend, or change CRM data.",
+    href: "/marketing/weekly-executive-briefs",
+    color: "from-[#1A3A5C] to-[#5BA3B8]",
+    badge: "Manual review",
+  },
+  {
     icon: FolderOpen,
     title: "Ready Summaries",
     description: "Browse and download approved ELEVAY country and program summaries. Administrators can add or remove PDFs from the shared library.",

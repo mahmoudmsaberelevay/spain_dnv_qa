@@ -273,6 +273,7 @@ const modules = [
     items: [
       { icon: LayoutDashboard, label: "Marketing Dashboard", path: "/marketing" },
       { icon: Sparkles, label: "Agentic Marketing System", path: "/marketing/agentic-system" },
+      { icon: BarChart3, label: "Weekly Executive Briefs", path: "/marketing/weekly-executive-briefs" },
       { icon: FolderOpen, label: "Ready Summaries", path: "/marketing/ready-summaries" },
       { icon: Sparkles, label: "Summary Generator", path: "/marketing/summary-generator" },
       { icon: Mic2, label: "Arabic Voice-over", path: "/marketing/voice-over" },

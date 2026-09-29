@@ -17,6 +17,8 @@ import {
   marketingMetaAdsStrategyApprovalPackets,
   marketingMetaAdsStrategyAnswers,
   marketingMetaAdsStrategySessions,
+  marketingWeeklyExecutiveBriefEvents,
+  marketingWeeklyExecutiveBriefs,
   marketingKnowledgeClaims,
   marketingKnowledgeSources,
   marketingProviderProfiles,
@@ -109,6 +111,15 @@ import {
   EXECUTIVE_MEASUREMENT_DEFINITIONS,
   EXECUTIVE_MEASUREMENT_WINDOW_DAYS,
 } from "../shared/marketingExecutiveMeasurement";
+import {
+  findDisallowedWeeklyExecutiveBriefData,
+  isMondayPeriodStart,
+  normalizeWeeklyExecutiveBriefText,
+  statusForWeeklyExecutiveBriefDecision,
+  weeklyExecutiveBriefCanTransition,
+  weeklyExecutiveBriefKey,
+  type WeeklyExecutiveBriefStatus,
+} from "../shared/marketingExecutiveBriefs";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -200,6 +211,17 @@ const campaignPilotDecisionInput = z.object({
   proposalId: z.number().int().positive(),
   nextStatus: z.enum(["internally_approved", "changes_requested", "rejected", "stopped"]),
   ownerNote: z.string().trim().min(8).max(8_000),
+});
+
+const weeklyExecutiveBriefCaptureInput = z.object({
+  periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a Monday in YYYY-MM-DD form."),
+  contextNote: z.string().trim().max(4_000).optional(),
+});
+
+const weeklyExecutiveBriefDecisionInput = z.object({
+  briefId: z.number().int().positive(),
+  decision: z.enum(["acknowledge_blocked", "request_evidence", "hold_planning", "stop"]),
+  note: z.string().trim().min(8).max(8_000),
 });
 
 const knowledgeSourceInput = z.object({
@@ -473,6 +495,83 @@ async function requireDb() {
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Marketing System database is unavailable." });
   return db;
+}
+
+async function getPilotReadinessExecutiveData() {
+  const db = await requireDb();
+  const rows = await db.execute(sql`
+    SELECT
+      (SELECT COUNT(*) FROM ${leads}
+        WHERE ${leads.createdAt} >= UNIX_TIMESTAMP(CURRENT_TIMESTAMP - INTERVAL 90 DAY) * 1000
+          AND COALESCE(${leads.isMetaTestLead}, 0) = 0) AS rawLeads,
+      (SELECT COUNT(*) FROM ${leads}
+        WHERE ${leads.createdAt} >= UNIX_TIMESTAMP(CURRENT_TIMESTAMP - INTERVAL 90 DAY) * 1000
+          AND COALESCE(${leads.isMetaTestLead}, 0) = 0
+          AND ${leads.stage} = 'qualified') AS qualifiedLeads,
+      (SELECT COUNT(*) FROM ${leads}
+        WHERE ${leads.createdAt} >= UNIX_TIMESTAMP(CURRENT_TIMESTAMP - INTERVAL 90 DAY) * 1000
+          AND COALESCE(${leads.isMetaTestLead}, 0) = 0
+          AND ${leads.stage} = 'client') AS clientStageLeads,
+      (SELECT COUNT(*) FROM ${leads}
+        WHERE ${leads.createdAt} >= UNIX_TIMESTAMP(CURRENT_TIMESTAMP - INTERVAL 90 DAY) * 1000
+          AND COALESCE(${leads.isMetaTestLead}, 0) = 0
+          AND (COALESCE(${leads.metaCampaignId}, '') <> '' OR COALESCE(${leads.metaCampaign}, '') <> '' OR COALESCE(${leads.utmCampaign}, '') <> '')) AS attributedLeads,
+      (SELECT COUNT(*) FROM ${contracts} WHERE ${contracts.clientOrigin} = 'marketing') AS marketingOriginContracts,
+      (SELECT COUNT(*) FROM ${contracts} WHERE ${contracts.clientOrigin} = 'marketing' AND ${contracts.status} = 'signed') AS signedMarketingOriginContracts,
+      (SELECT COUNT(*) FROM ${metaCrmEventLog} WHERE COALESCE(${metaCrmEventLog.isTestLead}, 0) = 0) AS metaEventCount,
+      (SELECT COUNT(*) FROM ${metaCrmEventLog}
+        WHERE COALESCE(${metaCrmEventLog.isTestLead}, 0) = 0
+          AND ${metaCrmEventLog.status} IN ('failed', 'retrying', 'dead_letter', 'manual_review', 'approval_gated')) AS metaEventAttentionCount,
+      (SELECT ${metaMonitoringSnapshots.capturedAt} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS monitoringCapturedAt,
+      (SELECT ${metaMonitoringSnapshots.attributionCoverageBps} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS crmAttributionCoverageBps,
+      (SELECT ${metaMonitoringSnapshots.failedInboxCount} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS failedInboxCount,
+      (SELECT ${metaMonitoringSnapshots.retryInboxCount} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS retryInboxCount,
+      (SELECT ${metaMonitoringSnapshots.testLeadLeakageCount} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS testLeadLeakageCount,
+      (SELECT ${metaMonitoringSnapshots.productionSendingEnabled} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS productionSendingEnabled,
+      (SELECT ${metaReconciliationState.status} FROM ${metaReconciliationState} ORDER BY ${metaReconciliationState.updatedAt} DESC LIMIT 1) AS reconciliationStatus,
+      (SELECT ${metaReconciliationState.lastSuccessAt} FROM ${metaReconciliationState} ORDER BY ${metaReconciliationState.updatedAt} DESC LIMIT 1) AS reconciliationLastSuccessAt,
+      (SELECT COUNT(*) FROM ${marketingBrandBooks} WHERE ${marketingBrandBooks.status} = 'active') AS activeBrandBookCount,
+      (SELECT COUNT(*) FROM ${marketingMetaAdsStrategyApprovalPackets} WHERE ${marketingMetaAdsStrategyApprovalPackets.status} = 'approved') AS approvedStrategyPacketCount,
+      (SELECT COUNT(*) FROM ${marketingMetaCampaignPilotProposals} WHERE ${marketingMetaCampaignPilotProposals.status} = 'internally_approved') AS internallyApprovedPilotProposalCount
+  `);
+  const first = Array.isArray(rows) ? rows[0] : rows;
+  const aggregate = (Array.isArray(first) ? first[0] : first ?? {}) as Record<string, unknown>;
+  const numeric = (value: unknown) => {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const nullableNumber = (value: unknown) => value === null || value === undefined ? null : numeric(value);
+  const text = (value: unknown) => typeof value === "string" && value.trim() ? value : null;
+  const bool = (value: unknown) => value === true || value === 1 || value === "1";
+  const metrics = {
+    rawLeads: numeric(aggregate.rawLeads), qualifiedLeads: numeric(aggregate.qualifiedLeads),
+    clientStageLeads: numeric(aggregate.clientStageLeads), attributedLeads: numeric(aggregate.attributedLeads),
+    marketingOriginContracts: numeric(aggregate.marketingOriginContracts), signedMarketingOriginContracts: numeric(aggregate.signedMarketingOriginContracts),
+    metaEventCount: numeric(aggregate.metaEventCount), crmAttributionCoverageBps: numeric(aggregate.crmAttributionCoverageBps),
+  };
+  const controls = {
+    monitoringCapturedAt: nullableNumber(aggregate.monitoringCapturedAt), reconciliationStatus: text(aggregate.reconciliationStatus),
+    reconciliationLastSuccessAt: nullableNumber(aggregate.reconciliationLastSuccessAt), failedInboxCount: numeric(aggregate.failedInboxCount),
+    retryInboxCount: numeric(aggregate.retryInboxCount), testLeadLeakageCount: numeric(aggregate.testLeadLeakageCount),
+    productionSendingEnabled: bool(aggregate.productionSendingEnabled), metaEventAttentionCount: numeric(aggregate.metaEventAttentionCount),
+    activeBrandBookCount: numeric(aggregate.activeBrandBookCount), approvedStrategyPacketCount: numeric(aggregate.approvedStrategyPacketCount),
+    internallyApprovedPilotProposalCount: numeric(aggregate.internallyApprovedPilotProposalCount),
+  };
+  const measuredAt = Date.now();
+  const readiness = buildPilotReadiness({
+    now: measuredAt, activeBrandBookCount: controls.activeBrandBookCount, approvedStrategyPacketCount: controls.approvedStrategyPacketCount,
+    internallyApprovedPilotProposalCount: controls.internallyApprovedPilotProposalCount, monitoringCapturedAt: controls.monitoringCapturedAt,
+    reconciliationStatus: controls.reconciliationStatus, reconciliationLastSuccessAt: controls.reconciliationLastSuccessAt,
+    latestAttributionCoverageBps: metrics.crmAttributionCoverageBps, latestFailedInboxCount: controls.failedInboxCount,
+    latestRetryInboxCount: controls.retryInboxCount, latestTestLeadLeakageCount: controls.testLeadLeakageCount,
+    metaEventAttentionCount: controls.metaEventAttentionCount, pilotActualEvidenceAvailable: false, spendReconciliationAvailable: false,
+  });
+  return {
+    measuredAt, windowDays: EXECUTIVE_MEASUREMENT_WINDOW_DAYS, metrics, controls, readiness,
+    definitions: EXECUTIVE_MEASUREMENT_DEFINITIONS,
+    privacy: "Aggregate-only measurement. No client, Lead, contact, identity, financial row, campaign mutation, provider request, or external operation is returned or performed.",
+    externalOperationsEnabled: false,
+  };
 }
 
 async function getEffectiveRole(user: { id: number; openId: string | null; email?: string | null }): Promise<EffectiveMarketingSystemRole> {
@@ -2238,100 +2337,134 @@ export const marketingSystemRouter = router({
 
   getPilotReadinessExecutiveDashboard: protectedProcedure.query(async ({ ctx }) => {
     await requireCapability(ctx.user, "view_analytics");
+    return getPilotReadinessExecutiveData();
+  }),
+
+  listWeeklyExecutiveBriefs: protectedProcedure.query(async ({ ctx }) => {
+    await requireCapability(ctx.user, "view_analytics");
     const db = await requireDb();
-    const rows = await db.execute(sql`
-      SELECT
-        (SELECT COUNT(*) FROM ${leads}
-          WHERE ${leads.createdAt} >= UNIX_TIMESTAMP(CURRENT_TIMESTAMP - INTERVAL 90 DAY) * 1000
-            AND COALESCE(${leads.isMetaTestLead}, 0) = 0) AS rawLeads,
-        (SELECT COUNT(*) FROM ${leads}
-          WHERE ${leads.createdAt} >= UNIX_TIMESTAMP(CURRENT_TIMESTAMP - INTERVAL 90 DAY) * 1000
-            AND COALESCE(${leads.isMetaTestLead}, 0) = 0
-            AND ${leads.stage} = 'qualified') AS qualifiedLeads,
-        (SELECT COUNT(*) FROM ${leads}
-          WHERE ${leads.createdAt} >= UNIX_TIMESTAMP(CURRENT_TIMESTAMP - INTERVAL 90 DAY) * 1000
-            AND COALESCE(${leads.isMetaTestLead}, 0) = 0
-            AND ${leads.stage} = 'client') AS clientStageLeads,
-        (SELECT COUNT(*) FROM ${leads}
-          WHERE ${leads.createdAt} >= UNIX_TIMESTAMP(CURRENT_TIMESTAMP - INTERVAL 90 DAY) * 1000
-            AND COALESCE(${leads.isMetaTestLead}, 0) = 0
-            AND (COALESCE(${leads.metaCampaignId}, '') <> '' OR COALESCE(${leads.metaCampaign}, '') <> '' OR COALESCE(${leads.utmCampaign}, '') <> '')) AS attributedLeads,
-        (SELECT COUNT(*) FROM ${contracts} WHERE ${contracts.clientOrigin} = 'marketing') AS marketingOriginContracts,
-        (SELECT COUNT(*) FROM ${contracts} WHERE ${contracts.clientOrigin} = 'marketing' AND ${contracts.status} = 'signed') AS signedMarketingOriginContracts,
-        (SELECT COUNT(*) FROM ${metaCrmEventLog} WHERE COALESCE(${metaCrmEventLog.isTestLead}, 0) = 0) AS metaEventCount,
-        (SELECT COUNT(*) FROM ${metaCrmEventLog}
-          WHERE COALESCE(${metaCrmEventLog.isTestLead}, 0) = 0
-            AND ${metaCrmEventLog.status} IN ('failed', 'retrying', 'dead_letter', 'manual_review', 'approval_gated')) AS metaEventAttentionCount,
-        (SELECT ${metaMonitoringSnapshots.capturedAt} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS monitoringCapturedAt,
-        (SELECT ${metaMonitoringSnapshots.attributionCoverageBps} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS crmAttributionCoverageBps,
-        (SELECT ${metaMonitoringSnapshots.failedInboxCount} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS failedInboxCount,
-        (SELECT ${metaMonitoringSnapshots.retryInboxCount} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS retryInboxCount,
-        (SELECT ${metaMonitoringSnapshots.testLeadLeakageCount} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS testLeadLeakageCount,
-        (SELECT ${metaMonitoringSnapshots.productionSendingEnabled} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS productionSendingEnabled,
-        (SELECT ${metaReconciliationState.status} FROM ${metaReconciliationState} ORDER BY ${metaReconciliationState.updatedAt} DESC LIMIT 1) AS reconciliationStatus,
-        (SELECT ${metaReconciliationState.lastSuccessAt} FROM ${metaReconciliationState} ORDER BY ${metaReconciliationState.updatedAt} DESC LIMIT 1) AS reconciliationLastSuccessAt,
-        (SELECT COUNT(*) FROM ${marketingBrandBooks} WHERE ${marketingBrandBooks.status} = 'active') AS activeBrandBookCount,
-        (SELECT COUNT(*) FROM ${marketingMetaAdsStrategyApprovalPackets} WHERE ${marketingMetaAdsStrategyApprovalPackets.status} = 'approved') AS approvedStrategyPacketCount,
-        (SELECT COUNT(*) FROM ${marketingMetaCampaignPilotProposals} WHERE ${marketingMetaCampaignPilotProposals.status} = 'internally_approved') AS internallyApprovedPilotProposalCount
-    `);
-    const first = Array.isArray(rows) ? rows[0] : rows;
-    const aggregate = (Array.isArray(first) ? first[0] : first ?? {}) as Record<string, unknown>;
-    const numeric = (value: unknown) => {
-      const parsed = Number(value ?? 0);
-      return Number.isFinite(parsed) ? parsed : 0;
-    };
-    const nullableNumber = (value: unknown) => value === null || value === undefined ? null : numeric(value);
-    const text = (value: unknown) => typeof value === "string" && value.trim() ? value : null;
-    const bool = (value: unknown) => value === true || value === 1 || value === "1";
-    const metrics = {
-      rawLeads: numeric(aggregate.rawLeads),
-      qualifiedLeads: numeric(aggregate.qualifiedLeads),
-      clientStageLeads: numeric(aggregate.clientStageLeads),
-      attributedLeads: numeric(aggregate.attributedLeads),
-      marketingOriginContracts: numeric(aggregate.marketingOriginContracts),
-      signedMarketingOriginContracts: numeric(aggregate.signedMarketingOriginContracts),
-      metaEventCount: numeric(aggregate.metaEventCount),
-      crmAttributionCoverageBps: numeric(aggregate.crmAttributionCoverageBps),
-    };
-    const controls = {
-      monitoringCapturedAt: nullableNumber(aggregate.monitoringCapturedAt),
-      reconciliationStatus: text(aggregate.reconciliationStatus),
-      reconciliationLastSuccessAt: nullableNumber(aggregate.reconciliationLastSuccessAt),
-      failedInboxCount: numeric(aggregate.failedInboxCount),
-      retryInboxCount: numeric(aggregate.retryInboxCount),
-      testLeadLeakageCount: numeric(aggregate.testLeadLeakageCount),
-      productionSendingEnabled: bool(aggregate.productionSendingEnabled),
-      metaEventAttentionCount: numeric(aggregate.metaEventAttentionCount),
-      activeBrandBookCount: numeric(aggregate.activeBrandBookCount),
-      approvedStrategyPacketCount: numeric(aggregate.approvedStrategyPacketCount),
-      internallyApprovedPilotProposalCount: numeric(aggregate.internallyApprovedPilotProposalCount),
-    };
-    const measuredAt = Date.now();
-    const readiness = buildPilotReadiness({
-      now: measuredAt,
-      activeBrandBookCount: controls.activeBrandBookCount,
-      approvedStrategyPacketCount: controls.approvedStrategyPacketCount,
-      internallyApprovedPilotProposalCount: controls.internallyApprovedPilotProposalCount,
-      monitoringCapturedAt: controls.monitoringCapturedAt,
-      reconciliationStatus: controls.reconciliationStatus,
-      reconciliationLastSuccessAt: controls.reconciliationLastSuccessAt,
-      latestAttributionCoverageBps: metrics.crmAttributionCoverageBps,
-      latestFailedInboxCount: controls.failedInboxCount,
-      latestRetryInboxCount: controls.retryInboxCount,
-      latestTestLeadLeakageCount: controls.testLeadLeakageCount,
-      metaEventAttentionCount: controls.metaEventAttentionCount,
-      pilotActualEvidenceAvailable: false,
-      spendReconciliationAvailable: false,
-    });
+    const briefs = await db.select().from(marketingWeeklyExecutiveBriefs)
+      .orderBy(desc(marketingWeeklyExecutiveBriefs.periodStart), desc(marketingWeeklyExecutiveBriefs.version));
+    const events = briefs.length === 0 ? [] : await db.select().from(marketingWeeklyExecutiveBriefEvents)
+      .where(inArray(marketingWeeklyExecutiveBriefEvents.briefId, briefs.map(brief => brief.id)))
+      .orderBy(desc(marketingWeeklyExecutiveBriefEvents.createdAt));
     return {
-      measuredAt,
-      windowDays: EXECUTIVE_MEASUREMENT_WINDOW_DAYS,
-      metrics,
-      controls,
-      readiness,
-      definitions: EXECUTIVE_MEASUREMENT_DEFINITIONS,
-      privacy: "Aggregate-only measurement. No client, Lead, contact, identity, financial row, campaign mutation, provider request, or external operation is returned or performed.",
-      externalOperationsEnabled: false,
+      briefs: briefs.map(brief => ({
+        id: brief.id,
+        briefKey: brief.briefKey,
+        periodStart: brief.periodStart,
+        version: brief.version,
+        status: brief.status,
+        snapshotHash: brief.snapshotHash,
+        contextNote: brief.contextNote,
+        decision: brief.decision,
+        decisionNote: brief.decisionNote,
+        capturedAt: brief.capturedAt,
+        decidedAt: brief.decidedAt,
+        stoppedAt: brief.stoppedAt,
+        snapshot: parseJson<Record<string, unknown>>(brief.snapshotJson, {}),
+        events: events.filter(event => event.briefId === brief.id).map(event => ({
+          action: event.action,
+          fromStatus: event.fromStatus,
+          toStatus: event.toStatus,
+          decision: event.decision,
+          note: event.note,
+          payload: parseJson<Record<string, unknown>>(event.payloadJson, {}),
+          createdAt: event.createdAt,
+        })),
+      })),
+      policy: "Weekly Executive Briefs are aggregate-only internal snapshots and decisions. They cannot send messages, schedule a task, connect Meta, create or alter campaigns, spend, publish, call a provider, send CAPI, or change CRM data.",
     };
+  }),
+
+  captureWeeklyExecutiveBrief: protectedProcedure.input(weeklyExecutiveBriefCaptureInput).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    if (!isMondayPeriodStart(input.periodStart)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "The weekly period must start on a Monday and use YYYY-MM-DD." });
+    }
+    const contextNote = input.contextNote ? normalizeWeeklyExecutiveBriefText(input.contextNote) : null;
+    const unsafe = contextNote ? findDisallowedWeeklyExecutiveBriefData(contextNote) : null;
+    if (unsafe) throw new TRPCError({ code: "BAD_REQUEST", message: `Context notes cannot include ${unsafe}. Use aggregate evidence only.` });
+    const db = await requireDb();
+    const [latest] = await db.select({ version: marketingWeeklyExecutiveBriefs.version }).from(marketingWeeklyExecutiveBriefs)
+      .where(eq(marketingWeeklyExecutiveBriefs.periodStart, input.periodStart))
+      .orderBy(desc(marketingWeeklyExecutiveBriefs.version)).limit(1);
+    const version = (latest?.version ?? 0) + 1;
+    const snapshot = await getPilotReadinessExecutiveData();
+    const snapshotJson = JSON.stringify({ ...snapshot, capturedForPeriodStart: input.periodStart, externalOperationsEnabled: false });
+    const snapshotHash = crypto.createHash("sha256").update(snapshotJson).digest("hex");
+    const now = Date.now();
+    const result = await db.insert(marketingWeeklyExecutiveBriefs).values({
+      briefKey: weeklyExecutiveBriefKey(input.periodStart, version),
+      periodStart: input.periodStart,
+      version,
+      status: "captured",
+      snapshotJson,
+      snapshotHash,
+      contextNote,
+      decision: null,
+      decisionNote: null,
+      capturedByUserId: ctx.user.id,
+      capturedAt: now,
+      decidedByUserId: null,
+      decidedAt: null,
+      stoppedByUserId: null,
+      stoppedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const briefId = Number((result as { insertId?: number }).insertId);
+    await db.insert(marketingWeeklyExecutiveBriefEvents).values({
+      briefId,
+      action: "captured",
+      fromStatus: null,
+      toStatus: "captured",
+      decision: null,
+      note: contextNote,
+      payloadJson: JSON.stringify({ snapshotHash, readinessStatus: snapshot.readiness.status, externalOperationsEnabled: false }),
+      actorUserId: ctx.user.id,
+      createdAt: now,
+    });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_weekly_executive_brief", briefId, JSON.stringify({ periodStart: input.periodStart, version, snapshotHash, readinessStatus: snapshot.readiness.status }));
+    return { success: true, briefId, snapshotHash, status: "captured" as const, externalOperationsEnabled: false };
+  }),
+
+  decideWeeklyExecutiveBrief: protectedProcedure.input(weeklyExecutiveBriefDecisionInput).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    const note = normalizeWeeklyExecutiveBriefText(input.note);
+    const unsafe = findDisallowedWeeklyExecutiveBriefData(note);
+    if (unsafe) throw new TRPCError({ code: "BAD_REQUEST", message: `Decision notes cannot include ${unsafe}. Use aggregate evidence only.` });
+    const db = await requireDb();
+    const [brief] = await db.select().from(marketingWeeklyExecutiveBriefs)
+      .where(eq(marketingWeeklyExecutiveBriefs.id, input.briefId)).limit(1);
+    if (!brief) throw new TRPCError({ code: "NOT_FOUND", message: "Weekly Executive Brief not found." });
+    const nextStatus = statusForWeeklyExecutiveBriefDecision(input.decision);
+    if (!weeklyExecutiveBriefCanTransition(brief.status as WeeklyExecutiveBriefStatus, nextStatus)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "This Executive Brief is already terminal or cannot take that decision." });
+    }
+    const now = Date.now();
+    await db.update(marketingWeeklyExecutiveBriefs).set({
+      status: nextStatus,
+      decision: input.decision,
+      decisionNote: note,
+      decidedByUserId: ctx.user.id,
+      decidedAt: now,
+      stoppedByUserId: nextStatus === "stopped" ? ctx.user.id : brief.stoppedByUserId,
+      stoppedAt: nextStatus === "stopped" ? now : brief.stoppedAt,
+      updatedAt: now,
+    }).where(eq(marketingWeeklyExecutiveBriefs.id, brief.id));
+    await db.insert(marketingWeeklyExecutiveBriefEvents).values({
+      briefId: brief.id,
+      action: input.decision,
+      fromStatus: brief.status,
+      toStatus: nextStatus,
+      decision: input.decision,
+      note,
+      payloadJson: JSON.stringify({ snapshotHash: brief.snapshotHash, explicitOwnerDecision: true, externalOperationsEnabled: false }),
+      actorUserId: ctx.user.id,
+      createdAt: now,
+    });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_executive_brief_decision", brief.id, JSON.stringify({ briefKey: brief.briefKey, fromStatus: brief.status, toStatus: nextStatus, decision: input.decision, snapshotHash: brief.snapshotHash }));
+    return { success: true, status: nextStatus, externalOperationsEnabled: false };
   }),
 });

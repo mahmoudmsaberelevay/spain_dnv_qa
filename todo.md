@@ -71,3 +71,15 @@
 - [x] Add responsive desktop/mobile navigation and Agentic Marketing System hub access at `/marketing/pilot-readiness`.
 - [x] Validate through focused safety regressions, production build, direct protected aggregate-query check, TypeScript baseline review, and diff hygiene.
 - [x] Save final checkpoint.
+
+## Agentic Marketing System — Weekly Executive Brief & Decision Log
+
+- [x] Implemented a manual, owner-controlled weekly aggregate snapshot for Monday-start review periods.
+- [x] Added SHA-256 snapshot hashing, versioned records, and append-only capture/decision events.
+- [x] Recomputed evidence server-side from existing aggregate Pilot Readiness data; browser metrics are never accepted.
+- [x] Restricted snapshot capture and decisions to Mahmoud; retained read-only aggregate history for existing analytics roles.
+- [x] Added privacy filters for email, telephone, passport/national-ID, client-code, client, and Lead references in notes.
+- [x] Added protected desktop, mobile, Marketing dashboard, and Agentic Marketing System hub navigation.
+- [x] Applied reviewed additive migration `0098_agentic_marketing_weekly_executive_briefs.sql`; no test data was created.
+- [x] Verified zero records in both new tables, 21 focused regressions, production build, TypeScript changed-file baseline review, protected-route handling, and diff hygiene.
+- [x] Documented the strict no-schedule, no-email, no-Meta, no-provider, no-publish, no-CAPI, no-spend, and no-CRM-mutation boundary.

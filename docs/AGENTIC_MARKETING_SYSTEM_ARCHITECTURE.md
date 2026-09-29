@@ -1,7 +1,7 @@
 # ELEVAY Agentic Marketing System — Architecture Decision Record
 
 **Date:** 29 September 2026
-**Status:** Phases 0–4 and the Meta Ads Strategy Intake prerequisite are complete in controlled internal-only mode; provider execution, publishing, campaign mutation, and spend remain locked
+**Status:** Phases 0–4, paid-media planning, pilot proposal, readiness measurement, and manual executive review are complete in controlled internal-only mode; provider execution, publishing, campaign mutation, and spend remain locked
 **Scope:** Existing `elevay.vip` CRM; no replacement CRM, no local client database, no automatic publishing or paid-media execution.
 
 ## 1. Decision summary
@@ -99,8 +99,9 @@ A Brand Book can be proposed only once all 35 questions are answered and no answ
 | 3 | Work-order engine, immutable artifacts, cost ledger and zero-cost dry runs | Complete as a control plane. Provider execution remains excluded pending a later explicit approval. |
 | 4 | Content Studio, QA and Approval Inbox with final previews | Complete as a manual evidence-and-approval control plane; it cannot generate, render, publish, schedule, campaign-mutate, or spend. |
 | 5a | Meta Ads Strategy Intake, 66-question planning interview, evidence and data-gap tracking | Complete as a planning-only prerequisite; no strategy is approved and no Meta access, campaign, budget or spend path exists. |
-| 5b | Meta Campaign Operations, CRM attribution, budget ledger and measurement pilot | Requires completed/approved Strategy Intake, Meta permissions and explicit spend caps. |
-| 6 | Controlled optimisation and weekly executive reporting | Requires proven pilot attribution, reconciliation and rollback evidence. |
+| 5b | Campaign Pilot Proposal, aggregate CRM attribution and pilot guardrails | Complete as an internal-only decision record. Meta permissions, campaign operations and spend remain absent. |
+| 6 | Pilot Readiness and Executive Measurement | Complete as a read-only aggregate dashboard. Actual-pilot attribution, reconciliation, rollback and spend evidence remain required. |
+| 7 | Weekly Executive Brief and Decision Log | Complete as a manual aggregate snapshot and owner-decision trail. It has no scheduler, email, external connection or operating action. |
 
 ## 8. Phase 1 acceptance record
 
@@ -279,3 +280,12 @@ The Strategy Approval Packet is an **owner-only planning record**, not a campaig
 - Converts missing prerequisites, stale monitoring, queue exceptions, test-lead leakage, unavailable actual pilot attribution, and unavailable spend reconciliation into visible **blocked** or **attention** gates.
 - Deliberately reports `externalOperationsEnabled: false`; it has no mutation, scheduled task, provider request, Meta connection, campaign, CAPI, publishing, payment, budget, Lead, or CRM-write capability.
 - The dashboard is a readiness prerequisite, not permission to optimise. Actual-pilot attribution/rollback evidence and spend reconciliation remain false until a separate, expressly approved real pilot exists.
+
+
+## Weekly Executive Brief and Decision Log decision
+
+**Decision:** add a protected weekly aggregate snapshot and owner decision trail after Pilot Readiness, while keeping all operating pathways locked.
+
+The implementation reads the existing aggregate Pilot Readiness calculation on the server and stores a versioned SHA-256 snapshot for a manually selected Monday-start review period. It preserves capture and decision events separately. Mahmoud can acknowledge the planning-only state, request more aggregate evidence, hold planning, or stop a brief. These decisions do not authorize execution.
+
+The review record rejects client, Lead, identity, contact, and financial-row details. Analysts may read aggregate history through the existing analytics capability. Only Mahmoud can capture or decide. There is no schedule, email, notification, provider call, Meta connection, campaign mutation, CAPI event, publication, budget, spend, payment, message, or CRM-write path.
