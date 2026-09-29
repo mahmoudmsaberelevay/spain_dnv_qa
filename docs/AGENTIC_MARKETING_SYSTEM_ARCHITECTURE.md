@@ -229,4 +229,29 @@ The blueprint’s exact **66-question Meta Ads Strategy Intake** is implemented 
 - [x] Owner-only one-question UI, save/resume, Back/Edit, evidence attachment, unknown-gap deadline and versioned reset controls.
 - [x] Additive session and answer schema applied empty; no existing CRM, Leads, Meta webhook, CAPI, contract or financial record changed.
 - [x] No Meta connector, credentials, ad account access, campaign operation, budget/spend ledger, provider execution, publication, CAPI change, message or payment route exists in this intake.
-- [ ] Mahmoud completes the interview, confirms program-specific variations and explicitly approves a separate Strategy Approval Packet before any campaign-operation proposal.
+- [x] Separate Strategy Approval Packet gate implemented: explicit Spain DNV and Malta MPRP confirmations, active Brand Book linkage, source-answer hash lock and Mahmoud-only planning approval.
+
+## 13. Meta Ads Strategy Approval Packet decision
+
+The Strategy Approval Packet is an **owner-only planning record**, not a campaign or integration. It converts a complete 66-question company interview plus explicitly confirmed Spain DNV and Malta MPRP variations into a deterministic, hash-locked decision record. It does not itself authorize a Meta connection or advertising operation.
+
+| Record | Purpose | Guardrail |
+|---|---|---|
+| `marketing_meta_ads_strategy_approval_packets` | Versioned packet snapshot of current company answers, the program-specific variations, active Brand Book, source-answer hash, packet hash and Mahmoud’s decision note | No credential, ad account, audience, campaign, ad set, ad, budget, spend, payment, provider, CAPI or CRM operation is represented or triggered. |
+
+### Packet lifecycle and hard boundaries
+
+1. The company interview must contain all 66 answers with no `Unknown` gap, and an active Brand Book must exist.
+2. Mahmoud then confirms or corrects the required programme-dependent answers for **Spain Digital Nomad Residency** and **Malta Permanent Residence Programme**. Those answers remain separate from the company reference answer.
+3. The server snapshots every current answer, computes a SHA-256 source-answer hash and packet hash, then stores a `proposed` planning packet.
+4. Mahmoud alone can approve a proposed packet with an explicit decision note. Approval re-checks the active Brand Book and source-answer hash; any changed source invalidates the packet and requires a fresh proposal.
+5. Approval marks only the internal strategy planning version as approved. It cannot connect Meta, request permissions, create/modify campaigns, access data, create a budget, reserve spend, emit CAPI, publish media, contact a Lead/client or schedule any operation.
+
+### Phase 5a acceptance record
+
+- [x] Additive packet schema applied empty; no existing CRM, Meta, Marketing, Contracting, Financial or Client record changed.
+- [x] Active Brand Book, completed no-gap company interview and all required Spain DNV/Malta MPRP confirmation gates enforce packet readiness.
+- [x] Immutable source-answer and packet hashes are computed; approval revalidates the current snapshot before recording the owner decision.
+- [x] Protected responsive packet workspace is available on desktop and mobile Marketing navigation.
+- [x] Focused regressions, production build, TypeScript changed-file review, protected-route verification and diff hygiene completed before checkpointing.
+- [ ] Mahmoud must complete the interview/confirm programme variations and explicitly approve a packet. A separate Phase 5b proposal remains required before Meta authorization, campaign operations, budget or spend can be considered.

@@ -11,6 +11,7 @@ import {
   marketingContentApprovalBatches,
   marketingContentPackets,
   marketingContentReviewEvents,
+  marketingMetaAdsStrategyApprovalPackets,
   marketingMetaAdsStrategyAnswers,
   marketingMetaAdsStrategySessions,
   marketingKnowledgeClaims,
@@ -81,6 +82,8 @@ import {
   getMetaAdsStrategyQuestion,
   isMetaAdsStrategyComplete,
   META_ADS_STRATEGY_QUESTIONS,
+  META_ADS_STRATEGY_PROGRAM_CONFIRMATION_QUESTION_NUMBERS,
+  META_ADS_STRATEGY_REQUIRED_PROGRAMS,
   META_ADS_STRATEGY_SECTIONS,
   META_ADS_STRATEGY_TOTAL_QUESTIONS,
 } from "../shared/marketingMetaAdsStrategy";
@@ -130,6 +133,15 @@ const metaStrategyAnswerInput = z.object({
   if (value.decisionStatus === "unknown" && !value.gapDueAt) {
     ctx.addIssue({ code: "custom", path: ["gapDueAt"], message: "An unknown answer must have an owner follow-up deadline." });
   }
+});
+
+const metaStrategyProgramAnswerInput = metaStrategyAnswerInput.safeExtend({
+  programKey: z.enum(META_ADS_STRATEGY_REQUIRED_PROGRAMS.map(program => program.key) as [string, ...string[]]),
+});
+
+const metaStrategyPacketDecisionInput = z.object({
+  packetId: z.number().int().positive(),
+  ownerNote: z.string().trim().min(8).max(8_000),
 });
 
 const knowledgeSourceInput = z.object({
@@ -222,6 +234,10 @@ function workOrderKey() {
 
 function contentPacketKey() {
   return `mcp-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 10)}`;
+}
+
+function metaStrategyPacketKey() {
+  return `masp-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 10)}`;
 }
 
 async function appendWorkOrderEvent(input: {
@@ -552,6 +568,53 @@ function presentMetaStrategySession(record: Awaited<ReturnType<typeof getMetaStr
   };
 }
 
+async function getMetaStrategyPacketReadiness(sessionId: number) {
+  const db = await requireDb();
+  const companyRecord = await getMetaStrategySessionWithAnswers(sessionId);
+  const allAnswers = await db.select().from(marketingMetaAdsStrategyAnswers)
+    .where(eq(marketingMetaAdsStrategyAnswers.sessionId, sessionId))
+    .orderBy(marketingMetaAdsStrategyAnswers.questionNumber);
+  const companyAnswers = companyRecord.answers;
+  const missingCompanyQuestions = META_ADS_STRATEGY_QUESTIONS
+    .filter(question => !companyAnswers.some(answer => answer.questionNumber === question.number))
+    .map(question => question.number);
+  const unknownCompanyQuestions = companyAnswers.filter(answer => answer.decisionStatus === "unknown").map(answer => answer.questionNumber);
+  const programReadiness = META_ADS_STRATEGY_REQUIRED_PROGRAMS.map(program => {
+    const answers = allAnswers.filter(answer => answer.scopeType === "program" && answer.programKey === program.key);
+    const missingQuestions = META_ADS_STRATEGY_PROGRAM_CONFIRMATION_QUESTION_NUMBERS
+      .filter(questionNumber => !answers.some(answer => answer.questionNumber === questionNumber));
+    const unknownQuestions = answers.filter(answer => answer.decisionStatus === "unknown").map(answer => answer.questionNumber);
+    return { ...program, answeredCount: answers.length, requiredCount: META_ADS_STRATEGY_PROGRAM_CONFIRMATION_QUESTION_NUMBERS.length, missingQuestions, unknownQuestions, isReady: missingQuestions.length === 0 && unknownQuestions.length === 0 };
+  });
+  const activeBrandBook = await getActiveBrandBookForWorkOrder();
+  return {
+    session: companyRecord.session,
+    companyAnswers,
+    allAnswers,
+    activeBrandBook,
+    companyComplete: missingCompanyQuestions.length === 0 && unknownCompanyQuestions.length === 0,
+    missingCompanyQuestions,
+    unknownCompanyQuestions,
+    programReadiness,
+    isReady: Boolean(activeBrandBook) && missingCompanyQuestions.length === 0 && unknownCompanyQuestions.length === 0 && programReadiness.every(program => program.isReady),
+  };
+}
+
+function strategyAnswerSnapshot(answer: typeof marketingMetaAdsStrategyAnswers.$inferSelect) {
+  return {
+    questionNumber: answer.questionNumber,
+    scopeType: answer.scopeType,
+    programKey: answer.programKey,
+    answerText: answer.answerText,
+    normalizedFields: parseJson<Record<string, unknown>>(answer.normalizedJson, {}),
+    attachments: parseJson<Array<{ label: string; url: string }>>(answer.attachmentsJson, []),
+    decisionStatus: answer.decisionStatus,
+    gapDueAt: answer.gapDueAt,
+    answeredByUserId: answer.answeredByUserId,
+    updatedAt: answer.updatedAt,
+  };
+}
+
 export const marketingSystemRouter = router({
   access: protectedProcedure.query(async ({ ctx }) => {
     const role = await getEffectiveRole(ctx.user);
@@ -672,6 +735,130 @@ export const marketingSystemRouter = router({
     await db.update(marketingMetaAdsStrategySessions).set({ currentQuestionNumber: nextQuestionNumber, updatedAt: now }).where(eq(marketingMetaAdsStrategySessions.id, sessionId));
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_meta_ads_strategy_reset", sessionId, JSON.stringify({ scope: input.scope, sourceSessionId: current?.id ?? null }));
     return presentMetaStrategySession(await getMetaStrategySessionWithAnswers(sessionId));
+  }),
+
+  getMetaAdsStrategyPacketWorkspace: protectedProcedure.query(async ({ ctx }) => {
+    await requireOwner(ctx.user);
+    const db = await requireDb();
+    const [current] = await db.select().from(marketingMetaAdsStrategySessions)
+      .where(inArray(marketingMetaAdsStrategySessions.status, ["in_progress", "proposed", "approved"]))
+      .orderBy(desc(marketingMetaAdsStrategySessions.version)).limit(1);
+    if (!current) return { readiness: null, packets: [] };
+    const readiness = await getMetaStrategyPacketReadiness(current.id);
+    const packets = await db.select().from(marketingMetaAdsStrategyApprovalPackets)
+      .where(eq(marketingMetaAdsStrategyApprovalPackets.strategySessionId, current.id))
+      .orderBy(desc(marketingMetaAdsStrategyApprovalPackets.version));
+    return { readiness: { ...readiness, companyAnswers: readiness.companyAnswers.map(strategyAnswerSnapshot), allAnswers: readiness.allAnswers.map(strategyAnswerSnapshot) }, packets: packets.map(packet => ({ ...packet, payload: parseJson<Record<string, unknown>>(packet.packetPayloadJson, {}) })) };
+  }),
+
+  saveMetaAdsStrategyProgramConfirmation: protectedProcedure.input(metaStrategyProgramAnswerInput).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    if (!(META_ADS_STRATEGY_PROGRAM_CONFIRMATION_QUESTION_NUMBERS as readonly number[]).includes(input.questionNumber)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "This question does not require a program-specific confirmation." });
+    }
+    const db = await requireDb();
+    const { session, answers } = await getMetaStrategySessionWithAnswers(input.sessionId);
+    if (!isMetaAdsStrategyComplete(answers.map(answer => answer.questionNumber))) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Complete the company-wide 66-question interview before confirming programme-specific answers." });
+    }
+    const companyAnswer = answers.find(answer => answer.questionNumber === input.questionNumber);
+    if (!companyAnswer || companyAnswer.decisionStatus === "unknown") throw new TRPCError({ code: "BAD_REQUEST", message: "Resolve the company answer before confirming this programme variation." });
+    if (session.status === "approved") throw new TRPCError({ code: "BAD_REQUEST", message: "A revised strategy packet is required before changing an approved strategy confirmation." });
+    const now = Date.now();
+    await db.insert(marketingMetaAdsStrategyAnswers).values({
+      sessionId: input.sessionId,
+      questionNumber: input.questionNumber,
+      scopeType: "program",
+      programKey: input.programKey,
+      answerText: input.answerText,
+      normalizedJson: JSON.stringify(input.normalizedFields ?? {}),
+      attachmentsJson: JSON.stringify(input.attachments),
+      decisionStatus: input.decisionStatus,
+      gapOwnerUserId: input.decisionStatus === "unknown" ? ctx.user.id : null,
+      gapDueAt: input.decisionStatus === "unknown" ? input.gapDueAt! : null,
+      answeredByUserId: ctx.user.id,
+      createdAt: now,
+      updatedAt: now,
+    }).onDuplicateKeyUpdate({ set: {
+      answerText: input.answerText,
+      normalizedJson: JSON.stringify(input.normalizedFields ?? {}),
+      attachmentsJson: JSON.stringify(input.attachments),
+      decisionStatus: input.decisionStatus,
+      gapOwnerUserId: input.decisionStatus === "unknown" ? ctx.user.id : null,
+      gapDueAt: input.decisionStatus === "unknown" ? input.gapDueAt! : null,
+      answeredByUserId: ctx.user.id,
+      updatedAt: now,
+    }});
+    await db.update(marketingMetaAdsStrategySessions).set({ updatedAt: now }).where(eq(marketingMetaAdsStrategySessions.id, input.sessionId));
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_meta_ads_strategy_program_confirmation", `${input.sessionId}:${input.programKey}:${input.questionNumber}`, JSON.stringify({ programKey: input.programKey, questionNumber: input.questionNumber, decisionStatus: input.decisionStatus }));
+    return getMetaStrategyPacketReadiness(input.sessionId);
+  }),
+
+  proposeMetaAdsStrategyPacket: protectedProcedure.input(z.object({ sessionId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    const db = await requireDb();
+    const readiness = await getMetaStrategyPacketReadiness(input.sessionId);
+    if (!readiness.isReady || !readiness.activeBrandBook) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "The Strategy Approval Packet requires a current active Brand Book, complete company answers with no Unknown gaps, and confirmed Spain DNV and Malta MPRP programme variations." });
+    }
+    if (readiness.session.status === "approved") throw new TRPCError({ code: "BAD_REQUEST", message: "This strategy version is already approved. Reset the relevant scope before proposing a revised version." });
+    const sourceAnswers = readiness.allAnswers.map(strategyAnswerSnapshot);
+    const sourceAnswerHash = crypto.createHash("sha256").update(JSON.stringify(sourceAnswers)).digest("hex");
+    const payload = {
+      title: `ELEVAY Meta Ads Strategy Approval Packet v${readiness.session.version}`,
+      strategySessionId: readiness.session.id,
+      strategySessionVersion: readiness.session.version,
+      brandBook: { id: readiness.activeBrandBook.id, version: readiness.activeBrandBook.version, hash: readiness.activeBrandBook.contentHash },
+      requiredProgramConfirmations: readiness.programReadiness.map(program => ({ programKey: program.key, programLabel: program.label, confirmedQuestions: program.requiredCount })),
+      sourceAnswerHash,
+      assumptions: sourceAnswers,
+      risks: ["No campaign, budget, spend, permission, provider, CAPI, publication or measurement-pilot action is authorized by this packet."],
+      unresolvedAnswers: [],
+      approvalScope: "Planning strategy only. A separate Phase 5b proposal and explicit spend cap are required before campaign operations can be considered.",
+    };
+    const packetPayloadJson = JSON.stringify(payload);
+    const packetHash = crypto.createHash("sha256").update(packetPayloadJson).digest("hex");
+    const [latest] = await db.select({ version: marketingMetaAdsStrategyApprovalPackets.version }).from(marketingMetaAdsStrategyApprovalPackets).orderBy(desc(marketingMetaAdsStrategyApprovalPackets.version)).limit(1);
+    const now = Date.now();
+    const result = await db.insert(marketingMetaAdsStrategyApprovalPackets).values({
+      packetKey: metaStrategyPacketKey(),
+      version: (latest?.version ?? 0) + 1,
+      strategySessionId: readiness.session.id,
+      brandBookId: readiness.activeBrandBook.id,
+      status: "proposed",
+      packetPayloadJson,
+      packetHash,
+      sourceAnswerHash,
+      ownerNote: null,
+      createdByUserId: ctx.user.id,
+      proposedAt: now,
+      decidedByUserId: null,
+      decidedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const packetId = Number((result as { insertId?: number }).insertId);
+    await db.update(marketingMetaAdsStrategySessions).set({ status: "proposed", proposedAt: now, updatedAt: now }).where(eq(marketingMetaAdsStrategySessions.id, readiness.session.id));
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_meta_ads_strategy_approval_packet", packetId, JSON.stringify({ strategySessionId: readiness.session.id, packetHash, sourceAnswerHash, brandBookVersion: readiness.activeBrandBook.version }));
+    return { packetId, packetHash, status: "proposed" as const };
+  }),
+
+  approveMetaAdsStrategyPacket: protectedProcedure.input(metaStrategyPacketDecisionInput).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    const db = await requireDb();
+    const [packet] = await db.select().from(marketingMetaAdsStrategyApprovalPackets).where(eq(marketingMetaAdsStrategyApprovalPackets.id, input.packetId)).limit(1);
+    if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Strategy Approval Packet not found." });
+    if (packet.status !== "proposed") throw new TRPCError({ code: "BAD_REQUEST", message: "Only a proposed Strategy Approval Packet can be approved." });
+    const readiness = await getMetaStrategyPacketReadiness(packet.strategySessionId);
+    const currentSourceHash = crypto.createHash("sha256").update(JSON.stringify(readiness.allAnswers.map(strategyAnswerSnapshot))).digest("hex");
+    if (!readiness.isReady || currentSourceHash !== packet.sourceAnswerHash || !readiness.activeBrandBook || readiness.activeBrandBook.id !== packet.brandBookId) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "The intake answers, programme confirmations, or active Brand Book changed. Create a fresh Strategy Approval Packet for review." });
+    }
+    const now = Date.now();
+    await db.update(marketingMetaAdsStrategyApprovalPackets).set({ status: "approved", ownerNote: input.ownerNote, decidedByUserId: ctx.user.id, decidedAt: now, updatedAt: now }).where(eq(marketingMetaAdsStrategyApprovalPackets.id, packet.id));
+    await db.update(marketingMetaAdsStrategySessions).set({ status: "approved", approvedAt: now, approvedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingMetaAdsStrategySessions.id, packet.strategySessionId));
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_meta_ads_strategy_approval_packet", packet.id, JSON.stringify({ decision: "approved", packetHash: packet.packetHash, ownerNoteLength: input.ownerNote.length, noCampaignActivation: true }));
+    return { id: packet.id, status: "approved" as const, approvedAt: now };
   }),
 
   getBrandBooks: protectedProcedure.query(async ({ ctx }) => {

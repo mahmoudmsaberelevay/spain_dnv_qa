@@ -21,3 +21,16 @@
 - [x] Recorded the privacy-safe implementation and updated the architecture decision record.
 
 > **Next gate (not part of this completed intake scope):** Mahmoud must complete company answers, confirm program-specific Spain DNV and Malta MPRP variations, and explicitly approve a separate Strategy Approval Packet before any Phase 5b campaign-operation, Meta permission, budget, spend or pilot proposal can be considered.
+
+## Agentic Marketing System — Strategy Approval Packet (Phase 5a)
+
+- [x] Added a separate additive, owner-only Meta Ads Strategy Approval Packet control-plane table.
+- [x] Required active Brand Book, all 66 company answers with no Unknown gaps, and explicit Spain DNV/Malta MPRP program confirmations before a packet can be proposed.
+- [x] Preserved company answers as the reference; program-specific confirmations do not overwrite them.
+- [x] Added deterministic source-answer and packet SHA-256 hashes, revalidation at approval, versioned packets and explicit owner decision notes.
+- [x] Added protected desktop/mobile packet workspace with readiness blockers, confirmation controls and deliberate planning-only approval.
+- [x] Verified the new table was created empty; no commercial, CRM, Meta, CAPI, campaign, payment, provider or message action occurred.
+- [x] Passed 42 focused Marketing System regressions, production build, changed-file diagnostic review, unauthenticated protected-route validation and diff hygiene.
+- [x] Recorded the privacy-safe validation and architecture decision.
+
+> **Next gate (not part of Phase 5a):** Complete the interview, confirm both program variations and approve a packet. Only then may a separate Phase 5b proposal be prepared for review; it must disclose exact Meta permissions, measurement pilot, budget/spend cap, rollback and monitoring before any external action is considered.

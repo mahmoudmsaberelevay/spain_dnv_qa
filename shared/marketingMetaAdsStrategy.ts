@@ -89,6 +89,28 @@ export const META_ADS_STRATEGY_QUESTIONS = prompts.map((prompt, index) => {
 
 export const META_ADS_STRATEGY_TOTAL_QUESTIONS = META_ADS_STRATEGY_QUESTIONS.length;
 
+// These questions carry program, market, offer, qualification, capacity, campaign-history,
+// CAC or 30/60/90-day assumptions. After the company interview, Mahmoud must explicitly
+// confirm or correct them separately for Spain DNV and Malta MPRP before a strategy packet
+// can be proposed. Company answers remain the source reference and are never overwritten.
+export const META_ADS_STRATEGY_PROGRAM_CONFIRMATION_QUESTION_NUMBERS = [
+  1, 2, 3, 5, 7,
+  8, 9, 10, 11, 12, 13, 14, 15, 16,
+  17, 18, 19, 20, 22, 23,
+  24, 25, 26, 27, 28, 29, 30, 31,
+  35, 37, 38,
+  41, 42, 46, 47, 48,
+  57, 58, 60, 61,
+  62, 65,
+] as const;
+
+export const META_ADS_STRATEGY_REQUIRED_PROGRAMS = [
+  { key: "spain_dnv", label: "Spain Digital Nomad Residency" },
+  { key: "malta_mprp", label: "Malta Permanent Residence Programme" },
+] as const;
+
+export type MetaAdsStrategyRequiredProgramKey = (typeof META_ADS_STRATEGY_REQUIRED_PROGRAMS)[number]["key"];
+
 export function getMetaAdsStrategyQuestion(questionNumber: number) {
   const question = META_ADS_STRATEGY_QUESTIONS[questionNumber - 1];
   if (!question) throw new Error(`Unknown Meta Ads Strategy question ${questionNumber}`);

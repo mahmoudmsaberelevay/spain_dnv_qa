@@ -57,6 +57,7 @@ import {
   Bot,
   Image,
   ClipboardCheck,
+  FileCheck2,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -166,6 +167,7 @@ export const MOBILE_SIDEBAR_MODULES = [
       { icon: ClipboardCheck, label: "Work Orders", path: "/marketing/work-orders" },
       { icon: ClipboardCheck, label: "Content Studio", path: "/marketing/content-studio" },
       { icon: Target, label: "Meta Ads Strategy Intake", path: "/marketing/meta-ads-strategy" },
+      { icon: FileCheck2, label: "Strategy Approval Packet", path: "/marketing/meta-ads-strategy-packet" },
       { icon: FolderOpen, label: "Ready Summaries", path: "/marketing/ready-summaries" },
       { icon: Sparkles, label: "Summary Generator", path: "/marketing/summary-generator" },
       { icon: Mic2, label: "Arabic Voice-over", path: "/marketing/voice-over" },

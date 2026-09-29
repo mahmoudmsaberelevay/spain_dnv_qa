@@ -86,6 +86,7 @@ import KnowledgeLibrary from "./pages/marketing/KnowledgeLibrary";
 import WorkOrders from "./pages/marketing/WorkOrders";
 import ContentStudio from "./pages/marketing/ContentStudio";
 import MetaAdsStrategyIntake from "./pages/marketing/MetaAdsStrategyIntake";
+import MetaAdsStrategyPacket from "./pages/marketing/MetaAdsStrategyPacket";
 
 // ─── Reports Module ─────────────────────────────────────────────────────────────
 import Reports from "./pages/Reports";
@@ -359,6 +360,9 @@ function Router() {
       </Route>
       <Route path="/marketing/meta-ads-strategy">
         <MobileRoute><MetaAdsStrategyIntake /></MobileRoute>
+      </Route>
+      <Route path="/marketing/meta-ads-strategy-packet">
+        <MobileRoute><MetaAdsStrategyPacket /></MobileRoute>
       </Route>
       <Route path="/marketing/summary-generator">
         <MobileRoute><SummaryGenerator /></MobileRoute>

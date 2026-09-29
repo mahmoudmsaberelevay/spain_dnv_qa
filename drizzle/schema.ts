@@ -2677,6 +2677,34 @@ export const marketingMetaAdsStrategyAnswers = mysqlTable("marketing_meta_ads_st
 export type MarketingMetaAdsStrategyAnswer = typeof marketingMetaAdsStrategyAnswers.$inferSelect;
 export type InsertMarketingMetaAdsStrategyAnswer = typeof marketingMetaAdsStrategyAnswers.$inferInsert;
 
+// A strategy packet is a human-reviewed snapshot of a completed intake and approved
+// Brand Book. It is deliberately not a Meta campaign, budget, ad account or payment record.
+export const marketingMetaAdsStrategyApprovalPackets = mysqlTable("marketing_meta_ads_strategy_approval_packets", {
+  id: int("id").autoincrement().primaryKey(),
+  packetKey: varchar("packetKey", { length: 96 }).notNull(),
+  version: int("version").notNull(),
+  strategySessionId: int("strategySessionId").notNull(),
+  brandBookId: int("brandBookId").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("proposed"),
+  packetPayloadJson: mediumtext("packetPayloadJson").notNull(),
+  packetHash: varchar("packetHash", { length: 64 }).notNull(),
+  sourceAnswerHash: varchar("sourceAnswerHash", { length: 64 }).notNull(),
+  ownerNote: mediumtext("ownerNote"),
+  createdByUserId: int("createdByUserId").notNull(),
+  proposedAt: bigint("proposedAt", { mode: "number" }).notNull(),
+  decidedByUserId: int("decidedByUserId"),
+  decidedAt: bigint("decidedAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_meta_ads_strategy_packet_key_unique").on(table.packetKey),
+  uniqueIndex("marketing_meta_ads_strategy_packet_version_unique").on(table.version),
+  index("marketing_meta_ads_strategy_packet_session_idx").on(table.strategySessionId, table.status),
+  index("marketing_meta_ads_strategy_packet_status_idx").on(table.status, table.updatedAt),
+]);
+export type MarketingMetaAdsStrategyApprovalPacket = typeof marketingMetaAdsStrategyApprovalPackets.$inferSelect;
+export type InsertMarketingMetaAdsStrategyApprovalPacket = typeof marketingMetaAdsStrategyApprovalPackets.$inferInsert;
+
 // ─── MARKETING READY SUMMARIES ─────────────────────────────────────────────────
 export const marketingReadySummaries = mysqlTable("marketing_ready_summaries", {
   id: int("id").autoincrement().primaryKey(),

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle, MailWarning, Loader2, ClipboardCheck, FilePenLine, Target } from "lucide-react";
+import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle, MailWarning, Loader2, ClipboardCheck, FilePenLine, FileCheck2, Target } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 
@@ -44,6 +44,14 @@ const tools = [
     href: "/marketing/meta-ads-strategy",
     color: "from-[#C9A84C] to-[#1A3A5C]",
     badge: "Planning gate",
+  },
+  {
+    icon: FileCheck2,
+    title: "Strategy Approval Packet",
+    description: "Confirm Spain DNV and Malta MPRP variations, inspect blockers, and record the hash-locked owner strategy decision. Meta access, campaigns, and spend remain unavailable.",
+    href: "/marketing/meta-ads-strategy-packet",
+    color: "from-[#1A3A5C] to-[#C9A84C]",
+    badge: "Owner gate",
   },
   {
     icon: FolderOpen,
