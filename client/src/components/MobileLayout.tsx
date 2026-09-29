@@ -164,6 +164,8 @@ export const MOBILE_SIDEBAR_MODULES = [
     icon: Megaphone,
     items: [
       { icon: LayoutDashboard, label: "Marketing Dashboard", path: "/marketing" },
+      { icon: SettingsIcon, label: "1. Setup", path: "/marketing/weekly-results?view=setup" },
+      { icon: CalendarClock, label: "2. Weekly Results", path: "/marketing/weekly-results" },
       { icon: Sparkles, label: "AI Agentic Marketing System", path: "/marketing/agentic-system" },
       { icon: PlugZap, label: "Provider Connection Center", path: "/marketing/provider-connections" },
       { icon: Sparkles, label: "Brand Studio", path: "/marketing/brand-studio" },
@@ -533,6 +535,8 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
               <div className="mb-3 border-b border-border/50 pb-3">
                 <p className="px-4 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Marketing shortcuts</p>
                 {[
+                  { label: "1. Setup", icon: SettingsIcon, path: "/marketing/weekly-results?view=setup" },
+                  { label: "2. Weekly Results", icon: CalendarClock, path: "/marketing/weekly-results" },
                   { label: "Brand Studio", icon: Sparkles, path: "/marketing/brand-studio" },
                   { label: "Knowledge Library", icon: BookOpen, path: "/marketing/knowledge-library" },
                   { label: "Work Orders", icon: ClipboardCheck, path: "/marketing/work-orders" },

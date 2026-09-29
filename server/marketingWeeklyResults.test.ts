@@ -1,0 +1,90 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  DEFAULT_WEEKLY_CONTENT_MIX,
+  findDisallowedWeeklyResultsData,
+  isSaturdayDate,
+  isValidCairoClockTime,
+  WEEKLY_RESULTS_EXECUTION_BOUNDARY,
+  weeklyResultsItemCanTransition,
+} from "../shared/marketingWeeklyResults";
+
+const root = resolve(import.meta.dirname, "..");
+const read = (path: string) => readFileSync(resolve(root, path), "utf8");
+
+describe("Weekly Results shared policy", () => {
+  it("uses Cairo-time controls and validates Saturday-through-Friday planning periods", () => {
+    expect(isValidCairoClockTime("08:00")).toBe(true);
+    expect(isValidCairoClockTime("23:59")).toBe(true);
+    expect(isValidCairoClockTime("24:00")).toBe(false);
+    expect(isSaturdayDate("2026-10-03")).toBe(true);
+    expect(isSaturdayDate("2026-09-29")).toBe(false);
+    expect(DEFAULT_WEEKLY_CONTENT_MIX).toEqual({ research_update: 0, static_post: 1, carousel: 1, reel: 1, image: 1, graphic: 1, ad_setup: 0 });
+  });
+
+  it("preserves individual-only review decisions and terminal stop behavior", () => {
+    expect(weeklyResultsItemCanTransition("draft", "pending_individual_review")).toBe(true);
+    expect(weeklyResultsItemCanTransition("pending_individual_review", "approved")).toBe(true);
+    expect(weeklyResultsItemCanTransition("pending_individual_review", "changes_requested")).toBe(true);
+    expect(weeklyResultsItemCanTransition("approved", "pending_individual_review")).toBe(false);
+    expect(weeklyResultsItemCanTransition("stopped", "draft")).toBe(false);
+  });
+
+  it("blocks identity-bearing planning, feedback, and aggregate-performance notes", () => {
+    expect(findDisallowedWeeklyResultsData("Prioritise Arabic-first educational reels for Spain DNV.")).toBeNull();
+    expect(findDisallowedWeeklyResultsData("Contact a@example.com for this item.")).toBe("email address");
+    expect(findDisallowedWeeklyResultsData("Call +20 100 123 4567.")).toBe("phone or contact number");
+    expect(findDisallowedWeeklyResultsData("Review client code 26091.")).toBe("client identity reference");
+  });
+});
+
+describe("Weekly Results CRM integration contract", () => {
+  it("uses additive control-plane tables, never a provider execution path", () => {
+    const migration = read("drizzle/0101_agentic_marketing_weekly_results.sql");
+    const schema = read("drizzle/schema.ts");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS `marketing_weekly_results_settings`");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS `marketing_weekly_results_plans`");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS `marketing_weekly_results_items`");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS `marketing_weekly_results_item_events`");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS `marketing_weekly_results_preference_memories`");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS `marketing_weekly_results_performance_snapshots`");
+    expect(migration).not.toMatch(/\b(DROP|DELETE|TRUNCATE|UPDATE|ALTER|RENAME)\b/i);
+    expect(schema).toContain("marketingWeeklyResultsSettings");
+    expect(schema).toContain("marketingWeeklyResultsItems");
+  });
+
+  it("requires controlled individual reviews and keeps external operations unavailable", () => {
+    const router = read("server/marketingSystemRouter.ts");
+    const policy = read("shared/marketingWeeklyResults.ts");
+    expect(router).toContain("getWeeklyResultsWorkspace");
+    expect(router).toContain("saveWeeklyResultsSetup");
+    expect(router).toContain("createWeeklyResultsPlan");
+    expect(router).toContain("submitWeeklyResultsItemForIndividualReview");
+    expect(router).toContain("decideWeeklyResultsItem");
+    expect(router).toContain("saveWeeklyResultsPerformance");
+    expect(router).toContain("batchApprovalAvailable: false");
+    expect(router).toContain("explicitIndividualDecision: true");
+    expect(router).toContain("externalOperationsEnabled: false");
+    expect(router).toContain("scheduleState: \"waiting_execution_release\"");
+    expect(policy).toContain("cannot call an AI provider");
+    expect(WEEKLY_RESULTS_EXECUTION_BOUNDARY).toContain("cannot call an AI provider");
+  });
+
+  it("registers protected desktop and mobile routes for the two requested sections", () => {
+    const app = read("client/src/App.tsx");
+    const dashboard = read("client/src/pages/marketing/MarketingDashboard.tsx");
+    const desktopNav = read("client/src/components/DashboardLayout.tsx");
+    const mobileNav = read("client/src/components/MobileLayout.tsx");
+    const page = read("client/src/pages/marketing/WeeklyResults.tsx");
+    expect(app).toContain('path="/marketing/weekly-results"');
+    expect(dashboard).toContain('title: "1. Setup"');
+    expect(dashboard).toContain('title: "2. Weekly Results"');
+    expect(desktopNav).toContain('label: "1. Setup"');
+    expect(desktopNav).toContain('label: "2. Weekly Results"');
+    expect(mobileNav).toContain('label: "1. Setup"');
+    expect(mobileNav).toContain('label: "2. Weekly Results"');
+    expect(page).toContain("No provider calls");
+    expect(page).toContain("no batch approval");
+  });
+});

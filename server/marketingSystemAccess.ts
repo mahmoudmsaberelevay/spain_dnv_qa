@@ -39,6 +39,13 @@ export type MarketingSystemCapability =
   | "manage_meta_strategy_intake"
   | "view_campaign_pilot_proposals"
   | "manage_campaign_pilot_proposals"
+  | "view_weekly_results"
+  | "manage_weekly_results_setup"
+  | "prepare_weekly_results"
+  | "edit_weekly_results_items"
+  | "review_weekly_results_items"
+  | "approve_weekly_results_items"
+  | "record_weekly_results_performance"
   | "approve_publishing"
   | "manage_campaigns";
 
@@ -50,6 +57,7 @@ const FULL_AGENTIC_MARKETING_CAPABILITIES: readonly MarketingSystemCapability[] 
     "view_content_studio", "create_content_packets", "review_content_packets", "run_content_qa", "approve_content_packets", "stop_content_packets",
     "view_meta_strategy_intake", "manage_meta_strategy_intake",
     "view_campaign_pilot_proposals", "manage_campaign_pilot_proposals",
+    "view_weekly_results", "manage_weekly_results_setup", "prepare_weekly_results", "edit_weekly_results_items", "review_weekly_results_items", "approve_weekly_results_items", "record_weekly_results_performance",
     "approve_publishing", "manage_campaigns",
 ];
 
@@ -62,10 +70,11 @@ const CAPABILITIES: Record<Exclude<EffectiveMarketingSystemRole, null>, readonly
     "view_brand_book", "view_provider_readiness", "view_knowledge", "manage_knowledge_sources", "create_knowledge_claims", "create_research", "create_creative",
     "review_creative", "view_analytics", "export_analytics", "view_work_orders", "submit_work_orders", "cancel_work_orders",
     "view_content_studio", "create_content_packets", "review_content_packets", "run_content_qa", "stop_content_packets",
+    "view_weekly_results", "edit_weekly_results_items", "review_weekly_results_items", "record_weekly_results_performance",
   ],
   researcher: ["view_brand_book", "view_knowledge", "manage_knowledge_sources", "create_knowledge_claims", "create_research", "view_analytics", "view_work_orders", "submit_work_orders", "cancel_work_orders"],
   creative_producer: ["view_brand_book", "view_knowledge", "create_creative", "view_work_orders", "submit_work_orders", "cancel_work_orders", "view_content_studio", "create_content_packets", "stop_content_packets"],
-  analyst: ["view_brand_book", "view_knowledge", "view_analytics", "export_analytics", "view_work_orders", "view_content_studio"],
+  analyst: ["view_brand_book", "view_knowledge", "view_analytics", "export_analytics", "view_work_orders", "view_content_studio", "view_weekly_results"],
 };
 
 export function isMarketingSystemRole(value: string | null | undefined): value is MarketingSystemRole {

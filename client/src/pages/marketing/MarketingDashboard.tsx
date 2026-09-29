@@ -1,138 +1,44 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle, MailWarning, Loader2, ClipboardCheck, FilePenLine, FileCheck2, Target, PlugZap } from "lucide-react";
+import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle, MailWarning, Loader2, ClipboardCheck, FilePenLine, FileCheck2, Target, PlugZap, Settings2, CalendarClock } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 
 const tools = [
   {
-    icon: Sparkles,
-    title: "AI Agentic Marketing System",
-    description: "Open one central control center for Brand Studio, Knowledge, Work Orders, Content Approval and Meta Strategy planning. All external actions remain locked.",
-    href: "/marketing/agentic-system",
-    color: "from-[#C9A84C] via-[#5BA3B8] to-[#1A3A5C]",
-    badge: "Control center",
-  },
-  {
-    icon: PlugZap,
-    title: "Provider Connection Center",
-    description: "Prepare secure server-side provider readiness for the selected Full Autopilot model. It reports gaps only—no secret is shown or accepted, and external operations remain locked.",
-    href: "/marketing/provider-connections",
+    icon: Settings2,
+    title: "1. Setup",
+    description: "Control Saturday preparation and the 10:00 Cairo delivery target, programme and source instructions, creative direction, content mix, allocation, feedback learning, and the secure Agentic Marketing foundations.",
+    href: "/marketing/weekly-results?view=setup",
     color: "from-[#5BA3B8] via-[#1A3A5C] to-[#C9A84C]",
-    badge: "Configuration only",
+    badge: "Configuration",
   },
   {
-    icon: Sparkles,
-    title: "Brand Discovery — 35 Questions",
-    description: "Open the complete 35-question Brand Discovery form directly. Mahmoud and Ziad as the scoped Agentic Marketing administrator can answer, save, edit and resume it. Publishing remains locked.",
-    href: "/marketing/brand-studio",
-    color: "from-[#5BA3B8] to-[#1A3A5C]",
-    badge: "Open questions",
+    icon: CalendarClock,
+    title: "2. Weekly Results",
+    description: "Review every proposed post, carousel, reel, image, and graphic. Edit or select items and make a separate recorded approval decision for each one—never batch approval.",
+    href: "/marketing/weekly-results",
+    color: "from-[#C9A84C] via-[#1A3A5C] to-[#5BA3B8]",
+    badge: "Individual review",
   },
-  {
-    icon: FileText,
-    title: "Official Knowledge Library",
-    description: "Review official programme sources, maintain evidence hashes, and propose marketing claims for explicit owner approval. No content is published from this library.",
-    href: "/marketing/knowledge-library",
-    color: "from-[#1A3A5C] to-[#5BA3B8]",
-    badge: "Evidence control",
-  },
-  {
-    icon: ClipboardCheck,
-    title: "Controlled Work Orders",
-    description: "Create typed, cost-capped internal marketing work orders with visible approval lineage and zero-cost dry-run validation. Publishing and spend remain locked.",
-    href: "/marketing/work-orders",
-    color: "from-[#1A3A5C] to-[#C9A84C]",
-    badge: "Approval control",
-  },
-  {
-    icon: FilePenLine,
-    title: "Content Studio & Approval Inbox",
-    description: "Prepare versioned, source-linked content packets, perform manual QA, and record Mahmoud’s final decisions. No generation, publishing, campaign, or spending action is available here.",
-    href: "/marketing/content-studio",
-    color: "from-[#5BA3B8] to-[#C9A84C]",
-    badge: "Final review",
-  },
-  {
-    icon: Target,
-    title: "Meta Ads Strategy Intake",
-    description: "Complete the exact 66-question owner-controlled paid-media planning interview. It records strategy gaps but cannot connect Meta, create a campaign, or spend money.",
-    href: "/marketing/meta-ads-strategy",
-    color: "from-[#C9A84C] to-[#1A3A5C]",
-    badge: "Planning gate",
-  },
-  {
-    icon: FileCheck2,
-    title: "Strategy Approval Packet",
-    description: "Confirm Spain DNV and Malta MPRP variations, inspect blockers, and record the hash-locked owner strategy decision. Meta access, campaigns, and spend remain unavailable.",
-    href: "/marketing/meta-ads-strategy-packet",
-    color: "from-[#1A3A5C] to-[#C9A84C]",
-    badge: "Owner gate",
-  },
-  {
-    icon: ClipboardCheck,
-    title: "Campaign Pilot Proposal",
-    description: "Document a future measurement-pilot scope, proposed cap, monitoring, and rollback against an approved strategy packet. Meta operations and spend remain locked.",
-    href: "/marketing/campaign-pilot-proposal",
-    color: "from-[#C9A84C] to-[#1A3A5C]",
-    badge: "Internal only",
-  },
-  {
-    icon: BarChart2,
-    title: "Pilot Readiness & Executive Measurement",
-    description: "Review aggregate CRM attribution, Meta operational evidence, and readiness gates. Optimisation remains blocked until a proven reconciled pilot exists.",
-    href: "/marketing/pilot-readiness",
-    color: "from-[#5BA3B8] to-[#1A3A5C]",
-    badge: "Read-only",
-  },
-  {
-    icon: ClipboardCheck,
-    title: "Weekly Executive Brief & Decision Log",
-    description: "Capture a manual aggregate readiness snapshot and record Mahmoud’s internal planning decision. It cannot schedule, email, connect Meta, publish, spend, or change CRM data.",
-    href: "/marketing/weekly-executive-briefs",
-    color: "from-[#1A3A5C] to-[#5BA3B8]",
-    badge: "Manual review",
-  },
-  {
-    icon: FolderOpen,
-    title: "Ready Summaries",
-    description: "Browse and download approved ELEVAY country and program summaries. Administrators can add or remove PDFs from the shared library.",
-    href: "/marketing/ready-summaries",
-    color: "from-[#5BA3B8] to-[#1A3A5C]",
-    badge: "PDF Library",
-  },
-  {
-    icon: Mic2,
-    title: "Arabic Voice-over",
-    description: "Convert Arabic marketing scripts into polished MP3 voice-overs using ELEVAY’s approved Eleven v3 voice settings.",
-    href: "/marketing/voice-over",
-    color: "from-[#5BA3B8] to-[#1A3A5C]",
-    badge: "Eleven v3",
-  },
-  {
-    icon: FileText,
-    title: "Summary Generator",
-    description: "Create branded program summaries with full editorial control. Customize content, colors, images, and export as professional PDFs.",
-    href: "/marketing/summary-generator",
-    color: "from-teal-500 to-cyan-600",
-    badge: "AI-Powered",
-  },
-  {
-    icon: BarChart2,
-    title: "Program Enhanced Comparison",
-    description: "Compare multiple citizenship and residency programs side-by-side with detailed criteria, costs, timelines, and benefits.",
-    href: "/marketing/program-comparison",
-    color: "from-blue-500 to-indigo-600",
-    badge: "Available",
-  },
-  {
-    icon: Send,
-    title: "Program Proposal",
-    description: "Generate tailored program proposals for clients based on their profile, budget, and goals. Export as branded PDF documents.",
-    href: "/marketing/program-proposal",
-    color: "from-purple-500 to-violet-600",
-    badge: "Available",
-  },
+];
+const foundationLinks = [
+  { title: "AI Agentic Marketing System", href: "/marketing/agentic-system" },
+  { title: "Brand Discovery — 35 Questions", href: "/marketing/brand-studio" },
+  { title: "Provider Connection Center", href: "/marketing/provider-connections" },
+  { title: "Official Knowledge Library", href: "/marketing/knowledge-library" },
+  { title: "Controlled Work Orders", href: "/marketing/work-orders" },
+  { title: "Content Studio & Approval Inbox", href: "/marketing/content-studio" },
+  { title: "Meta Ads Strategy Intake", href: "/marketing/meta-ads-strategy" },
+  { title: "Strategy Approval Packet", href: "/marketing/meta-ads-strategy-packet" },
+  { title: "Campaign Pilot Proposal", href: "/marketing/campaign-pilot-proposal" },
+  { title: "Pilot Readiness & Executive Measurement", href: "/marketing/pilot-readiness" },
+  { title: "Weekly Executive Brief & Decision Log", href: "/marketing/weekly-executive-briefs" },
+  { title: "Ready Summaries", href: "/marketing/ready-summaries" },
+  { title: "Arabic Voice-over", href: "/marketing/voice-over" },
+  { title: "Summary Generator", href: "/marketing/summary-generator" },
+  { title: "Program Enhanced Comparison", href: "/marketing/program-comparison" },
+  { title: "Program Proposal", href: "/marketing/program-proposal" },
 ];
 
 type NewsHealth = {
@@ -197,6 +103,7 @@ export default function MarketingDashboard() {
         </div>
         <h1 className="text-3xl font-bold text-white mb-2">Marketing Tools</h1>
         <p className="text-gray-400 text-base">Create professional marketing materials for your citizenship and residency programs.</p>
+        <p className="mt-3 text-sm text-[#81c7d8]">The two main sections below control the weekly workflow. Existing governed foundations remain available as supporting workspaces.</p>
       </div>
 
       {isAdmin && (
@@ -264,6 +171,16 @@ export default function MarketingDashboard() {
           );
         })}
       </div>
+
+      <section className="mt-8 rounded-2xl border border-white/10 bg-[#141d30] p-5" aria-labelledby="marketing-foundations-heading">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h2 id="marketing-foundations-heading" className="font-semibold text-white">Foundations and supporting workspaces</h2><p className="mt-1 text-sm text-gray-400">These existing controlled tools remain available alongside Setup and Weekly Results.</p></div>
+          <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-xs font-medium text-amber-200">External operations locked</span>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {foundationLinks.map(link => <button key={link.href} onClick={() => navigate(link.href)} className="group flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/10 px-3 py-2.5 text-left text-sm text-slate-300 transition hover:border-[#5BA3B8]/45 hover:bg-[#1c2940] hover:text-white"><span>{link.title}</span><ArrowRight className="h-4 w-4 shrink-0 text-[#81c7d8] transition group-hover:translate-x-0.5" /></button>)}
+        </div>
+      </section>
     </div>
   );
 }

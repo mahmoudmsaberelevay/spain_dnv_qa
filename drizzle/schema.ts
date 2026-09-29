@@ -2846,6 +2846,165 @@ export const marketingWeeklyExecutiveBriefEvents = mysqlTable("marketing_weekly_
 export type MarketingWeeklyExecutiveBriefEvent = typeof marketingWeeklyExecutiveBriefEvents.$inferSelect;
 export type InsertMarketingWeeklyExecutiveBriefEvent = typeof marketingWeeklyExecutiveBriefEvents.$inferInsert;
 
+// ─── AGENTIC MARKETING SYSTEM / SETUP & WEEKLY RESULTS ────────────────────────
+// These tables are a controlled planning and individual-decision layer. They do
+// not store provider credentials or client/Lead identity data and do not authorize
+// generation, rendering, publication, Meta/CAPI, campaign, spend, or CRM actions.
+export const marketingWeeklyResultsSettings = mysqlTable("marketing_weekly_results_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  settingsKey: varchar("settingsKey", { length: 96 }).notNull(),
+  timezone: varchar("timezone", { length: 64 }).notNull().default("Africa/Cairo"),
+  prepareDayOfWeek: int("prepareDayOfWeek").notNull().default(6),
+  prepareStartTime: varchar("prepareStartTime", { length: 5 }).notNull().default("08:00"),
+  deliveryDeadlineTime: varchar("deliveryDeadlineTime", { length: 5 }).notNull().default("10:00"),
+  preparationScheduleEnabled: boolean("preparationScheduleEnabled").notNull().default(true),
+  scheduleState: varchar("scheduleState", { length: 48 }).notNull().default("waiting_execution_release"),
+  weeklyGoal: mediumtext("weeklyGoal"),
+  programPrioritiesJson: mediumtext("programPrioritiesJson").notNull(),
+  updatedSourcesNote: mediumtext("updatedSourcesNote"),
+  creativeDirection: mediumtext("creativeDirection"),
+  contentMixJson: mediumtext("contentMixJson").notNull(),
+  allocationRulesJson: mediumtext("allocationRulesJson").notNull(),
+  learningEnabled: boolean("learningEnabled").notNull().default(true),
+  lastScheduleAttemptAt: bigint("lastScheduleAttemptAt", { mode: "number" }),
+  lastScheduleStatus: varchar("lastScheduleStatus", { length: 48 }),
+  lastChangedByUserId: int("lastChangedByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_weekly_results_settings_key_unique").on(table.settingsKey),
+  index("marketing_weekly_results_settings_state_idx").on(table.scheduleState, table.updatedAt),
+]);
+export type MarketingWeeklyResultsSettings = typeof marketingWeeklyResultsSettings.$inferSelect;
+export type InsertMarketingWeeklyResultsSettings = typeof marketingWeeklyResultsSettings.$inferInsert;
+
+export const marketingWeeklyResultsPlans = mysqlTable("marketing_weekly_results_plans", {
+  id: int("id").autoincrement().primaryKey(),
+  planKey: varchar("planKey", { length: 96 }).notNull(),
+  periodStart: varchar("periodStart", { length: 10 }).notNull(),
+  version: int("version").notNull(),
+  status: varchar("status", { length: 48 }).notNull().default("draft_prepared"),
+  source: varchar("source", { length: 48 }).notNull().default("manual_internal"),
+  title: varchar("title", { length: 300 }).notNull(),
+  weeklyGoal: mediumtext("weeklyGoal"),
+  creativeDirection: mediumtext("creativeDirection"),
+  setupSnapshotJson: mediumtext("setupSnapshotJson").notNull(),
+  previousWeekPerformanceJson: mediumtext("previousWeekPerformanceJson").notNull(),
+  preferenceMemoryJson: mediumtext("preferenceMemoryJson").notNull(),
+  planHash: varchar("planHash", { length: 64 }).notNull(),
+  preparedByUserId: int("preparedByUserId"),
+  preparedAt: bigint("preparedAt", { mode: "number" }).notNull(),
+  deliveryDeadlineAt: bigint("deliveryDeadlineAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_weekly_results_plan_key_unique").on(table.planKey),
+  uniqueIndex("marketing_weekly_results_period_version_unique").on(table.periodStart, table.version),
+  index("marketing_weekly_results_plan_period_idx").on(table.periodStart, table.status),
+  index("marketing_weekly_results_plan_updated_idx").on(table.updatedAt),
+]);
+export type MarketingWeeklyResultsPlan = typeof marketingWeeklyResultsPlans.$inferSelect;
+export type InsertMarketingWeeklyResultsPlan = typeof marketingWeeklyResultsPlans.$inferInsert;
+
+export const marketingWeeklyResultsItems = mysqlTable("marketing_weekly_results_items", {
+  id: int("id").autoincrement().primaryKey(),
+  planId: int("planId").notNull(),
+  position: int("position").notNull(),
+  itemType: varchar("itemType", { length: 48 }).notNull(),
+  title: varchar("title", { length: 300 }).notNull(),
+  programKey: varchar("programKey", { length: 96 }),
+  objective: varchar("objective", { length: 500 }).notNull(),
+  creativeDirection: mediumtext("creativeDirection"),
+  scriptCopy: mediumtext("scriptCopy"),
+  caption: mediumtext("caption"),
+  cta: varchar("cta", { length: 500 }),
+  hashtagsJson: mediumtext("hashtagsJson").notNull(),
+  visualBrief: mediumtext("visualBrief"),
+  plannedDay: varchar("plannedDay", { length: 16 }),
+  plannedTime: varchar("plannedTime", { length: 5 }),
+  previewUrl: varchar("previewUrl", { length: 2_000 }),
+  previewHash: varchar("previewHash", { length: 64 }),
+  sourceClaimIdsJson: mediumtext("sourceClaimIdsJson").notNull(),
+  metadataJson: mediumtext("metadataJson").notNull(),
+  isSelected: boolean("isSelected").notNull().default(true),
+  requiresIndividualApproval: boolean("requiresIndividualApproval").notNull().default(true),
+  status: varchar("status", { length: 48 }).notNull().default("draft"),
+  blockedReason: mediumtext("blockedReason"),
+  contentPacketId: int("contentPacketId"),
+  approvedByUserId: int("approvedByUserId"),
+  approvedAt: bigint("approvedAt", { mode: "number" }),
+  stoppedByUserId: int("stoppedByUserId"),
+  stoppedAt: bigint("stoppedAt", { mode: "number" }),
+  createdByUserId: int("createdByUserId").notNull(),
+  lastEditedByUserId: int("lastEditedByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_weekly_results_item_plan_position_unique").on(table.planId, table.position),
+  index("marketing_weekly_results_item_plan_status_idx").on(table.planId, table.status, table.position),
+  index("marketing_weekly_results_item_selected_idx").on(table.planId, table.isSelected, table.status),
+  index("marketing_weekly_results_item_program_idx").on(table.programKey, table.updatedAt),
+]);
+export type MarketingWeeklyResultsItem = typeof marketingWeeklyResultsItems.$inferSelect;
+export type InsertMarketingWeeklyResultsItem = typeof marketingWeeklyResultsItems.$inferInsert;
+
+export const marketingWeeklyResultsItemEvents = mysqlTable("marketing_weekly_results_item_events", {
+  id: int("id").autoincrement().primaryKey(),
+  itemId: int("itemId").notNull(),
+  action: varchar("action", { length: 64 }).notNull(),
+  fromStatus: varchar("fromStatus", { length: 48 }),
+  toStatus: varchar("toStatus", { length: 48 }),
+  feedback: mediumtext("feedback"),
+  changedFieldsJson: mediumtext("changedFieldsJson").notNull(),
+  payloadJson: mediumtext("payloadJson").notNull(),
+  actorUserId: int("actorUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, table => [
+  index("marketing_weekly_results_item_event_item_idx").on(table.itemId, table.createdAt),
+  index("marketing_weekly_results_item_event_action_idx").on(table.action, table.createdAt),
+]);
+export type MarketingWeeklyResultsItemEvent = typeof marketingWeeklyResultsItemEvents.$inferSelect;
+export type InsertMarketingWeeklyResultsItemEvent = typeof marketingWeeklyResultsItemEvents.$inferInsert;
+
+export const marketingWeeklyResultsPreferenceMemories = mysqlTable("marketing_weekly_results_preference_memories", {
+  id: int("id").autoincrement().primaryKey(),
+  scope: varchar("scope", { length: 48 }).notNull().default("weekly_results"),
+  scopeKey: varchar("scopeKey", { length: 96 }),
+  preferenceText: mediumtext("preferenceText").notNull(),
+  sourceItemId: int("sourceItemId"),
+  sourceEventId: int("sourceEventId"),
+  status: varchar("status", { length: 32 }).notNull().default("active"),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  index("marketing_weekly_results_preference_status_idx").on(table.status, table.updatedAt),
+  index("marketing_weekly_results_preference_scope_idx").on(table.scope, table.scopeKey, table.updatedAt),
+]);
+export type MarketingWeeklyResultsPreferenceMemory = typeof marketingWeeklyResultsPreferenceMemories.$inferSelect;
+export type InsertMarketingWeeklyResultsPreferenceMemory = typeof marketingWeeklyResultsPreferenceMemories.$inferInsert;
+
+export const marketingWeeklyResultsPerformanceSnapshots = mysqlTable("marketing_weekly_results_performance_snapshots", {
+  id: int("id").autoincrement().primaryKey(),
+  periodStart: varchar("periodStart", { length: 10 }).notNull(),
+  source: varchar("source", { length: 48 }).notNull().default("manual_aggregate"),
+  spendEgp: decimal("spendEgp", { precision: 14, scale: 2 }).notNull().default("0.00"),
+  impressions: bigint("impressions", { mode: "number" }).notNull().default(0),
+  clicks: bigint("clicks", { mode: "number" }).notNull().default(0),
+  leadForms: bigint("leadForms", { mode: "number" }).notNull().default(0),
+  qualifiedLeads: bigint("qualifiedLeads", { mode: "number" }).notNull().default(0),
+  clientStageLeads: bigint("clientStageLeads", { mode: "number" }).notNull().default(0),
+  notes: mediumtext("notes"),
+  recordedByUserId: int("recordedByUserId").notNull(),
+  recordedAt: bigint("recordedAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_weekly_results_performance_period_source_unique").on(table.periodStart, table.source),
+  index("marketing_weekly_results_performance_period_idx").on(table.periodStart, table.recordedAt),
+]);
+export type MarketingWeeklyResultsPerformanceSnapshot = typeof marketingWeeklyResultsPerformanceSnapshots.$inferSelect;
+export type InsertMarketingWeeklyResultsPerformanceSnapshot = typeof marketingWeeklyResultsPerformanceSnapshots.$inferInsert;
+
 // ─── MARKETING READY SUMMARIES ─────────────────────────────────────────────────
 export const marketingReadySummaries = mysqlTable("marketing_ready_summaries", {
   id: int("id").autoincrement().primaryKey(),

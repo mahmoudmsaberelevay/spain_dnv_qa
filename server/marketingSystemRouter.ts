@@ -19,6 +19,12 @@ import {
   marketingMetaAdsStrategySessions,
   marketingWeeklyExecutiveBriefEvents,
   marketingWeeklyExecutiveBriefs,
+  marketingWeeklyResultsItemEvents,
+  marketingWeeklyResultsItems,
+  marketingWeeklyResultsPerformanceSnapshots,
+  marketingWeeklyResultsPlans,
+  marketingWeeklyResultsPreferenceMemories,
+  marketingWeeklyResultsSettings,
   marketingKnowledgeClaims,
   marketingKnowledgeSources,
   marketingInternalProgrammeReferences,
@@ -124,6 +130,18 @@ import {
   type WeeklyExecutiveBriefStatus,
 } from "../shared/marketingExecutiveBriefs";
 import {
+  DEFAULT_WEEKLY_CONTENT_MIX,
+  findDisallowedWeeklyResultsData,
+  isSaturdayDate,
+  isValidCairoClockTime,
+  normalizeWeeklyResultsText,
+  WEEKLY_RESULTS_EXECUTION_BOUNDARY,
+  WEEKLY_RESULTS_FEEDBACK_CATEGORIES,
+  WEEKLY_RESULTS_ITEM_TYPES,
+  weeklyResultsItemCanTransition,
+  type WeeklyResultsItemStatus,
+} from "../shared/marketingWeeklyResults";
+import {
   MARKETING_AUTOPILOT_MODE,
   MARKETING_PROVIDER_CONNECTIONS,
   providerSecretPresence,
@@ -225,7 +243,7 @@ const campaignPilotDecisionInput = z.object({
 });
 
 const weeklyExecutiveBriefCaptureInput = z.object({
-  periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a Monday in YYYY-MM-DD form."),
+  periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a Saturday in YYYY-MM-DD form."),
   contextNote: z.string().trim().max(4_000).optional(),
 });
 
@@ -233,6 +251,29 @@ const weeklyExecutiveBriefDecisionInput = z.object({
   briefId: z.number().int().positive(),
   decision: z.enum(["acknowledge_blocked", "request_evidence", "hold_planning", "stop"]),
   note: z.string().trim().min(8).max(8_000),
+});
+const weeklyResultsContentMixInput = z.object({
+  research_update: z.number().int().min(0).max(12), static_post: z.number().int().min(0).max(12), carousel: z.number().int().min(0).max(12), reel: z.number().int().min(0).max(12), image: z.number().int().min(0).max(12), graphic: z.number().int().min(0).max(12), ad_setup: z.number().int().min(0).max(12),
+}).refine(value => Object.values(value).some(count => count > 0), "Choose at least one content-item type.");
+const weeklyResultsSettingsInput = z.object({
+  prepareStartTime: z.string().refine(isValidCairoClockTime, "Use HH:MM Cairo time."), deliveryDeadlineTime: z.string().refine(isValidCairoClockTime, "Use HH:MM Cairo time."), preparationScheduleEnabled: z.boolean(),
+  weeklyGoal: z.string().trim().max(4_000).optional(),
+  programPriorities: z.array(z.object({ key: z.string().trim().min(2).max(96).regex(/^[a-z0-9_]+$/), priority: z.number().int().min(1).max(10), note: z.string().trim().max(1_000).optional() })).max(24),
+  updatedSourcesNote: z.string().trim().max(8_000).optional(), creativeDirection: z.string().trim().max(8_000).optional(), contentMix: weeklyResultsContentMixInput,
+  allocationRules: z.object({ rotationNote: z.string().trim().max(4_000).optional(), platformNote: z.string().trim().max(4_000).optional() }).default({}), learningEnabled: z.boolean(),
+});
+const weeklyResultsItemInput = z.object({
+  itemType: z.enum(WEEKLY_RESULTS_ITEM_TYPES), title: z.string().trim().min(4).max(300), programKey: z.string().trim().min(2).max(96).regex(/^[a-z0-9_]+$/).optional(), objective: z.string().trim().min(8).max(500),
+  creativeDirection: z.string().trim().max(12_000).optional(), scriptCopy: z.string().trim().max(30_000).optional(), caption: z.string().trim().max(20_000).optional(), cta: z.string().trim().max(500).optional(),
+  hashtags: z.array(z.string().trim().min(1).max(120)).max(40).default([]), visualBrief: z.string().trim().max(12_000).optional(), plannedDay: z.enum(["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]).optional(), plannedTime: z.string().refine(isValidCairoClockTime, "Use HH:MM Cairo time.").optional(),
+  previewUrl: z.string().url().max(2_000).optional(), previewHash: z.string().regex(/^[a-f0-9]{64}$/i, "Preview fingerprint must be a SHA-256 hash.").optional(), sourceClaimIds: z.array(z.number().int().positive()).max(32).default([]), metadata: z.record(z.string(), z.unknown()).default({}), isSelected: z.boolean().default(true),
+});
+const createWeeklyResultsPlanInput = z.object({ periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), title: z.string().trim().min(4).max(300), items: z.array(weeklyResultsItemInput).min(1).max(48) });
+const updateWeeklyResultsItemInput = weeklyResultsItemInput.extend({ itemId: z.number().int().positive() });
+const weeklyResultsItemDecisionInput = z.object({ itemId: z.number().int().positive(), decision: z.enum(["send_back", "approve", "reject", "stop"]), note: z.string().trim().min(4).max(8_000), feedbackCategory: z.enum(WEEKLY_RESULTS_FEEDBACK_CATEGORIES).optional() });
+const weeklyResultsPerformanceInput = z.object({
+  periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), spendEgp: z.number().finite().min(0).max(100_000_000).default(0), impressions: z.number().int().min(0).max(10_000_000_000).default(0), clicks: z.number().int().min(0).max(10_000_000_000).default(0),
+  leadForms: z.number().int().min(0).max(10_000_000_000).default(0), qualifiedLeads: z.number().int().min(0).max(10_000_000_000).default(0), clientStageLeads: z.number().int().min(0).max(10_000_000_000).default(0), notes: z.string().trim().max(4_000).optional(),
 });
 
 const knowledgeSourceInput = z.object({
@@ -326,7 +367,9 @@ function workOrderKey() {
 function contentPacketKey() {
   return `mcp-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 10)}`;
 }
-
+function weeklyResultsPlanKey() {
+  return `mwr-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 10)}`;
+}
 function metaStrategyPacketKey() {
   return `masp-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 10)}`;
 }
@@ -382,6 +425,108 @@ async function appendContentReviewEvent(input: {
     actorUserId: input.actorUserId,
     createdAt: input.createdAt ?? Date.now(),
   });
+}
+async function appendWeeklyResultsItemEvent(input: {
+  itemId: number;
+  action: string;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  feedback?: string | null;
+  changedFields?: string[];
+  payload?: Record<string, unknown>;
+  actorUserId: number;
+  createdAt?: number;
+}) {
+  const db = await requireDb();
+  await db.insert(marketingWeeklyResultsItemEvents).values({
+    itemId: input.itemId,
+    action: input.action,
+    fromStatus: input.fromStatus ?? null,
+    toStatus: input.toStatus ?? null,
+    feedback: input.feedback ?? null,
+    changedFieldsJson: JSON.stringify(input.changedFields ?? []),
+    payloadJson: JSON.stringify(input.payload ?? {}),
+    actorUserId: input.actorUserId,
+    createdAt: input.createdAt ?? Date.now(),
+  });
+}
+function defaultWeeklyResultsSettings() {
+  return {
+    settingsKey: "primary-weekly-results",
+    timezone: "Africa/Cairo",
+    prepareDayOfWeek: 6,
+    prepareStartTime: "08:00",
+    deliveryDeadlineTime: "10:00",
+    preparationScheduleEnabled: true,
+    scheduleState: "waiting_execution_release",
+    weeklyGoal: null as string | null,
+    programPriorities: [] as Array<{ key: string; priority: number; note?: string }>,
+    updatedSourcesNote: null as string | null,
+    creativeDirection: null as string | null,
+    contentMix: DEFAULT_WEEKLY_CONTENT_MIX,
+    allocationRules: {} as Record<string, string>,
+    learningEnabled: true,
+    lastScheduleAttemptAt: null as number | null,
+    lastScheduleStatus: "not_scheduled" as string,
+    isPersisted: false,
+  };
+}
+function parseWeeklyResultsSettings(row: typeof marketingWeeklyResultsSettings.$inferSelect | undefined) {
+  if (!row) return defaultWeeklyResultsSettings();
+  return {
+    settingsKey: row.settingsKey,
+    timezone: row.timezone,
+    prepareDayOfWeek: row.prepareDayOfWeek,
+    prepareStartTime: row.prepareStartTime,
+    deliveryDeadlineTime: row.deliveryDeadlineTime,
+    preparationScheduleEnabled: row.preparationScheduleEnabled,
+    scheduleState: row.scheduleState,
+    weeklyGoal: row.weeklyGoal,
+    programPriorities: parseJson<Array<{ key: string; priority: number; note?: string }>>(row.programPrioritiesJson, []),
+    updatedSourcesNote: row.updatedSourcesNote,
+    creativeDirection: row.creativeDirection,
+    contentMix: parseJson<typeof DEFAULT_WEEKLY_CONTENT_MIX>(row.contentMixJson, DEFAULT_WEEKLY_CONTENT_MIX),
+    allocationRules: parseJson<Record<string, string>>(row.allocationRulesJson, {}),
+    learningEnabled: row.learningEnabled,
+    lastScheduleAttemptAt: row.lastScheduleAttemptAt,
+    lastScheduleStatus: row.lastScheduleStatus ?? "not_scheduled",
+    isPersisted: true,
+  };
+}
+function weeklyResultsItemUnsafeField(input: z.infer<typeof weeklyResultsItemInput>): string | null {
+  const fields = [input.title, input.programKey, input.objective, input.creativeDirection, input.scriptCopy, input.caption, input.cta, input.visualBrief, ...input.hashtags, JSON.stringify(input.metadata)];
+  for (const field of fields) {
+    if (!field) continue;
+    const unsafe = findDisallowedWeeklyResultsData(field);
+    if (unsafe) return unsafe;
+  }
+  return null;
+}
+function normalizeWeeklyResultsItem(input: z.infer<typeof weeklyResultsItemInput>) {
+  const unsafe = weeklyResultsItemUnsafeField(input);
+  if (unsafe) throw new TRPCError({ code: "BAD_REQUEST", message: `Weekly Results cannot contain ${unsafe}. Use aggregate, programme-level planning only.` });
+  return {
+    itemType: input.itemType,
+    title: normalizeWeeklyResultsText(input.title),
+    programKey: input.programKey ?? null,
+    objective: normalizeWeeklyResultsText(input.objective),
+    creativeDirection: input.creativeDirection ? normalizeWeeklyResultsText(input.creativeDirection) : null,
+    scriptCopy: input.scriptCopy ? normalizeWeeklyResultsText(input.scriptCopy) : null,
+    caption: input.caption ? normalizeWeeklyResultsText(input.caption) : null,
+    cta: input.cta ? normalizeWeeklyResultsText(input.cta) : null,
+    hashtagsJson: JSON.stringify(Array.from(new Set(input.hashtags.map(normalizeWeeklyResultsText))).sort()),
+    visualBrief: input.visualBrief ? normalizeWeeklyResultsText(input.visualBrief) : null,
+    plannedDay: input.plannedDay ?? null,
+    plannedTime: input.plannedTime ?? null,
+    previewUrl: input.previewUrl ?? null,
+    previewHash: input.previewHash?.toLowerCase() ?? null,
+    sourceClaimIdsJson: JSON.stringify(Array.from(new Set(input.sourceClaimIds)).sort((a, b) => a - b)),
+    metadataJson: JSON.stringify(input.metadata),
+    isSelected: input.isSelected,
+  };
+}
+function weeklyResultsPlanHash(input: { periodStart: string; title: string; setup: unknown; performance: unknown; preferences: unknown; items: unknown }) {
+  return crypto.createHash("sha256").update(JSON.stringify(input)).digest("hex");
 }
 
 async function getApprovedContentClaims(claimIds: number[], programKey: string) {
@@ -2441,6 +2586,178 @@ export const marketingSystemRouter = router({
   getPilotReadinessExecutiveDashboard: protectedProcedure.query(async ({ ctx }) => {
     await requireCapability(ctx.user, "view_analytics");
     return getPilotReadinessExecutiveData();
+  }),
+
+  getWeeklyResultsWorkspace: protectedProcedure.query(async ({ ctx }) => {
+    await requireCapability(ctx.user, "view_weekly_results");
+    const db = await requireDb();
+    const [settingsRows, plans, preferences, performance] = await Promise.all([
+      db.select().from(marketingWeeklyResultsSettings).where(eq(marketingWeeklyResultsSettings.settingsKey, "primary-weekly-results")).limit(1),
+      db.select().from(marketingWeeklyResultsPlans).orderBy(desc(marketingWeeklyResultsPlans.periodStart), desc(marketingWeeklyResultsPlans.version)).limit(60),
+      db.select().from(marketingWeeklyResultsPreferenceMemories).where(eq(marketingWeeklyResultsPreferenceMemories.status, "active")).orderBy(desc(marketingWeeklyResultsPreferenceMemories.updatedAt)).limit(80),
+      db.select().from(marketingWeeklyResultsPerformanceSnapshots).orderBy(desc(marketingWeeklyResultsPerformanceSnapshots.periodStart), desc(marketingWeeklyResultsPerformanceSnapshots.recordedAt)).limit(80),
+    ]);
+    const planIds = plans.map(plan => plan.id);
+    const items = planIds.length === 0 ? [] : await db.select().from(marketingWeeklyResultsItems)
+      .where(inArray(marketingWeeklyResultsItems.planId, planIds)).orderBy(marketingWeeklyResultsItems.planId, marketingWeeklyResultsItems.position);
+    const itemIds = items.map(item => item.id);
+    const events = itemIds.length === 0 ? [] : await db.select().from(marketingWeeklyResultsItemEvents)
+      .where(inArray(marketingWeeklyResultsItemEvents.itemId, itemIds)).orderBy(desc(marketingWeeklyResultsItemEvents.createdAt));
+    return {
+      settings: parseWeeklyResultsSettings(settingsRows[0]),
+      plans: plans.map(plan => ({
+        ...plan,
+        setupSnapshot: parseJson<Record<string, unknown>>(plan.setupSnapshotJson, {}),
+        previousWeekPerformance: parseJson<Record<string, unknown>>(plan.previousWeekPerformanceJson, {}),
+        preferenceMemory: parseJson<Array<Record<string, unknown>>>(plan.preferenceMemoryJson, []),
+        items: items.filter(item => item.planId === plan.id).map(item => ({
+          ...item,
+          hashtags: parseJson<string[]>(item.hashtagsJson, []),
+          sourceClaimIds: parseJson<number[]>(item.sourceClaimIdsJson, []),
+          metadata: parseJson<Record<string, unknown>>(item.metadataJson, {}),
+          events: events.filter(event => event.itemId === item.id).map(event => ({ ...event, changedFields: parseJson<string[]>(event.changedFieldsJson, []), payload: parseJson<Record<string, unknown>>(event.payloadJson, {}) })),
+        })),
+      })),
+      preferences, performance: performance.map(snapshot => ({ ...snapshot, spendEgp: Number(snapshot.spendEgp) })),
+      policy: WEEKLY_RESULTS_EXECUTION_BOUNDARY, externalOperationsEnabled: false,
+      scheduler: { kind: "crm_background_schedule", configuredFor: "Saturday, Africa/Cairo", state: "waiting_execution_release", explanation: "The Saturday timing and 10:00 Cairo delivery target are saved in CRM Setup. The job intentionally cannot prepare content through providers until the separate execution-release and provider safety gates are approved." },
+    };
+  }),
+
+  saveWeeklyResultsSetup: protectedProcedure.input(weeklyResultsSettingsInput).mutation(async ({ ctx, input }) => {
+    await requireMarketingSystemAdministrator(ctx.user);
+    const textFields = [input.weeklyGoal, input.updatedSourcesNote, input.creativeDirection, input.allocationRules.rotationNote, input.allocationRules.platformNote, ...input.programPriorities.flatMap(priority => [priority.key, priority.note])];
+    for (const value of textFields) {
+      if (!value) continue;
+      const unsafe = findDisallowedWeeklyResultsData(value);
+      if (unsafe) throw new TRPCError({ code: "BAD_REQUEST", message: `Setup cannot include ${unsafe}. Use programme-level instructions only.` });
+    }
+    const db = await requireDb();
+    const now = Date.now();
+    const values = {
+      prepareStartTime: input.prepareStartTime, deliveryDeadlineTime: input.deliveryDeadlineTime, preparationScheduleEnabled: input.preparationScheduleEnabled, scheduleState: "waiting_execution_release",
+      weeklyGoal: input.weeklyGoal ? normalizeWeeklyResultsText(input.weeklyGoal) : null, programPrioritiesJson: JSON.stringify(input.programPriorities), updatedSourcesNote: input.updatedSourcesNote ? normalizeWeeklyResultsText(input.updatedSourcesNote) : null,
+      creativeDirection: input.creativeDirection ? normalizeWeeklyResultsText(input.creativeDirection) : null, contentMixJson: JSON.stringify(input.contentMix), allocationRulesJson: JSON.stringify(input.allocationRules), learningEnabled: input.learningEnabled,
+      lastScheduleStatus: "waiting_execution_release", lastChangedByUserId: ctx.user.id, updatedAt: now,
+    };
+    await db.insert(marketingWeeklyResultsSettings).values({ settingsKey: "primary-weekly-results", timezone: "Africa/Cairo", prepareDayOfWeek: 6, ...values, lastScheduleAttemptAt: null, createdAt: now }).onDuplicateKeyUpdate({ set: values });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_results_setup", "primary-weekly-results", JSON.stringify({ timezone: "Africa/Cairo", prepareDayOfWeek: 6, prepareStartTime: input.prepareStartTime, deliveryDeadlineTime: input.deliveryDeadlineTime, executionAllowed: false }));
+    return { success: true, scheduleState: "waiting_execution_release" as const, externalOperationsEnabled: false };
+  }),
+
+  createWeeklyResultsPlan: protectedProcedure.input(createWeeklyResultsPlanInput).mutation(async ({ ctx, input }) => {
+    await requireMarketingSystemAdministrator(ctx.user);
+    if (!isSaturdayDate(input.periodStart)) throw new TRPCError({ code: "BAD_REQUEST", message: "The planned week must start on a Saturday in YYYY-MM-DD form." });
+    const unsafeTitle = findDisallowedWeeklyResultsData(input.title);
+    if (unsafeTitle) throw new TRPCError({ code: "BAD_REQUEST", message: `Plan title cannot include ${unsafeTitle}.` });
+    const normalizedItems = input.items.map(normalizeWeeklyResultsItem);
+    const db = await requireDb();
+    const [settingsRows, latest, preferences, performance] = await Promise.all([
+      db.select().from(marketingWeeklyResultsSettings).where(eq(marketingWeeklyResultsSettings.settingsKey, "primary-weekly-results")).limit(1),
+      db.select({ version: marketingWeeklyResultsPlans.version }).from(marketingWeeklyResultsPlans).where(eq(marketingWeeklyResultsPlans.periodStart, input.periodStart)).orderBy(desc(marketingWeeklyResultsPlans.version)).limit(1),
+      db.select().from(marketingWeeklyResultsPreferenceMemories).where(eq(marketingWeeklyResultsPreferenceMemories.status, "active")).orderBy(desc(marketingWeeklyResultsPreferenceMemories.updatedAt)).limit(80),
+      db.select().from(marketingWeeklyResultsPerformanceSnapshots).orderBy(desc(marketingWeeklyResultsPerformanceSnapshots.periodStart), desc(marketingWeeklyResultsPerformanceSnapshots.recordedAt)).limit(8),
+    ]);
+    const setup = parseWeeklyResultsSettings(settingsRows[0]);
+    const version = (latest[0]?.version ?? 0) + 1;
+    const now = Date.now();
+    const preferencesSnapshot = preferences.map(preference => ({ scope: preference.scope, scopeKey: preference.scopeKey, preferenceText: preference.preferenceText, updatedAt: preference.updatedAt }));
+    const performanceSnapshot = performance.map(snapshot => ({ periodStart: snapshot.periodStart, spendEgp: Number(snapshot.spendEgp), impressions: snapshot.impressions, clicks: snapshot.clicks, leadForms: snapshot.leadForms, qualifiedLeads: snapshot.qualifiedLeads, clientStageLeads: snapshot.clientStageLeads, notes: snapshot.notes }));
+    const planKey = weeklyResultsPlanKey();
+    const planHash = weeklyResultsPlanHash({ periodStart: input.periodStart, title: normalizeWeeklyResultsText(input.title), setup, performance: performanceSnapshot, preferences: preferencesSnapshot, items: normalizedItems });
+    const result = await db.insert(marketingWeeklyResultsPlans).values({
+      planKey, periodStart: input.periodStart, version, status: "draft_prepared", source: "manual_internal", title: normalizeWeeklyResultsText(input.title), weeklyGoal: setup.weeklyGoal, creativeDirection: setup.creativeDirection,
+      setupSnapshotJson: JSON.stringify(setup), previousWeekPerformanceJson: JSON.stringify(performanceSnapshot), preferenceMemoryJson: JSON.stringify(preferencesSnapshot), planHash,
+      preparedByUserId: ctx.user.id, preparedAt: now, deliveryDeadlineAt: null, createdAt: now, updatedAt: now,
+    });
+    const planId = Number((result as { insertId?: number }).insertId);
+    for (let index = 0; index < normalizedItems.length; index += 1) {
+      const item = normalizedItems[index]!;
+      const itemResult = await db.insert(marketingWeeklyResultsItems).values({
+        planId, position: index + 1, ...item, requiresIndividualApproval: true, status: "draft", blockedReason: null, contentPacketId: null,
+        approvedByUserId: null, approvedAt: null, stoppedByUserId: null, stoppedAt: null, createdByUserId: ctx.user.id, lastEditedByUserId: ctx.user.id, createdAt: now, updatedAt: now,
+      });
+      const itemId = Number((itemResult as { insertId?: number }).insertId);
+      await appendWeeklyResultsItemEvent({ itemId, action: "created", toStatus: "draft", changedFields: ["initial_plan_item"], payload: { planKey, position: index + 1, noProviderCall: true, requiresIndividualApproval: true }, actorUserId: ctx.user.id, createdAt: now });
+    }
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_weekly_results_plan", planId, JSON.stringify({ planKey, periodStart: input.periodStart, version, itemCount: normalizedItems.length, planHash, externalOperationsEnabled: false }));
+    return { success: true, planId, planKey, version, status: "draft_prepared" as const, externalOperationsEnabled: false };
+  }),
+
+  updateWeeklyResultsItem: protectedProcedure.input(updateWeeklyResultsItemInput).mutation(async ({ ctx, input }) => {
+    await requireMarketingSystemAdministrator(ctx.user);
+    const db = await requireDb();
+    const [existing] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, input.itemId)).limit(1);
+    if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Weekly Results item not found." });
+    if (["approved", "stopped", "superseded"].includes(existing.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "Approved, stopped, or superseded items cannot be edited. Create a new plan item instead." });
+    const item = normalizeWeeklyResultsItem(input);
+    const now = Date.now();
+    const nextStatus: WeeklyResultsItemStatus = "draft";
+    await db.update(marketingWeeklyResultsItems).set({ ...item, status: nextStatus, blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingWeeklyResultsItems.id, existing.id));
+    await appendWeeklyResultsItemEvent({ itemId: existing.id, action: "edited", fromStatus: existing.status, toStatus: nextStatus, changedFields: ["content", "preview", "claims", "selection"], payload: { noProviderCall: true, requiresResubmission: true }, actorUserId: ctx.user.id, createdAt: now });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_results_item", existing.id, JSON.stringify({ planId: existing.planId, fromStatus: existing.status, toStatus: nextStatus, externalOperationsEnabled: false }));
+    return { success: true, status: nextStatus, externalOperationsEnabled: false };
+  }),
+
+  submitWeeklyResultsItemForIndividualReview: protectedProcedure.input(z.object({ itemId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    await requireMarketingSystemAdministrator(ctx.user);
+    const db = await requireDb();
+    const [item] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, input.itemId)).limit(1);
+    if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Weekly Results item not found." });
+    if (!item.isSelected) throw new TRPCError({ code: "BAD_REQUEST", message: "Select this item before sending it for individual review." });
+    if (!weeklyResultsItemCanTransition(item.status as WeeklyResultsItemStatus, "pending_individual_review")) throw new TRPCError({ code: "BAD_REQUEST", message: "Only a draft item can enter individual review." });
+    if (!item.programKey) throw new TRPCError({ code: "BAD_REQUEST", message: "A programme key is required before an item can be reviewed." });
+    const previewProblem = validatePreviewFingerprint(item.previewUrl, item.previewHash);
+    if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: previewProblem });
+    await getApprovedContentClaims(parseJson<number[]>(item.sourceClaimIdsJson, []), item.programKey);
+    const now = Date.now();
+    await db.update(marketingWeeklyResultsItems).set({ status: "pending_individual_review", blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingWeeklyResultsItems.id, item.id));
+    await appendWeeklyResultsItemEvent({ itemId: item.id, action: "submitted_for_individual_review", fromStatus: item.status, toStatus: "pending_individual_review", payload: { previewHash: item.previewHash, sourceClaimCount: parseJson<number[]>(item.sourceClaimIdsJson, []).length, batchApprovalAvailable: false, noPublishCommand: true }, actorUserId: ctx.user.id, createdAt: now });
+    return { success: true, status: "pending_individual_review" as const, externalOperationsEnabled: false };
+  }),
+
+  decideWeeklyResultsItem: protectedProcedure.input(weeklyResultsItemDecisionInput).mutation(async ({ ctx, input }) => {
+    await requireMarketingSystemAdministrator(ctx.user);
+    const unsafe = findDisallowedWeeklyResultsData(input.note);
+    if (unsafe) throw new TRPCError({ code: "BAD_REQUEST", message: `Decision notes cannot include ${unsafe}.` });
+    const db = await requireDb();
+    const [item] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, input.itemId)).limit(1);
+    if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Weekly Results item not found." });
+    if (item.status !== "pending_individual_review") throw new TRPCError({ code: "BAD_REQUEST", message: "Each decision requires this single item to be pending individual review." });
+    const nextByDecision = { send_back: "changes_requested", approve: "approved", reject: "rejected", stop: "stopped" } as const;
+    const nextStatus = nextByDecision[input.decision];
+    if (!weeklyResultsItemCanTransition(item.status as WeeklyResultsItemStatus, nextStatus)) throw new TRPCError({ code: "BAD_REQUEST", message: "This individual decision is not valid for the current item state." });
+    if (input.decision === "approve") {
+      const previewProblem = validatePreviewFingerprint(item.previewUrl, item.previewHash);
+      if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: previewProblem });
+      if (!item.programKey) throw new TRPCError({ code: "BAD_REQUEST", message: "An approved item must have a programme key." });
+      await getApprovedContentClaims(parseJson<number[]>(item.sourceClaimIdsJson, []), item.programKey);
+    }
+    const now = Date.now();
+    await db.update(marketingWeeklyResultsItems).set({
+      status: nextStatus, blockedReason: input.decision === "approve" ? null : normalizeWeeklyResultsText(input.note), lastEditedByUserId: ctx.user.id,
+      approvedByUserId: input.decision === "approve" ? ctx.user.id : null, approvedAt: input.decision === "approve" ? now : null,
+      stoppedByUserId: input.decision === "stop" ? ctx.user.id : null, stoppedAt: input.decision === "stop" ? now : null, updatedAt: now,
+    }).where(eq(marketingWeeklyResultsItems.id, item.id));
+    await appendWeeklyResultsItemEvent({ itemId: item.id, action: `individual_${input.decision}`, fromStatus: item.status, toStatus: nextStatus, feedback: normalizeWeeklyResultsText(input.note), payload: { explicitIndividualDecision: true, feedbackCategory: input.feedbackCategory ?? null, noBatchRule: true, noPublishCommand: true, externalOperationsEnabled: false }, actorUserId: ctx.user.id, createdAt: now });
+    if (["send_back", "reject"].includes(input.decision)) {
+      await db.insert(marketingWeeklyResultsPreferenceMemories).values({ scope: "weekly_results", scopeKey: item.programKey, preferenceText: normalizeWeeklyResultsText(input.note), sourceItemId: item.id, sourceEventId: null, status: "active", createdByUserId: ctx.user.id, createdAt: now, updatedAt: now });
+    }
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_results_item_decision", item.id, JSON.stringify({ planId: item.planId, decision: input.decision, fromStatus: item.status, toStatus: nextStatus, individualOnly: true, externalOperationsEnabled: false }));
+    return { success: true, status: nextStatus, externalOperationsEnabled: false };
+  }),
+
+  saveWeeklyResultsPerformance: protectedProcedure.input(weeklyResultsPerformanceInput).mutation(async ({ ctx, input }) => {
+    await requireMarketingSystemAdministrator(ctx.user);
+    if (!isSaturdayDate(input.periodStart)) throw new TRPCError({ code: "BAD_REQUEST", message: "Performance snapshots must use the Saturday that starts the measured week." });
+    const unsafe = input.notes ? findDisallowedWeeklyResultsData(input.notes) : null;
+    if (unsafe) throw new TRPCError({ code: "BAD_REQUEST", message: `Performance notes cannot include ${unsafe}. Keep them aggregate only.` });
+    const db = await requireDb();
+    const now = Date.now();
+    const values = { spendEgp: input.spendEgp.toFixed(2), impressions: input.impressions, clicks: input.clicks, leadForms: input.leadForms, qualifiedLeads: input.qualifiedLeads, clientStageLeads: input.clientStageLeads, notes: input.notes ? normalizeWeeklyResultsText(input.notes) : null, recordedByUserId: ctx.user.id, recordedAt: now, updatedAt: now };
+    await db.insert(marketingWeeklyResultsPerformanceSnapshots).values({ periodStart: input.periodStart, source: "manual_aggregate", ...values }).onDuplicateKeyUpdate({ set: values });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_results_performance", input.periodStart, JSON.stringify({ source: "manual_aggregate", externalOperationsEnabled: false }));
+    return { success: true, externalOperationsEnabled: false };
   }),
 
   listWeeklyExecutiveBriefs: protectedProcedure.query(async ({ ctx }) => {

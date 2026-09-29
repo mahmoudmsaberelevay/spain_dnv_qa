@@ -272,6 +272,8 @@ const modules = [
     icon: Megaphone,
     items: [
       { icon: LayoutDashboard, label: "Marketing Dashboard", path: "/marketing" },
+      { icon: SettingsIcon, label: "1. Setup", path: "/marketing/weekly-results?view=setup" },
+      { icon: CalendarClock, label: "2. Weekly Results", path: "/marketing/weekly-results" },
       { icon: Sparkles, label: "AI Agentic Marketing System", path: "/marketing/agentic-system" },
       { icon: Sparkles, label: "Brand Discovery — 35 Questions", path: "/marketing/brand-studio" },
       { icon: BarChart3, label: "Weekly Executive Briefs", path: "/marketing/weekly-executive-briefs" },

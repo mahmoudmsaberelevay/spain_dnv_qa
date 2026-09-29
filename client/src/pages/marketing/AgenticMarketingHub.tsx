@@ -1,8 +1,10 @@
 import { useLocation } from "wouter";
-import { BarChart3, BookOpenCheck, BrainCircuit, ClipboardCheck, FileCheck2, FilePenLine, LockKeyhole, PlugZap, Sparkles, Target } from "lucide-react";
+import { BarChart3, BookOpenCheck, BrainCircuit, CalendarClock, ClipboardCheck, FileCheck2, FilePenLine, LockKeyhole, PlugZap, Settings2, Sparkles, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const controls = [
+  { icon: Settings2, title: "Setup", text: "Set Saturday Cairo preparation time, the 10:00 delivery target, programmes, sources, creative direction, content mix, allocation, and feedback-learning rules.", href: "/marketing/weekly-results?view=setup", gate: "Configuration" },
+  { icon: CalendarClock, title: "Weekly Results", text: "Create or review a weekly plan and make a separate documented decision on every post, carousel, reel, image, and graphic. Batch approval is unavailable.", href: "/marketing/weekly-results", gate: "Individual review" },
   { icon: Sparkles, title: "1. Brand Studio", text: "Complete your 35-question Brand Discovery and approve the Brand Book that governs all future marketing work.", href: "/marketing/brand-studio", gate: "Start here" },
   { icon: BookOpenCheck, title: "2. Official Knowledge Library", text: "Add official programme sources and approve evidence-backed claims before they can be reused.", href: "/marketing/knowledge-library", gate: "Evidence required" },
   { icon: ClipboardCheck, title: "3. Controlled Work Orders", text: "Plan cost-capped research or creative work with internal review lineage and zero-cost dry runs.", href: "/marketing/work-orders", gate: "Internal only" },

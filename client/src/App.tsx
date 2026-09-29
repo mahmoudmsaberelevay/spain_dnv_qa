@@ -92,6 +92,7 @@ import AgenticMarketingHub from "./pages/marketing/AgenticMarketingHub";
 import ProviderConnectionCenter from "./pages/marketing/ProviderConnectionCenter";
 import PilotReadinessDashboard from "./pages/marketing/PilotReadinessDashboard";
 import WeeklyExecutiveBriefs from "./pages/marketing/WeeklyExecutiveBriefs";
+import WeeklyResults from "./pages/marketing/WeeklyResults";
 
 // ─── Reports Module ─────────────────────────────────────────────────────────────
 import Reports from "./pages/Reports";
@@ -383,6 +384,9 @@ function Router() {
       </Route>
       <Route path="/marketing/weekly-executive-briefs">
         <MobileRoute><WeeklyExecutiveBriefs /></MobileRoute>
+      </Route>
+      <Route path="/marketing/weekly-results">
+        <MobileRoute><WeeklyResults /></MobileRoute>
       </Route>
       <Route path="/marketing/summary-generator">
         <MobileRoute><SummaryGenerator /></MobileRoute>
