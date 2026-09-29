@@ -1,7 +1,7 @@
 # ELEVAY Agentic Marketing System — Architecture Decision Record
 
 **Date:** 29 September 2026  
-**Status:** Phase 0 complete; Phase 1 Brand Studio implemented in controlled setup mode  
+**Status:** Phase 0 and Phase 1 complete; Phase 2 Official Knowledge Library implemented in controlled setup mode
 **Scope:** Existing `elevay.vip` CRM; no replacement CRM, no local client database, no automatic publishing or paid-media execution.
 
 ## 1. Decision summary
@@ -95,7 +95,7 @@ A Brand Book can be proposed only once all 35 questions are answered and no answ
 |---|---|---|
 | 0 | Discovery, ADR, CRM baseline, provider readiness assessment | Complete. |
 | 1 | Brand Studio, 35-question interview, roles, Brand Book/version governance | Complete after validation; no autonomous output. |
-| 2 | Source library, programme knowledge, official-source allowlist, claim review | Requires active Brand Book and source owners. |
+| 2 | Source library, programme knowledge, official-source allowlist, claim review | Implemented in internal-only mode; Brand Book and explicit claim approval remain required before downstream content work. |
 | 3 | Work-order engine, immutable artifacts, provider adapters, cost ledger and dry runs | Requires provider credentials/configuration and owner-approved cost caps. |
 | 4 | Content Studio, QA and Approval Inbox with final previews | Requires Brand Book and claim-source gates. |
 | 5 | Meta Campaign Operations, CRM attribution, budget ledger and measurement pilot | Requires separate Ads Strategy Intake approval, Meta permissions and explicit spend caps. |
@@ -112,3 +112,30 @@ A Brand Book can be proposed only once all 35 questions are answered and no answ
 - [x] No publishing, campaign, budget, CAPI, or external-provider action exists in this phase.
 - [ ] Mahmoud begins Question 01 and approves a completed Brand Book.
 - [ ] Separate owner approval for Phase 2 knowledge/claims implementation.
+
+## 9. Phase 2 knowledge-governance decision
+
+Phase 2 introduces an **internal-only Official Knowledge Library** that is intentionally separate from existing programme summaries and marketing plans.
+
+| Record | Purpose | Guardrail |
+|---|---|---|
+| `marketing_knowledge_sources` | Versioned programme authority source, source snapshot/hash, authority, programme, review and material-change state | Exact HTTPS authority-domain allowlist; initial sources are candidates only. |
+| `marketing_knowledge_claims` | A proposed or reviewed internal statement tied to the exact supporting source snapshot hash | Cannot be proposed without a same-programme approved/tracked source; cannot be approved after source change. |
+
+### Phase 2 access and lifecycle
+
+- Researchers and Marketing Managers may submit an allowlisted authority source and propose a source-backed claim.
+- Mahmoud alone approves a source, approves/holds/rejects a claim, or marks a material source change.
+- A material change immediately sets the source to `needs_review` and demotes every dependent approved claim to `needs_review`.
+- No query, source, or claim is a publish action. The library creates no external-provider request, Meta update, campaign, budget, CAPI event, email, WhatsApp message, client advice, or legal conclusion.
+- Three reviewed authority records for Spain international teleworker residency and Malta MPRP were seeded as `candidate`; no source or claim is approved.
+
+### Phase 2 acceptance record
+
+- [x] Additive schema with source/claim hashes, review state and source-change state applied.
+- [x] Official-domain allowlist rejects non-HTTPS and lookalike hostnames.
+- [x] Candidate evidence is separate from approved claims and has no client/Lead data.
+- [x] Owner-only approval and review gates are enforced server-side.
+- [x] Material-source-change flow demotes dependent claims instead of silently changing wording.
+- [x] Desktop and mobile Marketing navigation expose the protected Knowledge Library route.
+- [x] No provider, publication, campaign, budget or CAPI action exists in Phase 2.

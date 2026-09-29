@@ -1,0 +1,55 @@
+-- Agentic Marketing System — Phase 2 Official Knowledge Library
+-- Additive only. No existing CRM, Marketing plan, Lead, Contract, Financial, Meta,
+-- Client Documentation, Client Portal, provider, Brand Studio, or audit record changes.
+
+CREATE TABLE IF NOT EXISTS `marketing_knowledge_sources` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `programKey` VARCHAR(96) NOT NULL,
+  `programLabel` VARCHAR(160) NOT NULL,
+  `title` VARCHAR(500) NOT NULL,
+  `authorityName` VARCHAR(255) NOT NULL,
+  `sourceType` VARCHAR(48) NOT NULL,
+  `sourceUrl` VARCHAR(2000) NOT NULL,
+  `sourceDomain` VARCHAR(255) NOT NULL,
+  `trustTier` INT NOT NULL DEFAULT 1,
+  `status` VARCHAR(32) NOT NULL DEFAULT 'candidate',
+  `snapshotText` MEDIUMTEXT NULL,
+  `snapshotHash` VARCHAR(64) NULL,
+  `snapshotRetrievedAt` BIGINT NULL,
+  `sourcePublishedAt` BIGINT NULL,
+  `sourceEffectiveAt` BIGINT NULL,
+  `changeState` VARCHAR(48) NOT NULL DEFAULT 'untracked',
+  `changeSummary` TEXT NULL,
+  `reviewedByUserId` INT NULL,
+  `reviewedAt` BIGINT NULL,
+  `createdByUserId` INT NOT NULL,
+  `createdAt` BIGINT NOT NULL,
+  `updatedAt` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `marketing_knowledge_source_url_unique` (`sourceUrl`),
+  KEY `marketing_knowledge_source_program_status_idx` (`programKey`, `status`, `updatedAt`),
+  KEY `marketing_knowledge_source_domain_idx` (`sourceDomain`, `status`)
+);
+
+CREATE TABLE IF NOT EXISTS `marketing_knowledge_claims` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `programKey` VARCHAR(96) NOT NULL,
+  `claimType` VARCHAR(48) NOT NULL,
+  `claimText` MEDIUMTEXT NOT NULL,
+  `sourceId` INT NOT NULL,
+  `sourceSnapshotHash` VARCHAR(64) NOT NULL,
+  `riskLevel` VARCHAR(24) NOT NULL DEFAULT 'medium',
+  `status` VARCHAR(32) NOT NULL DEFAULT 'proposed',
+  `reviewerNote` TEXT NULL,
+  `contentHash` VARCHAR(64) NOT NULL,
+  `proposedByUserId` INT NOT NULL,
+  `proposedAt` BIGINT NOT NULL,
+  `reviewedByUserId` INT NULL,
+  `reviewedAt` BIGINT NULL,
+  `retiredAt` BIGINT NULL,
+  `updatedAt` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `marketing_knowledge_claim_content_hash_unique` (`contentHash`),
+  KEY `marketing_knowledge_claim_program_status_idx` (`programKey`, `status`, `updatedAt`),
+  KEY `marketing_knowledge_claim_source_idx` (`sourceId`, `status`)
+);

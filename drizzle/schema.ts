@@ -2360,6 +2360,67 @@ export const marketingBrandBooks = mysqlTable("marketing_brand_books", {
 export type MarketingBrandBook = typeof marketingBrandBooks.$inferSelect;
 export type InsertMarketingBrandBook = typeof marketingBrandBooks.$inferInsert;
 
+// ─── AGENTIC MARKETING SYSTEM / OFFICIAL KNOWLEDGE LIBRARY ────────────────────
+// Sources and claims stay separate from program summaries. Nothing in these tables
+// is publishable until an explicit owner review; no client or Lead data belongs here.
+export const marketingKnowledgeSources = mysqlTable("marketing_knowledge_sources", {
+  id: int("id").autoincrement().primaryKey(),
+  programKey: varchar("programKey", { length: 96 }).notNull(),
+  programLabel: varchar("programLabel", { length: 160 }).notNull(),
+  title: varchar("title", { length: 500 }).notNull(),
+  authorityName: varchar("authorityName", { length: 255 }).notNull(),
+  sourceType: varchar("sourceType", { length: 48 }).notNull(),
+  sourceUrl: varchar("sourceUrl", { length: 2_000 }).notNull(),
+  sourceDomain: varchar("sourceDomain", { length: 255 }).notNull(),
+  trustTier: int("trustTier").notNull().default(1),
+  status: varchar("status", { length: 32 }).notNull().default("candidate"),
+  snapshotText: mediumtext("snapshotText"),
+  snapshotHash: varchar("snapshotHash", { length: 64 }),
+  snapshotRetrievedAt: bigint("snapshotRetrievedAt", { mode: "number" }),
+  sourcePublishedAt: bigint("sourcePublishedAt", { mode: "number" }),
+  sourceEffectiveAt: bigint("sourceEffectiveAt", { mode: "number" }),
+  changeState: varchar("changeState", { length: 48 }).notNull().default("untracked"),
+  changeSummary: text("changeSummary"),
+  reviewedByUserId: int("reviewedByUserId"),
+  reviewedAt: bigint("reviewedAt", { mode: "number" }),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_knowledge_source_url_unique").on(table.sourceUrl),
+  index("marketing_knowledge_source_program_status_idx").on(table.programKey, table.status, table.updatedAt),
+  index("marketing_knowledge_source_domain_idx").on(table.sourceDomain, table.status),
+]);
+export type MarketingKnowledgeSource = typeof marketingKnowledgeSources.$inferSelect;
+export type InsertMarketingKnowledgeSource = typeof marketingKnowledgeSources.$inferInsert;
+
+// Every claim references one approved source snapshot. A source change demotes the
+// claim to needs_review; approved wording is never silently rewritten or republished.
+export const marketingKnowledgeClaims = mysqlTable("marketing_knowledge_claims", {
+  id: int("id").autoincrement().primaryKey(),
+  programKey: varchar("programKey", { length: 96 }).notNull(),
+  claimType: varchar("claimType", { length: 48 }).notNull(),
+  claimText: mediumtext("claimText").notNull(),
+  sourceId: int("sourceId").notNull(),
+  sourceSnapshotHash: varchar("sourceSnapshotHash", { length: 64 }).notNull(),
+  riskLevel: varchar("riskLevel", { length: 24 }).notNull().default("medium"),
+  status: varchar("status", { length: 32 }).notNull().default("proposed"),
+  reviewerNote: text("reviewerNote"),
+  contentHash: varchar("contentHash", { length: 64 }).notNull(),
+  proposedByUserId: int("proposedByUserId").notNull(),
+  proposedAt: bigint("proposedAt", { mode: "number" }).notNull(),
+  reviewedByUserId: int("reviewedByUserId"),
+  reviewedAt: bigint("reviewedAt", { mode: "number" }),
+  retiredAt: bigint("retiredAt", { mode: "number" }),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  index("marketing_knowledge_claim_program_status_idx").on(table.programKey, table.status, table.updatedAt),
+  index("marketing_knowledge_claim_source_idx").on(table.sourceId, table.status),
+  uniqueIndex("marketing_knowledge_claim_content_hash_unique").on(table.contentHash),
+]);
+export type MarketingKnowledgeClaim = typeof marketingKnowledgeClaims.$inferSelect;
+export type InsertMarketingKnowledgeClaim = typeof marketingKnowledgeClaims.$inferInsert;
+
 // ─── MARKETING READY SUMMARIES ─────────────────────────────────────────────────
 export const marketingReadySummaries = mysqlTable("marketing_ready_summaries", {
   id: int("id").autoincrement().primaryKey(),

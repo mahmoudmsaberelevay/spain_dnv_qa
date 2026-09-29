@@ -15,6 +15,9 @@ export type MarketingSystemCapability =
   | "view_provider_readiness"
   | "manage_provider_aliases"
   | "view_knowledge"
+  | "manage_knowledge_sources"
+  | "create_knowledge_claims"
+  | "review_knowledge_claims"
   | "create_research"
   | "create_creative"
   | "review_creative"
@@ -26,14 +29,15 @@ export type MarketingSystemCapability =
 const CAPABILITIES: Record<Exclude<EffectiveMarketingSystemRole, null>, readonly MarketingSystemCapability[]> = {
   owner: [
     "view_brand_book", "manage_brand_discovery", "manage_roles", "view_provider_readiness", "manage_provider_aliases",
-    "view_knowledge", "create_research", "create_creative", "review_creative", "view_analytics", "export_analytics",
+    "view_knowledge", "manage_knowledge_sources", "create_knowledge_claims", "review_knowledge_claims",
+    "create_research", "create_creative", "review_creative", "view_analytics", "export_analytics",
     "approve_publishing", "manage_campaigns",
   ],
   marketing_manager: [
-    "view_brand_book", "view_provider_readiness", "view_knowledge", "create_research", "create_creative",
+    "view_brand_book", "view_provider_readiness", "view_knowledge", "manage_knowledge_sources", "create_knowledge_claims", "create_research", "create_creative",
     "review_creative", "view_analytics", "export_analytics",
   ],
-  researcher: ["view_brand_book", "view_knowledge", "create_research", "view_analytics"],
+  researcher: ["view_brand_book", "view_knowledge", "manage_knowledge_sources", "create_knowledge_claims", "create_research", "view_analytics"],
   creative_producer: ["view_brand_book", "view_knowledge", "create_creative"],
   analyst: ["view_brand_book", "view_knowledge", "view_analytics", "export_analytics"],
 };

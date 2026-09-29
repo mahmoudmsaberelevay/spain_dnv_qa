@@ -1836,3 +1836,16 @@ Check email for download link within 5 minutes
 - [x] Pass 37 focused regressions, the production build, zero changed-file TypeScript diagnostics, and `git diff --check`
 - [x] Verify canonical usernames and restored counts in the authenticated Leads interface
 - [x] Save the final restorable checkpoint
+
+## Agentic Marketing System — Phase 2 Official Knowledge Library
+- [x] Review Phase 1 Brand Studio and existing programme-comparison source records before extending Marketing governance
+- [x] Retrieve and record current official Spain international teleworker, Spanish consular, and Residency Malta MPRP source candidates
+- [x] Add an exact HTTPS official-domain allowlist with lookalike-domain rejection
+- [x] Add additive source and claim tables with programme key, authority, source snapshot, SHA-256 evidence hashes, status, review, and material-change fields
+- [x] Apply reviewed migration `0092_agentic_marketing_knowledge_library.sql` without changing legacy Marketing, CRM, Lead, client, Financial, Contract, Meta, or portal records
+- [x] Seed exactly three reviewed authority candidates as `candidate` only; approve zero sources and zero claims
+- [x] Add protected role-aware source submission, owner approval, evidence-backed claim proposal, owner review, and material-change demotion procedures
+- [x] Add the desktop and mobile Official Knowledge Library workspace with no client-data, publishing, campaign, spend, or provider action
+- [x] Pass 27 focused Marketing System regressions, production build, changed-file diagnostic review, and `git diff --check`
+- [x] Verify the new route denies unauthenticated access and the live aggregate records remain three candidates and zero claims
+- [x] Record the privacy-safe validation report and save the final restorable checkpoint

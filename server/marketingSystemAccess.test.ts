@@ -27,8 +27,12 @@ describe("Agentic Marketing System role policy", () => {
   it("gives the intended production capabilities without granting an unassigned user anything", () => {
     expect(getMarketingSystemCapabilities(null)).toEqual([]);
     expect(hasMarketingSystemCapability("researcher", "create_research")).toBe(true);
+    expect(hasMarketingSystemCapability("researcher", "manage_knowledge_sources")).toBe(true);
+    expect(hasMarketingSystemCapability("researcher", "create_knowledge_claims")).toBe(true);
+    expect(hasMarketingSystemCapability("researcher", "review_knowledge_claims")).toBe(false);
     expect(hasMarketingSystemCapability("creative_producer", "create_creative")).toBe(true);
     expect(hasMarketingSystemCapability("analyst", "export_analytics")).toBe(true);
     expect(hasMarketingSystemCapability("marketing_manager", "review_creative")).toBe(true);
+    expect(hasMarketingSystemCapability("owner", "review_knowledge_claims")).toBe(true);
   });
 });

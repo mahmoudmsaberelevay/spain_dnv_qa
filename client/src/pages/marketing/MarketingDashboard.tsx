@@ -14,6 +14,14 @@ const tools = [
     badge: "Controlled setup",
   },
   {
+    icon: FileText,
+    title: "Official Knowledge Library",
+    description: "Review official programme sources, maintain evidence hashes, and propose marketing claims for explicit owner approval. No content is published from this library.",
+    href: "/marketing/knowledge-library",
+    color: "from-[#1A3A5C] to-[#5BA3B8]",
+    badge: "Evidence control",
+  },
+  {
     icon: FolderOpen,
     title: "Ready Summaries",
     description: "Browse and download approved ELEVAY country and program summaries. Administrators can add or remove PDFs from the shared library.",

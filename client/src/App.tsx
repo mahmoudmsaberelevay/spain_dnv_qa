@@ -82,6 +82,7 @@ import MarketingPlan from "./pages/marketing/MarketingPlan";
 import ArabicVoiceOver from "./pages/marketing/ArabicVoiceOver";
 import ReadySummaries from "./pages/marketing/ReadySummaries";
 import BrandStudio from "./pages/marketing/BrandStudio";
+import KnowledgeLibrary from "./pages/marketing/KnowledgeLibrary";
 
 // ─── Reports Module ─────────────────────────────────────────────────────────────
 import Reports from "./pages/Reports";
@@ -343,6 +344,9 @@ function Router() {
       </Route>
       <Route path="/marketing/brand-studio">
         <MobileRoute><BrandStudio /></MobileRoute>
+      </Route>
+      <Route path="/marketing/knowledge-library">
+        <MobileRoute><KnowledgeLibrary /></MobileRoute>
       </Route>
       <Route path="/marketing/summary-generator">
         <MobileRoute><SummaryGenerator /></MobileRoute>
