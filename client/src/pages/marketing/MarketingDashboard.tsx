@@ -23,11 +23,11 @@ const tools = [
   },
   {
     icon: Sparkles,
-    title: "Brand Studio",
-    description: "Complete the owner-controlled 35-question Brand Discovery, manage approved Brand Book versions, roles, and provider readiness. Publishing remains locked.",
+    title: "Brand Discovery — 35 Questions",
+    description: "Open the complete 35-question Brand Discovery form directly. Mahmoud and Ziad as the scoped Agentic Marketing administrator can answer, save, edit and resume it. Publishing remains locked.",
     href: "/marketing/brand-studio",
     color: "from-[#5BA3B8] to-[#1A3A5C]",
-    badge: "Controlled setup",
+    badge: "Open questions",
   },
   {
     icon: FileText,

@@ -99,3 +99,14 @@
 - [x] Passed 43 focused Agentic Marketing regressions, production build, changed-file TypeScript review and diff hygiene.
 
 > **Next gate:** Add external credentials only through protected server environment secrets. Then, after government-source approval and all strategy/content/pilot gates are complete, separately validate signed callbacks and request an explicit bounded execution-release approval. Never place API keys in the CRM, documents, source code or chat.
+
+## AI Agentic Marketing System — Ziad Brand Discovery Access Correction
+
+- [x] Analysed the supplied recording and confirmed that it showed the Marketing dashboard information card rather than the complete Brand Discovery form.
+- [x] Audited the active account and found its scoped Marketing System role was still Marketing Manager rather than the requested Agentic Marketing Administrator.
+- [x] Corrected the active scoped assignment to `marketing_system_admin` without changing any CRM-wide authority.
+- [x] Confirmed server-side Brand Discovery start, save, evidence, reset, proposal and approval actions use the scoped administrator guard.
+- [x] Made Brand Studio automatically open the active/new complete 35-question form for a scoped administrator, with a clear manual fallback button.
+- [x] Added the direct **Brand Discovery — 35 Questions** Marketing sidebar path and explicit dashboard card label.
+- [x] Passed 14 focused regressions, production build, changed-file diagnostics review and diff hygiene.
+- [x] Added a privacy-safe access-correction validation record.

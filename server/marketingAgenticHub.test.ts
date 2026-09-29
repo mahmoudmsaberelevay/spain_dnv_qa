@@ -11,6 +11,7 @@ describe("Agentic Marketing System hub", () => {
     const mobile = read("client/src/components/MobileLayout.tsx");
     const desktop = read("client/src/components/DashboardLayout.tsx");
     const page = read("client/src/pages/marketing/AgenticMarketingHub.tsx");
+    const brandStudio = read("client/src/pages/marketing/BrandStudio.tsx");
     expect(app).toContain('path="/marketing/agentic-system"');
     expect(dashboard).toContain('href: "/marketing/agentic-system"');
     expect(mobile).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
@@ -19,6 +20,10 @@ describe("Agentic Marketing System hub", () => {
     expect(dashboard).toContain('title: "AI Agentic Marketing System"');
     expect(page).toContain("ELEVAY AI Agentic Marketing System");
     expect(desktop).toContain('label: "Marketing Dashboard", path: "/marketing"');
+    expect(desktop).toContain('label: "Brand Discovery — 35 Questions", path: "/marketing/brand-studio"');
+    expect(dashboard).toContain('title: "Brand Discovery — 35 Questions"');
+    expect(brandStudio).toContain("Opening Brand Discovery questions");
+    expect(brandStudio).toContain("autoStartAttempted");
     for (const path of ["/marketing/brand-studio", "/marketing/knowledge-library", "/marketing/work-orders", "/marketing/content-studio", "/marketing/meta-ads-strategy", "/marketing/meta-ads-strategy-packet"]) {
       expect(page).toContain(path);
     }

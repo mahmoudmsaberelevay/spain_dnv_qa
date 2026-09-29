@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import {
   BadgeCheck, BookOpenCheck, BrainCircuit, CheckCircle2, CircleAlert, FileUp,
@@ -49,8 +49,8 @@ function BrandStudio() {
   const isOwner = ["owner", "marketing_system_admin"].includes(access?.role ?? "");
   const canView = access?.brandStudioAvailable === true;
   const { data: activeBook } = trpc.marketingSystem.getActiveBrandBook.useQuery(undefined, { enabled: canView });
-  const { data: books = [] } = trpc.marketingSystem.getBrandBooks.useQuery(undefined, { enabled: canView });
-  const { data: session } = trpc.marketingSystem.getCurrentDiscovery.useQuery(undefined, { enabled: isOwner });
+  const { data: books = [], isLoading: booksLoading } = trpc.marketingSystem.getBrandBooks.useQuery(undefined, { enabled: canView });
+  const { data: session, isLoading: sessionLoading } = trpc.marketingSystem.getCurrentDiscovery.useQuery(undefined, { enabled: isOwner });
   const { data: providers } = trpc.marketingSystem.providerReadiness.useQuery(undefined, { enabled: Boolean(access?.capabilities.includes("view_provider_readiness")) });
   const { data: baseline } = trpc.marketingSystem.dashboardBaseline.useQuery(undefined, { enabled: Boolean(access?.capabilities.includes("view_analytics")) });
   const { data: assignments = [] } = trpc.marketingSystem.listRoleAssignments.useQuery(undefined, { enabled: isOwner });
@@ -90,9 +90,17 @@ function BrandStudio() {
   const [draftSessionId, setDraftSessionId] = useState<number | null>(null);
   const [roleUserId, setRoleUserId] = useState("");
   const [roleName, setRoleName] = useState("researcher");
+  const autoStartAttempted = useRef(false);
+  const proposedBook = useMemo(() => books.find(book => book.status === "proposed"), [books]);
   const sessionSnapshot = useMemo(() => session
     ? `${session.session.id}:${session.answers.map(answer => `${answer.questionNumber}:${answer.updatedAt}:${answer.decisionStatus}`).join("|")}`
     : "", [session]);
+
+  useEffect(() => {
+    if (!isOwner || sessionLoading || booksLoading || session || proposedBook || activeBook || start.isPending || autoStartAttempted.current) return;
+    autoStartAttempted.current = true;
+    start.mutate();
+  }, [activeBook, booksLoading, isOwner, proposedBook, session, sessionLoading, start]);
 
   useEffect(() => {
     if (!session) return;
@@ -166,7 +174,6 @@ function BrandStudio() {
     return <div className="mx-auto flex min-h-[65vh] max-w-xl flex-col items-center justify-center px-6 text-center"><LockKeyhole className="mb-4 h-12 w-12 text-amber-300" /><h1 className="text-2xl font-bold text-white">Brand Studio access is controlled</h1><p className="mt-3 text-sm leading-6 text-slate-400">This workspace requires an assigned Agentic Marketing System role. Ask Mahmoud to assign Marketing Manager, Researcher, Creative Producer, or Analyst access.</p></div>;
   }
 
-  const proposedBook = books.find(book => book.status === "proposed");
   const answeredPercent = session ? Math.round((session.answeredCount / session.totalQuestions) * 100) : 0;
   const draftedCount = session?.questions.filter(question => Boolean(drafts[question.number]?.answerText.trim())).length ?? 0;
   const pendingConfirmationCount = session?.questions.filter(question => drafts[question.number]?.decisionStatus === "needs_confirmation").length ?? 0;
@@ -191,9 +198,9 @@ function BrandStudio() {
           <TabsList className="h-auto flex-wrap justify-start gap-1 bg-[#111b2c] p-1.5"><TabsTrigger value="studio">Brand Studio</TabsTrigger><TabsTrigger value="book">Brand Book</TabsTrigger>{isOwner && <TabsTrigger value="governance">Governance</TabsTrigger>}</TabsList>
 
           <TabsContent value="studio" className="space-y-5">
-            {!session && !proposedBook && !activeBook && isOwner && <Card className="border-[#5BA3B8]/30 bg-[#111b2c] text-white"><CardHeader><CardTitle className="flex items-center gap-2"><BrainCircuit className="h-5 w-5 text-[#8ad5e7]" />Start the required Brand Discovery</CardTitle><CardDescription className="text-slate-400">The blueprint’s exact 35 questions appear in one complete, sectioned form. You can save any completed answers and resume later on any device.</CardDescription></CardHeader><CardContent><Button onClick={() => start.mutate()} disabled={start.isPending} className="bg-[#5BA3B8] text-slate-950 hover:bg-[#82c8d9]">{start.isPending ? "Preparing…" : "Open all 35 questions"}<ListChecks className="ml-2 h-4 w-4" /></Button></CardContent></Card>}
+            {!session && !proposedBook && !activeBook && isOwner && <Card className="border-[#5BA3B8]/30 bg-[#111b2c] text-white"><CardHeader><CardTitle className="flex items-center gap-2"><BrainCircuit className="h-5 w-5 text-[#8ad5e7]" />Opening Brand Discovery questions</CardTitle><CardDescription className="text-slate-400">The complete 35-question form opens automatically for Mahmoud and scoped Agentic Marketing administrators. You can save any completed answers and resume later on any device.</CardDescription></CardHeader><CardContent><Button onClick={() => start.mutate()} disabled={start.isPending} className="bg-[#5BA3B8] text-slate-950 hover:bg-[#82c8d9]">{start.isPending ? "Preparing all 35 questions…" : "Open all 35 questions now"}<ListChecks className="ml-2 h-4 w-4" /></Button></CardContent></Card>}
 
-            {session && isOwner && <Card className="border-white/10 bg-[#111b2c] text-white shadow-2xl"><CardHeader className="border-b border-white/10 pb-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.15em] text-[#8ad5e7]">Owner-controlled discovery · all questions in one form</p><CardTitle className="mt-1 text-xl">ELEVAY Brand Discovery — 35 Questions</CardTitle><CardDescription className="mt-2 max-w-3xl text-slate-400">Fill any question in any order. <strong className="text-slate-200">Save complete form</strong> stores every completed answer together; you may return later. A Brand Book proposal remains unavailable until all questions are saved and any recommended response is explicitly confirmed.</CardDescription></div><Badge variant="outline" className="w-fit border-[#5BA3B8]/40 bg-[#5BA3B8]/10 text-[#a9d6e3]">Version {session.session.version}</Badge></div><Progress value={answeredPercent} className="mt-5 h-2 bg-slate-800 [&>div]:bg-[#5BA3B8]" /><div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-400"><span>{session.answeredCount} of {session.totalQuestions} answers securely saved</span><span>{draftedCount} questions currently completed in this form</span>{pendingConfirmationCount > 0 && <span className="text-amber-200">{pendingConfirmationCount} recommendation{pendingConfirmationCount === 1 ? "" : "s"} await confirmation</span>}</div></CardHeader>
+            {session && isOwner && <Card className="border-white/10 bg-[#111b2c] text-white shadow-2xl"><CardHeader className="border-b border-white/10 pb-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.15em] text-[#8ad5e7]">Administrator discovery · all questions in one form</p><CardTitle className="mt-1 text-xl">ELEVAY Brand Discovery — 35 Questions</CardTitle><CardDescription className="mt-2 max-w-3xl text-slate-400">Fill any question in any order. <strong className="text-slate-200">Save complete form</strong> stores every completed answer together; you may return later. A Brand Book proposal remains unavailable until all questions are saved and any recommended response is explicitly confirmed.</CardDescription></div><Badge variant="outline" className="w-fit border-[#5BA3B8]/40 bg-[#5BA3B8]/10 text-[#a9d6e3]">Version {session.session.version}</Badge></div><Progress value={answeredPercent} className="mt-5 h-2 bg-slate-800 [&>div]:bg-[#5BA3B8]" /><div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-400"><span>{session.answeredCount} of {session.totalQuestions} answers securely saved</span><span>{draftedCount} questions currently completed in this form</span>{pendingConfirmationCount > 0 && <span className="text-amber-200">{pendingConfirmationCount} recommendation{pendingConfirmationCount === 1 ? "" : "s"} await confirmation</span>}</div></CardHeader>
               <CardContent className="space-y-8 pt-6">
                 <div className="rounded-2xl border border-[#5BA3B8]/20 bg-[#0c1320] p-4 text-sm leading-6 text-slate-300"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" /><p>Use your own answers or select a suggested starting point and explicitly confirm it. Attach only approved brand evidence. This is a private Brand Book interview, not a publishing, advertising, spend, or provider-execution action.</p></div></div>
                 {questionsBySection.map(section => <section key={section.key} className="space-y-4"><div className="sticky top-0 z-10 flex flex-col gap-2 border-y border-white/10 bg-[#111b2c]/95 py-3 backdrop-blur sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.15em] text-[#8ad5e7]">{section.label}</p><h2 className="mt-1 font-semibold">Questions {section.start}–{section.end}</h2></div><Badge variant="outline" className="w-fit border-white/10 text-slate-300">{section.questions.filter(question => Boolean(drafts[question.number]?.answerText.trim())).length}/{section.questions.length} drafted</Badge></div>
