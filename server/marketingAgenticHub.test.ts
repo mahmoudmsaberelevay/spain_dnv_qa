@@ -11,6 +11,7 @@ describe("Agentic Marketing System hub", () => {
     const mobile = read("client/src/components/MobileLayout.tsx");
     const desktop = read("client/src/components/DashboardLayout.tsx");
     const page = read("client/src/pages/marketing/AgenticMarketingHub.tsx");
+    const workspace = read("client/src/pages/marketing/WeeklyResults.tsx");
     const brandStudio = read("client/src/pages/marketing/BrandStudio.tsx");
     expect(app).toContain('path="/marketing/agentic-system"');
     expect(dashboard).toContain('href: "/marketing/agentic-system"');
@@ -21,8 +22,8 @@ describe("Agentic Marketing System hub", () => {
     expect(page).toContain("ELEVAY AI Agentic Marketing System");
     expect(page).toContain("Open Settings");
     expect(page).toContain("Open Production");
-    expect(page).toContain('navigate("/marketing/weekly-results?view=setup")');
-    expect(page).toContain('navigate("/marketing/weekly-results")');
+    expect(page).toContain('href: "/marketing/weekly-results?view=setup"');
+    expect(page).toContain('href: "/marketing/weekly-results"');
     expect(dashboard).toContain("Start with Settings or Production");
     expect(dashboard).toContain('navigate("/marketing/weekly-results?view=setup")');
     expect(dashboard).toContain('navigate("/marketing/weekly-results")');
@@ -35,14 +36,16 @@ describe("Agentic Marketing System hub", () => {
     expect(mobile).not.toContain('label: "2. Weekly Results"');
     expect(brandStudio).toContain("Opening Brand Discovery questions");
     expect(brandStudio).toContain("autoStartAttempted");
-    for (const path of ["/marketing/brand-studio", "/marketing/knowledge-library", "/marketing/work-orders", "/marketing/content-studio", "/marketing/meta-ads-strategy", "/marketing/meta-ads-strategy-packet"]) {
-      expect(page).toContain(path);
+    expect(page).not.toContain("Supporting governed controls");
+    for (const path of ["/marketing/brand-studio", "/marketing/knowledge-library", "/marketing/work-orders", "/marketing/meta-ads-strategy", "/marketing/meta-ads-strategy-packet", "/marketing/campaign-pilot-proposal", "/marketing/pilot-readiness", "/marketing/weekly-executive-briefs", "/marketing/provider-connections"]) {
+      expect(workspace).toContain(path);
     }
+    expect(workspace).toContain("/marketing/content-studio");
   });
 
   it("keeps the hub informative and explicitly free of external action controls", () => {
     const page = read("client/src/pages/marketing/AgenticMarketingHub.tsx");
-    expect(page).toContain("the current system does not connect Meta, create campaigns, spend money, publish content, call a provider or modify CAPI");
+    expect(page).toContain("provider execution, media rendering, Meta campaign creation, spend, publishing, scheduling and CAPI changes remain locked");
     expect(page).not.toContain("createCampaign");
     expect(page).not.toContain("launchCampaign");
   });

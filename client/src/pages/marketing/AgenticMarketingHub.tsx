@@ -1,28 +1,71 @@
 import { useLocation } from "wouter";
-import { BarChart3, BookOpenCheck, BrainCircuit, CalendarClock, ClipboardCheck, FileCheck2, FilePenLine, LockKeyhole, PlugZap, Settings2, Sparkles, Target } from "lucide-react";
+import { BrainCircuit, CalendarClock, LockKeyhole, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const controls = [
-  { icon: Settings2, title: "1. Settings", text: "Set Brand Identity, Design System document and official logo, 30-day targets, weekly Cairo preparation time, model roles, provider readiness, sources, creative direction, allocation, and feedback-learning rules.", href: "/marketing/weekly-results?view=setup", gate: "Configuration" },
-  { icon: CalendarClock, title: "2. Production", text: "Review research, weekly post/static/reel and ad plans, final evidence and previews, then make a separate documented decision on every item. Batch approval is unavailable.", href: "/marketing/weekly-results", gate: "Individual review" },
-  { icon: Sparkles, title: "1. Brand Studio", text: "Complete your 35-question Brand Discovery and approve the Brand Book that governs all future marketing work.", href: "/marketing/brand-studio", gate: "Start here" },
-  { icon: BookOpenCheck, title: "2. Official Knowledge Library", text: "Add official programme sources and approve evidence-backed claims before they can be reused.", href: "/marketing/knowledge-library", gate: "Evidence required" },
-  { icon: ClipboardCheck, title: "3. Controlled Work Orders", text: "Plan cost-capped research or creative work with internal review lineage and zero-cost dry runs.", href: "/marketing/work-orders", gate: "Internal only" },
-  { icon: FilePenLine, title: "4. Content Studio & Approval Inbox", text: "Prepare and manually QA versioned Arabic-first content packets. Approval does not publish anything.", href: "/marketing/content-studio", gate: "No publishing" },
-  { icon: Target, title: "5. Meta Ads Strategy Intake", text: "Complete the 66-question paid-media planning interview and record any data gaps instead of guessing.", href: "/marketing/meta-ads-strategy", gate: "Administrator gate" },
-  { icon: FileCheck2, title: "6. Strategy Approval Packet", text: "Confirm Spain DNV and Malta MPRP variations, then create the hash-locked planning decision packet.", href: "/marketing/meta-ads-strategy-packet", gate: "Meta locked" },
-  { icon: ClipboardCheck, title: "7. Campaign Pilot Proposal", text: "Record a proposed future scope, maximum cap, measurement evidence, monitoring and rollback against the approved strategy packet.", href: "/marketing/campaign-pilot-proposal", gate: "No external action" },
-  { icon: BarChart3, title: "8. Pilot Readiness & Executive Measurement", text: "Review aggregate CRM attribution, Meta controls, and every evidence gate. Optimisation stays blocked until a real reconciled pilot exists.", href: "/marketing/pilot-readiness", gate: "Read-only" },
-  { icon: ClipboardCheck, title: "9. Weekly Executive Brief & Decision Log", text: "Capture a manual aggregate readiness snapshot and record an internal owner decision. No scheduling, email, campaign, spend, publication, or CRM change is possible.", href: "/marketing/weekly-executive-briefs", gate: "Manual review" },
-  { icon: PlugZap, title: "10. Provider Connection Center", text: "Prepare secure server-side provider readiness for Full Autopilot after pilot safeguards. Manus is designated for future approved static assets, carousel visuals, reel storyboards and short-form reels; this center remains configuration-only and cannot activate external operations.", href: "/marketing/provider-connections", gate: "Configuration only" },
+const mainSections = [
+  {
+    icon: Settings2,
+    title: "1. Settings",
+    text: "Brand Identity, Design System and official logo, knowledge sources, marketing strategy, provider roles, production timing, 30-day targets, readiness controls, and decision records all live inside Settings.",
+    href: "/marketing/weekly-results?view=setup",
+    action: "Open Settings",
+    accent: "border-[#5BA3B8]/45 bg-[#111f33]",
+  },
+  {
+    icon: CalendarClock,
+    title: "2. Production",
+    text: "Weekly research, content preparation, static designs, reels, ad proposals, individual approvals, feedback, and performance review all live inside Production.",
+    href: "/marketing/weekly-results",
+    action: "Open Production",
+    accent: "border-[#C9A84C]/40 bg-[#201c14]",
+  },
 ] as const;
 
 export default function AgenticMarketingHub() {
   const [, navigate] = useLocation();
-  return <div className="agentic-readable min-h-full bg-[#0c1320] px-4 py-6 text-white md:px-8"><div className="mx-auto max-w-6xl">
-    <section className="relative overflow-hidden rounded-3xl border border-[#5BA3B8]/30 bg-[radial-gradient(circle_at_85%_0%,rgba(91,163,184,.22),transparent_42%),linear-gradient(120deg,#14243a,#0b1423)] p-7 md:p-10">
-      <div className="max-w-3xl"><div className="mb-3 flex items-center gap-2 text-[#a9d6e3]"><BrainCircuit className="h-5 w-5" /><span className="text-xs font-bold uppercase tracking-[.16em]">Marketing module command center</span></div><h1 className="text-3xl font-semibold tracking-tight md:text-4xl">ELEVAY AI Agentic Marketing System</h1><p className="mt-4 text-sm leading-7 text-white md:text-base">The system is organized around two main sections: <strong>Settings</strong> defines what the AI may use and how ELEVAY must appear; <strong>Production</strong> is the owner-facing weekly review of research, posts, static designs, reels and ad proposals. The supporting governance controls remain traceable under these two sections.</p><div className="mt-5 grid grid-cols-2 gap-3"><Button onClick={() => navigate("/marketing/weekly-results?view=setup")} className="bg-[#5BA3B8] text-[#0A1628] hover:bg-[#77b7c8]"><Settings2 className="mr-2 h-4 w-4" />Open Settings</Button><Button onClick={() => navigate("/marketing/weekly-results")} variant="outline" className="border-[#EBD990]/45 bg-[#C9A84C]/10 text-[#f6dda3] hover:bg-[#C9A84C]/20 hover:text-white"><CalendarClock className="mr-2 h-4 w-4" />Open Production</Button></div><div className="mt-5 flex items-start gap-3 rounded-xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm text-amber-100"><LockKeyhole className="mt-0.5 h-5 w-5 shrink-0" /><p><strong>Important:</strong> the current system does not connect Meta, create campaigns, spend money, publish content, call a provider or modify CAPI. It also cannot create a provider task, render media, or modify CRM operating data. Those actions remain locked behind later explicit approvals.</p></div></div>
-    </section>
-    <section className="mt-7"><div className="mb-4"><h2 className="text-xl font-semibold">Settings and Production</h2><p className="mt-1 text-sm text-slate-100">Start with the two main sections below. The additional cards are the protected governance controls that support them.</p></div><div className="grid gap-4 md:grid-cols-2">{controls.slice(0, 2).map(control => { const Icon = control.icon; return <article key={control.href} className="flex min-h-56 flex-col rounded-2xl border border-[#5BA3B8]/30 bg-[#111b2c] p-6 transition hover:border-[#5BA3B8]/60 hover:bg-[#142139]"><div className="flex items-start justify-between gap-3"><div className="rounded-xl bg-[#5BA3B8]/15 p-3 text-[#a9d6e3]"><Icon className="h-6 w-6" /></div><span className="rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-white">{control.gate}</span></div><h3 className="mt-5 text-xl font-semibold">{control.title}</h3><p className="mt-2 flex-1 text-sm leading-6 text-slate-100">{control.text}</p><Button onClick={() => navigate(control.href)} variant="outline" className="mt-5 border-white/15 bg-transparent text-white hover:bg-white/5">Open {control.title.replace(/^\d\.\s*/, "")}</Button></article>})}</div><div className="mb-4 mt-8"><h2 className="text-xl font-semibold">Supporting governed controls</h2><p className="mt-1 text-sm text-slate-100">These retain existing records, permissions, provider roles and evidence gates under the two main sections.</p></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{controls.slice(2).map(control => { const Icon = control.icon; return <article key={control.href} className="flex min-h-64 flex-col rounded-2xl border border-white/10 bg-[#111b2c] p-5 transition hover:border-[#5BA3B8]/50 hover:bg-[#142139]"><div className="flex items-start justify-between gap-3"><div className="rounded-xl bg-[#5BA3B8]/15 p-3 text-[#a9d6e3]"><Icon className="h-6 w-6" /></div><span className="rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-white">{control.gate}</span></div><h3 className="mt-5 text-lg font-semibold">{control.title}</h3><p className="mt-2 flex-1 text-sm leading-6 text-slate-100">{control.text}</p><Button onClick={() => navigate(control.href)} variant="outline" className="mt-5 border-white/15 bg-transparent text-white hover:bg-white/5">Open this step</Button></article>})}</div></section>
-  </div></div>;
+
+  return (
+    <div className="agentic-readable min-h-full bg-[#0c1320] px-4 py-6 text-white md:px-8">
+      <div className="mx-auto max-w-6xl">
+        <section className="relative overflow-hidden rounded-3xl border border-[#5BA3B8]/30 bg-[radial-gradient(circle_at_85%_0%,rgba(91,163,184,.22),transparent_42%),linear-gradient(120deg,#14243a,#0b1423)] p-7 md:p-10">
+          <div className="max-w-3xl">
+            <div className="mb-3 flex items-center gap-2 text-[#a9d6e3]">
+              <BrainCircuit className="h-5 w-5" />
+              <span className="text-xs font-bold uppercase tracking-[.16em]">Marketing module command center</span>
+            </div>
+            <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">ELEVAY AI Agentic Marketing System</h1>
+            <p className="mt-4 text-sm leading-7 text-white md:text-base">
+              Everything is now organized inside two main sections. <strong>Settings</strong> contains the identity, strategy, controls and configuration that govern the system. <strong>Production</strong> contains the weekly research, creative materials, review decisions, ad recommendations and results.
+            </p>
+            <div className="mt-5 flex items-start gap-3 rounded-xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm text-amber-100">
+              <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0" />
+              <p><strong>Important:</strong> provider execution, media rendering, Meta campaign creation, spend, publishing, scheduling and CAPI changes remain locked until the separate pilot and execution-release approvals.</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-7" aria-labelledby="agentic-main-sections-heading">
+          <div className="mb-4">
+            <h2 id="agentic-main-sections-heading" className="text-xl font-semibold">Choose a main section</h2>
+            <p className="mt-1 text-sm text-slate-100">The detailed controls no longer appear as a third group here. Open the relevant main section to use them.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {mainSections.map(section => {
+              const Icon = section.icon;
+              return (
+                <article key={section.href} className={`flex min-h-64 flex-col rounded-2xl border p-6 ${section.accent}`}>
+                  <div className="rounded-xl bg-white/10 p-3 text-[#a9d6e3] w-fit"><Icon className="h-7 w-7" /></div>
+                  <h3 className="mt-5 text-2xl font-semibold text-white">{section.title}</h3>
+                  <p className="mt-3 flex-1 text-sm leading-7 text-slate-100">{section.text}</p>
+                  <Button onClick={() => navigate(section.href)} className="mt-6 bg-[#5BA3B8] text-[#0A1628] hover:bg-[#77b7c8]">
+                    <Icon className="mr-2 h-4 w-4" /> {section.action}
+                  </Button>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
 }

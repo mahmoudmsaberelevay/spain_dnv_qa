@@ -3,21 +3,27 @@ import { useLocation } from "wouter";
 import {
   ArrowLeft,
   BarChart3,
+  BookOpenCheck,
+  BrainCircuit,
   CalendarClock,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  ClipboardCheck,
   Eye,
   FileCheck2,
+  FilePenLine,
   FileUp,
   Loader2,
   LockKeyhole,
   Pencil,
   Plus,
+  PlugZap,
   Save,
   Settings2,
   Sparkles,
   StopCircle,
+  Target,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -94,6 +100,22 @@ const statusStyles: Record<string, string> = {
   rejected: "border-red-500/40 bg-red-500/10 text-red-200",
   stopped: "border-red-500/40 bg-red-500/10 text-red-200",
 };
+
+const settingControls = [
+  { icon: Sparkles, title: "Brand Studio", text: "35-question Brand Discovery and Brand Book approval.", href: "/marketing/brand-studio" },
+  { icon: BookOpenCheck, title: "Knowledge Library", text: "Official sources, evidence and approved claims.", href: "/marketing/knowledge-library" },
+  { icon: ClipboardCheck, title: "Work Orders", text: "Controlled research and creative work planning.", href: "/marketing/work-orders" },
+  { icon: Target, title: "Meta Strategy", text: "Paid-media objectives, evidence gaps and strategy intake.", href: "/marketing/meta-ads-strategy" },
+  { icon: FileCheck2, title: "Strategy Packet", text: "The approved, hash-locked Meta planning packet.", href: "/marketing/meta-ads-strategy-packet" },
+  { icon: ClipboardCheck, title: "Pilot Proposal", text: "Future pilot scope, measurement and rollback controls.", href: "/marketing/campaign-pilot-proposal" },
+  { icon: BarChart3, title: "Pilot Readiness", text: "Aggregate evidence gates and pilot measurement.", href: "/marketing/pilot-readiness" },
+  { icon: FileCheck2, title: "Decision Log", text: "Weekly executive briefs and owner decision history.", href: "/marketing/weekly-executive-briefs" },
+  { icon: PlugZap, title: "Provider Connections", text: "Secure provider roles and readiness-only status.", href: "/marketing/provider-connections" },
+] as const;
+
+const productionControls = [
+  { icon: FilePenLine, title: "Content Studio & Approval Inbox", text: "Prepare detailed content packets, final previews and individual approval decisions.", href: "/marketing/content-studio" },
+] as const;
 
 function nextSaturday() {
   const date = new Date();
@@ -248,6 +270,12 @@ export default function WeeklyResults() {
       {tab === "setup" ? (
         <section>
           <SectionHeading icon={Settings2} eyebrow="Marketing / Setup" title="Weekly preparation rules" description="These CRM settings shape future weekly plans. Every Saturday is configured in Cairo time, but automation still waits for the separate execution release." />
+          <div className="mb-6 rounded-2xl border border-[#5BA3B8]/25 bg-[#111b2c] p-5 md:p-6">
+            <div className="flex items-start gap-3"><BrainCircuit className="mt-0.5 h-5 w-5 shrink-0 text-[#81c7d8]" /><div><h2 className="font-semibold text-white">Settings controls</h2><p className="mt-1 text-sm leading-6 text-slate-100">Brand, strategy, evidence, pilot safeguards, decision records and provider readiness are all configuration controls. Open any item below without leaving Settings.</p></div></div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {settingControls.map(control => { const Icon = control.icon; return <button key={control.href} onClick={() => navigate(control.href)} className="rounded-xl border border-white/10 bg-black/10 p-4 text-left transition hover:border-[#5BA3B8]/60 hover:bg-[#142139]"><div className="flex items-start gap-3"><div className="rounded-lg bg-[#5BA3B8]/15 p-2 text-[#a9d6e3]"><Icon className="h-4 w-4" /></div><div><p className="font-semibold text-white">{control.title}</p><p className="mt-1 text-xs leading-5 text-slate-100">{control.text}</p></div></div></button>; })}
+            </div>
+          </div>
           <div className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
             <div className="rounded-2xl border border-white/10 bg-[#141d30] p-5 md:p-6">
               <div className="mb-5 flex items-center gap-2"><CalendarClock className="h-5 w-5 text-[#81c7d8]" /><h2 className="font-semibold text-white">Saturday preparation schedule</h2></div>
@@ -284,6 +312,12 @@ export default function WeeklyResults() {
       ) : (
         <section>
           <SectionHeading icon={CalendarClock} eyebrow="Marketing / Weekly Results" title="Review every item individually" description="A weekly plan may contain posts, carousels, reels, images, and graphics. Every selected item must be edited if required, tied to approved evidence, provided with a final preview, and approved individually before any future execution phase." />
+          <div className="mb-5 rounded-2xl border border-[#C9A84C]/25 bg-[#201c14] p-5 md:p-6">
+            <div className="flex items-start gap-3"><CalendarClock className="mt-0.5 h-5 w-5 shrink-0 text-[#e5c16d]" /><div><h2 className="font-semibold text-white">Production controls</h2><p className="mt-1 text-sm leading-6 text-slate-100">Weekly research, material preparation, final previews, review decisions, feedback and performance live here.</p></div></div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {productionControls.map(control => { const Icon = control.icon; return <button key={control.href} onClick={() => navigate(control.href)} className="rounded-xl border border-[#C9A84C]/25 bg-black/10 p-4 text-left transition hover:border-[#C9A84C]/60 hover:bg-[#302a1c]"><div className="flex items-start gap-3"><div className="rounded-lg bg-[#C9A84C]/15 p-2 text-[#e5c16d]"><Icon className="h-4 w-4" /></div><div><p className="font-semibold text-white">{control.title}</p><p className="mt-1 text-xs leading-5 text-slate-100">{control.text}</p></div></div></button>; })}
+            </div>
+          </div>
           <div className="mb-5 grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-white/10 bg-[#141d30] p-4"><p className="text-xs text-white">Individual review queue</p><p className="mt-1 text-2xl font-bold text-amber-200">{pendingCount}</p></div>
             <div className="rounded-xl border border-white/10 bg-[#141d30] p-4"><p className="text-xs text-white">Individually approved</p><p className="mt-1 text-2xl font-bold text-emerald-200">{approvedCount}</p></div>
