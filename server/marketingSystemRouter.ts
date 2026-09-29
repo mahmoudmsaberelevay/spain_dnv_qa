@@ -5,6 +5,8 @@ import { z } from "zod";
 import { router, protectedProcedure } from "./_core/trpc";
 import { getDb } from "./db";
 import {
+  contracts,
+  leads,
   marketingBrandBooks,
   marketingBrandDiscoveryAnswers,
   marketingBrandDiscoverySessions,
@@ -23,6 +25,9 @@ import {
   marketingWorkOrderCostLedger,
   marketingWorkOrderEvents,
   marketingWorkOrders,
+  metaCrmEventLog,
+  metaMonitoringSnapshots,
+  metaReconciliationState,
   users,
 } from "../drizzle/schema";
 import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
@@ -99,6 +104,11 @@ import {
   normalizeCampaignPilotText,
   validateCampaignPilotBudgetPlan,
 } from "../shared/marketingCampaignPilot";
+import {
+  buildPilotReadiness,
+  EXECUTIVE_MEASUREMENT_DEFINITIONS,
+  EXECUTIVE_MEASUREMENT_WINDOW_DAYS,
+} from "../shared/marketingExecutiveMeasurement";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -2223,6 +2233,105 @@ export const marketingSystemRouter = router({
       data,
       measuredAt: Date.now(),
       definition: "Read-only CRM baseline. Client stage is not a paid-client outcome; signed-and-paid attribution is introduced only after its explicit Phase 5 data contract.",
+    };
+  }),
+
+  getPilotReadinessExecutiveDashboard: protectedProcedure.query(async ({ ctx }) => {
+    await requireCapability(ctx.user, "view_analytics");
+    const db = await requireDb();
+    const rows = await db.execute(sql`
+      SELECT
+        (SELECT COUNT(*) FROM ${leads}
+          WHERE ${leads.createdAt} >= UNIX_TIMESTAMP(CURRENT_TIMESTAMP - INTERVAL 90 DAY) * 1000
+            AND COALESCE(${leads.isMetaTestLead}, 0) = 0) AS rawLeads,
+        (SELECT COUNT(*) FROM ${leads}
+          WHERE ${leads.createdAt} >= UNIX_TIMESTAMP(CURRENT_TIMESTAMP - INTERVAL 90 DAY) * 1000
+            AND COALESCE(${leads.isMetaTestLead}, 0) = 0
+            AND ${leads.stage} = 'qualified') AS qualifiedLeads,
+        (SELECT COUNT(*) FROM ${leads}
+          WHERE ${leads.createdAt} >= UNIX_TIMESTAMP(CURRENT_TIMESTAMP - INTERVAL 90 DAY) * 1000
+            AND COALESCE(${leads.isMetaTestLead}, 0) = 0
+            AND ${leads.stage} = 'client') AS clientStageLeads,
+        (SELECT COUNT(*) FROM ${leads}
+          WHERE ${leads.createdAt} >= UNIX_TIMESTAMP(CURRENT_TIMESTAMP - INTERVAL 90 DAY) * 1000
+            AND COALESCE(${leads.isMetaTestLead}, 0) = 0
+            AND (COALESCE(${leads.metaCampaignId}, '') <> '' OR COALESCE(${leads.metaCampaign}, '') <> '' OR COALESCE(${leads.utmCampaign}, '') <> '')) AS attributedLeads,
+        (SELECT COUNT(*) FROM ${contracts} WHERE ${contracts.clientOrigin} = 'marketing') AS marketingOriginContracts,
+        (SELECT COUNT(*) FROM ${contracts} WHERE ${contracts.clientOrigin} = 'marketing' AND ${contracts.status} = 'signed') AS signedMarketingOriginContracts,
+        (SELECT COUNT(*) FROM ${metaCrmEventLog} WHERE COALESCE(${metaCrmEventLog.isTestLead}, 0) = 0) AS metaEventCount,
+        (SELECT COUNT(*) FROM ${metaCrmEventLog}
+          WHERE COALESCE(${metaCrmEventLog.isTestLead}, 0) = 0
+            AND ${metaCrmEventLog.status} IN ('failed', 'retrying', 'dead_letter', 'manual_review', 'approval_gated')) AS metaEventAttentionCount,
+        (SELECT ${metaMonitoringSnapshots.capturedAt} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS monitoringCapturedAt,
+        (SELECT ${metaMonitoringSnapshots.attributionCoverageBps} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS crmAttributionCoverageBps,
+        (SELECT ${metaMonitoringSnapshots.failedInboxCount} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS failedInboxCount,
+        (SELECT ${metaMonitoringSnapshots.retryInboxCount} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS retryInboxCount,
+        (SELECT ${metaMonitoringSnapshots.testLeadLeakageCount} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS testLeadLeakageCount,
+        (SELECT ${metaMonitoringSnapshots.productionSendingEnabled} FROM ${metaMonitoringSnapshots} ORDER BY ${metaMonitoringSnapshots.capturedAt} DESC LIMIT 1) AS productionSendingEnabled,
+        (SELECT ${metaReconciliationState.status} FROM ${metaReconciliationState} ORDER BY ${metaReconciliationState.updatedAt} DESC LIMIT 1) AS reconciliationStatus,
+        (SELECT ${metaReconciliationState.lastSuccessAt} FROM ${metaReconciliationState} ORDER BY ${metaReconciliationState.updatedAt} DESC LIMIT 1) AS reconciliationLastSuccessAt,
+        (SELECT COUNT(*) FROM ${marketingBrandBooks} WHERE ${marketingBrandBooks.status} = 'active') AS activeBrandBookCount,
+        (SELECT COUNT(*) FROM ${marketingMetaAdsStrategyApprovalPackets} WHERE ${marketingMetaAdsStrategyApprovalPackets.status} = 'approved') AS approvedStrategyPacketCount,
+        (SELECT COUNT(*) FROM ${marketingMetaCampaignPilotProposals} WHERE ${marketingMetaCampaignPilotProposals.status} = 'internally_approved') AS internallyApprovedPilotProposalCount
+    `);
+    const first = Array.isArray(rows) ? rows[0] : rows;
+    const aggregate = (Array.isArray(first) ? first[0] : first ?? {}) as Record<string, unknown>;
+    const numeric = (value: unknown) => {
+      const parsed = Number(value ?? 0);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const nullableNumber = (value: unknown) => value === null || value === undefined ? null : numeric(value);
+    const text = (value: unknown) => typeof value === "string" && value.trim() ? value : null;
+    const bool = (value: unknown) => value === true || value === 1 || value === "1";
+    const metrics = {
+      rawLeads: numeric(aggregate.rawLeads),
+      qualifiedLeads: numeric(aggregate.qualifiedLeads),
+      clientStageLeads: numeric(aggregate.clientStageLeads),
+      attributedLeads: numeric(aggregate.attributedLeads),
+      marketingOriginContracts: numeric(aggregate.marketingOriginContracts),
+      signedMarketingOriginContracts: numeric(aggregate.signedMarketingOriginContracts),
+      metaEventCount: numeric(aggregate.metaEventCount),
+      crmAttributionCoverageBps: numeric(aggregate.crmAttributionCoverageBps),
+    };
+    const controls = {
+      monitoringCapturedAt: nullableNumber(aggregate.monitoringCapturedAt),
+      reconciliationStatus: text(aggregate.reconciliationStatus),
+      reconciliationLastSuccessAt: nullableNumber(aggregate.reconciliationLastSuccessAt),
+      failedInboxCount: numeric(aggregate.failedInboxCount),
+      retryInboxCount: numeric(aggregate.retryInboxCount),
+      testLeadLeakageCount: numeric(aggregate.testLeadLeakageCount),
+      productionSendingEnabled: bool(aggregate.productionSendingEnabled),
+      metaEventAttentionCount: numeric(aggregate.metaEventAttentionCount),
+      activeBrandBookCount: numeric(aggregate.activeBrandBookCount),
+      approvedStrategyPacketCount: numeric(aggregate.approvedStrategyPacketCount),
+      internallyApprovedPilotProposalCount: numeric(aggregate.internallyApprovedPilotProposalCount),
+    };
+    const measuredAt = Date.now();
+    const readiness = buildPilotReadiness({
+      now: measuredAt,
+      activeBrandBookCount: controls.activeBrandBookCount,
+      approvedStrategyPacketCount: controls.approvedStrategyPacketCount,
+      internallyApprovedPilotProposalCount: controls.internallyApprovedPilotProposalCount,
+      monitoringCapturedAt: controls.monitoringCapturedAt,
+      reconciliationStatus: controls.reconciliationStatus,
+      reconciliationLastSuccessAt: controls.reconciliationLastSuccessAt,
+      latestAttributionCoverageBps: metrics.crmAttributionCoverageBps,
+      latestFailedInboxCount: controls.failedInboxCount,
+      latestRetryInboxCount: controls.retryInboxCount,
+      latestTestLeadLeakageCount: controls.testLeadLeakageCount,
+      metaEventAttentionCount: controls.metaEventAttentionCount,
+      pilotActualEvidenceAvailable: false,
+      spendReconciliationAvailable: false,
+    });
+    return {
+      measuredAt,
+      windowDays: EXECUTIVE_MEASUREMENT_WINDOW_DAYS,
+      metrics,
+      controls,
+      readiness,
+      definitions: EXECUTIVE_MEASUREMENT_DEFINITIONS,
+      privacy: "Aggregate-only measurement. No client, Lead, contact, identity, financial row, campaign mutation, provider request, or external operation is returned or performed.",
+      externalOperationsEnabled: false,
     };
   }),
 });

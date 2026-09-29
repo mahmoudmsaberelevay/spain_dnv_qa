@@ -62,3 +62,12 @@
 - [x] Apply the reviewed additive migration and verify the table is empty.
 - [x] Pass focused regressions, production build, changed-file TypeScript review, protected-route check and diff hygiene.
 - [x] Save final checkpoint preparation.
+
+## Agentic Marketing System — Pilot Readiness & Executive Measurement
+
+- [x] Add a protected aggregate-only read model for 90-day CRM funnel, contract-origin, Meta monitoring, reconciliation, and control-plane evidence.
+- [x] Add deterministic readiness gates for Brand Book, Strategy Packet, Pilot Proposal, monitoring, attribution quality, actual pilot evidence, and spend reconciliation.
+- [x] Keep optimisation blocked when a real pilot has not produced attribution/rollback and spend-reconciliation evidence.
+- [x] Add responsive desktop/mobile navigation and Agentic Marketing System hub access at `/marketing/pilot-readiness`.
+- [x] Validate through focused safety regressions, production build, direct protected aggregate-query check, TypeScript baseline review, and diff hygiene.
+- [x] Save final checkpoint.

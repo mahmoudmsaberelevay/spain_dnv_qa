@@ -70,6 +70,14 @@ const tools = [
     badge: "Internal only",
   },
   {
+    icon: BarChart2,
+    title: "Pilot Readiness & Executive Measurement",
+    description: "Review aggregate CRM attribution, Meta operational evidence, and readiness gates. Optimisation remains blocked until a proven reconciled pilot exists.",
+    href: "/marketing/pilot-readiness",
+    color: "from-[#5BA3B8] to-[#1A3A5C]",
+    badge: "Read-only",
+  },
+  {
     icon: FolderOpen,
     title: "Ready Summaries",
     description: "Browse and download approved ELEVAY country and program summaries. Administrators can add or remove PDFs from the shared library.",

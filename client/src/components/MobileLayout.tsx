@@ -171,6 +171,7 @@ export const MOBILE_SIDEBAR_MODULES = [
       { icon: Target, label: "Meta Ads Strategy Intake", path: "/marketing/meta-ads-strategy" },
       { icon: FileCheck2, label: "Strategy Approval Packet", path: "/marketing/meta-ads-strategy-packet" },
       { icon: ClipboardCheck, label: "Campaign Pilot Proposal", path: "/marketing/campaign-pilot-proposal" },
+      { icon: BarChart3, label: "Pilot Readiness", path: "/marketing/pilot-readiness" },
       { icon: FolderOpen, label: "Ready Summaries", path: "/marketing/ready-summaries" },
       { icon: Sparkles, label: "Summary Generator", path: "/marketing/summary-generator" },
       { icon: Mic2, label: "Arabic Voice-over", path: "/marketing/voice-over" },

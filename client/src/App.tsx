@@ -89,6 +89,7 @@ import MetaAdsStrategyIntake from "./pages/marketing/MetaAdsStrategyIntake";
 import MetaAdsStrategyPacket from "./pages/marketing/MetaAdsStrategyPacket";
 import CampaignPilotProposal from "./pages/marketing/CampaignPilotProposal";
 import AgenticMarketingHub from "./pages/marketing/AgenticMarketingHub";
+import PilotReadinessDashboard from "./pages/marketing/PilotReadinessDashboard";
 
 // ─── Reports Module ─────────────────────────────────────────────────────────────
 import Reports from "./pages/Reports";
@@ -371,6 +372,9 @@ function Router() {
       </Route>
       <Route path="/marketing/campaign-pilot-proposal">
         <MobileRoute><CampaignPilotProposal /></MobileRoute>
+      </Route>
+      <Route path="/marketing/pilot-readiness">
+        <MobileRoute><PilotReadinessDashboard /></MobileRoute>
       </Route>
       <Route path="/marketing/summary-generator">
         <MobileRoute><SummaryGenerator /></MobileRoute>

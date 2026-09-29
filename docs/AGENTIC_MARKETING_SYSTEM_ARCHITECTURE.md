@@ -268,3 +268,14 @@ The Strategy Approval Packet is an **owner-only planning record**, not a campaig
 - Blocks client and Lead identity content and rejects unsupported permission labels.
 - Owner decisions are constrained to internal approval, change request, rejection, or stop; an old strategy or Brand Book cannot be internally approved after it is superseded.
 - Contains no Meta login, provider request, credential, account, campaign, audience, CAPI, budget reservation, spend, payment, publishing, or scheduled operation.
+
+
+## Pilot Readiness and Executive Measurement decision
+
+**Decision:** introduce a protected, aggregate-only executive dashboard before any later pilot optimisation work.
+
+- Reads only rolling CRM counts, aggregate contract-origin counts, existing Meta monitoring/reconciliation state, and marketing control-plane prerequisite counts.
+- Uses the existing `view_analytics` Marketing System capability; it returns no client, Lead, contact, identity, financial-row, campaign, or individual-event record.
+- Converts missing prerequisites, stale monitoring, queue exceptions, test-lead leakage, unavailable actual pilot attribution, and unavailable spend reconciliation into visible **blocked** or **attention** gates.
+- Deliberately reports `externalOperationsEnabled: false`; it has no mutation, scheduled task, provider request, Meta connection, campaign, CAPI, publishing, payment, budget, Lead, or CRM-write capability.
+- The dashboard is a readiness prerequisite, not permission to optimise. Actual-pilot attribution/rollback evidence and spend reconciliation remain false until a separate, expressly approved real pilot exists.

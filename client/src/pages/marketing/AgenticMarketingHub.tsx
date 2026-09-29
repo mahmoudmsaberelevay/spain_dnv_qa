@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { BookOpenCheck, BrainCircuit, ClipboardCheck, FileCheck2, FilePenLine, LockKeyhole, Sparkles, Target } from "lucide-react";
+import { BarChart3, BookOpenCheck, BrainCircuit, ClipboardCheck, FileCheck2, FilePenLine, LockKeyhole, Sparkles, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const controls = [
@@ -10,6 +10,7 @@ const controls = [
   { icon: Target, title: "5. Meta Ads Strategy Intake", text: "Complete the 66-question paid-media planning interview and record any data gaps instead of guessing.", href: "/marketing/meta-ads-strategy", gate: "Mahmoud only" },
   { icon: FileCheck2, title: "6. Strategy Approval Packet", text: "Confirm Spain DNV and Malta MPRP variations, then create the hash-locked planning decision packet.", href: "/marketing/meta-ads-strategy-packet", gate: "Meta locked" },
   { icon: ClipboardCheck, title: "7. Campaign Pilot Proposal", text: "Record a proposed future scope, maximum cap, measurement evidence, monitoring and rollback against the approved strategy packet.", href: "/marketing/campaign-pilot-proposal", gate: "No external action" },
+  { icon: BarChart3, title: "8. Pilot Readiness & Executive Measurement", text: "Review aggregate CRM attribution, Meta controls, and every evidence gate. Optimisation stays blocked until a real reconciled pilot exists.", href: "/marketing/pilot-readiness", gate: "Read-only" },
 ] as const;
 
 export default function AgenticMarketingHub() {
