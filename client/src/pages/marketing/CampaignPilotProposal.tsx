@@ -51,7 +51,7 @@ export default function CampaignPilotProposal() {
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
   const { data: access, isLoading: accessLoading } = trpc.marketingSystem.access.useQuery();
-  const isOwner = access?.role === "owner";
+  const isOwner = ["owner", "marketing_system_admin"].includes(access?.role ?? "");
   const { data, isLoading } = trpc.marketingSystem.getCampaignPilotProposalWorkspace.useQuery(undefined, { enabled: isOwner });
   const [form, setForm] = useState(initialForm);
   const [decisionNotes, setDecisionNotes] = useState<Record<number, string>>({});
@@ -85,7 +85,7 @@ export default function CampaignPilotProposal() {
   };
 
   if (accessLoading || (isOwner && isLoading)) return <div className="flex min-h-[65vh] items-center justify-center text-slate-400">Loading controlled pilot proposals…</div>;
-  if (!isOwner) return <div className="mx-auto flex min-h-[65vh] max-w-xl flex-col items-center justify-center px-6 text-center"><LockKeyhole className="mb-4 h-12 w-12 text-amber-300" /><h1 className="text-2xl font-bold text-white">Campaign Pilot Proposals are owner-controlled</h1><p className="mt-3 text-sm leading-6 text-slate-400">Only Mahmoud can create, decide or stop an internal Campaign Pilot Proposal.</p></div>;
+  if (!isOwner) return <div className="mx-auto flex min-h-[65vh] max-w-xl flex-col items-center justify-center px-6 text-center"><LockKeyhole className="mb-4 h-12 w-12 text-amber-300" /><h1 className="text-2xl font-bold text-white">Campaign Pilot Proposals are administrator-controlled</h1><p className="mt-3 text-sm leading-6 text-slate-400">Mahmoud or a scoped Agentic Marketing administrator can create, decide or stop an internal Campaign Pilot Proposal.</p></div>;
 
   return <div className="min-h-full bg-[#0c1320] px-4 py-6 text-white md:px-8"><div className="mx-auto max-w-6xl space-y-6">
     <section className="rounded-3xl border border-[#C9A84C]/25 bg-[radial-gradient(circle_at_90%_0%,rgba(201,168,76,.18),transparent_40%),linear-gradient(115deg,#182337,#0d1524)] p-6 md:p-8"><div className="flex flex-wrap items-end justify-between gap-5"><div><div className="mb-3 flex items-center gap-2 text-[#EBD990]"><FileLock2 className="h-4 w-4" /><span className="text-xs font-bold uppercase tracking-[.16em]">Phase 5b · proposal only</span></div><h1 className="text-3xl font-semibold tracking-tight">Campaign Pilot Proposal</h1><p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Document the exact permissions, maximum proposed caps, measurement, monitoring and rollback for a possible future pilot. An internal approval here does not connect Meta, grant permissions, create campaigns, reserve budget, or spend money.</p></div><Badge variant="outline" className="w-fit border-amber-300/30 bg-amber-300/10 text-amber-100">External operations locked</Badge></div></section>

@@ -21,7 +21,10 @@ import {
   marketingWeeklyExecutiveBriefs,
   marketingKnowledgeClaims,
   marketingKnowledgeSources,
+  marketingInternalProgrammeReferences,
+  marketingAutopilotControls,
   marketingProviderProfiles,
+  marketingProviderWebhookEvents,
   marketingSystemRoleAssignments,
   marketingWorkOrderArtifacts,
   marketingWorkOrderCostLedger,
@@ -120,15 +123,23 @@ import {
   weeklyExecutiveBriefKey,
   type WeeklyExecutiveBriefStatus,
 } from "../shared/marketingExecutiveBriefs";
+import {
+  MARKETING_AUTOPILOT_MODE,
+  MARKETING_PROVIDER_CONNECTIONS,
+  providerSecretPresence,
+  summarizeMarketingAutopilotLock,
+} from "../shared/marketingProviderConnections";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
   { alias: "strategy-synthesis", provider: "Manus Built-in LLM", modelId: "gpt-5", purpose: "Brand synthesis, strategic interpretation and difficult attribution analysis", status: "available_internal", notes: "Configured alias only. Disabled until an approved work order exists." },
+  { alias: "openai-editorial", provider: "OpenAI API", modelId: null, purpose: "Optional editorial drafting and structured creative assistance", status: "requires_configuration", notes: "Requires a server-side API key. Disabled until the future execution release and an approved work order." },
   { alias: "editorial-challenge", provider: "Anthropic", modelId: "claude-sonnet-4-6", purpose: "Independent claim and editorial challenge", status: "requires_configuration", notes: "No external provider credential is stored here. Configure a server-side connector before enabling." },
-  { alias: "source-research", provider: "Manus API", modelId: null, purpose: "Source-heavy asynchronous research and maintenance tasks", status: "requires_configuration", notes: "Requires explicit API configuration and verified webhook setup before use." },
+  { alias: "manus-orchestrator", provider: "Manus API v2", modelId: null, purpose: "Source-heavy asynchronous research and maintenance tasks", status: "requires_configuration", notes: "Requires explicit API configuration and verified callback setup before use." },
   { alias: "template-render", provider: "Creatomate", modelId: null, purpose: "Branded image and reel template rendering", status: "requires_configuration", notes: "Requires a server-side vendor credential and approved templates before use." },
   { alias: "specialty-motion", provider: "Runway", modelId: null, purpose: "Approved specialty motion footage", status: "requires_configuration", notes: "Requires a server-side vendor credential, per-clip cap and explicit approval before use." },
   { alias: "elevay-arabic-voice", provider: "Existing ELEVAY Voice Adapter", modelId: "eleven_v3", purpose: "Approved Arabic voice-over from a finalized script", status: "available_internal", notes: "Existing server-side voice adapter. Disabled until a script is approved; failed synthesis must hold for review without substitution." },
+  { alias: "meta-marketing", provider: "Meta Marketing API", modelId: null, purpose: "Future campaign, asset, and measurement controls", status: "requires_configuration", notes: "Existing lead webhooks remain separate. No campaign, spend, publication, CAPI, or audience action is enabled by this profile." },
 ] as const;
 
 const answerInput = z.object({
@@ -596,10 +607,16 @@ async function requireCapability(
   return role;
 }
 
-async function requireOwner(user: { id: number; openId: string | null; email?: string | null }) {
-  if (!isOwner(user)) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Only Mahmoud can change Brand Studio, provider, role, approval, or campaign governance." });
+async function requireMarketingSystemAdministrator(user: { id: number; openId: string | null; email?: string | null }) {
+  const role = await getEffectiveRole(user);
+  if (role !== "owner" && role !== "marketing_system_admin") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "This action requires the scoped Agentic Marketing System administrator role." });
   }
+}
+
+async function isMarketingSystemAdministrator(user: { id: number; openId: string | null; email?: string | null }) {
+  const role = await getEffectiveRole(user);
+  return role === "owner" || role === "marketing_system_admin";
 }
 
 function parseJson<T>(value: string | null, fallback: T): T {
@@ -788,7 +805,7 @@ export const marketingSystemRouter = router({
   }),
 
   getCurrentMetaAdsStrategy: protectedProcedure.query(async ({ ctx }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [session] = await db.select().from(marketingMetaAdsStrategySessions)
       .where(eq(marketingMetaAdsStrategySessions.status, "in_progress"))
@@ -797,7 +814,7 @@ export const marketingSystemRouter = router({
   }),
 
   startOrResumeMetaAdsStrategy: protectedProcedure.mutation(async ({ ctx }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [existing] = await db.select().from(marketingMetaAdsStrategySessions)
       .where(eq(marketingMetaAdsStrategySessions.status, "in_progress"))
@@ -826,7 +843,7 @@ export const marketingSystemRouter = router({
     mimeType: z.enum(["application/pdf", "image/png", "image/jpeg", "image/webp", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]),
     fileBase64: z.string().min(4).max(14_000_000),
   })).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const { session } = await getMetaStrategySessionWithAnswers(input.sessionId);
     if (session.status !== "in_progress") throw new TRPCError({ code: "BAD_REQUEST", message: "Evidence can only be added to an in-progress Meta Ads Strategy Intake." });
     const bytes = Buffer.from(input.fileBase64, "base64");
@@ -839,7 +856,7 @@ export const marketingSystemRouter = router({
   }),
 
   saveMetaAdsStrategyAnswer: protectedProcedure.input(metaStrategyAnswerInput).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     getMetaAdsStrategyQuestion(input.questionNumber);
     const db = await requireDb();
     const { session } = await getMetaStrategySessionWithAnswers(input.sessionId);
@@ -873,7 +890,7 @@ export const marketingSystemRouter = router({
   resetMetaAdsStrategy: protectedProcedure.input(z.object({
     scope: z.union([z.literal("all"), z.enum(META_ADS_STRATEGY_SECTIONS.map(section => section.key) as [string, ...string[]])]),
   })).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [current] = await db.select().from(marketingMetaAdsStrategySessions)
       .where(eq(marketingMetaAdsStrategySessions.status, "in_progress"))
@@ -899,7 +916,7 @@ export const marketingSystemRouter = router({
   }),
 
   getMetaAdsStrategyPacketWorkspace: protectedProcedure.query(async ({ ctx }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [current] = await db.select().from(marketingMetaAdsStrategySessions)
       .where(inArray(marketingMetaAdsStrategySessions.status, ["in_progress", "proposed", "approved"]))
@@ -913,7 +930,7 @@ export const marketingSystemRouter = router({
   }),
 
   saveMetaAdsStrategyProgramConfirmation: protectedProcedure.input(metaStrategyProgramAnswerInput).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     if (!(META_ADS_STRATEGY_PROGRAM_CONFIRMATION_QUESTION_NUMBERS as readonly number[]).includes(input.questionNumber)) {
       throw new TRPCError({ code: "BAD_REQUEST", message: "This question does not require a program-specific confirmation." });
     }
@@ -956,7 +973,7 @@ export const marketingSystemRouter = router({
   }),
 
   proposeMetaAdsStrategyPacket: protectedProcedure.input(z.object({ sessionId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const readiness = await getMetaStrategyPacketReadiness(input.sessionId);
     if (!readiness.isReady || !readiness.activeBrandBook) {
@@ -1005,7 +1022,7 @@ export const marketingSystemRouter = router({
   }),
 
   approveMetaAdsStrategyPacket: protectedProcedure.input(metaStrategyPacketDecisionInput).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [packet] = await db.select().from(marketingMetaAdsStrategyApprovalPackets).where(eq(marketingMetaAdsStrategyApprovalPackets.id, input.packetId)).limit(1);
     if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Strategy Approval Packet not found." });
@@ -1023,7 +1040,7 @@ export const marketingSystemRouter = router({
   }),
 
   getCampaignPilotProposalWorkspace: protectedProcedure.query(async ({ ctx }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const approvedPackets = await db.select().from(marketingMetaAdsStrategyApprovalPackets)
       .where(eq(marketingMetaAdsStrategyApprovalPackets.status, "approved"))
@@ -1057,7 +1074,7 @@ export const marketingSystemRouter = router({
   }),
 
   proposeCampaignPilot: protectedProcedure.input(campaignPilotProposalInput).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [strategyPacket] = await db.select().from(marketingMetaAdsStrategyApprovalPackets)
       .where(eq(marketingMetaAdsStrategyApprovalPackets.id, input.strategyPacketId)).limit(1);
@@ -1160,7 +1177,7 @@ export const marketingSystemRouter = router({
   }),
 
   decideCampaignPilot: protectedProcedure.input(campaignPilotDecisionInput).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [proposal] = await db.select().from(marketingMetaCampaignPilotProposals)
       .where(eq(marketingMetaCampaignPilotProposals.id, input.proposalId)).limit(1);
@@ -1215,7 +1232,7 @@ export const marketingSystemRouter = router({
   }),
 
   getCurrentDiscovery: protectedProcedure.query(async ({ ctx }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [session] = await db.select().from(marketingBrandDiscoverySessions)
       .where(and(eq(marketingBrandDiscoverySessions.status, "in_progress")))
@@ -1225,7 +1242,7 @@ export const marketingSystemRouter = router({
   }),
 
   startOrResumeDiscovery: protectedProcedure.mutation(async ({ ctx }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [existing] = await db.select().from(marketingBrandDiscoverySessions)
       .where(eq(marketingBrandDiscoverySessions.status, "in_progress"))
@@ -1255,7 +1272,7 @@ export const marketingSystemRouter = router({
     mimeType: z.enum(["application/pdf", "image/png", "image/jpeg", "image/webp", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]),
     fileBase64: z.string().min(4).max(14_000_000),
   })).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const { session } = await getSessionWithAnswers(input.sessionId);
     if (session.status !== "in_progress") throw new TRPCError({ code: "BAD_REQUEST", message: "Evidence can only be added to an in-progress Brand Discovery interview." });
     const bytes = Buffer.from(input.fileBase64, "base64");
@@ -1271,7 +1288,7 @@ export const marketingSystemRouter = router({
   }),
 
   saveDiscoveryAnswer: protectedProcedure.input(answerInput).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     getBrandDiscoveryQuestion(input.questionNumber);
     const db = await requireDb();
     const { session } = await getSessionWithAnswers(input.sessionId);
@@ -1311,7 +1328,7 @@ export const marketingSystemRouter = router({
   }),
 
   saveDiscoveryAnswers: protectedProcedure.input(bulkAnswerInput).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     for (const answer of input.answers) getBrandDiscoveryQuestion(answer.questionNumber);
     const db = await requireDb();
     const { session } = await getSessionWithAnswers(input.sessionId);
@@ -1359,7 +1376,7 @@ export const marketingSystemRouter = router({
   resetDiscovery: protectedProcedure.input(z.object({
     scope: z.union([z.literal("all"), z.enum(BRAND_DISCOVERY_SECTIONS.map(section => section.key) as [string, ...string[]])]),
   })).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [current] = await db.select().from(marketingBrandDiscoverySessions)
       .where(eq(marketingBrandDiscoverySessions.status, "in_progress"))
@@ -1408,7 +1425,7 @@ export const marketingSystemRouter = router({
   }),
 
   proposeBrandBook: protectedProcedure.input(z.object({ sessionId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const record = await getSessionWithAnswers(input.sessionId);
     if (record.session.status !== "in_progress") throw new TRPCError({ code: "BAD_REQUEST", message: "This Brand Discovery session cannot be proposed." });
@@ -1447,7 +1464,7 @@ export const marketingSystemRouter = router({
   }),
 
   approveBrandBook: protectedProcedure.input(z.object({ brandBookId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [brandBook] = await db.select().from(marketingBrandBooks).where(eq(marketingBrandBooks.id, input.brandBookId)).limit(1);
     if (!brandBook) throw new TRPCError({ code: "NOT_FOUND", message: "Brand Book proposal was not found." });
@@ -1474,8 +1491,77 @@ export const marketingSystemRouter = router({
     };
   }),
 
+  getProviderConnectionCenter: protectedProcedure.query(async ({ ctx }) => {
+    await requireCapability(ctx.user, "view_provider_readiness");
+    await seedProviderProfiles();
+    const db = await requireDb();
+    const [profiles, controls, activeBrandBooks, approvedPackets, approvedPilotProposals] = await Promise.all([
+      db.select().from(marketingProviderProfiles).orderBy(marketingProviderProfiles.alias),
+      db.select().from(marketingAutopilotControls)
+        .where(eq(marketingAutopilotControls.requestedMode, MARKETING_AUTOPILOT_MODE)).limit(1),
+      db.select({ id: marketingBrandBooks.id }).from(marketingBrandBooks).where(eq(marketingBrandBooks.status, "active")),
+      db.select({ id: marketingMetaAdsStrategyApprovalPackets.id }).from(marketingMetaAdsStrategyApprovalPackets)
+        .where(eq(marketingMetaAdsStrategyApprovalPackets.status, "approved")),
+      db.select({ id: marketingMetaCampaignPilotProposals.id }).from(marketingMetaCampaignPilotProposals)
+        .where(eq(marketingMetaCampaignPilotProposals.status, "internally_approved")),
+    ]);
+    const profileByAlias = new Map(profiles.map(profile => [profile.alias, profile]));
+    const connections = MARKETING_PROVIDER_CONNECTIONS.map(connection => {
+      const secretState = providerSecretPresence(connection);
+      const profile = profileByAlias.get(connection.alias);
+      return {
+        alias: connection.alias,
+        provider: connection.provider,
+        connectionKind: connection.connectionKind,
+        purpose: connection.purpose,
+        webhookPath: connection.webhookPath,
+        configurationState: connection.secretKeys.length === 0 ? "managed_internal" : secretState.allPresent ? "server_secret_present" : "server_secret_missing",
+        profileEnabled: profile?.isEnabled ?? false,
+        profileKillSwitchEnabled: profile?.killSwitchEnabled ?? true,
+        executionBoundary: connection.executionBoundary,
+      };
+    });
+    const control = controls[0] ?? null;
+    const autopilot = summarizeMarketingAutopilotLock({
+      activeBrandBookCount: activeBrandBooks.length,
+      approvedStrategyPacketCount: approvedPackets.length,
+      internallyApprovedPilotProposalCount: approvedPilotProposals.length,
+      allProviderSecretsPresent: connections.filter(connection => connection.configurationState !== "managed_internal").every(connection => connection.configurationState === "server_secret_present"),
+      masterKillSwitchEnabled: control?.masterKillSwitchEnabled ?? true,
+    });
+    return {
+      requestedMode: MARKETING_AUTOPILOT_MODE,
+      control: control ? { status: control.status, masterKillSwitchEnabled: control.masterKillSwitchEnabled, updatedAt: control.updatedAt } : null,
+      connections,
+      autopilot,
+      externalOperationsEnabled: false,
+      safetyNotice: "This page checks configuration state only. It does not reveal, accept, store, or transmit provider secrets, and it cannot call a provider, create a campaign, publish content, spend money, send CAPI events, or change CRM data.",
+    };
+  }),
+
+  initializeFullAutopilotLock: protectedProcedure.mutation(async ({ ctx }) => {
+    await requireMarketingSystemAdministrator(ctx.user);
+    const db = await requireDb();
+    const now = Date.now();
+    await db.insert(marketingAutopilotControls).values({
+      requestedMode: MARKETING_AUTOPILOT_MODE,
+      masterKillSwitchEnabled: true,
+      status: "configuration_required",
+      lastChangedByUserId: ctx.user.id,
+      createdAt: now,
+      updatedAt: now,
+    }).onDuplicateKeyUpdate({ set: {
+      masterKillSwitchEnabled: true,
+      status: "configuration_required",
+      lastChangedByUserId: ctx.user.id,
+      updatedAt: now,
+    }});
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_full_autopilot_lock", MARKETING_AUTOPILOT_MODE, JSON.stringify({ masterKillSwitchEnabled: true, executionAllowed: false }));
+    return { executionAllowed: false, masterKillSwitchEnabled: true };
+  }),
+
   listRoleAssignments: protectedProcedure.query(async ({ ctx }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     return db.select({
       assignmentId: marketingSystemRoleAssignments.id,
@@ -1491,8 +1577,8 @@ export const marketingSystemRouter = router({
       .orderBy(users.name);
   }),
 
-  assignRole: protectedProcedure.input(z.object({ userId: z.number().int().positive(), role: z.enum(["marketing_manager", "researcher", "creative_producer", "analyst"]) })).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+  assignRole: protectedProcedure.input(z.object({ userId: z.number().int().positive(), role: z.enum(["marketing_system_admin", "marketing_manager", "researcher", "creative_producer", "analyst"]) })).mutation(async ({ ctx, input }) => {
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [target] = await db.select({ id: users.id }).from(users).where(eq(users.id, input.userId)).limit(1);
     if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "User was not found." });
@@ -1510,7 +1596,7 @@ export const marketingSystemRouter = router({
   }),
 
   revokeRole: protectedProcedure.input(z.object({ userId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     await db.update(marketingSystemRoleAssignments).set({ isActive: false, updatedAt: Date.now(), assignedByUserId: ctx.user.id })
       .where(eq(marketingSystemRoleAssignments.userId, input.userId));
@@ -1520,10 +1606,13 @@ export const marketingSystemRouter = router({
 
   getKnowledgeLibrary: protectedProcedure.query(async ({ ctx }) => {
     await requireCapability(ctx.user, "view_knowledge");
-    await seedOfficialKnowledgeSources(ctx.user.id);
     const db = await requireDb();
-    const sources = await db.select().from(marketingKnowledgeSources)
-      .orderBy(marketingKnowledgeSources.programLabel, desc(marketingKnowledgeSources.updatedAt));
+    const [sources, internalReferences] = await Promise.all([
+      db.select().from(marketingKnowledgeSources)
+        .orderBy(marketingKnowledgeSources.programLabel, desc(marketingKnowledgeSources.updatedAt)),
+      db.select().from(marketingInternalProgrammeReferences)
+        .orderBy(desc(marketingInternalProgrammeReferences.updatedAt)),
+    ]);
     const claims = await db.select({
       id: marketingKnowledgeClaims.id,
       programKey: marketingKnowledgeClaims.programKey,
@@ -1550,8 +1639,22 @@ export const marketingSystemRouter = router({
       .orderBy(desc(marketingKnowledgeClaims.updatedAt));
     return {
       sources,
+      internalReferences: internalReferences.map(reference => ({
+        id: reference.id,
+        referenceKey: reference.referenceKey,
+        programKeys: parseJson<string[]>(reference.programKeysJson, []),
+        title: reference.title,
+        sourceFileName: reference.sourceFileName,
+        documentUpdatedLabel: reference.documentUpdatedLabel,
+        sourceClassification: reference.sourceClassification,
+        status: reference.status,
+        documentHash: reference.documentHash,
+        analysis: parseJson<Record<string, unknown>>(reference.analysisJson, {}),
+        createdAt: reference.createdAt,
+        updatedAt: reference.updatedAt,
+      })),
       claims,
-      policy: "Only an owner-approved, tracked official source may support a claim. Claims stay proposed until Mahmoud explicitly approves them. The library has no publishing or client-advice action.",
+      policy: "Only an owner-approved official source with a tracked snapshot can support a claim. User-supplied internal programme references are for internal analysis only and can never support a claim. Candidate sources, changed sources, unapproved claims, and all unpublished content are blocked from use. The library has no publishing or client-advice action.",
     };
   }),
 
@@ -1595,7 +1698,7 @@ export const marketingSystemRouter = router({
   }),
 
   approveKnowledgeSource: protectedProcedure.input(z.object({ sourceId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [source] = await db.select().from(marketingKnowledgeSources).where(eq(marketingKnowledgeSources.id, input.sourceId)).limit(1);
     if (!source) throw new TRPCError({ code: "NOT_FOUND", message: "Knowledge source was not found." });
@@ -1614,7 +1717,7 @@ export const marketingSystemRouter = router({
   }),
 
   reportMaterialSourceChange: protectedProcedure.input(z.object({ sourceId: z.number().int().positive(), changeSummary: z.string().trim().min(10).max(4_000) })).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [source] = await db.select({ id: marketingKnowledgeSources.id }).from(marketingKnowledgeSources)
       .where(eq(marketingKnowledgeSources.id, input.sourceId)).limit(1);
@@ -1670,7 +1773,7 @@ export const marketingSystemRouter = router({
     decision: z.enum(["approved", "rejected", "needs_review"]),
     reviewerNote: z.string().trim().min(4).max(4_000),
   })).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [claim] = await db.select().from(marketingKnowledgeClaims).where(eq(marketingKnowledgeClaims.id, input.claimId)).limit(1);
     if (!claim) throw new TRPCError({ code: "NOT_FOUND", message: "Knowledge claim was not found." });
@@ -1838,7 +1941,7 @@ export const marketingSystemRouter = router({
     const db = await requireDb();
     const [order] = await db.select().from(marketingWorkOrders).where(eq(marketingWorkOrders.id, input.workOrderId)).limit(1);
     if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Work order was not found." });
-    if (order.createdByUserId !== ctx.user.id && !isOwner(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Only the work-order creator or Mahmoud can submit it." });
+    if (order.createdByUserId !== ctx.user.id && !(await isMarketingSystemAdministrator(ctx.user))) throw new TRPCError({ code: "FORBIDDEN", message: "Only the work-order creator or a scoped Agentic Marketing administrator can submit it." });
     if (!workOrderCanTransition(order.status as MarketingWorkOrderStatus, "submitted")) throw new TRPCError({ code: "BAD_REQUEST", message: "Only a draft work order can be submitted for owner review." });
     const now = Date.now();
     await db.update(marketingWorkOrders).set({ status: "submitted", submittedAt: now, updatedAt: now, allowedNextStatesJson: JSON.stringify(["approved", "hold", "rejected", "cancelled"]) }).where(eq(marketingWorkOrders.id, order.id));
@@ -1848,7 +1951,7 @@ export const marketingSystemRouter = router({
   }),
 
   reviewWorkOrder: protectedProcedure.input(workOrderTransitionInput).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     if (!["approved", "hold", "rejected"].includes(input.nextStatus)) throw new TRPCError({ code: "BAD_REQUEST", message: "An owner review can approve, hold, or reject a submitted work order." });
     const db = await requireDb();
     const [order] = await db.select().from(marketingWorkOrders).where(eq(marketingWorkOrders.id, input.workOrderId)).limit(1);
@@ -1946,7 +2049,7 @@ export const marketingSystemRouter = router({
     const db = await requireDb();
     const [order] = await db.select().from(marketingWorkOrders).where(eq(marketingWorkOrders.id, input.workOrderId)).limit(1);
     if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Work order was not found." });
-    if (order.createdByUserId !== ctx.user.id && !isOwner(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Only the creator or Mahmoud can cancel this work order." });
+    if (order.createdByUserId !== ctx.user.id && !(await isMarketingSystemAdministrator(ctx.user))) throw new TRPCError({ code: "FORBIDDEN", message: "Only the creator or a scoped Agentic Marketing administrator can cancel this work order." });
     if (!workOrderCanTransition(order.status as MarketingWorkOrderStatus, "cancelled")) throw new TRPCError({ code: "BAD_REQUEST", message: "This work order is already terminal and cannot be cancelled." });
     const now = Date.now();
     await db.update(marketingWorkOrders).set({ status: "cancelled", cancelledByUserId: ctx.user.id, cancelledAt: now, updatedAt: now, allowedNextStatesJson: JSON.stringify([]) }).where(eq(marketingWorkOrders.id, order.id));
@@ -2110,7 +2213,7 @@ export const marketingSystemRouter = router({
       getApprovedContentClaims(input.claimIds, input.programKey),
     ]);
     if (!previous) throw new TRPCError({ code: "NOT_FOUND", message: "The content packet to revise was not found." });
-    if (previous.createdByUserId !== ctx.user.id && !isOwner(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Only the packet creator or Mahmoud can create a revision." });
+    if (previous.createdByUserId !== ctx.user.id && !(await isMarketingSystemAdministrator(ctx.user))) throw new TRPCError({ code: "FORBIDDEN", message: "Only the packet creator or a scoped Agentic Marketing administrator can create a revision." });
     if (["stopped", "superseded"].includes(previous.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "A stopped or superseded packet cannot be revised." });
     const orderClaims = new Set(parseJson<number[]>(order.knowledgeClaimIdsJson, []));
     if (claims.some(claim => !orderClaims.has(claim.id))) throw new TRPCError({ code: "BAD_REQUEST", message: "Every packet claim must be included in the approved source work order." });
@@ -2173,7 +2276,7 @@ export const marketingSystemRouter = router({
     const db = await requireDb();
     const [packet] = await db.select().from(marketingContentPackets).where(eq(marketingContentPackets.id, input.packetId)).limit(1);
     if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Content packet was not found." });
-    if (packet.createdByUserId !== ctx.user.id && !isOwner(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Only the packet creator or Mahmoud can submit it for review." });
+    if (packet.createdByUserId !== ctx.user.id && !(await isMarketingSystemAdministrator(ctx.user))) throw new TRPCError({ code: "FORBIDDEN", message: "Only the packet creator or a scoped Agentic Marketing administrator can submit it for review." });
     if (!contentCanTransition(packet.status as MarketingContentStatus, "in_review")) throw new TRPCError({ code: "BAD_REQUEST", message: "Only a draft packet can be submitted for review." });
     const now = Date.now();
     await db.update(marketingContentPackets).set({ status: "in_review", blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingContentPackets.id, packet.id));
@@ -2239,7 +2342,7 @@ export const marketingSystemRouter = router({
   }),
 
   approveContentPacket: protectedProcedure.input(contentDecisionInput).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [packet] = await db.select().from(marketingContentPackets).where(eq(marketingContentPackets.id, input.packetId)).limit(1);
     if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Content packet was not found." });
@@ -2259,7 +2362,7 @@ export const marketingSystemRouter = router({
     note: z.string().trim().min(4).max(8_000),
     confirmedFullyReviewed: z.literal(true),
   })).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const ids = Array.from(new Set(input.packetIds));
     const packets = await db.select().from(marketingContentPackets).where(inArray(marketingContentPackets.id, ids));
@@ -2285,7 +2388,7 @@ export const marketingSystemRouter = router({
   }),
 
   rejectContentPacket: protectedProcedure.input(contentDecisionInput).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
     const [packet] = await db.select().from(marketingContentPackets).where(eq(marketingContentPackets.id, input.packetId)).limit(1);
     if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Content packet was not found." });
@@ -2302,8 +2405,8 @@ export const marketingSystemRouter = router({
     const db = await requireDb();
     const [packet] = await db.select().from(marketingContentPackets).where(eq(marketingContentPackets.id, input.packetId)).limit(1);
     if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Content packet was not found." });
-    if (packet.createdByUserId !== ctx.user.id && !isOwner(ctx.user) && (await getEffectiveRole(ctx.user)) !== "marketing_manager") {
-      throw new TRPCError({ code: "FORBIDDEN", message: "Only the packet creator, a Marketing Manager, or Mahmoud can stop this packet." });
+    if (packet.createdByUserId !== ctx.user.id && !(await isMarketingSystemAdministrator(ctx.user)) && (await getEffectiveRole(ctx.user)) !== "marketing_manager") {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Only the packet creator, a Marketing Manager, or a scoped Agentic Marketing administrator can stop this packet." });
     }
     if (!contentCanTransition(packet.status as MarketingContentStatus, "stopped")) throw new TRPCError({ code: "BAD_REQUEST", message: "This packet is already terminal and cannot be stopped." });
     const now = Date.now();
@@ -2378,7 +2481,7 @@ export const marketingSystemRouter = router({
   }),
 
   captureWeeklyExecutiveBrief: protectedProcedure.input(weeklyExecutiveBriefCaptureInput).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     if (!isMondayPeriodStart(input.periodStart)) {
       throw new TRPCError({ code: "BAD_REQUEST", message: "The weekly period must start on a Monday and use YYYY-MM-DD." });
     }
@@ -2430,7 +2533,7 @@ export const marketingSystemRouter = router({
   }),
 
   decideWeeklyExecutiveBrief: protectedProcedure.input(weeklyExecutiveBriefDecisionInput).mutation(async ({ ctx, input }) => {
-    await requireOwner(ctx.user);
+    await requireMarketingSystemAdministrator(ctx.user);
     const note = normalizeWeeklyExecutiveBriefText(input.note);
     const unsafe = findDisallowedWeeklyExecutiveBriefData(note);
     if (unsafe) throw new TRPCError({ code: "BAD_REQUEST", message: `Decision notes cannot include ${unsafe}. Use aggregate evidence only.` });

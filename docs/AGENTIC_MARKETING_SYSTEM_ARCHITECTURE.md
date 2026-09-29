@@ -289,3 +289,14 @@ The Strategy Approval Packet is an **owner-only planning record**, not a campaig
 The implementation reads the existing aggregate Pilot Readiness calculation on the server and stores a versioned SHA-256 snapshot for a manually selected Monday-start review period. It preserves capture and decision events separately. Mahmoud can acknowledge the planning-only state, request more aggregate evidence, hold planning, or stop a brief. These decisions do not authorize execution.
 
 The review record rejects client, Lead, identity, contact, and financial-row details. Analysts may read aggregate history through the existing analytics capability. Only Mahmoud can capture or decide. There is no schedule, email, notification, provider call, Meta connection, campaign mutation, CAPI event, publication, budget, spend, payment, message, or CRM-write path.
+
+
+## Provider Connection Center and scoped administrator decision
+
+**Decision:** implement a Provider Connection Center for the selected **Full Autopilot after pilot safeguards** model, while retaining a hard server-side no-execution lock. Provider configuration reports only secret presence or absence; it never receives, stores or displays credentials. The selected provider inventory is Manus API v2, OpenAI, Anthropic, Creatomate, optional Runway, the existing ELEVAY ElevenLabs voice adapter and Meta Marketing API. No provider request, rendering action, campaign operation or spend is enabled by this decision.
+
+**Authority:** Ziad El Shurafa has been upgraded to `marketing_system_admin`, a full administrator role scoped exclusively to the Agentic Marketing System. It provides the same subsystem capabilities as the owner for answering, editing, approving and administering the Agentic Marketing workflow, without granting CRM-wide ownership or unrelated module access.
+
+**Programme evidence:** The supplied Spain and Malta documents are retained as internal retrieval/reference records only. They are not official sources, cannot support official claims, and do not represent fine-tuning of a third-party model. Government-source ingestion and approval remain paused pending Mahmoud’s explicit approval.
+
+**Residual gate:** a separate bounded execution-release approval remains mandatory after all provider credentials, callback signature/idempotency checks, approved source claims, Brand Book, Content approvals, Strategy Packet, Pilot Proposal, monitoring and rollback controls are verified.

@@ -83,3 +83,19 @@
 - [x] Applied reviewed additive migration `0098_agentic_marketing_weekly_executive_briefs.sql`; no test data was created.
 - [x] Verified zero records in both new tables, 21 focused regressions, production build, TypeScript changed-file baseline review, protected-route handling, and diff hygiene.
 - [x] Documented the strict no-schedule, no-email, no-Meta, no-provider, no-publish, no-CAPI, no-spend, and no-CRM-mutation boundary.
+
+## Agentic Marketing System — Provider Readiness, Scoped Administrator & Internal Programme References
+
+- [x] Added a non-secret Provider Connection Center for the selected Full Autopilot after pilot safeguards model.
+- [x] Registered disabled readiness profiles for Manus API v2, OpenAI, Anthropic, Creatomate, optional Runway, existing ELEVAY ElevenLabs voice and Meta Marketing API.
+- [x] Added provider callback audit and master-autopilot-control tables without storing credentials, raw callback payloads or client data.
+- [x] Kept a hard `executionAllowed: false` lock and master kill switch; no provider call, task dispatch, render, Meta operation, CAPI action, campaign mutation, publication, schedule or spend is possible from this phase.
+- [x] Added Provider Connection Center routes to desktop dashboard, desktop sidebar, mobile sidebar and AI Agentic Marketing hub.
+- [x] Granted Ziad El Shurafa the active `marketing_system_admin` role—a full Agentic Marketing System administrator role only, not CRM-wide ownership.
+- [x] Updated server guards, lifecycle actions and UI role checks so Ziad can answer, edit, reset, approve and administer all Agentic Marketing System workflows.
+- [x] Analysed the supplied Spain and Malta PDFs and stored exactly two clearly separated internal retrieval/reference records. They cannot create official claims and are not model fine-tuning.
+- [x] Paused all government-source ingestion/approval pending Mahmoud’s explicit approval; no approved claims were created.
+- [x] Verified one active scoped administrator assignment, two internal references, zero approved claims and zero provider webhook events.
+- [x] Passed 43 focused Agentic Marketing regressions, production build, changed-file TypeScript review and diff hygiene.
+
+> **Next gate:** Add external credentials only through protected server environment secrets. Then, after government-source approval and all strategy/content/pilot gates are complete, separately validate signed callbacks and request an explicit bounded execution-release approval. Never place API keys in the CRM, documents, source code or chat.

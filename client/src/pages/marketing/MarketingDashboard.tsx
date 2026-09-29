@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle, MailWarning, Loader2, ClipboardCheck, FilePenLine, FileCheck2, Target } from "lucide-react";
+import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle, MailWarning, Loader2, ClipboardCheck, FilePenLine, FileCheck2, Target, PlugZap } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 
@@ -12,6 +12,14 @@ const tools = [
     href: "/marketing/agentic-system",
     color: "from-[#C9A84C] via-[#5BA3B8] to-[#1A3A5C]",
     badge: "Control center",
+  },
+  {
+    icon: PlugZap,
+    title: "Provider Connection Center",
+    description: "Prepare secure server-side provider readiness for the selected Full Autopilot model. It reports gaps only—no secret is shown or accepted, and external operations remain locked.",
+    href: "/marketing/provider-connections",
+    color: "from-[#5BA3B8] via-[#1A3A5C] to-[#C9A84C]",
+    badge: "Configuration only",
   },
   {
     icon: Sparkles,

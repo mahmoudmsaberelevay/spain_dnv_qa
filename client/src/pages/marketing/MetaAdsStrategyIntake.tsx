@@ -24,7 +24,7 @@ export default function MetaAdsStrategyIntake() {
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
   const { data: access, isLoading: accessLoading } = trpc.marketingSystem.access.useQuery();
-  const isOwner = access?.role === "owner";
+  const isOwner = ["owner", "marketing_system_admin"].includes(access?.role ?? "");
   const { data: session } = trpc.marketingSystem.getCurrentMetaAdsStrategy.useQuery(undefined, { enabled: isOwner });
   const start = trpc.marketingSystem.startOrResumeMetaAdsStrategy.useMutation({ onSuccess: () => { utils.marketingSystem.getCurrentMetaAdsStrategy.invalidate(); toast.success("Meta Ads Strategy Intake started. Campaigns and spend remain locked."); }, onError: error => toast.error(error.message) });
   const save = trpc.marketingSystem.saveMetaAdsStrategyAnswer.useMutation({ onSuccess: () => utils.marketingSystem.getCurrentMetaAdsStrategy.invalidate(), onError: error => toast.error(error.message) });
@@ -68,7 +68,7 @@ export default function MetaAdsStrategyIntake() {
   };
 
   if (accessLoading) return <div className="flex min-h-[65vh] items-center justify-center text-slate-400">Loading controlled strategy workspace…</div>;
-  if (!isOwner) return <div className="mx-auto flex min-h-[65vh] max-w-xl flex-col items-center justify-center px-6 text-center"><LockKeyhole className="mb-4 h-12 w-12 text-amber-300" /><h1 className="text-2xl font-bold text-white">Strategy Intake is owner-controlled</h1><p className="mt-3 text-sm leading-6 text-slate-400">Only Mahmoud can complete, confirm, reset, or approve the Meta Ads Strategy Intake. This protects commercial strategy, campaign policy, and paid-media controls.</p></div>;
+  if (!isOwner) return <div className="mx-auto flex min-h-[65vh] max-w-xl flex-col items-center justify-center px-6 text-center"><LockKeyhole className="mb-4 h-12 w-12 text-amber-300" /><h1 className="text-2xl font-bold text-white">Strategy Intake is administrator-controlled</h1><p className="mt-3 text-sm leading-6 text-slate-400">Mahmoud or a scoped Agentic Marketing administrator can complete, confirm, reset, or approve the Meta Ads Strategy Intake. This protects commercial strategy, campaign policy, and paid-media controls.</p></div>;
 
   const shownNumber = currentQuestion?.number ?? 1;
   const progress = session ? Math.round((session.answeredCount / session.totalQuestions) * 100) : 0;

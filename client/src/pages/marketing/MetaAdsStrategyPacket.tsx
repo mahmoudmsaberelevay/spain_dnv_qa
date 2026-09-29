@@ -16,7 +16,7 @@ export default function MetaAdsStrategyPacket() {
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
   const { data: access, isLoading: accessLoading } = trpc.marketingSystem.access.useQuery();
-  const isOwner = access?.role === "owner";
+  const isOwner = ["owner", "marketing_system_admin"].includes(access?.role ?? "");
   const { data, isLoading } = trpc.marketingSystem.getMetaAdsStrategyPacketWorkspace.useQuery(undefined, { enabled: isOwner });
   const saveConfirmation = trpc.marketingSystem.saveMetaAdsStrategyProgramConfirmation.useMutation({ onSuccess: () => { utils.marketingSystem.getMetaAdsStrategyPacketWorkspace.invalidate(); toast.success("Program confirmation saved. The company answer remains preserved as its source reference."); }, onError: error => toast.error(error.message) });
   const propose = trpc.marketingSystem.proposeMetaAdsStrategyPacket.useMutation({ onSuccess: () => { utils.marketingSystem.getMetaAdsStrategyPacketWorkspace.invalidate(); toast.success("Strategy Approval Packet proposed for owner review. Campaigns and spend remain locked."); }, onError: error => toast.error(error.message) });
@@ -47,7 +47,7 @@ export default function MetaAdsStrategyPacket() {
   };
 
   if (accessLoading || (isOwner && isLoading)) return <div className="flex min-h-[65vh] items-center justify-center text-slate-400">Loading Strategy Approval Packet…</div>;
-  if (!isOwner) return <div className="mx-auto flex min-h-[65vh] max-w-xl flex-col items-center justify-center px-6 text-center"><LockKeyhole className="mb-4 h-12 w-12 text-amber-300" /><h1 className="text-2xl font-bold text-white">Strategy Approval Packet is owner-controlled</h1><p className="mt-3 text-sm leading-6 text-slate-400">Only Mahmoud can confirm program variations, propose the strategy packet, or record its final planning decision.</p></div>;
+  if (!isOwner) return <div className="mx-auto flex min-h-[65vh] max-w-xl flex-col items-center justify-center px-6 text-center"><LockKeyhole className="mb-4 h-12 w-12 text-amber-300" /><h1 className="text-2xl font-bold text-white">Strategy Approval Packet is administrator-controlled</h1><p className="mt-3 text-sm leading-6 text-slate-400">Mahmoud or a scoped Agentic Marketing administrator can confirm program variations, propose the strategy packet, or record its final planning decision.</p></div>;
 
   return <div className="min-h-full bg-[#0c1320] px-4 py-6 text-white md:px-8"><div className="mx-auto max-w-5xl space-y-6">
     <section className="rounded-3xl border border-[#C9A84C]/25 bg-[radial-gradient(circle_at_92%_0%,rgba(201,168,76,.18),transparent_40%),linear-gradient(115deg,#182337,#0d1524)] p-6 md:p-8"><div className="flex flex-wrap items-end justify-between gap-5"><div><div className="mb-3 flex items-center gap-2 text-[#EBD990]"><FileCheck2 className="h-4 w-4" /><span className="text-xs font-bold uppercase tracking-[.16em]">Final planning gate · no execution</span></div><h1 className="text-3xl font-semibold tracking-tight">Meta Ads Strategy Approval Packet</h1><p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Confirm program-specific variations against the completed company interview, inspect hard blockers, then create a hash-locked strategy planning packet for Mahmoud’s explicit decision.</p></div><Badge variant="outline" className="w-fit border-amber-300/30 bg-amber-300/10 text-amber-100">Meta operations locked</Badge></div></section>

@@ -39,7 +39,7 @@ describe("Marketing System Content Studio integration contract", () => {
   it("keeps final approval owner-only, exceptional claims individual-only, and records batch confirmation", () => {
     const router = read("server/marketingSystemRouter.ts");
     expect(router).toContain("approveContentPacket");
-    expect(router).toContain("await requireOwner(ctx.user);");
+    expect(router).toContain("await requireMarketingSystemAdministrator(ctx.user);");
     expect(router).toContain("approveContentBatch");
     expect(router).toContain("Packets marked with exceptional claims require an individual owner decision");
     expect(router).toContain("confirmedFullyReviewed: z.literal(true)");

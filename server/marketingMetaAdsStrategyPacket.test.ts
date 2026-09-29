@@ -36,7 +36,7 @@ describe("Meta Ads Strategy Approval Packet", () => {
     expect(router).toContain("packetHash");
     expect(router).toContain("currentSourceHash !== packet.sourceAnswerHash");
     expect(router).toContain("approveMetaAdsStrategyPacket");
-    expect(router).toContain("await requireOwner(ctx.user);");
+    expect(router).toContain("await requireMarketingSystemAdministrator(ctx.user);");
     expect(router).toContain("noCampaignActivation: true");
     expect(router).toContain("status: \"approved\"");
   });

@@ -9,9 +9,9 @@ describe("Marketing System Work Orders integration contract", () => {
     const router = read("server/marketingSystemRouter.ts");
     expect(router).toContain("await requireCapability(ctx.user, capabilityForWorkOrder(input.workType))");
     expect(router).toContain("await requireCapability(ctx.user, \"submit_work_orders\")");
-    expect(router).toContain("await requireOwner(ctx.user);");
+    expect(router).toContain("await requireMarketingSystemAdministrator(ctx.user);");
     expect(router).toContain("Only an owner-approved work order can run a dry-run validation.");
-    expect(router).toContain("Only the work-order creator or Mahmoud can submit it.");
+    expect(router).toContain("Only the work-order creator or a scoped Agentic Marketing administrator can submit it.");
   });
 
   it("preserves source, Brand Book, cost and output-schema lineage on every new work order", () => {

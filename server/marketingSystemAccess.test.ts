@@ -6,7 +6,8 @@ import {
 } from "./marketingSystemAccess";
 
 describe("Agentic Marketing System role policy", () => {
-  it("recognizes only the four assignable marketing-system roles", () => {
+  it("recognizes the five assignable marketing-system roles", () => {
+    expect(isMarketingSystemRole("marketing_system_admin")).toBe(true);
     expect(isMarketingSystemRole("marketing_manager")).toBe(true);
     expect(isMarketingSystemRole("researcher")).toBe(true);
     expect(isMarketingSystemRole("creative_producer")).toBe(true);
@@ -15,13 +16,15 @@ describe("Agentic Marketing System role policy", () => {
     expect(isMarketingSystemRole(null)).toBe(false);
   });
 
-  it("keeps final publishing and campaign operations owner-only", () => {
+  it("keeps final publishing and campaign operations limited to the owner or scoped Agentic Marketing administrator", () => {
     for (const role of ["marketing_manager", "researcher", "creative_producer", "analyst"] as const) {
       expect(hasMarketingSystemCapability(role, "approve_publishing")).toBe(false);
       expect(hasMarketingSystemCapability(role, "manage_campaigns")).toBe(false);
     }
     expect(hasMarketingSystemCapability("owner", "approve_publishing")).toBe(true);
     expect(hasMarketingSystemCapability("owner", "manage_campaigns")).toBe(true);
+    expect(hasMarketingSystemCapability("marketing_system_admin", "approve_publishing")).toBe(true);
+    expect(hasMarketingSystemCapability("marketing_system_admin", "manage_campaigns")).toBe(true);
   });
 
   it("gives the intended production capabilities without granting an unassigned user anything", () => {
@@ -50,6 +53,7 @@ describe("Agentic Marketing System role policy", () => {
     expect(hasMarketingSystemCapability("analyst", "create_content_packets")).toBe(false);
     expect(hasMarketingSystemCapability("owner", "view_campaign_pilot_proposals")).toBe(true);
     expect(hasMarketingSystemCapability("owner", "manage_campaign_pilot_proposals")).toBe(true);
+    expect(getMarketingSystemCapabilities("marketing_system_admin")).toEqual(getMarketingSystemCapabilities("owner"));
     expect(hasMarketingSystemCapability("marketing_manager", "manage_campaign_pilot_proposals")).toBe(false);
   });
 });

@@ -19,8 +19,8 @@ describe("Brand Studio implementation contract", () => {
 
   it("requires owner control for discovery, reset, approval, provider configuration, and role administration", () => {
     const router = read("server/marketingSystemRouter.ts");
-    expect(router).toContain("await requireOwner(ctx.user);");
-    expect(router).toContain("Only Mahmoud can change Brand Studio, provider, role, approval, or campaign governance.");
+    expect(router).toContain("await requireMarketingSystemAdministrator(ctx.user);");
+    expect(router).toContain("This action requires the scoped Agentic Marketing System administrator role.");
     expect(router).toContain("status: \"active\"");
     expect(router).toContain("status: \"superseded\"");
     expect(router).toContain("contentHash");
@@ -43,7 +43,7 @@ describe("Brand Studio implementation contract", () => {
     expect(router).toContain("const bulkAnswerInput");
     expect(router).toContain("answers: z.array(answerInput.omit({ sessionId: true })).min(1).max(BRAND_DISCOVERY_TOTAL_QUESTIONS)");
     expect(router).toContain("saveDiscoveryAnswers: protectedProcedure.input(bulkAnswerInput)");
-    expect(router).toContain("await requireOwner(ctx.user);");
+    expect(router).toContain("await requireMarketingSystemAdministrator(ctx.user);");
     expect(router).toContain("await db.transaction(async tx =>");
     expect(router).toContain("marketing_brand_discovery_bulk_answers");
     expect(router).toContain("Each Brand Discovery question can appear only once in a save request.");

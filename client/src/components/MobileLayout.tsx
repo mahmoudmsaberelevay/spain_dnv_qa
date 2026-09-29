@@ -58,6 +58,7 @@ import {
   Image,
   ClipboardCheck,
   FileCheck2,
+  PlugZap,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -164,6 +165,7 @@ export const MOBILE_SIDEBAR_MODULES = [
     items: [
       { icon: LayoutDashboard, label: "Marketing Dashboard", path: "/marketing" },
       { icon: Sparkles, label: "AI Agentic Marketing System", path: "/marketing/agentic-system" },
+      { icon: PlugZap, label: "Provider Connection Center", path: "/marketing/provider-connections" },
       { icon: Sparkles, label: "Brand Studio", path: "/marketing/brand-studio" },
       { icon: BookOpen, label: "Knowledge Library", path: "/marketing/knowledge-library" },
       { icon: ClipboardCheck, label: "Work Orders", path: "/marketing/work-orders" },

@@ -64,7 +64,7 @@ export default function WorkOrders() {
   const canReview = access?.capabilities.includes("review_work_orders") === true;
   const canDryRun = access?.capabilities.includes("run_work_order_dry_runs") === true;
   const canCancel = access?.capabilities.includes("cancel_work_orders") === true;
-  const isOwner = access?.role === "owner";
+  const isOwner = ["owner", "marketing_system_admin"].includes(access?.role ?? "");
   const { data: workOrderData, isLoading: ordersLoading } = trpc.marketingSystem.getWorkOrders.useQuery(undefined, { enabled: canView });
   const { data: config } = trpc.marketingSystem.getWorkOrderConfiguration.useQuery(undefined, { enabled: canSubmit });
 

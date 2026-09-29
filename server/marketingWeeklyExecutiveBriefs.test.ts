@@ -43,7 +43,7 @@ describe("Weekly Executive Brief CRM integration contract", () => {
     expect(router).toContain("getPilotReadinessExecutiveData");
     expect(router).toContain("captureWeeklyExecutiveBrief");
     expect(router).toContain("decideWeeklyExecutiveBrief");
-    expect(router).toContain("await requireOwner(ctx.user);");
+    expect(router).toContain("await requireMarketingSystemAdministrator(ctx.user);");
     expect(router).toContain("snapshot = await getPilotReadinessExecutiveData()");
     expect(router).toContain("externalOperationsEnabled: false");
     expect(router).toContain("findDisallowedWeeklyExecutiveBriefData");

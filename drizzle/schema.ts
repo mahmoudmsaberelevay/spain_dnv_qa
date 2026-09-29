@@ -2299,6 +2299,41 @@ export const marketingProviderProfiles = mysqlTable("marketing_provider_profiles
 export type MarketingProviderProfile = typeof marketingProviderProfiles.$inferSelect;
 export type InsertMarketingProviderProfile = typeof marketingProviderProfiles.$inferInsert;
 
+// Provider callbacks retain only idempotency, signature-processing, and payload-fingerprint metadata.
+// Raw vendor payloads and credentials are intentionally excluded because they may contain private data.
+export const marketingProviderWebhookEvents = mysqlTable("marketing_provider_webhook_events", {
+  id: int("id").autoincrement().primaryKey(),
+  providerAlias: varchar("providerAlias", { length: 96 }).notNull(),
+  providerEventId: varchar("providerEventId", { length: 255 }).notNull(),
+  eventType: varchar("eventType", { length: 120 }).notNull(),
+  payloadHash: varchar("payloadHash", { length: 64 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("accepted"),
+  errorClass: varchar("errorClass", { length: 120 }),
+  receivedAt: bigint("receivedAt", { mode: "number" }).notNull(),
+  processedAt: bigint("processedAt", { mode: "number" }),
+}, table => [
+  uniqueIndex("marketing_provider_webhook_event_unique").on(table.providerAlias, table.providerEventId),
+  index("marketing_provider_webhook_status_idx").on(table.providerAlias, table.status, table.receivedAt),
+]);
+export type MarketingProviderWebhookEvent = typeof marketingProviderWebhookEvents.$inferSelect;
+export type InsertMarketingProviderWebhookEvent = typeof marketingProviderWebhookEvents.$inferInsert;
+
+// One explicit full-autopilot intent record. The master kill switch defaults to engaged;
+// connection readiness never becomes execution authority by itself.
+export const marketingAutopilotControls = mysqlTable("marketing_autopilot_controls", {
+  id: int("id").autoincrement().primaryKey(),
+  requestedMode: varchar("requestedMode", { length: 48 }).notNull(),
+  masterKillSwitchEnabled: boolean("masterKillSwitchEnabled").default(true).notNull(),
+  status: varchar("status", { length: 48 }).notNull().default("configuration_required"),
+  lastChangedByUserId: int("lastChangedByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_autopilot_controls_mode_unique").on(table.requestedMode),
+]);
+export type MarketingAutopilotControl = typeof marketingAutopilotControls.$inferSelect;
+export type InsertMarketingAutopilotControl = typeof marketingAutopilotControls.$inferInsert;
+
 export const marketingBrandDiscoverySessions = mysqlTable("marketing_brand_discovery_sessions", {
   id: int("id").autoincrement().primaryKey(),
   version: int("version").notNull(),
@@ -2393,6 +2428,30 @@ export const marketingKnowledgeSources = mysqlTable("marketing_knowledge_sources
 ]);
 export type MarketingKnowledgeSource = typeof marketingKnowledgeSources.$inferSelect;
 export type InsertMarketingKnowledgeSource = typeof marketingKnowledgeSources.$inferInsert;
+
+// User-supplied programme summaries are retained separately from official sources.
+// They can help internal research and planning, but cannot support publishable claims.
+export const marketingInternalProgrammeReferences = mysqlTable("marketing_internal_programme_references", {
+  id: int("id").autoincrement().primaryKey(),
+  referenceKey: varchar("referenceKey", { length: 128 }).notNull(),
+  programKeysJson: text("programKeysJson").notNull(),
+  title: varchar("title", { length: 500 }).notNull(),
+  sourceFileName: varchar("sourceFileName", { length: 255 }).notNull(),
+  documentUpdatedLabel: varchar("documentUpdatedLabel", { length: 96 }),
+  sourceClassification: varchar("sourceClassification", { length: 64 }).notNull().default("user_supplied_internal_summary"),
+  status: varchar("status", { length: 64 }).notNull().default("internal_reference_only"),
+  documentHash: varchar("documentHash", { length: 64 }).notNull(),
+  rawText: mediumtext("rawText").notNull(),
+  analysisJson: mediumtext("analysisJson").notNull(),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_internal_programme_reference_key_unique").on(table.referenceKey),
+  index("marketing_internal_programme_reference_status_idx").on(table.status, table.updatedAt),
+]);
+export type MarketingInternalProgrammeReference = typeof marketingInternalProgrammeReferences.$inferSelect;
+export type InsertMarketingInternalProgrammeReference = typeof marketingInternalProgrammeReferences.$inferInsert;
 
 // Every claim references one approved source snapshot. A source change demotes the
 // claim to needs_review; approved wording is never silently rewritten or republished.

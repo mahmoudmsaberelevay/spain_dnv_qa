@@ -74,7 +74,7 @@ export default function ContentStudio() {
   const canReview = access?.capabilities.includes("review_content_packets") === true;
   const canQa = access?.capabilities.includes("run_content_qa") === true;
   const canStop = access?.capabilities.includes("stop_content_packets") === true;
-  const isOwner = access?.role === "owner";
+  const isOwner = ["owner", "marketing_system_admin"].includes(access?.role ?? "");
   const { data: config, isLoading: configLoading } = trpc.marketingSystem.getContentStudioConfiguration.useQuery(undefined, { enabled: canView });
   const { data: contentData, isLoading: packetsLoading } = trpc.marketingSystem.getContentPackets.useQuery(undefined, { enabled: canView });
 

@@ -1,4 +1,5 @@
 export const MARKETING_SYSTEM_ROLES = [
+  "marketing_system_admin",
   "marketing_manager",
   "researcher",
   "creative_producer",
@@ -41,8 +42,7 @@ export type MarketingSystemCapability =
   | "approve_publishing"
   | "manage_campaigns";
 
-const CAPABILITIES: Record<Exclude<EffectiveMarketingSystemRole, null>, readonly MarketingSystemCapability[]> = {
-  owner: [
+const FULL_AGENTIC_MARKETING_CAPABILITIES: readonly MarketingSystemCapability[] = [
     "view_brand_book", "manage_brand_discovery", "manage_roles", "view_provider_readiness", "manage_provider_aliases",
     "view_knowledge", "manage_knowledge_sources", "create_knowledge_claims", "review_knowledge_claims",
     "create_research", "create_creative", "review_creative", "view_analytics", "export_analytics",
@@ -51,7 +51,13 @@ const CAPABILITIES: Record<Exclude<EffectiveMarketingSystemRole, null>, readonly
     "view_meta_strategy_intake", "manage_meta_strategy_intake",
     "view_campaign_pilot_proposals", "manage_campaign_pilot_proposals",
     "approve_publishing", "manage_campaigns",
-  ],
+];
+
+const CAPABILITIES: Record<Exclude<EffectiveMarketingSystemRole, null>, readonly MarketingSystemCapability[]> = {
+  // Mahmoud remains the CRM owner. The administrator role below is deliberately
+  // scoped to the Agentic Marketing System and has no effect on other CRM modules.
+  owner: FULL_AGENTIC_MARKETING_CAPABILITIES,
+  marketing_system_admin: FULL_AGENTIC_MARKETING_CAPABILITIES,
   marketing_manager: [
     "view_brand_book", "view_provider_readiness", "view_knowledge", "manage_knowledge_sources", "create_knowledge_claims", "create_research", "create_creative",
     "review_creative", "view_analytics", "export_analytics", "view_work_orders", "submit_work_orders", "cancel_work_orders",
@@ -75,6 +81,7 @@ export function hasMarketingSystemCapability(role: EffectiveMarketingSystemRole,
 }
 
 export const MARKETING_SYSTEM_ROLE_LABELS: Record<MarketingSystemRole, string> = {
+  marketing_system_admin: "Agentic Marketing Administrator (scoped)",
   marketing_manager: "Marketing Manager",
   researcher: "Researcher",
   creative_producer: "Creative Producer",

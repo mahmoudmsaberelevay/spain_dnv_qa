@@ -58,7 +58,7 @@ export default function WeeklyExecutiveBriefs() {
   const utils = trpc.useUtils();
   const { data: access, isLoading: accessLoading } = trpc.marketingSystem.access.useQuery();
   const canView = Boolean(access?.capabilities.includes("view_analytics"));
-  const isOwner = access?.role === "owner";
+  const isOwner = ["owner", "marketing_system_admin"].includes(access?.role ?? "");
   const briefsQuery = trpc.marketingSystem.listWeeklyExecutiveBriefs.useQuery(undefined, { enabled: canView });
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [periodStart, setPeriodStart] = useState(mondayForCurrentWeek);

@@ -18,7 +18,7 @@ describe("Marketing System Knowledge Library contract", () => {
   it("requires a role for source submission, an owner for approval, and a tracked approved source for claims", () => {
     const router = read("server/marketingSystemRouter.ts");
     expect(router).toContain('await requireCapability(ctx.user, "manage_knowledge_sources")');
-    expect(router).toContain("await requireOwner(ctx.user);");
+    expect(router).toContain("await requireMarketingSystemAdministrator(ctx.user);");
     expect(router).toContain("Only an owner-approved, tracked source snapshot may support a proposed claim.");
     expect(router).toContain("The source changed or is not approved. Refresh the evidence and create a new claim before approval.");
     expect(router).toContain("Source was marked as materially changed; the claim must be reviewed before reuse.");

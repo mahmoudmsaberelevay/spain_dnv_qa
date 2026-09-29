@@ -37,7 +37,7 @@ describe("Meta Ads Strategy Intake contract", () => {
     expect(router).toContain("startOrResumeMetaAdsStrategy: protectedProcedure");
     expect(router).toContain("saveMetaAdsStrategyAnswer: protectedProcedure.input(metaStrategyAnswerInput)");
     expect(router).toContain("resetMetaAdsStrategy: protectedProcedure.input");
-    expect(router).toContain("await requireOwner(ctx.user);");
+    expect(router).toContain("await requireMarketingSystemAdministrator(ctx.user);");
     expect(router).toContain("An unknown answer must have an owner follow-up deadline.");
     expect(router).toContain("marketing_meta_ads_strategy_answer");
     expect(page).toContain("Question {shownNumber} of {session.totalQuestions}");
