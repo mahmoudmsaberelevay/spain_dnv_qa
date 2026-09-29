@@ -1865,3 +1865,19 @@ Check email for download link within 5 minutes
 - [x] Passed 23 focused Marketing System regressions, production build, Phase 3 changed-file TypeScript review, protected-route access check and diff hygiene.
 - [x] Recorded the privacy-safe Phase 3 validation and updated the Agentic Marketing architecture decision record.
 > **Next gate (not part of the completed Phase 3 scope):** Complete and approve Brand Discovery, then approve source-backed claims before any separate provider-execution proposal can be considered.
+
+## Agentic Marketing System — Phase 4 Content Studio & Approval Inbox
+
+- [x] Audited the Phase 3 work-order, Brand Book, claim-source, role and navigation gates before extension.
+- [x] Added separate additive tables for versioned content packets, append-only review events and explicit owner approval batches.
+- [x] Enforced current Brand Book, owner-approved creative work-order and tracked approved-claim gates on the server before packet creation.
+- [x] Enforced Arabic-first copy, client/Lead/contact/passport/national-ID/client-code exclusion, structured output contracts and versioned SHA-256 packet hashes.
+- [x] Added manual QA covering factual claims, brand tone, Arabic, identity, safe areas, accessibility, CTA/destination, provenance, no guarantees and preview equivalence.
+- [x] Required final HTTPS preview and SHA-256 fingerprint before a packet can become Approval Ready.
+- [x] Added Mahmoud-only individual approval/rejection, structured feedback, exceptional-claim individual-only handling, explicit fully-reviewed routine batch approval and immediate stop controls.
+- [x] Added protected Content Studio and Approval Inbox navigation on desktop and mobile.
+- [x] Verified all three tables exist and remain empty; no test packet, provider call, media render, publication, schedule, Meta/CAPI action, message, campaign action or spend occurred.
+- [x] Passed 29 focused Marketing System tests, production build, Phase 4 changed-file diagnostics review, protected-route check and diff hygiene.
+- [x] Recorded the privacy-safe Phase 4 validation and updated the Marketing System architecture decision record.
+
+> **Next gate (not part of the completed Phase 4 scope):** Complete and approve Brand Discovery, approve official source-backed claims, complete the separate Meta Ads Strategy Intake, configure any provider server-side, and approve a separate bounded execution/publishing proposal before considering provider execution, render, scheduling, Meta changes or spend.

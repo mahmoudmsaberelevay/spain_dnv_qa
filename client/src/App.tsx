@@ -84,6 +84,7 @@ import ReadySummaries from "./pages/marketing/ReadySummaries";
 import BrandStudio from "./pages/marketing/BrandStudio";
 import KnowledgeLibrary from "./pages/marketing/KnowledgeLibrary";
 import WorkOrders from "./pages/marketing/WorkOrders";
+import ContentStudio from "./pages/marketing/ContentStudio";
 
 // ─── Reports Module ─────────────────────────────────────────────────────────────
 import Reports from "./pages/Reports";
@@ -351,6 +352,9 @@ function Router() {
       </Route>
       <Route path="/marketing/work-orders">
         <MobileRoute><WorkOrders /></MobileRoute>
+      </Route>
+      <Route path="/marketing/content-studio">
+        <MobileRoute><ContentStudio /></MobileRoute>
       </Route>
       <Route path="/marketing/summary-generator">
         <MobileRoute><SummaryGenerator /></MobileRoute>

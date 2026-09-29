@@ -41,5 +41,12 @@ describe("Agentic Marketing System role policy", () => {
     expect(hasMarketingSystemCapability("owner", "review_knowledge_claims")).toBe(true);
     expect(hasMarketingSystemCapability("owner", "review_work_orders")).toBe(true);
     expect(hasMarketingSystemCapability("owner", "run_work_order_dry_runs")).toBe(true);
+    expect(hasMarketingSystemCapability("creative_producer", "create_content_packets")).toBe(true);
+    expect(hasMarketingSystemCapability("creative_producer", "run_content_qa")).toBe(false);
+    expect(hasMarketingSystemCapability("marketing_manager", "run_content_qa")).toBe(true);
+    expect(hasMarketingSystemCapability("marketing_manager", "approve_content_packets")).toBe(false);
+    expect(hasMarketingSystemCapability("owner", "approve_content_packets")).toBe(true);
+    expect(hasMarketingSystemCapability("analyst", "view_content_studio")).toBe(true);
+    expect(hasMarketingSystemCapability("analyst", "create_content_packets")).toBe(false);
   });
 });

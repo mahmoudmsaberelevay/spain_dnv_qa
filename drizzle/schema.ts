@@ -2537,6 +2537,100 @@ export const marketingWorkOrderCostLedger = mysqlTable("marketing_work_order_cos
 export type MarketingWorkOrderCostLedgerEntry = typeof marketingWorkOrderCostLedger.$inferSelect;
 export type InsertMarketingWorkOrderCostLedgerEntry = typeof marketingWorkOrderCostLedger.$inferInsert;
 
+// ─── AGENTIC MARKETING SYSTEM / CONTENT STUDIO & APPROVAL INBOX ──────────────
+// A packet is a human-authored/reviewed versioned content proposal. Phase 4 adds
+// no model invocation, media rendering, publishing, campaign operation or spend.
+// Personal data, client records and Lead records must never enter these tables.
+export const marketingContentPackets = mysqlTable("marketing_content_packets", {
+  id: int("id").autoincrement().primaryKey(),
+  rootPacketKey: varchar("rootPacketKey", { length: 96 }).notNull(),
+  versionNumber: int("versionNumber").notNull().default(1),
+  previousPacketId: int("previousPacketId"),
+  workOrderId: int("workOrderId").notNull(),
+  workOrderKey: varchar("workOrderKey", { length: 96 }).notNull(),
+  contentType: varchar("contentType", { length: 48 }).notNull(),
+  title: varchar("title", { length: 300 }).notNull(),
+  programKey: varchar("programKey", { length: 96 }).notNull(),
+  platformJson: mediumtext("platformJson").notNull(),
+  funnelStage: varchar("funnelStage", { length: 64 }).notNull(),
+  audience: varchar("audience", { length: 500 }).notNull(),
+  objective: varchar("objective", { length: 500 }).notNull(),
+  arabicCopy: mediumtext("arabicCopy").notNull(),
+  englishCopy: mediumtext("englishCopy"),
+  caption: mediumtext("caption"),
+  cta: varchar("cta", { length: 500 }).notNull(),
+  landingDestination: varchar("landingDestination", { length: 2_000 }),
+  scheduledFor: bigint("scheduledFor", { mode: "number" }),
+  claimIdsJson: mediumtext("claimIdsJson").notNull(),
+  sourceSnapshotHashesJson: mediumtext("sourceSnapshotHashesJson").notNull(),
+  visualBrief: mediumtext("visualBrief"),
+  payloadJson: mediumtext("payloadJson").notNull(),
+  outputSchemaJson: mediumtext("outputSchemaJson").notNull(),
+  previewUrl: varchar("previewUrl", { length: 2_000 }),
+  previewHash: varchar("previewHash", { length: 64 }),
+  qaResultsJson: mediumtext("qaResultsJson").notNull(),
+  exceptionalClaim: boolean("exceptionalClaim").notNull().default(false),
+  status: varchar("status", { length: 32 }).notNull().default("draft"),
+  contentHash: varchar("contentHash", { length: 64 }).notNull(),
+  changeSummary: text("changeSummary"),
+  blockedReason: text("blockedReason"),
+  createdByUserId: int("createdByUserId").notNull(),
+  lastEditedByUserId: int("lastEditedByUserId").notNull(),
+  approvedByUserId: int("approvedByUserId"),
+  approvedAt: bigint("approvedAt", { mode: "number" }),
+  stoppedByUserId: int("stoppedByUserId"),
+  stoppedAt: bigint("stoppedAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_content_packet_root_version_unique").on(table.rootPacketKey, table.versionNumber),
+  uniqueIndex("marketing_content_packet_content_hash_unique").on(table.contentHash),
+  index("marketing_content_packet_status_updated_idx").on(table.status, table.updatedAt),
+  index("marketing_content_packet_work_order_idx").on(table.workOrderId, table.updatedAt),
+  index("marketing_content_packet_program_status_idx").on(table.programKey, table.status, table.updatedAt),
+]);
+export type MarketingContentPacket = typeof marketingContentPackets.$inferSelect;
+export type InsertMarketingContentPacket = typeof marketingContentPackets.$inferInsert;
+
+// Append-only review and decision history ensures human feedback and stop actions
+// remain inspectable even when a new packet revision supersedes an earlier draft.
+export const marketingContentReviewEvents = mysqlTable("marketing_content_review_events", {
+  id: int("id").autoincrement().primaryKey(),
+  packetId: int("packetId").notNull(),
+  action: varchar("action", { length: 64 }).notNull(),
+  fromStatus: varchar("fromStatus", { length: 32 }),
+  toStatus: varchar("toStatus", { length: 32 }),
+  feedback: mediumtext("feedback"),
+  annotationsJson: mediumtext("annotationsJson").notNull(),
+  payloadJson: mediumtext("payloadJson").notNull(),
+  actorUserId: int("actorUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, table => [
+  index("marketing_content_review_event_packet_idx").on(table.packetId, table.createdAt),
+  index("marketing_content_review_event_action_idx").on(table.action, table.createdAt),
+]);
+export type MarketingContentReviewEvent = typeof marketingContentReviewEvents.$inferSelect;
+export type InsertMarketingContentReviewEvent = typeof marketingContentReviewEvents.$inferInsert;
+
+// Approval batches record an explicit owner decision for multiple fully reviewed
+// routine packets; exceptional-claim packets cannot enter a bulk approval batch.
+export const marketingContentApprovalBatches = mysqlTable("marketing_content_approval_batches", {
+  id: int("id").autoincrement().primaryKey(),
+  batchKey: varchar("batchKey", { length: 96 }).notNull(),
+  packetIdsJson: mediumtext("packetIdsJson").notNull(),
+  packetContentHashesJson: mediumtext("packetContentHashesJson").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("approved"),
+  ownerNote: mediumtext("ownerNote").notNull(),
+  approvedByUserId: int("approvedByUserId").notNull(),
+  approvedAt: bigint("approvedAt", { mode: "number" }).notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_content_approval_batch_key_unique").on(table.batchKey),
+  index("marketing_content_approval_batch_status_idx").on(table.status, table.approvedAt),
+]);
+export type MarketingContentApprovalBatch = typeof marketingContentApprovalBatches.$inferSelect;
+export type InsertMarketingContentApprovalBatch = typeof marketingContentApprovalBatches.$inferInsert;
+
 // ─── MARKETING READY SUMMARIES ─────────────────────────────────────────────────
 export const marketingReadySummaries = mysqlTable("marketing_ready_summaries", {
   id: int("id").autoincrement().primaryKey(),

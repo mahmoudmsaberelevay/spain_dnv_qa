@@ -8,6 +8,9 @@ import {
   marketingBrandBooks,
   marketingBrandDiscoveryAnswers,
   marketingBrandDiscoverySessions,
+  marketingContentApprovalBatches,
+  marketingContentPackets,
+  marketingContentReviewEvents,
   marketingKnowledgeClaims,
   marketingKnowledgeSources,
   marketingProviderProfiles,
@@ -58,6 +61,19 @@ import {
   workOrderRequiresBrandBook,
   type MarketingWorkOrderStatus,
 } from "../shared/marketingWorkOrders";
+import {
+  MARKETING_CONTENT_QA_CHECKS,
+  MARKETING_CONTENT_STATUSES,
+  MARKETING_CONTENT_TYPES,
+  contentCanTransition,
+  contentPacketHasArabicText,
+  contentPacketOutputSchema,
+  findDisallowedContentPacketData,
+  normalizeContentStudioText,
+  validatePreviewFingerprint,
+  type ContentQaResult,
+  type MarketingContentStatus,
+} from "../shared/marketingContentStudio";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -118,12 +134,56 @@ const workOrderTransitionInput = z.object({
   note: z.string().trim().min(4).max(4_000),
 });
 
+const contentPacketInput = z.object({
+  workOrderId: z.number().int().positive(),
+  contentType: z.enum(MARKETING_CONTENT_TYPES),
+  title: z.string().trim().min(6).max(300),
+  programKey: z.string().trim().min(2).max(96).regex(/^[a-z0-9_]+$/, "Use a lowercase programme key with letters, numbers, and underscores only."),
+  platforms: z.array(z.enum(["instagram", "facebook", "tiktok", "linkedin", "youtube", "whatsapp", "web"])).min(1).max(7),
+  funnelStage: z.string().trim().min(2).max(64),
+  audience: z.string().trim().min(4).max(500),
+  objective: z.string().trim().min(12).max(500),
+  arabicCopy: z.string().trim().min(12).max(20_000),
+  englishCopy: z.string().trim().max(20_000).optional(),
+  caption: z.string().trim().max(20_000).optional(),
+  cta: z.string().trim().min(2).max(500),
+  landingDestination: z.string().url().max(2_000).optional(),
+  scheduledFor: z.number().int().positive().optional(),
+  claimIds: z.array(z.number().int().positive()).min(1).max(32),
+  visualBrief: z.string().trim().max(20_000).optional(),
+  payload: z.record(z.string(), z.unknown()).default({}),
+  previewUrl: z.string().url().max(2_000).optional(),
+  previewHash: z.string().regex(/^[a-f0-9]{64}$/i, "Preview fingerprint must be a SHA-256 hash.").optional(),
+  exceptionalClaim: z.boolean().default(false),
+  changeSummary: z.string().trim().min(4).max(4_000).optional(),
+});
+
+const contentQaInput = z.object({
+  packetId: z.number().int().positive(),
+  results: z.array(z.object({
+    check: z.enum(MARKETING_CONTENT_QA_CHECKS),
+    passed: z.boolean(),
+    note: z.string().trim().min(4).max(2_000),
+  })).length(MARKETING_CONTENT_QA_CHECKS.length),
+  feedback: z.string().trim().min(4).max(8_000).optional(),
+});
+
+const contentDecisionInput = z.object({
+  packetId: z.number().int().positive(),
+  note: z.string().trim().min(4).max(8_000),
+  annotations: z.array(z.string().trim().min(2).max(1_000)).max(32).default([]),
+});
+
 function money(value: number) {
   return value.toFixed(2);
 }
 
 function workOrderKey() {
   return `mwo-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 10)}`;
+}
+
+function contentPacketKey() {
+  return `mcp-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 10)}`;
 }
 
 async function appendWorkOrderEvent(input: {
@@ -148,6 +208,112 @@ async function appendWorkOrderEvent(input: {
     actorUserId: input.actorUserId,
     createdAt: now,
   });
+}
+
+async function appendContentReviewEvent(input: {
+  packetId: number;
+  action: string;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  feedback?: string | null;
+  annotations?: string[];
+  payload?: Record<string, unknown>;
+  actorUserId: number;
+  createdAt?: number;
+}) {
+  const db = await requireDb();
+  await db.insert(marketingContentReviewEvents).values({
+    packetId: input.packetId,
+    action: input.action,
+    fromStatus: input.fromStatus ?? null,
+    toStatus: input.toStatus ?? null,
+    feedback: input.feedback ?? null,
+    annotationsJson: JSON.stringify(input.annotations ?? []),
+    payloadJson: JSON.stringify(input.payload ?? {}),
+    actorUserId: input.actorUserId,
+    createdAt: input.createdAt ?? Date.now(),
+  });
+}
+
+async function getApprovedContentClaims(claimIds: number[], programKey: string) {
+  const db = await requireDb();
+  const ids = Array.from(new Set(claimIds));
+  if (ids.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "A content packet requires approved claim references." });
+  const claims = await db.select({
+    id: marketingKnowledgeClaims.id,
+    programKey: marketingKnowledgeClaims.programKey,
+    status: marketingKnowledgeClaims.status,
+    sourceSnapshotHash: marketingKnowledgeClaims.sourceSnapshotHash,
+    sourceStatus: marketingKnowledgeSources.status,
+    sourceChangeState: marketingKnowledgeSources.changeState,
+  }).from(marketingKnowledgeClaims)
+    .innerJoin(marketingKnowledgeSources, eq(marketingKnowledgeClaims.sourceId, marketingKnowledgeSources.id))
+    .where(inArray(marketingKnowledgeClaims.id, ids));
+  if (claims.length !== ids.length) throw new TRPCError({ code: "BAD_REQUEST", message: "One or more claim references do not exist." });
+  if (claims.some(claim => claim.programKey !== programKey)) throw new TRPCError({ code: "BAD_REQUEST", message: "Every content claim must match the packet programme." });
+  if (claims.some(claim => claim.status !== "approved" || claim.sourceStatus !== "approved" || claim.sourceChangeState !== "tracked")) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Every content claim must be owner-approved and backed by a tracked official source." });
+  }
+  return claims;
+}
+
+async function requireApprovedCreativeWorkOrder(workOrderId: number, programKey: string) {
+  const db = await requireDb();
+  const [order] = await db.select().from(marketingWorkOrders).where(eq(marketingWorkOrders.id, workOrderId)).limit(1);
+  if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "The source work order was not found." });
+  if (order.status !== "approved") throw new TRPCError({ code: "BAD_REQUEST", message: "Content packets require an explicitly owner-approved work order." });
+  if (!["strategy_brief", "creative_package", "voiceover_draft", "media_render_brief", "qa_review"].includes(order.workType)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Content Studio requires an approved creative or strategy work order, not a research-only order." });
+  }
+  if (order.programKey && order.programKey !== programKey) throw new TRPCError({ code: "BAD_REQUEST", message: "The packet programme must match its approved work order." });
+  const activeBook = await getActiveBrandBookForWorkOrder();
+  if (!activeBook || order.brandBookId !== activeBook.id || order.brandBookVersion !== activeBook.version) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "The source work order is not anchored to the current active Brand Book." });
+  }
+  return order;
+}
+
+function validateContentPacketText(input: z.infer<typeof contentPacketInput>) {
+  const fields: Array<[string, string | undefined]> = [
+    ["title", input.title], ["audience", input.audience], ["objective", input.objective], ["Arabic copy", input.arabicCopy],
+    ["English copy", input.englishCopy], ["caption", input.caption], ["CTA", input.cta], ["visual brief", input.visualBrief],
+    ["change summary", input.changeSummary], ["payload", JSON.stringify(input.payload)],
+  ];
+  for (const [label, value] of fields) {
+    if (!value) continue;
+    const disallowed = findDisallowedContentPacketData(value);
+    if (disallowed) throw new TRPCError({ code: "BAD_REQUEST", message: `Remove ${disallowed} from the content packet ${label}. Content packets must not contain client or Lead identity data.` });
+  }
+  if (!contentPacketHasArabicText(input.arabicCopy)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Arabic copy must include Arabic text for ELEVAY's Arabic-first content workflow." });
+  }
+}
+
+function packetContentHash(input: z.infer<typeof contentPacketInput>, rootPacketKey: string, versionNumber: number) {
+  return crypto.createHash("sha256").update(JSON.stringify({
+    rootPacketKey,
+    versionNumber,
+    workOrderId: input.workOrderId,
+    contentType: input.contentType,
+    title: normalizeContentStudioText(input.title),
+    programKey: input.programKey,
+    platforms: Array.from(new Set(input.platforms)).sort(),
+    funnelStage: normalizeContentStudioText(input.funnelStage),
+    audience: normalizeContentStudioText(input.audience),
+    objective: normalizeContentStudioText(input.objective),
+    arabicCopy: normalizeContentStudioText(input.arabicCopy),
+    englishCopy: input.englishCopy ? normalizeContentStudioText(input.englishCopy) : null,
+    caption: input.caption ? normalizeContentStudioText(input.caption) : null,
+    cta: normalizeContentStudioText(input.cta),
+    landingDestination: input.landingDestination ?? null,
+    scheduledFor: input.scheduledFor ?? null,
+    claimIds: Array.from(new Set(input.claimIds)).sort((a, b) => a - b),
+    visualBrief: input.visualBrief ? normalizeContentStudioText(input.visualBrief) : null,
+    payload: input.payload,
+    previewUrl: input.previewUrl ?? null,
+    previewHash: input.previewHash?.toLowerCase() ?? null,
+    exceptionalClaim: input.exceptionalClaim,
+  })).digest("hex");
 }
 
 async function getActiveBrandBookForWorkOrder() {
@@ -1037,6 +1203,364 @@ export const marketingSystemRouter = router({
     await appendWorkOrderEvent({ workOrderId: order.id, action: "cancelled", fromStatus: order.status, toStatus: "cancelled", reason: input.note, actorUserId: ctx.user.id, createdAt: now, payload: { executionCancelled: true } });
     await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_work_order_cancel", order.id, JSON.stringify({ workOrderKey: order.workOrderKey }));
     return { success: true, status: "cancelled" as const };
+  }),
+
+  getContentStudioConfiguration: protectedProcedure.query(async ({ ctx }) => {
+    await requireCapability(ctx.user, "view_content_studio");
+    const db = await requireDb();
+    const [brandBook, workOrders, claims] = await Promise.all([
+      getActiveBrandBookForWorkOrder(),
+      db.select({
+        id: marketingWorkOrders.id,
+        workOrderKey: marketingWorkOrders.workOrderKey,
+        workType: marketingWorkOrders.workType,
+        title: marketingWorkOrders.title,
+        programKey: marketingWorkOrders.programKey,
+        brandBookId: marketingWorkOrders.brandBookId,
+        brandBookVersion: marketingWorkOrders.brandBookVersion,
+        knowledgeClaimIdsJson: marketingWorkOrders.knowledgeClaimIdsJson,
+      }).from(marketingWorkOrders)
+        .where(eq(marketingWorkOrders.status, "approved"))
+        .orderBy(desc(marketingWorkOrders.reviewedAt)).limit(100),
+      db.select({
+        id: marketingKnowledgeClaims.id,
+        programKey: marketingKnowledgeClaims.programKey,
+        claimText: marketingKnowledgeClaims.claimText,
+        claimType: marketingKnowledgeClaims.claimType,
+        sourceSnapshotHash: marketingKnowledgeClaims.sourceSnapshotHash,
+      }).from(marketingKnowledgeClaims)
+        .innerJoin(marketingKnowledgeSources, eq(marketingKnowledgeClaims.sourceId, marketingKnowledgeSources.id))
+        .where(and(
+          eq(marketingKnowledgeClaims.status, "approved"),
+          eq(marketingKnowledgeSources.status, "approved"),
+          eq(marketingKnowledgeSources.changeState, "tracked"),
+        )).orderBy(marketingKnowledgeClaims.programKey, desc(marketingKnowledgeClaims.updatedAt)),
+    ]);
+    const eligibleOrders = workOrders.filter(order =>
+      ["strategy_brief", "creative_package", "voiceover_draft", "media_render_brief", "qa_review"].includes(order.workType)
+      && Boolean(brandBook && order.brandBookId === brandBook.id && order.brandBookVersion === brandBook.version),
+    ).map(order => ({ ...order, claimIds: parseJson<number[]>(order.knowledgeClaimIdsJson, []) }));
+    return {
+      brandBook: brandBook ? { id: brandBook.id, version: brandBook.version, title: brandBook.title } : null,
+      workOrders: eligibleOrders,
+      claims,
+      policy: "Content Studio stores versioned human-reviewed proposal packets only. It cannot invoke a model, render media, publish, schedule, create an ad, change Meta/CAPI, contact a person, or spend money.",
+      blockers: [
+        !brandBook ? "No active owner-approved Brand Book exists." : null,
+        eligibleOrders.length === 0 ? "No approved creative work order is currently anchored to the active Brand Book." : null,
+        claims.length === 0 ? "No owner-approved tracked knowledge claim is available yet." : null,
+      ].filter((value): value is string => Boolean(value)),
+    };
+  }),
+
+  getContentPackets: protectedProcedure.query(async ({ ctx }) => {
+    await requireCapability(ctx.user, "view_content_studio");
+    const db = await requireDb();
+    const packets = await db.select().from(marketingContentPackets)
+      .orderBy(desc(marketingContentPackets.updatedAt)).limit(160);
+    const packetIds = packets.map(packet => packet.id);
+    const [events, batches] = await Promise.all([
+      packetIds.length === 0 ? Promise.resolve([]) : db.select().from(marketingContentReviewEvents)
+        .where(inArray(marketingContentReviewEvents.packetId, packetIds)).orderBy(desc(marketingContentReviewEvents.createdAt)),
+      db.select().from(marketingContentApprovalBatches).orderBy(desc(marketingContentApprovalBatches.approvedAt)).limit(60),
+    ]);
+    return {
+      packets: packets.map(packet => ({
+        ...packet,
+        platforms: parseJson<string[]>(packet.platformJson, []),
+        claimIds: parseJson<number[]>(packet.claimIdsJson, []),
+        sourceSnapshotHashes: parseJson<string[]>(packet.sourceSnapshotHashesJson, []),
+        payload: parseJson<Record<string, unknown>>(packet.payloadJson, {}),
+        outputSchema: parseJson<Record<string, unknown>>(packet.outputSchemaJson, {}),
+        qaResults: parseJson<ContentQaResult[]>(packet.qaResultsJson, []),
+        events: events.filter(event => event.packetId === packet.id).map(event => ({
+          ...event,
+          annotations: parseJson<string[]>(event.annotationsJson, []),
+          payload: parseJson<Record<string, unknown>>(event.payloadJson, {}),
+        })),
+      })),
+      batches: batches.map(batch => ({
+        ...batch,
+        packetIds: parseJson<number[]>(batch.packetIdsJson, []),
+        packetContentHashes: parseJson<string[]>(batch.packetContentHashesJson, []),
+      })),
+      policy: "Approval is an internal recorded content decision only. It is not a publish command, paid-media authorization, provider request, schedule, campaign activation, or message to any person.",
+    };
+  }),
+
+  createContentPacket: protectedProcedure.input(contentPacketInput).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "create_content_packets");
+    validateContentPacketText(input);
+    const db = await requireDb();
+    const [order, claims] = await Promise.all([
+      requireApprovedCreativeWorkOrder(input.workOrderId, input.programKey),
+      getApprovedContentClaims(input.claimIds, input.programKey),
+    ]);
+    const orderClaims = new Set(parseJson<number[]>(order.knowledgeClaimIdsJson, []));
+    if (claims.some(claim => !orderClaims.has(claim.id))) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Every packet claim must be included in the approved source work order." });
+    }
+    const rootPacketKey = contentPacketKey();
+    const now = Date.now();
+    const contentHash = packetContentHash(input, rootPacketKey, 1);
+    const result = await db.insert(marketingContentPackets).values({
+      rootPacketKey,
+      versionNumber: 1,
+      previousPacketId: null,
+      workOrderId: order.id,
+      workOrderKey: order.workOrderKey,
+      contentType: input.contentType,
+      title: normalizeContentStudioText(input.title),
+      programKey: input.programKey,
+      platformJson: JSON.stringify(Array.from(new Set(input.platforms))),
+      funnelStage: normalizeContentStudioText(input.funnelStage),
+      audience: normalizeContentStudioText(input.audience),
+      objective: normalizeContentStudioText(input.objective),
+      arabicCopy: normalizeContentStudioText(input.arabicCopy),
+      englishCopy: input.englishCopy ? normalizeContentStudioText(input.englishCopy) : null,
+      caption: input.caption ? normalizeContentStudioText(input.caption) : null,
+      cta: normalizeContentStudioText(input.cta),
+      landingDestination: input.landingDestination ?? null,
+      scheduledFor: input.scheduledFor ?? null,
+      claimIdsJson: JSON.stringify(Array.from(new Set(input.claimIds)).sort((a, b) => a - b)),
+      sourceSnapshotHashesJson: JSON.stringify(claims.map(claim => claim.sourceSnapshotHash)),
+      visualBrief: input.visualBrief ? normalizeContentStudioText(input.visualBrief) : null,
+      payloadJson: JSON.stringify(input.payload),
+      outputSchemaJson: JSON.stringify(contentPacketOutputSchema(input.contentType)),
+      previewUrl: input.previewUrl ?? null,
+      previewHash: input.previewHash?.toLowerCase() ?? null,
+      qaResultsJson: JSON.stringify([]),
+      exceptionalClaim: input.exceptionalClaim,
+      status: "draft",
+      contentHash,
+      changeSummary: input.changeSummary ? normalizeContentStudioText(input.changeSummary) : "Initial Content Studio packet.",
+      blockedReason: null,
+      createdByUserId: ctx.user.id,
+      lastEditedByUserId: ctx.user.id,
+      approvedByUserId: null,
+      approvedAt: null,
+      stoppedByUserId: null,
+      stoppedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const packetId = Number((result as { insertId?: number }).insertId);
+    await appendContentReviewEvent({ packetId, action: "created", toStatus: "draft", actorUserId: ctx.user.id, createdAt: now, payload: { rootPacketKey, versionNumber: 1, workOrderKey: order.workOrderKey, claimCount: claims.length, noProviderCall: true } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_content_packet", packetId, JSON.stringify({ rootPacketKey, workOrderId: order.id, contentType: input.contentType, programKey: input.programKey, contentHash, claimCount: claims.length }));
+    return { id: packetId, rootPacketKey, versionNumber: 1, status: "draft" as const, contentHash };
+  }),
+
+  reviseContentPacket: protectedProcedure.input(contentPacketInput.extend({ previousPacketId: z.number().int().positive(), changeSummary: z.string().trim().min(4).max(4_000) })).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "create_content_packets");
+    validateContentPacketText(input);
+    const db = await requireDb();
+    const [previous, order, claims] = await Promise.all([
+      db.select().from(marketingContentPackets).where(eq(marketingContentPackets.id, input.previousPacketId)).limit(1).then(rows => rows[0] ?? null),
+      requireApprovedCreativeWorkOrder(input.workOrderId, input.programKey),
+      getApprovedContentClaims(input.claimIds, input.programKey),
+    ]);
+    if (!previous) throw new TRPCError({ code: "NOT_FOUND", message: "The content packet to revise was not found." });
+    if (previous.createdByUserId !== ctx.user.id && !isOwner(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Only the packet creator or Mahmoud can create a revision." });
+    if (["stopped", "superseded"].includes(previous.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "A stopped or superseded packet cannot be revised." });
+    const orderClaims = new Set(parseJson<number[]>(order.knowledgeClaimIdsJson, []));
+    if (claims.some(claim => !orderClaims.has(claim.id))) throw new TRPCError({ code: "BAD_REQUEST", message: "Every packet claim must be included in the approved source work order." });
+    const latest = await db.select({ versionNumber: marketingContentPackets.versionNumber }).from(marketingContentPackets)
+      .where(eq(marketingContentPackets.rootPacketKey, previous.rootPacketKey)).orderBy(desc(marketingContentPackets.versionNumber)).limit(1);
+    const versionNumber = (latest[0]?.versionNumber ?? previous.versionNumber) + 1;
+    const now = Date.now();
+    const contentHash = packetContentHash(input, previous.rootPacketKey, versionNumber);
+    const result = await db.insert(marketingContentPackets).values({
+      rootPacketKey: previous.rootPacketKey,
+      versionNumber,
+      previousPacketId: previous.id,
+      workOrderId: order.id,
+      workOrderKey: order.workOrderKey,
+      contentType: input.contentType,
+      title: normalizeContentStudioText(input.title),
+      programKey: input.programKey,
+      platformJson: JSON.stringify(Array.from(new Set(input.platforms))),
+      funnelStage: normalizeContentStudioText(input.funnelStage),
+      audience: normalizeContentStudioText(input.audience),
+      objective: normalizeContentStudioText(input.objective),
+      arabicCopy: normalizeContentStudioText(input.arabicCopy),
+      englishCopy: input.englishCopy ? normalizeContentStudioText(input.englishCopy) : null,
+      caption: input.caption ? normalizeContentStudioText(input.caption) : null,
+      cta: normalizeContentStudioText(input.cta),
+      landingDestination: input.landingDestination ?? null,
+      scheduledFor: input.scheduledFor ?? null,
+      claimIdsJson: JSON.stringify(Array.from(new Set(input.claimIds)).sort((a, b) => a - b)),
+      sourceSnapshotHashesJson: JSON.stringify(claims.map(claim => claim.sourceSnapshotHash)),
+      visualBrief: input.visualBrief ? normalizeContentStudioText(input.visualBrief) : null,
+      payloadJson: JSON.stringify(input.payload),
+      outputSchemaJson: JSON.stringify(contentPacketOutputSchema(input.contentType)),
+      previewUrl: input.previewUrl ?? null,
+      previewHash: input.previewHash?.toLowerCase() ?? null,
+      qaResultsJson: JSON.stringify([]),
+      exceptionalClaim: input.exceptionalClaim,
+      status: "draft",
+      contentHash,
+      changeSummary: normalizeContentStudioText(input.changeSummary),
+      blockedReason: null,
+      createdByUserId: previous.createdByUserId,
+      lastEditedByUserId: ctx.user.id,
+      approvedByUserId: null,
+      approvedAt: null,
+      stoppedByUserId: null,
+      stoppedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const packetId = Number((result as { insertId?: number }).insertId);
+    await db.update(marketingContentPackets).set({ status: "superseded", updatedAt: now, blockedReason: `Superseded by revision ${versionNumber}.` }).where(eq(marketingContentPackets.id, previous.id));
+    await appendContentReviewEvent({ packetId: previous.id, action: "superseded", fromStatus: previous.status, toStatus: "superseded", feedback: input.changeSummary, actorUserId: ctx.user.id, createdAt: now, payload: { successorPacketId: packetId, successorVersion: versionNumber } });
+    await appendContentReviewEvent({ packetId, action: "revision_created", toStatus: "draft", feedback: input.changeSummary, actorUserId: ctx.user.id, createdAt: now, payload: { previousPacketId: previous.id, rootPacketKey: previous.rootPacketKey, versionNumber, noProviderCall: true } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_content_packet_revision", packetId, JSON.stringify({ rootPacketKey: previous.rootPacketKey, versionNumber, previousPacketId: previous.id, contentHash }));
+    return { id: packetId, rootPacketKey: previous.rootPacketKey, versionNumber, status: "draft" as const, contentHash };
+  }),
+
+  submitContentPacketForReview: protectedProcedure.input(z.object({ packetId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "create_content_packets");
+    const db = await requireDb();
+    const [packet] = await db.select().from(marketingContentPackets).where(eq(marketingContentPackets.id, input.packetId)).limit(1);
+    if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Content packet was not found." });
+    if (packet.createdByUserId !== ctx.user.id && !isOwner(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Only the packet creator or Mahmoud can submit it for review." });
+    if (!contentCanTransition(packet.status as MarketingContentStatus, "in_review")) throw new TRPCError({ code: "BAD_REQUEST", message: "Only a draft packet can be submitted for review." });
+    const now = Date.now();
+    await db.update(marketingContentPackets).set({ status: "in_review", blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingContentPackets.id, packet.id));
+    await appendContentReviewEvent({ packetId: packet.id, action: "submitted_for_review", fromStatus: packet.status, toStatus: "in_review", actorUserId: ctx.user.id, createdAt: now, payload: { noProviderCall: true } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_content_packet_submission", packet.id, JSON.stringify({ rootPacketKey: packet.rootPacketKey, versionNumber: packet.versionNumber }));
+    return { success: true, status: "in_review" as const };
+  }),
+
+  recordContentQa: protectedProcedure.input(contentQaInput).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "run_content_qa");
+    const db = await requireDb();
+    const [packet] = await db.select().from(marketingContentPackets).where(eq(marketingContentPackets.id, input.packetId)).limit(1);
+    if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Content packet was not found." });
+    if (packet.status !== "in_review") throw new TRPCError({ code: "BAD_REQUEST", message: "QA can only be recorded for a packet in review." });
+    const uniqueChecks = new Set(input.results.map(result => result.check));
+    if (uniqueChecks.size !== MARKETING_CONTENT_QA_CHECKS.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Record exactly one QA result for every required check." });
+    const previewProblem = validatePreviewFingerprint(packet.previewUrl, packet.previewHash);
+    if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: `${previewProblem} Create a new revision with its final preview before QA.` });
+    const allPassed = input.results.every(result => result.passed);
+    const nextStatus: MarketingContentStatus = allPassed ? "qa_passed" : "changes_requested";
+    const now = Date.now();
+    await db.update(marketingContentPackets).set({
+      status: nextStatus,
+      qaResultsJson: JSON.stringify(input.results),
+      blockedReason: allPassed ? null : (input.feedback ?? "QA identified required changes."),
+      lastEditedByUserId: ctx.user.id,
+      updatedAt: now,
+    }).where(eq(marketingContentPackets.id, packet.id));
+    await appendContentReviewEvent({ packetId: packet.id, action: "qa_recorded", fromStatus: packet.status, toStatus: nextStatus, feedback: input.feedback ?? null, actorUserId: ctx.user.id, createdAt: now, payload: { allPassed, failedChecks: input.results.filter(result => !result.passed).map(result => result.check), previewHash: packet.previewHash } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_content_packet_qa", packet.id, JSON.stringify({ rootPacketKey: packet.rootPacketKey, versionNumber: packet.versionNumber, allPassed, failedCheckCount: input.results.filter(result => !result.passed).length }));
+    return { success: true, status: nextStatus };
+  }),
+
+  makeContentApprovalReady: protectedProcedure.input(z.object({ packetId: z.number().int().positive(), note: z.string().trim().min(4).max(4_000) })).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "review_content_packets");
+    const db = await requireDb();
+    const [packet] = await db.select().from(marketingContentPackets).where(eq(marketingContentPackets.id, input.packetId)).limit(1);
+    if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Content packet was not found." });
+    if (!contentCanTransition(packet.status as MarketingContentStatus, "approval_ready")) throw new TRPCError({ code: "BAD_REQUEST", message: "Only a QA-passed packet can be made approval ready." });
+    const qaResults = parseJson<ContentQaResult[]>(packet.qaResultsJson, []);
+    if (qaResults.length !== MARKETING_CONTENT_QA_CHECKS.length || qaResults.some(result => !result.passed)) throw new TRPCError({ code: "BAD_REQUEST", message: "Every mandatory QA check must pass before an approval packet is created." });
+    const previewProblem = validatePreviewFingerprint(packet.previewUrl, packet.previewHash);
+    if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: previewProblem });
+    await getApprovedContentClaims(parseJson<number[]>(packet.claimIdsJson, []), packet.programKey);
+    const now = Date.now();
+    await db.update(marketingContentPackets).set({ status: "approval_ready", blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingContentPackets.id, packet.id));
+    await appendContentReviewEvent({ packetId: packet.id, action: "approval_packet_ready", fromStatus: packet.status, toStatus: "approval_ready", feedback: input.note, actorUserId: ctx.user.id, createdAt: now, payload: { previewUrl: packet.previewUrl, previewHash: packet.previewHash, qaCheckCount: qaResults.length, exceptionalClaim: packet.exceptionalClaim } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_content_packet_approval_ready", packet.id, JSON.stringify({ rootPacketKey: packet.rootPacketKey, versionNumber: packet.versionNumber, exceptionalClaim: packet.exceptionalClaim }));
+    return { success: true, status: "approval_ready" as const };
+  }),
+
+  requestContentChanges: protectedProcedure.input(contentDecisionInput).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "review_content_packets");
+    const db = await requireDb();
+    const [packet] = await db.select().from(marketingContentPackets).where(eq(marketingContentPackets.id, input.packetId)).limit(1);
+    if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Content packet was not found." });
+    if (!["in_review", "qa_passed", "approval_ready"].includes(packet.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "Changes can only be requested from a packet under review or awaiting approval." });
+    const now = Date.now();
+    await db.update(marketingContentPackets).set({ status: "changes_requested", blockedReason: input.note, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingContentPackets.id, packet.id));
+    await appendContentReviewEvent({ packetId: packet.id, action: "changes_requested", fromStatus: packet.status, toStatus: "changes_requested", feedback: input.note, annotations: input.annotations, actorUserId: ctx.user.id, createdAt: now, payload: { structuredFeedback: true } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_content_packet_changes_requested", packet.id, JSON.stringify({ rootPacketKey: packet.rootPacketKey, annotationCount: input.annotations.length }));
+    return { success: true, status: "changes_requested" as const };
+  }),
+
+  approveContentPacket: protectedProcedure.input(contentDecisionInput).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    const db = await requireDb();
+    const [packet] = await db.select().from(marketingContentPackets).where(eq(marketingContentPackets.id, input.packetId)).limit(1);
+    if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Content packet was not found." });
+    if (!contentCanTransition(packet.status as MarketingContentStatus, "approved")) throw new TRPCError({ code: "BAD_REQUEST", message: "Only an Approval Ready packet can receive Mahmoud's explicit decision." });
+    const previewProblem = validatePreviewFingerprint(packet.previewUrl, packet.previewHash);
+    if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: previewProblem });
+    await getApprovedContentClaims(parseJson<number[]>(packet.claimIdsJson, []), packet.programKey);
+    const now = Date.now();
+    await db.update(marketingContentPackets).set({ status: "approved", approvedByUserId: ctx.user.id, approvedAt: now, blockedReason: null, updatedAt: now }).where(eq(marketingContentPackets.id, packet.id));
+    await appendContentReviewEvent({ packetId: packet.id, action: "owner_approved", fromStatus: packet.status, toStatus: "approved", feedback: input.note, annotations: input.annotations, actorUserId: ctx.user.id, createdAt: now, payload: { explicitOwnerDecision: true, previewHash: packet.previewHash, exceptionalClaim: packet.exceptionalClaim, noPublishCommand: true } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_content_packet_approval", packet.id, JSON.stringify({ rootPacketKey: packet.rootPacketKey, versionNumber: packet.versionNumber, contentHash: packet.contentHash, exceptionalClaim: packet.exceptionalClaim }));
+    return { success: true, status: "approved" as const, publicationStatus: "not_published" as const };
+  }),
+
+  approveContentBatch: protectedProcedure.input(z.object({
+    packetIds: z.array(z.number().int().positive()).min(2).max(20),
+    note: z.string().trim().min(4).max(8_000),
+    confirmedFullyReviewed: z.literal(true),
+  })).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    const db = await requireDb();
+    const ids = Array.from(new Set(input.packetIds));
+    const packets = await db.select().from(marketingContentPackets).where(inArray(marketingContentPackets.id, ids));
+    if (packets.length !== ids.length) throw new TRPCError({ code: "BAD_REQUEST", message: "One or more approval packet IDs were not found." });
+    if (packets.some(packet => packet.status !== "approval_ready")) throw new TRPCError({ code: "BAD_REQUEST", message: "Every batch item must be fully QA-passed and Approval Ready." });
+    if (packets.some(packet => packet.exceptionalClaim)) throw new TRPCError({ code: "BAD_REQUEST", message: "Packets marked with exceptional claims require an individual owner decision and cannot use batch approval." });
+    for (const packet of packets) {
+      const previewProblem = validatePreviewFingerprint(packet.previewUrl, packet.previewHash);
+      if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: `Packet ${packet.id}: ${previewProblem}` });
+      await getApprovedContentClaims(parseJson<number[]>(packet.claimIdsJson, []), packet.programKey);
+    }
+    const now = Date.now();
+    const batchKey = `mab-${now.toString(36)}-${crypto.randomUUID().slice(0, 10)}`;
+    const contentHashes = packets.map(packet => packet.contentHash);
+    const result = await db.insert(marketingContentApprovalBatches).values({ batchKey, packetIdsJson: JSON.stringify(ids), packetContentHashesJson: JSON.stringify(contentHashes), status: "approved", ownerNote: input.note, approvedByUserId: ctx.user.id, approvedAt: now, createdAt: now });
+    const batchId = Number((result as { insertId?: number }).insertId);
+    for (const packet of packets) {
+      await db.update(marketingContentPackets).set({ status: "approved", approvedByUserId: ctx.user.id, approvedAt: now, blockedReason: null, updatedAt: now }).where(eq(marketingContentPackets.id, packet.id));
+      await appendContentReviewEvent({ packetId: packet.id, action: "owner_batch_approved", fromStatus: "approval_ready", toStatus: "approved", feedback: input.note, actorUserId: ctx.user.id, createdAt: now, payload: { batchId, batchKey, explicitOwnerDecision: true, confirmedFullyReviewed: input.confirmedFullyReviewed, noPublishCommand: true } });
+    }
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_content_packet_batch_approval", batchId, JSON.stringify({ batchKey, packetCount: packets.length, packetContentHashes: contentHashes }));
+    return { success: true, batchId, batchKey, approvedPacketIds: ids, publicationStatus: "not_published" as const };
+  }),
+
+  rejectContentPacket: protectedProcedure.input(contentDecisionInput).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    const db = await requireDb();
+    const [packet] = await db.select().from(marketingContentPackets).where(eq(marketingContentPackets.id, input.packetId)).limit(1);
+    if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Content packet was not found." });
+    if (!contentCanTransition(packet.status as MarketingContentStatus, "rejected")) throw new TRPCError({ code: "BAD_REQUEST", message: "Only an Approval Ready packet can be rejected." });
+    const now = Date.now();
+    await db.update(marketingContentPackets).set({ status: "rejected", blockedReason: input.note, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingContentPackets.id, packet.id));
+    await appendContentReviewEvent({ packetId: packet.id, action: "owner_rejected", fromStatus: packet.status, toStatus: "rejected", feedback: input.note, annotations: input.annotations, actorUserId: ctx.user.id, createdAt: now, payload: { explicitOwnerDecision: true } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_content_packet_rejection", packet.id, JSON.stringify({ rootPacketKey: packet.rootPacketKey, versionNumber: packet.versionNumber }));
+    return { success: true, status: "rejected" as const };
+  }),
+
+  stopContentPacket: protectedProcedure.input(contentDecisionInput).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "stop_content_packets");
+    const db = await requireDb();
+    const [packet] = await db.select().from(marketingContentPackets).where(eq(marketingContentPackets.id, input.packetId)).limit(1);
+    if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Content packet was not found." });
+    if (packet.createdByUserId !== ctx.user.id && !isOwner(ctx.user) && (await getEffectiveRole(ctx.user)) !== "marketing_manager") {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Only the packet creator, a Marketing Manager, or Mahmoud can stop this packet." });
+    }
+    if (!contentCanTransition(packet.status as MarketingContentStatus, "stopped")) throw new TRPCError({ code: "BAD_REQUEST", message: "This packet is already terminal and cannot be stopped." });
+    const now = Date.now();
+    await db.update(marketingContentPackets).set({ status: "stopped", stoppedByUserId: ctx.user.id, stoppedAt: now, blockedReason: input.note, updatedAt: now }).where(eq(marketingContentPackets.id, packet.id));
+    await appendContentReviewEvent({ packetId: packet.id, action: "stopped", fromStatus: packet.status, toStatus: "stopped", feedback: input.note, annotations: input.annotations, actorUserId: ctx.user.id, createdAt: now, payload: { immediateStop: true, noPublishCommand: true } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_content_packet_stop", packet.id, JSON.stringify({ rootPacketKey: packet.rootPacketKey, versionNumber: packet.versionNumber }));
+    return { success: true, status: "stopped" as const };
   }),
 
   dashboardBaseline: protectedProcedure.query(async ({ ctx }) => {

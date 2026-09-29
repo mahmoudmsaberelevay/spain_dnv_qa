@@ -1,7 +1,7 @@
 # ELEVAY Agentic Marketing System — Architecture Decision Record
 
 **Date:** 29 September 2026  
-**Status:** Phases 0–3 complete in controlled internal-only mode; provider execution, publishing, campaign mutation, and spend remain locked
+**Status:** Phases 0–4 complete in controlled internal-only mode; provider execution, publishing, campaign mutation, and spend remain locked
 **Scope:** Existing `elevay.vip` CRM; no replacement CRM, no local client database, no automatic publishing or paid-media execution.
 
 ## 1. Decision summary
@@ -97,7 +97,7 @@ A Brand Book can be proposed only once all 35 questions are answered and no answ
 | 1 | Brand Studio, 35-question interview, roles, Brand Book/version governance | Complete after validation; no autonomous output. |
 | 2 | Source library, programme knowledge, official-source allowlist, claim review | Implemented in internal-only mode; Brand Book and explicit claim approval remain required before downstream content work. |
 | 3 | Work-order engine, immutable artifacts, cost ledger and zero-cost dry runs | Complete as a control plane. Provider execution remains excluded pending a later explicit approval. |
-| 4 | Content Studio, QA and Approval Inbox with final previews | Requires Brand Book and claim-source gates. |
+| 4 | Content Studio, QA and Approval Inbox with final previews | Complete as a manual evidence-and-approval control plane; it cannot generate, render, publish, schedule, campaign-mutate, or spend. |
 | 5 | Meta Campaign Operations, CRM attribution, budget ledger and measurement pilot | Requires separate Ads Strategy Intake approval, Meta permissions and explicit spend caps. |
 | 6 | Controlled optimisation and weekly executive reporting | Requires proven pilot attribution, reconciliation and rollback evidence. |
 
@@ -168,3 +168,39 @@ Phase 3 implements the blueprint's orchestration **control plane**, not its exec
 - [x] Protected responsive Work Orders route added to desktop and mobile Marketing navigation.
 - [x] Additive migration applied with all four tables initially empty.
 - [x] Focused tests, production build, access-guard check and diff hygiene completed before checkpoint.
+
+## 11. Phase 4 Content Studio and Approval Inbox decision
+
+Phase 4 creates the blueprint's **human-controlled content review layer** without adding any generator, renderer, scheduler, publisher, campaign operator, message sender or payment pathway. It is the first point where a human can store a platform-shaped marketing packet, but it remains fully internal.
+
+| Record | Purpose | Guardrail |
+|---|---|---|
+| `marketing_content_packets` | Versioned manual static-post, carousel, reel, lead-ad or landing-page packet; exact copy, claims, final-preview URL/hash, QA state and owner decision | Requires an owner-approved creative work order anchored to the current Brand Book, plus only tracked owner-approved claims already attached to that work order. Rejects client/Lead identity data. |
+| `marketing_content_review_events` | Append-only QA, feedback, owner decision, revision, supersession and stop history | The original copy is preserved; a revision creates a new hash/version and marks the predecessor superseded. |
+| `marketing_content_approval_batches` | Explicit owner weekly batch decision for multiple routine final packets | Every item must be `approval_ready`, must be fully reviewed explicitly, and cannot have an exceptional claim. |
+
+### Phase 4 lifecycle and authority
+
+1. A permitted Creative Producer, Marketing Manager or owner creates a manual `draft` from an **approved creative work order**. It contains Arabic-first copy, platform variants, objective, audience, verified claim IDs, visual brief and optional final preview.
+2. The creator submits it for `in_review`. A Marketing Manager or owner records every deterministic QA check: factual/claim links, brand tone, Arabic, visual identity, safe areas, accessibility, CTA/destination, asset provenance, no guarantees and preview equivalence.
+3. A packet with a final HTTPS preview, SHA-256 preview fingerprint and all ten checks passed becomes `qa_passed`; a qualified reviewer moves it to `approval_ready`.
+4. Mahmoud can approve, request structured changes or reject an Approval Ready packet. Approval always remains `not_published`; it never triggers an external action.
+5. Mahmoud may approve a fully reviewed routine batch only after explicitly confirming every selected final packet. Exceptional claims stay individual-only.
+6. The creator, Marketing Manager or Mahmoud can stop a non-terminal packet immediately, with an immutable reason. No record is deleted.
+
+### Phase 4 hard boundaries
+
+- Content packets are manual records, not AI generation requests. No provider/model, ElevenLabs, image generator, video renderer, Creatomate, Runway, Manus task or external credential is invoked.
+- No approval transmits content, creates a social draft, schedules a post, sends a notification, creates or activates Meta ads, changes CAPI, modifies budgets, reserves spend, contacts a client/Lead, or marks anything published.
+- A final preview is represented only by a stored **HTTPS URL and SHA-256 fingerprint**; the system does not assert that a preview is a final asset until an authorized human has checked it.
+- Existing ELEVAY premium visual, Arabic, non-guarantee, no-passport, and wardrobe/visual-QC rules remain QA requirements. The Content Studio does not weaken them.
+
+### Phase 4 acceptance record
+
+- [x] Additive packet, event and batch schema applied without changing existing CRM or Marketing records.
+- [x] Brand Book, approved creative work-order, claim-source tracking, Arabic-first copy and no-PII gates enforced server-side.
+- [x] Full QA checklist and final HTTPS preview/SHA-256 fingerprint gate enforced before Approval Ready.
+- [x] Owner-only individual approval; batch approval requires explicit full-review acknowledgement and excludes exceptional claims.
+- [x] Versioned revisions, structured feedback, rejection and stop controls retain immutable lineage; no content packet is deleted.
+- [x] Protected responsive Content Studio and Approval Inbox route added to desktop and mobile Marketing navigation.
+- [x] No provider invocation, media rendering, publishing, scheduling, campaign mutation, CAPI change, messaging or paid spend path exists in Phase 4.

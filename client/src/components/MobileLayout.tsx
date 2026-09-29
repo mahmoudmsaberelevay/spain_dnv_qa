@@ -164,6 +164,7 @@ export const MOBILE_SIDEBAR_MODULES = [
       { icon: Sparkles, label: "Brand Studio", path: "/marketing/brand-studio" },
       { icon: BookOpen, label: "Knowledge Library", path: "/marketing/knowledge-library" },
       { icon: ClipboardCheck, label: "Work Orders", path: "/marketing/work-orders" },
+      { icon: ClipboardCheck, label: "Content Studio", path: "/marketing/content-studio" },
       { icon: FolderOpen, label: "Ready Summaries", path: "/marketing/ready-summaries" },
       { icon: Sparkles, label: "Summary Generator", path: "/marketing/summary-generator" },
       { icon: Mic2, label: "Arabic Voice-over", path: "/marketing/voice-over" },
@@ -525,6 +526,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
                   { label: "Brand Studio", icon: Sparkles, path: "/marketing/brand-studio" },
                   { label: "Knowledge Library", icon: BookOpen, path: "/marketing/knowledge-library" },
                   { label: "Work Orders", icon: ClipboardCheck, path: "/marketing/work-orders" },
+                  { label: "Content Studio", icon: ClipboardCheck, path: "/marketing/content-studio" },
                   { label: "Ready Summaries", icon: FolderOpen, path: "/marketing/ready-summaries" },
                   { label: "Program Proposal", icon: FileSignature, path: "/marketing/program-proposal" },
                 ].map((item) => {

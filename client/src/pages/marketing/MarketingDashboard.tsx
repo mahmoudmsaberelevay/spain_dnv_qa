@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle, MailWarning, Loader2, ClipboardCheck } from "lucide-react";
+import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle, MailWarning, Loader2, ClipboardCheck, FilePenLine } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 
@@ -28,6 +28,14 @@ const tools = [
     href: "/marketing/work-orders",
     color: "from-[#1A3A5C] to-[#C9A84C]",
     badge: "Approval control",
+  },
+  {
+    icon: FilePenLine,
+    title: "Content Studio & Approval Inbox",
+    description: "Prepare versioned, source-linked content packets, perform manual QA, and record Mahmoud’s final decisions. No generation, publishing, campaign, or spending action is available here.",
+    href: "/marketing/content-studio",
+    color: "from-[#5BA3B8] to-[#C9A84C]",
+    badge: "Final review",
   },
   {
     icon: FolderOpen,
