@@ -6,6 +6,14 @@ import { Button } from "@/components/ui/button";
 
 const tools = [
   {
+    icon: Sparkles,
+    title: "Brand Studio",
+    description: "Complete the owner-controlled 35-question Brand Discovery, manage approved Brand Book versions, roles, and provider readiness. Publishing remains locked.",
+    href: "/marketing/brand-studio",
+    color: "from-[#5BA3B8] to-[#1A3A5C]",
+    badge: "Controlled setup",
+  },
+  {
     icon: FolderOpen,
     title: "Ready Summaries",
     description: "Browse and download approved ELEVAY country and program summaries. Administrators can add or remove PDFs from the shared library.",

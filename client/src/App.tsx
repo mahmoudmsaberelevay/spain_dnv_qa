@@ -81,6 +81,7 @@ import ProgramProposal from "./pages/marketing/ProgramProposal";
 import MarketingPlan from "./pages/marketing/MarketingPlan";
 import ArabicVoiceOver from "./pages/marketing/ArabicVoiceOver";
 import ReadySummaries from "./pages/marketing/ReadySummaries";
+import BrandStudio from "./pages/marketing/BrandStudio";
 
 // ─── Reports Module ─────────────────────────────────────────────────────────────
 import Reports from "./pages/Reports";
@@ -339,6 +340,9 @@ function Router() {
       {/* ── Marketing Module ── */}
       <Route path="/marketing">
         <MobileRoute><MarketingDashboard /></MobileRoute>
+      </Route>
+      <Route path="/marketing/brand-studio">
+        <MobileRoute><BrandStudio /></MobileRoute>
       </Route>
       <Route path="/marketing/summary-generator">
         <MobileRoute><SummaryGenerator /></MobileRoute>

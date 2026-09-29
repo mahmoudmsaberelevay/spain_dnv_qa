@@ -159,6 +159,7 @@ export const MOBILE_SIDEBAR_MODULES = [
     label: "Marketing",
     icon: Megaphone,
     items: [
+      { icon: Sparkles, label: "Brand Studio", path: "/marketing/brand-studio" },
       { icon: FolderOpen, label: "Ready Summaries", path: "/marketing/ready-summaries" },
       { icon: Sparkles, label: "Summary Generator", path: "/marketing/summary-generator" },
       { icon: Mic2, label: "Arabic Voice-over", path: "/marketing/voice-over" },
@@ -517,6 +518,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
               <div className="mb-3 border-b border-border/50 pb-3">
                 <p className="px-4 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Marketing shortcuts</p>
                 {[
+                  { label: "Brand Studio", icon: Sparkles, path: "/marketing/brand-studio" },
                   { label: "Ready Summaries", icon: FolderOpen, path: "/marketing/ready-summaries" },
                   { label: "Program Proposal", icon: FileSignature, path: "/marketing/program-proposal" },
                 ].map((item) => {

@@ -2259,6 +2259,107 @@ export const marketingSummaries = mysqlTable("marketing_summaries", {
 export type MarketingSummary = typeof marketingSummaries.$inferSelect;
 export type InsertMarketingSummary = typeof marketingSummaries.$inferInsert;
 
+// ─── AGENTIC MARKETING SYSTEM / BRAND STUDIO ───────────────────────────────────
+// These records are deliberately separate from legacy marketing plans and summaries.
+// No provider secrets, lead PII, or client documents are stored in this subsystem.
+export const marketingSystemRoleAssignments = mysqlTable("marketing_system_role_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  role: varchar("role", { length: 48 }).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  assignedByUserId: int("assignedByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_system_role_user_unique").on(table.userId),
+  index("marketing_system_role_active_role_idx").on(table.isActive, table.role),
+]);
+export type MarketingSystemRoleAssignment = typeof marketingSystemRoleAssignments.$inferSelect;
+export type InsertMarketingSystemRoleAssignment = typeof marketingSystemRoleAssignments.$inferInsert;
+
+// Provider profiles keep aliases, model versions, readiness and kill-switch state only.
+// Authentication material remains server-side in the configured provider integration.
+export const marketingProviderProfiles = mysqlTable("marketing_provider_profiles", {
+  id: int("id").autoincrement().primaryKey(),
+  alias: varchar("alias", { length: 96 }).notNull(),
+  provider: varchar("provider", { length: 64 }).notNull(),
+  modelId: varchar("modelId", { length: 160 }),
+  purpose: varchar("purpose", { length: 160 }).notNull(),
+  status: varchar("status", { length: 32 }).default("not_configured").notNull(),
+  isEnabled: boolean("isEnabled").default(false).notNull(),
+  killSwitchEnabled: boolean("killSwitchEnabled").default(true).notNull(),
+  configuredByUserId: int("configuredByUserId"),
+  notes: text("notes"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_provider_alias_unique").on(table.alias),
+  index("marketing_provider_status_idx").on(table.status, table.isEnabled),
+]);
+export type MarketingProviderProfile = typeof marketingProviderProfiles.$inferSelect;
+export type InsertMarketingProviderProfile = typeof marketingProviderProfiles.$inferInsert;
+
+export const marketingBrandDiscoverySessions = mysqlTable("marketing_brand_discovery_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  version: int("version").notNull(),
+  status: varchar("status", { length: 32 }).default("in_progress").notNull(),
+  resetScope: varchar("resetScope", { length: 96 }),
+  currentQuestionNumber: int("currentQuestionNumber").default(1).notNull(),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  completedAt: bigint("completedAt", { mode: "number" }),
+  proposedAt: bigint("proposedAt", { mode: "number" }),
+  approvedAt: bigint("approvedAt", { mode: "number" }),
+  approvedByUserId: int("approvedByUserId"),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_brand_session_version_unique").on(table.version),
+  index("marketing_brand_session_status_idx").on(table.status, table.updatedAt),
+]);
+export type MarketingBrandDiscoverySession = typeof marketingBrandDiscoverySessions.$inferSelect;
+export type InsertMarketingBrandDiscoverySession = typeof marketingBrandDiscoverySessions.$inferInsert;
+
+export const marketingBrandDiscoveryAnswers = mysqlTable("marketing_brand_discovery_answers", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionId: int("sessionId").notNull(),
+  questionNumber: int("questionNumber").notNull(),
+  answerText: mediumtext("answerText").notNull(),
+  interpretedJson: mediumtext("interpretedJson"),
+  attachmentsJson: mediumtext("attachmentsJson"),
+  decisionStatus: varchar("decisionStatus", { length: 32 }).default("answered").notNull(),
+  answeredByUserId: int("answeredByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_brand_answer_session_question_unique").on(table.sessionId, table.questionNumber),
+  index("marketing_brand_answer_session_idx").on(table.sessionId, table.questionNumber),
+]);
+export type MarketingBrandDiscoveryAnswer = typeof marketingBrandDiscoveryAnswers.$inferSelect;
+export type InsertMarketingBrandDiscoveryAnswer = typeof marketingBrandDiscoveryAnswers.$inferInsert;
+
+// A Brand Book becomes immutable after approval. New material must create a new version.
+export const marketingBrandBooks = mysqlTable("marketing_brand_books", {
+  id: int("id").autoincrement().primaryKey(),
+  version: int("version").notNull(),
+  sessionId: int("sessionId").notNull(),
+  status: varchar("status", { length: 32 }).default("proposed").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  brandPayloadJson: mediumtext("brandPayloadJson").notNull(),
+  contentHash: varchar("contentHash", { length: 64 }).notNull(),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  approvedByUserId: int("approvedByUserId"),
+  approvedAt: bigint("approvedAt", { mode: "number" }),
+  activatedAt: bigint("activatedAt", { mode: "number" }),
+  supersededAt: bigint("supersededAt", { mode: "number" }),
+}, table => [
+  uniqueIndex("marketing_brand_book_version_unique").on(table.version),
+  uniqueIndex("marketing_brand_book_session_unique").on(table.sessionId),
+  index("marketing_brand_book_status_idx").on(table.status, table.activatedAt),
+]);
+export type MarketingBrandBook = typeof marketingBrandBooks.$inferSelect;
+export type InsertMarketingBrandBook = typeof marketingBrandBooks.$inferInsert;
+
 // ─── MARKETING READY SUMMARIES ─────────────────────────────────────────────────
 export const marketingReadySummaries = mysqlTable("marketing_ready_summaries", {
   id: int("id").autoincrement().primaryKey(),

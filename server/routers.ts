@@ -47,6 +47,7 @@ import { getUserModuleAccess, isOwner, permissionsRouter } from "./permissionsRo
 import { adminRouter } from "./routers/admin";
 import { waQcRouter } from "./waQcRouter";
 import { marketingRouter } from "./marketingRouter";
+import { marketingSystemRouter } from "./marketingSystemRouter";
 import { reportsRouter } from "./routers/reports";
 import { backupsRouter } from "./routers/backups";
 import { backupDownloadRouter } from "./routers/backupDownload";
@@ -2718,6 +2719,7 @@ export const appRouter = router({
   leads: leadsRouter,
   leadsSettings: leadsSettingsRouter,
   marketing: marketingRouter,
+  marketingSystem: marketingSystemRouter,
   reports: reportsRouter,
   backups: backupsRouter,
   backupDownload: backupDownloadRouter,
