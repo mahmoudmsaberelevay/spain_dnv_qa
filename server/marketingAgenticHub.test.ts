@@ -9,10 +9,14 @@ describe("Agentic Marketing System hub", () => {
     const app = read("client/src/App.tsx");
     const dashboard = read("client/src/pages/marketing/MarketingDashboard.tsx");
     const mobile = read("client/src/components/MobileLayout.tsx");
+    const desktop = read("client/src/components/DashboardLayout.tsx");
     const page = read("client/src/pages/marketing/AgenticMarketingHub.tsx");
     expect(app).toContain('path="/marketing/agentic-system"');
     expect(dashboard).toContain('href: "/marketing/agentic-system"');
     expect(mobile).toContain('label: "Agentic Marketing System", path: "/marketing/agentic-system"');
+    expect(mobile).toContain('label: "Marketing Dashboard", path: "/marketing"');
+    expect(desktop).toContain('label: "Agentic Marketing System", path: "/marketing/agentic-system"');
+    expect(desktop).toContain('label: "Marketing Dashboard", path: "/marketing"');
     for (const path of ["/marketing/brand-studio", "/marketing/knowledge-library", "/marketing/work-orders", "/marketing/content-studio", "/marketing/meta-ads-strategy", "/marketing/meta-ads-strategy-packet"]) {
       expect(page).toContain(path);
     }

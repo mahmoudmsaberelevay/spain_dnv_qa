@@ -255,9 +255,10 @@ function SignInButton() {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ElevayHome() {
-  const { loading, user } = useAuth();
+  const { loading, user, refresh } = useAuth();
   const [, setLocation] = useLocation();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const [navigatingPath, setNavigatingPath] = useState<string | null>(null);
 
   // Show error toast if redirected back from a failed OAuth attempt
   useEffect(() => {
@@ -298,12 +299,27 @@ export default function ElevayHome() {
   const moduleCount = visibleCards.length;
 
   // Handle module click — redirect to login if not authenticated
-  const handleModuleClick = (path: string) => {
+  const handleModuleClick = async (path: string) => {
     if (!user) {
       startSystemLogin(path);
       return;
     }
-    setLocation(path);
+
+    // The home page can still hold an in-memory user after an eight-hour
+    // session expires. Recheck before changing modules so the user goes
+    // straight to sign-in with the intended page retained, rather than
+    // landing on a confusing in-layout fallback.
+    setNavigatingPath(path);
+    try {
+      const result = await refresh();
+      if (result.isError || !result.data) {
+        startSystemLogin(path);
+        return;
+      }
+      setLocation(path);
+    } finally {
+      setNavigatingPath(null);
+    }
   };
 
   return (
@@ -357,15 +373,19 @@ export default function ElevayHome() {
             {visibleCards.map((card) => {
               const Icon = card.icon;
               const isHovered = hoveredCard === card.id;
+              const isNavigating = navigatingPath === card.path;
               return (
                 <button
                   key={card.id}
                   onClick={() => handleModuleClick(card.path)}
                   onMouseEnter={() => setHoveredCard(card.id)}
                   onMouseLeave={() => setHoveredCard(null)}
+                  disabled={navigatingPath !== null}
+                  aria-busy={isNavigating}
                   className={cn(
                     "group relative flex flex-col items-start p-7 rounded-2xl border transition-all duration-300 text-left overflow-hidden",
                     "bg-gray-900/80 border-white/10",
+                    navigatingPath !== null && "cursor-wait opacity-80",
                     isHovered
                       ? `shadow-2xl ${card.glow} border-white/20 scale-[1.02]`
                       : "hover:border-white/15"
@@ -399,7 +419,7 @@ export default function ElevayHome() {
                     "text-white/30",
                     isHovered ? "text-white/70 translate-x-1" : ""
                   )}>
-                    <span>Open module</span>
+                    <span>{isNavigating ? "Checking session…" : "Open module"}</span>
                     <ChevronRight className="h-3.5 w-3.5" />
                   </div>
                 </button>

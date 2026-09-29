@@ -42,3 +42,12 @@
 - [x] Added the central entry to the desktop Marketing dashboard and the mobile Marketing sidebar.
 - [x] Explained each step and its guardrail in plain language, including the current no-Meta/no-campaign/no-spend/no-publication boundary.
 - [x] Passed focused hub and Strategy Packet regressions, production build and diff hygiene; the hub route remains protected by CRM sign-in.
+
+## Agentic Marketing System — Navigation and Session Handoff
+
+- [x] Added direct **Marketing Dashboard** and **Agentic Marketing System** entries to the desktop Marketing sidebar.
+- [x] Added the same direct dashboard and Agentic System navigation on mobile.
+- [x] Corrected protected-module handoff from the authenticated home: each card now confirms the server session before navigation and preserves the requested module as the CRM sign-in return path when the session is no longer valid.
+- [x] Added a bounded **Checking session…** transition state that prevents duplicate navigation clicks.
+- [x] Passed 9 focused regressions, production build, changed-file TypeScript diagnostic review, browser validation of `/login?returnTo=%2Fmarketing`, and diff hygiene.
+- [x] Recorded a privacy-safe validation document; no CRM, marketing, Meta, campaign, CAPI, provider, publication, financial, or client data was changed.
