@@ -163,7 +163,7 @@ export const MOBILE_SIDEBAR_MODULES = [
     icon: Megaphone,
     items: [
       { icon: LayoutDashboard, label: "Marketing Dashboard", path: "/marketing" },
-      { icon: Sparkles, label: "Agentic Marketing System", path: "/marketing/agentic-system" },
+      { icon: Sparkles, label: "AI Agentic Marketing System", path: "/marketing/agentic-system" },
       { icon: Sparkles, label: "Brand Studio", path: "/marketing/brand-studio" },
       { icon: BookOpen, label: "Knowledge Library", path: "/marketing/knowledge-library" },
       { icon: ClipboardCheck, label: "Work Orders", path: "/marketing/work-orders" },
