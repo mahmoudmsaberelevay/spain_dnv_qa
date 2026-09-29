@@ -164,19 +164,7 @@ export const MOBILE_SIDEBAR_MODULES = [
     icon: Megaphone,
     items: [
       { icon: LayoutDashboard, label: "Marketing Dashboard", path: "/marketing" },
-      { icon: SettingsIcon, label: "1. Setup", path: "/marketing/weekly-results?view=setup" },
-      { icon: CalendarClock, label: "2. Weekly Results", path: "/marketing/weekly-results" },
       { icon: Sparkles, label: "AI Agentic Marketing System", path: "/marketing/agentic-system" },
-      { icon: PlugZap, label: "Provider Connection Center", path: "/marketing/provider-connections" },
-      { icon: Sparkles, label: "Brand Studio", path: "/marketing/brand-studio" },
-      { icon: BookOpen, label: "Knowledge Library", path: "/marketing/knowledge-library" },
-      { icon: ClipboardCheck, label: "Work Orders", path: "/marketing/work-orders" },
-      { icon: ClipboardCheck, label: "Content Studio", path: "/marketing/content-studio" },
-      { icon: Target, label: "Meta Ads Strategy Intake", path: "/marketing/meta-ads-strategy" },
-      { icon: FileCheck2, label: "Strategy Approval Packet", path: "/marketing/meta-ads-strategy-packet" },
-      { icon: ClipboardCheck, label: "Campaign Pilot Proposal", path: "/marketing/campaign-pilot-proposal" },
-      { icon: BarChart3, label: "Pilot Readiness", path: "/marketing/pilot-readiness" },
-      { icon: ClipboardCheck, label: "Weekly Executive Briefs", path: "/marketing/weekly-executive-briefs" },
       { icon: FolderOpen, label: "Ready Summaries", path: "/marketing/ready-summaries" },
       { icon: Sparkles, label: "Summary Generator", path: "/marketing/summary-generator" },
       { icon: Mic2, label: "Arabic Voice-over", path: "/marketing/voice-over" },
@@ -535,12 +523,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
               <div className="mb-3 border-b border-border/50 pb-3">
                 <p className="px-4 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Marketing shortcuts</p>
                 {[
-                  { label: "1. Setup", icon: SettingsIcon, path: "/marketing/weekly-results?view=setup" },
-                  { label: "2. Weekly Results", icon: CalendarClock, path: "/marketing/weekly-results" },
-                  { label: "Brand Studio", icon: Sparkles, path: "/marketing/brand-studio" },
-                  { label: "Knowledge Library", icon: BookOpen, path: "/marketing/knowledge-library" },
-                  { label: "Work Orders", icon: ClipboardCheck, path: "/marketing/work-orders" },
-                  { label: "Content Studio", icon: ClipboardCheck, path: "/marketing/content-studio" },
+                  { label: "AI Agentic Marketing System", icon: Sparkles, path: "/marketing/agentic-system" },
                   { label: "Ready Summaries", icon: FolderOpen, path: "/marketing/ready-summaries" },
                   { label: "Program Proposal", icon: FileSignature, path: "/marketing/program-proposal" },
                 ].map((item) => {

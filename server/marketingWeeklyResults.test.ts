@@ -71,19 +71,18 @@ describe("Weekly Results CRM integration contract", () => {
     expect(WEEKLY_RESULTS_EXECUTION_BOUNDARY).toContain("cannot call an AI provider");
   });
 
-  it("registers protected desktop and mobile routes for the two requested sections", () => {
+  it("keeps Weekly Results inside the protected central Agentic Marketing workspace", () => {
     const app = read("client/src/App.tsx");
     const dashboard = read("client/src/pages/marketing/MarketingDashboard.tsx");
     const desktopNav = read("client/src/components/DashboardLayout.tsx");
     const mobileNav = read("client/src/components/MobileLayout.tsx");
     const page = read("client/src/pages/marketing/WeeklyResults.tsx");
     expect(app).toContain('path="/marketing/weekly-results"');
-    expect(dashboard).toContain('title: "1. Setup"');
-    expect(dashboard).toContain('title: "2. Weekly Results"');
-    expect(desktopNav).toContain('label: "1. Setup"');
-    expect(desktopNav).toContain('label: "2. Weekly Results"');
-    expect(mobileNav).toContain('label: "1. Setup"');
-    expect(mobileNav).toContain('label: "2. Weekly Results"');
+    expect(dashboard).toContain('title: "AI Agentic Marketing System"');
+    expect(desktopNav).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
+    expect(mobileNav).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
+    expect(desktopNav).not.toContain('label: "1. Setup"');
+    expect(desktopNav).not.toContain('label: "2. Weekly Results"');
     expect(page).toContain("No provider calls");
     expect(page).toContain("no batch approval");
   });

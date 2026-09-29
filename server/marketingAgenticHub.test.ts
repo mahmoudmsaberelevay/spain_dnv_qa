@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const read = (relativePath: string) => readFileSync(resolve(process.cwd(), relativePath), "utf8");
 
 describe("Agentic Marketing System hub", () => {
-  it("provides one discoverable Marketing entry and links each gated control in the approved sequence", () => {
+  it("provides one discoverable Agentic Marketing tab and links each gated control from its central hub", () => {
     const app = read("client/src/App.tsx");
     const dashboard = read("client/src/pages/marketing/MarketingDashboard.tsx");
     const mobile = read("client/src/components/MobileLayout.tsx");
@@ -20,8 +20,12 @@ describe("Agentic Marketing System hub", () => {
     expect(dashboard).toContain('title: "AI Agentic Marketing System"');
     expect(page).toContain("ELEVAY AI Agentic Marketing System");
     expect(desktop).toContain('label: "Marketing Dashboard", path: "/marketing"');
-    expect(desktop).toContain('label: "Brand Discovery — 35 Questions", path: "/marketing/brand-studio"');
-    expect(dashboard).toContain('title: "Brand Discovery — 35 Questions"');
+    expect(desktop).not.toContain('label: "Brand Discovery — 35 Questions", path: "/marketing/brand-studio"');
+    expect(desktop).not.toContain('label: "1. Setup"');
+    expect(desktop).not.toContain('label: "2. Weekly Results"');
+    expect(mobile).not.toContain('label: "Brand Studio", path: "/marketing/brand-studio"');
+    expect(mobile).not.toContain('label: "1. Setup"');
+    expect(mobile).not.toContain('label: "2. Weekly Results"');
     expect(brandStudio).toContain("Opening Brand Discovery questions");
     expect(brandStudio).toContain("autoStartAttempted");
     for (const path of ["/marketing/brand-studio", "/marketing/knowledge-library", "/marketing/work-orders", "/marketing/content-studio", "/marketing/meta-ads-strategy", "/marketing/meta-ads-strategy-packet"]) {

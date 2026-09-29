@@ -51,10 +51,10 @@ describe("Provider Connection Center and scoped administrator", () => {
     expect(lock.blockers).toContain("The provider execution release has not been implemented; external actions remain intentionally blocked.");
   });
 
-  it("registers the center in desktop, mobile and hub navigation", () => {
+  it("keeps the provider center reachable through the single Agentic Marketing tab and hub", () => {
     expect(read("client/src/App.tsx")).toContain('path="/marketing/provider-connections"');
-    expect(read("client/src/pages/marketing/MarketingDashboard.tsx")).toContain("Provider Connection Center");
-    expect(read("client/src/components/MobileLayout.tsx")).toContain("Provider Connection Center");
+    expect(read("client/src/pages/marketing/MarketingDashboard.tsx")).toContain("AI Agentic Marketing System");
+    expect(read("client/src/components/MobileLayout.tsx")).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
     expect(read("client/src/pages/marketing/AgenticMarketingHub.tsx")).toContain("Provider Connection Center");
   });
 });
