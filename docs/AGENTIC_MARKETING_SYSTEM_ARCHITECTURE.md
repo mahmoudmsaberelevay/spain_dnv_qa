@@ -75,7 +75,7 @@ The reviewed migration is **additive only**: it has no `UPDATE`, `DELETE`, `DROP
 
 ## 5. Brand Discovery governance
 
-The owner-facing Brand Studio implements the blueprint’s exact 35 questions in source order. It displays only one question per interaction; supports Save and Continue, Back/Edit, owner-provided evidence files, safe recommendation confirmation, logout/restart resume, whole-interview or section reset, and immutable version history.
+The owner-facing Brand Studio implements the blueprint’s exact 35 questions in source order. Per Mahmoud’s workflow preference, it displays the complete question set in one sectioned owner form; supports one secure Save Complete Form action for all completed answers, per-question edit, owner-provided evidence files, safe recommendation confirmation, logout/restart resume, whole-interview or section reset, and immutable version history.
 
 A Brand Book can be proposed only once all 35 questions are answered and no answer is pending owner confirmation. The proposal includes cited question numbers, unknown data gaps, machine-readable design tokens, prohibited claims, voice and imagery policy. It remains `proposed` until Mahmoud explicitly approves it; approval activates a new immutable version and supersedes the old active version.
 
@@ -104,7 +104,7 @@ A Brand Book can be proposed only once all 35 questions are answered and no answ
 ## 8. Phase 1 acceptance record
 
 - [x] Exact 35-question discovery contract represented in code and tested.
-- [x] One-question user interface with progress, resume and Back/Edit.
+- [x] Complete sectioned 35-question owner form with progress, secure bulk save, resume and per-question editing.
 - [x] Owner-only discovery, approval, role and provider governance.
 - [x] Immutable Brand Book versions with SHA-256 payload hash.
 - [x] Additive schema reviewed and applied.

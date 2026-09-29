@@ -8,7 +8,7 @@
 | Control | Evidence |
 |---|---|
 | Exact questionnaire | The deterministic discovery contract contains exactly 35 questions in source order. Question 01 and Question 35 text are asserted in focused tests. |
-| One-question interaction | The route renders one current question, a progress indicator, Save and Continue, Back/Edit, evidence attachment, and resume from first unanswered question. It does not render a full questionnaire form. |
+| Complete-form interaction | Per Mahmoud’s workflow preference, the route renders all 35 questions in one sectioned owner form, with progress, per-question editing, evidence attachment, one atomic Save Complete Form action, and resume from stored answers. |
 | Persistence | Additive session and answer tables persist the exact answer, safe structured fields, optional evidence links, decision status, author and timestamp. |
 | Recommendation safeguard | A suggested answer is not accepted until the owner checks an explicit confirmation control. |
 | Version governance | Reset creates a new session version; a complete session creates a `proposed` Brand Book with a SHA-256 payload hash; only an explicit owner approval activates it; prior active versions become `superseded`. |

@@ -94,6 +94,20 @@ const answerInput = z.object({
   attachments: z.array(z.object({ label: z.string().trim().min(1).max(200), url: z.string().url().max(2_000) })).max(8).default([]),
 });
 
+const bulkAnswerInput = z.object({
+  sessionId: z.number().int().positive(),
+  answers: z.array(answerInput.omit({ sessionId: true })).min(1).max(BRAND_DISCOVERY_TOTAL_QUESTIONS),
+}).superRefine((value, ctx) => {
+  const seen = new Set<number>();
+  for (let index = 0; index < value.answers.length; index += 1) {
+    const answer = value.answers[index]!;
+    if (seen.has(answer.questionNumber)) {
+      ctx.addIssue({ code: "custom", path: ["answers", index, "questionNumber"], message: "Each Brand Discovery question can appear only once in a save request." });
+    }
+    seen.add(answer.questionNumber);
+  }
+});
+
 const knowledgeSourceInput = z.object({
   programKey: z.string().trim().min(2).max(96).regex(/^[a-z0-9_]+$/, "Use a lowercase programme key with letters, numbers, and underscores only."),
   programLabel: z.string().trim().min(2).max(160),
@@ -474,6 +488,7 @@ function presentSession(record: Awaited<ReturnType<typeof getSessionWithAnswers>
     answeredCount: answeredNumbers.length,
     nextQuestionNumber,
     isComplete: isBrandDiscoveryComplete(answeredNumbers),
+    sections: BRAND_DISCOVERY_SECTIONS,
     questions: BRAND_DISCOVERY_QUESTIONS,
     answers: record.answers.map(answer => ({
       ...answer,
@@ -603,6 +618,52 @@ export const marketingSystemRouter = router({
       ...(nextQuestionNumber === null ? { completedAt: now } : {}),
     }).where(eq(marketingBrandDiscoverySessions.id, input.sessionId));
     await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_brand_discovery_answer", `${input.sessionId}:${input.questionNumber}`, JSON.stringify({ questionNumber: input.questionNumber, decisionStatus: input.decisionStatus }));
+    return presentSession(await getSessionWithAnswers(input.sessionId));
+  }),
+
+  saveDiscoveryAnswers: protectedProcedure.input(bulkAnswerInput).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    for (const answer of input.answers) getBrandDiscoveryQuestion(answer.questionNumber);
+    const db = await requireDb();
+    const { session } = await getSessionWithAnswers(input.sessionId);
+    if (session.status !== "in_progress") {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Only an in-progress Brand Discovery interview can be edited." });
+    }
+    const now = Date.now();
+    await db.transaction(async tx => {
+      for (const answer of input.answers) {
+        await tx.insert(marketingBrandDiscoveryAnswers).values({
+          sessionId: input.sessionId,
+          questionNumber: answer.questionNumber,
+          answerText: answer.answerText,
+          interpretedJson: JSON.stringify(answer.interpretedFields ?? {}),
+          attachmentsJson: JSON.stringify(answer.attachments),
+          decisionStatus: answer.decisionStatus,
+          answeredByUserId: ctx.user.id,
+          createdAt: now,
+          updatedAt: now,
+        }).onDuplicateKeyUpdate({
+          set: {
+            answerText: answer.answerText,
+            interpretedJson: JSON.stringify(answer.interpretedFields ?? {}),
+            attachmentsJson: JSON.stringify(answer.attachments),
+            decisionStatus: answer.decisionStatus,
+            answeredByUserId: ctx.user.id,
+            updatedAt: now,
+          },
+        });
+      }
+      const answers = await tx.select({ questionNumber: marketingBrandDiscoveryAnswers.questionNumber })
+        .from(marketingBrandDiscoveryAnswers)
+        .where(eq(marketingBrandDiscoveryAnswers.sessionId, input.sessionId));
+      const nextQuestionNumber = calculateNextBrandDiscoveryQuestion(answers.map(answer => answer.questionNumber));
+      await tx.update(marketingBrandDiscoverySessions).set({
+        currentQuestionNumber: nextQuestionNumber ?? BRAND_DISCOVERY_TOTAL_QUESTIONS,
+        updatedAt: now,
+        ...(nextQuestionNumber === null ? { completedAt: now } : {}),
+      }).where(eq(marketingBrandDiscoverySessions.id, input.sessionId));
+    });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_brand_discovery_bulk_answers", input.sessionId, JSON.stringify({ questionCount: input.answers.length, questionNumbers: input.answers.map(answer => answer.questionNumber), savedAt: now }));
     return presentSession(await getSessionWithAnswers(input.sessionId));
   }),
 
