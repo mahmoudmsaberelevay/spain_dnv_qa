@@ -1864,4 +1864,4 @@ Check email for download link within 5 minutes
 - [x] Reviewed and applied additive migration 0093; verified all four new tables exist and started empty.
 - [x] Passed 23 focused Marketing System regressions, production build, Phase 3 changed-file TypeScript review, protected-route access check and diff hygiene.
 - [x] Recorded the privacy-safe Phase 3 validation and updated the Agentic Marketing architecture decision record.
-- [ ] Complete/approve the Brand Discovery and approve source-backed claims before introducing a separate execution-phase proposal.
+> **Next gate (not part of the completed Phase 3 scope):** Complete and approve Brand Discovery, then approve source-backed claims before any separate provider-execution proposal can be considered.
