@@ -130,3 +130,13 @@
 - [x] Added secret-mapping and live credential validation regressions plus a privacy-safe validation record.
 
 > **Connection status:** Claude is available only as a future independent editorial and claim-review provider. It cannot yet generate CRM content, publish, change Meta campaigns, spend money, send CAPI events or access client/Lead records. All existing full-autopilot gates and separate execution-release approval remain mandatory.
+
+## AI Agentic Marketing System — Manus API v2 Orchestration Provider Connection
+
+- [x] Added `MANUS_API_KEY` only as a protected server-side environment secret; no value was stored or displayed in CRM, source, files, documentation or chat.
+- [x] Validated the credential with Manus API v2’s protected read-only webhook public-key endpoint; no task creation, callback registration, schedule, provider output, content generation or external operation was requested.
+- [x] Verified Provider Connection Center reports Manus as **server secret present** while its profile remains disabled, the provider/profile kill switches remain engaged, external operations remain disabled, and autopilot execution remains disabled.
+- [x] Reasserted the existing full-autopilot master kill switch as enabled through the protected CRM control plane.
+- [x] Added Manus mapping and live credential regressions plus a privacy-safe validation record; the future callback path remains reserved only and is not implemented or registered.
+
+> **Connection status:** Manus API v2 is available only as a future bounded research and structured-output task orchestration provider. It cannot yet create tasks, receive callbacks, generate marketing content, publish, alter Meta, spend money, send CAPI events, access client/Lead records or change CRM records. The full-autopilot gates and a separate execution-release approval remain mandatory.
