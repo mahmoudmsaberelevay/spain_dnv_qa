@@ -1,10 +1,11 @@
 
 
-## AI Agentic Marketing System — Meta Marketing API Provider Readiness
+## AI Agentic Marketing System — Manus Creative-Production Scope
 
-- [x] Added protected server-side Meta system-user and selected ad-account configuration, without storing or exposing the values in CRM records, source, project files, documentation, logs, or Provider Connection Center output.
-- [x] Validated the credentials through two live, read-only Meta Graph API v26.0 `GET` requests: a maximum-one ad-account list and the selected account's limited metadata read. No account data was retained in validation output.
-- [x] Added Meta provider policy regressions and re-ran existing Meta webhook/CAPI boundary tests. The protected Provider Connection Center reports `server_secret_present`, while the provider profile remains disabled, its kill switch is enabled, the master kill switch is engaged, `externalOperationsEnabled` remains false, and `executionAllowed` remains false.
-- [x] Preserved production CAPI as disabled and made no campaign, ad set, creative, audience, budget, spend, billing, publication, lead, Test Lead, webhook subscription, CAPI, task, schedule, or CRM data change.
+- [x] Expanded the readiness-connected Manus API v2 profile from research-only orchestration to its future bounded role for approved static assets, carousel visuals, reel storyboards, and short-form 9:16 reels.
+- [x] Clarified provider responsibilities: Manus coordinates approved research and creative production; Creatomate remains the approved template renderer; Runway remains optional specialty footage; ELEVAY ElevenLabs remains the final-script Arabic voice-over path; Meta remains the restricted paid-media destination.
+- [x] Added the Manus creative-scope badges to Provider Connection Center and the central Agentic Marketing hub while keeping all profiles disabled and all external operations locked.
+- [x] Added the mandatory final-preview QA control for human depiction and reel continuity: realistic head-to-toe wardrobe and appropriate formal footwear, anatomy/hands, accessories, continuity, safe handling of no-person assets, and rejection of visual mutations.
+- [x] No Manus task, media generation, video, static image, render, voice synthesis, publication, campaign operation, spend, CAPI event, schedule, client/Lead access, or CRM operating-data mutation was created.
 
-> **Meta remains readiness-only.** A separate owner-approved execution release is still required after all Brand Book, claims, content/work-order, strategy, pilot, callback/idempotency, durable-worker, cost-cap, monitoring, rollback, and real-pilot safeguards are complete.
+> **Next gate:** The Creative Production execution release must define a bounded task/output schema, per-asset costs and caps, signed task callbacks, idempotent delivery, final asset storage, and the required approval/QA flow before a Manus static or reel task can be dispatched.

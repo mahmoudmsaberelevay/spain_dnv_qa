@@ -25,8 +25,9 @@ export const MARKETING_PROVIDER_CONNECTIONS = [
     connectionKind: "task_orchestration",
     secretKeys: ["MANUS_API_KEY"] as const,
     webhookPath: "/api/webhooks/marketing/manus",
-    purpose: "Optional asynchronous research and structured-output task orchestration.",
-    executionBoundary: "Task creation is blocked until the execution release and an approved work order explicitly selects this provider.",
+    creativeCapabilities: ["research", "static_assets", "carousel_visuals", "reel_storyboards", "short_form_reels"] as const,
+    purpose: "Future bounded research plus creative-production task orchestration for approved static assets, carousel visuals, reel storyboards, and short-form 9:16 reels.",
+    executionBoundary: "Task creation is blocked until the execution release and an approved work order explicitly selects this provider. Any creative task must originate from an owner-approved content packet and pass final-preview, visual identity, human-depiction, Arabic, caption, and reel continuity QA before it can progress.",
   },
   {
     alias: "openai-editorial",

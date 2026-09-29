@@ -14,7 +14,7 @@ const controls = [
   { icon: ClipboardCheck, title: "7. Campaign Pilot Proposal", text: "Record a proposed future scope, maximum cap, measurement evidence, monitoring and rollback against the approved strategy packet.", href: "/marketing/campaign-pilot-proposal", gate: "No external action" },
   { icon: BarChart3, title: "8. Pilot Readiness & Executive Measurement", text: "Review aggregate CRM attribution, Meta controls, and every evidence gate. Optimisation stays blocked until a real reconciled pilot exists.", href: "/marketing/pilot-readiness", gate: "Read-only" },
   { icon: ClipboardCheck, title: "9. Weekly Executive Brief & Decision Log", text: "Capture a manual aggregate readiness snapshot and record an internal owner decision. No scheduling, email, campaign, spend, publication, or CRM change is possible.", href: "/marketing/weekly-executive-briefs", gate: "Manual review" },
-  { icon: PlugZap, title: "10. Provider Connection Center", text: "Prepare secure server-side provider readiness for Full Autopilot after pilot safeguards. It shows configuration gaps only and cannot accept credentials or activate external operations.", href: "/marketing/provider-connections", gate: "Configuration only" },
+  { icon: PlugZap, title: "10. Provider Connection Center", text: "Prepare secure server-side provider readiness for Full Autopilot after pilot safeguards. Manus is designated for future approved static assets, carousel visuals, reel storyboards and short-form reels; this center remains configuration-only and cannot activate external operations.", href: "/marketing/provider-connections", gate: "Configuration only" },
 ] as const;
 
 export default function AgenticMarketingHub() {

@@ -29,6 +29,7 @@ const QA_CHECKS = [
   ["cta_and_destination", "CTA and destination consistency"],
   ["asset_provenance", "Asset provenance and licensing"],
   ["no_guarantees", "No immigration, financial or timing guarantees"],
+  ["human_depiction_and_reel_continuity", "If people appear: realistic wardrobe, footwear, anatomy, accessories and reel continuity; N/A only when no person appears"],
   ["preview_equivalence", "Final preview equivalence"],
 ] as const;
 

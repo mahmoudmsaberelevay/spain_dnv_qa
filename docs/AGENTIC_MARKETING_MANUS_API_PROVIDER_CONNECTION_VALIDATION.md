@@ -34,7 +34,9 @@ A second protected CRM Provider Connection Center verification returned:
 
 ## Purpose and retained controls
 
-Manus API v2 is registered only for a future, bounded **asynchronous research and structured-output task orchestration** role. It cannot currently make marketing automatically, create a Manus task, create a callback subscription, schedule work, generate content, render media, publish, alter Meta, spend money, send CAPI events, access client or Lead records, or change CRM records.
+Manus API v2 is registered for a future, bounded **asynchronous research and creative-production orchestration** role. After a separate execution release, an approved work order and an owner-approved content packet could select it for research, static assets, carousel visuals, reel storyboards, and short-form 9:16 reels. Manus is not the publishing or paid-media provider: Creatomate remains the template renderer, Runway remains optional specialty footage, ElevenLabs remains the approved Arabic voice-over path, and Meta remains the restricted paid-media destination.
+
+It cannot currently make marketing automatically, create a Manus task, create a callback subscription, schedule work, generate content, render media, publish, alter Meta, spend money, send CAPI events, access client or Lead records, or change CRM records. Any future Manus-created visual must retain the final-preview gate and pass the visual identity, asset provenance, no-guarantees, Arabic, accessibility, safe-area, and person/reel-continuity QA controls. For people in visuals, that includes realistic complete head-to-toe clothing, appropriate formal footwear, no unrequested cultural accessories, anatomy/hand integrity, and frame-to-frame continuity; a no-people asset may be marked not applicable for that one check.
 
 The reserved callback path is `/api/webhooks/marketing/manus`, but it is **not implemented or registered**. Before that path could be used, it must verify Manus RSA-SHA256 signatures over the timestamp, full callback URL, and raw-body SHA-256 hash; reject timestamps older than five minutes; cache the public key; and persist idempotent event metadata without raw client data.
 

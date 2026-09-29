@@ -46,6 +46,7 @@ export const MARKETING_CONTENT_QA_CHECKS = [
   "cta_and_destination",
   "asset_provenance",
   "no_guarantees",
+  "human_depiction_and_reel_continuity",
   "preview_equivalence",
 ] as const;
 
@@ -61,6 +62,7 @@ export const MARKETING_CONTENT_QA_CHECK_LABELS: Record<MarketingContentQaCheck, 
   cta_and_destination: "CTA and destination consistency",
   asset_provenance: "Asset source, licensing and provenance",
   no_guarantees: "No immigration, financial or timing guarantees",
+  human_depiction_and_reel_continuity: "If people appear: complete realistic wardrobe and formal footwear, anatomy and hand integrity, no random cultural accessories, and frame-to-frame reel continuity; mark N/A only when no person appears",
   preview_equivalence: "Final preview matches the represented content",
 };
 

@@ -21,8 +21,9 @@ describe("Agentic Marketing Phase 4 Content Studio policy", () => {
   });
 
   it("requires the complete deterministic QA contract and typed outputs for every packet type", () => {
-    expect(MARKETING_CONTENT_QA_CHECKS).toHaveLength(10);
+    expect(MARKETING_CONTENT_QA_CHECKS).toHaveLength(11);
     expect(MARKETING_CONTENT_QA_CHECKS).toContain("no_guarantees");
+    expect(MARKETING_CONTENT_QA_CHECKS).toContain("human_depiction_and_reel_continuity");
     expect(MARKETING_CONTENT_QA_CHECKS).toContain("preview_equivalence");
     expect(contentPacketOutputSchema("static_post").artifactType).toBe("StaticPostPacket");
     expect(contentPacketOutputSchema("reel").artifactType).toBe("ReelPacket");
