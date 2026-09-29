@@ -140,3 +140,13 @@
 - [x] Added Manus mapping and live credential regressions plus a privacy-safe validation record; the future callback path remains reserved only and is not implemented or registered.
 
 > **Connection status:** Manus API v2 is available only as a future bounded research and structured-output task orchestration provider. It cannot yet create tasks, receive callbacks, generate marketing content, publish, alter Meta, spend money, send CAPI events, access client/Lead records or change CRM records. The full-autopilot gates and a separate execution-release approval remain mandatory.
+
+## AI Agentic Marketing System — Creatomate Template-Rendering Provider Connection
+
+- [x] Added `CREATOMATE_API_KEY` only as a protected server-side environment secret; no value was stored or displayed in CRM, source, files, documentation or chat.
+- [x] Validated the credential through Creatomate’s read-only template-list endpoint; no template mutation, render, callback registration, content generation, publication, Meta operation, spend or CRM operation was requested.
+- [x] Corrected the provider policy to require only the documented Creatomate API key; no unsupported webhook-secret requirement is retained.
+- [x] Verified Provider Connection Center reports Creatomate as **server secret present** while its profile remains disabled, the provider/profile kill switches remain engaged, external operations remain disabled, and autopilot execution remains disabled.
+- [x] Added Creatomate mapping and live credential regressions plus a privacy-safe validation record; the future callback path remains reserved only and is not implemented or registered.
+
+> **Connection status:** Creatomate is available only as a future approved-template rendering provider. It cannot yet create or edit templates, render media, receive callbacks, publish, alter Meta, spend money, send CAPI events, access client/Lead records or change CRM records. The full-autopilot gates, visual QA, cost controls and a separate rendering/execution-release approval remain mandatory.

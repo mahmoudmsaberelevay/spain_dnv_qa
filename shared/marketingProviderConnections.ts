@@ -50,7 +50,7 @@ export const MARKETING_PROVIDER_CONNECTIONS = [
     alias: "template-render",
     provider: "Creatomate",
     connectionKind: "media_renderer",
-    secretKeys: ["CREATOMATE_API_KEY", "CREATOMATE_WEBHOOK_SECRET"] as const,
+    secretKeys: ["CREATOMATE_API_KEY"] as const,
     webhookPath: "/api/webhooks/marketing/creatomate",
     purpose: "Template-based branded image and reel rendering.",
     executionBoundary: "Requires approved templates, a finalized packet, visual QA, and a future rendering release before any render is requested.",
