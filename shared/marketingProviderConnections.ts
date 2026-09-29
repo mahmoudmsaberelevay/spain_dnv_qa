@@ -59,10 +59,10 @@ export const MARKETING_PROVIDER_CONNECTIONS = [
     alias: "specialty-motion",
     provider: "Runway",
     connectionKind: "media_renderer_optional",
-    secretKeys: ["RUNWAY_API_KEY", "RUNWAY_WEBHOOK_SECRET"] as const,
-    webhookPath: "/api/webhooks/marketing/runway",
+    secretKeys: ["RUNWAY_API_KEY"] as const,
+    webhookPath: null,
     purpose: "Optional selected specialty motion footage only.",
-    executionBoundary: "Optional provider. It remains disabled unless a future per-clip approval and spend-cap release is completed.",
+    executionBoundary: "Optional provider. Readiness does not create any task; it remains disabled unless a future per-clip approval, bounded task polling, and spend-cap release is completed.",
   },
   {
     alias: "elevay-arabic-voice",

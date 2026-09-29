@@ -160,3 +160,13 @@
 - [x] Added voice-provider mapping, default, no-invocation and live credential regressions plus a privacy-safe validation record.
 
 > **Connection status:** The ELEVAY voice adapter is available only for a future finalized, approved Arabic script with cost, output-provenance and audio-QA controls. It cannot yet synthesize marketing audio automatically, publish, alter Meta, spend money, access client/Lead records or change CRM records. The full-autopilot gates and a separate execution-release approval remain mandatory.
+
+## AI Agentic Marketing System — Optional Runway Specialty-Motion Provider Connection
+
+- [x] Added `RUNWAY_API_KEY` only as a protected server-side environment secret; no value was stored or displayed in CRM, source, files, documentation or chat.
+- [x] Validated the credential through Runway’s documented non-generative workflow-list endpoint; no video, image, audio, task, polling, callback, publication, spend or CRM operation was requested.
+- [x] Corrected the provider policy to require only the documented API key; no unsupported Runway webhook-secret requirement or callback path is retained.
+- [x] Verified Provider Connection Center reports Runway as **server secret present** while its profile remains disabled, the provider/profile kill switches remain engaged, external operations remain disabled, and autopilot execution remains disabled.
+- [x] Added Runway mapping and live credential regressions plus a privacy-safe validation record.
+
+> **Connection status:** Runway is available only as an optional future specialty-motion provider for individually approved clips. It cannot yet create or poll tasks, render media, receive callbacks, publish, alter Meta, spend money, send CAPI events, access client/Lead records or change CRM records. Per-clip approval, credit caps, durable task controls, full visual QA and a separate execution-release approval remain mandatory.
