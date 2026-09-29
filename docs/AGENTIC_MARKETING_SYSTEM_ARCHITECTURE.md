@@ -1,7 +1,7 @@
 # ELEVAY Agentic Marketing System — Architecture Decision Record
 
 **Date:** 29 September 2026  
-**Status:** Phases 0–4 complete in controlled internal-only mode; provider execution, publishing, campaign mutation, and spend remain locked
+**Status:** Phases 0–4 and the Meta Ads Strategy Intake prerequisite are complete in controlled internal-only mode; provider execution, publishing, campaign mutation, and spend remain locked
 **Scope:** Existing `elevay.vip` CRM; no replacement CRM, no local client database, no automatic publishing or paid-media execution.
 
 ## 1. Decision summary
@@ -98,7 +98,8 @@ A Brand Book can be proposed only once all 35 questions are answered and no answ
 | 2 | Source library, programme knowledge, official-source allowlist, claim review | Implemented in internal-only mode; Brand Book and explicit claim approval remain required before downstream content work. |
 | 3 | Work-order engine, immutable artifacts, cost ledger and zero-cost dry runs | Complete as a control plane. Provider execution remains excluded pending a later explicit approval. |
 | 4 | Content Studio, QA and Approval Inbox with final previews | Complete as a manual evidence-and-approval control plane; it cannot generate, render, publish, schedule, campaign-mutate, or spend. |
-| 5 | Meta Campaign Operations, CRM attribution, budget ledger and measurement pilot | Requires separate Ads Strategy Intake approval, Meta permissions and explicit spend caps. |
+| 5a | Meta Ads Strategy Intake, 66-question planning interview, evidence and data-gap tracking | Complete as a planning-only prerequisite; no strategy is approved and no Meta access, campaign, budget or spend path exists. |
+| 5b | Meta Campaign Operations, CRM attribution, budget ledger and measurement pilot | Requires completed/approved Strategy Intake, Meta permissions and explicit spend caps. |
 | 6 | Controlled optimisation and weekly executive reporting | Requires proven pilot attribution, reconciliation and rollback evidence. |
 
 ## 8. Phase 1 acceptance record
@@ -204,3 +205,28 @@ Phase 4 creates the blueprint's **human-controlled content review layer** withou
 - [x] Versioned revisions, structured feedback, rejection and stop controls retain immutable lineage; no content packet is deleted.
 - [x] Protected responsive Content Studio and Approval Inbox route added to desktop and mobile Marketing navigation.
 - [x] No provider invocation, media rendering, publishing, scheduling, campaign mutation, CAPI change, messaging or paid spend path exists in Phase 4.
+
+## 12. Meta Ads Strategy Intake decision
+
+The blueprint’s exact **66-question Meta Ads Strategy Intake** is implemented as a separate owner-only, one-question-at-a-time planning interview. It is deliberately distinct from Brand Discovery, Knowledge, Content Studio and existing Meta Lead operations.
+
+| Record | Purpose | Guardrail |
+|---|---|---|
+| `marketing_meta_ads_strategy_sessions` | Versioned progress, reset scope, lifecycle and future approval metadata | No Meta access token, campaign, ad account, spend, payment or provider setting. |
+| `marketing_meta_ads_strategy_answers` | Exact company answer, normalized fields, safe evidence links, answer/gap status, deadline, author and timestamp | `unknown` requires a Mahmoud-owned follow-up deadline; no silent inference. |
+
+### Intake lifecycle and hard boundaries
+
+1. Mahmoud starts or resumes the current interview. Every question is shown in source order, one at a time, with 1–66 progress, Back/Edit and per-answer save.
+2. A question can be saved as a confirmed answer or as **Unknown**. Unknown values are explicit data gaps with an owner deadline rather than fabricated assumptions.
+3. Approved evidence attaches to its question. Exact answers, safe normalized fields, evidence, decision status and audit metadata persist across logout, restart and devices.
+4. Mahmoud can deliberately reset all questions or a selected section; the system creates a new version, retains prior answers/audit history and preserves unaffected section answers when applicable.
+5. The schema reserves company/program scope, but Spain DNV and Malta MPRP confirmation overrides, the Strategy Approval Packet, campaign architecture, budgets, permissions and any measurement pilot remain future gated work.
+
+### Intake acceptance record
+
+- [x] Exact 66 questions represented in the supplied source order and section ranges.
+- [x] Owner-only one-question UI, save/resume, Back/Edit, evidence attachment, unknown-gap deadline and versioned reset controls.
+- [x] Additive session and answer schema applied empty; no existing CRM, Leads, Meta webhook, CAPI, contract or financial record changed.
+- [x] No Meta connector, credentials, ad account access, campaign operation, budget/spend ledger, provider execution, publication, CAPI change, message or payment route exists in this intake.
+- [ ] Mahmoud completes the interview, confirms program-specific variations and explicitly approves a separate Strategy Approval Packet before any campaign-operation proposal.

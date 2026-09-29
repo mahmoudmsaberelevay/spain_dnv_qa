@@ -165,6 +165,7 @@ export const MOBILE_SIDEBAR_MODULES = [
       { icon: BookOpen, label: "Knowledge Library", path: "/marketing/knowledge-library" },
       { icon: ClipboardCheck, label: "Work Orders", path: "/marketing/work-orders" },
       { icon: ClipboardCheck, label: "Content Studio", path: "/marketing/content-studio" },
+      { icon: Target, label: "Meta Ads Strategy Intake", path: "/marketing/meta-ads-strategy" },
       { icon: FolderOpen, label: "Ready Summaries", path: "/marketing/ready-summaries" },
       { icon: Sparkles, label: "Summary Generator", path: "/marketing/summary-generator" },
       { icon: Mic2, label: "Arabic Voice-over", path: "/marketing/voice-over" },

@@ -2631,6 +2631,52 @@ export const marketingContentApprovalBatches = mysqlTable("marketing_content_app
 export type MarketingContentApprovalBatch = typeof marketingContentApprovalBatches.$inferSelect;
 export type InsertMarketingContentApprovalBatch = typeof marketingContentApprovalBatches.$inferInsert;
 
+// ─── AGENTIC MARKETING SYSTEM / META ADS STRATEGY INTAKE ─────────────────────
+// This is an owner-controlled planning interview only. It stores no Meta token,
+// ad account credential, campaign object, media byte, payment instruction or spend.
+export const marketingMetaAdsStrategySessions = mysqlTable("marketing_meta_ads_strategy_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  version: int("version").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("in_progress"),
+  resetScope: varchar("resetScope", { length: 96 }),
+  currentQuestionNumber: int("currentQuestionNumber").notNull().default(1),
+  createdByUserId: int("createdByUserId").notNull(),
+  completedAt: bigint("completedAt", { mode: "number" }),
+  proposedAt: bigint("proposedAt", { mode: "number" }),
+  approvedAt: bigint("approvedAt", { mode: "number" }),
+  approvedByUserId: int("approvedByUserId"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_meta_ads_strategy_session_version_unique").on(table.version),
+  index("marketing_meta_ads_strategy_session_status_idx").on(table.status, table.updatedAt),
+]);
+export type MarketingMetaAdsStrategySession = typeof marketingMetaAdsStrategySessions.$inferSelect;
+export type InsertMarketingMetaAdsStrategySession = typeof marketingMetaAdsStrategySessions.$inferInsert;
+
+export const marketingMetaAdsStrategyAnswers = mysqlTable("marketing_meta_ads_strategy_answers", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionId: int("sessionId").notNull(),
+  questionNumber: int("questionNumber").notNull(),
+  scopeType: varchar("scopeType", { length: 24 }).notNull().default("company"),
+  programKey: varchar("programKey", { length: 96 }),
+  answerText: mediumtext("answerText").notNull(),
+  normalizedJson: mediumtext("normalizedJson"),
+  attachmentsJson: mediumtext("attachmentsJson"),
+  decisionStatus: varchar("decisionStatus", { length: 32 }).notNull().default("answered"),
+  gapOwnerUserId: int("gapOwnerUserId"),
+  gapDueAt: bigint("gapDueAt", { mode: "number" }),
+  answeredByUserId: int("answeredByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_meta_ads_strategy_answer_unique").on(table.sessionId, table.questionNumber, table.scopeType, table.programKey),
+  index("marketing_meta_ads_strategy_answer_session_idx").on(table.sessionId, table.questionNumber),
+  index("marketing_meta_ads_strategy_gap_idx").on(table.decisionStatus, table.gapDueAt),
+]);
+export type MarketingMetaAdsStrategyAnswer = typeof marketingMetaAdsStrategyAnswers.$inferSelect;
+export type InsertMarketingMetaAdsStrategyAnswer = typeof marketingMetaAdsStrategyAnswers.$inferInsert;
+
 // ─── MARKETING READY SUMMARIES ─────────────────────────────────────────────────
 export const marketingReadySummaries = mysqlTable("marketing_ready_summaries", {
   id: int("id").autoincrement().primaryKey(),

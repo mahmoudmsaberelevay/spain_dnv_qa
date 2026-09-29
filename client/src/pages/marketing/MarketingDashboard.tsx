@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle, MailWarning, Loader2, ClipboardCheck, FilePenLine } from "lucide-react";
+import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle, MailWarning, Loader2, ClipboardCheck, FilePenLine, Target } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 
@@ -36,6 +36,14 @@ const tools = [
     href: "/marketing/content-studio",
     color: "from-[#5BA3B8] to-[#C9A84C]",
     badge: "Final review",
+  },
+  {
+    icon: Target,
+    title: "Meta Ads Strategy Intake",
+    description: "Complete the exact 66-question owner-controlled paid-media planning interview. It records strategy gaps but cannot connect Meta, create a campaign, or spend money.",
+    href: "/marketing/meta-ads-strategy",
+    color: "from-[#C9A84C] to-[#1A3A5C]",
+    badge: "Planning gate",
   },
   {
     icon: FolderOpen,

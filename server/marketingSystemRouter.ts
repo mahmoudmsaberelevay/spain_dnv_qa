@@ -11,6 +11,8 @@ import {
   marketingContentApprovalBatches,
   marketingContentPackets,
   marketingContentReviewEvents,
+  marketingMetaAdsStrategyAnswers,
+  marketingMetaAdsStrategySessions,
   marketingKnowledgeClaims,
   marketingKnowledgeSources,
   marketingProviderProfiles,
@@ -74,6 +76,14 @@ import {
   type ContentQaResult,
   type MarketingContentStatus,
 } from "../shared/marketingContentStudio";
+import {
+  calculateNextMetaAdsStrategyQuestion,
+  getMetaAdsStrategyQuestion,
+  isMetaAdsStrategyComplete,
+  META_ADS_STRATEGY_QUESTIONS,
+  META_ADS_STRATEGY_SECTIONS,
+  META_ADS_STRATEGY_TOTAL_QUESTIONS,
+} from "../shared/marketingMetaAdsStrategy";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -105,6 +115,20 @@ const bulkAnswerInput = z.object({
       ctx.addIssue({ code: "custom", path: ["answers", index, "questionNumber"], message: "Each Brand Discovery question can appear only once in a save request." });
     }
     seen.add(answer.questionNumber);
+  }
+});
+
+const metaStrategyAnswerInput = z.object({
+  sessionId: z.number().int().positive(),
+  questionNumber: z.number().int().min(1).max(META_ADS_STRATEGY_TOTAL_QUESTIONS),
+  answerText: z.string().trim().min(1).max(20_000),
+  decisionStatus: z.enum(["answered", "unknown"]).default("answered"),
+  normalizedFields: z.record(z.string(), z.unknown()).optional(),
+  attachments: z.array(z.object({ label: z.string().trim().min(1).max(200), url: z.string().url().max(2_000) })).max(8).default([]),
+  gapDueAt: z.number().int().positive().optional(),
+}).superRefine((value, ctx) => {
+  if (value.decisionStatus === "unknown" && !value.gapDueAt) {
+    ctx.addIssue({ code: "custom", path: ["gapDueAt"], message: "An unknown answer must have an owner follow-up deadline." });
   }
 });
 
@@ -498,6 +522,36 @@ function presentSession(record: Awaited<ReturnType<typeof getSessionWithAnswers>
   };
 }
 
+async function getMetaStrategySessionWithAnswers(sessionId: number) {
+  const db = await requireDb();
+  const [session] = await db.select().from(marketingMetaAdsStrategySessions)
+    .where(eq(marketingMetaAdsStrategySessions.id, sessionId)).limit(1);
+  if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Meta Ads Strategy Intake session was not found." });
+  const answers = await db.select().from(marketingMetaAdsStrategyAnswers)
+    .where(and(eq(marketingMetaAdsStrategyAnswers.sessionId, sessionId), eq(marketingMetaAdsStrategyAnswers.scopeType, "company")))
+    .orderBy(marketingMetaAdsStrategyAnswers.questionNumber);
+  return { session, answers };
+}
+
+function presentMetaStrategySession(record: Awaited<ReturnType<typeof getMetaStrategySessionWithAnswers>>) {
+  const answeredNumbers = record.answers.map(answer => answer.questionNumber);
+  const nextQuestionNumber = calculateNextMetaAdsStrategyQuestion(answeredNumbers);
+  return {
+    session: record.session,
+    totalQuestions: META_ADS_STRATEGY_TOTAL_QUESTIONS,
+    answeredCount: answeredNumbers.length,
+    nextQuestionNumber,
+    isComplete: isMetaAdsStrategyComplete(answeredNumbers),
+    sections: META_ADS_STRATEGY_SECTIONS,
+    questions: META_ADS_STRATEGY_QUESTIONS,
+    answers: record.answers.map(answer => ({
+      ...answer,
+      normalizedFields: parseJson<Record<string, unknown>>(answer.normalizedJson, {}),
+      attachments: parseJson<Array<{ label: string; url: string }>>(answer.attachmentsJson, []),
+    })),
+  };
+}
+
 export const marketingSystemRouter = router({
   access: protectedProcedure.query(async ({ ctx }) => {
     const role = await getEffectiveRole(ctx.user);
@@ -507,6 +561,117 @@ export const marketingSystemRouter = router({
       capabilities: getMarketingSystemCapabilities(role),
       brandStudioAvailable: hasMarketingSystemCapability(role, "view_brand_book"),
     };
+  }),
+
+  getCurrentMetaAdsStrategy: protectedProcedure.query(async ({ ctx }) => {
+    await requireOwner(ctx.user);
+    const db = await requireDb();
+    const [session] = await db.select().from(marketingMetaAdsStrategySessions)
+      .where(eq(marketingMetaAdsStrategySessions.status, "in_progress"))
+      .orderBy(desc(marketingMetaAdsStrategySessions.version)).limit(1);
+    return session ? presentMetaStrategySession(await getMetaStrategySessionWithAnswers(session.id)) : null;
+  }),
+
+  startOrResumeMetaAdsStrategy: protectedProcedure.mutation(async ({ ctx }) => {
+    await requireOwner(ctx.user);
+    const db = await requireDb();
+    const [existing] = await db.select().from(marketingMetaAdsStrategySessions)
+      .where(eq(marketingMetaAdsStrategySessions.status, "in_progress"))
+      .orderBy(desc(marketingMetaAdsStrategySessions.version)).limit(1);
+    if (existing) return presentMetaStrategySession(await getMetaStrategySessionWithAnswers(existing.id));
+    const [latest] = await db.select({ version: marketingMetaAdsStrategySessions.version }).from(marketingMetaAdsStrategySessions)
+      .orderBy(desc(marketingMetaAdsStrategySessions.version)).limit(1);
+    const now = Date.now();
+    const result = await db.insert(marketingMetaAdsStrategySessions).values({
+      version: (latest?.version ?? 0) + 1,
+      status: "in_progress",
+      currentQuestionNumber: 1,
+      createdByUserId: ctx.user.id,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const sessionId = Number((result as { insertId?: number }).insertId);
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_meta_ads_strategy_session", sessionId, "Started Meta Ads Strategy Intake");
+    return presentMetaStrategySession(await getMetaStrategySessionWithAnswers(sessionId));
+  }),
+
+  uploadMetaAdsStrategyEvidence: protectedProcedure.input(z.object({
+    sessionId: z.number().int().positive(),
+    questionNumber: z.number().int().min(1).max(META_ADS_STRATEGY_TOTAL_QUESTIONS),
+    fileName: z.string().trim().min(1).max(180),
+    mimeType: z.enum(["application/pdf", "image/png", "image/jpeg", "image/webp", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]),
+    fileBase64: z.string().min(4).max(14_000_000),
+  })).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    const { session } = await getMetaStrategySessionWithAnswers(input.sessionId);
+    if (session.status !== "in_progress") throw new TRPCError({ code: "BAD_REQUEST", message: "Evidence can only be added to an in-progress Meta Ads Strategy Intake." });
+    const bytes = Buffer.from(input.fileBase64, "base64");
+    if (bytes.length === 0 || bytes.length > 10 * 1024 * 1024) throw new TRPCError({ code: "BAD_REQUEST", message: "Strategy evidence must be between 1 byte and 10 MB." });
+    const extension = input.fileName.split(".").pop()?.replace(/[^a-zA-Z0-9]/g, "") || "bin";
+    const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+    const uploaded = await storagePut(`marketing/meta-ads-strategy/${input.sessionId}/q${input.questionNumber}-${crypto.randomUUID()}.${extension}`, bytes, input.mimeType);
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_meta_ads_strategy_evidence", `${input.sessionId}:${input.questionNumber}`, JSON.stringify({ sha256: digest, mimeType: input.mimeType, bytes: bytes.length }));
+    return { label: input.fileName, url: uploaded.url, sha256: digest, mimeType: input.mimeType, bytes: bytes.length };
+  }),
+
+  saveMetaAdsStrategyAnswer: protectedProcedure.input(metaStrategyAnswerInput).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    getMetaAdsStrategyQuestion(input.questionNumber);
+    const db = await requireDb();
+    const { session } = await getMetaStrategySessionWithAnswers(input.sessionId);
+    if (session.status !== "in_progress") throw new TRPCError({ code: "BAD_REQUEST", message: "Only an in-progress Meta Ads Strategy Intake can be edited." });
+    const now = Date.now();
+    const [existing] = await db.select({ id: marketingMetaAdsStrategyAnswers.id }).from(marketingMetaAdsStrategyAnswers)
+      .where(and(eq(marketingMetaAdsStrategyAnswers.sessionId, input.sessionId), eq(marketingMetaAdsStrategyAnswers.questionNumber, input.questionNumber), eq(marketingMetaAdsStrategyAnswers.scopeType, "company"))).limit(1);
+    const values = {
+      answerText: input.answerText,
+      normalizedJson: JSON.stringify(input.normalizedFields ?? {}),
+      attachmentsJson: JSON.stringify(input.attachments),
+      decisionStatus: input.decisionStatus,
+      gapOwnerUserId: input.decisionStatus === "unknown" ? ctx.user.id : null,
+      gapDueAt: input.decisionStatus === "unknown" ? input.gapDueAt! : null,
+      answeredByUserId: ctx.user.id,
+      updatedAt: now,
+    };
+    if (existing) {
+      await db.update(marketingMetaAdsStrategyAnswers).set(values).where(eq(marketingMetaAdsStrategyAnswers.id, existing.id));
+    } else {
+      await db.insert(marketingMetaAdsStrategyAnswers).values({ sessionId: input.sessionId, questionNumber: input.questionNumber, scopeType: "company", programKey: null, ...values, createdAt: now });
+    }
+    const record = await getMetaStrategySessionWithAnswers(input.sessionId);
+    const nextQuestionNumber = calculateNextMetaAdsStrategyQuestion(record.answers.map(answer => answer.questionNumber));
+    await db.update(marketingMetaAdsStrategySessions).set({ currentQuestionNumber: nextQuestionNumber ?? META_ADS_STRATEGY_TOTAL_QUESTIONS, updatedAt: now, ...(nextQuestionNumber === null ? { completedAt: now } : {}) })
+      .where(eq(marketingMetaAdsStrategySessions.id, input.sessionId));
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_meta_ads_strategy_answer", `${input.sessionId}:${input.questionNumber}`, JSON.stringify({ questionNumber: input.questionNumber, decisionStatus: input.decisionStatus, hasGapDeadline: Boolean(input.gapDueAt) }));
+    return presentMetaStrategySession(await getMetaStrategySessionWithAnswers(input.sessionId));
+  }),
+
+  resetMetaAdsStrategy: protectedProcedure.input(z.object({
+    scope: z.union([z.literal("all"), z.enum(META_ADS_STRATEGY_SECTIONS.map(section => section.key) as [string, ...string[]])]),
+  })).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    const db = await requireDb();
+    const [current] = await db.select().from(marketingMetaAdsStrategySessions)
+      .where(eq(marketingMetaAdsStrategySessions.status, "in_progress"))
+      .orderBy(desc(marketingMetaAdsStrategySessions.version)).limit(1);
+    const [latest] = await db.select({ version: marketingMetaAdsStrategySessions.version }).from(marketingMetaAdsStrategySessions)
+      .orderBy(desc(marketingMetaAdsStrategySessions.version)).limit(1);
+    const now = Date.now();
+    const result = await db.insert(marketingMetaAdsStrategySessions).values({ version: (latest?.version ?? 0) + 1, status: "in_progress", resetScope: input.scope, currentQuestionNumber: 1, createdByUserId: ctx.user.id, createdAt: now, updatedAt: now });
+    const sessionId = Number((result as { insertId?: number }).insertId);
+    if (current && input.scope !== "all") {
+      const oldAnswers = (await getMetaStrategySessionWithAnswers(current.id)).answers;
+      const resetNumbers = new Set(META_ADS_STRATEGY_QUESTIONS.filter(question => question.section === input.scope).map(question => question.number));
+      for (const answer of oldAnswers.filter(answer => !resetNumbers.has(answer.questionNumber))) {
+        await db.insert(marketingMetaAdsStrategyAnswers).values({ sessionId, questionNumber: answer.questionNumber, scopeType: answer.scopeType, programKey: answer.programKey, answerText: answer.answerText, normalizedJson: answer.normalizedJson, attachmentsJson: answer.attachmentsJson, decisionStatus: answer.decisionStatus, gapOwnerUserId: answer.gapOwnerUserId, gapDueAt: answer.gapDueAt, answeredByUserId: ctx.user.id, createdAt: now, updatedAt: now });
+      }
+    }
+    if (current) await db.update(marketingMetaAdsStrategySessions).set({ status: "superseded", updatedAt: now }).where(eq(marketingMetaAdsStrategySessions.id, current.id));
+    const record = await getMetaStrategySessionWithAnswers(sessionId);
+    const nextQuestionNumber = calculateNextMetaAdsStrategyQuestion(record.answers.map(answer => answer.questionNumber)) ?? 1;
+    await db.update(marketingMetaAdsStrategySessions).set({ currentQuestionNumber: nextQuestionNumber, updatedAt: now }).where(eq(marketingMetaAdsStrategySessions.id, sessionId));
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_meta_ads_strategy_reset", sessionId, JSON.stringify({ scope: input.scope, sourceSessionId: current?.id ?? null }));
+    return presentMetaStrategySession(await getMetaStrategySessionWithAnswers(sessionId));
   }),
 
   getBrandBooks: protectedProcedure.query(async ({ ctx }) => {
