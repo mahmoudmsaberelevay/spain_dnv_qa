@@ -34,3 +34,11 @@
 - [x] Recorded the privacy-safe validation and architecture decision.
 
 > **Next gate (not part of Phase 5a):** Complete the interview, confirm both program variations and approve a packet. Only then may a separate Phase 5b proposal be prepared for review; it must disclose exact Meta permissions, measurement pilot, budget/spend cap, rollback and monitoring before any external action is considered.
+
+## Agentic Marketing System — Central Hub
+
+- [x] Added one central Marketing-module control center named **Agentic Marketing System**.
+- [x] Linked the complete gated sequence: Brand Studio, Official Knowledge Library, Controlled Work Orders, Content Studio & Approval Inbox, Meta Ads Strategy Intake and Strategy Approval Packet.
+- [x] Added the central entry to the desktop Marketing dashboard and the mobile Marketing sidebar.
+- [x] Explained each step and its guardrail in plain language, including the current no-Meta/no-campaign/no-spend/no-publication boundary.
+- [x] Passed focused hub and Strategy Packet regressions, production build and diff hygiene; the hub route remains protected by CRM sign-in.

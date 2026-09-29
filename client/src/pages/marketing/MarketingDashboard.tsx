@@ -7,6 +7,14 @@ import { Button } from "@/components/ui/button";
 const tools = [
   {
     icon: Sparkles,
+    title: "Agentic Marketing System",
+    description: "Open one central control center for Brand Studio, Knowledge, Work Orders, Content Approval and Meta Strategy planning. All external actions remain locked.",
+    href: "/marketing/agentic-system",
+    color: "from-[#C9A84C] via-[#5BA3B8] to-[#1A3A5C]",
+    badge: "Control center",
+  },
+  {
+    icon: Sparkles,
     title: "Brand Studio",
     description: "Complete the owner-controlled 35-question Brand Discovery, manage approved Brand Book versions, roles, and provider readiness. Publishing remains locked.",
     href: "/marketing/brand-studio",

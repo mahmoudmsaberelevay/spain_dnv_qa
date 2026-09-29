@@ -1,0 +1,22 @@
+import { useLocation } from "wouter";
+import { BookOpenCheck, BrainCircuit, ClipboardCheck, FileCheck2, FilePenLine, LockKeyhole, Sparkles, Target } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+const controls = [
+  { icon: Sparkles, title: "1. Brand Studio", text: "Complete your 35-question Brand Discovery and approve the Brand Book that governs all future marketing work.", href: "/marketing/brand-studio", gate: "Start here" },
+  { icon: BookOpenCheck, title: "2. Official Knowledge Library", text: "Add official programme sources and approve evidence-backed claims before they can be reused.", href: "/marketing/knowledge-library", gate: "Evidence required" },
+  { icon: ClipboardCheck, title: "3. Controlled Work Orders", text: "Plan cost-capped research or creative work with internal review lineage and zero-cost dry runs.", href: "/marketing/work-orders", gate: "Internal only" },
+  { icon: FilePenLine, title: "4. Content Studio & Approval Inbox", text: "Prepare and manually QA versioned Arabic-first content packets. Approval does not publish anything.", href: "/marketing/content-studio", gate: "No publishing" },
+  { icon: Target, title: "5. Meta Ads Strategy Intake", text: "Complete the 66-question paid-media planning interview and record any data gaps instead of guessing.", href: "/marketing/meta-ads-strategy", gate: "Mahmoud only" },
+  { icon: FileCheck2, title: "6. Strategy Approval Packet", text: "Confirm Spain DNV and Malta MPRP variations, then create the hash-locked planning decision packet.", href: "/marketing/meta-ads-strategy-packet", gate: "Meta locked" },
+] as const;
+
+export default function AgenticMarketingHub() {
+  const [, navigate] = useLocation();
+  return <div className="min-h-full bg-[#0c1320] px-4 py-6 text-white md:px-8"><div className="mx-auto max-w-6xl">
+    <section className="relative overflow-hidden rounded-3xl border border-[#5BA3B8]/30 bg-[radial-gradient(circle_at_85%_0%,rgba(91,163,184,.22),transparent_42%),linear-gradient(120deg,#14243a,#0b1423)] p-7 md:p-10">
+      <div className="max-w-3xl"><div className="mb-3 flex items-center gap-2 text-[#a9d6e3]"><BrainCircuit className="h-5 w-5" /><span className="text-xs font-bold uppercase tracking-[.16em]">Marketing module command center</span></div><h1 className="text-3xl font-semibold tracking-tight md:text-4xl">ELEVAY Agentic Marketing System</h1><p className="mt-4 text-sm leading-7 text-slate-300 md:text-base">This is the central place for the new controlled marketing system. Each step is deliberately separated so sources, claims, brand decisions, content and paid-media planning remain traceable and owner-controlled.</p><div className="mt-5 flex items-start gap-3 rounded-xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm text-amber-100"><LockKeyhole className="mt-0.5 h-5 w-5 shrink-0" /><p><strong>Important:</strong> the current system does not connect Meta, create campaigns, spend money, publish content, call a provider or modify CAPI. Those actions remain locked behind later explicit approvals.</p></div></div>
+    </section>
+    <section className="mt-7"><div className="mb-4"><h2 className="text-xl font-semibold">Your controlled workflow</h2><p className="mt-1 text-sm text-slate-400">Open the cards in order. Each card shows what it does and the gate that protects the next step.</p></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{controls.map(control => { const Icon = control.icon; return <article key={control.href} className="flex min-h-64 flex-col rounded-2xl border border-white/10 bg-[#111b2c] p-5 transition hover:border-[#5BA3B8]/50 hover:bg-[#142139]"><div className="flex items-start justify-between gap-3"><div className="rounded-xl bg-[#5BA3B8]/15 p-3 text-[#a9d6e3]"><Icon className="h-6 w-6" /></div><span className="rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-slate-300">{control.gate}</span></div><h3 className="mt-5 text-lg font-semibold">{control.title}</h3><p className="mt-2 flex-1 text-sm leading-6 text-slate-400">{control.text}</p><Button onClick={() => navigate(control.href)} variant="outline" className="mt-5 border-white/15 bg-transparent text-white hover:bg-white/5">Open this step</Button></article>})}</div></section>
+  </div></div>;
+}

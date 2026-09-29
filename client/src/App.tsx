@@ -87,6 +87,7 @@ import WorkOrders from "./pages/marketing/WorkOrders";
 import ContentStudio from "./pages/marketing/ContentStudio";
 import MetaAdsStrategyIntake from "./pages/marketing/MetaAdsStrategyIntake";
 import MetaAdsStrategyPacket from "./pages/marketing/MetaAdsStrategyPacket";
+import AgenticMarketingHub from "./pages/marketing/AgenticMarketingHub";
 
 // ─── Reports Module ─────────────────────────────────────────────────────────────
 import Reports from "./pages/Reports";
@@ -345,6 +346,9 @@ function Router() {
       {/* ── Marketing Module ── */}
       <Route path="/marketing">
         <MobileRoute><MarketingDashboard /></MobileRoute>
+      </Route>
+      <Route path="/marketing/agentic-system">
+        <MobileRoute><AgenticMarketingHub /></MobileRoute>
       </Route>
       <Route path="/marketing/brand-studio">
         <MobileRoute><BrandStudio /></MobileRoute>
