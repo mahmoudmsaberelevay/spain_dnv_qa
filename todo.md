@@ -150,3 +150,13 @@
 - [x] Added Creatomate mapping and live credential regressions plus a privacy-safe validation record; the future callback path remains reserved only and is not implemented or registered.
 
 > **Connection status:** Creatomate is available only as a future approved-template rendering provider. It cannot yet create or edit templates, render media, receive callbacks, publish, alter Meta, spend money, send CAPI events, access client/Lead records or change CRM records. The full-autopilot gates, visual QA, cost controls and a separate rendering/execution-release approval remain mandatory.
+
+## AI Agentic Marketing System — Existing ELEVAY ElevenLabs Voice Provider Validation
+
+- [x] Refreshed and validated `ELEVENLABS_API_KEY` only as a protected server-side environment secret; no value was stored or displayed in CRM, source, files, documentation or chat.
+- [x] Validated the credential through ElevenLabs’ read-only user-subscription endpoint; no speech synthesis, audio-file storage, content generation, publishing, Meta operation, spend or CRM operation was requested.
+- [x] Verified the existing adapter retains the configured ELEVAY Arabic voice profile, `eleven_v3`, Arabic language hint, stability `0.50`, `mp3_44100_128` output, and thoughtful-delivery behavior.
+- [x] Verified Provider Connection Center reports the voice adapter as **server secret present** while its profile remains disabled, the provider/profile kill switches remain engaged, external operations remain disabled, and autopilot execution remains disabled.
+- [x] Added voice-provider mapping, default, no-invocation and live credential regressions plus a privacy-safe validation record.
+
+> **Connection status:** The ELEVAY voice adapter is available only for a future finalized, approved Arabic script with cost, output-provenance and audio-QA controls. It cannot yet synthesize marketing audio automatically, publish, alter Meta, spend money, access client/Lead records or change CRM records. The full-autopilot gates and a separate execution-release approval remain mandatory.
