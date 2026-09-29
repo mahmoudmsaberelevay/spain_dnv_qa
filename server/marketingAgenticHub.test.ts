@@ -19,6 +19,13 @@ describe("Agentic Marketing System hub", () => {
     expect(desktop).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
     expect(dashboard).toContain('title: "AI Agentic Marketing System"');
     expect(page).toContain("ELEVAY AI Agentic Marketing System");
+    expect(page).toContain("Open Settings");
+    expect(page).toContain("Open Production");
+    expect(page).toContain('navigate("/marketing/weekly-results?view=setup")');
+    expect(page).toContain('navigate("/marketing/weekly-results")');
+    expect(dashboard).toContain("Start with Settings or Production");
+    expect(dashboard).toContain('navigate("/marketing/weekly-results?view=setup")');
+    expect(dashboard).toContain('navigate("/marketing/weekly-results")');
     expect(desktop).toContain('label: "Marketing Dashboard", path: "/marketing"');
     expect(desktop).not.toContain('label: "Brand Discovery — 35 Questions", path: "/marketing/brand-studio"');
     expect(desktop).not.toContain('label: "1. Setup"');

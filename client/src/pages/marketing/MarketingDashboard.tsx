@@ -8,10 +8,10 @@ const tools = [
   {
     icon: Sparkles,
     title: "AI Agentic Marketing System",
-    description: "Open the single controlled workspace for Setup, Weekly Results, Brand Studio, approved knowledge, provider readiness, content approval, paid-media planning, pilots, and executive controls.",
+    description: "Open the central Settings and Production workspace for Brand Identity, Design System, targets, weekly research, content, reels, static designs, ads, approvals, and governed controls.",
     href: "/marketing/agentic-system",
     color: "from-[#C9A84C] via-[#5BA3B8] to-[#1A3A5C]",
-    badge: "One controlled workspace",
+    badge: "Settings + Production",
   },
   {
     icon: FolderOpen,
@@ -119,6 +119,20 @@ export default function MarketingDashboard() {
         <p className="text-gray-400 text-base">Create professional marketing materials for your citizenship and residency programs.</p>
         <p className="mt-3 text-sm text-[#81c7d8]">All AI Agentic Marketing controls are now grouped in one dedicated workspace.</p>
       </div>
+
+      <section className="mb-8 overflow-hidden rounded-2xl border border-[#5BA3B8]/35 bg-[radial-gradient(circle_at_100%_0%,rgba(91,163,184,.24),transparent_42%),linear-gradient(120deg,#13263b,#101a2a)] p-5 md:p-6" aria-labelledby="agentic-workspace-heading">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="flex items-center gap-2 text-[#a9d6e3]"><Sparkles className="h-5 w-5" /><span className="text-xs font-bold uppercase tracking-[.15em]">AI Agentic Marketing</span></div>
+            <h2 id="agentic-workspace-heading" className="mt-2 text-2xl font-semibold text-white">Start with Settings or Production</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-300">Settings controls the Brand Identity, official logo, Design System, 30-day targets, and weekly timing. Production is where you review research, posts, static designs, reels, and ad proposals.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:min-w-[360px]">
+            <Button onClick={() => navigate("/marketing/weekly-results?view=setup")} className="h-auto bg-[#5BA3B8] px-4 py-3 text-[#0A1628] hover:bg-[#77b7c8]"><Settings2 className="mr-2 h-4 w-4" />Open Settings</Button>
+            <Button onClick={() => navigate("/marketing/weekly-results")} variant="outline" className="h-auto border-[#EBD990]/45 bg-[#C9A84C]/10 px-4 py-3 text-[#f6dda3] hover:bg-[#C9A84C]/20 hover:text-white"><CalendarClock className="mr-2 h-4 w-4" />Open Production</Button>
+          </div>
+        </div>
+      </section>
 
       {isAdmin && (
         <section className="mb-8 rounded-xl border border-white/10 bg-[#121b2d] p-5" aria-labelledby="news-import-health-heading">
