@@ -36,10 +36,11 @@ describe("Marketing System Work Orders integration contract", () => {
 
   it("wires the responsive CRM route and Marketing navigation entry", () => {
     const app = read("client/src/App.tsx");
-    const dashboard = read("client/src/pages/marketing/MarketingDashboard.tsx");
+    const workspace = read("client/src/pages/marketing/WeeklyResults.tsx");
     const mobile = read("client/src/components/MobileLayout.tsx");
     expect(app).toContain('path="/marketing/work-orders"');
-    expect(dashboard).toContain('href: "/marketing/work-orders"');
-    expect(mobile).toContain('label: "Work Orders", path: "/marketing/work-orders"');
+    expect(workspace).toContain('title: "Work Orders"');
+    expect(workspace).toContain('href: "/marketing/work-orders"');
+    expect(mobile).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
   });
 });

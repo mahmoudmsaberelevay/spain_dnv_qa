@@ -45,7 +45,7 @@ describe("Client Documentation conditional Schengen appointment workflow", () =>
 
   it("shows the appointment entry only for no-visa cases and explains when the reminder stops", () => {
     expect(detail).toContain('label: "Schengen Appointment Date"');
-    expect(detail).toContain("visible: !caseData.schengenVisaValid");
+    expect(detail).toContain("visible: !isCaribbean && !caseData.schengenVisaValid");
     expect(detail).toContain("second day after this email");
     expect(detail).toContain("The booking reminder stops once this date is saved.");
   });

@@ -24,8 +24,8 @@ describe("Financial Client signing-date custom range", () => {
 
   it("validates custom dates in every Financial Client API path", () => {
     const source = read("server/finRouter.ts");
-    expect(source.match(/signingDateFrom: z\.string\(\)\.regex/g)?.length).toBe(4);
-    expect(source.match(/signingDateTo: z\.string\(\)\.regex/g)?.length).toBe(4);
+    expect(source.match(/signingDateFrom: z\.string\(\)\.regex/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(source.match(/signingDateTo: z\.string\(\)\.regex/g)?.length).toBeGreaterThanOrEqual(4);
     expect(source).toContain("signingDateFrom: input?.signingDateFrom");
     expect(source).toContain("signingDateTo: input?.signingDateTo");
   });

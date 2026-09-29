@@ -54,7 +54,7 @@ describe("Weekly Executive Brief CRM integration contract", () => {
     const migration = read("drizzle/0098_agentic_marketing_weekly_executive_briefs.sql");
     const schema = read("drizzle/schema.ts");
     const app = read("client/src/App.tsx");
-    const dashboard = read("client/src/pages/marketing/MarketingDashboard.tsx");
+    const workspace = read("client/src/pages/marketing/WeeklyResults.tsx");
     const hub = read("client/src/pages/marketing/AgenticMarketingHub.tsx");
     const page = read("client/src/pages/marketing/WeeklyExecutiveBriefs.tsx");
     expect(migration).toContain("CREATE TABLE IF NOT EXISTS `marketing_weekly_executive_briefs`");
@@ -63,8 +63,9 @@ describe("Weekly Executive Brief CRM integration contract", () => {
     expect(schema).toContain("marketingWeeklyExecutiveBriefs");
     expect(schema).toContain("marketingWeeklyExecutiveBriefEvents");
     expect(app).toContain('path="/marketing/weekly-executive-briefs"');
-    expect(dashboard).toContain("Weekly Executive Brief & Decision Log");
-    expect(hub).toContain("Weekly Executive Brief & Decision Log");
+    expect(workspace).toContain('title: "Decision Log"');
+    expect(workspace).toContain('href: "/marketing/weekly-executive-briefs"');
+    expect(hub).toContain("Everything is now organized inside two main sections");
     expect(page).toContain("No schedule, email, message, campaign, spend, publication, provider call, CAPI event, or CRM mutation");
     expect(page).not.toContain("fullName");
     expect(page).not.toContain("passport");

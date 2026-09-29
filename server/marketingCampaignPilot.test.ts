@@ -52,14 +52,15 @@ describe("Campaign Pilot Proposal", () => {
 
   it("wires a protected workspace and visibly retains the no-execution boundary", () => {
     const app = read("client/src/App.tsx");
-    const dashboard = read("client/src/pages/marketing/MarketingDashboard.tsx");
+    const workspace = read("client/src/pages/marketing/WeeklyResults.tsx");
     const mobile = read("client/src/components/MobileLayout.tsx");
     const hub = read("client/src/pages/marketing/AgenticMarketingHub.tsx");
     const page = read("client/src/pages/marketing/CampaignPilotProposal.tsx");
     expect(app).toContain('path="/marketing/campaign-pilot-proposal"');
-    expect(dashboard).toContain('href: "/marketing/campaign-pilot-proposal"');
-    expect(mobile).toContain('label: "Campaign Pilot Proposal", path: "/marketing/campaign-pilot-proposal"');
-    expect(hub).toContain('href: "/marketing/campaign-pilot-proposal"');
+    expect(workspace).toContain('title: "Pilot Proposal"');
+    expect(workspace).toContain('href: "/marketing/campaign-pilot-proposal"');
+    expect(mobile).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
+    expect(hub).toContain("Everything is now organized inside two main sections");
     expect(page).toContain("External operations locked");
     expect(page).toContain("Create hash-locked internal proposal");
     expect(page).toContain("does not authorize a Meta sign-in");

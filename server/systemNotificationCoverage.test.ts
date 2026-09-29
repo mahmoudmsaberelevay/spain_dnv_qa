@@ -27,7 +27,9 @@ describe("event-specific executive notification coverage", () => {
     expect(monthly).toContain('resolveSystemNotificationRecipients("other", FINANCE_RECIPIENTS)');
     expect(reminders).toContain('resolveSystemNotificationRecipients("other", MAHMOUD_EMAILS)');
     expect(reminders).toContain('resolveSystemNotificationRecipients("other", consultantEmail)');
-    expect(scheduledBackup).toContain('resolveSystemNotificationRecipients("other", [');
+    expect(scheduledBackup).toContain("Backup delivery is an explicit owner-approved exception");
+    expect(scheduledBackup).toContain("BACKUP_NOTIFICATION_EMAILS");
+    expect(scheduledBackup).toContain("includeSystemRecipient: false");
     expect(clientPortal).toContain("resolveSystemNotificationRecipients(input.eventType, input.recipients)");
     expect(clientPortal).toContain('return resolveSystemNotificationRecipients("other",');
   });
