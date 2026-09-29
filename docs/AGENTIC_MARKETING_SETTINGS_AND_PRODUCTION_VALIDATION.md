@@ -78,3 +78,11 @@ Migration `0102_agentic_marketing_settings_production.sql` is additive:
 - **Type check:** 83 existing repository diagnostics; no diagnostics in changed Settings/Production files.
 - **Database shape:** seven target columns and the `marketing_design_system_assets` table confirmed present; no Design System asset was inserted during implementation.
 - `git diff --check` passed; diff scanning found no configured credential value.
+
+## Owner-supplied Design System activation — 29 September 2026
+
+- Registered the supplied `16327B5C-89A7-4BDE-9CB7-E560D4D38BEE.png` as the active **Official ELEVAY origami bird logo**.
+- Registered an active **ELEVAY Design System v1 — owner-confirmed starting rules** record derived from the supplied official logo and the existing approved ELEVAY brand rules (palette, premium editorial direction, Arabic-first vertical creative, and mandatory visual/wardrobe continuity controls).
+- Both assets are server-stored, SHA-256 recorded, owner-attributed, active, and independently verified in the CRM. The registration produced an audit-log record.
+- The supplied `Claude(1).dmg` was intentionally not opened, stored, or registered because it is unrelated to the Marketing Design System.
+- Asset registration did not create a provider task, generate visual/video/audio content, publish, schedule work, change Meta/CAPI, spend money, or modify CRM operating data.
