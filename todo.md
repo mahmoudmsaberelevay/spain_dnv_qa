@@ -33,3 +33,14 @@
 - [x] Intentionally ignored the unrelated `Claude(1).dmg` attachment; it was not opened, stored, or registered.
 
 > **Execution remains locked:** activating the assets did not dispatch an AI task, render any asset, synthesize audio, schedule work, publish, modify Meta/CAPI, create campaigns, spend funds, or change CRM operating data.
+
+
+## AI Agentic Marketing System — Creative Language Policy
+
+- [x] Enforced Arabic-only campaign, post, carousel, reel, caption, CTA, and voice-over copy; English-only text is reserved for text visibly rendered inside static designs, carousels, reels, images, graphics, and lead-ad visuals.
+- [x] Added an exact **English text shown inside the visual** field to Content Studio and Weekly Results. Visual formats require its English content or `NONE` when no text is visible in the visual.
+- [x] Added server-side review gates: invalid Content Studio packets and Weekly Results creative items cannot enter individual review. The final-preview QA contract now includes a dedicated creative-language compliance check.
+- [x] Enforced ElevenLabs Arabic TTS scripts so only country names may be written in English; other English is rejected before any synthesis request. The TTS interface explains this exception.
+- [x] Added the fixed language policy inside the Settings workspace, updated forms/review details, and passed 19 focused language, voice, Content Studio, Weekly Results, and Agentic hub tests plus production build and changed-file type-check review.
+
+> This is a creative-control update only. It did not create or dispatch any Manus task, image, reel, audio asset, renderer action, scheduled job, publication, Meta/CAPI action, campaign change, spend, or CRM data mutation.

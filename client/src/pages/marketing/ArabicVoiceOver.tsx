@@ -69,7 +69,7 @@ export default function ArabicVoiceOver() {
           <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-white">Arabic script</h2>
-              <p className="mt-1 text-sm text-gray-400">Paste the exact words you want the voice-over to say.</p>
+              <p className="mt-1 text-sm text-gray-400">Use Arabic only. Country names may be written in English (for example: Spain, Malta, Portugal, Greece, Canada or Caribbean).</p>
             </div>
             <span className={`text-xs font-medium ${remainingCharacters < 0 ? "text-red-400" : "text-gray-500"}`}>
               {script.length.toLocaleString()} / {MAX_CHARACTERS.toLocaleString()} characters
@@ -82,13 +82,13 @@ export default function ArabicVoiceOver() {
             dir="rtl"
             lang="ar"
             aria-label="Arabic voice-over script"
-            placeholder="اكتب النص العربي هنا..."
+            placeholder="اكتب النص العربي هنا… مثال: اكتشف الإقامة في Spain معنا اليوم"
             className="min-h-[270px] resize-y border-white/10 bg-[#0f1623] p-4 text-right text-lg leading-9 text-white placeholder:text-gray-600 focus-visible:ring-[#5BA3B8]"
           />
 
           <div className="mt-4 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs leading-relaxed text-gray-500">
-              Expressive <span className="font-medium text-[#A1C6CF]">[thoughtful]</span> delivery is applied automatically. Your text is processed securely on the server.
+              Expressive <span className="font-medium text-[#A1C6CF]">[thoughtful]</span> delivery is applied automatically. The server rejects English words except approved country names.
             </p>
             <Button
               onClick={handleGenerate}

@@ -51,6 +51,13 @@ The CRM schedule remains explicitly **`waiting_execution_release`**. Saving sett
 - The 90% approval-rate target is displayed as a measurement goal only. It cannot bypass individual approval, and there is no publish button or autonomous publishing path.
 - Research/creative final previews and claims remain subject to existing preview fingerprint, official-claim, work-order, Brand Book, QA, and individual-decision gates.
 
+## Creative language policy — enforced
+
+- **Arabic only:** campaign, post, carousel and reel copy; captions; CTAs; and voice-over scripts.
+- **English only:** text physically rendered inside a static design, carousel, reel, image, graphic, or lead-ad visual. The exact field is required for a visual format; `NONE` is accepted only when the visual has no text.
+- **Voice-over exception:** country names may be written in English for pronunciation. No other English word is accepted in an Arabic ElevenLabs script.
+- The server blocks a Content Studio packet or Weekly Results creative item from entering review if its persisted language fields do not satisfy this policy. A dedicated final-preview QA check verifies the rendered asset before approval.
+
 ## Deliberately not enabled
 
 This release did **not** enable:

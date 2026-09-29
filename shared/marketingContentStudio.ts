@@ -47,6 +47,7 @@ export const MARKETING_CONTENT_QA_CHECKS = [
   "asset_provenance",
   "no_guarantees",
   "human_depiction_and_reel_continuity",
+  "creative_language_policy",
   "preview_equivalence",
 ] as const;
 
@@ -63,6 +64,7 @@ export const MARKETING_CONTENT_QA_CHECK_LABELS: Record<MarketingContentQaCheck, 
   asset_provenance: "Asset source, licensing and provenance",
   no_guarantees: "No immigration, financial or timing guarantees",
   human_depiction_and_reel_continuity: "If people appear: complete realistic wardrobe and formal footwear, anatomy and hand integrity, no random cultural accessories, and frame-to-frame reel continuity; mark N/A only when no person appears",
+  creative_language_policy: "Arabic campaign/caption/voice-over content and English-only text rendered inside the visual",
   preview_equivalence: "Final preview matches the represented content",
 };
 
@@ -109,13 +111,13 @@ export function contentPacketOutputSchema(type: MarketingContentType): Record<st
   const common = ["objective", "audience", "program", "claimIds", "sourceLinks", "cta", "scheduledTime", "platformVariants"];
   switch (type) {
     case "static_post":
-      return { artifactType: "StaticPostPacket", required: [...common, "arabicCopy", "caption", "visualBrief", "preview"] };
+      return { artifactType: "StaticPostPacket", required: [...common, "arabicCopy", "caption", "onScreenEnglishText", "visualBrief", "preview"] };
     case "carousel":
-      return { artifactType: "CarouselPacket", required: [...common, "slides", "arabicCopy", "caption", "visualBrief", "preview"] };
+      return { artifactType: "CarouselPacket", required: [...common, "slides", "arabicCopy", "caption", "onScreenEnglishText", "visualBrief", "preview"] };
     case "reel":
-      return { artifactType: "ReelPacket", required: [...common, "arabicScript", "shotList", "caption", "subtitles", "preview"] };
+      return { artifactType: "ReelPacket", required: [...common, "arabicScript", "shotList", "caption", "onScreenEnglishText", "preview"] };
     case "lead_ad":
-      return { artifactType: "LeadAdPacket", required: [...common, "adCopy", "targetingSummary", "landingDestination", "preview"] };
+      return { artifactType: "LeadAdPacket", required: [...common, "adCopy", "onScreenEnglishText", "targetingSummary", "landingDestination", "preview"] };
     case "landing_page":
       return { artifactType: "LandingPagePacket", required: [...common, "pageSections", "arabicCopy", "landingDestination", "preview"] };
   }

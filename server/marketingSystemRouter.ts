@@ -97,6 +97,12 @@ import {
   type MarketingContentStatus,
 } from "../shared/marketingContentStudio";
 import {
+  isCreativeItemType,
+  isVisualTextCreativeItemType,
+  validateArabicOnlyMarketingText,
+  validateEnglishOnlyOnScreenText,
+} from "../shared/marketingCreativeLanguagePolicy";
+import {
   calculateNextMetaAdsStrategyQuestion,
   getMetaAdsStrategyQuestion,
   isMetaAdsStrategyComplete,
@@ -334,7 +340,7 @@ const contentPacketInput = z.object({
   audience: z.string().trim().min(4).max(500),
   objective: z.string().trim().min(12).max(500),
   arabicCopy: z.string().trim().min(12).max(20_000),
-  englishCopy: z.string().trim().max(20_000).optional(),
+  onScreenEnglishText: z.string().trim().max(20_000).optional(),
   caption: z.string().trim().max(20_000).optional(),
   cta: z.string().trim().min(2).max(500),
   landingDestination: z.string().url().max(2_000).optional(),
@@ -604,6 +610,19 @@ function normalizeWeeklyResultsItem(input: z.infer<typeof weeklyResultsItemInput
     isSelected: input.isSelected,
   };
 }
+
+function validateWeeklyResultsItemLanguage(item: Pick<typeof marketingWeeklyResultsItems.$inferSelect, "itemType" | "scriptCopy" | "caption" | "cta" | "metadataJson">) {
+  if (!isCreativeItemType(item.itemType)) return;
+  const metadata = parseJson<Record<string, unknown>>(item.metadataJson, {});
+  const onScreenEnglishText = typeof metadata.onScreenEnglishText === "string" ? metadata.onScreenEnglishText : "";
+  const languageProblems = [
+    item.scriptCopy ? validateArabicOnlyMarketingText(item.scriptCopy, "Script / marketing copy") : (item.itemType === "reel" ? "A reel requires Arabic voice-over / marketing copy before review." : null),
+    item.caption ? validateArabicOnlyMarketingText(item.caption, "Caption") : "An Arabic caption is required before individual review.",
+    item.cta ? validateArabicOnlyMarketingText(item.cta, "CTA") : null,
+    isVisualTextCreativeItemType(item.itemType) ? validateEnglishOnlyOnScreenText(onScreenEnglishText) : null,
+  ].filter((problem): problem is string => Boolean(problem));
+  if (languageProblems.length > 0) throw new TRPCError({ code: "BAD_REQUEST", message: languageProblems[0] });
+}
 function weeklyResultsPlanHash(input: { periodStart: string; title: string; setup: unknown; performance: unknown; preferences: unknown; items: unknown }) {
   return crypto.createHash("sha256").update(JSON.stringify(input)).digest("hex");
 }
@@ -660,7 +679,7 @@ async function requireActiveDesignSystemForCreative() {
 function validateContentPacketText(input: z.infer<typeof contentPacketInput>) {
   const fields: Array<[string, string | undefined]> = [
     ["title", input.title], ["audience", input.audience], ["objective", input.objective], ["Arabic copy", input.arabicCopy],
-    ["English copy", input.englishCopy], ["caption", input.caption], ["CTA", input.cta], ["visual brief", input.visualBrief],
+    ["On-screen English text", input.onScreenEnglishText], ["caption", input.caption], ["CTA", input.cta], ["visual brief", input.visualBrief],
     ["change summary", input.changeSummary], ["payload", JSON.stringify(input.payload)],
   ];
   for (const [label, value] of fields) {
@@ -668,9 +687,23 @@ function validateContentPacketText(input: z.infer<typeof contentPacketInput>) {
     const disallowed = findDisallowedContentPacketData(value);
     if (disallowed) throw new TRPCError({ code: "BAD_REQUEST", message: `Remove ${disallowed} from the content packet ${label}. Content packets must not contain client or Lead identity data.` });
   }
-  if (!contentPacketHasArabicText(input.arabicCopy)) {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "Arabic copy must include Arabic text for ELEVAY's Arabic-first content workflow." });
-  }
+  const languageProblems = [
+    validateArabicOnlyMarketingText(input.arabicCopy, "Arabic primary copy"),
+    input.caption ? validateArabicOnlyMarketingText(input.caption, "Caption") : null,
+    validateArabicOnlyMarketingText(input.cta, "CTA"),
+    isVisualTextCreativeItemType(input.contentType) ? validateEnglishOnlyOnScreenText(input.onScreenEnglishText ?? "") : null,
+  ].filter((problem): problem is string => Boolean(problem));
+  if (languageProblems.length > 0) throw new TRPCError({ code: "BAD_REQUEST", message: languageProblems[0] });
+}
+
+function validateStoredContentPacketLanguage(packet: Pick<typeof marketingContentPackets.$inferSelect, "contentType" | "arabicCopy" | "englishCopy" | "caption" | "cta">) {
+  const languageProblems = [
+    validateArabicOnlyMarketingText(packet.arabicCopy, "Arabic primary copy"),
+    packet.caption ? validateArabicOnlyMarketingText(packet.caption, "Caption") : null,
+    validateArabicOnlyMarketingText(packet.cta, "CTA"),
+    isVisualTextCreativeItemType(packet.contentType) ? validateEnglishOnlyOnScreenText(packet.englishCopy ?? "") : null,
+  ].filter((problem): problem is string => Boolean(problem));
+  if (languageProblems.length > 0) throw new TRPCError({ code: "BAD_REQUEST", message: languageProblems[0] });
 }
 
 function packetContentHash(input: z.infer<typeof contentPacketInput>, rootPacketKey: string, versionNumber: number) {
@@ -686,7 +719,7 @@ function packetContentHash(input: z.infer<typeof contentPacketInput>, rootPacket
     audience: normalizeContentStudioText(input.audience),
     objective: normalizeContentStudioText(input.objective),
     arabicCopy: normalizeContentStudioText(input.arabicCopy),
-    englishCopy: input.englishCopy ? normalizeContentStudioText(input.englishCopy) : null,
+    onScreenEnglishText: input.onScreenEnglishText ? normalizeContentStudioText(input.onScreenEnglishText) : null,
     caption: input.caption ? normalizeContentStudioText(input.caption) : null,
     cta: normalizeContentStudioText(input.cta),
     landingDestination: input.landingDestination ?? null,
@@ -2393,22 +2426,22 @@ export const marketingSystemRouter = router({
     const rootPacketKey = contentPacketKey();
     const now = Date.now();
     const contentHash = packetContentHash(input, rootPacketKey, 1);
-    const result = await db.insert(marketingContentPackets).values({
-      rootPacketKey,
-      versionNumber: 1,
-      previousPacketId: null,
-      workOrderId: order.id,
-      workOrderKey: order.workOrderKey,
-      contentType: input.contentType,
-      title: normalizeContentStudioText(input.title),
-      programKey: input.programKey,
-      platformJson: JSON.stringify(Array.from(new Set(input.platforms))),
-      funnelStage: normalizeContentStudioText(input.funnelStage),
-      audience: normalizeContentStudioText(input.audience),
-      objective: normalizeContentStudioText(input.objective),
-      arabicCopy: normalizeContentStudioText(input.arabicCopy),
-      englishCopy: input.englishCopy ? normalizeContentStudioText(input.englishCopy) : null,
-      caption: input.caption ? normalizeContentStudioText(input.caption) : null,
+   const result = await db.insert(marketingContentPackets).values({
+     rootPacketKey,
+     versionNumber: 1,
+     previousPacketId: null,
+     workOrderId: order.id,
+     workOrderKey: order.workOrderKey,
+     contentType: input.contentType,
+     title: normalizeContentStudioText(input.title),
+     programKey: input.programKey,
+     platformJson: JSON.stringify(Array.from(new Set(input.platforms))),
+     funnelStage: normalizeContentStudioText(input.funnelStage),
+     audience: normalizeContentStudioText(input.audience),
+     objective: normalizeContentStudioText(input.objective),
+     arabicCopy: normalizeContentStudioText(input.arabicCopy),
+      englishCopy: input.onScreenEnglishText ? normalizeContentStudioText(input.onScreenEnglishText) : null,
+     caption: input.caption ? normalizeContentStudioText(input.caption) : null,
       cta: normalizeContentStudioText(input.cta),
       landingDestination: input.landingDestination ?? null,
       scheduledFor: input.scheduledFor ?? null,
@@ -2460,22 +2493,22 @@ export const marketingSystemRouter = router({
     const versionNumber = (latest[0]?.versionNumber ?? previous.versionNumber) + 1;
     const now = Date.now();
     const contentHash = packetContentHash(input, previous.rootPacketKey, versionNumber);
-    const result = await db.insert(marketingContentPackets).values({
-      rootPacketKey: previous.rootPacketKey,
-      versionNumber,
-      previousPacketId: previous.id,
-      workOrderId: order.id,
-      workOrderKey: order.workOrderKey,
-      contentType: input.contentType,
-      title: normalizeContentStudioText(input.title),
-      programKey: input.programKey,
-      platformJson: JSON.stringify(Array.from(new Set(input.platforms))),
-      funnelStage: normalizeContentStudioText(input.funnelStage),
-      audience: normalizeContentStudioText(input.audience),
-      objective: normalizeContentStudioText(input.objective),
-      arabicCopy: normalizeContentStudioText(input.arabicCopy),
-      englishCopy: input.englishCopy ? normalizeContentStudioText(input.englishCopy) : null,
-      caption: input.caption ? normalizeContentStudioText(input.caption) : null,
+   const result = await db.insert(marketingContentPackets).values({
+     rootPacketKey: previous.rootPacketKey,
+     versionNumber,
+     previousPacketId: previous.id,
+     workOrderId: order.id,
+     workOrderKey: order.workOrderKey,
+     contentType: input.contentType,
+     title: normalizeContentStudioText(input.title),
+     programKey: input.programKey,
+     platformJson: JSON.stringify(Array.from(new Set(input.platforms))),
+     funnelStage: normalizeContentStudioText(input.funnelStage),
+     audience: normalizeContentStudioText(input.audience),
+     objective: normalizeContentStudioText(input.objective),
+     arabicCopy: normalizeContentStudioText(input.arabicCopy),
+      englishCopy: input.onScreenEnglishText ? normalizeContentStudioText(input.onScreenEnglishText) : null,
+     caption: input.caption ? normalizeContentStudioText(input.caption) : null,
       cta: normalizeContentStudioText(input.cta),
       landingDestination: input.landingDestination ?? null,
       scheduledFor: input.scheduledFor ?? null,
@@ -2516,6 +2549,7 @@ export const marketingSystemRouter = router({
     if (!packet) throw new TRPCError({ code: "NOT_FOUND", message: "Content packet was not found." });
     if (packet.createdByUserId !== ctx.user.id && !(await isMarketingSystemAdministrator(ctx.user))) throw new TRPCError({ code: "FORBIDDEN", message: "Only the packet creator or a scoped Agentic Marketing administrator can submit it for review." });
     if (!contentCanTransition(packet.status as MarketingContentStatus, "in_review")) throw new TRPCError({ code: "BAD_REQUEST", message: "Only a draft packet can be submitted for review." });
+    validateStoredContentPacketLanguage(packet);
     const now = Date.now();
     await db.update(marketingContentPackets).set({ status: "in_review", blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingContentPackets.id, packet.id));
     await appendContentReviewEvent({ packetId: packet.id, action: "submitted_for_review", fromStatus: packet.status, toStatus: "in_review", actorUserId: ctx.user.id, createdAt: now, payload: { noProviderCall: true } });
@@ -2861,6 +2895,7 @@ export const marketingSystemRouter = router({
     if (!item.isSelected) throw new TRPCError({ code: "BAD_REQUEST", message: "Select this item before sending it for individual review." });
     if (!weeklyResultsItemCanTransition(item.status as WeeklyResultsItemStatus, "pending_individual_review")) throw new TRPCError({ code: "BAD_REQUEST", message: "Only a draft item can enter individual review." });
     if (!item.programKey) throw new TRPCError({ code: "BAD_REQUEST", message: "A programme key is required before an item can be reviewed." });
+    validateWeeklyResultsItemLanguage(item);
     const previewProblem = validatePreviewFingerprint(item.previewUrl, item.previewHash);
     if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: previewProblem });
     await getApprovedContentClaims(parseJson<number[]>(item.sourceClaimIdsJson, []), item.programKey);

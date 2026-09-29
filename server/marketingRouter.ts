@@ -383,6 +383,9 @@ export const marketingRouter = router({
         if (error instanceof Error && error.name === "ElevenLabsError") {
           throw new TRPCError({ code: "BAD_GATEWAY", message: error.message });
         }
+        if (error instanceof Error && error.name === "ElevenLabsLanguagePolicyError") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+        }
         console.error("[Marketing] Arabic voice-over generation failed", error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",

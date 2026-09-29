@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { ENV } from "./_core/env";
 import { storagePut } from "./storage";
+import { validateElevayArabicVoiceOverScript } from "../shared/marketingCreativeLanguagePolicy";
 
 const ELEVENLABS_TTS_ENDPOINT = "https://api.elevenlabs.io/v1/text-to-speech";
 
@@ -33,6 +34,13 @@ function getUserSafeErrorMessage(status: number): string {
 export async function generateElevayArabicVoiceOver(text: string) {
   if (!ENV.elevenLabsApiKey) {
     throw new Error("ELEVENLABS_NOT_CONFIGURED");
+  }
+
+  const languageProblem = validateElevayArabicVoiceOverScript(text);
+  if (languageProblem) {
+    const error = new Error(languageProblem);
+    error.name = "ElevenLabsLanguagePolicyError";
+    throw error;
   }
 
   const script = prepareThoughtfulArabicScript(text);
