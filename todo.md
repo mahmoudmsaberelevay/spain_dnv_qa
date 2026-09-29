@@ -110,3 +110,13 @@
 - [x] Added the direct **Brand Discovery — 35 Questions** Marketing sidebar path and explicit dashboard card label.
 - [x] Passed 14 focused regressions, production build, changed-file diagnostics review and diff hygiene.
 - [x] Added a privacy-safe access-correction validation record.
+
+## AI Agentic Marketing System — OpenAI Editorial Provider Connection
+
+- [x] Added `OPENAI_API_KEY` as a protected server-side secret; no value was stored or displayed in CRM, source, files or chat.
+- [x] Validated the credential with OpenAI’s read-only models endpoint; no model generation request, content generation or model-metadata logging occurred.
+- [x] Verified Provider Connection Center reports OpenAI as **server secret present**.
+- [x] Verified the OpenAI profile remains disabled, external operations remain disabled, autopilot execution remains disabled and the master kill switch remains engaged.
+- [x] Added secret-mapping and live credential validation regressions plus a privacy-safe validation record.
+
+> **Connection status:** OpenAI is available only as a future editorial provider. It cannot yet generate CRM content, publish, change Meta campaigns, spend money, send CAPI events or access client/Lead records. Those controls remain behind the existing full-autopilot gates and a separate execution-release approval.
