@@ -56,3 +56,17 @@
 - [x] Created the user-facing Arabic readiness report: `deliverables/elevay-agentic-marketing-readiness/AGENTIC_MARKETING_OPERATIONAL_READINESS_AR.md`.
 
 > **First permitted test:** an internal, manually created weekly planning/review test after Brand Studio, approved claims, and Meta Strategy inputs are completed. No live media generation, publishing, campaign change, spend, CAPI, or automated weekly preparation is permitted until a separate Execution Release is implemented and owner-approved.
+
+
+## AI Agentic Marketing System — Bounded Weekly Multi-Model Automation Engine
+
+- [x] Added the owner-selected CRM-resident weekly production engine with a hard **USD 100 monthly internal reservation cap** and **USD 20 maximum per-run reservation**.
+- [x] Implemented governed collaboration: OpenAI strategy → Claude independent challenge → Manus structured research/creative-production task. The full context rejects personal data and includes only governed Marketing inputs, aggregate performance, feedback memory, active brand/design rules, and approved evidence claims.
+- [x] Added additive migration `0103_agentic_marketing_weekly_automation.sql` with controls, idempotent jobs, and budget ledger tables; verified all tables are present.
+- [x] Added authenticated Heartbeat scheduling, Cairo weekday/exact-time evaluation, activation/pause lifecycle, idempotent Manus webhook registration, raw-body RSA-SHA256 callback verification, five-minute freshness, durable callback ledger, and a master-stop path.
+- [x] Added Settings UI for live prerequisite visibility, cap/status/job history, enable/pause controls, and one review-only first-test action. Automation output creates individual draft/on-hold Production items only.
+- [x] Preserved all boundaries: no automatic publishing, social scheduling, Meta campaign/ad/audience/budget/spend/billing operation, CAPI, messaging, CRM operating-data mutation, bulk approval, or 90% quality-bypass path.
+- [x] Passed 6 focused suites / 25 tests, production build, local unsigned-callback and scheduler 401 probes, changed-file TypeScript diagnostic review with no new errors beyond the documented baseline, and diff/secret/Meta-mutation hygiene.
+- [x] Passed the full deterministic CRM suite: **133 test files / 668 tests**. The Creatomate read-only live probe is intentionally opt-in (`RUN_LIVE_PROVIDER_VALIDATIONS=true`) so a temporary upstream stall cannot block ordinary regression coverage; its credential was validated at connection time.
+
+> **Live activation is intentionally blocked until its Settings prerequisites are green**—active owner-approved Brand Book, at least one approved official claim (user-supplied internal references remain non-official until Mahmoud approves otherwise), saved weekly timing/settings, and active Design System/logo. Once green, Settings provides **Enable USD 100 engine** then **Run first test**; the first run is review-only, not publication or advertising execution.

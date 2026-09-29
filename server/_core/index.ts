@@ -191,6 +191,13 @@ async function startServer() {
     await handleManusCouncilWebhook(req, res);
   });
 
+  // Weekly Marketing task callbacks are signature-verified against the untouched
+  // raw body and must be registered before the global JSON parser.
+  app.post("/api/webhooks/marketing/manus", express.raw({ type: "application/json", limit: "2mb" }), async (req, res) => {
+    const { handleWeeklyMarketingAutomationManusWebhook } = await import("../weeklyMarketingAutomationWebhook");
+    await handleWeeklyMarketingAutomationManusWebhook(req, res);
+  });
+
   // Meta Lead Ads signatures must be validated against the untouched body.
   // The registrar includes the exact production callback
   // /api/webhooks/meta-leads-v2 and keeps it before express.json(), tRPC,
@@ -328,6 +335,8 @@ async function startServer() {
   app.post("/api/scheduled/clientLifecycleReminders", scheduledClientLifecycleRemindersHandler);
   const { scheduledClientChatMessageHandler } = await import("../scheduledClientChatMessageHandler");
   app.post("/api/scheduled/clientChatMessage", scheduledClientChatMessageHandler);
+  const { scheduledWeeklyMarketingAutomationHandler } = await import("../scheduledWeeklyMarketingAutomationHandler");
+  app.post("/api/scheduled/weeklyMarketingAutomation", scheduledWeeklyMarketingAutomationHandler);
 
   // Backup list endpoint
   app.get("/api/backup/list", requireBackupAdmin, (req, res) => {

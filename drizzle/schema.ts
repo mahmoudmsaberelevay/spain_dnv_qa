@@ -3041,6 +3041,82 @@ export const marketingWeeklyResultsPerformanceSnapshots = mysqlTable("marketing_
 export type MarketingWeeklyResultsPerformanceSnapshot = typeof marketingWeeklyResultsPerformanceSnapshots.$inferSelect;
 export type InsertMarketingWeeklyResultsPerformanceSnapshot = typeof marketingWeeklyResultsPerformanceSnapshots.$inferInsert;
 
+// ─── AGENTIC MARKETING SYSTEM / WEEKLY MULTI-MODEL AUTOMATION ───────────────
+// These tables coordinate bounded internal weekly plan production. They record
+// execution state, idempotency and internal budget reservations; no credentials,
+// client/Lead data, platform publication, Meta action or media bytes are stored.
+export const marketingWeeklyAutomationControls = mysqlTable("marketing_weekly_automation_controls", {
+  id: int("id").autoincrement().primaryKey(),
+  controlKey: varchar("controlKey", { length: 96 }).notNull(),
+  isEnabled: boolean("isEnabled").notNull().default(false),
+  state: varchar("state", { length: 48 }).notNull().default("disabled"),
+  monthlyBudgetUsd: decimal("monthlyBudgetUsd", { precision: 12, scale: 2 }).notNull().default("100.00"),
+  perRunReserveUsd: decimal("perRunReserveUsd", { precision: 12, scale: 2 }).notNull().default("20.00"),
+  scheduleTaskUid: varchar("scheduleTaskUid", { length: 255 }),
+  manusWebhookId: varchar("manusWebhookId", { length: 255 }),
+  lastRunAt: bigint("lastRunAt", { mode: "number" }),
+  lastRunStatus: varchar("lastRunStatus", { length: 48 }),
+  lastError: text("lastError"),
+  configuredByUserId: int("configuredByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_weekly_automation_control_key_unique").on(table.controlKey),
+  index("marketing_weekly_automation_control_state_idx").on(table.state, table.updatedAt),
+]);
+export type MarketingWeeklyAutomationControl = typeof marketingWeeklyAutomationControls.$inferSelect;
+export type InsertMarketingWeeklyAutomationControl = typeof marketingWeeklyAutomationControls.$inferInsert;
+
+export const marketingWeeklyAutomationJobs = mysqlTable("marketing_weekly_automation_jobs", {
+  id: int("id").autoincrement().primaryKey(),
+  jobKey: varchar("jobKey", { length: 96 }).notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+  periodStart: varchar("periodStart", { length: 10 }).notNull(),
+  triggerType: varchar("triggerType", { length: 32 }).notNull(),
+  state: varchar("state", { length: 48 }).notNull().default("queued"),
+  inputSnapshotJson: mediumtext("inputSnapshotJson").notNull(),
+  openAiOutputJson: mediumtext("openAiOutputJson"),
+  anthropicOutputJson: mediumtext("anthropicOutputJson"),
+  manusTaskId: varchar("manusTaskId", { length: 255 }),
+  manusTaskUrl: varchar("manusTaskUrl", { length: 2_000 }),
+  manusOutputJson: mediumtext("manusOutputJson"),
+  attachmentsJson: mediumtext("attachmentsJson").notNull(),
+  planId: int("planId"),
+  reservedCostUsd: decimal("reservedCostUsd", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  errorCode: varchar("errorCode", { length: 120 }),
+  errorSummary: text("errorSummary"),
+  createdByUserId: int("createdByUserId").notNull(),
+  startedAt: bigint("startedAt", { mode: "number" }),
+  completedAt: bigint("completedAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_weekly_automation_job_key_unique").on(table.jobKey),
+  uniqueIndex("marketing_weekly_automation_job_idempotency_unique").on(table.idempotencyKey),
+  uniqueIndex("marketing_weekly_automation_manus_task_unique").on(table.manusTaskId),
+  index("marketing_weekly_automation_job_period_idx").on(table.periodStart, table.state),
+  index("marketing_weekly_automation_job_state_idx").on(table.state, table.updatedAt),
+]);
+export type MarketingWeeklyAutomationJob = typeof marketingWeeklyAutomationJobs.$inferSelect;
+export type InsertMarketingWeeklyAutomationJob = typeof marketingWeeklyAutomationJobs.$inferInsert;
+
+export const marketingWeeklyAutomationBudgetLedger = mysqlTable("marketing_weekly_automation_budget_ledger", {
+  id: int("id").autoincrement().primaryKey(),
+  entryKey: varchar("entryKey", { length: 160 }).notNull(),
+  periodKey: varchar("periodKey", { length: 7 }).notNull(),
+  jobId: int("jobId").notNull(),
+  entryType: varchar("entryType", { length: 48 }).notNull(),
+  amountUsd: decimal("amountUsd", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  note: text("note"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_weekly_automation_budget_entry_unique").on(table.entryKey),
+  index("marketing_weekly_automation_budget_period_idx").on(table.periodKey, table.createdAt),
+  index("marketing_weekly_automation_budget_job_idx").on(table.jobId, table.createdAt),
+]);
+export type MarketingWeeklyAutomationBudgetLedgerEntry = typeof marketingWeeklyAutomationBudgetLedger.$inferSelect;
+export type InsertMarketingWeeklyAutomationBudgetLedgerEntry = typeof marketingWeeklyAutomationBudgetLedger.$inferInsert;
+
 // ─── MARKETING READY SUMMARIES ─────────────────────────────────────────────────
 export const marketingReadySummaries = mysqlTable("marketing_ready_summaries", {
   id: int("id").autoincrement().primaryKey(),

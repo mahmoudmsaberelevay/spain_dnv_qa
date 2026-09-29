@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
+import { COOKIE_NAME } from "@shared/const";
 import { router, protectedProcedure } from "./_core/trpc";
 import { getDb } from "./db";
 import {
@@ -25,6 +26,9 @@ import {
   marketingWeeklyResultsPlans,
   marketingWeeklyResultsPreferenceMemories,
   marketingWeeklyResultsSettings,
+  marketingWeeklyAutomationControls,
+  marketingWeeklyAutomationJobs,
+  marketingWeeklyAutomationBudgetLedger,
   marketingDesignSystemAssets,
   marketingKnowledgeClaims,
   marketingKnowledgeSources,
@@ -155,6 +159,14 @@ import {
   providerSecretPresence,
   summarizeMarketingAutopilotLock,
 } from "../shared/marketingProviderConnections";
+import {
+  enableWeeklyAutomation,
+  getWeeklyAutomationReadiness,
+  markAutomationScheduleTask,
+  pauseWeeklyAutomation,
+  startWeeklyAutomationCycle,
+} from "./weeklyMarketingAutomationService";
+import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -288,6 +300,10 @@ const weeklyResultsItemDecisionInput = z.object({ itemId: z.number().int().posit
 const weeklyResultsPerformanceInput = z.object({
   periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), spendEgp: z.number().finite().min(0).max(100_000_000).default(0), impressions: z.number().int().min(0).max(10_000_000_000).default(0), clicks: z.number().int().min(0).max(10_000_000_000).default(0),
   leadForms: z.number().int().min(0).max(10_000_000_000).default(0), qualifiedLeads: z.number().int().min(0).max(10_000_000_000).default(0), clientStageLeads: z.number().int().min(0).max(10_000_000_000).default(0), notes: z.string().trim().max(4_000).optional(),
+});
+const weeklyAutomationControlInput = z.object({
+  monthlyBudgetUsd: z.number().finite().min(1).max(100).default(100),
+  perRunReserveUsd: z.number().finite().min(1).max(20).default(20),
 });
 
 const knowledgeSourceInput = z.object({
@@ -2718,12 +2734,13 @@ export const marketingSystemRouter = router({
   getWeeklyResultsWorkspace: protectedProcedure.query(async ({ ctx }) => {
     await requireCapability(ctx.user, "view_weekly_results");
     const db = await requireDb();
-    const [settingsRows, plans, preferences, performance, designAssets] = await Promise.all([
+    const [settingsRows, plans, preferences, performance, designAssets, automation] = await Promise.all([
       db.select().from(marketingWeeklyResultsSettings).where(eq(marketingWeeklyResultsSettings.settingsKey, "primary-weekly-results")).limit(1),
       db.select().from(marketingWeeklyResultsPlans).orderBy(desc(marketingWeeklyResultsPlans.periodStart), desc(marketingWeeklyResultsPlans.version)).limit(60),
       db.select().from(marketingWeeklyResultsPreferenceMemories).where(eq(marketingWeeklyResultsPreferenceMemories.status, "active")).orderBy(desc(marketingWeeklyResultsPreferenceMemories.updatedAt)).limit(80),
       db.select().from(marketingWeeklyResultsPerformanceSnapshots).orderBy(desc(marketingWeeklyResultsPerformanceSnapshots.periodStart), desc(marketingWeeklyResultsPerformanceSnapshots.recordedAt)).limit(80),
       db.select().from(marketingDesignSystemAssets).where(eq(marketingDesignSystemAssets.isActive, true)).orderBy(desc(marketingDesignSystemAssets.updatedAt)).limit(20),
+      getWeeklyAutomationReadiness(),
     ]);
     const planIds = plans.map(plan => plan.id);
     const items = planIds.length === 0 ? [] : await db.select().from(marketingWeeklyResultsItems)
@@ -2752,9 +2769,53 @@ export const marketingSystemRouter = router({
         mimeType: asset.mimeType, fileUrl: asset.fileUrl, sha256Digest: asset.sha256Digest, extractionStatus: asset.extractionStatus,
         extraction: parseJson<Record<string, unknown>>(asset.extractionJson, {}), createdAt: asset.createdAt, updatedAt: asset.updatedAt,
       })),
-      policy: WEEKLY_RESULTS_EXECUTION_BOUNDARY, externalOperationsEnabled: false,
-      scheduler: { kind: "crm_background_schedule", configuredFor: "Administrator-selected weekday and time, Africa/Cairo", state: "waiting_execution_release", explanation: "The weekly timing and delivery target are saved in CRM Settings. The job intentionally cannot prepare content through providers until the separate execution-release and provider safety gates are approved." },
+      policy: WEEKLY_RESULTS_EXECUTION_BOUNDARY,
+      automation,
+      boundedProviderAutomationEnabled: Boolean(automation.control.isEnabled),
+      externalOperationsEnabled: false,
+      scheduler: { kind: "crm_background_schedule", configuredFor: "Administrator-selected weekday and time, Africa/Cairo", state: automation.control.state, explanation: "When enabled, the bounded engine requests an internal OpenAI strategy, an Anthropic challenge, and one Manus structured production task. It creates review-ready plans only; publishing, campaign changes, spend, CAPI and client/Lead actions remain disabled." },
     };
+  }),
+
+  enableWeeklyAutomation: protectedProcedure.input(weeklyAutomationControlInput).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "manage_weekly_automation");
+    const sessionToken = ctx.req.cookies?.[COOKIE_NAME] ?? "";
+    if (!sessionToken) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in again before enabling the weekly automation schedule." });
+    let result = await enableWeeklyAutomation({ actorUserId: ctx.user.id, ...input });
+    try {
+      if (result.control.scheduleTaskUid) {
+        await updateHeartbeatJob(result.control.scheduleTaskUid, { enable: true }, sessionToken);
+      } else {
+        // The authenticated scheduler invokes the CRM hourly; Cairo weekday/time is
+        // evaluated inside the handler so Settings changes and daylight saving changes
+        // never require a brittle cron migration.
+        const job = await createHeartbeatJob({ name: "elevay-weekly-multi-model-marketing", cron: "0 0 * * * *", path: "/api/scheduled/weeklyMarketingAutomation", description: "ELEVAY weekly AI planning trigger. The CRM runs provider work only at the owner-configured Cairo weekday/time, then creates review-ready material only." }, sessionToken);
+        await markAutomationScheduleTask(job.taskUid);
+      }
+      result = await getWeeklyAutomationReadiness();
+    } catch (error) {
+      await pauseWeeklyAutomation({ actorUserId: ctx.user.id, reason: "Scheduler provisioning did not complete; weekly automation remains paused." });
+      throw error;
+    }
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_automation", "primary-weekly-multi-model", JSON.stringify({ action: "enabled", monthlyBudgetUsd: input.monthlyBudgetUsd, perRunReserveUsd: input.perRunReserveUsd, publicationEnabled: false, campaignOperationsEnabled: false, spendingEnabled: false }));
+    return result;
+  }),
+
+  pauseWeeklyAutomation: protectedProcedure.input(z.object({ reason: z.string().trim().min(4).max(500) })).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "manage_weekly_automation");
+    const before = await getWeeklyAutomationReadiness();
+    const sessionToken = ctx.req.cookies?.[COOKIE_NAME] ?? "";
+    if (before.control.scheduleTaskUid && sessionToken) await updateHeartbeatJob(before.control.scheduleTaskUid, { enable: false }, sessionToken).catch(() => undefined);
+    const result = await pauseWeeklyAutomation({ actorUserId: ctx.user.id, reason: input.reason });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_automation", "primary-weekly-multi-model", JSON.stringify({ action: "paused", reason: input.reason, publicationEnabled: false, campaignOperationsEnabled: false, spendingEnabled: false }));
+    return result;
+  }),
+
+  runWeeklyAutomationTest: protectedProcedure.mutation(async ({ ctx }) => {
+    await requireCapability(ctx.user, "run_weekly_automation_test");
+    const result = await startWeeklyAutomationCycle({ triggerType: "manual_test", actorUserId: ctx.user.id });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_weekly_automation_job", "manual_test", JSON.stringify({ result: result.reused ? "reused_existing_period_job" : "started", publicationEnabled: false, campaignOperationsEnabled: false, spendingEnabled: false }));
+    return result;
   }),
 
   uploadDesignSystemAsset: protectedProcedure.input(designSystemAssetInput).mutation(async ({ ctx, input }) => {

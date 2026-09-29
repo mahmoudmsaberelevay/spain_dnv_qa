@@ -46,6 +46,8 @@ export type MarketingSystemCapability =
   | "review_weekly_results_items"
   | "approve_weekly_results_items"
   | "record_weekly_results_performance"
+  | "manage_weekly_automation"
+  | "run_weekly_automation_test"
   | "approve_publishing"
   | "manage_campaigns";
 
@@ -57,7 +59,7 @@ const FULL_AGENTIC_MARKETING_CAPABILITIES: readonly MarketingSystemCapability[] 
     "view_content_studio", "create_content_packets", "review_content_packets", "run_content_qa", "approve_content_packets", "stop_content_packets",
     "view_meta_strategy_intake", "manage_meta_strategy_intake",
     "view_campaign_pilot_proposals", "manage_campaign_pilot_proposals",
-    "view_weekly_results", "manage_weekly_results_setup", "prepare_weekly_results", "edit_weekly_results_items", "review_weekly_results_items", "approve_weekly_results_items", "record_weekly_results_performance",
+    "view_weekly_results", "manage_weekly_results_setup", "prepare_weekly_results", "edit_weekly_results_items", "review_weekly_results_items", "approve_weekly_results_items", "record_weekly_results_performance", "manage_weekly_automation", "run_weekly_automation_test",
     "approve_publishing", "manage_campaigns",
 ];
 
