@@ -167,6 +167,31 @@
     min-width: 0;
   }
 
+  /* Agentic Marketing uses dark editorial workspaces: form copy must remain readable in either application theme. */
+  .agentic-readable [data-slot="label"],
+  .agentic-readable input:not([type="checkbox"]):not([type="radio"]),
+  .agentic-readable textarea,
+  .agentic-readable select {
+    color: #ffffff;
+  }
+
+  .agentic-readable input:not([type="checkbox"]):not([type="radio"]),
+  .agentic-readable textarea,
+  .agentic-readable select {
+    border-color: rgba(169, 214, 227, 0.45);
+    background-color: rgba(10, 22, 40, 0.72);
+  }
+
+  .agentic-readable input::placeholder,
+  .agentic-readable textarea::placeholder {
+    color: rgba(255, 255, 255, 0.76);
+  }
+
+  .agentic-readable option {
+    color: #ffffff;
+    background-color: #0a1628;
+  }
+
   @media (min-width: 640px) {
     .container {
       padding-left: 1.5rem; /* 24px - tablet padding */

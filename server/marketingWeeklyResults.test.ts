@@ -88,6 +88,19 @@ describe("Weekly Results CRM integration contract", () => {
     expect(page).not.toContain("Automatically publish approved plans");
   });
 
+  it("uses scoped high-contrast styling for readable white text in Agentic workspaces", () => {
+    const styles = read("client/src/index.css");
+    const workspace = read("client/src/pages/marketing/WeeklyResults.tsx");
+    const dashboard = read("client/src/pages/marketing/MarketingDashboard.tsx");
+    const hub = read("client/src/pages/marketing/AgenticMarketingHub.tsx");
+    expect(styles).toContain(".agentic-readable");
+    expect(styles).toContain("color: #ffffff");
+    expect(styles).toContain("input::placeholder");
+    expect(workspace).toContain('agentic-readable min-h-full bg-[#0c1320] text-white');
+    expect(dashboard).toContain('agentic-readable min-h-full bg-[#0c1320] text-white');
+    expect(hub).toContain('agentic-readable min-h-full bg-[#0c1320]');
+  });
+
   it("keeps Weekly Results inside the protected central Agentic Marketing workspace", () => {
     const app = read("client/src/App.tsx");
     const dashboard = read("client/src/pages/marketing/MarketingDashboard.tsx");

@@ -109,14 +109,14 @@ export default function MarketingDashboard() {
   }, [isAdmin]);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="agentic-readable min-h-full bg-[#0c1320] text-white"><div className="mx-auto max-w-5xl p-6">
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-2">
           <Sparkles className="w-5 h-5 text-teal-400" />
           <span className="text-sm text-teal-400 font-medium uppercase tracking-widest">Marketing Module</span>
         </div>
         <h1 className="text-3xl font-bold text-white mb-2">Marketing Tools</h1>
-        <p className="text-gray-400 text-base">Create professional marketing materials for your citizenship and residency programs.</p>
+        <p className="text-slate-100 text-base">Create professional marketing materials for your citizenship and residency programs.</p>
         <p className="mt-3 text-sm text-[#81c7d8]">All AI Agentic Marketing controls are now grouped in one dedicated workspace.</p>
       </div>
 
@@ -125,7 +125,7 @@ export default function MarketingDashboard() {
           <div className="max-w-2xl">
             <div className="flex items-center gap-2 text-[#a9d6e3]"><Sparkles className="h-5 w-5" /><span className="text-xs font-bold uppercase tracking-[.15em]">AI Agentic Marketing</span></div>
             <h2 id="agentic-workspace-heading" className="mt-2 text-2xl font-semibold text-white">Start with Settings or Production</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-300">Settings controls the Brand Identity, official logo, Design System, 30-day targets, and weekly timing. Production is where you review research, posts, static designs, reels, and ad proposals.</p>
+            <p className="mt-2 text-sm leading-6 text-white">Settings controls the Brand Identity, official logo, Design System, 30-day targets, and weekly timing. Production is where you review research, posts, static designs, reels, and ad proposals.</p>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:min-w-[360px]">
             <Button onClick={() => navigate("/marketing/weekly-results?view=setup")} className="h-auto bg-[#5BA3B8] px-4 py-3 text-[#0A1628] hover:bg-[#77b7c8]"><Settings2 className="mr-2 h-4 w-4" />Open Settings</Button>
@@ -143,14 +143,14 @@ export default function MarketingDashboard() {
               </div>
               <div>
                 <h2 id="news-import-health-heading" className="text-lg font-semibold text-white">News importer health</h2>
-                <p className="text-sm text-gray-400">Daily Digest Gmail authorization and last import status.</p>
+                <p className="text-sm text-slate-100">Daily Digest Gmail authorization and last import status.</p>
               </div>
             </div>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="gap-2 border-white/15 bg-white/5 text-gray-200 hover:bg-white/10"
+              className="gap-2 border-white/15 bg-white/5 text-white hover:bg-white/10"
               onClick={() => window.location.assign("/api/admin/news/status-page")}
             >
               Open status page <ArrowRight className="h-4 w-4" />
@@ -164,13 +164,13 @@ export default function MarketingDashboard() {
             </div>
           ) : newsHealth ? (
             <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
-              <div className="rounded-lg bg-white/5 p-3"><p className="text-gray-400">Gmail authorization</p><p className={newsHealth.connected ? "font-semibold text-emerald-300" : "font-semibold text-amber-300"}>{newsHealth.connected ? "Connected" : "Action required"}</p><p className="mt-1 break-all text-xs text-gray-500">{newsHealth.email || newsHealth.sourceMailbox}</p></div>
-              <div className="rounded-lg bg-white/5 p-3"><p className="text-gray-400">Last successful import</p><p className="font-semibold text-white">{formatDate(newsHealth.lastSuccessfulAt)}</p></div>
-              <div className="rounded-lg bg-white/5 p-3"><p className="text-gray-400">Last attempt</p><p className="font-semibold text-white">{formatDate(newsHealth.lastAttemptAt)}</p></div>
-              <div className="rounded-lg bg-white/5 p-3"><p className="text-gray-400">Importer error</p><p className={newsHealth.lastError ? "font-semibold text-red-300" : "font-semibold text-emerald-300"}>{newsHealth.lastError || "No current error"}</p></div>
+              <div className="rounded-lg bg-white/5 p-3"><p className="text-slate-100">Gmail authorization</p><p className={newsHealth.connected ? "font-semibold text-emerald-300" : "font-semibold text-amber-300"}>{newsHealth.connected ? "Connected" : "Action required"}</p><p className="mt-1 break-all text-xs text-white">{newsHealth.email || newsHealth.sourceMailbox}</p></div>
+              <div className="rounded-lg bg-white/5 p-3"><p className="text-slate-100">Last successful import</p><p className="font-semibold text-white">{formatDate(newsHealth.lastSuccessfulAt)}</p></div>
+              <div className="rounded-lg bg-white/5 p-3"><p className="text-slate-100">Last attempt</p><p className="font-semibold text-white">{formatDate(newsHealth.lastAttemptAt)}</p></div>
+              <div className="rounded-lg bg-white/5 p-3"><p className="text-slate-100">Importer error</p><p className={newsHealth.lastError ? "font-semibold text-red-300" : "font-semibold text-emerald-300"}>{newsHealth.lastError || "No current error"}</p></div>
             </div>
           ) : (
-            <p className="mt-5 text-sm text-gray-400">Loading News importer status…</p>
+            <p className="mt-5 text-sm text-slate-100">Loading News importer status…</p>
           )}
 
           {(newsHealth?.authorizationIssue || newsHealth?.lastError) && (
@@ -191,15 +191,15 @@ export default function MarketingDashboard() {
               onClick={() => !isComingSoon && navigate(tool.href)}
               className={`relative bg-[#1a2235] border border-white/10 rounded-xl p-6 flex flex-col gap-4 transition-all duration-200 ${isComingSoon ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:border-teal-500/50 hover:bg-[#1e2a40]"}`}
             >
-              <span className={`absolute top-4 right-4 text-xs font-semibold px-2 py-0.5 rounded-full ${isComingSoon ? "bg-gray-700 text-gray-400" : "bg-teal-900/60 text-teal-300"}`}>{tool.badge}</span>
+              <span className={`absolute top-4 right-4 text-xs font-semibold px-2 py-0.5 rounded-full ${isComingSoon ? "bg-gray-700 text-slate-100" : "bg-teal-900/60 text-teal-300"}`}>{tool.badge}</span>
               <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center`}><Icon className="w-6 h-6 text-white" /></div>
-              <div className="flex-1"><h2 className="text-lg font-semibold text-white mb-1">{tool.title}</h2><p className="text-sm text-gray-400 leading-relaxed">{tool.description}</p></div>
+              <div className="flex-1"><h2 className="text-lg font-semibold text-white mb-1">{tool.title}</h2><p className="text-sm text-slate-100 leading-relaxed">{tool.description}</p></div>
               {!isComingSoon && <div className="flex items-center gap-1 text-teal-400 text-sm font-medium mt-1">Open Tool <ArrowRight className="w-4 h-4" /></div>}
             </div>
           );
         })}
       </div>
 
-    </div>
+    </div></div>
   );
 }
