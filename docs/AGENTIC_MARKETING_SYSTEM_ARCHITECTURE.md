@@ -1,6 +1,6 @@
 # ELEVAY Agentic Marketing System — Architecture Decision Record
 
-**Date:** 29 September 2026  
+**Date:** 29 September 2026
 **Status:** Phases 0–4 and the Meta Ads Strategy Intake prerequisite are complete in controlled internal-only mode; provider execution, publishing, campaign mutation, and spend remain locked
 **Scope:** Existing `elevay.vip` CRM; no replacement CRM, no local client database, no automatic publishing or paid-media execution.
 
@@ -255,3 +255,16 @@ The Strategy Approval Packet is an **owner-only planning record**, not a campaig
 - [x] Protected responsive packet workspace is available on desktop and mobile Marketing navigation.
 - [x] Focused regressions, production build, TypeScript changed-file review, protected-route verification and diff hygiene completed before checkpointing.
 - [ ] Mahmoud must complete the interview/confirm programme variations and explicitly approve a packet. A separate Phase 5b proposal remains required before Meta authorization, campaign operations, budget or spend can be considered.
+
+
+## Campaign Pilot Proposal decision
+
+**Decision:** introduce an owner-only, proposal-only Campaign Pilot Proposal layer after the Strategy Approval Packet instead of connecting an advertising provider.
+
+- Requires the latest owner-approved Strategy Approval Packet and the matching current active Brand Book.
+- Covers only the confirmed Spain Digital Nomad Residency and Malta Permanent Residence Programme variations.
+- Captures maximum proposed caps, reviewed permission labels, measurement and evidence requirements, monitoring, immediate stop conditions, and rollback steps.
+- Stores a versioned immutable payload and hashes both proposal and linked strategy source.
+- Blocks client and Lead identity content and rejects unsupported permission labels.
+- Owner decisions are constrained to internal approval, change request, rejection, or stop; an old strategy or Brand Book cannot be internally approved after it is superseded.
+- Contains no Meta login, provider request, credential, account, campaign, audience, CAPI, budget reservation, spend, payment, publishing, or scheduled operation.

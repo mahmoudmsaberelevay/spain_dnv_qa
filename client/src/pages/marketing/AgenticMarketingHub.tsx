@@ -9,6 +9,7 @@ const controls = [
   { icon: FilePenLine, title: "4. Content Studio & Approval Inbox", text: "Prepare and manually QA versioned Arabic-first content packets. Approval does not publish anything.", href: "/marketing/content-studio", gate: "No publishing" },
   { icon: Target, title: "5. Meta Ads Strategy Intake", text: "Complete the 66-question paid-media planning interview and record any data gaps instead of guessing.", href: "/marketing/meta-ads-strategy", gate: "Mahmoud only" },
   { icon: FileCheck2, title: "6. Strategy Approval Packet", text: "Confirm Spain DNV and Malta MPRP variations, then create the hash-locked planning decision packet.", href: "/marketing/meta-ads-strategy-packet", gate: "Meta locked" },
+  { icon: ClipboardCheck, title: "7. Campaign Pilot Proposal", text: "Record a proposed future scope, maximum cap, measurement evidence, monitoring and rollback against the approved strategy packet.", href: "/marketing/campaign-pilot-proposal", gate: "No external action" },
 ] as const;
 
 export default function AgenticMarketingHub() {

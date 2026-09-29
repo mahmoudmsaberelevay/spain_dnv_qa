@@ -62,6 +62,14 @@ const tools = [
     badge: "Owner gate",
   },
   {
+    icon: ClipboardCheck,
+    title: "Campaign Pilot Proposal",
+    description: "Document a future measurement-pilot scope, proposed cap, monitoring, and rollback against an approved strategy packet. Meta operations and spend remain locked.",
+    href: "/marketing/campaign-pilot-proposal",
+    color: "from-[#C9A84C] to-[#1A3A5C]",
+    badge: "Internal only",
+  },
+  {
     icon: FolderOpen,
     title: "Ready Summaries",
     description: "Browse and download approved ELEVAY country and program summaries. Administrators can add or remove PDFs from the shared library.",

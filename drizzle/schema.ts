@@ -2705,6 +2705,40 @@ export const marketingMetaAdsStrategyApprovalPackets = mysqlTable("marketing_met
 export type MarketingMetaAdsStrategyApprovalPacket = typeof marketingMetaAdsStrategyApprovalPackets.$inferSelect;
 export type InsertMarketingMetaAdsStrategyApprovalPacket = typeof marketingMetaAdsStrategyApprovalPackets.$inferInsert;
 
+// A reviewed, internal-only measurement-pilot proposal. It is intentionally not a
+// Meta campaign, account, audience, budget reservation, spend, payment or credential record.
+export const marketingMetaCampaignPilotProposals = mysqlTable("marketing_meta_campaign_pilot_proposals", {
+  id: int("id").autoincrement().primaryKey(),
+  proposalKey: varchar("proposalKey", { length: 96 }).notNull(),
+  version: int("version").notNull(),
+  strategyPacketId: int("strategyPacketId").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("proposed"),
+  title: varchar("title", { length: 300 }).notNull(),
+  programKeysJson: mediumtext("programKeysJson").notNull(),
+  requestedPermissionsJson: mediumtext("requestedPermissionsJson").notNull(),
+  budgetPlanJson: mediumtext("budgetPlanJson").notNull(),
+  measurementPlanJson: mediumtext("measurementPlanJson").notNull(),
+  monitoringPlanJson: mediumtext("monitoringPlanJson").notNull(),
+  rollbackPlanJson: mediumtext("rollbackPlanJson").notNull(),
+  proposalPayloadJson: mediumtext("proposalPayloadJson").notNull(),
+  proposalHash: varchar("proposalHash", { length: 64 }).notNull(),
+  strategyPacketHash: varchar("strategyPacketHash", { length: 64 }).notNull(),
+  ownerNote: mediumtext("ownerNote"),
+  createdByUserId: int("createdByUserId").notNull(),
+  proposedAt: bigint("proposedAt", { mode: "number" }).notNull(),
+  decidedByUserId: int("decidedByUserId"),
+  decidedAt: bigint("decidedAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_meta_campaign_pilot_proposal_key_unique").on(table.proposalKey),
+  uniqueIndex("marketing_meta_campaign_pilot_proposal_version_unique").on(table.version),
+  index("marketing_meta_campaign_pilot_proposal_packet_idx").on(table.strategyPacketId, table.status),
+  index("marketing_meta_campaign_pilot_proposal_status_idx").on(table.status, table.updatedAt),
+]);
+export type MarketingMetaCampaignPilotProposal = typeof marketingMetaCampaignPilotProposals.$inferSelect;
+export type InsertMarketingMetaCampaignPilotProposal = typeof marketingMetaCampaignPilotProposals.$inferInsert;
+
 // ─── MARKETING READY SUMMARIES ─────────────────────────────────────────────────
 export const marketingReadySummaries = mysqlTable("marketing_ready_summaries", {
   id: int("id").autoincrement().primaryKey(),

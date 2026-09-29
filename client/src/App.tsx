@@ -87,6 +87,7 @@ import WorkOrders from "./pages/marketing/WorkOrders";
 import ContentStudio from "./pages/marketing/ContentStudio";
 import MetaAdsStrategyIntake from "./pages/marketing/MetaAdsStrategyIntake";
 import MetaAdsStrategyPacket from "./pages/marketing/MetaAdsStrategyPacket";
+import CampaignPilotProposal from "./pages/marketing/CampaignPilotProposal";
 import AgenticMarketingHub from "./pages/marketing/AgenticMarketingHub";
 
 // ─── Reports Module ─────────────────────────────────────────────────────────────
@@ -367,6 +368,9 @@ function Router() {
       </Route>
       <Route path="/marketing/meta-ads-strategy-packet">
         <MobileRoute><MetaAdsStrategyPacket /></MobileRoute>
+      </Route>
+      <Route path="/marketing/campaign-pilot-proposal">
+        <MobileRoute><CampaignPilotProposal /></MobileRoute>
       </Route>
       <Route path="/marketing/summary-generator">
         <MobileRoute><SummaryGenerator /></MobileRoute>

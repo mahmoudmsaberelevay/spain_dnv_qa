@@ -11,6 +11,7 @@ import {
   marketingContentApprovalBatches,
   marketingContentPackets,
   marketingContentReviewEvents,
+  marketingMetaCampaignPilotProposals,
   marketingMetaAdsStrategyApprovalPackets,
   marketingMetaAdsStrategyAnswers,
   marketingMetaAdsStrategySessions,
@@ -87,6 +88,17 @@ import {
   META_ADS_STRATEGY_SECTIONS,
   META_ADS_STRATEGY_TOTAL_QUESTIONS,
 } from "../shared/marketingMetaAdsStrategy";
+import {
+  CAMPAIGN_PILOT_MAX_MONTHLY_MEDIA_CAP_EGP,
+  CAMPAIGN_PILOT_MONITORING_CADENCES,
+  CAMPAIGN_PILOT_PROGRAMS,
+  CAMPAIGN_PILOT_PROPOSAL_STATUSES,
+  campaignPilotCanTransition,
+  findDisallowedCampaignPilotData,
+  hasOnlyAllowedCampaignPilotPermissions,
+  normalizeCampaignPilotText,
+  validateCampaignPilotBudgetPlan,
+} from "../shared/marketingCampaignPilot";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -141,6 +153,42 @@ const metaStrategyProgramAnswerInput = metaStrategyAnswerInput.safeExtend({
 
 const metaStrategyPacketDecisionInput = z.object({
   packetId: z.number().int().positive(),
+  ownerNote: z.string().trim().min(8).max(8_000),
+});
+
+const campaignPilotProposalInput = z.object({
+  strategyPacketId: z.number().int().positive(),
+  title: z.string().trim().min(8).max(300),
+  programKeys: z.array(z.enum(CAMPAIGN_PILOT_PROGRAMS.map(program => program.key) as [string, ...string[]])).min(1).max(CAMPAIGN_PILOT_PROGRAMS.length),
+  requestedPermissions: z.array(z.string().trim().min(3).max(120).regex(/^[a-z0-9_.-]+$/, "Use the exact lower-case permission identifier."))
+    .min(1).max(16),
+  budgetPlan: z.object({
+    monthlyMediaCapEgp: z.number().finite().positive().max(CAMPAIGN_PILOT_MAX_MONTHLY_MEDIA_CAP_EGP),
+    dailyMediaCapEgp: z.number().finite().positive().max(CAMPAIGN_PILOT_MAX_MONTHLY_MEDIA_CAP_EGP),
+    campaignCapEgp: z.number().finite().positive().max(CAMPAIGN_PILOT_MAX_MONTHLY_MEDIA_CAP_EGP),
+  }),
+  measurementPlan: z.object({
+    primaryMetric: z.string().trim().min(4).max(300),
+    attributionWindow: z.string().trim().min(4).max(300),
+    requiredEvidence: z.string().trim().min(12).max(4_000),
+    successCriteria: z.string().trim().min(12).max(4_000),
+    missingDataLockout: z.string().trim().min(12).max(4_000),
+  }),
+  monitoringPlan: z.object({
+    cadence: z.enum(CAMPAIGN_PILOT_MONITORING_CADENCES),
+    owner: z.string().trim().min(2).max(160),
+    alerts: z.string().trim().min(12).max(4_000),
+  }),
+  rollbackPlan: z.object({
+    stopConditions: z.string().trim().min(12).max(4_000),
+    rollbackOwner: z.string().trim().min(2).max(160),
+    rollbackSteps: z.string().trim().min(12).max(4_000),
+  }),
+});
+
+const campaignPilotDecisionInput = z.object({
+  proposalId: z.number().int().positive(),
+  nextStatus: z.enum(["internally_approved", "changes_requested", "rejected", "stopped"]),
   ownerNote: z.string().trim().min(8).max(8_000),
 });
 
@@ -238,6 +286,10 @@ function contentPacketKey() {
 
 function metaStrategyPacketKey() {
   return `masp-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 10)}`;
+}
+
+function campaignPilotProposalKey() {
+  return `mcpp-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 10)}`;
 }
 
 async function appendWorkOrderEvent(input: {
@@ -859,6 +911,182 @@ export const marketingSystemRouter = router({
     await db.update(marketingMetaAdsStrategySessions).set({ status: "approved", approvedAt: now, approvedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingMetaAdsStrategySessions.id, packet.strategySessionId));
     await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_meta_ads_strategy_approval_packet", packet.id, JSON.stringify({ decision: "approved", packetHash: packet.packetHash, ownerNoteLength: input.ownerNote.length, noCampaignActivation: true }));
     return { id: packet.id, status: "approved" as const, approvedAt: now };
+  }),
+
+  getCampaignPilotProposalWorkspace: protectedProcedure.query(async ({ ctx }) => {
+    await requireOwner(ctx.user);
+    const db = await requireDb();
+    const approvedPackets = await db.select().from(marketingMetaAdsStrategyApprovalPackets)
+      .where(eq(marketingMetaAdsStrategyApprovalPackets.status, "approved"))
+      .orderBy(desc(marketingMetaAdsStrategyApprovalPackets.version));
+    const proposals = await db.select().from(marketingMetaCampaignPilotProposals)
+      .orderBy(desc(marketingMetaCampaignPilotProposals.version));
+    return {
+      approvedPackets: approvedPackets.map(packet => ({
+        id: packet.id,
+        version: packet.version,
+        packetHash: packet.packetHash,
+        sourceAnswerHash: packet.sourceAnswerHash,
+        approvedAt: packet.decidedAt,
+        payload: parseJson<Record<string, unknown>>(packet.packetPayloadJson, {}),
+      })),
+      proposals: proposals.map(proposal => ({
+        ...proposal,
+        programKeys: parseJson<string[]>(proposal.programKeysJson, []),
+        requestedPermissions: parseJson<string[]>(proposal.requestedPermissionsJson, []),
+        budgetPlan: parseJson<Record<string, unknown>>(proposal.budgetPlanJson, {}),
+        measurementPlan: parseJson<Record<string, unknown>>(proposal.measurementPlanJson, {}),
+        monitoringPlan: parseJson<Record<string, unknown>>(proposal.monitoringPlanJson, {}),
+        rollbackPlan: parseJson<Record<string, unknown>>(proposal.rollbackPlanJson, {}),
+        payload: parseJson<Record<string, unknown>>(proposal.proposalPayloadJson, {}),
+      })),
+      policy: {
+        maximumMonthlyMediaCapEgp: CAMPAIGN_PILOT_MAX_MONTHLY_MEDIA_CAP_EGP,
+        permittedPrograms: CAMPAIGN_PILOT_PROGRAMS,
+      },
+    };
+  }),
+
+  proposeCampaignPilot: protectedProcedure.input(campaignPilotProposalInput).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    const db = await requireDb();
+    const [strategyPacket] = await db.select().from(marketingMetaAdsStrategyApprovalPackets)
+      .where(eq(marketingMetaAdsStrategyApprovalPackets.id, input.strategyPacketId)).limit(1);
+    if (!strategyPacket || strategyPacket.status !== "approved") {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "A Campaign Pilot Proposal requires an explicitly owner-approved Strategy Approval Packet." });
+    }
+    const [latestApprovedPacket] = await db.select({ id: marketingMetaAdsStrategyApprovalPackets.id })
+      .from(marketingMetaAdsStrategyApprovalPackets)
+      .where(eq(marketingMetaAdsStrategyApprovalPackets.status, "approved"))
+      .orderBy(desc(marketingMetaAdsStrategyApprovalPackets.version)).limit(1);
+    if (!latestApprovedPacket || latestApprovedPacket.id !== strategyPacket.id) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Use the latest approved Strategy Approval Packet before proposing a measurement pilot." });
+    }
+    const activeBrandBook = await getActiveBrandBookForWorkOrder();
+    if (!activeBrandBook || activeBrandBook.id !== strategyPacket.brandBookId) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "The active Brand Book differs from the approved strategy packet. Prepare and approve a new Strategy Approval Packet first." });
+    }
+    const budgetError = validateCampaignPilotBudgetPlan(input.budgetPlan);
+    if (budgetError) throw new TRPCError({ code: "BAD_REQUEST", message: budgetError });
+    if (!hasOnlyAllowedCampaignPilotPermissions(input.requestedPermissions)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "The proposal includes an unsupported Meta permission identifier. Use only the reviewed permission inventory and revalidate any scope before a future external integration." });
+    }
+    const fieldsToCheck = [
+      input.title,
+      ...input.requestedPermissions,
+      input.measurementPlan.primaryMetric,
+      input.measurementPlan.attributionWindow,
+      input.measurementPlan.requiredEvidence,
+      input.measurementPlan.successCriteria,
+      input.measurementPlan.missingDataLockout,
+      input.monitoringPlan.owner,
+      input.monitoringPlan.alerts,
+      input.rollbackPlan.rollbackOwner,
+      input.rollbackPlan.stopConditions,
+      input.rollbackPlan.rollbackSteps,
+    ];
+    for (const value of fieldsToCheck) {
+      const disallowed = findDisallowedCampaignPilotData(value);
+      if (disallowed) throw new TRPCError({ code: "BAD_REQUEST", message: `Remove ${disallowed} from the Campaign Pilot Proposal. It may not include client or Lead identity data.` });
+    }
+    const programKeys = Array.from(new Set(input.programKeys)).sort();
+    const requestedPermissions = Array.from(new Set(input.requestedPermissions)).sort();
+    const now = Date.now();
+    const [latest] = await db.select({ version: marketingMetaCampaignPilotProposals.version })
+      .from(marketingMetaCampaignPilotProposals).orderBy(desc(marketingMetaCampaignPilotProposals.version)).limit(1);
+    const payload = {
+      title: normalizeCampaignPilotText(input.title),
+      strategyPacket: { id: strategyPacket.id, version: strategyPacket.version, packetHash: strategyPacket.packetHash, sourceAnswerHash: strategyPacket.sourceAnswerHash },
+      brandBook: { id: activeBrandBook.id, version: activeBrandBook.version, hash: activeBrandBook.contentHash },
+      programs: programKeys,
+      requestedPermissions,
+      budgetPlan: input.budgetPlan,
+      measurementPlan: {
+        primaryMetric: normalizeCampaignPilotText(input.measurementPlan.primaryMetric),
+        attributionWindow: normalizeCampaignPilotText(input.measurementPlan.attributionWindow),
+        requiredEvidence: normalizeCampaignPilotText(input.measurementPlan.requiredEvidence),
+        successCriteria: normalizeCampaignPilotText(input.measurementPlan.successCriteria),
+        missingDataLockout: normalizeCampaignPilotText(input.measurementPlan.missingDataLockout),
+      },
+      monitoringPlan: {
+        cadence: input.monitoringPlan.cadence,
+        owner: normalizeCampaignPilotText(input.monitoringPlan.owner),
+        alerts: normalizeCampaignPilotText(input.monitoringPlan.alerts),
+      },
+      rollbackPlan: {
+        stopConditions: normalizeCampaignPilotText(input.rollbackPlan.stopConditions),
+        rollbackOwner: normalizeCampaignPilotText(input.rollbackPlan.rollbackOwner),
+        rollbackSteps: normalizeCampaignPilotText(input.rollbackPlan.rollbackSteps),
+      },
+      scope: "Internal proposal only. No Meta login, permission grant, campaign, ad set, ad, budget reservation, spend, payment, CAPI, publishing, message or provider operation is authorized.",
+    };
+    const proposalPayloadJson = JSON.stringify(payload);
+    const proposalHash = crypto.createHash("sha256").update(proposalPayloadJson).digest("hex");
+    const result = await db.insert(marketingMetaCampaignPilotProposals).values({
+      proposalKey: campaignPilotProposalKey(),
+      version: (latest?.version ?? 0) + 1,
+      strategyPacketId: strategyPacket.id,
+      status: "proposed",
+      title: payload.title,
+      programKeysJson: JSON.stringify(programKeys),
+      requestedPermissionsJson: JSON.stringify(requestedPermissions),
+      budgetPlanJson: JSON.stringify(payload.budgetPlan),
+      measurementPlanJson: JSON.stringify(payload.measurementPlan),
+      monitoringPlanJson: JSON.stringify(payload.monitoringPlan),
+      rollbackPlanJson: JSON.stringify(payload.rollbackPlan),
+      proposalPayloadJson,
+      proposalHash,
+      strategyPacketHash: strategyPacket.packetHash,
+      ownerNote: null,
+      createdByUserId: ctx.user.id,
+      proposedAt: now,
+      decidedByUserId: null,
+      decidedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const proposalId = Number((result as { insertId?: number }).insertId);
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_meta_campaign_pilot_proposal", proposalId, JSON.stringify({ strategyPacketId: strategyPacket.id, strategyPacketHash: strategyPacket.packetHash, proposalHash, programKeys, requestedPermissionCount: requestedPermissions.length, proposedCaps: input.budgetPlan, noExecution: true }));
+    return { proposalId, proposalHash, status: "proposed" as const };
+  }),
+
+  decideCampaignPilot: protectedProcedure.input(campaignPilotDecisionInput).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    const db = await requireDb();
+    const [proposal] = await db.select().from(marketingMetaCampaignPilotProposals)
+      .where(eq(marketingMetaCampaignPilotProposals.id, input.proposalId)).limit(1);
+    if (!proposal) throw new TRPCError({ code: "NOT_FOUND", message: "Campaign Pilot Proposal not found." });
+    if (!(CAMPAIGN_PILOT_PROPOSAL_STATUSES as readonly string[]).includes(proposal.status)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Campaign Pilot Proposal status is invalid." });
+    }
+    if (!campaignPilotCanTransition(proposal.status as typeof CAMPAIGN_PILOT_PROPOSAL_STATUSES[number], input.nextStatus)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "This Campaign Pilot Proposal cannot make the requested state transition." });
+    }
+    const [strategyPacket] = await db.select().from(marketingMetaAdsStrategyApprovalPackets)
+      .where(eq(marketingMetaAdsStrategyApprovalPackets.id, proposal.strategyPacketId)).limit(1);
+    if (!strategyPacket || strategyPacket.status !== "approved" || strategyPacket.packetHash !== proposal.strategyPacketHash) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "The linked Strategy Approval Packet is no longer valid for this proposal. Create a fresh proposal from the current approved packet." });
+    }
+    if (input.nextStatus === "internally_approved") {
+      const [latestApprovedPacket] = await db.select({ id: marketingMetaAdsStrategyApprovalPackets.id })
+        .from(marketingMetaAdsStrategyApprovalPackets)
+        .where(eq(marketingMetaAdsStrategyApprovalPackets.status, "approved"))
+        .orderBy(desc(marketingMetaAdsStrategyApprovalPackets.version)).limit(1);
+      const activeBrandBook = await getActiveBrandBookForWorkOrder();
+      if (!latestApprovedPacket || latestApprovedPacket.id !== strategyPacket.id || !activeBrandBook || activeBrandBook.id !== strategyPacket.brandBookId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "The strategy packet or active Brand Book has changed. Create a fresh Campaign Pilot Proposal from the current approved strategy before recording internal approval." });
+      }
+    }
+    const now = Date.now();
+    await db.update(marketingMetaCampaignPilotProposals).set({
+      status: input.nextStatus,
+      ownerNote: input.ownerNote,
+      decidedByUserId: ctx.user.id,
+      decidedAt: now,
+      updatedAt: now,
+    }).where(eq(marketingMetaCampaignPilotProposals.id, proposal.id));
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_meta_campaign_pilot_proposal", proposal.id, JSON.stringify({ fromStatus: proposal.status, toStatus: input.nextStatus, ownerNoteLength: input.ownerNote.length, noExecution: true, externalAuthorityGranted: false }));
+    return { id: proposal.id, status: input.nextStatus, decidedAt: now, noExecution: true };
   }),
 
   getBrandBooks: protectedProcedure.query(async ({ ctx }) => {

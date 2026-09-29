@@ -36,6 +36,8 @@ export type MarketingSystemCapability =
   | "stop_content_packets"
   | "view_meta_strategy_intake"
   | "manage_meta_strategy_intake"
+  | "view_campaign_pilot_proposals"
+  | "manage_campaign_pilot_proposals"
   | "approve_publishing"
   | "manage_campaigns";
 
@@ -47,6 +49,7 @@ const CAPABILITIES: Record<Exclude<EffectiveMarketingSystemRole, null>, readonly
     "view_work_orders", "submit_work_orders", "review_work_orders", "run_work_order_dry_runs", "cancel_work_orders",
     "view_content_studio", "create_content_packets", "review_content_packets", "run_content_qa", "approve_content_packets", "stop_content_packets",
     "view_meta_strategy_intake", "manage_meta_strategy_intake",
+    "view_campaign_pilot_proposals", "manage_campaign_pilot_proposals",
     "approve_publishing", "manage_campaigns",
   ],
   marketing_manager: [

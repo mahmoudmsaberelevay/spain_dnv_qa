@@ -51,3 +51,14 @@
 - [x] Added a bounded **Checking session…** transition state that prevents duplicate navigation clicks.
 - [x] Passed 9 focused regressions, production build, changed-file TypeScript diagnostic review, browser validation of `/login?returnTo=%2Fmarketing`, and diff hygiene.
 - [x] Recorded a privacy-safe validation document; no CRM, marketing, Meta, campaign, CAPI, provider, publication, financial, or client data was changed.
+
+## Agentic Marketing System — Campaign Pilot Proposal
+
+- [x] Model a proposal-only future measurement-pilot control plane after an approved Strategy Packet.
+- [x] Require the newest approved packet, matching active Brand Book, reviewed program scope, bounded permission vocabulary, and explicit caps.
+- [x] Capture immutable measurement, monitoring, stop, rollback, source-hash and owner-decision evidence without personal CRM data.
+- [x] Add owner-only proposal, internal decision, change, rejection and immediate stop controls with no external action path.
+- [x] Add the protected desktop/mobile/Agentic Hub workspace entry.
+- [x] Apply the reviewed additive migration and verify the table is empty.
+- [x] Pass focused regressions, production build, changed-file TypeScript review, protected-route check and diff hygiene.
+- [x] Save final checkpoint preparation.
