@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { router, protectedProcedure } from "./_core/trpc";
 import { getDb } from "./db";
@@ -12,6 +12,10 @@ import {
   marketingKnowledgeSources,
   marketingProviderProfiles,
   marketingSystemRoleAssignments,
+  marketingWorkOrderArtifacts,
+  marketingWorkOrderCostLedger,
+  marketingWorkOrderEvents,
+  marketingWorkOrders,
   users,
 } from "../drizzle/schema";
 import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
@@ -42,6 +46,18 @@ import {
   normalizeOfficialKnowledgeUrl,
   stableKnowledgeHash,
 } from "../shared/marketingKnowledge";
+import {
+  capabilityForWorkOrder,
+  findDisallowedWorkOrderData,
+  MARKETING_WORK_ORDER_DEFAULT_SCHEMAS,
+  MARKETING_WORK_ORDER_STATUSES,
+  MARKETING_WORK_ORDER_TYPES,
+  normalizeWorkOrderText,
+  workOrderCanTransition,
+  workOrderRequiresApprovedClaims,
+  workOrderRequiresBrandBook,
+  type MarketingWorkOrderStatus,
+} from "../shared/marketingWorkOrders";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -81,6 +97,95 @@ const knowledgeClaimInput = z.object({
   sourceId: z.number().int().positive(),
   riskLevel: z.enum(MARKETING_KNOWLEDGE_RISK_LEVELS),
 });
+
+const workOrderInput = z.object({
+  workType: z.enum(MARKETING_WORK_ORDER_TYPES),
+  title: z.string().trim().min(6).max(300),
+  programKey: z.string().trim().min(2).max(96).regex(/^[a-z0-9_]+$/).optional(),
+  objective: z.string().trim().min(12).max(500),
+  brief: z.string().trim().min(30).max(20_000),
+  requestedProviderAlias: z.string().trim().min(3).max(96),
+  knowledgeClaimIds: z.array(z.number().int().positive()).max(32).default([]),
+  inputArtifactIds: z.array(z.number().int().positive()).max(32).default([]),
+  costCeilingUsd: z.number().finite().min(0).max(10_000),
+  estimatedCostUsd: z.number().finite().min(0).max(10_000),
+  maxIterations: z.number().int().min(1).max(5).default(1),
+});
+
+const workOrderTransitionInput = z.object({
+  workOrderId: z.number().int().positive(),
+  nextStatus: z.enum(MARKETING_WORK_ORDER_STATUSES),
+  note: z.string().trim().min(4).max(4_000),
+});
+
+function money(value: number) {
+  return value.toFixed(2);
+}
+
+function workOrderKey() {
+  return `mwo-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 10)}`;
+}
+
+async function appendWorkOrderEvent(input: {
+  workOrderId: number;
+  action: string;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  reason?: string | null;
+  payload?: Record<string, unknown>;
+  actorUserId: number;
+  createdAt?: number;
+}) {
+  const db = await requireDb();
+  const now = input.createdAt ?? Date.now();
+  await db.insert(marketingWorkOrderEvents).values({
+    workOrderId: input.workOrderId,
+    action: input.action,
+    fromStatus: input.fromStatus ?? null,
+    toStatus: input.toStatus ?? null,
+    reason: input.reason ?? null,
+    payloadJson: JSON.stringify(input.payload ?? {}),
+    actorUserId: input.actorUserId,
+    createdAt: now,
+  });
+}
+
+async function getActiveBrandBookForWorkOrder() {
+  const db = await requireDb();
+  const [brandBook] = await db.select().from(marketingBrandBooks)
+    .where(eq(marketingBrandBooks.status, "active"))
+    .orderBy(desc(marketingBrandBooks.version)).limit(1);
+  return brandBook ?? null;
+}
+
+async function validateWorkOrderReferences(input: z.infer<typeof workOrderInput>) {
+  const db = await requireDb();
+  const claimed = Array.from(new Set(input.knowledgeClaimIds));
+  if (claimed.length > 0) {
+    const claims = await db.select({
+      id: marketingKnowledgeClaims.id,
+      programKey: marketingKnowledgeClaims.programKey,
+      status: marketingKnowledgeClaims.status,
+      sourceSnapshotHash: marketingKnowledgeClaims.sourceSnapshotHash,
+      sourceStatus: marketingKnowledgeSources.status,
+      sourceChangeState: marketingKnowledgeSources.changeState,
+    }).from(marketingKnowledgeClaims)
+      .innerJoin(marketingKnowledgeSources, eq(marketingKnowledgeClaims.sourceId, marketingKnowledgeSources.id))
+      .where(inArray(marketingKnowledgeClaims.id, claimed));
+    if (claims.length !== claimed.length) throw new TRPCError({ code: "BAD_REQUEST", message: "One or more requested claim references do not exist." });
+    if (claims.some(claim => claim.status !== "approved" || claim.sourceStatus !== "approved" || claim.sourceChangeState !== "tracked")) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Every referenced claim must be owner-approved and backed by a tracked official source." });
+    }
+    if (input.programKey && claims.some(claim => claim.programKey !== input.programKey)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Claim references must match the work order programme." });
+    }
+    return claims;
+  }
+  if (workOrderRequiresApprovedClaims(input.workType)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "This work type requires at least one approved, tracked claim reference." });
+  }
+  return [];
+}
 
 async function requireDb() {
   const db = await getDb();
@@ -664,6 +769,274 @@ export const marketingSystemRouter = router({
       .where(eq(marketingKnowledgeClaims.id, claim.id));
     await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_knowledge_claim_review", claim.id, JSON.stringify({ decision: input.decision, sourceId: claim.sourceId, contentHash: claim.contentHash }));
     return { success: true, status: input.decision };
+  }),
+
+  getWorkOrders: protectedProcedure.query(async ({ ctx }) => {
+    await requireCapability(ctx.user, "view_work_orders");
+    const db = await requireDb();
+    const orders = await db.select().from(marketingWorkOrders)
+      .orderBy(desc(marketingWorkOrders.updatedAt)).limit(120);
+    const orderIds = orders.map(order => order.id);
+    if (orderIds.length === 0) {
+      return {
+        orders: [],
+        policy: "Phase 3 creates internal, typed work orders and dry-run lineage only. It cannot call a provider, publish content, contact clients, change Meta/CAPI, activate campaigns, or spend money.",
+      };
+    }
+    const [artifacts, events, costEntries, profiles] = await Promise.all([
+      db.select().from(marketingWorkOrderArtifacts).where(inArray(marketingWorkOrderArtifacts.workOrderId, orderIds)).orderBy(desc(marketingWorkOrderArtifacts.createdAt)),
+      db.select().from(marketingWorkOrderEvents).where(inArray(marketingWorkOrderEvents.workOrderId, orderIds)).orderBy(desc(marketingWorkOrderEvents.createdAt)),
+      db.select().from(marketingWorkOrderCostLedger).where(inArray(marketingWorkOrderCostLedger.workOrderId, orderIds)).orderBy(desc(marketingWorkOrderCostLedger.createdAt)),
+      db.select({ alias: marketingProviderProfiles.alias, isEnabled: marketingProviderProfiles.isEnabled, killSwitchEnabled: marketingProviderProfiles.killSwitchEnabled, status: marketingProviderProfiles.status })
+        .from(marketingProviderProfiles),
+    ]);
+    const profileByAlias = new Map(profiles.map(profile => [profile.alias, profile]));
+    return {
+      orders: orders.map(order => ({
+        ...order,
+        knowledgeClaimIds: parseJson<number[]>(order.knowledgeClaimIdsJson, []),
+        inputArtifactIds: parseJson<number[]>(order.inputArtifactIdsJson, []),
+        outputSchema: parseJson<Record<string, unknown>>(order.outputSchemaJson, {}),
+        allowedNextStates: parseJson<string[]>(order.allowedNextStatesJson, []),
+        provider: profileByAlias.get(order.requestedProviderAlias) ?? null,
+        artifacts: artifacts.filter(artifact => artifact.workOrderId === order.id).map(artifact => ({
+          ...artifact,
+          payload: parseJson<Record<string, unknown>>(artifact.artifactPayloadJson, {}),
+          claimIds: parseJson<number[]>(artifact.sourceClaimIdsJson, []),
+          sourceSnapshotHashes: parseJson<string[]>(artifact.sourceSnapshotHashesJson, []),
+        })),
+        events: events.filter(event => event.workOrderId === order.id).map(event => ({ ...event, payload: parseJson<Record<string, unknown>>(event.payloadJson, {}) })),
+        costs: costEntries.filter(entry => entry.workOrderId === order.id),
+      })),
+      policy: "Phase 3 creates internal, typed work orders and dry-run lineage only. It cannot call a provider, publish content, contact clients, change Meta/CAPI, activate campaigns, or spend money.",
+    };
+  }),
+
+  getWorkOrderConfiguration: protectedProcedure.query(async ({ ctx }) => {
+    await requireCapability(ctx.user, "submit_work_orders");
+    await seedProviderProfiles();
+    const db = await requireDb();
+    const [brandBook, profiles, claims] = await Promise.all([
+      getActiveBrandBookForWorkOrder(),
+      db.select({
+        alias: marketingProviderProfiles.alias,
+        provider: marketingProviderProfiles.provider,
+        modelId: marketingProviderProfiles.modelId,
+        purpose: marketingProviderProfiles.purpose,
+        status: marketingProviderProfiles.status,
+        isEnabled: marketingProviderProfiles.isEnabled,
+        killSwitchEnabled: marketingProviderProfiles.killSwitchEnabled,
+      }).from(marketingProviderProfiles).orderBy(marketingProviderProfiles.alias),
+      db.select({
+        id: marketingKnowledgeClaims.id,
+        programKey: marketingKnowledgeClaims.programKey,
+        claimType: marketingKnowledgeClaims.claimType,
+        claimText: marketingKnowledgeClaims.claimText,
+        sourceSnapshotHash: marketingKnowledgeClaims.sourceSnapshotHash,
+      }).from(marketingKnowledgeClaims)
+        .innerJoin(marketingKnowledgeSources, eq(marketingKnowledgeClaims.sourceId, marketingKnowledgeSources.id))
+        .where(and(
+          eq(marketingKnowledgeClaims.status, "approved"),
+          eq(marketingKnowledgeSources.status, "approved"),
+          eq(marketingKnowledgeSources.changeState, "tracked"),
+        ))
+        .orderBy(marketingKnowledgeClaims.programKey, desc(marketingKnowledgeClaims.updatedAt)),
+    ]);
+    return {
+      brandBook: brandBook ? { id: brandBook.id, version: brandBook.version } : null,
+      providers: profiles,
+      claims,
+      policy: "Provider aliases are informational in Phase 3. All provider profiles are expected to remain disabled with their kill switch engaged until a later approved execution phase.",
+    };
+  }),
+
+  createWorkOrder: protectedProcedure.input(workOrderInput).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, capabilityForWorkOrder(input.workType));
+    if (input.estimatedCostUsd > input.costCeilingUsd) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "The estimated cost cannot exceed the work-order cost ceiling." });
+    }
+    for (const [label, value] of [["title", input.title], ["objective", input.objective], ["brief", input.brief]] as const) {
+      const disallowed = findDisallowedWorkOrderData(value);
+      if (disallowed) throw new TRPCError({ code: "BAD_REQUEST", message: `Remove ${disallowed} from the work-order ${label}. Work orders must not contain client or Lead identity data.` });
+    }
+    const db = await requireDb();
+    await seedProviderProfiles();
+    const [provider] = await db.select().from(marketingProviderProfiles)
+      .where(eq(marketingProviderProfiles.alias, input.requestedProviderAlias)).limit(1);
+    if (!provider) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a registered Marketing System provider alias." });
+    const [brandBook, claims] = await Promise.all([
+      getActiveBrandBookForWorkOrder(),
+      validateWorkOrderReferences(input),
+    ]);
+    if (workOrderRequiresBrandBook(input.workType) && !brandBook) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "This work type requires an active owner-approved Brand Book. Complete and approve Brand Discovery first." });
+    }
+    const now = Date.now();
+    const key = workOrderKey();
+    const result = await db.insert(marketingWorkOrders).values({
+      workOrderKey: key,
+      idempotencyKey: crypto.randomUUID(),
+      workType: input.workType,
+      title: normalizeWorkOrderText(input.title),
+      programKey: input.programKey ?? null,
+      objective: normalizeWorkOrderText(input.objective),
+      brief: normalizeWorkOrderText(input.brief),
+      status: "draft",
+      requestedProviderAlias: provider.alias,
+      providerModelId: provider.modelId,
+      brandBookId: brandBook?.id ?? null,
+      brandBookVersion: brandBook?.version ?? null,
+      knowledgeClaimIdsJson: JSON.stringify(Array.from(new Set(input.knowledgeClaimIds))),
+      inputArtifactIdsJson: JSON.stringify(Array.from(new Set(input.inputArtifactIds))),
+      outputSchemaJson: JSON.stringify(MARKETING_WORK_ORDER_DEFAULT_SCHEMAS[input.workType]),
+      allowedNextStatesJson: JSON.stringify(["submitted", "cancelled"]),
+      costCeilingUsd: money(input.costCeilingUsd),
+      estimatedCostUsd: money(input.estimatedCostUsd),
+      actualCostUsd: "0.00",
+      currency: "USD",
+      maxIterations: input.maxIterations,
+      iterationCount: 0,
+      createdByUserId: ctx.user.id,
+      submittedAt: null,
+      reviewedByUserId: null,
+      reviewedAt: null,
+      reviewNote: null,
+      lastDryRunAt: null,
+      cancelledByUserId: null,
+      cancelledAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const workOrderId = Number((result as { insertId?: number }).insertId);
+    await db.insert(marketingWorkOrderCostLedger).values([
+      { workOrderId, entryKey: `${key}:ceiling`, entryType: "ceiling", amountUsd: money(input.costCeilingUsd), currency: "USD", providerAlias: provider.alias, note: "Owner approval is still required; this is a ceiling, not spend.", createdByUserId: ctx.user.id, createdAt: now },
+      { workOrderId, entryKey: `${key}:estimate`, entryType: "estimate", amountUsd: money(input.estimatedCostUsd), currency: "USD", providerAlias: provider.alias, note: "Declared estimate only; no provider request or charge has occurred.", createdByUserId: ctx.user.id, createdAt: now },
+    ]);
+    await appendWorkOrderEvent({ workOrderId, action: "created", toStatus: "draft", actorUserId: ctx.user.id, createdAt: now, payload: { workOrderKey: key, workType: input.workType, providerAlias: provider.alias, brandBookVersion: brandBook?.version ?? null, approvedClaimCount: claims.length, costCeilingUsd: money(input.costCeilingUsd) } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_work_order", workOrderId, JSON.stringify({ workOrderKey: key, workType: input.workType, programKey: input.programKey ?? null, providerAlias: provider.alias, approvedClaimCount: claims.length, costCeilingUsd: money(input.costCeilingUsd) }));
+    return { id: workOrderId, workOrderKey: key, status: "draft" as const };
+  }),
+
+  submitWorkOrder: protectedProcedure.input(z.object({ workOrderId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "submit_work_orders");
+    const db = await requireDb();
+    const [order] = await db.select().from(marketingWorkOrders).where(eq(marketingWorkOrders.id, input.workOrderId)).limit(1);
+    if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Work order was not found." });
+    if (order.createdByUserId !== ctx.user.id && !isOwner(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Only the work-order creator or Mahmoud can submit it." });
+    if (!workOrderCanTransition(order.status as MarketingWorkOrderStatus, "submitted")) throw new TRPCError({ code: "BAD_REQUEST", message: "Only a draft work order can be submitted for owner review." });
+    const now = Date.now();
+    await db.update(marketingWorkOrders).set({ status: "submitted", submittedAt: now, updatedAt: now, allowedNextStatesJson: JSON.stringify(["approved", "hold", "rejected", "cancelled"]) }).where(eq(marketingWorkOrders.id, order.id));
+    await appendWorkOrderEvent({ workOrderId: order.id, action: "submitted", fromStatus: order.status, toStatus: "submitted", actorUserId: ctx.user.id, createdAt: now, payload: { noProviderRequest: true } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_work_order_submission", order.id, JSON.stringify({ workOrderKey: order.workOrderKey }));
+    return { success: true, status: "submitted" as const };
+  }),
+
+  reviewWorkOrder: protectedProcedure.input(workOrderTransitionInput).mutation(async ({ ctx, input }) => {
+    await requireOwner(ctx.user);
+    if (!["approved", "hold", "rejected"].includes(input.nextStatus)) throw new TRPCError({ code: "BAD_REQUEST", message: "An owner review can approve, hold, or reject a submitted work order." });
+    const db = await requireDb();
+    const [order] = await db.select().from(marketingWorkOrders).where(eq(marketingWorkOrders.id, input.workOrderId)).limit(1);
+    if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Work order was not found." });
+    if (!workOrderCanTransition(order.status as MarketingWorkOrderStatus, input.nextStatus)) throw new TRPCError({ code: "BAD_REQUEST", message: "This work-order status cannot be reviewed from its current state." });
+    const claims = parseJson<number[]>(order.knowledgeClaimIdsJson, []);
+    const workType = order.workType as (typeof MARKETING_WORK_ORDER_TYPES)[number];
+    if (input.nextStatus === "approved") {
+      if (workOrderRequiresBrandBook(workType) && !(await getActiveBrandBookForWorkOrder())) throw new TRPCError({ code: "BAD_REQUEST", message: "An active Brand Book is still required before approval." });
+      if (workOrderRequiresApprovedClaims(workType)) {
+        const approvedClaims = await db.select({ id: marketingKnowledgeClaims.id, status: marketingKnowledgeClaims.status, sourceStatus: marketingKnowledgeSources.status, sourceChangeState: marketingKnowledgeSources.changeState })
+          .from(marketingKnowledgeClaims).innerJoin(marketingKnowledgeSources, eq(marketingKnowledgeClaims.sourceId, marketingKnowledgeSources.id))
+          .where(inArray(marketingKnowledgeClaims.id, claims));
+        if (claims.length === 0 || approvedClaims.length !== claims.length || approvedClaims.some(claim => claim.status !== "approved" || claim.sourceStatus !== "approved" || claim.sourceChangeState !== "tracked")) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot approve: one or more claim references are missing, unapproved, or no longer tracked." });
+        }
+      }
+    }
+    const now = Date.now();
+    const allowed = input.nextStatus === "approved" ? ["hold", "cancelled"] : input.nextStatus === "hold" ? ["submitted", "approved", "rejected", "cancelled"] : [];
+    await db.update(marketingWorkOrders).set({ status: input.nextStatus, reviewedByUserId: ctx.user.id, reviewedAt: now, reviewNote: input.note, updatedAt: now, allowedNextStatesJson: JSON.stringify(allowed) }).where(eq(marketingWorkOrders.id, order.id));
+    await appendWorkOrderEvent({ workOrderId: order.id, action: "owner_review", fromStatus: order.status, toStatus: input.nextStatus, reason: input.note, actorUserId: ctx.user.id, createdAt: now, payload: { explicitHumanDecision: true, noProviderRequest: true } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_work_order_review", order.id, JSON.stringify({ workOrderKey: order.workOrderKey, decision: input.nextStatus }));
+    return { success: true, status: input.nextStatus };
+  }),
+
+  dryRunWorkOrder: protectedProcedure.input(z.object({ workOrderId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "run_work_order_dry_runs");
+    const db = await requireDb();
+    const [order] = await db.select().from(marketingWorkOrders).where(eq(marketingWorkOrders.id, input.workOrderId)).limit(1);
+    if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Work order was not found." });
+    if (order.status !== "approved") throw new TRPCError({ code: "BAD_REQUEST", message: "Only an owner-approved work order can run a dry-run validation." });
+    const [provider, brandBook] = await Promise.all([
+      db.select().from(marketingProviderProfiles).where(eq(marketingProviderProfiles.alias, order.requestedProviderAlias)).limit(1).then(rows => rows[0] ?? null),
+      getActiveBrandBookForWorkOrder(),
+    ]);
+    const claimIds = parseJson<number[]>(order.knowledgeClaimIdsJson, []);
+    const claims = claimIds.length === 0 ? [] : await db.select({ id: marketingKnowledgeClaims.id, status: marketingKnowledgeClaims.status, sourceSnapshotHash: marketingKnowledgeClaims.sourceSnapshotHash, sourceStatus: marketingKnowledgeSources.status, sourceChangeState: marketingKnowledgeSources.changeState })
+      .from(marketingKnowledgeClaims).innerJoin(marketingKnowledgeSources, eq(marketingKnowledgeClaims.sourceId, marketingKnowledgeSources.id))
+      .where(inArray(marketingKnowledgeClaims.id, claimIds));
+    const workType = order.workType as (typeof MARKETING_WORK_ORDER_TYPES)[number];
+    const blockingReasons = [
+      !provider ? "Requested provider alias is missing." : null,
+      !provider?.isEnabled ? "Provider profile remains disabled." : null,
+      provider?.killSwitchEnabled ? "Provider kill switch remains engaged." : null,
+      workOrderRequiresBrandBook(workType) && !brandBook ? "Active Brand Book is not available." : null,
+      workOrderRequiresApprovedClaims(workType) && (claims.length !== claimIds.length || claims.some(claim => claim.status !== "approved" || claim.sourceStatus !== "approved" || claim.sourceChangeState !== "tracked")) ? "Approved tracked claim references are incomplete." : null,
+      "Phase 3 has no provider-execution path by design.",
+    ].filter((reason): reason is string => Boolean(reason));
+    const now = Date.now();
+    const payload = {
+      mode: "dry_run",
+      workOrderKey: order.workOrderKey,
+      executionAllowed: false,
+      providerAlias: order.requestedProviderAlias,
+      providerEnabled: provider?.isEnabled ?? false,
+      killSwitchEnabled: provider?.killSwitchEnabled ?? true,
+      brandBookVersion: brandBook?.version ?? null,
+      approvedClaimCount: claims.filter(claim => claim.status === "approved" && claim.sourceStatus === "approved" && claim.sourceChangeState === "tracked").length,
+      referencedClaimCount: claimIds.length,
+      blockingReasons,
+      nextRequiredAction: "Keep all provider, publishing, campaign, CAPI, and spend controls locked. Later execution requires a dedicated approved phase.",
+      performedAt: now,
+    };
+    const contentHash = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+    const result = await db.insert(marketingWorkOrderArtifacts).values({
+      workOrderId: order.id,
+      artifactType: "DryRunValidation",
+      state: "dry_run",
+      label: `Dry-run validation · ${order.workOrderKey}`,
+      artifactPayloadJson: JSON.stringify(payload),
+      contentHash,
+      providerAlias: provider?.alias ?? order.requestedProviderAlias,
+      providerModelId: provider?.modelId ?? order.providerModelId,
+      promptTemplateVersion: "phase3-control-plane-v1",
+      sourceClaimIdsJson: JSON.stringify(claimIds),
+      sourceSnapshotHashesJson: JSON.stringify(claims.map(claim => claim.sourceSnapshotHash)),
+      confidence: null,
+      estimatedCostUsd: "0.00",
+      actualCostUsd: "0.00",
+      errorSummary: blockingReasons.join(" "),
+      createdByUserId: ctx.user.id,
+      createdAt: now,
+    });
+    const artifactId = Number((result as { insertId?: number }).insertId);
+    await db.insert(marketingWorkOrderCostLedger).values({ workOrderId: order.id, entryKey: `${order.workOrderKey}:dry-run:${artifactId}`, entryType: "dry_run", amountUsd: "0.00", currency: "USD", providerAlias: order.requestedProviderAlias, note: "Dry-run validation only. No provider request, media generation, publication, campaign change, or charge occurred.", createdByUserId: ctx.user.id, createdAt: now });
+    await db.update(marketingWorkOrders).set({ lastDryRunAt: now, updatedAt: now }).where(eq(marketingWorkOrders.id, order.id));
+    await appendWorkOrderEvent({ workOrderId: order.id, action: "dry_run", fromStatus: "approved", toStatus: "approved", actorUserId: ctx.user.id, createdAt: now, payload: { artifactId, executionAllowed: false, blockingReasons } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_work_order_dry_run", artifactId, JSON.stringify({ workOrderId: order.id, workOrderKey: order.workOrderKey, executionAllowed: false, blockingReasonCount: blockingReasons.length }));
+    return { artifactId, executionAllowed: false, blockingReasons, contentHash };
+  }),
+
+  cancelWorkOrder: protectedProcedure.input(z.object({ workOrderId: z.number().int().positive(), note: z.string().trim().min(4).max(4_000) })).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "cancel_work_orders");
+    const db = await requireDb();
+    const [order] = await db.select().from(marketingWorkOrders).where(eq(marketingWorkOrders.id, input.workOrderId)).limit(1);
+    if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Work order was not found." });
+    if (order.createdByUserId !== ctx.user.id && !isOwner(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Only the creator or Mahmoud can cancel this work order." });
+    if (!workOrderCanTransition(order.status as MarketingWorkOrderStatus, "cancelled")) throw new TRPCError({ code: "BAD_REQUEST", message: "This work order is already terminal and cannot be cancelled." });
+    const now = Date.now();
+    await db.update(marketingWorkOrders).set({ status: "cancelled", cancelledByUserId: ctx.user.id, cancelledAt: now, updatedAt: now, allowedNextStatesJson: JSON.stringify([]) }).where(eq(marketingWorkOrders.id, order.id));
+    await appendWorkOrderEvent({ workOrderId: order.id, action: "cancelled", fromStatus: order.status, toStatus: "cancelled", reason: input.note, actorUserId: ctx.user.id, createdAt: now, payload: { executionCancelled: true } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_work_order_cancel", order.id, JSON.stringify({ workOrderKey: order.workOrderKey }));
+    return { success: true, status: "cancelled" as const };
   }),
 
   dashboardBaseline: protectedProcedure.query(async ({ ctx }) => {

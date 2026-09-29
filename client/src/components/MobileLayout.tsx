@@ -56,6 +56,7 @@ import {
   MessagesSquare,
   Bot,
   Image,
+  ClipboardCheck,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -162,6 +163,7 @@ export const MOBILE_SIDEBAR_MODULES = [
     items: [
       { icon: Sparkles, label: "Brand Studio", path: "/marketing/brand-studio" },
       { icon: BookOpen, label: "Knowledge Library", path: "/marketing/knowledge-library" },
+      { icon: ClipboardCheck, label: "Work Orders", path: "/marketing/work-orders" },
       { icon: FolderOpen, label: "Ready Summaries", path: "/marketing/ready-summaries" },
       { icon: Sparkles, label: "Summary Generator", path: "/marketing/summary-generator" },
       { icon: Mic2, label: "Arabic Voice-over", path: "/marketing/voice-over" },
@@ -522,6 +524,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
                 {[
                   { label: "Brand Studio", icon: Sparkles, path: "/marketing/brand-studio" },
                   { label: "Knowledge Library", icon: BookOpen, path: "/marketing/knowledge-library" },
+                  { label: "Work Orders", icon: ClipboardCheck, path: "/marketing/work-orders" },
                   { label: "Ready Summaries", icon: FolderOpen, path: "/marketing/ready-summaries" },
                   { label: "Program Proposal", icon: FileSignature, path: "/marketing/program-proposal" },
                 ].map((item) => {

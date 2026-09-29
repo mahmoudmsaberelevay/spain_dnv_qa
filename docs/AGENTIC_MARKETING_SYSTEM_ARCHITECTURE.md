@@ -1,7 +1,7 @@
 # ELEVAY Agentic Marketing System — Architecture Decision Record
 
 **Date:** 29 September 2026  
-**Status:** Phase 0 and Phase 1 complete; Phase 2 Official Knowledge Library implemented in controlled setup mode
+**Status:** Phases 0–3 complete in controlled internal-only mode; provider execution, publishing, campaign mutation, and spend remain locked
 **Scope:** Existing `elevay.vip` CRM; no replacement CRM, no local client database, no automatic publishing or paid-media execution.
 
 ## 1. Decision summary
@@ -96,7 +96,7 @@ A Brand Book can be proposed only once all 35 questions are answered and no answ
 | 0 | Discovery, ADR, CRM baseline, provider readiness assessment | Complete. |
 | 1 | Brand Studio, 35-question interview, roles, Brand Book/version governance | Complete after validation; no autonomous output. |
 | 2 | Source library, programme knowledge, official-source allowlist, claim review | Implemented in internal-only mode; Brand Book and explicit claim approval remain required before downstream content work. |
-| 3 | Work-order engine, immutable artifacts, provider adapters, cost ledger and dry runs | Requires provider credentials/configuration and owner-approved cost caps. |
+| 3 | Work-order engine, immutable artifacts, cost ledger and zero-cost dry runs | Complete as a control plane. Provider execution remains excluded pending a later explicit approval. |
 | 4 | Content Studio, QA and Approval Inbox with final previews | Requires Brand Book and claim-source gates. |
 | 5 | Meta Campaign Operations, CRM attribution, budget ledger and measurement pilot | Requires separate Ads Strategy Intake approval, Meta permissions and explicit spend caps. |
 | 6 | Controlled optimisation and weekly executive reporting | Requires proven pilot attribution, reconciliation and rollback evidence. |
@@ -139,3 +139,32 @@ Phase 2 introduces an **internal-only Official Knowledge Library** that is inten
 - [x] Material-source-change flow demotes dependent claims instead of silently changing wording.
 - [x] Desktop and mobile Marketing navigation expose the protected Knowledge Library route.
 - [x] No provider, publication, campaign, budget or CAPI action exists in Phase 2.
+
+## 10. Phase 3 controlled work-order decision
+
+Phase 3 implements the blueprint's orchestration **control plane**, not its execution plane. The four additive tables below create fully inspectable lineage without calling a model or vendor:
+
+| Record | Purpose | Guardrail |
+|---|---|---|
+| `marketing_work_orders` | Typed objective, programme, provider alias/model, Brand Book version, claim/input references, output schema, state, cost ceiling/estimate and review state | Rejects client/Lead contact and identity references; non-research types require active Brand Book and approved tracked claims. |
+| `marketing_work_order_artifacts` | Immutable SHA-256-hashed dry-run validation or later typed artifact metadata | Phase 3 creates dry-run metadata only; it stores no model output, client content, media bytes or provider response. |
+| `marketing_work_order_events` | Append-only human-visible transition and decision trail | Approval, hold, rejection and cancellation retain actor, reason, state transition and timestamp. |
+| `marketing_work_order_cost_ledger` | Separate ceiling, estimate, actual and dry-run cost events | Phase 3 writes only ceiling, estimate and `0.00` dry-run entries. It never authorizes or records a payment. |
+
+### Phase 3 lifecycle and authority
+
+- A permitted role creates a `draft`; its creator or Mahmoud submits it.
+- Mahmoud alone can `approve`, `hold`, or `reject` a submitted work order with a retained decision note.
+- Only Mahmoud can request a dry run, and only for an explicitly approved work order.
+- A dry run validates provider alias/kill-switch state, active Brand Book, approved claims and Phase 3 execution prohibition. It creates a zero-cost immutable validation artifact; it cannot invoke any provider.
+- The creator or Mahmoud can cancel a non-terminal work order with a retained reason. Records are never deleted.
+
+### Phase 3 acceptance record
+
+- [x] Typed work-order schemas and safe state machine added.
+- [x] Owner review, cancellation, cost-ceiling, estimate and immutable lineage enforced server-side.
+- [x] Privacy filter rejects email, phone/contact, passport, national-ID and client-code references in model-ready fields.
+- [x] Provider execution, publishing, client messaging, campaign changes, CAPI changes, spend and payment remain unavailable.
+- [x] Protected responsive Work Orders route added to desktop and mobile Marketing navigation.
+- [x] Additive migration applied with all four tables initially empty.
+- [x] Focused tests, production build, access-guard check and diff hygiene completed before checkpoint.

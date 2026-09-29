@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle, MailWarning, Loader2 } from "lucide-react";
+import { FileText, BarChart2, Send, ArrowRight, Sparkles, Mic2, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle, MailWarning, Loader2, ClipboardCheck } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 
@@ -20,6 +20,14 @@ const tools = [
     href: "/marketing/knowledge-library",
     color: "from-[#1A3A5C] to-[#5BA3B8]",
     badge: "Evidence control",
+  },
+  {
+    icon: ClipboardCheck,
+    title: "Controlled Work Orders",
+    description: "Create typed, cost-capped internal marketing work orders with visible approval lineage and zero-cost dry-run validation. Publishing and spend remain locked.",
+    href: "/marketing/work-orders",
+    color: "from-[#1A3A5C] to-[#C9A84C]",
+    badge: "Approval control",
   },
   {
     icon: FolderOpen,

@@ -2421,6 +2421,122 @@ export const marketingKnowledgeClaims = mysqlTable("marketing_knowledge_claims",
 export type MarketingKnowledgeClaim = typeof marketingKnowledgeClaims.$inferSelect;
 export type InsertMarketingKnowledgeClaim = typeof marketingKnowledgeClaims.$inferInsert;
 
+// ─── AGENTIC MARKETING SYSTEM / CONTROLLED WORK ORDERS ───────────────────────
+// Work orders coordinate internal planning only in Phase 3. They are intentionally
+// separate from CRM records and cannot publish, contact clients, modify Meta/CAPI,
+// reserve paid-media spend, or contain client/Lead identity data.
+export const marketingWorkOrders = mysqlTable("marketing_work_orders", {
+  id: int("id").autoincrement().primaryKey(),
+  workOrderKey: varchar("workOrderKey", { length: 96 }).notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 128 }).notNull(),
+  workType: varchar("workType", { length: 48 }).notNull(),
+  title: varchar("title", { length: 300 }).notNull(),
+  programKey: varchar("programKey", { length: 96 }),
+  objective: varchar("objective", { length: 500 }).notNull(),
+  brief: mediumtext("brief").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("draft"),
+  requestedProviderAlias: varchar("requestedProviderAlias", { length: 96 }).notNull(),
+  providerModelId: varchar("providerModelId", { length: 160 }),
+  brandBookId: int("brandBookId"),
+  brandBookVersion: int("brandBookVersion"),
+  knowledgeClaimIdsJson: mediumtext("knowledgeClaimIdsJson").notNull(),
+  inputArtifactIdsJson: mediumtext("inputArtifactIdsJson").notNull(),
+  outputSchemaJson: mediumtext("outputSchemaJson").notNull(),
+  allowedNextStatesJson: mediumtext("allowedNextStatesJson").notNull(),
+  costCeilingUsd: decimal("costCeilingUsd", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  estimatedCostUsd: decimal("estimatedCostUsd", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  actualCostUsd: decimal("actualCostUsd", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  currency: varchar("currency", { length: 8 }).notNull().default("USD"),
+  maxIterations: int("maxIterations").notNull().default(1),
+  iterationCount: int("iterationCount").notNull().default(0),
+  createdByUserId: int("createdByUserId").notNull(),
+  submittedAt: bigint("submittedAt", { mode: "number" }),
+  reviewedByUserId: int("reviewedByUserId"),
+  reviewedAt: bigint("reviewedAt", { mode: "number" }),
+  reviewNote: text("reviewNote"),
+  lastDryRunAt: bigint("lastDryRunAt", { mode: "number" }),
+  cancelledByUserId: int("cancelledByUserId"),
+  cancelledAt: bigint("cancelledAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_work_order_key_unique").on(table.workOrderKey),
+  uniqueIndex("marketing_work_order_idempotency_unique").on(table.idempotencyKey),
+  index("marketing_work_order_status_updated_idx").on(table.status, table.updatedAt),
+  index("marketing_work_order_creator_status_idx").on(table.createdByUserId, table.status, table.updatedAt),
+  index("marketing_work_order_program_idx").on(table.programKey, table.updatedAt),
+]);
+export type MarketingWorkOrder = typeof marketingWorkOrders.$inferSelect;
+export type InsertMarketingWorkOrder = typeof marketingWorkOrders.$inferInsert;
+
+// Immutable artifacts carry only model-ready workflow metadata in this phase. A
+// generated model response or media byte is deliberately not produced by Phase 3.
+export const marketingWorkOrderArtifacts = mysqlTable("marketing_work_order_artifacts", {
+  id: int("id").autoincrement().primaryKey(),
+  workOrderId: int("workOrderId").notNull(),
+  artifactType: varchar("artifactType", { length: 64 }).notNull(),
+  state: varchar("state", { length: 32 }).notNull().default("dry_run"),
+  label: varchar("label", { length: 300 }).notNull(),
+  artifactPayloadJson: mediumtext("artifactPayloadJson").notNull(),
+  contentHash: varchar("contentHash", { length: 64 }).notNull(),
+  providerAlias: varchar("providerAlias", { length: 96 }),
+  providerModelId: varchar("providerModelId", { length: 160 }),
+  promptTemplateVersion: varchar("promptTemplateVersion", { length: 64 }).notNull(),
+  sourceClaimIdsJson: mediumtext("sourceClaimIdsJson").notNull(),
+  sourceSnapshotHashesJson: mediumtext("sourceSnapshotHashesJson").notNull(),
+  confidence: decimal("confidence", { precision: 5, scale: 4 }),
+  estimatedCostUsd: decimal("estimatedCostUsd", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  actualCostUsd: decimal("actualCostUsd", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  errorSummary: text("errorSummary"),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_work_order_artifact_hash_unique").on(table.contentHash),
+  index("marketing_work_order_artifact_order_idx").on(table.workOrderId, table.createdAt),
+  index("marketing_work_order_artifact_state_idx").on(table.state, table.createdAt),
+]);
+export type MarketingWorkOrderArtifact = typeof marketingWorkOrderArtifacts.$inferSelect;
+export type InsertMarketingWorkOrderArtifact = typeof marketingWorkOrderArtifacts.$inferInsert;
+
+// Append-only review and transition history provides human-inspectable lineage.
+export const marketingWorkOrderEvents = mysqlTable("marketing_work_order_events", {
+  id: int("id").autoincrement().primaryKey(),
+  workOrderId: int("workOrderId").notNull(),
+  action: varchar("action", { length: 64 }).notNull(),
+  fromStatus: varchar("fromStatus", { length: 32 }),
+  toStatus: varchar("toStatus", { length: 32 }),
+  reason: text("reason"),
+  payloadJson: mediumtext("payloadJson").notNull(),
+  actorUserId: int("actorUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, table => [
+  index("marketing_work_order_event_order_idx").on(table.workOrderId, table.createdAt),
+  index("marketing_work_order_event_action_idx").on(table.action, table.createdAt),
+]);
+export type MarketingWorkOrderEvent = typeof marketingWorkOrderEvents.$inferSelect;
+export type InsertMarketingWorkOrderEvent = typeof marketingWorkOrderEvents.$inferInsert;
+
+// A ledger distinguishes a ceiling and estimate from actual spend. Phase 3 writes
+// only caps, estimates and zero-cost dry-run entries; it never records provider spend.
+export const marketingWorkOrderCostLedger = mysqlTable("marketing_work_order_cost_ledger", {
+  id: int("id").autoincrement().primaryKey(),
+  workOrderId: int("workOrderId").notNull(),
+  entryKey: varchar("entryKey", { length: 128 }).notNull(),
+  entryType: varchar("entryType", { length: 32 }).notNull(),
+  amountUsd: decimal("amountUsd", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  currency: varchar("currency", { length: 8 }).notNull().default("USD"),
+  providerAlias: varchar("providerAlias", { length: 96 }),
+  note: text("note"),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_work_order_cost_entry_unique").on(table.entryKey),
+  index("marketing_work_order_cost_order_idx").on(table.workOrderId, table.createdAt),
+  index("marketing_work_order_cost_type_idx").on(table.entryType, table.createdAt),
+]);
+export type MarketingWorkOrderCostLedgerEntry = typeof marketingWorkOrderCostLedger.$inferSelect;
+export type InsertMarketingWorkOrderCostLedgerEntry = typeof marketingWorkOrderCostLedger.$inferInsert;
+
 // ─── MARKETING READY SUMMARIES ─────────────────────────────────────────────────
 export const marketingReadySummaries = mysqlTable("marketing_ready_summaries", {
   id: int("id").autoincrement().primaryKey(),

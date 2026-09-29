@@ -1849,3 +1849,19 @@ Check email for download link within 5 minutes
 - [x] Pass 27 focused Marketing System regressions, production build, changed-file diagnostic review, and `git diff --check`
 - [x] Verify the new route denies unauthenticated access and the live aggregate records remain three candidates and zero claims
 - [x] Record the privacy-safe validation report and save the final restorable checkpoint
+
+## Agentic Marketing System — Phase 3 Controlled Work Orders
+
+- [x] Audited the Phase 2 Brand Book, Knowledge Library, provider profile, role, migration and CRM navigation controls before implementation.
+- [x] Added a separate additive work-order control plane: typed work orders, immutable artifacts, append-only events and cost-ledger records.
+- [x] Implemented the constrained state machine: draft → submitted → approved / hold / rejected, plus auditable cancellation.
+- [x] Enforced role-gated create/view/submit/review/dry-run/cancel boundaries; owner review and zero-cost dry runs are Mahmoud-only.
+- [x] Required active Brand Book and owner-approved tracked claims for non-research work orders; kept source research as the limited starting type.
+- [x] Rejected client/Lead identity references, email and contact numbers from work-order model-ready fields.
+- [x] Added separate USD ceiling, estimate, actual-cost and zero-cost dry-run ledger semantics; estimate cannot exceed ceiling.
+- [x] Added an explicit no-execution dry-run that records provider/kill-switch, Brand Book and claim blockers without calling a provider or creating spend.
+- [x] Added protected desktop and mobile Marketing → Controlled Work Orders navigation and full lineage UI.
+- [x] Reviewed and applied additive migration 0093; verified all four new tables exist and started empty.
+- [x] Passed 23 focused Marketing System regressions, production build, Phase 3 changed-file TypeScript review, protected-route access check and diff hygiene.
+- [x] Recorded the privacy-safe Phase 3 validation and updated the Agentic Marketing architecture decision record.
+- [ ] Complete/approve the Brand Discovery and approve source-backed claims before introducing a separate execution-phase proposal.
