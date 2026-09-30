@@ -105,3 +105,11 @@
 - [x] The OpenAI → Claude → Manus planning contract can reference only current-hash owner-confirmed internal claim IDs, and records them as `internalClaimReviewOnly` in created draft items. A changed/retired source or an unknown ID is blocked.
 - [x] Retained the boundary: these are not official/government evidence, legal advice, automatic publication authority, or a replacement for an official-source review. Government/external research remains opt-in after Mahmoud’s content-specific confirmation; individual review and every publication gate remain mandatory.
 - [x] Read-only verification confirmed 11 claims, all mapped to Spain DNV, all source-current, and all owner-confirmed; focused policy/automation tests passed.
+
+
+## AI Agentic Marketing System — Malta MPRP Internal Training Reference
+
+- [x] Added the owner-supplied bilingual file `Malta_Permanent_Residence_Training_QA_AR_EN.md` as a separate Malta Permanent Residence Programme internal reference (`malta_mprp_training_qa_ar_en_2026_09_30`).
+- [x] Preserved it as `internal_reference_only` / `user_supplied_internal_training_draft`, companion to the existing Malta material; its SHA-256 fingerprint, programme mapping, internal-only classification, and structured analysis were verified.
+- [x] The OpenAI → Claude → Manus review-only planning context will now use it alongside the original Malta internal material whenever Malta MPRP is selected. It remains internal analysis material only—not official evidence, legal advice, client advice, publication authority, or model-weight training.
+- [x] No Malta owner-confirmed internal claims were created because the user did not yet expressly confirm this source’s factual content in the same way as the Spain source. Government/external research remains disabled by default.
