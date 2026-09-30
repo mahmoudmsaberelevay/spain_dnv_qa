@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   OFFICIAL_KNOWLEDGE_ALLOWED_DOMAINS,
@@ -27,5 +29,16 @@ describe("ELEVAY official knowledge library policy", () => {
 
   it("normalizes source text deterministically before the server hashes evidence", () => {
     expect(stableKnowledgeHash("  Official\r\nsource   wording ")).toBe("Official source wording");
+  });
+
+  it("keeps owner-confirmed internal claims separate from official evidence and publication authority", () => {
+    const root = resolve(import.meta.dirname, "..");
+    const router = readFileSync(resolve(root, "server/marketingSystemRouter.ts"), "utf8");
+    const library = readFileSync(resolve(root, "client/src/pages/marketing/KnowledgeLibrary.tsx"), "utf8");
+    expect(router).toContain("marketingOwnerConfirmedInternalClaims");
+    expect(router).toContain("ownerConfirmedInternalClaims");
+    expect(router).toContain("not official evidence, legal advice, automatic publication authority");
+    expect(library).toContain("Owner-confirmed internal claims");
+    expect(library).toContain("owner confirmed · review only");
   });
 });

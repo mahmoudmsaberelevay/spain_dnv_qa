@@ -24,6 +24,7 @@ export const weeklyAutomationItemSchema = z.object({
   plannedDay: z.enum(["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]).nullable(),
   plannedTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable(),
   approvedClaimIds: z.array(z.number().int().positive()).max(20),
+  ownerConfirmedInternalClaimIds: z.array(z.number().int().positive()).max(20),
   assetFileNames: z.array(z.string().trim().min(1).max(500)).max(8),
   adRecommendation: z.string().trim().max(4_000),
 });
@@ -53,8 +54,8 @@ export const weeklyAutomationPlanJsonSchema = {
     adAuditRecommendations: { type: "array", items: { type: "string" } },
     crmMetaComparisonNotes: { type: "array", items: { type: "string" } },
     items: { type: "array", items: { type: "object", properties: {
-      itemType: { type: "string", enum: ["research_update", "static_post", "carousel", "reel", "image", "graphic", "ad_setup"] }, title: { type: "string" }, programKey: { type: ["string", "null"] }, objective: { type: "string" }, creativeDirection: { type: "string" }, scriptCopy: { type: "string" }, caption: { type: "string" }, cta: { type: "string" }, hashtags: { type: "array", items: { type: "string" } }, onScreenEnglishText: { type: "string" }, visualBrief: { type: "string" }, plannedDay: { type: ["string", "null"] }, plannedTime: { type: ["string", "null"] }, approvedClaimIds: { type: "array", items: { type: "integer" } }, assetFileNames: { type: "array", items: { type: "string" } }, adRecommendation: { type: "string" }
-    }, required: ["itemType", "title", "programKey", "objective", "creativeDirection", "scriptCopy", "caption", "cta", "hashtags", "onScreenEnglishText", "visualBrief", "plannedDay", "plannedTime", "approvedClaimIds", "assetFileNames", "adRecommendation"], additionalProperties: false } },
+      itemType: { type: "string", enum: ["research_update", "static_post", "carousel", "reel", "image", "graphic", "ad_setup"] }, title: { type: "string" }, programKey: { type: ["string", "null"] }, objective: { type: "string" }, creativeDirection: { type: "string" }, scriptCopy: { type: "string" }, caption: { type: "string" }, cta: { type: "string" }, hashtags: { type: "array", items: { type: "string" } }, onScreenEnglishText: { type: "string" }, visualBrief: { type: "string" }, plannedDay: { type: ["string", "null"] }, plannedTime: { type: ["string", "null"] }, approvedClaimIds: { type: "array", items: { type: "integer" } }, ownerConfirmedInternalClaimIds: { type: "array", items: { type: "integer" } }, assetFileNames: { type: "array", items: { type: "string" } }, adRecommendation: { type: "string" }
+    }, required: ["itemType", "title", "programKey", "objective", "creativeDirection", "scriptCopy", "caption", "cta", "hashtags", "onScreenEnglishText", "visualBrief", "plannedDay", "plannedTime", "approvedClaimIds", "ownerConfirmedInternalClaimIds", "assetFileNames", "adRecommendation"], additionalProperties: false } },
     risksAndEvidenceGaps: { type: "array", items: { type: "string" } },
   },
   required: ["weeklyTitle", "executiveSummary", "researchResults", "adAuditRecommendations", "crmMetaComparisonNotes", "items", "risksAndEvidenceGaps"],

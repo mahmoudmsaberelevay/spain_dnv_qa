@@ -33,6 +33,7 @@ import {
   marketingKnowledgeClaims,
   marketingKnowledgeSources,
   marketingInternalProgrammeReferences,
+  marketingOwnerConfirmedInternalClaims,
   marketingAutopilotControls,
   marketingProviderProfiles,
   marketingProviderWebhookEvents,
@@ -1892,11 +1893,34 @@ export const marketingSystemRouter = router({
   getKnowledgeLibrary: protectedProcedure.query(async ({ ctx }) => {
     await requireCapability(ctx.user, "view_knowledge");
     const db = await requireDb();
-    const [sources, internalReferences] = await Promise.all([
+    const [sources, internalReferences, ownerConfirmedInternalClaims] = await Promise.all([
       db.select().from(marketingKnowledgeSources)
         .orderBy(marketingKnowledgeSources.programLabel, desc(marketingKnowledgeSources.updatedAt)),
       db.select().from(marketingInternalProgrammeReferences)
         .orderBy(desc(marketingInternalProgrammeReferences.updatedAt)),
+      db.select({
+        id: marketingOwnerConfirmedInternalClaims.id,
+        internalReferenceId: marketingOwnerConfirmedInternalClaims.internalReferenceId,
+        programKey: marketingOwnerConfirmedInternalClaims.programKey,
+        claimType: marketingOwnerConfirmedInternalClaims.claimType,
+        claimText: marketingOwnerConfirmedInternalClaims.claimText,
+        sourceDocumentHash: marketingOwnerConfirmedInternalClaims.sourceDocumentHash,
+        sourceSection: marketingOwnerConfirmedInternalClaims.sourceSection,
+        riskLevel: marketingOwnerConfirmedInternalClaims.riskLevel,
+        status: marketingOwnerConfirmedInternalClaims.status,
+        ownerConfirmationNote: marketingOwnerConfirmedInternalClaims.ownerConfirmationNote,
+        confirmedAt: marketingOwnerConfirmedInternalClaims.confirmedAt,
+        updatedAt: marketingOwnerConfirmedInternalClaims.updatedAt,
+        sourceTitle: marketingInternalProgrammeReferences.title,
+        sourceFileName: marketingInternalProgrammeReferences.sourceFileName,
+      }).from(marketingOwnerConfirmedInternalClaims)
+        .innerJoin(marketingInternalProgrammeReferences, eq(marketingOwnerConfirmedInternalClaims.internalReferenceId, marketingInternalProgrammeReferences.id))
+        .where(and(
+          eq(marketingOwnerConfirmedInternalClaims.status, "owner_confirmed"),
+          eq(marketingInternalProgrammeReferences.status, "internal_reference_only"),
+          eq(marketingOwnerConfirmedInternalClaims.sourceDocumentHash, marketingInternalProgrammeReferences.documentHash),
+        ))
+        .orderBy(marketingOwnerConfirmedInternalClaims.programKey, desc(marketingOwnerConfirmedInternalClaims.updatedAt)),
     ]);
     const claims = await db.select({
       id: marketingKnowledgeClaims.id,
@@ -1938,8 +1962,9 @@ export const marketingSystemRouter = router({
         createdAt: reference.createdAt,
         updatedAt: reference.updatedAt,
       })),
+      ownerConfirmedInternalClaims,
       claims,
-      policy: "Only an owner-approved official source with a tracked snapshot can support a claim. User-supplied internal programme references are for internal analysis only and can never support a claim. Candidate sources, changed sources, unapproved claims, and all unpublished content are blocked from use. The library has no publishing or client-advice action.",
+      policy: "Official claims require an owner-approved official source with a tracked snapshot. An owner-confirmed internal claim remains separately labelled as internal and may be used only in review-ready planning or content drafts; it is not official evidence, legal advice, automatic publication authority, or a substitute for a later official review. Candidate sources, changed sources, unapproved claims, and all unpublished content remain blocked from publication. The library has no publishing or client-advice action.",
     };
   }),
 

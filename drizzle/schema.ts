@@ -2453,6 +2453,34 @@ export const marketingInternalProgrammeReferences = mysqlTable("marketing_intern
 export type MarketingInternalProgrammeReference = typeof marketingInternalProgrammeReferences.$inferSelect;
 export type InsertMarketingInternalProgrammeReference = typeof marketingInternalProgrammeReferences.$inferInsert;
 
+// Explicit owner-confirmed statements extracted from an internal reference.
+// They are not official or legal claims: they can support a review-only Marketing
+// draft, remain separately attributed to their source document, and never bypass
+// individual content approval or the publication gate.
+export const marketingOwnerConfirmedInternalClaims = mysqlTable("marketing_owner_confirmed_internal_claims", {
+  id: int("id").autoincrement().primaryKey(),
+  internalReferenceId: int("internalReferenceId").notNull(),
+  programKey: varchar("programKey", { length: 96 }).notNull(),
+  claimType: varchar("claimType", { length: 48 }).notNull(),
+  claimText: mediumtext("claimText").notNull(),
+  sourceDocumentHash: varchar("sourceDocumentHash", { length: 64 }).notNull(),
+  sourceSection: varchar("sourceSection", { length: 160 }).notNull(),
+  riskLevel: varchar("riskLevel", { length: 24 }).notNull().default("medium"),
+  status: varchar("status", { length: 32 }).notNull().default("owner_confirmed"),
+  ownerConfirmationNote: text("ownerConfirmationNote").notNull(),
+  contentHash: varchar("contentHash", { length: 64 }).notNull(),
+  confirmedByUserId: int("confirmedByUserId").notNull(),
+  confirmedAt: bigint("confirmedAt", { mode: "number" }).notNull(),
+  retiredAt: bigint("retiredAt", { mode: "number" }),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_owner_confirmed_internal_claim_hash_unique").on(table.contentHash),
+  index("marketing_owner_confirmed_internal_claim_program_status_idx").on(table.programKey, table.status, table.updatedAt),
+  index("marketing_owner_confirmed_internal_claim_reference_idx").on(table.internalReferenceId, table.status),
+]);
+export type MarketingOwnerConfirmedInternalClaim = typeof marketingOwnerConfirmedInternalClaims.$inferSelect;
+export type InsertMarketingOwnerConfirmedInternalClaim = typeof marketingOwnerConfirmedInternalClaims.$inferInsert;
+
 // Every claim references one approved source snapshot. A source change demotes the
 // claim to needs_review; approved wording is never silently rewritten or republished.
 export const marketingKnowledgeClaims = mysqlTable("marketing_knowledge_claims", {

@@ -95,3 +95,13 @@
 - [x] Preserved it as `internal_reference_only` / `user_supplied_internal_training_draft`, companion to the original Spain reference; its SHA-256 fingerprint, draft/non-legal-review flags, and audit record were verified.
 - [x] The weekly AI planning context will use this source together with the original Spain internal material whenever Spain DNV is selected. It remains internal analysis material only—not an official source, approved claim, client advice, publication authority, or model-weight training.
 - [x] Government/external research remains disabled by default and requires Mahmoud’s later confirmation for the relevant content review.
+
+
+## AI Agentic Marketing System — Owner-Confirmed Spain DNV Internal Claims
+
+- [x] Following Mahmoud’s explicit confirmation that the supplied Spain DNV training material is 100% confirmed, created a separate, auditable set of **11 owner-confirmed internal claims** tied to the exact current hash of `spain_dnv_training_qa_ar_en_2026_09_30`.
+- [x] Claims cover the source’s programme overview, eligibility, household income, family eligibility, documents, health-insurance position, application route/duration, post-approval steps, renewal, tax summary, and stated social-security fees. Each is labelled `owner_confirmed`, has an explicit source section, high-risk classification, owner confirmation note, source hash, and audit entry.
+- [x] Added the additive migration `0104_agentic_marketing_owner_confirmed_internal_claims.sql` and the matching schema/control plane. The Knowledge Library now displays this category separately from approved official claims.
+- [x] The OpenAI → Claude → Manus planning contract can reference only current-hash owner-confirmed internal claim IDs, and records them as `internalClaimReviewOnly` in created draft items. A changed/retired source or an unknown ID is blocked.
+- [x] Retained the boundary: these are not official/government evidence, legal advice, automatic publication authority, or a replacement for an official-source review. Government/external research remains opt-in after Mahmoud’s content-specific confirmation; individual review and every publication gate remain mandatory.
+- [x] Read-only verification confirmed 11 claims, all mapped to Spain DNV, all source-current, and all owner-confirmed; focused policy/automation tests passed.

@@ -19,7 +19,7 @@ const validPlan = {
   crmMetaComparisonNotes: [],
   risksAndEvidenceGaps: ["لا تُستخدم أي معلومة برنامجية إلا عند ربطها بادعاء معتمد."],
   items: [{
-    itemType: "reel", title: "فكرة ريل تجريبية", programKey: "spain_dnv", objective: "تقديم محتوى تعليمي قابل للمراجعة", creativeDirection: "Premium editorial look", scriptCopy: "اكتشف خيارات الإقامة مع Elevay.", caption: "محتوى تعليمي من Elevay", cta: "تواصل معنا", hashtags: ["#إليفاي"], onScreenEnglishText: "SPAIN DNV", visualBrief: "Luxury editorial composition", plannedDay: "Monday", plannedTime: "10:00", approvedClaimIds: [], assetFileNames: [], adRecommendation: "No campaign action; review only.",
+    itemType: "reel", title: "فكرة ريل تجريبية", programKey: "spain_dnv", objective: "تقديم محتوى تعليمي قابل للمراجعة", creativeDirection: "Premium editorial look", scriptCopy: "اكتشف خيارات الإقامة مع Elevay.", caption: "محتوى تعليمي من Elevay", cta: "تواصل معنا", hashtags: ["#إليفاي"], onScreenEnglishText: "SPAIN DNV", visualBrief: "Luxury editorial composition", plannedDay: "Monday", plannedTime: "10:00", approvedClaimIds: [], ownerConfirmedInternalClaimIds: [], assetFileNames: [], adRecommendation: "No campaign action; review only.",
   }],
 };
 
@@ -77,5 +77,16 @@ describe("bounded weekly multi-model automation", () => {
     expect(service).toContain("Do not retrieve, browse, cite, or use government or other external sources automatically.");
     expect(service).toContain('result.sourceUrl.startsWith("internal://")');
     expect(service).toContain("was blocked pending owner confirmation");
+  });
+
+  it("permits only source-current owner-confirmed internal claims in review-only draft output", () => {
+    const service = read("server/weeklyMarketingAutomationService.ts");
+    const schema = read("drizzle/schema.ts");
+    expect(schema).toContain("marketingOwnerConfirmedInternalClaims");
+    expect(service).toContain("ownerConfirmedInternalClaims");
+    expect(service).toContain("ownerConfirmedInternalClaimIds");
+    expect(service).toContain("internalClaimReviewOnly: true");
+    expect(service).toContain("not official evidence, legal advice, or publication authority");
+    expect(service).toContain("sourceDocumentHash, marketingInternalProgrammeReferences.documentHash");
   });
 });

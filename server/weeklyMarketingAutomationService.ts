@@ -10,6 +10,7 @@ import {
   marketingKnowledgeClaims,
   marketingKnowledgeSources,
   marketingInternalProgrammeReferences,
+  marketingOwnerConfirmedInternalClaims,
   marketingProviderProfiles,
   marketingWeeklyAutomationBudgetLedger,
   marketingWeeklyAutomationControls,
@@ -111,7 +112,7 @@ function selectedProgrammeKeys(settings: typeof marketingWeeklyResultsSettings.$
 
 async function readAutomationContext() {
   const db = await requireDb();
-  const [settingsRows, controls, brandBooks, designAssets, profiles, claims, internalReferences, preferences, performance] = await Promise.all([
+  const [settingsRows, controls, brandBooks, designAssets, profiles, claims, internalReferences, ownerConfirmedInternalClaims, preferences, performance] = await Promise.all([
     db.select().from(marketingWeeklyResultsSettings).where(eq(marketingWeeklyResultsSettings.settingsKey, "primary-weekly-results")).limit(1),
     db.select().from(marketingWeeklyAutomationControls).where(eq(marketingWeeklyAutomationControls.controlKey, WEEKLY_AUTOMATION_CONTROL_KEY)).limit(1),
     db.select().from(marketingBrandBooks).where(eq(marketingBrandBooks.status, "active")).orderBy(desc(marketingBrandBooks.version)).limit(1),
@@ -125,6 +126,15 @@ async function readAutomationContext() {
       .from(marketingInternalProgrammeReferences)
       .where(eq(marketingInternalProgrammeReferences.status, "internal_reference_only"))
       .orderBy(desc(marketingInternalProgrammeReferences.updatedAt)).limit(12),
+    db.select({ id: marketingOwnerConfirmedInternalClaims.id, internalReferenceId: marketingOwnerConfirmedInternalClaims.internalReferenceId, programKey: marketingOwnerConfirmedInternalClaims.programKey, claimType: marketingOwnerConfirmedInternalClaims.claimType, claimText: marketingOwnerConfirmedInternalClaims.claimText, sourceDocumentHash: marketingOwnerConfirmedInternalClaims.sourceDocumentHash, sourceSection: marketingOwnerConfirmedInternalClaims.sourceSection, riskLevel: marketingOwnerConfirmedInternalClaims.riskLevel, ownerConfirmationNote: marketingOwnerConfirmedInternalClaims.ownerConfirmationNote })
+      .from(marketingOwnerConfirmedInternalClaims)
+      .innerJoin(marketingInternalProgrammeReferences, eq(marketingOwnerConfirmedInternalClaims.internalReferenceId, marketingInternalProgrammeReferences.id))
+      .where(and(
+        eq(marketingOwnerConfirmedInternalClaims.status, "owner_confirmed"),
+        eq(marketingInternalProgrammeReferences.status, "internal_reference_only"),
+        eq(marketingOwnerConfirmedInternalClaims.sourceDocumentHash, marketingInternalProgrammeReferences.documentHash),
+      ))
+      .orderBy(marketingOwnerConfirmedInternalClaims.programKey, desc(marketingOwnerConfirmedInternalClaims.updatedAt)).limit(160),
     db.select().from(marketingWeeklyResultsPreferenceMemories).where(eq(marketingWeeklyResultsPreferenceMemories.status, "active")).orderBy(desc(marketingWeeklyResultsPreferenceMemories.updatedAt)).limit(80),
     db.select().from(marketingWeeklyResultsPerformanceSnapshots).orderBy(desc(marketingWeeklyResultsPerformanceSnapshots.periodStart), desc(marketingWeeklyResultsPerformanceSnapshots.recordedAt)).limit(8),
   ]);
@@ -157,7 +167,7 @@ async function readAutomationContext() {
     control && Number(control.monthlyBudgetUsd) > WEEKLY_AUTOMATION_MONTHLY_CAP_USD ? "The internal monthly cap cannot exceed USD 100." : null,
     providerReady ? null : "The three weekly planning provider profiles are not all enabled for the bounded automation engine.",
   ].filter((value): value is string => Boolean(value));
-  return { db, settings, control, brandBook, designAssets, claims, internalReferences: normalizedInternalReferences, selectedProgrammes, missingInternalReferenceProgrammes, preferences, performance, profiles, providerReady, blockers };
+  return { db, settings, control, brandBook, designAssets, claims, internalReferences: normalizedInternalReferences, ownerConfirmedInternalClaims, selectedProgrammes, missingInternalReferenceProgrammes, preferences, performance, profiles, providerReady, blockers };
 }
 
 export async function getWeeklyAutomationReadiness() {
@@ -172,7 +182,7 @@ export async function getWeeklyAutomationReadiness() {
       scheduleTaskUid: context.control.scheduleTaskUid, manusWebhookId: context.control.manusWebhookId, lastRunAt: context.control.lastRunAt, lastRunStatus: context.control.lastRunStatus, lastError: context.control.lastError,
     } : { isEnabled: false, state: "disabled", monthlyBudgetUsd: WEEKLY_AUTOMATION_MONTHLY_CAP_USD, perRunReserveUsd: WEEKLY_AUTOMATION_PER_RUN_RESERVE_USD, scheduleTaskUid: null, manusWebhookId: null, lastRunAt: null, lastRunStatus: null, lastError: null },
     blockers: context.blockers,
-    readiness: { brandBook: Boolean(context.brandBook), designSystem: activeDesignAssetsPresent(context.designAssets), providerProfiles: context.providerReady, ownerProvidedInternalReferences: context.internalReferences.length, missingInternalReferenceProgrammes: context.missingInternalReferenceProgrammes, approvedClaims: context.claims.length, budgetUsedUsd: Number(spentRows[0]?.total ?? 0), month },
+    readiness: { brandBook: Boolean(context.brandBook), designSystem: activeDesignAssetsPresent(context.designAssets), providerProfiles: context.providerReady, ownerProvidedInternalReferences: context.internalReferences.length, ownerConfirmedInternalClaims: context.ownerConfirmedInternalClaims.length, missingInternalReferenceProgrammes: context.missingInternalReferenceProgrammes, approvedClaims: context.claims.length, budgetUsedUsd: Number(spentRows[0]?.total ?? 0), month },
     jobs: jobs.map(job => ({ id: job.id, jobKey: job.jobKey, periodStart: job.periodStart, triggerType: job.triggerType, state: job.state, planId: job.planId, manusTaskUrl: job.manusTaskUrl, errorCode: job.errorCode, errorSummary: job.errorSummary, createdAt: job.createdAt, completedAt: job.completedAt, reservedCostUsd: Number(job.reservedCostUsd), attachments: asJson<Array<{ file_name?: string; url?: string; size_bytes?: number }>>(job.attachmentsJson, []) })),
   };
 }
@@ -241,7 +251,7 @@ function publicPlanningSnapshot(context: Awaited<ReturnType<typeof readAutomatio
     sourcePolicy: {
       primarySource: "owner_provided_internal_programme_references",
       governmentSourceRule: "Do not retrieve, browse, cite, or use government or other external sources automatically. An external source may be considered only after the owner explicitly confirms the specific content draft.",
-      publicationRule: "Internal references are planning context only. They are not official evidence and cannot by themselves support external publication, campaign deployment, or a programme claim.",
+      publicationRule: "Internal references and owner-confirmed internal claims are permitted only for internal review drafts. They are not official evidence, legal advice, automatic publication authority, or a substitute for future official-source review.",
     },
     ownerProvidedInternalReferences: context.internalReferences.map(reference => ({
       id: reference.id,
@@ -254,6 +264,7 @@ function publicPlanningSnapshot(context: Awaited<ReturnType<typeof readAutomatio
       analysis: reference.analysis,
     })),
     approvedOfficialClaims: context.claims,
+    ownerConfirmedInternalClaims: context.ownerConfirmedInternalClaims,
     feedbackMemory: context.preferences.map(preference => ({ scope: preference.scope, scopeKey: preference.scopeKey, preferenceText: preference.preferenceText })),
     aggregatePerformance: context.performance.map(snapshot => ({ periodStart: snapshot.periodStart, spendEgp: Number(snapshot.spendEgp), impressions: snapshot.impressions, clicks: snapshot.clicks, leadForms: snapshot.leadForms, qualifiedLeads: snapshot.qualifiedLeads, clientStageLeads: snapshot.clientStageLeads, notes: snapshot.notes })),
   };
@@ -264,7 +275,7 @@ function councilPrompt(snapshot: Record<string, unknown>, role: "strategy" | "ch
   return [
     strategy ? "You are ELEVAY's Arabic-first marketing strategist." : "You are ELEVAY's independent critical marketing reviewer.",
     strategy ? "Create a concrete weekly creative strategy that is safe for later human review." : "Challenge the weekly strategy: detect unsupported claims, brand drift, execution issues, and performance risks. Propose corrections.",
-    "Use only the owner-provided internal programme references in the planning context. Do not retrieve, browse, cite, or rely on government or other external sources. Treat internal references as non-official planning context and mark any point needing external verification as an evidence gap.",
+    "Use only the owner-provided internal programme references and the explicit ownerConfirmedInternalClaims in the planning context. You may use an owner-confirmed internal claim only for internal review material and must reference its ID in ownerConfirmedInternalClaimIds. Do not call it official, government evidence, legal advice, or publication authority. Do not retrieve, browse, cite, or rely on government or other external sources. Mark any point needing external verification as an evidence gap.",
     "Return only the requested JSON. Do not include personal data. Do not claim visa outcomes or guarantees. Do not propose publishing, campaign editing, spend, messaging, or any external action.",
     "Planning context:", JSON.stringify(snapshot),
   ].join("\n\n");
@@ -274,7 +285,7 @@ async function createManusWeeklyTask(snapshot: Record<string, unknown>, strategy
   const prompt = [
     "You are the ELEVAY weekly creative production orchestrator. Create an internal, review-ready weekly production pack after considering the OpenAI strategist and Claude challenger opinions below.",
     "Strict rules: all marketing copy/captions/CTAs/scripts/voice-over must be Arabic. Text visibly placed inside visual assets must be English only; use NONE when a visual has no text. Country names alone may be English in voice-over. Never use client, Lead, contact, passport, phone, email, or other personal data.",
-    "Use only owner-provided internal programme references contained in the planning context. Do not browse, retrieve, cite, or use government or other external sources. Every researchResults.sourceUrl must use internal:// followed by an owner-provided referenceKey. Internal references are non-official planning context only: do not treat them as official evidence or make a programme claim unless it is supported by an approvedOfficialClaims ID. If a fact needs external verification, list it as an evidence gap.",
+    "Use only owner-provided internal programme references contained in the planning context. Do not browse, retrieve, cite, or use government or other external sources. Every researchResults.sourceUrl must use internal:// followed by an owner-provided referenceKey. You may use a statement from ownerConfirmedInternalClaims only by returning its ID in ownerConfirmedInternalClaimIds; it is owner-confirmed internal information for review only, not official evidence, legal advice, or publication authority. An approvedOfficialClaims ID remains the only official-evidence claim reference. If a fact needs external verification, list it as an evidence gap.",
     "Prepare final-quality research summary, static/carousel/reel concepts and any safe attachment deliverables you can create. Do not publish, schedule, create or edit ads/campaigns, spend money, send CAPI events, contact anyone, or change a CRM record. Every output is for review only.",
     `Week starting: ${periodStart}`,
     "Planning context:", JSON.stringify(snapshot),
@@ -345,6 +356,7 @@ async function persistReviewPlan(job: AutomationJob, output: WeeklyAutomationPla
   const db = await requireDb();
   const snapshot = asJson<Record<string, any>>(job.inputSnapshotJson, {});
   const validClaimIds = new Set<number>((snapshot.approvedClaims ?? []).map((claim: { id?: number }) => Number(claim.id)).filter(Number.isInteger));
+  const validOwnerConfirmedInternalClaimIds = new Set<number>((snapshot.ownerConfirmedInternalClaims ?? []).map((claim: { id?: number }) => Number(claim.id)).filter(Number.isInteger));
   const next = await db.select({ version: marketingWeeklyResultsPlans.version }).from(marketingWeeklyResultsPlans).where(eq(marketingWeeklyResultsPlans.periodStart, job.periodStart)).orderBy(desc(marketingWeeklyResultsPlans.version)).limit(1);
   const now = Date.now();
   const planKey = weeklyPlanKey();
@@ -356,9 +368,10 @@ async function persistReviewPlan(job: AutomationJob, output: WeeklyAutomationPla
     const unsafe = findDisallowedWeeklyResultsData(JSON.stringify(item));
     const languageProblem = generatedItemLanguageProblem(item);
     const invalidClaim = item.approvedClaimIds.find(id => !validClaimIds.has(id));
-    const blockedReason = unsafe ? `Generated item contains ${unsafe}.` : languageProblem ?? (invalidClaim ? `Generated item references a claim that is not approved in this snapshot (${invalidClaim}).` : null);
+    const invalidOwnerConfirmedInternalClaim = item.ownerConfirmedInternalClaimIds.find(id => !validOwnerConfirmedInternalClaimIds.has(id));
+    const blockedReason = unsafe ? `Generated item contains ${unsafe}.` : languageProblem ?? (invalidClaim ? `Generated item references a claim that is not approved in this snapshot (${invalidClaim}).` : (invalidOwnerConfirmedInternalClaim ? `Generated item references an internal claim that is not owner-confirmed in this snapshot (${invalidOwnerConfirmedInternalClaim}).` : null));
     const state = blockedReason ? "on_hold" : "draft";
-    const inserted = await db.insert(marketingWeeklyResultsItems).values({ planId, position: index + 1, itemType: item.itemType, title: normalizeWeeklyResultsText(item.title), programKey: item.programKey, objective: normalizeWeeklyResultsText(item.objective), creativeDirection: item.creativeDirection ? normalizeWeeklyResultsText(item.creativeDirection) : null, scriptCopy: item.scriptCopy ? normalizeWeeklyResultsText(item.scriptCopy) : null, caption: item.caption ? normalizeWeeklyResultsText(item.caption) : null, cta: item.cta ? normalizeWeeklyResultsText(item.cta) : null, hashtagsJson: JSON.stringify(item.hashtags.map(normalizeWeeklyResultsText)), visualBrief: item.visualBrief ? normalizeWeeklyResultsText(item.visualBrief) : null, plannedDay: item.plannedDay, plannedTime: item.plannedTime, previewUrl: null, previewHash: null, sourceClaimIdsJson: JSON.stringify(item.approvedClaimIds.filter(id => validClaimIds.has(id))), metadataJson: JSON.stringify({ onScreenEnglishText: item.onScreenEnglishText, generatedAssetFileNames: item.assetFileNames, generatedAdRecommendation: item.adRecommendation, automationJobKey: job.jobKey, manuscriptAttachmentCount: attachments.length }), isSelected: !blockedReason, requiresIndividualApproval: true, status: state, blockedReason, contentPacketId: null, approvedByUserId: null, approvedAt: null, stoppedByUserId: null, stoppedAt: null, createdByUserId: job.createdByUserId, lastEditedByUserId: job.createdByUserId, createdAt: now, updatedAt: now });
+    const inserted = await db.insert(marketingWeeklyResultsItems).values({ planId, position: index + 1, itemType: item.itemType, title: normalizeWeeklyResultsText(item.title), programKey: item.programKey, objective: normalizeWeeklyResultsText(item.objective), creativeDirection: item.creativeDirection ? normalizeWeeklyResultsText(item.creativeDirection) : null, scriptCopy: item.scriptCopy ? normalizeWeeklyResultsText(item.scriptCopy) : null, caption: item.caption ? normalizeWeeklyResultsText(item.caption) : null, cta: item.cta ? normalizeWeeklyResultsText(item.cta) : null, hashtagsJson: JSON.stringify(item.hashtags.map(normalizeWeeklyResultsText)), visualBrief: item.visualBrief ? normalizeWeeklyResultsText(item.visualBrief) : null, plannedDay: item.plannedDay, plannedTime: item.plannedTime, previewUrl: null, previewHash: null, sourceClaimIdsJson: JSON.stringify(item.approvedClaimIds.filter(id => validClaimIds.has(id))), metadataJson: JSON.stringify({ onScreenEnglishText: item.onScreenEnglishText, generatedAssetFileNames: item.assetFileNames, generatedAdRecommendation: item.adRecommendation, automationJobKey: job.jobKey, manuscriptAttachmentCount: attachments.length, ownerConfirmedInternalClaimIds: item.ownerConfirmedInternalClaimIds.filter(id => validOwnerConfirmedInternalClaimIds.has(id)), internalClaimReviewOnly: true }), isSelected: !blockedReason, requiresIndividualApproval: true, status: state, blockedReason, contentPacketId: null, approvedByUserId: null, approvedAt: null, stoppedByUserId: null, stoppedAt: null, createdByUserId: job.createdByUserId, lastEditedByUserId: job.createdByUserId, createdAt: now, updatedAt: now });
     const itemId = Number((inserted as { insertId?: number }).insertId);
     await db.insert(marketingWeeklyResultsItemEvents).values({ itemId, action: "automation_generated", fromStatus: null, toStatus: state, feedback: null, changedFieldsJson: JSON.stringify(["ai_council", "manus_orchestration", "review_required"]), payloadJson: JSON.stringify({ jobKey: job.jobKey, hasOpenAiStrategy: true, hasAnthropicChallenge: true, manuscriptAttachmentCount: attachments.length, blockedReason }), actorUserId: job.createdByUserId, createdAt: now });
   }
