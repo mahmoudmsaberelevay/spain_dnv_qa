@@ -70,3 +70,11 @@
 - [x] Passed the full deterministic CRM suite: **133 test files / 668 tests**. The Creatomate read-only live probe is intentionally opt-in (`RUN_LIVE_PROVIDER_VALIDATIONS=true`) so a temporary upstream stall cannot block ordinary regression coverage; its credential was validated at connection time.
 
 > **Live activation is intentionally blocked until its Settings prerequisites are green**—active owner-approved Brand Book, at least one approved official claim (user-supplied internal references remain non-official until Mahmoud approves otherwise), saved weekly timing/settings, and active Design System/logo. Once green, Settings provides **Enable USD 100 engine** then **Run first test**; the first run is review-only, not publication or advertising execution.
+
+
+## AI Agentic Marketing System — Owner Default Targets and Weekly Timing
+
+- [x] Saved as persistent Settings defaults, retained until an authorized administrator changes them: **10,000 likes**, **2,000,000 views**, **2,000 leads**, **200 qualified leads**, and **20 signed clients** per 30 days; **EGP 100** target CPL; and **EGP 200,000** maximum 30-day ad spend.
+- [x] Saved the automated preparation window as **Saturday, 10:00 Africa/Cairo**, with the schedule preference enabled. The existing delivery time and other saved production preferences were preserved.
+- [x] Verified the persisted CRM Settings through the protected Marketing router: all exact target values, Cairo timezone, Saturday setting, 10:00 time, and schedule preference matched the owner-authorized input.
+- [x] These values are configuration only; provider automation remains **disabled** and external operations remain **false**. No task, publication, campaign operation, spend, CAPI event, message, or client/Lead action was triggered.
