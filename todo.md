@@ -87,3 +87,11 @@
 - [x] Updated the OpenAI → Claude → Manus planning context so it receives only bounded analysis from those internal references. Any returned research item must identify an `internal://` reference; non-internal sources are blocked before a plan is stored.
 - [x] Government and other external sources are neither retrieved nor cited automatically. They may be considered only after Mahmoud confirms the related specific content draft; internal references remain non-official and cannot alone support publication or a programme claim.
 - [x] Verified reference coverage for both selected programme keys: 2 owner-provided internal references found, no selected programme is missing coverage, 0 official claims are required for this review-only internal planning gate, automation remains disabled, and external operations remain false.
+
+
+## AI Agentic Marketing System — Spain DNV Internal Training Reference
+
+- [x] Added the owner-supplied bilingual file `Spain_Digital_Nomad_Training_QA_AR_EN.md` as a separate Spain DNV internal programme reference (`spain_dnv_training_qa_ar_en_2026_09_30`).
+- [x] Preserved it as `internal_reference_only` / `user_supplied_internal_training_draft`, companion to the original Spain reference; its SHA-256 fingerprint, draft/non-legal-review flags, and audit record were verified.
+- [x] The weekly AI planning context will use this source together with the original Spain internal material whenever Spain DNV is selected. It remains internal analysis material only—not an official source, approved claim, client advice, publication authority, or model-weight training.
+- [x] Government/external research remains disabled by default and requires Mahmoud’s later confirmation for the relevant content review.
