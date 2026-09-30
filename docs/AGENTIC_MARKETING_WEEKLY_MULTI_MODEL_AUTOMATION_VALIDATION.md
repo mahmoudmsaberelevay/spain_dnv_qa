@@ -24,7 +24,8 @@ The engine runs through an authenticated CRM Heartbeat endpoint each hour and ev
 | Roles | Only the existing scoped `marketing_system_admin` and CRM owner can enable/pause automation or run a test. This remains scoped to Agentic Marketing. |
 | Durable schedule | Authenticated Heartbeat job calls `/api/scheduled/weeklyMarketingAutomation`; handler accepts only `isCron + taskUid`. |
 | Manus callbacks | `/api/webhooks/marketing/manus` is raw-body, RSA-SHA256 verified, timestamp-limited to five minutes, public-key cached, and idempotently recorded before processing. |
-| Privacy | The prompt snapshot rejects personal data and contains only governed Marketing settings, active brand rules, active Design System extraction summary, approved claim metadata, feedback memory, and aggregate performance. |
+| Privacy | The prompt snapshot rejects personal data and contains only governed Marketing settings, active brand rules, active Design System extraction summary, owner-provided internal programme-reference analysis, approved official-claim metadata, feedback memory, and aggregate performance. |
+| Programme information | Owner-provided Spain and Malta internal references are the permanent default source for review-only planning. The engine does not browse, retrieve, cite, or use government/other external sources automatically. It blocks a returned research item unless its source uses the internal-reference identifier. Government material may be considered only after Mahmoud explicitly confirms the specific content draft. |
 | Language | Campaign/reel/caption/voice content must be Arabic. Text physically rendered inside visuals must be English. Arabic voice-over permits English only for country names. |
 | Review | Generated items never publish. Each is draft/on-hold with `requiresIndividualApproval=true`; final preview, claims, language, visual continuity, and all Content Studio QA checks remain required. |
 | Immediate stop | **Pause engine** disables the control, locks the three planning provider profiles, engages the master kill switch, and pauses the Heartbeat job. |
@@ -47,7 +48,7 @@ The CRM shows the precise live blockers in Settings. Activation requires all of 
 
 1. Complete all 35 **Brand Studio** answers, propose and activate the Brand Book.
 2. Keep the already registered active **Design System document** and official ELEVAY logo active.
-3. Approve at least one **official Knowledge Library claim**. User-supplied Spain/Malta references remain internal only; they are not converted to official evidence without Mahmoud's explicit approval.
+3. Keep an owner-provided internal programme reference for every programme selected in Settings. Spain DNV and Malta Permanent Residence are supported by the two already stored internal references. These are primary planning inputs only; they are not converted to official evidence or an external programme claim. Government/official sources remain opt-in per content draft after Mahmoud's confirmation.
 4. Save the weekly weekday/time, weekly goal, programme priorities, content mix, targets, and allocation direction in Settings.
 5. Keep server-side OpenAI, Anthropic, and Manus credentials available. No value is exposed by this release.
 6. Use **Enable USD 100 engine** in Settings. It securely registers/reuses the Manus callback then provisions/resumes the authenticated Heartbeat schedule. If provisioning fails, the engine pauses itself.

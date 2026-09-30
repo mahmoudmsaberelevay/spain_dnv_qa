@@ -68,4 +68,14 @@ describe("bounded weekly multi-model automation", () => {
     expect(service).not.toContain("/act_");
     expect(service).not.toContain("/events");
   });
+
+  it("uses owner-provided internal programme references as the planning default and blocks external research sources", () => {
+    const service = read("server/weeklyMarketingAutomationService.ts");
+    expect(service).toContain("marketingInternalProgrammeReferences");
+    expect(service).toContain("ownerProvidedInternalReferences");
+    expect(service).toContain("primarySource: \"owner_provided_internal_programme_references\"");
+    expect(service).toContain("Do not retrieve, browse, cite, or use government or other external sources automatically.");
+    expect(service).toContain('result.sourceUrl.startsWith("internal://")');
+    expect(service).toContain("was blocked pending owner confirmation");
+  });
 });

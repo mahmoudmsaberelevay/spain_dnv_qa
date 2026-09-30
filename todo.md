@@ -69,7 +69,7 @@
 - [x] Passed 6 focused suites / 25 tests, production build, local unsigned-callback and scheduler 401 probes, changed-file TypeScript diagnostic review with no new errors beyond the documented baseline, and diff/secret/Meta-mutation hygiene.
 - [x] Passed the full deterministic CRM suite: **133 test files / 668 tests**. The Creatomate read-only live probe is intentionally opt-in (`RUN_LIVE_PROVIDER_VALIDATIONS=true`) so a temporary upstream stall cannot block ordinary regression coverage; its credential was validated at connection time.
 
-> **Live activation is intentionally blocked until its Settings prerequisites are green**—active owner-approved Brand Book, at least one approved official claim (user-supplied internal references remain non-official until Mahmoud approves otherwise), saved weekly timing/settings, and active Design System/logo. Once green, Settings provides **Enable USD 100 engine** then **Run first test**; the first run is review-only, not publication or advertising execution.
+> **Live activation is intentionally blocked until its Settings prerequisites are green**—active owner-approved Brand Book, owner-provided internal references covering the selected programmes, saved weekly timing/settings, active Design System/logo, and server-side provider credentials. Official sources stay opt-in and require Mahmoud's confirmation on the related content. Once green, Settings provides **Enable USD 100 engine** then **Run first test**; the first run is review-only, not publication or advertising execution.
 
 
 ## AI Agentic Marketing System — Owner Default Targets and Weekly Timing
@@ -78,3 +78,12 @@
 - [x] Saved the automated preparation window as **Saturday, 10:00 Africa/Cairo**, with the schedule preference enabled. The existing delivery time and other saved production preferences were preserved.
 - [x] Verified the persisted CRM Settings through the protected Marketing router: all exact target values, Cairo timezone, Saturday setting, 10:00 time, and schedule preference matched the owner-authorized input.
 - [x] These values are configuration only; provider automation remains **disabled** and external operations remain **false**. No task, publication, campaign operation, spend, CAPI event, message, or client/Lead action was triggered.
+
+
+## AI Agentic Marketing System — Permanent Internal Programme Source Policy
+
+- [x] Set **Spain Digital Nomad Residency** and **Malta Permanent Residence Programme** as the two equal permanent programme priorities until an authorized administrator changes them.
+- [x] Saved the owner instruction that the two supplied internal programme references are the primary source for all review-only weekly planning and content drafting.
+- [x] Updated the OpenAI → Claude → Manus planning context so it receives only bounded analysis from those internal references. Any returned research item must identify an `internal://` reference; non-internal sources are blocked before a plan is stored.
+- [x] Government and other external sources are neither retrieved nor cited automatically. They may be considered only after Mahmoud confirms the related specific content draft; internal references remain non-official and cannot alone support publication or a programme claim.
+- [x] Verified reference coverage for both selected programme keys: 2 owner-provided internal references found, no selected programme is missing coverage, 0 official claims are required for this review-only internal planning gate, automation remains disabled, and external operations remain false.

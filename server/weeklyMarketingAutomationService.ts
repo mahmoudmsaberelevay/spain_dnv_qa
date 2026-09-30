@@ -9,6 +9,7 @@ import {
   marketingDesignSystemAssets,
   marketingKnowledgeClaims,
   marketingKnowledgeSources,
+  marketingInternalProgrammeReferences,
   marketingProviderProfiles,
   marketingWeeklyAutomationBudgetLedger,
   marketingWeeklyAutomationControls,
@@ -84,9 +85,33 @@ function redactError(error: unknown) {
   return message.replace(/(?:sk-|key-|Bearer\s+)[A-Za-z0-9._-]+/g, "[redacted]").slice(0, 500);
 }
 
+function boundedInternalReferenceAnalysis(value: string) {
+  const parsed = asJson<Record<string, unknown>>(value, {});
+  const bounded = (key: string, limit: number) => {
+    const candidate = parsed[key];
+    if (typeof candidate === "string") return candidate.slice(0, limit);
+    if (Array.isArray(candidate)) return JSON.stringify(candidate.slice(0, 12)).slice(0, limit);
+    if (candidate && typeof candidate === "object") return JSON.stringify(candidate).slice(0, limit);
+    return null;
+  };
+  return {
+    executiveSummary: bounded("executive_summary", 7_000),
+    programmes: bounded("programmes", 12_000),
+    criticalReviewFlags: bounded("critical_review_flags", 4_000),
+    recommendedOfficialVerificationTopics: bounded("recommended_official_verification_topics", 4_000),
+  };
+}
+
+function selectedProgrammeKeys(settings: typeof marketingWeeklyResultsSettings.$inferSelect | null) {
+  if (!settings) return [];
+  return asJson<Array<{ key?: unknown }>>(settings.programPrioritiesJson, [])
+    .map(priority => typeof priority?.key === "string" ? priority.key.trim() : "")
+    .filter(Boolean);
+}
+
 async function readAutomationContext() {
   const db = await requireDb();
-  const [settingsRows, controls, brandBooks, designAssets, profiles, claims, preferences, performance] = await Promise.all([
+  const [settingsRows, controls, brandBooks, designAssets, profiles, claims, internalReferences, preferences, performance] = await Promise.all([
     db.select().from(marketingWeeklyResultsSettings).where(eq(marketingWeeklyResultsSettings.settingsKey, "primary-weekly-results")).limit(1),
     db.select().from(marketingWeeklyAutomationControls).where(eq(marketingWeeklyAutomationControls.controlKey, WEEKLY_AUTOMATION_CONTROL_KEY)).limit(1),
     db.select().from(marketingBrandBooks).where(eq(marketingBrandBooks.status, "active")).orderBy(desc(marketingBrandBooks.version)).limit(1),
@@ -96,12 +121,23 @@ async function readAutomationContext() {
       .from(marketingKnowledgeClaims).innerJoin(marketingKnowledgeSources, eq(marketingKnowledgeClaims.sourceId, marketingKnowledgeSources.id))
       .where(and(eq(marketingKnowledgeClaims.status, "approved"), eq(marketingKnowledgeSources.status, "approved"), eq(marketingKnowledgeSources.changeState, "tracked")))
       .orderBy(marketingKnowledgeClaims.programKey, desc(marketingKnowledgeClaims.updatedAt)).limit(120),
+    db.select({ id: marketingInternalProgrammeReferences.id, referenceKey: marketingInternalProgrammeReferences.referenceKey, programKeysJson: marketingInternalProgrammeReferences.programKeysJson, title: marketingInternalProgrammeReferences.title, sourceClassification: marketingInternalProgrammeReferences.sourceClassification, status: marketingInternalProgrammeReferences.status, documentHash: marketingInternalProgrammeReferences.documentHash, analysisJson: marketingInternalProgrammeReferences.analysisJson })
+      .from(marketingInternalProgrammeReferences)
+      .where(eq(marketingInternalProgrammeReferences.status, "internal_reference_only"))
+      .orderBy(desc(marketingInternalProgrammeReferences.updatedAt)).limit(12),
     db.select().from(marketingWeeklyResultsPreferenceMemories).where(eq(marketingWeeklyResultsPreferenceMemories.status, "active")).orderBy(desc(marketingWeeklyResultsPreferenceMemories.updatedAt)).limit(80),
     db.select().from(marketingWeeklyResultsPerformanceSnapshots).orderBy(desc(marketingWeeklyResultsPerformanceSnapshots.periodStart), desc(marketingWeeklyResultsPerformanceSnapshots.recordedAt)).limit(8),
   ]);
   const settings = settingsRows[0] ?? null;
   const control = controls[0] ?? null;
   const brandBook = brandBooks[0] ?? null;
+  const selectedProgrammes = selectedProgrammeKeys(settings);
+  const normalizedInternalReferences = internalReferences.map(reference => ({
+    ...reference,
+    programKeys: asJson<string[]>(reference.programKeysJson, []),
+    analysis: boundedInternalReferenceAnalysis(reference.analysisJson),
+  }));
+  const missingInternalReferenceProgrammes = selectedProgrammes.filter(programmeKey => !normalizedInternalReferences.some(reference => reference.programKeys.includes(programmeKey)));
   const profileByAlias = new Map(profiles.map(profile => [profile.alias, profile]));
   const providerReady = REQUIRED_ALIASES.every(alias => {
     const profile = profileByAlias.get(alias);
@@ -113,14 +149,15 @@ async function readAutomationContext() {
     settings && !/^([01]\d|2[0-3]):00$/.test(settings.prepareStartTime) ? "Choose a whole-hour Cairo preparation time (for example 08:00)." : null,
     !brandBook ? "Complete and activate the owner-approved Brand Book first." : null,
     !activeDesignAssetsPresent(designAssets) ? "An active Design System document and official logo are both required." : null,
-    claims.length === 0 ? "Approve at least one official knowledge claim before automated programme marketing material can be prepared." : null,
+    normalizedInternalReferences.length === 0 ? "Add an owner-provided internal programme reference before automated review material can be prepared." : null,
+    missingInternalReferenceProgrammes.length > 0 ? `No owner-provided internal reference covers: ${missingInternalReferenceProgrammes.join(", ")}.` : null,
     !ENV.openAiApiKey ? "OpenAI server credential is unavailable." : null,
     !ENV.anthropicApiKey ? "Anthropic server credential is unavailable." : null,
     !ENV.manusApiKey ? "Manus server credential is unavailable." : null,
     control && Number(control.monthlyBudgetUsd) > WEEKLY_AUTOMATION_MONTHLY_CAP_USD ? "The internal monthly cap cannot exceed USD 100." : null,
     providerReady ? null : "The three weekly planning provider profiles are not all enabled for the bounded automation engine.",
   ].filter((value): value is string => Boolean(value));
-  return { db, settings, control, brandBook, designAssets, claims, preferences, performance, profiles, providerReady, blockers };
+  return { db, settings, control, brandBook, designAssets, claims, internalReferences: normalizedInternalReferences, selectedProgrammes, missingInternalReferenceProgrammes, preferences, performance, profiles, providerReady, blockers };
 }
 
 export async function getWeeklyAutomationReadiness() {
@@ -135,7 +172,7 @@ export async function getWeeklyAutomationReadiness() {
       scheduleTaskUid: context.control.scheduleTaskUid, manusWebhookId: context.control.manusWebhookId, lastRunAt: context.control.lastRunAt, lastRunStatus: context.control.lastRunStatus, lastError: context.control.lastError,
     } : { isEnabled: false, state: "disabled", monthlyBudgetUsd: WEEKLY_AUTOMATION_MONTHLY_CAP_USD, perRunReserveUsd: WEEKLY_AUTOMATION_PER_RUN_RESERVE_USD, scheduleTaskUid: null, manusWebhookId: null, lastRunAt: null, lastRunStatus: null, lastError: null },
     blockers: context.blockers,
-    readiness: { brandBook: Boolean(context.brandBook), designSystem: activeDesignAssetsPresent(context.designAssets), providerProfiles: context.providerReady, approvedClaims: context.claims.length, budgetUsedUsd: Number(spentRows[0]?.total ?? 0), month },
+    readiness: { brandBook: Boolean(context.brandBook), designSystem: activeDesignAssetsPresent(context.designAssets), providerProfiles: context.providerReady, ownerProvidedInternalReferences: context.internalReferences.length, missingInternalReferenceProgrammes: context.missingInternalReferenceProgrammes, approvedClaims: context.claims.length, budgetUsedUsd: Number(spentRows[0]?.total ?? 0), month },
     jobs: jobs.map(job => ({ id: job.id, jobKey: job.jobKey, periodStart: job.periodStart, triggerType: job.triggerType, state: job.state, planId: job.planId, manusTaskUrl: job.manusTaskUrl, errorCode: job.errorCode, errorSummary: job.errorSummary, createdAt: job.createdAt, completedAt: job.completedAt, reservedCostUsd: Number(job.reservedCostUsd), attachments: asJson<Array<{ file_name?: string; url?: string; size_bytes?: number }>>(job.attachmentsJson, []) })),
   };
 }
@@ -201,7 +238,22 @@ function publicPlanningSnapshot(context: Awaited<ReturnType<typeof readAutomatio
     },
     brandBook: { version: context.brandBook.version, title: context.brandBook.title, rules: asJson(context.brandBook.brandPayloadJson, {}) },
     designSystem: context.designAssets.map(asset => ({ type: asset.assetType, title: asset.title, extraction: asJson(asset.extractionJson, {}) })),
-    approvedClaims: context.claims,
+    sourcePolicy: {
+      primarySource: "owner_provided_internal_programme_references",
+      governmentSourceRule: "Do not retrieve, browse, cite, or use government or other external sources automatically. An external source may be considered only after the owner explicitly confirms the specific content draft.",
+      publicationRule: "Internal references are planning context only. They are not official evidence and cannot by themselves support external publication, campaign deployment, or a programme claim.",
+    },
+    ownerProvidedInternalReferences: context.internalReferences.map(reference => ({
+      id: reference.id,
+      referenceKey: reference.referenceKey,
+      programKeys: reference.programKeys,
+      title: reference.title,
+      sourceClassification: reference.sourceClassification,
+      status: reference.status,
+      documentHash: reference.documentHash,
+      analysis: reference.analysis,
+    })),
+    approvedOfficialClaims: context.claims,
     feedbackMemory: context.preferences.map(preference => ({ scope: preference.scope, scopeKey: preference.scopeKey, preferenceText: preference.preferenceText })),
     aggregatePerformance: context.performance.map(snapshot => ({ periodStart: snapshot.periodStart, spendEgp: Number(snapshot.spendEgp), impressions: snapshot.impressions, clicks: snapshot.clicks, leadForms: snapshot.leadForms, qualifiedLeads: snapshot.qualifiedLeads, clientStageLeads: snapshot.clientStageLeads, notes: snapshot.notes })),
   };
@@ -212,6 +264,7 @@ function councilPrompt(snapshot: Record<string, unknown>, role: "strategy" | "ch
   return [
     strategy ? "You are ELEVAY's Arabic-first marketing strategist." : "You are ELEVAY's independent critical marketing reviewer.",
     strategy ? "Create a concrete weekly creative strategy that is safe for later human review." : "Challenge the weekly strategy: detect unsupported claims, brand drift, execution issues, and performance risks. Propose corrections.",
+    "Use only the owner-provided internal programme references in the planning context. Do not retrieve, browse, cite, or rely on government or other external sources. Treat internal references as non-official planning context and mark any point needing external verification as an evidence gap.",
     "Return only the requested JSON. Do not include personal data. Do not claim visa outcomes or guarantees. Do not propose publishing, campaign editing, spend, messaging, or any external action.",
     "Planning context:", JSON.stringify(snapshot),
   ].join("\n\n");
@@ -220,7 +273,8 @@ function councilPrompt(snapshot: Record<string, unknown>, role: "strategy" | "ch
 async function createManusWeeklyTask(snapshot: Record<string, unknown>, strategy: SpecialistOpinion, challenge: SpecialistOpinion, periodStart: string) {
   const prompt = [
     "You are the ELEVAY weekly creative production orchestrator. Create an internal, review-ready weekly production pack after considering the OpenAI strategist and Claude challenger opinions below.",
-    "Strict rules: all marketing copy/captions/CTAs/scripts/voice-over must be Arabic. Text visibly placed inside visual assets must be English only; use NONE when a visual has no text. Country names alone may be English in voice-over. Never use client, Lead, contact, passport, phone, email, or other personal data. Use approved claim IDs only. If no claim supports a statement, list it as an evidence gap rather than state it as a fact.",
+    "Strict rules: all marketing copy/captions/CTAs/scripts/voice-over must be Arabic. Text visibly placed inside visual assets must be English only; use NONE when a visual has no text. Country names alone may be English in voice-over. Never use client, Lead, contact, passport, phone, email, or other personal data.",
+    "Use only owner-provided internal programme references contained in the planning context. Do not browse, retrieve, cite, or use government or other external sources. Every researchResults.sourceUrl must use internal:// followed by an owner-provided referenceKey. Internal references are non-official planning context only: do not treat them as official evidence or make a programme claim unless it is supported by an approvedOfficialClaims ID. If a fact needs external verification, list it as an evidence gap.",
     "Prepare final-quality research summary, static/carousel/reel concepts and any safe attachment deliverables you can create. Do not publish, schedule, create or edit ads/campaigns, spend money, send CAPI events, contact anyone, or change a CRM record. Every output is for review only.",
     `Week starting: ${periodStart}`,
     "Planning context:", JSON.stringify(snapshot),
@@ -237,6 +291,10 @@ async function createManusWeeklyTask(snapshot: Record<string, unknown>, strategy
   const taskUrl = typeof body.task_url === "string" ? body.task_url : (body.task_detail as any)?.task_url;
   if (!taskId) throw new Error("Manus did not return a task identifier.");
   return { taskId, taskUrl: typeof taskUrl === "string" ? taskUrl : null };
+}
+
+function hasOnlyInternalResearchResults(output: WeeklyAutomationPlanOutput) {
+  return output.researchResults.every(result => result.sourceUrl.startsWith("internal://"));
 }
 
 export async function startWeeklyAutomationCycle(input: { triggerType: "manual_test" | "scheduled"; actorUserId?: number; forcePeriodStart?: string }) {
@@ -323,6 +381,7 @@ export async function applyWeeklyAutomationManusWebhook(payload: any) {
     const structured = task.structured_output;
     if (!structured?.success) throw new Error(typeof structured?.error === "string" ? structured.error : "Manus did not return a valid structured weekly plan.");
     const output = weeklyAutomationPlanSchema.parse(structured.value);
+    if (!hasOnlyInternalResearchResults(output)) throw new Error("The weekly plan included a non-internal research source and was blocked pending owner confirmation.");
     const attachments = Array.isArray(task.attachments) ? task.attachments.map((item: any) => ({ file_name: typeof item?.file_name === "string" ? item.file_name.slice(0, 500) : undefined, url: typeof item?.url === "string" ? item.url.slice(0, 2000) : undefined, size_bytes: Number.isFinite(Number(item?.size_bytes)) ? Number(item.size_bytes) : undefined })) : [];
     const planId = await persistReviewPlan(job, output, attachments);
     await db.update(marketingWeeklyAutomationJobs).set({ state: "completed_pending_review", manusOutputJson: JSON.stringify(output), attachmentsJson: JSON.stringify(attachments), planId, errorCode: null, errorSummary: null, completedAt: now, updatedAt: now }).where(eq(marketingWeeklyAutomationJobs.id, job.id));
