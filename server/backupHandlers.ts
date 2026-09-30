@@ -11,11 +11,11 @@ export async function exportFinancialBackup(): Promise<{ success: boolean; messa
     if (!db) throw new Error("Database unavailable");
 
     // Fetch all financial data
-    const [income] = await db.query("SELECT * FROM income ORDER BY createdAt DESC");
-    const [expenses] = await db.query("SELECT * FROM expenses ORDER BY createdAt DESC");
-    const [salaries] = await db.query("SELECT * FROM salaries ORDER BY createdAt DESC");
-    const [commissions] = await db.query("SELECT * FROM commissions ORDER BY createdAt DESC");
-    const [receipts] = await db.query("SELECT * FROM receipts ORDER BY createdAt DESC");
+    const [income] = await db.$client.promise().query("SELECT * FROM income ORDER BY createdAt DESC");
+    const [expenses] = await db.$client.promise().query("SELECT * FROM expenses ORDER BY createdAt DESC");
+    const [salaries] = await db.$client.promise().query("SELECT * FROM salaries ORDER BY createdAt DESC");
+    const [commissions] = await db.$client.promise().query("SELECT * FROM commissions ORDER BY createdAt DESC");
+    const [receipts] = await db.$client.promise().query("SELECT * FROM receipts ORDER BY createdAt DESC");
 
     const backup = {
       exportedAt: new Date().toISOString(),
@@ -63,9 +63,9 @@ export async function exportContractsBackup(): Promise<{ success: boolean; messa
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
 
-    const [contracts] = await db.query("SELECT * FROM contracts ORDER BY createdAt DESC");
-    const [contractReceipts] = await db.query("SELECT * FROM contractReceipts ORDER BY createdAt DESC");
-    const [contractTemplates] = await db.query("SELECT * FROM contractTemplates ORDER BY createdAt DESC");
+    const [contracts] = await db.$client.promise().query("SELECT * FROM contracts ORDER BY createdAt DESC");
+    const [contractReceipts] = await db.$client.promise().query("SELECT * FROM contractReceipts ORDER BY createdAt DESC");
+    const [contractTemplates] = await db.$client.promise().query("SELECT * FROM contractTemplates ORDER BY createdAt DESC");
 
     const backup = {
       exportedAt: new Date().toISOString(),
@@ -109,9 +109,9 @@ export async function exportLeadsBackup(): Promise<{ success: boolean; message: 
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
 
-    const [leads] = await db.query("SELECT * FROM leads ORDER BY createdAt DESC");
-    const [activities] = await db.query("SELECT * FROM leadActivities ORDER BY createdAt DESC");
-    const [stageChanges] = await db.query("SELECT * FROM leadActivities WHERE activityType = 'stage_changed' ORDER BY createdAt DESC");
+    const [leads] = await db.$client.promise().query("SELECT * FROM leads ORDER BY createdAt DESC");
+    const [activities] = await db.$client.promise().query("SELECT * FROM leadActivities ORDER BY createdAt DESC");
+    const [stageChanges] = await db.$client.promise().query("SELECT * FROM leadActivities WHERE activityType = 'stage_changed' ORDER BY createdAt DESC");
 
     const backup = {
       exportedAt: new Date().toISOString(),
@@ -156,7 +156,7 @@ export async function exportDatabaseBackup(): Promise<{ success: boolean; messag
     if (!db) throw new Error("Database unavailable");
 
     // Get all table names
-    const [tables] = await db.query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE()");
+    const [tables] = await db.$client.promise().query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE()");
     const tableNames = (tables as any[]).map(t => t.TABLE_NAME);
 
     const backup: Record<string, any> = {
@@ -170,7 +170,7 @@ export async function exportDatabaseBackup(): Promise<{ success: boolean; messag
     // Fetch all data from each table
     for (const tableName of tableNames) {
       try {
-        const [rows] = await db.query(`SELECT * FROM \`${tableName}\` ORDER BY createdAt DESC LIMIT 10000`);
+        const [rows] = await db.$client.promise().query(`SELECT * FROM \`${tableName}\` ORDER BY createdAt DESC LIMIT 10000`);
         backup.tables[tableName] = {
           recordCount: (rows as any[]).length,
           data: rows,

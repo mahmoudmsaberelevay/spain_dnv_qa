@@ -385,7 +385,7 @@ export async function generateNationalVisaDocx(input: NationalVisaDocInput): Pro
       default: {
         document: {
           run: { rightToLeft: true },
-          paragraph: { bidirectional: true, alignment: AlignmentType.RIGHT },
+          paragraph: { alignment: AlignmentType.RIGHT },
         },
       },
     },

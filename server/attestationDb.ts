@@ -111,14 +111,14 @@ export async function listFinancialClientsForAttestation(searchTerm?: string) {
   
   const query = db.select({
     id: finClients.id,
-    clientName: finClients.clientName,
+    clientName: finClients.name,
     clientCode: finClients.clientCode,
   }).from(finClients);
 
   if (searchTerm) {
     query.where(
       or(
-        like(finClients.clientName, `%${searchTerm}%`),
+        like(finClients.name, `%${searchTerm}%`),
         like(finClients.clientCode, `%${searchTerm}%`)
       )
     );

@@ -1,5 +1,4 @@
 import type { Express, Request, Response } from "express";
-import * as db from "../db";
 import { getDb } from "../db";
 import { users } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -32,7 +31,7 @@ export function registerAuthRoutes(app: Express) {
       }
 
       // Find user by email
-      const database = await db.getDb();
+      const database = await getDb();
       if (!database) {
         res.status(500).json({ error: "Database connection failed" });
         return;
@@ -108,9 +107,12 @@ export function registerAuthRoutes(app: Express) {
         return;
       }
 
-      const user = await db.db.query.users.findFirst({
-        where: (users, { eq }) => eq(users.email, email),
-      });
+      const database = await getDb();
+      if (!database) {
+        res.status(500).json({ error: "Database connection failed" });
+        return;
+      }
+      const [user] = await database.select().from(users).where(eq(users.email, email)).limit(1);
 
       if (!user) {
         // Don't reveal if email exists (security best practice)
@@ -123,10 +125,10 @@ export function registerAuthRoutes(app: Express) {
       const resetExpiry = getResetTokenExpiry();
 
       // Save reset token to database
-      await db.db
-        .update(db.users)
+      await database
+        .update(users)
         .set({ passwordResetToken: resetToken, passwordResetExpiry: resetExpiry })
-        .where((users) => db.eq(users.id, user.id));
+        .where(eq(users.id, user.id));
 
       // TODO: Send email with reset link
       // For now, just return the token (in production, send via email)
@@ -155,9 +157,12 @@ export function registerAuthRoutes(app: Express) {
       }
 
       // Find user by reset token
-      const user = await db.db.query.users.findFirst({
-        where: (users, { eq }) => eq(users.passwordResetToken, token),
-      });
+      const database = await getDb();
+      if (!database) {
+        res.status(500).json({ error: "Database connection failed" });
+        return;
+      }
+      const [user] = await database.select().from(users).where(eq(users.passwordResetToken, token)).limit(1);
 
       if (!user || !isResetTokenValid(user.passwordResetExpiry)) {
         res.status(401).json({ error: "Invalid or expired reset token" });
@@ -168,14 +173,14 @@ export function registerAuthRoutes(app: Express) {
       const hashedPassword = await hashPassword(newPassword);
 
       // Update password and clear reset token
-      await db.db
-        .update(db.users)
+      await database
+        .update(users)
         .set({
           password: hashedPassword,
           passwordResetToken: null,
           passwordResetExpiry: null,
         })
-        .where((users) => db.eq(users.id, user.id));
+        .where(eq(users.id, user.id));
 
       res.json({ success: true, message: "Password reset successfully" });
     } catch (error) {

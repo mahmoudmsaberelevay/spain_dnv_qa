@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { ENV } from "./env";
 export function registerStorageProxy(app: Express) {
   app.get("/manus-storage/*", async (req, res) => {
-    const key = req.params[0];
+    const key = (req.params as Record<string, string | undefined>)["0"];
     if (!key) {
       res.status(400).send("Missing storage key");
       return;
@@ -26,7 +26,10 @@ export function registerStorageProxy(app: Express) {
         res.status(502).send("Storage backend error");
         return;
       }
-      const { url } = (await forgeResp.json()) as { url: string };
+      const payload: unknown = await forgeResp.json();
+      const url = payload && typeof payload === "object" && "url" in payload && typeof payload.url === "string"
+        ? payload.url
+        : "";
       if (!url) {
         res.status(502).send("Empty signed URL from backend");
         return;

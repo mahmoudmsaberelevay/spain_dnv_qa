@@ -14,7 +14,7 @@ import {
   createDocument, getDocumentsByCaseId, getDocumentById, updateDocument, deleteDocument,
   upsertAnalysisResult, getAnalysisResultByCaseId,
   createContract, getAllContracts, getContractById, updateContractStatus, updateContractConsultant, updateContractDocUrl, applyContractDiscount, createInvoice, getAllInvoices, getInvoicesByContractId,
-  getInvoiceById, markInvoicePaid, updateInvoiceReceiptDate, updateInvoicePdfUrl, deleteInvoice, createPayment,
+  getInvoiceById, markInvoicePaidAndSyncFinancial, updateInvoiceReceiptDate, updateInvoicePdfUrl, deleteInvoice,
   getTotalPaidByContractId, getContractStats, getFamilyMemberDistribution,
   getRecentContracts, getPaymentsByContractId, getNextContractSequence, getNextContractSequenceForYear,
   getConsultantStats,
@@ -1184,71 +1184,26 @@ const contractingRouter = router({
         const invoice = await getInvoiceById(input.id);
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
         if (invoice.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Invoice already paid" });
-        await markInvoicePaid(input.id);
-        // Calculate actual paid EUR: if client paid partial EGP, convert to EUR equivalent
-        const invoiceExchangeRate = Number(invoice.exchangeRate ?? 0);
-        const actualPaidEgp = invoice.actualPaidAmountEgp ? Number(invoice.actualPaidAmountEgp) : null;
-        let actualPaidEur: number;
-        if (actualPaidEgp != null && invoiceExchangeRate > 0) {
-          // Client paid partial EGP → convert to EUR equivalent
-          actualPaidEur = Math.round((actualPaidEgp / invoiceExchangeRate) * 100) / 100;
-        } else {
-          // No partial payment → full receipt EUR amount was paid
-          actualPaidEur = Number(invoice.amountEur ?? 0);
+        let paymentResult: Awaited<ReturnType<typeof markInvoicePaidAndSyncFinancial>>;
+        try {
+          paymentResult = await markInvoicePaidAndSyncFinancial(input.id);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message === "INVOICE_ALREADY_PAID") throw new TRPCError({ code: "CONFLICT", message: "Invoice already paid" });
+          if (message === "INVOICE_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND" });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Receipt payment could not be recorded. No partial financial update was saved." });
         }
-        // For legacy receipts: skip contract-based logic
-        if (!invoice.isLegacyReceipt && invoice.contractId != null) {
-          await createPayment({
-            contractId: invoice.contractId, invoiceId: invoice.id,
-            amountEur: actualPaidEur.toFixed(2), amountEgp: actualPaidEgp != null ? actualPaidEgp.toString() : (invoice.amountEgp ?? undefined),
-            exchangeRate: invoice.exchangeRate ?? undefined, paidAt: new Date(),
-          });
+        // Notifications run only after commit, so their failure cannot roll back a settled payment.
+        if (paymentResult.clientCreated && paymentResult.contract) {
+          notifyFinClientAdded(
+            invoice.contractCode ?? "—",
+            invoice.clientName,
+            paymentResult.contract.country ?? "spain"
+          ).catch(() => {});
         }
-        const totalPaid = invoice.contractId != null ? await getTotalPaidByContractId(invoice.contractId) : 0;
-        const contract = invoice.contractId != null ? await getContractById(invoice.contractId) : null;
-        const remainingBalance = Number(contract?.contractValue ?? 0) - totalPaid;
-        // Auto-create Finance client if not already present for this contract (skip for legacy receipts)
-        if (!invoice.isLegacyReceipt && contract) {
-          const { createFinClient, getFinClientByContractId } = await import("./finDb");
-          const existing = await getFinClientByContractId(contract.id);
-          if (!existing) {
-            const contractValueEur = Number(contract.contractValue ?? 0);
-            const paidEur = actualPaidEur;
-            await createFinClient({
-              contractId: contract.id,
-              clientCode: invoice.contractCode ?? undefined,
-              name: invoice.clientName,
-              phone: contract.clientMobile ?? undefined,
-              signingDate: new Date(), // Signing date = date first receipt is marked as paid
-              consultant: contract.consultantName ?? undefined,
-              salesPerson: contract.consultantName ?? undefined,
-              contractValueEur: contractValueEur.toFixed(2),
-              paidAmountEur: paidEur.toFixed(2),
-              remainingAmountEur: (contractValueEur - paidEur).toFixed(2),
-              familyMembers: contract.familyMembers ?? 0,
-              isLegacy: false,
-            });
-            // Notify team that a Finance client was auto-created from paid receipt
-            notifyFinClientAdded(
-              invoice.clientName,
-              invoice.contractCode ?? undefined,
-              contract.consultantName ?? undefined,
-              contractValueEur,
-              "auto"
-            ).catch(() => {});
-          } else if (existing && !existing.signingDate) {
-            // If finClient exists but has no signing date, set it now (first receipt paid)
-            const { updateFinClient } = await import("./finDb");
-            await updateFinClient(existing.id, { signingDate: new Date() });
-          }
-        }
-        await notifyReceiptPaid(invoice.invoiceCode, invoice.contractCode ?? "—", invoice.clientName, Number(invoice.amountEur), remainingBalance);
+        await notifyReceiptPaid(invoice.invoiceCode, invoice.contractCode ?? "—", invoice.clientName, Number(invoice.amountEur), paymentResult.remainingEur);
         const { createNotification: cnPaid } = await import("./db");
         await cnPaid({ type: "receipt_paid", title: "✅ إيصال مدفوع", body: `تم تسجيل دفع الإيصال ${invoice.invoiceCode} لـ ${invoice.clientName} بمبلغ €${Number(invoice.amountEur).toFixed(2)}`, entityId: invoice.id, entityType: "invoice" });
-        // Recalculate client paid amount from all paid receipts (single source of truth)
-        if (!invoice.isLegacyReceipt && invoice.contractId != null) {
-          await recalcClientPaidFromReceipts(invoice.contractId);
-        }
         return getInvoiceById(input.id);
       }),
     createLegacy: protectedProcedure
@@ -1357,9 +1312,9 @@ const contractingRouter = router({
         const invoice = await getInvoiceById(input.invoiceId);
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
         if (!invoice.pdfUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "No PDF available" });
-        const result = await sendReceiptToClient(input.clientEmail, invoice.clientName, invoice.invoiceCode, invoice.pdfUrl);
-        if (!result.success) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.message });
-        return result;
+        const sent = await sendReceiptToClient(input.clientEmail, invoice.invoiceCode, invoice.pdfUrl);
+        if (!sent) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Receipt email could not be sent" });
+        return { success: true };
       }),
     updateDate: protectedProcedure
       .input(z.object({
@@ -1468,8 +1423,9 @@ const contractingRouter = router({
         const inv = await getProformaInvoiceById(input.id);
         if (!inv) throw new TRPCError({ code: "NOT_FOUND" });
         if (!inv.pdfUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "No PDF available" });
-        const result = await sendReceiptToClient(input.clientEmail, inv.clientName, inv.proformaCode, inv.pdfUrl);
-        return result;
+        const sent = await sendReceiptToClient(input.clientEmail, inv.proformaCode, inv.pdfUrl);
+        if (!sent) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Proforma email could not be sent" });
+        return { success: true };
       }),
     regeneratePdf: protectedProcedure
       .input(z.object({ id: z.number() }))

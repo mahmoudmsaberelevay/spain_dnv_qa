@@ -16,7 +16,7 @@ const STATUS_COLORS = {
 const FAMILY_COLORS = ["#1e3a5f", "#c8a96e", "#10b981", "#6366f1", "#f59e0b", "#ef4444"];
 
 export default function Analytics() {
-  const { data: stats, isLoading: statsLoading } = trpc.contracting.analytics.stats.useQuery();
+  const { data: stats, isLoading: statsLoading } = trpc.contracting.analytics.stats.useQuery({});
   const { data: familyDist, isLoading: familyLoading } = trpc.contracting.analytics.familyDistribution.useQuery();
   const { data: recentContracts } = trpc.contracting.analytics.recentContracts.useQuery({ limit: 20 });
 

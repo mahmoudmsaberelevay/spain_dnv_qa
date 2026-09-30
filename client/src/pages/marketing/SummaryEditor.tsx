@@ -322,7 +322,7 @@ function BlockEditor({ block, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
   const removeItem = (idx: number) => onChange({ ...block, items: (block.items || []).filter((_, i) => i !== idx) });
 
   // Table helpers
-  const table = block.table || { cols: 2, rows: 2, cells: Array(4).fill({ text: "" }) };
+  const table: TableData = block.table || { cols: 2, rows: 2, cells: Array<TableCell>(4).fill({ text: "" }) };
   const getCellObj = (r: number, c: number): TableCell => table.cells[r * table.cols + c] || { text: "" };
   const getCell = (r: number, c: number) => getCellObj(r, c).text || "";
   const setCell = (r: number, c: number, val: string) => {

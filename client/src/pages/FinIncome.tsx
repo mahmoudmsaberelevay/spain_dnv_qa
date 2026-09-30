@@ -266,7 +266,7 @@ export default function FinIncome() {
         <Button
           size="lg"
           className="gap-2 px-8"
-          onClick={() => { setForm({ description: "", accountId: "", categoryId: "", amount: "", note: "", finClientId: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}
+          onClick={() => { setForm({ description: "", accountId: "", categoryId: "", amount: "", note: "", evidenceLink: "", finClientId: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}
         >
           <Plus className="h-5 w-5" /> Record Income
         </Button>

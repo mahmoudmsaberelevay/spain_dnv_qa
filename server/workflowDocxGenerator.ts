@@ -570,7 +570,7 @@ export async function generateWorkflowDocx(input: WorkflowDocInput): Promise<Buf
       default: {
         document: {
           run: { rightToLeft: true },
-          paragraph: { bidirectional: true, alignment: AlignmentType.RIGHT },
+          paragraph: { alignment: AlignmentType.RIGHT },
         },
       },
     },

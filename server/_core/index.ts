@@ -341,8 +341,6 @@ async function startServer() {
   // Backup list endpoint
   app.get("/api/backup/list", requireBackupAdmin, (req, res) => {
     try {
-      const fs = require("fs");
-      const path = require("path");
       const BACKUP_DIR = "/home/ubuntu/backups";
 
       if (!fs.existsSync(BACKUP_DIR)) {
@@ -380,8 +378,6 @@ async function startServer() {
   // Backup stats endpoint
   app.get("/api/backup/stats", requireBackupAdmin, (req, res) => {
     try {
-      const fs = require("fs");
-      const path = require("path");
       const BACKUP_DIR = "/home/ubuntu/backups";
 
       if (!fs.existsSync(BACKUP_DIR)) {
@@ -409,7 +405,7 @@ async function startServer() {
         .reverse();
 
       let totalSize = 0;
-      const backupDates = [];
+      const backupDates: number[] = [];
 
       files.forEach((filename) => {
         const filePath = path.join(BACKUP_DIR, filename);
@@ -446,8 +442,6 @@ async function startServer() {
   // Backup download endpoints
   app.get("/api/backup/download/:filename", requireBackupAdmin, (req, res) => {
     try {
-      const fs = require("fs");
-      const path = require("path");
       const filename = decodeURIComponent(req.params.filename);
       const BACKUP_DIR = "/home/ubuntu/backups";
 
@@ -478,7 +472,7 @@ async function startServer() {
       const fileStream = fs.createReadStream(filePath);
       fileStream.pipe(res);
 
-      fileStream.on("error", (err) => {
+      fileStream.on("error", (err: NodeJS.ErrnoException) => {
         console.error("File stream error:", err);
         if (!res.headersSent) {
           res.status(500).json({ error: "Download failed" });
@@ -531,7 +525,7 @@ async function startServer() {
       const tables: any[] = [];
       
       // Find CREATE TABLE statements
-      const createTableRegex = /CREATE TABLE[^`]*`([^`]+)`\s*\(([^;]+?)\)\s*(?:ENGINE|;)/gs;
+      const createTableRegex = /CREATE TABLE[^`]*`([^`]+)`\s*\(([\s\S]+?)\)\s*(?:ENGINE|;)/g;
       let match;
       while ((match = createTableRegex.exec(sqlContent)) !== null) {
         const tableName = match[1];
@@ -546,7 +540,8 @@ async function startServer() {
         }
 
         // Count INSERT rows for this table
-        const insertRegex = new RegExp(`INSERT INTO \`${tableName}\`.*?VALUES\s*(.+?)(?:;|$)`, "gs");
+        const escapedTableName = tableName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const insertRegex = new RegExp(`INSERT INTO \`${escapedTableName}\`[\\s\\S]*?VALUES\\s*([\\s\\S]+?)(?:;|$)`, "g");
         let rowCount = 0;
         let sampleData: any[] = [];
         let insertMatch;

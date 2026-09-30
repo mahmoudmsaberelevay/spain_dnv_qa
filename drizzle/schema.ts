@@ -178,7 +178,10 @@ export const payments = mysqlTable("payments", {
   paidAt: timestamp("paidAt").defaultNow().notNull(),
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("payments_invoice_unique").on(table.invoiceId),
+  index("payments_contract_paid_idx").on(table.contractId, table.paidAt),
+]);
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = typeof payments.$inferInsert;
 
@@ -425,7 +428,9 @@ export const finClients = mysqlTable("finClients", {
   contractUrl: varchar("contractUrl", { length: 2048 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("fin_clients_contract_unique").on(table.contractId),
+]);
 export type FinClient = typeof finClients.$inferSelect;
 export type InsertFinClient = typeof finClients.$inferInsert;
 

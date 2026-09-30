@@ -251,7 +251,7 @@ export default function AiCouncil() {
                 </div>
               </CardHeader>
               <CardContent>
-                {workspaceQuery.data.decision ? (
+                {workspaceQuery.data?.decision ? (
                   <div className="space-y-2 text-sm text-slate-700">
                     <p className="font-semibold">{workspaceQuery.data.decision.summary}</p>
                     <p className="leading-6">{workspaceQuery.data.decision.rationale}</p>

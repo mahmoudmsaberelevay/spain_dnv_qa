@@ -44,7 +44,7 @@ export async function listFinancialClients(searchTerm?: string) {
   
   const query = db.select({
     id: finClients.id,
-    clientName: finClients.clientName,
+    clientName: finClients.name,
     clientCode: finClients.clientCode,
   }).from(finClients);
 
@@ -53,7 +53,7 @@ export async function listFinancialClients(searchTerm?: string) {
     const likePattern = `%${searchTerm}%`;
     query.where(
       or(
-        like(finClients.clientName, likePattern),
+        like(finClients.name, likePattern),
         like(finClients.clientCode, likePattern)
       )
     );

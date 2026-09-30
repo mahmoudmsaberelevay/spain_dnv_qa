@@ -47,7 +47,7 @@ function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
     // ── Step 1: Merge numbering definitions ──────────────────────────────────
     // Find all numId values used in the appendix body
     const appendixNumIds = new Set<number>();
-    const numIdMatches = appendixDocXml.matchAll(/<w:numId w:val="(\d+)"/g);
+    const numIdMatches = Array.from(appendixDocXml.matchAll(/<w:numId w:val="(\d+)"/g));
     for (const m of numIdMatches) appendixNumIds.add(parseInt(m[1]));
 
     let numIdOffset = 0;
@@ -60,15 +60,15 @@ function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
         const appendixNumXml = appendixNumXmlFile.asText();
 
         // Find the highest abstractNumId and numId in the main document
-        const mainAbstractIds = [...mainNumXml.matchAll(/w:abstractNumId="(\d+)"/g)].map(m => parseInt(m[1]));
-        const mainNumIds = [...mainNumXml.matchAll(/<w:num w:numId="(\d+)"/g)].map(m => parseInt(m[1]));
+        const mainAbstractIds = Array.from(mainNumXml.matchAll(/w:abstractNumId="(\d+)"/g)).map(m => parseInt(m[1]));
+        const mainNumIds = Array.from(mainNumXml.matchAll(/<w:num w:numId="(\d+)"/g)).map(m => parseInt(m[1]));
         const maxAbstractId = mainAbstractIds.length > 0 ? Math.max(...mainAbstractIds) : 0;
         const maxNumId = mainNumIds.length > 0 ? Math.max(...mainNumIds) : 0;
         numIdOffset = maxNumId;
 
         // Extract abstractNum definitions from appendix and remap their IDs
-        const appendixAbstractNums = [...appendixNumXml.matchAll(/<w:abstractNum w:abstractNumId="(\d+)"[\s\S]*?<\/w:abstractNum>/g)];
-        const appendixNums = [...appendixNumXml.matchAll(/<w:num w:numId="(\d+)"[\s\S]*?<\/w:num>/g)];
+        const appendixAbstractNums = Array.from(appendixNumXml.matchAll(/<w:abstractNum w:abstractNumId="(\d+)"[\s\S]*?<\/w:abstractNum>/g));
+        const appendixNums = Array.from(appendixNumXml.matchAll(/<w:num w:numId="(\d+)"[\s\S]*?<\/w:num>/g));
 
         // Build a map: old abstractNumId -> new abstractNumId
         const abstractIdMap = new Map<number, number>();
@@ -83,7 +83,7 @@ function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
           const newId = abstractIdMap.get(oldId)!;
           let def = m[0].replace(`w:abstractNumId="${oldId}"`, `w:abstractNumId="${newId}"`);
           // Also remap any w:abstractNumId references inside the definition
-          def = def.replace(/<w:abstractNumId w:val="(\d+)"/, (_, v) => {
+          def = def.replace(/<w:abstractNumId w:val="(\d+)"/, (_match: string, v: string) => {
             const mapped = abstractIdMap.get(parseInt(v));
             return `<w:abstractNumId w:val="${mapped !== undefined ? mapped : v}"`;
           });
@@ -97,7 +97,7 @@ function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
           const newNumId = oldNumId + numIdOffset;
           let def = m[0]
             .replace(`w:numId="${oldNumId}"`, `w:numId="${newNumId}"`)
-            .replace(/<w:abstractNumId w:val="(\d+)"/, (_, v) => {
+            .replace(/<w:abstractNumId w:val="(\d+)"/, (_match: string, v: string) => {
               const mapped = abstractIdMap.get(parseInt(v));
               return `<w:abstractNumId w:val="${mapped !== undefined ? mapped : v}"`;
             });
@@ -115,8 +115,8 @@ function mergeAppendixIntoContract(mainZip: PizZip, appendixBuf: Buffer): void {
       let mainStylesXml = mainStyleFile.asText();
       const appendixStylesXml = appendixStyleFile.asText();
       // Find styles used in appendix body
-      const usedStyles = new Set([...appendixDocXml.matchAll(/<w:pStyle w:val="([^"]+)"/g)].map(m => m[1]));
-      for (const styleId of usedStyles) {
+      const usedStyles = new Set(Array.from(appendixDocXml.matchAll(/<w:pStyle w:val="([^"]+)"/g)).map(m => m[1]));
+      for (const styleId of Array.from(usedStyles)) {
         // Only add if not already in main
         if (!mainStylesXml.includes(`w:styleId="${styleId}"`)) {
           const styleMatch = appendixStylesXml.match(

@@ -83,7 +83,7 @@ export function registerBackupRoutes(app: Express) {
         .reverse();
 
       let totalSize = 0;
-      const backupDates = [];
+      const backupDates: number[] = [];
 
       files.forEach((filename) => {
         const filePath = path.join(BACKUP_DIR, filename);

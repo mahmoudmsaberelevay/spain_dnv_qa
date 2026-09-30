@@ -149,8 +149,8 @@ export default function ProformaInvoices() {
   });
 
   const sendEmailMutation = trpc.contracting.proformaInvoices.sendByEmail.useMutation({
-    onSuccess: (result) => {
-      toast.success(result.message ?? "Proforma Invoice sent to client!");
+    onSuccess: () => {
+      toast.success("Proforma Invoice sent to client!");
       setSendEmailDialog(null);
       setClientEmail("");
     },

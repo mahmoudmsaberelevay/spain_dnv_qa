@@ -1,4 +1,4 @@
-import { eq, desc, and, lt } from "drizzle-orm";
+import { eq, desc, and, lt, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, cases, documents, analysisResults, InsertCase, InsertDocument, InsertAnalysisResult } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -169,7 +169,7 @@ export async function getAnalysisResultByCaseId(caseId: number) {
 }
 
 // ─── Contracting Module ───────────────────────────────────────────────────────
-import { contracts, invoices, payments, InsertContract, InsertInvoice, InsertPayment, proformaInvoices, InsertProformaInvoice } from "../drizzle/schema";
+import { contracts, invoices, payments, finClients, InsertContract, InsertInvoice, InsertPayment, proformaInvoices, InsertProformaInvoice } from "../drizzle/schema";
 import { sql } from "drizzle-orm";
 
 export async function createContract(data: InsertContract) {
@@ -282,67 +282,162 @@ export async function getInvoiceById(id: number) {
 export async function deleteInvoice(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.delete(invoices).where(eq(invoices.id, id));
+  return db.transaction(async tx => {
+    const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, id)).limit(1);
+    if (!invoice) return false;
+    await tx.delete(payments).where(eq(payments.invoiceId, id));
+    await tx.delete(invoices).where(eq(invoices.id, id));
+    if (!invoice.isLegacyReceipt && invoice.contractId != null) {
+      await reconcileContractReceiptFinancials(tx, invoice.contractId);
+    }
+    return true;
+  });
+}
+
+function actualReceiptPaidEur(invoice: {
+  amountEur: string | null;
+  actualPaidAmountEgp: string | null;
+  exchangeRate: string | null;
+}) {
+  const actualEgp = invoice.actualPaidAmountEgp == null ? null : Number(invoice.actualPaidAmountEgp);
+  const exchangeRate = invoice.exchangeRate == null ? 0 : Number(invoice.exchangeRate);
+  return actualEgp != null && exchangeRate > 0
+    ? Math.round((actualEgp / exchangeRate) * 100) / 100
+    : Number(invoice.amountEur ?? 0);
+}
+
+function affectedRowCount(result: unknown) {
+  const metadata = Array.isArray(result) ? result[0] : result;
+  return Number((metadata as { affectedRows?: number } | undefined)?.affectedRows ?? 0);
 }
 
 /**
- * Recalculate a finClient's paidAmountEur from all paid receipts linked to their contract.
- * Uses actualPaidAmountEgp / exchangeRate when available, otherwise amountEur.
- * Also deletes orphaned payment records for deleted invoices.
+ * Rebuild the receipt-derived financial state for one contract within an
+ * existing transaction. Payments are a faithful ledger projection of paid
+ * receipts: deleting an invoice cannot leave an orphan and re-running this
+ * operation is deterministic.
  */
-export async function recalcClientPaidFromReceipts(contractId: number) {
-  const db = await getDb();
-  if (!db) return;
-  const { sql } = await import("drizzle-orm");
-  const { finClients, invoices: invoicesTable, payments: paymentsTable } = await import("../drizzle/schema");
+async function reconcileContractReceiptFinancials(tx: any, contractId: number) {
+  const [client] = await tx.select().from(finClients).where(eq(finClients.contractId, contractId)).limit(1);
+  if (!client) return { totalPaidEur: 0, remainingEur: 0, paymentCount: 0 };
 
-  // Find the finClient for this contract
-  const [client] = await db.select().from(finClients).where(eq(finClients.contractId, contractId)).limit(1);
-  if (!client) return;
+  const paidInvoices = await tx.select({
+    id: invoices.id,
+    amountEur: invoices.amountEur,
+    amountEgp: invoices.amountEgp,
+    actualPaidAmountEgp: invoices.actualPaidAmountEgp,
+    exchangeRate: invoices.exchangeRate,
+    paidAt: invoices.paidAt,
+  }).from(invoices).where(and(eq(invoices.contractId, contractId), eq(invoices.status, "paid")));
 
-  // Sum all paid receipts for this contract
-  // Use actualPaidAmountEgp / exchangeRate when available, otherwise use amountEur
-  const paidInvoices = await db.select({
-    amountEur: invoicesTable.amountEur,
-    actualPaidAmountEgp: invoicesTable.actualPaidAmountEgp,
-    exchangeRate: invoicesTable.exchangeRate,
-  }).from(invoicesTable).where(
-    and(
-      eq(invoicesTable.contractId, contractId),
-      eq(invoicesTable.status, "paid")
-    )
-  );
+  const totalPaidEur = paidInvoices.reduce((total: number, invoice: any) => total + actualReceiptPaidEur(invoice), 0);
+  const remainingEur = Math.max(0, Number(client.contractValueEur ?? 0) - totalPaidEur);
 
-  let totalPaidEur = 0;
-  for (const inv of paidInvoices) {
-    const actualEgp = inv.actualPaidAmountEgp ? Number(inv.actualPaidAmountEgp) : null;
-    const rate = inv.exchangeRate ? Number(inv.exchangeRate) : 0;
-    if (actualEgp != null && rate > 0) {
-      totalPaidEur += Math.round((actualEgp / rate) * 100) / 100;
-    } else {
-      totalPaidEur += Number(inv.amountEur ?? 0);
-    }
-  }
-
-  const contractValueEur = Number(client.contractValueEur ?? 0);
-  const remainingEur = Math.max(0, contractValueEur - totalPaidEur);
-
-  await db.update(finClients).set({
+  await tx.update(finClients).set({
     paidAmountEur: totalPaidEur.toFixed(2),
     remainingAmountEur: remainingEur.toFixed(2),
   }).where(eq(finClients.id, client.id));
 
-  // Also sync the payments table: delete payments for invoices that no longer exist
-  // and ensure payments match actual paid invoices
-  await db.delete(paymentsTable).where(eq(paymentsTable.contractId, contractId));
-  for (const inv of paidInvoices) {
-    const actualEgp = inv.actualPaidAmountEgp ? Number(inv.actualPaidAmountEgp) : null;
-    const rate = inv.exchangeRate ? Number(inv.exchangeRate) : 0;
-    const eurAmount = (actualEgp != null && rate > 0)
-      ? Math.round((actualEgp / rate) * 100) / 100
-      : Number(inv.amountEur ?? 0);
-    // We don't re-insert payments here — the payments table is just for tracking
+  // The replacement is transaction-bound: a failure rolls back both the client
+  // total and this ledger projection, rather than leaving half-synced records.
+  await tx.delete(payments).where(eq(payments.contractId, contractId));
+  if (paidInvoices.length) {
+    await tx.insert(payments).values(paidInvoices.map((invoice: any) => ({
+      contractId,
+      invoiceId: invoice.id,
+      amountEur: actualReceiptPaidEur(invoice).toFixed(2),
+      amountEgp: invoice.actualPaidAmountEgp ?? invoice.amountEgp ?? null,
+      exchangeRate: invoice.exchangeRate ?? null,
+      paidAt: invoice.paidAt ?? new Date(),
+    })));
   }
+  return { totalPaidEur, remainingEur, paymentCount: paidInvoices.length };
+}
+
+/**
+ * Recalculate a finClient's paid and remaining totals from paid receipts and
+ * rebuild the corresponding payment rows. This repair-safe operation is fully
+ * transactional and safe to run repeatedly.
+ */
+export async function recalcClientPaidFromReceipts(contractId: number) {
+  const db = await getDb();
+  if (!db) return;
+  return db.transaction(async tx => reconcileContractReceiptFinancials(tx, contractId));
+}
+
+/**
+ * Atomically mark one receipt paid and synchronize every dependent contracting
+ * and Financial record. The conditional status change is the concurrency guard:
+ * a second concurrent request receives INVOICE_ALREADY_PAID and cannot create a
+ * duplicate payment row or a second Finance client.
+ */
+export async function markInvoicePaidAndSyncFinancial(invoiceId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+    if (!invoice) throw new Error("INVOICE_NOT_FOUND");
+    if (invoice.status === "paid") throw new Error("INVOICE_ALREADY_PAID");
+
+    const contract = invoice.contractId == null
+      ? null
+      : (await tx.select().from(contracts).where(eq(contracts.id, invoice.contractId)).limit(1))[0] ?? null;
+    if (invoice.contractId != null && !contract) throw new Error("INVOICE_CONTRACT_NOT_FOUND");
+
+    const paidAt = new Date();
+    const statusUpdate = await tx.update(invoices).set({ status: "paid", paidAt })
+      .where(and(eq(invoices.id, invoiceId), eq(invoices.status, "unpaid")));
+    if (affectedRowCount(statusUpdate) !== 1) throw new Error("INVOICE_ALREADY_PAID");
+
+    let clientCreated = false;
+    let totalPaidEur = 0;
+    let remainingEur = 0;
+    if (!invoice.isLegacyReceipt && contract) {
+      const [existingClient] = await tx.select().from(finClients)
+        .where(eq(finClients.contractId, contract.id)).limit(1);
+      if (!existingClient) {
+        await tx.insert(finClients).values({
+          contractId: contract.id,
+          clientCode: invoice.contractCode ?? null,
+          name: invoice.clientName,
+          phone: contract.clientMobile ?? null,
+          program: contract.country ?? null,
+          signingDate: paidAt,
+          consultant: contract.consultantName ?? null,
+          salesPerson: contract.consultantName ?? null,
+          contractValueEur: Number(contract.contractValue ?? 0).toFixed(2),
+          paidAmountEur: "0.00",
+          remainingAmountEur: Number(contract.contractValue ?? 0).toFixed(2),
+          familyMembers: contract.familyMembers ?? 0,
+          isLegacy: false,
+          stage: "started",
+        });
+        clientCreated = true;
+      } else if (!existingClient.signingDate) {
+        await tx.update(finClients).set({ signingDate: paidAt })
+          .where(and(eq(finClients.id, existingClient.id), isNull(finClients.signingDate)));
+      }
+      ({ totalPaidEur, remainingEur } = await reconcileContractReceiptFinancials(tx, contract.id));
+    } else if (invoice.isLegacyReceipt && invoice.legacyFinClientId != null) {
+      const [legacyClient] = await tx.select().from(finClients).where(eq(finClients.id, invoice.legacyFinClientId)).limit(1);
+      if (legacyClient) {
+        const legacyPaidInvoices = await tx.select({
+          amountEur: invoices.amountEur,
+          actualPaidAmountEgp: invoices.actualPaidAmountEgp,
+          exchangeRate: invoices.exchangeRate,
+        }).from(invoices).where(and(eq(invoices.legacyFinClientId, legacyClient.id), eq(invoices.status, "paid")));
+        const receiptPaidEur = legacyPaidInvoices.reduce((total: number, row: any) => total + actualReceiptPaidEur(row), 0);
+        totalPaidEur = Number(legacyClient.basePaidAmountEur ?? 0) + receiptPaidEur;
+        remainingEur = Math.max(0, Number(legacyClient.contractValueEur ?? 0) - totalPaidEur);
+        await tx.update(finClients).set({
+          paidAmountEur: totalPaidEur.toFixed(2),
+          remainingAmountEur: remainingEur.toFixed(2),
+        }).where(eq(finClients.id, legacyClient.id));
+      }
+    }
+
+    return { invoice: { ...invoice, status: "paid" as const, paidAt }, contract, clientCreated, totalPaidEur, remainingEur };
+  });
 }
 
 /**

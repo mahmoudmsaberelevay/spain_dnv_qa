@@ -12,6 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronDown, ChevronUp, Mail, MessageSquare, Shield } from "lucide-react";
 
+type SupportCategory = "other" | "login_issue" | "technical_bug" | "account_deletion" | "feature_request" | "billing" | "general";
+
 function FAQItem({ question, answer }: { question: string; answer: string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -31,7 +33,7 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
 export default function SupportPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [category, setCategory] = useState("general");
+  const [category, setCategory] = useState<SupportCategory>("general");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -161,7 +163,7 @@ export default function SupportPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                <Select value={category} onValueChange={setCategory}>
+              <Select value={category} onValueChange={(value) => setCategory(value as SupportCategory)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="login_issue">Login Issue</SelectItem>

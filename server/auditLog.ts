@@ -14,7 +14,8 @@ export type AuditAction =
   | "bulk_update"
   | "sync"
   | "import"
-  | "download";
+  | "download"
+  | "share_prepare";
 
 export interface AuditContext {
   userId?: number;

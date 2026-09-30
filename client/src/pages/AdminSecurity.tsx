@@ -53,7 +53,7 @@ export default function AdminSecurity() {
       link.href = data.url;
       link.download = `elevay-backup-${new Date().toISOString().split("T")[0]}.json`;
       link.click();
-      toast.success(`Backup exported: ${data.sizeKb} KB across ${data.tables.length} tables`);
+      toast.success(data.message);
     },
     onError: (err) => toast.error("Backup failed: " + err.message),
   });

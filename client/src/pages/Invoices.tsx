@@ -191,8 +191,8 @@ export default function Invoices() {
   });
 
   const sendEmailMutation = trpc.contracting.invoices.sendReceiptByEmail.useMutation({
-    onSuccess: (result) => {
-      toast.success(result.message ?? "Receipt sent to client!");
+    onSuccess: () => {
+      toast.success("Receipt sent to client!");
       setSendEmailDialog(null);
       setClientEmail("");
     },

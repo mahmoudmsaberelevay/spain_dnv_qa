@@ -293,7 +293,7 @@ function AiPanel({ groupId, onClose }: { groupId: string; onClose: () => void })
       setQuestion("");
     },
     onError: (err) => {
-      toast({ title: "AI Error", description: err.message, variant: "destructive" });
+      toast.error("AI Error", { description: err.message });
     },
   });
 
@@ -484,11 +484,11 @@ export default function WaQcConversations() {
   const sendReplyMutation = trpc.waQc.sendReply.useMutation({
     onSuccess: () => {
       setReplyText("");
-      toast({ title: "Message sent", description: "Your reply was sent successfully." });
+      toast.success("Message sent", { description: "Your reply was sent successfully." });
       setTimeout(() => refetchMsgs(), 1500);
     },
     onError: (err) => {
-      toast({ title: "Failed to send", description: err.message, variant: "destructive" });
+      toast.error("Failed to send", { description: err.message });
     },
   });
 
