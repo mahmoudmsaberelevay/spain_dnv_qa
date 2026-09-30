@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FileAudio, Loader2, Mic2, Sparkles, Volume2 } from "lucide-react";
+import { AlertCircle, Download, FileAudio, Loader2, Mic2, Sparkles, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,13 +22,23 @@ const MAX_CHARACTERS = 4800;
 export default function ArabicVoiceOver() {
   const [script, setScript] = useState("");
   const [result, setResult] = useState<VoiceOverResult | null>(null);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   const generateMutation = trpc.marketing.generateArabicVoiceOver.useMutation({
     onSuccess: (data) => {
       setResult(data);
+      setVoiceError(null);
+      setPlaybackError(null);
       toast.success("Arabic voice-over generated successfully");
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => {
+      const message = /Unexpected token.*DOCTYPE|not valid JSON/i.test(error.message)
+        ? "The voice request did not reach the API as JSON. Refresh this page; if it continues, sign out and sign in again before retrying."
+        : error.message;
+      setVoiceError(message);
+      toast.error(message);
+    },
   });
 
   const handleGenerate = () => {
@@ -37,6 +47,8 @@ export default function ArabicVoiceOver() {
       toast.error("Enter an Arabic script before generating audio");
       return;
     }
+    setVoiceError(null);
+    setPlaybackError(null);
     generateMutation.mutate({ text: trimmedScript });
   };
 
@@ -62,9 +74,19 @@ export default function ArabicVoiceOver() {
           <Sparkles className="h-4 w-4" />
           Saved company voice configuration
         </div>
-      </div>
+        </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+        {voiceError && (
+          <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-400/35 bg-red-500/10 p-4 text-sm leading-relaxed text-red-100">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
+            <div>
+              <p className="font-semibold">Voice-over could not be generated</p>
+              <p className="mt-1 text-red-100/90">{voiceError}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
         <section className="rounded-2xl border border-white/10 bg-[#1a2235] p-5 shadow-[0_18px_60px_rgba(0,0,0,0.15)] sm:p-6">
           <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -130,7 +152,7 @@ export default function ArabicVoiceOver() {
           <div className="rounded-2xl border border-[#5BA3B8]/20 bg-gradient-to-br from-[#1A3A5C]/60 to-[#111a2a] p-5">
             <p className="text-sm font-semibold text-white">Consistent ELEVAY delivery</p>
             <p className="mt-2 text-xs leading-relaxed text-gray-400">
-              The approved Mahmoud Saber voice and Arabic delivery configuration are applied automatically to every generation.
+              The configured ELEVAY voice and Arabic delivery configuration are used only after the server verifies a real MP3 response.
             </p>
           </div>
         </aside>
@@ -154,9 +176,16 @@ export default function ArabicVoiceOver() {
               </a>
             </Button>
           </div>
-          <audio controls src={result.url} className="w-full" preload="metadata">
+          <audio
+            controls
+            src={result.url}
+            className="w-full"
+            preload="metadata"
+            onError={() => setPlaybackError("The MP3 could not be played in this browser. Use Download MP3 to open the verified audio file directly.")}
+          >
             Your browser does not support audio playback.
           </audio>
+          {playbackError && <p role="alert" className="mt-3 text-sm text-amber-200">{playbackError}</p>}
         </section>
       )}
     </div>

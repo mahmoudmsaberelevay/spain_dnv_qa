@@ -8,7 +8,11 @@ import { storageGet, storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import { invokeLLM } from "./_core/llm";
 import { generatePlanRuleBased, generateWeekMediaPrompts } from "./marketingTemplates";
-import { ELEVAY_ARABIC_VOICE_DEFAULTS, generateElevayArabicVoiceOver } from "./elevenLabsTts";
+import {
+  ELEVAY_ARABIC_VOICE_DEFAULTS,
+  ElevenLabsVoiceUnavailableError,
+  generateElevayArabicVoiceOver,
+} from "./elevenLabsTts";
 import { generateProgramProposal } from "./marketingProposalService";
 import { proposalInputSchema } from "./marketingProposalCalculator";
 import { comparePrograms as generateProgramComparison } from "./programComparisonService";
@@ -378,6 +382,12 @@ export const marketingRouter = router({
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
             message: "The ElevenLabs credential has not been configured for this application. Please contact an administrator.",
+          });
+        }
+        if (error instanceof ElevenLabsVoiceUnavailableError) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: error.message,
           });
         }
         if (error instanceof Error && error.name === "ElevenLabsError") {

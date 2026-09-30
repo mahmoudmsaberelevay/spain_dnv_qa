@@ -113,3 +113,14 @@
 - [x] Preserved it as `internal_reference_only` / `user_supplied_internal_training_draft`, companion to the existing Malta material; its SHA-256 fingerprint, programme mapping, internal-only classification, and structured analysis were verified.
 - [x] The OpenAI → Claude → Manus review-only planning context will now use it alongside the original Malta internal material whenever Malta MPRP is selected. It remains internal analysis material only—not official evidence, legal advice, client advice, publication authority, or model-weight training.
 - [x] No Malta owner-confirmed internal claims were created because the user did not yet expressly confirm this source’s factual content in the same way as the Spain source. Government/external research remains disabled by default.
+
+
+## Arabic Voice-over — Diagnosis and Reliability Repair
+
+- [x] Reproduced the actual production-adapter failure with a short Arabic smoke test: ElevenLabs returned `404 voice_not_found` for the configured ELEVAY voice before any MP3 was created or stored.
+- [x] Confirmed this is not an audio-quality, video-render, export, or synchronization failure. The configured voice is unavailable to the ElevenLabs workspace behind the current key; the key also lacks optional `voices_read` permission for future voice-list health diagnostics.
+- [x] Hardened the voice adapter with 60-second timeout protection, explicit inaccessible-voice precondition handling, no silent voice fallback, audio content-type validation, MP3 header validation before storage, and privacy-safe provider logging.
+- [x] Improved the Voice-over screen with readable configuration/transport errors, stale HTML-vs-JSON request recovery guidance, and browser-playback fallback guidance.
+- [x] Passed 14 focused tests, production build, zero-error TypeScript check, and diff hygiene. No invalid audio, substitute voice, video render, publication, Meta action, campaign change, spend, or CRM operating-data change was created.
+
+> **Required external correction:** replace the server-side ElevenLabs key with one from the workspace that owns or is authorized for voice `9JAj5x86tg9L2DFnuxOw`, with Text to Speech and preferably Voices Read permissions. The separate video-compositor release is still required to embed a verified MP3 and enforce real voice/video synchronization.
