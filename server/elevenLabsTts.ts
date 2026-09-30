@@ -7,7 +7,7 @@ const ELEVENLABS_TTS_ENDPOINT = "https://api.elevenlabs.io/v1/text-to-speech";
 const ELEVENLABS_TIMEOUT_MS = 60_000;
 
 export const ELEVAY_ARABIC_VOICE_DEFAULTS = {
-  voiceId: "9JAj5x86tg9L2DFnuxOw",
+  voiceId: "nc8XQG8lRYRZDnjvKW0H",
   modelId: "eleven_v3",
   languageCode: "ar",
   outputFormat: "mp3_44100_128",

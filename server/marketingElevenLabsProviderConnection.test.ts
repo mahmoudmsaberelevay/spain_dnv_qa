@@ -19,7 +19,7 @@ describe("Existing ELEVAY ElevenLabs voice provider policy", () => {
 
   it("retains the approved Arabic Eleven v3 defaults and thoughtful delivery behavior", () => {
     expect(ELEVAY_ARABIC_VOICE_DEFAULTS).toEqual({
-      voiceId: "9JAj5x86tg9L2DFnuxOw",
+      voiceId: "nc8XQG8lRYRZDnjvKW0H",
       modelId: "eleven_v3",
       languageCode: "ar",
       outputFormat: "mp3_44100_128",

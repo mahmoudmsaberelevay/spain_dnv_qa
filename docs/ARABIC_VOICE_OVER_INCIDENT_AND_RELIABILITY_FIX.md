@@ -1,7 +1,7 @@
 # ELEVAY Arabic Voice-over — Incident Diagnosis and Reliability Fix
 
 **Date:** 30 September 2026  
-**Status:** Application repair completed; external voice-access correction still required before audio can be generated.
+**Status:** Resolved with an owner-approved replacement voice; application safeguards remain active.
 
 ## Executive finding
 
@@ -42,13 +42,19 @@ The server-side voice path now:
 | TypeScript check | **0 diagnostics** |
 | Diff hygiene | **Passed** |
 
-## Required action to restore generation
+## Resolution applied on 30 September 2026
+
+The owner supplied replacement voice ID `nc8XQG8lRYRZDnjvKW0H` and upgraded the ElevenLabs workspace. A live Arabic Eleven v3 request with the secured key returned HTTP 200, an `audio/*` response, a valid MP3 header, and 48,527 bytes. This voice is now ELEVAY’s configured default.
+
+The former voice ID `9JAj5x86tg9L2DFnuxOw` remains documented here only as the historical failing configuration; it is no longer the default.
+
+## Recovery procedure if generation fails again
 
 In the **ElevenLabs workspace that owns or has been granted access to the approved ELEVAY voice**:
 
 1. Open **ElevenLabs → Developers → API Keys**.
 2. Create a replacement server-side key with **Text to Speech** access. Add **Voices Read** so the health check can identify accessible voices in the future.
-3. Confirm that voice ID `9JAj5x86tg9L2DFnuxOw` appears in that workspace. If it is a Professional Voice Clone or shared voice, use the workspace that owns it or explicitly add/share the voice to the workspace first.
+3. Confirm that the configured ELEVAY voice appears in that workspace. If it is a Professional Voice Clone or shared voice, use the workspace that owns it or explicitly add/share the voice to the workspace first.
 4. Provide the replacement key only through the CRM’s secure secret-entry prompt—never in chat, a CRM record, source code, or a document.
 5. Run one short Arabic test in **Marketing → Arabic Voice-over**. The system will then save and play only a verified MP3.
 

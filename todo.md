@@ -124,3 +124,14 @@
 - [x] Passed 14 focused tests, production build, zero-error TypeScript check, and diff hygiene. No invalid audio, substitute voice, video render, publication, Meta action, campaign change, spend, or CRM operating-data change was created.
 
 > **Required external correction:** replace the server-side ElevenLabs key with one from the workspace that owns or is authorized for voice `9JAj5x86tg9L2DFnuxOw`, with Text to Speech and preferably Voices Read permissions. The separate video-compositor release is still required to embed a verified MP3 and enforce real voice/video synchronization.
+
+
+## Arabic Voice-over — Approved Replacement Voice Activated
+
+- [x] Following Mahmoud’s explicit selection, changed ELEVAY’s default ElevenLabs voice from the inaccessible historical ID to `nc8XQG8lRYRZDnjvKW0H`.
+- [x] Verified a live Arabic Eleven v3 request with the secure current key: HTTP 200, `audio/*` content type, valid MP3 signature, and 48,527-byte direct MP3 response.
+- [x] Verified the full CRM adapter path using Arabic-only text: Eleven v3 and `mp3_44100_128`; server-side storage succeeded; stored MP3 was retrievable with HTTP 200, `audio/mpeg`, 72,768 bytes, and a valid MP3 signature.
+- [x] Retained Arabic language enforcement: an English brand word in the spoken script was rejected before provider use; an Arabic-only retry passed. Country names remain the only permitted English exception.
+- [x] Passed 12 focused voice/provider/UI tests, production build, zero-error TypeScript check, and secret/diff hygiene. The current UI can now generate and play verified MP3 files through the owner-selected voice.
+
+> **Remaining media boundary:** a separate video-compositor release is still required to mux a verified MP3 into final reel footage, measure both durations, mix background audio safely, and verify the final MP4 audio stream before approval.
