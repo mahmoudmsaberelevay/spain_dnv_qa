@@ -184,8 +184,12 @@ export async function retryFailedMarketingMediaJob(input: { jobId: number; actor
   }
 }
 
-function pickAttachment(attachments: Array<{ file_name?: unknown; url?: unknown }>, kind: string) {
-  return attachments.find(file => typeof file.url === "string" && typeof file.file_name === "string" && (kind === "reel" ? /\.mp4$/i.test(file.file_name) : /\.(png|jpe?g|webp)$/i.test(file.file_name))) ?? null;
+function pickAttachment(attachments: Array<{ file_name?: unknown; filename?: unknown; url?: unknown }>, kind: string) {
+  return attachments.find(file => {
+    const filename = typeof file.file_name === "string" ? file.file_name : typeof file.filename === "string" ? file.filename : null;
+    if (typeof file.url !== "string" || !filename) return false;
+    return kind === "reel" ? /\.mp4$/i.test(filename) : /\.(png|jpe?g|webp)$/i.test(filename);
+  }) ?? null;
 }
 
 async function applyMarketingMediaManusWebhookUnsafe(payload: any) {

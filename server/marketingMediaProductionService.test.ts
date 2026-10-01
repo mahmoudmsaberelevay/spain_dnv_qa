@@ -27,6 +27,8 @@ describe("bounded Manus review-media production", () => {
     expect(service).toContain("generateElevayArabicVoiceOver(item.scriptCopy)");
     expect(service).toContain("composeApprovedReelForReview");
     expect(service).toContain("origin: \"system_generated\"");
+    expect(service).toContain("filename?: unknown");
+    expect(service).toContain("typeof file.filename === \"string\"");
     expect(webhook).toContain("applyMarketingMediaManusWebhook");
   });
 });
