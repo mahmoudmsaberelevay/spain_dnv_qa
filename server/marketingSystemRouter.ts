@@ -32,6 +32,7 @@ import {
   marketingReelCompositionInputApprovals,
   marketingReelCompositions,
   marketingGeneratedMediaAssets,
+  marketingSocialReleaseAuthorizations,
   marketingDesignSystemAssets,
   marketingKnowledgeClaims,
   marketingKnowledgeSources,
@@ -174,7 +175,7 @@ import {
 } from "./weeklyMarketingAutomationService";
 import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import { composeApprovedReelForReview, fingerprintMarketingAsset, fingerprintMarketingPreview } from "./reelCompositorService";
-import { getMediaProductionReadiness, queueSystemMediaForWeeklyPlan } from "./marketingMediaProductionService";
+import { getMediaProductionReadiness, queueSystemMediaForWeeklyPlan, retryFailedMarketingMediaJob } from "./marketingMediaProductionService";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -2831,6 +2832,8 @@ export const marketingSystemRouter = router({
     const itemIds = items.map(item => item.id);
     const events = itemIds.length === 0 ? [] : await db.select().from(marketingWeeklyResultsItemEvents)
       .where(inArray(marketingWeeklyResultsItemEvents.itemId, itemIds)).orderBy(desc(marketingWeeklyResultsItemEvents.createdAt));
+    const socialReleaseAuthorizations = itemIds.length === 0 ? [] : await db.select().from(marketingSocialReleaseAuthorizations)
+      .where(inArray(marketingSocialReleaseAuthorizations.weeklyItemId, itemIds)).orderBy(desc(marketingSocialReleaseAuthorizations.updatedAt));
     const releaseGovernance = evaluateSocialReleaseGovernance(items.map(item => ({
       id: item.id,
       isSelected: item.isSelected,
@@ -2870,6 +2873,7 @@ export const marketingSystemRouter = router({
         publicationEnabled: false,
         explanation: "The 90% indicator is a trailing 30-day governance eligibility signal only. It never bypasses individual final-preview approval, resolved feedback, an explicit per-channel owner release, or separately validated Meta publishing credentials and permissions.",
       },
+      socialReleaseAuthorizations: socialReleaseAuthorizations.map(authorization => ({ ...authorization, approvalScorePercent: Number(authorization.approvalScorePercent) })),
       automation,
       mediaProduction,
       boundedProviderAutomationEnabled: Boolean(automation.control.isEnabled),
@@ -2924,6 +2928,52 @@ export const marketingSystemRouter = router({
     const result = await queueSystemMediaForWeeklyPlan({ planId: input.planId, actorUserId: ctx.user.id });
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_media_production_jobs", input.planId, JSON.stringify({ queued: result.queued, reused: result.reused, provider: "manus-orchestrator", mediaBudgetOnly: true, publicationEnabled: false, campaignOperationsEnabled: false, metaOperationsEnabled: false, capiEnabled: false }));
     return result;
+  }),
+
+  retryFailedSystemMediaJob: protectedProcedure.input(z.object({ jobId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "manage_weekly_automation");
+    const result = await retryFailedMarketingMediaJob({ jobId: input.jobId, actorUserId: ctx.user.id, automatic: false });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_media_production_job", input.jobId, JSON.stringify({ action: "owner_requested_retry", retried: result.retried, publicationEnabled: false, metaOperationsEnabled: false, capiEnabled: false }));
+    return result;
+  }),
+
+  authorizeSocialChannelRelease: protectedProcedure.input(z.object({ itemId: z.number().int().positive(), platform: z.enum(["facebook_page", "instagram"]) })).mutation(async ({ ctx, input }) => {
+    if (!isOwner(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Only Mahmoud, the CRM owner, can authorize a future social channel release." });
+    const db = await requireDb();
+    const [item] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, input.itemId)).limit(1);
+    if (!item || item.status !== "approved" || !item.previewUrl || !item.previewHash || !item.approvedAt) throw new TRPCError({ code: "BAD_REQUEST", message: "The item needs an individually approved, system-generated final preview before channel authorization." });
+    const allItems = await db.select().from(marketingWeeklyResultsItems);
+    const itemIds = allItems.map(row => row.id);
+    const events = itemIds.length === 0 ? [] : await db.select().from(marketingWeeklyResultsItemEvents).where(inArray(marketingWeeklyResultsItemEvents.itemId, itemIds));
+    const governance = evaluateSocialReleaseGovernance(allItems.map(row => ({
+      id: row.id, isSelected: row.isSelected, status: row.status, previewHash: row.previewHash, approvedAt: row.approvedAt,
+      events: events.filter(event => event.itemId === row.id).map(event => ({ action: event.action, createdAt: event.createdAt, payload: parseJson<Record<string, unknown>>(event.payloadJson, {}) })),
+    })));
+    if (!governance.releaseEligible) throw new TRPCError({ code: "BAD_REQUEST", message: governance.blockers.join(" ") });
+    const eligible = governance.eligibleItems.find(candidate => candidate.itemId === item.id && candidate.previewHash === item.previewHash);
+    if (!eligible) throw new TRPCError({ code: "BAD_REQUEST", message: "This item is not a current eligible final approval in the 30-day release score." });
+    const now = Date.now();
+    const authorizationKey = `social-release:${input.platform}:${item.id}:${item.previewHash}`;
+    await db.insert(marketingSocialReleaseAuthorizations).values({
+      authorizationKey, weeklyItemId: item.id, platform: input.platform, previewUrl: item.previewUrl, previewHash: item.previewHash,
+      individualApprovalAt: item.approvedAt, feedbackResolvedAt: eligible.approvedAt,
+      trailingWindowStartAt: governance.trailingWindowStartAt, trailingWindowEndAt: governance.trailingWindowEndAt,
+      eligibleItemCount: governance.eligibleItemCount, approvalScorePercent: governance.approvalScorePercent.toFixed(2), thresholdPercent: governance.thresholdPercent,
+      status: "authorized_pending_channel_setup", authorizedByUserId: ctx.user.id, authorizedAt: now,
+      revokedByUserId: null, revokedAt: null, revokeReason: null, externalPublicationId: null, lastReconciledAt: null, createdAt: now, updatedAt: now,
+    }).onDuplicateKeyUpdate({ set: { status: "authorized_pending_channel_setup", authorizedByUserId: ctx.user.id, authorizedAt: now, revokedByUserId: null, revokedAt: null, revokeReason: null, updatedAt: now } });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_social_release_authorization", authorizationKey, JSON.stringify({ platform: input.platform, itemId: item.id, previewHash: item.previewHash, eligibleItemCount: governance.eligibleItemCount, approvalScorePercent: governance.approvalScorePercent, status: "authorized_pending_channel_setup", publicationExecuted: false, metaCredentialsValidated: false, campaignOperationsEnabled: false, spendEnabled: false, capiEnabled: false }));
+    return { authorized: true, status: "authorized_pending_channel_setup" as const, publicationExecuted: false, explanation: "Owner authorization is recorded only. Meta Page/Instagram credentials, scopes, app review, read-only validation, publication idempotency and outcome reconciliation remain required before any future publish release." };
+  }),
+
+  revokeSocialChannelRelease: protectedProcedure.input(z.object({ authorizationId: z.number().int().positive(), reason: z.string().trim().min(4).max(500) })).mutation(async ({ ctx, input }) => {
+    if (!isOwner(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Only Mahmoud, the CRM owner, can revoke a social channel release." });
+    const db = await requireDb(); const now = Date.now();
+    const [authorization] = await db.select().from(marketingSocialReleaseAuthorizations).where(eq(marketingSocialReleaseAuthorizations.id, input.authorizationId)).limit(1);
+    if (!authorization) throw new TRPCError({ code: "NOT_FOUND", message: "Social channel release authorization was not found." });
+    await db.update(marketingSocialReleaseAuthorizations).set({ status: "revoked", revokedByUserId: ctx.user.id, revokedAt: now, revokeReason: input.reason, updatedAt: now }).where(eq(marketingSocialReleaseAuthorizations.id, authorization.id));
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_social_release_authorization", authorization.authorizationKey, JSON.stringify({ action: "revoked", publicationExecuted: false, reason: input.reason }));
+    return { revoked: true, publicationExecuted: false };
   }),
 
   uploadDesignSystemAsset: protectedProcedure.input(designSystemAssetInput).mutation(async ({ ctx, input }) => {
@@ -3077,7 +3127,6 @@ export const marketingSystemRouter = router({
     if (!weeklyResultsItemCanTransition(item.status as WeeklyResultsItemStatus, "pending_individual_review")) throw new TRPCError({ code: "BAD_REQUEST", message: "Only a draft item can enter individual review." });
     if (!item.programKey) throw new TRPCError({ code: "BAD_REQUEST", message: "A programme key is required before an item can be reviewed." });
     validateWeeklyResultsItemLanguage(item);
-    await getApprovedContentClaims(parseJson<number[]>(item.sourceClaimIdsJson, []), item.programKey);
     const now = Date.now();
     await db.update(marketingWeeklyResultsItems).set({ status: "pending_individual_review", blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingWeeklyResultsItems.id, item.id));
     await appendWeeklyResultsItemEvent({ itemId: item.id, action: "submitted_for_individual_review", fromStatus: item.status, toStatus: "pending_individual_review", payload: { initialCopyAndPlanReview: true, previewReady: Boolean(item.previewUrl && item.previewHash), sourceClaimCount: parseJson<number[]>(item.sourceClaimIdsJson, []).length, batchApprovalAvailable: false, noPublishCommand: true }, actorUserId: ctx.user.id, createdAt: now });

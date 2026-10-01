@@ -15,14 +15,18 @@ import { isCreativeItemType } from "../shared/marketingCreativeLanguagePolicy";
 
 const CONTROL_KEY = "primary-manus-review-media";
 const MONTHLY_CAP_USD = 100;
-const PER_ITEM_CAP_USD = 15;
-const VIDEO_SKILL_ID = "EL5yBdm22CwMBYRKvv2NHg";
-const ELEVAY_MEDIA_SKILL_ID = "627UpHNrMNYvr8og4B73P4";
+const PER_ITEM_CAP_USD = 1.5;
 
 type WeeklyItem = typeof marketingWeeklyResultsItems.$inferSelect;
 
 function safeError(error: unknown) {
   return (error instanceof Error ? error.message : "Media generation failed.").replace(/(?:sk-|key-|Bearer\s+)[A-Za-z0-9._-]+/g, "[redacted]").slice(0, 900);
+}
+async function manusTaskRequestError(response: Response) {
+  const body = await response.json().catch(() => null) as { error?: { code?: unknown; message?: unknown } } | null;
+  const code = typeof body?.error?.code === "string" ? body.error.code.slice(0, 80) : "unknown_error";
+  const message = typeof body?.error?.message === "string" ? body.error.message.replace(/[\r\n]+/g, " ").slice(0, 280) : "no error message";
+  return new Error(`Manus media task request failed with status ${response.status} (${code}: ${message}).`);
 }
 function jobKey() { return `mmp-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 10)}`; }
 function snapshotHash(item: WeeklyItem) {
@@ -89,11 +93,13 @@ async function dispatchManusMediaTask(item: WeeklyItem, kind: "static" | "reel")
       title: `ELEVAY review preview — ${item.id} — ${kind}`,
       interactive_mode: false,
       hide_in_task_list: false,
-      agent_profile: "manus-1.6",
-      message: { content: mediaPrompt(item, kind), force_skills: kind === "reel" ? [VIDEO_SKILL_ID, ELEVAY_MEDIA_SKILL_ID] : [ELEVAY_MEDIA_SKILL_ID] },
+      // Use the same authenticated task profile as the proven weekly planner.
+      // Default account skills remain available without an extra skill-authorization boundary.
+      agent_profile: "standard",
+      message: { content: mediaPrompt(item, kind) },
     }),
   });
-  if (!response.ok) throw new Error(`Manus media task was rejected (${response.status}).`);
+  if (!response.ok) throw await manusTaskRequestError(response);
   const body = await response.json() as { task_id?: string; task_url?: string; task_detail?: { task_id?: string; task_url?: string } };
   const taskId = body.task_id ?? body.task_detail?.task_id;
   if (!taskId) throw new Error("Manus media task did not return an identifier.");
@@ -114,10 +120,19 @@ export async function queueSystemMediaForWeeklyPlan(input: { planId: number; act
   for (const item of creatives) {
     const snapshot = snapshotHash(item); const kind = mediaKind(item); const idempotencyKey = `manus-review-media:${item.id}:${snapshot}`;
     const [existing] = await db.select().from(marketingMediaProductionJobs).where(eq(marketingMediaProductionJobs.idempotencyKey, idempotencyKey)).limit(1);
-    if (existing) { results.push({ itemId: item.id, jobId: existing.id, taskUrl: existing.manusTaskUrl, reused: true }); continue; }
+    if (existing) {
+      if (existing.state === "dispatching" && !existing.manusTaskId) {
+        await db.update(marketingMediaProductionJobs).set({
+          state: "failed", errorCode: "orphaned_dispatch",
+          errorSummary: "The prior dispatch stopped before a task ID was saved; it was released for one clean retry.",
+          completedAt: Date.now(), updatedAt: Date.now(), idempotencyKey: `${existing.idempotencyKey}:released:${existing.id}`,
+        }).where(eq(marketingMediaProductionJobs.id, existing.id));
+      } else { results.push({ itemId: item.id, jobId: existing.id, taskUrl: existing.manusTaskUrl, reused: true }); continue; }
+    }
     const now = Date.now();
-    const inserted = await db.insert(marketingMediaProductionJobs).values({ jobKey: jobKey(), idempotencyKey, weeklyItemId: item.id, itemSnapshotHash: snapshot, mediaKind: kind, state: "dispatching", reservedCostUsd: control.perItemBudgetUsd, manusTaskId: null, manusTaskUrl: null, taskAttachmentsJson: "[]", errorCode: null, errorSummary: null, requestedByUserId: input.actorUserId, createdAt: now, updatedAt: now, completedAt: null });
+    const [inserted] = await db.insert(marketingMediaProductionJobs).values({ jobKey: jobKey(), idempotencyKey, weeklyItemId: item.id, itemSnapshotHash: snapshot, mediaKind: kind, state: "dispatching", reservedCostUsd: control.perItemBudgetUsd, manusTaskId: null, manusTaskUrl: null, taskAttachmentsJson: "[]", errorCode: null, errorSummary: null, requestedByUserId: input.actorUserId, createdAt: now, updatedAt: now, completedAt: null });
     const jobId = Number((inserted as { insertId?: number }).insertId);
+    if (!Number.isInteger(jobId) || jobId < 1) throw new Error("Media-production job persistence did not return an identifier.");
     try {
       const task = await dispatchManusMediaTask(item, kind);
       await db.update(marketingMediaProductionJobs).set({ state: "waiting_manus", manusTaskId: task.taskId, manusTaskUrl: task.taskUrl, updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, jobId));
@@ -130,11 +145,50 @@ export async function queueSystemMediaForWeeklyPlan(input: { planId: number; act
   return { queued: results.filter(result => !result.reused).length, reused: results.filter(result => result.reused).length, remainingUsd: remaining - creatives.length * cost, jobs: results };
 }
 
+const MAX_AUTOMATIC_MEDIA_RETRIES = 1;
+
+export async function retryFailedMarketingMediaJob(input: { jobId: number; actorUserId: number; automatic: boolean }) {
+  const { db, control } = await controlOrThrow();
+  const [job] = await db.select().from(marketingMediaProductionJobs).where(eq(marketingMediaProductionJobs.id, input.jobId)).limit(1);
+  if (!job) throw new Error("Media production job was not found.");
+  if (job.state !== "failed") throw new Error("Only a failed media job can be retried.");
+  if (job.errorSummary?.includes("retry_dispatched=")) return { retried: false, reason: "retry_already_dispatched" as const };
+  const retryCount = (job.errorSummary?.match(/retry_count=(\d+)/)?.[1] ? Number(job.errorSummary.match(/retry_count=(\d+)/)?.[1]) : 0);
+  if (input.automatic && retryCount >= MAX_AUTOMATIC_MEDIA_RETRIES) return { retried: false, reason: "automatic_retry_limit_reached" as const };
+  const [item] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, job.weeklyItemId)).limit(1);
+  if (!item || snapshotHash(item) !== job.itemSnapshotHash) throw new Error("The item changed after the failed generation. Review the changed item before starting a new preview.");
+  const [totalRow] = await db.select({ total: sql<string>`COALESCE(SUM(${marketingMediaProductionJobs.reservedCostUsd}), 0)` }).from(marketingMediaProductionJobs)
+    .where(sql`DATE_FORMAT(FROM_UNIXTIME(${marketingMediaProductionJobs.createdAt} / 1000), '%Y-%m') = ${currentCairoMonth()}`);
+  const remaining = Number(control.monthlyBudgetUsd) - Number(totalRow?.total ?? 0);
+  if (remaining + 1e-9 < Number(control.perItemBudgetUsd)) throw new Error("The review-media monthly limit has no remaining retry capacity.");
+  const now = Date.now();
+  const nextRetry = retryCount + 1;
+  const idempotencyKey = `${job.idempotencyKey}:retry:${nextRetry}`;
+  const [inserted] = await db.insert(marketingMediaProductionJobs).values({
+    jobKey: jobKey(), idempotencyKey, weeklyItemId: job.weeklyItemId, itemSnapshotHash: job.itemSnapshotHash,
+    mediaKind: job.mediaKind, state: "dispatching", reservedCostUsd: control.perItemBudgetUsd,
+    manusTaskId: null, manusTaskUrl: null, taskAttachmentsJson: "[]", errorCode: null,
+    errorSummary: `retry_count=${nextRetry}; ${input.automatic ? "automatic" : "owner_requested"} retry`,
+    requestedByUserId: input.actorUserId, createdAt: now, updatedAt: now, completedAt: null,
+  });
+  const retryJobId = Number((inserted as { insertId?: number }).insertId);
+  if (!Number.isInteger(retryJobId) || retryJobId < 1) throw new Error("Media retry persistence did not return an identifier.");
+  try {
+    const task = await dispatchManusMediaTask(item, job.mediaKind as "static" | "reel");
+    await db.update(marketingMediaProductionJobs).set({ state: "waiting_manus", manusTaskId: task.taskId, manusTaskUrl: task.taskUrl, updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, retryJobId));
+    await db.update(marketingMediaProductionJobs).set({ errorSummary: `${job.errorSummary ?? "failed"}; retry_dispatched=${retryJobId}`, updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, job.id));
+    return { retried: true, jobId: retryJobId, taskUrl: task.taskUrl };
+  } catch (error) {
+    await db.update(marketingMediaProductionJobs).set({ state: "failed", errorCode: "retry_dispatch_failed", errorSummary: `retry_count=${nextRetry}; ${safeError(error)}`, completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, retryJobId));
+    throw error;
+  }
+}
+
 function pickAttachment(attachments: Array<{ file_name?: unknown; url?: unknown }>, kind: string) {
   return attachments.find(file => typeof file.url === "string" && typeof file.file_name === "string" && (kind === "reel" ? /\.mp4$/i.test(file.file_name) : /\.(png|jpe?g|webp)$/i.test(file.file_name))) ?? null;
 }
 
-export async function applyMarketingMediaManusWebhook(payload: any) {
+async function applyMarketingMediaManusWebhookUnsafe(payload: any) {
   if (payload?.event_type !== "task_stopped" || payload?.task_detail?.stop_reason !== "finish") return false;
   const taskId = typeof payload.task_detail?.task_id === "string" ? payload.task_detail.task_id : null;
   if (!taskId) return false;
@@ -169,4 +223,19 @@ export async function applyMarketingMediaManusWebhook(payload: any) {
   }
   await db.update(marketingMediaProductionJobs).set({ state: "completed", taskAttachmentsJson: JSON.stringify(attachments.map((attachment: any) => ({ file_name: attachment.file_name, size_bytes: attachment.size_bytes }))), completedAt: now, updatedAt: now }).where(eq(marketingMediaProductionJobs.id, job.id));
   return true;
+}
+
+export async function applyMarketingMediaManusWebhook(payload: any) {
+  const taskId = typeof payload?.task_detail?.task_id === "string" ? payload.task_detail.task_id : null;
+  try {
+    return await applyMarketingMediaManusWebhookUnsafe(payload);
+  } catch (error) {
+    if (!taskId) throw error;
+    const db = await dbOrThrow();
+    const [job] = await db.select().from(marketingMediaProductionJobs).where(eq(marketingMediaProductionJobs.manusTaskId, taskId)).limit(1);
+    if (!job || job.state === "completed") throw error;
+    await db.update(marketingMediaProductionJobs).set({ state: "failed", errorCode: "completion_failed", errorSummary: safeError(error), completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, job.id));
+    try { await retryFailedMarketingMediaJob({ jobId: job.id, actorUserId: job.requestedByUserId, automatic: true }); } catch { /* one bounded retry is best-effort; failure remains visible in Production */ }
+    return true;
+  }
 }

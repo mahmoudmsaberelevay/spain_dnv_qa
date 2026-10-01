@@ -10,7 +10,7 @@ describe("bounded Manus review-media production", () => {
     const service = read("server/marketingMediaProductionService.ts");
     const migration = read("drizzle/0108_bounded_manus_media_production_controls.sql");
     expect(service).toContain("MONTHLY_CAP_USD = 100");
-    expect(service).toContain("PER_ITEM_CAP_USD = 15");
+    expect(service).toContain("PER_ITEM_CAP_USD = 1.5");
     expect(service).toContain("https://api.manus.ai/v2/task.create");
     expect(service).toContain("review-only ELEVAY marketing visual");
     expect(service).toContain("do not browse or cite external/government sources");
