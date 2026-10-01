@@ -71,6 +71,17 @@ describe("Weekly Results CRM integration contract", () => {
     expect(WEEKLY_RESULTS_EXECUTION_BOUNDARY).toContain("cannot call an AI provider");
   });
 
+  it("allows individual copy-and-plan review before media exists but requires a linked system asset for final approval", () => {
+    const router = read("server/marketingSystemRouter.ts");
+    const page = read("client/src/pages/marketing/WeeklyResults.tsx");
+    const submitSection = router.slice(router.indexOf("submitWeeklyResultsItemForIndividualReview"), router.indexOf("decideWeeklyResultsItem"));
+    expect(submitSection).toContain("initialCopyAndPlanReview: true");
+    expect(submitSection).not.toContain("validatePreviewFingerprint");
+    expect(router).toContain("requireSystemGeneratedWeeklyMedia(item)");
+    expect(page).toContain("Review plan & copy");
+    expect(page).toContain("Await system media");
+  });
+
   it("stores reviewable Design System assets and 30-day targets without enabling autopublish", () => {
     const migration = read("drizzle/0102_agentic_marketing_settings_production.sql");
     const schema = read("drizzle/schema.ts");
@@ -114,6 +125,7 @@ describe("Weekly Results CRM integration contract", () => {
     expect(desktopNav).not.toContain('label: "1. Setup"');
     expect(desktopNav).not.toContain('label: "2. Weekly Results"');
     expect(page).toContain("No provider calls");
-    expect(page).toContain("no batch approval");
+    expect(page).toContain("Batch approval");
+    expect(page).toContain("Not available by design");
   });
 });

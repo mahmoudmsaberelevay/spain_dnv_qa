@@ -3206,6 +3206,37 @@ export const marketingReelCompositions = mysqlTable("marketing_reel_compositions
 export type MarketingReelComposition = typeof marketingReelCompositions.$inferSelect;
 export type InsertMarketingReelComposition = typeof marketingReelCompositions.$inferInsert;
 
+// System-generated marketing media is always pinned to exactly one weekly item
+// or one versioned content packet. This enables final approval to reject any
+// manually supplied, unlinked, stale, or mismatched preview.
+export const marketingGeneratedMediaAssets = mysqlTable("marketing_generated_media_assets", {
+  id: int("id").autoincrement().primaryKey(),
+  assetKey: varchar("assetKey", { length: 180 }).notNull(),
+  weeklyItemId: int("weeklyItemId"),
+  contentPacketId: int("contentPacketId"),
+  assetType: varchar("assetType", { length: 32 }).notNull(),
+  providerAlias: varchar("providerAlias", { length: 96 }).notNull(),
+  origin: varchar("origin", { length: 48 }).notNull().default("system_generated"),
+  generationTaskId: varchar("generationTaskId", { length: 255 }),
+  status: varchar("status", { length: 32 }).notNull().default("review_ready"),
+  storageKey: varchar("storageKey", { length: 768 }).notNull(),
+  assetUrl: varchar("assetUrl", { length: 2000 }).notNull(),
+  assetSha256: varchar("assetSha256", { length: 64 }).notNull(),
+  mimeType: varchar("mimeType", { length: 128 }).notNull(),
+  metadataJson: mediumtext("metadataJson").notNull(),
+  supersededAt: bigint("supersededAt", { mode: "number" }),
+  generatedAt: bigint("generatedAt", { mode: "number" }).notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_generated_media_asset_key_unique").on(table.assetKey),
+  index("marketing_generated_media_weekly_item_idx").on(table.weeklyItemId, table.status, table.generatedAt),
+  index("marketing_generated_media_content_packet_idx").on(table.contentPacketId, table.status, table.generatedAt),
+  uniqueIndex("marketing_generated_media_url_hash_unique").on(table.assetUrl, table.assetSha256),
+]);
+export type MarketingGeneratedMediaAsset = typeof marketingGeneratedMediaAssets.$inferSelect;
+export type InsertMarketingGeneratedMediaAsset = typeof marketingGeneratedMediaAssets.$inferInsert;
+
 export const marketingSocialReleaseAuthorizations = mysqlTable("marketing_social_release_authorizations", {
   id: int("id").autoincrement().primaryKey(),
   authorizationKey: varchar("authorizationKey", { length: 200 }).notNull(),

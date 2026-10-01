@@ -41,11 +41,11 @@ describe("Agentic Marketing Phase 4 Content Studio policy", () => {
     expect(findDisallowedContentPacketData("Explain verified programme requirements with an effective date.")).toBeNull();
   });
 
-  it("requires an HTTPS final preview and SHA-256 fingerprint before final approval processing", () => {
+  it("requires a system-generated final preview before final approval processing", () => {
     const hash = "a".repeat(64);
     expect(validatePreviewFingerprint(undefined, undefined)).toContain("required");
-    expect(validatePreviewFingerprint("http://example.com/preview", hash)).toContain("HTTPS");
-    expect(validatePreviewFingerprint("https://example.com/preview", "not-a-hash")).toContain("SHA-256");
+    expect(validatePreviewFingerprint("http://example.com/preview", hash)).toContain("secure connection");
+    expect(validatePreviewFingerprint("https://example.com/preview", "not-a-hash")).toContain("integrity");
     expect(validatePreviewFingerprint("https://example.com/preview", hash)).toBeNull();
   });
 });

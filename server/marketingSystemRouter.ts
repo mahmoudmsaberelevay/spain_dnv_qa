@@ -31,6 +31,7 @@ import {
   marketingWeeklyAutomationBudgetLedger,
   marketingReelCompositionInputApprovals,
   marketingReelCompositions,
+  marketingGeneratedMediaAssets,
   marketingDesignSystemAssets,
   marketingKnowledgeClaims,
   marketingKnowledgeSources,
@@ -298,11 +299,10 @@ const weeklyResultsItemInput = z.object({
   itemType: z.enum(WEEKLY_RESULTS_ITEM_TYPES), title: z.string().trim().min(4).max(300), programKey: z.string().trim().min(2).max(96).regex(/^[a-z0-9_]+$/).optional(), objective: z.string().trim().min(8).max(500),
   creativeDirection: z.string().trim().max(12_000).optional(), scriptCopy: z.string().trim().max(30_000).optional(), caption: z.string().trim().max(20_000).optional(), cta: z.string().trim().max(500).optional(),
   hashtags: z.array(z.string().trim().min(1).max(120)).max(40).default([]), visualBrief: z.string().trim().max(12_000).optional(), plannedDay: z.enum(["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]).optional(), plannedTime: z.string().refine(isValidCairoClockTime, "Use HH:MM Cairo time.").optional(),
-  previewUrl: z.string().url().max(2_000).optional(), previewHash: z.string().regex(/^[a-f0-9]{64}$/i, "Preview fingerprint must be a SHA-256 hash.").optional(), sourceClaimIds: z.array(z.number().int().positive()).max(32).default([]), metadata: z.record(z.string(), z.unknown()).default({}), isSelected: z.boolean().default(true),
+  sourceClaimIds: z.array(z.number().int().positive()).max(32).default([]), metadata: z.record(z.string(), z.unknown()).default({}), isSelected: z.boolean().default(true),
 });
 const createWeeklyResultsPlanInput = z.object({ periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), title: z.string().trim().min(4).max(300), items: z.array(weeklyResultsItemInput).min(1).max(48) });
 const updateWeeklyResultsItemInput = weeklyResultsItemInput.extend({ itemId: z.number().int().positive() });
-const attachWeeklyResultsPreviewInput = z.object({ itemId: z.number().int().positive(), previewUrl: z.string().url().max(2_000) });
 const weeklyResultsItemDecisionInput = z.object({ itemId: z.number().int().positive(), decision: z.enum(["send_back", "approve", "reject", "stop"]), note: z.string().trim().min(4).max(8_000), feedbackCategory: z.enum(WEEKLY_RESULTS_FEEDBACK_CATEGORIES).optional() });
 const approvedReelInputAsset = z.object({
   url: z.string().url().max(2_000),
@@ -382,8 +382,6 @@ const contentPacketInput = z.object({
   claimIds: z.array(z.number().int().positive()).min(1).max(32),
   visualBrief: z.string().trim().max(20_000).optional(),
   payload: z.record(z.string(), z.unknown()).default({}),
-  previewUrl: z.string().url().max(2_000).optional(),
-  previewHash: z.string().regex(/^[a-f0-9]{64}$/i, "Preview fingerprint must be a SHA-256 hash.").optional(),
   exceptionalClaim: z.boolean().default(false),
   changeSummary: z.string().trim().min(4).max(4_000).optional(),
 });
@@ -637,9 +635,9 @@ function normalizeWeeklyResultsItem(input: z.infer<typeof weeklyResultsItemInput
     visualBrief: input.visualBrief ? normalizeWeeklyResultsText(input.visualBrief) : null,
     plannedDay: input.plannedDay ?? null,
     plannedTime: input.plannedTime ?? null,
-    previewUrl: input.previewUrl ?? null,
-    // Preview integrity is calculated by the server after a public HTTPS
-    // preview is attached. A user-supplied hash is never trusted.
+    // Generated media is attached only by the system-owned production pipeline.
+    // A Marketing-user plan draft can never carry an external preview reference.
+    previewUrl: null,
     previewHash: null,
     sourceClaimIdsJson: JSON.stringify(Array.from(new Set(input.sourceClaimIds)).sort((a, b) => a - b)),
     metadataJson: JSON.stringify(input.metadata),
@@ -659,6 +657,42 @@ function validateWeeklyResultsItemLanguage(item: Pick<typeof marketingWeeklyResu
   ].filter((problem): problem is string => Boolean(problem));
   if (languageProblems.length > 0) throw new TRPCError({ code: "BAD_REQUEST", message: languageProblems[0] });
 }
+async function requireSystemGeneratedWeeklyMedia(item: Pick<typeof marketingWeeklyResultsItems.$inferSelect, "id" | "itemType" | "previewUrl" | "previewHash">) {
+  if (!isCreativeItemType(item.itemType)) return null;
+  if (!item.previewUrl || !item.previewHash) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "System-generated media is required before this creative item can receive final approval." });
+  }
+  const db = await requireDb();
+  const [asset] = await db.select().from(marketingGeneratedMediaAssets).where(and(
+    eq(marketingGeneratedMediaAssets.weeklyItemId, item.id),
+    eq(marketingGeneratedMediaAssets.origin, "system_generated"),
+    eq(marketingGeneratedMediaAssets.status, "review_ready"),
+    eq(marketingGeneratedMediaAssets.assetUrl, item.previewUrl),
+    eq(marketingGeneratedMediaAssets.assetSha256, item.previewHash.toLowerCase()),
+    isNull(marketingGeneratedMediaAssets.supersededAt),
+  )).orderBy(desc(marketingGeneratedMediaAssets.generatedAt)).limit(1);
+  if (!asset) throw new TRPCError({ code: "BAD_REQUEST", message: "The final preview is not a current system-generated asset linked to this exact creative item." });
+  return asset;
+}
+
+async function requireSystemGeneratedContentMedia(packet: Pick<typeof marketingContentPackets.$inferSelect, "id" | "contentType" | "previewUrl" | "previewHash">) {
+  if (!isCreativeItemType(packet.contentType)) return null;
+  if (!packet.previewUrl || !packet.previewHash) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "System-generated media is required before this creative packet can proceed to final QA or approval." });
+  }
+  const db = await requireDb();
+  const [asset] = await db.select().from(marketingGeneratedMediaAssets).where(and(
+    eq(marketingGeneratedMediaAssets.contentPacketId, packet.id),
+    eq(marketingGeneratedMediaAssets.origin, "system_generated"),
+    eq(marketingGeneratedMediaAssets.status, "review_ready"),
+    eq(marketingGeneratedMediaAssets.assetUrl, packet.previewUrl),
+    eq(marketingGeneratedMediaAssets.assetSha256, packet.previewHash.toLowerCase()),
+    isNull(marketingGeneratedMediaAssets.supersededAt),
+  )).orderBy(desc(marketingGeneratedMediaAssets.generatedAt)).limit(1);
+  if (!asset) throw new TRPCError({ code: "BAD_REQUEST", message: "The final preview is not a current system-generated asset linked to this exact content packet." });
+  return asset;
+}
+
 function weeklyResultsPlanHash(input: { periodStart: string; title: string; setup: unknown; performance: unknown; preferences: unknown; items: unknown }) {
   return crypto.createHash("sha256").update(JSON.stringify(input)).digest("hex");
 }
@@ -763,8 +797,7 @@ function packetContentHash(input: z.infer<typeof contentPacketInput>, rootPacket
     claimIds: Array.from(new Set(input.claimIds)).sort((a, b) => a - b),
     visualBrief: input.visualBrief ? normalizeContentStudioText(input.visualBrief) : null,
     payload: input.payload,
-    previewUrl: input.previewUrl ?? null,
-    previewHash: input.previewHash?.toLowerCase() ?? null,
+    preview: "system_generated_only",
     exceptionalClaim: input.exceptionalClaim,
   })).digest("hex");
 }
@@ -2510,8 +2543,8 @@ export const marketingSystemRouter = router({
       visualBrief: input.visualBrief ? normalizeContentStudioText(input.visualBrief) : null,
       payloadJson: JSON.stringify(input.payload),
       outputSchemaJson: JSON.stringify(contentPacketOutputSchema(input.contentType)),
-      previewUrl: input.previewUrl ?? null,
-      previewHash: input.previewHash?.toLowerCase() ?? null,
+      previewUrl: null,
+      previewHash: null,
       qaResultsJson: JSON.stringify([]),
       exceptionalClaim: input.exceptionalClaim,
       status: "draft",
@@ -2577,8 +2610,8 @@ export const marketingSystemRouter = router({
       visualBrief: input.visualBrief ? normalizeContentStudioText(input.visualBrief) : null,
       payloadJson: JSON.stringify(input.payload),
       outputSchemaJson: JSON.stringify(contentPacketOutputSchema(input.contentType)),
-      previewUrl: input.previewUrl ?? null,
-      previewHash: input.previewHash?.toLowerCase() ?? null,
+      previewUrl: null,
+      previewHash: null,
       qaResultsJson: JSON.stringify([]),
       exceptionalClaim: input.exceptionalClaim,
       status: "draft",
@@ -2627,6 +2660,7 @@ export const marketingSystemRouter = router({
     if (uniqueChecks.size !== MARKETING_CONTENT_QA_CHECKS.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Record exactly one QA result for every required check." });
     const previewProblem = validatePreviewFingerprint(packet.previewUrl, packet.previewHash);
     if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: `${previewProblem} Create a new revision with its final preview before QA.` });
+    await requireSystemGeneratedContentMedia(packet);
     const allPassed = input.results.every(result => result.passed);
     const nextStatus: MarketingContentStatus = allPassed ? "qa_passed" : "changes_requested";
     const now = Date.now();
@@ -2652,6 +2686,7 @@ export const marketingSystemRouter = router({
     if (qaResults.length !== MARKETING_CONTENT_QA_CHECKS.length || qaResults.some(result => !result.passed)) throw new TRPCError({ code: "BAD_REQUEST", message: "Every mandatory QA check must pass before an approval packet is created." });
     const previewProblem = validatePreviewFingerprint(packet.previewUrl, packet.previewHash);
     if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: previewProblem });
+    await requireSystemGeneratedContentMedia(packet);
     await getApprovedContentClaims(parseJson<number[]>(packet.claimIdsJson, []), packet.programKey);
     const now = Date.now();
     await db.update(marketingContentPackets).set({ status: "approval_ready", blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingContentPackets.id, packet.id));
@@ -2681,6 +2716,7 @@ export const marketingSystemRouter = router({
     if (!contentCanTransition(packet.status as MarketingContentStatus, "approved")) throw new TRPCError({ code: "BAD_REQUEST", message: "Only an Approval Ready packet can receive Mahmoud's explicit decision." });
     const previewProblem = validatePreviewFingerprint(packet.previewUrl, packet.previewHash);
     if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: previewProblem });
+    await requireSystemGeneratedContentMedia(packet);
     await getApprovedContentClaims(parseJson<number[]>(packet.claimIdsJson, []), packet.programKey);
     const now = Date.now();
     await db.update(marketingContentPackets).set({ status: "approved", approvedByUserId: ctx.user.id, approvedAt: now, blockedReason: null, updatedAt: now }).where(eq(marketingContentPackets.id, packet.id));
@@ -2704,6 +2740,7 @@ export const marketingSystemRouter = router({
     for (const packet of packets) {
       const previewProblem = validatePreviewFingerprint(packet.previewUrl, packet.previewHash);
       if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: `Packet ${packet.id}: ${previewProblem}` });
+      await requireSystemGeneratedContentMedia(packet);
       await getApprovedContentClaims(parseJson<number[]>(packet.claimIdsJson, []), packet.programKey);
     }
     const now = Date.now();
@@ -3021,22 +3058,6 @@ export const marketingSystemRouter = router({
     return { success: true, status: nextStatus, externalOperationsEnabled: false };
   }),
 
-  attachWeeklyResultsPreview: protectedProcedure.input(attachWeeklyResultsPreviewInput).mutation(async ({ ctx, input }) => {
-    await requireMarketingSystemAdministrator(ctx.user);
-    const db = await requireDb();
-    const [item] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, input.itemId)).limit(1);
-    if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Weekly Results item not found." });
-    if (["approved", "stopped", "superseded"].includes(item.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "A final preview cannot be changed after this item is closed." });
-    let verified: { sha256: string; mimeType: string; bytes: number };
-    try { verified = await fingerprintMarketingPreview(input.previewUrl); }
-    catch { throw new TRPCError({ code: "BAD_REQUEST", message: "The preview must be a reachable public HTTPS image or video. The CRM verifies its fingerprint automatically." }); }
-    const now = Date.now();
-    await db.update(marketingWeeklyResultsItems).set({ previewUrl: input.previewUrl, previewHash: verified.sha256, status: "draft", blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingWeeklyResultsItems.id, item.id));
-    await appendWeeklyResultsItemEvent({ itemId: item.id, action: "preview_verified_automatically", fromStatus: item.status, toStatus: "draft", changedFields: ["preview"], payload: { mimeType: verified.mimeType, bytes: verified.bytes, automaticFingerprint: true, noProviderCall: true, noPublishCommand: true }, actorUserId: ctx.user.id, createdAt: now });
-    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_results_preview", item.id, JSON.stringify({ automaticFingerprint: true, mimeType: verified.mimeType, bytes: verified.bytes, externalOperationsEnabled: false }));
-    return { success: true, previewVerified: true, status: "draft" as const, externalOperationsEnabled: false };
-  }),
-
   submitWeeklyResultsItemForIndividualReview: protectedProcedure.input(z.object({ itemId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
     await requireMarketingSystemAdministrator(ctx.user);
     const db = await requireDb();
@@ -3046,12 +3067,10 @@ export const marketingSystemRouter = router({
     if (!weeklyResultsItemCanTransition(item.status as WeeklyResultsItemStatus, "pending_individual_review")) throw new TRPCError({ code: "BAD_REQUEST", message: "Only a draft item can enter individual review." });
     if (!item.programKey) throw new TRPCError({ code: "BAD_REQUEST", message: "A programme key is required before an item can be reviewed." });
     validateWeeklyResultsItemLanguage(item);
-    const previewProblem = validatePreviewFingerprint(item.previewUrl, item.previewHash);
-    if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: previewProblem });
     await getApprovedContentClaims(parseJson<number[]>(item.sourceClaimIdsJson, []), item.programKey);
     const now = Date.now();
     await db.update(marketingWeeklyResultsItems).set({ status: "pending_individual_review", blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingWeeklyResultsItems.id, item.id));
-    await appendWeeklyResultsItemEvent({ itemId: item.id, action: "submitted_for_individual_review", fromStatus: item.status, toStatus: "pending_individual_review", payload: { previewHash: item.previewHash, sourceClaimCount: parseJson<number[]>(item.sourceClaimIdsJson, []).length, batchApprovalAvailable: false, noPublishCommand: true }, actorUserId: ctx.user.id, createdAt: now });
+    await appendWeeklyResultsItemEvent({ itemId: item.id, action: "submitted_for_individual_review", fromStatus: item.status, toStatus: "pending_individual_review", payload: { initialCopyAndPlanReview: true, previewReady: Boolean(item.previewUrl && item.previewHash), sourceClaimCount: parseJson<number[]>(item.sourceClaimIdsJson, []).length, batchApprovalAvailable: false, noPublishCommand: true }, actorUserId: ctx.user.id, createdAt: now });
     return { success: true, status: "pending_individual_review" as const, externalOperationsEnabled: false };
   }),
 
@@ -3069,6 +3088,7 @@ export const marketingSystemRouter = router({
     if (input.decision === "approve") {
       const previewProblem = validatePreviewFingerprint(item.previewUrl, item.previewHash);
       if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: previewProblem });
+      await requireSystemGeneratedWeeklyMedia(item);
       if (!item.programKey) throw new TRPCError({ code: "BAD_REQUEST", message: "An approved item must have a programme key." });
       await getApprovedContentClaims(parseJson<number[]>(item.sourceClaimIdsJson, []), item.programKey);
     }
@@ -3135,6 +3155,26 @@ export const marketingSystemRouter = router({
       const result = await composeApprovedReelForReview({ weeklyItemId: item.id, sourceVideo: input.sourceVideo, narration: input.narration });
       await db.transaction(async tx => {
         await tx.update(marketingReelCompositions).set({ status: "review_ready", sourceDurationMs: result.sourceProbe.durationMs, sourceWidth: result.sourceProbe.width!, sourceHeight: result.sourceProbe.height!, narrationDurationMs: result.narrationProbe.durationMs, outputStorageKey: result.outputStorageKey, outputUrl: result.outputUrl, outputSha256: result.outputSha256, outputBytes: result.outputBytes, outputDurationMs: result.outputProbe.durationMs, outputVideoCodec: result.outputProbe.videoCodec, outputAudioCodec: result.outputProbe.audioCodec, inputManifestJson: JSON.stringify(result.inputManifest), errorSummary: null, completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingReelCompositions.id, compositionId));
+        await tx.update(marketingGeneratedMediaAssets).set({ status: "superseded", supersededAt: Date.now(), updatedAt: Date.now() }).where(and(eq(marketingGeneratedMediaAssets.weeklyItemId, item.id), eq(marketingGeneratedMediaAssets.status, "review_ready"), isNull(marketingGeneratedMediaAssets.supersededAt)));
+        await tx.insert(marketingGeneratedMediaAssets).values({
+          assetKey: `system-media:reel:${item.id}:${result.outputSha256}`,
+          weeklyItemId: item.id,
+          contentPacketId: null,
+          assetType: "reel",
+          providerAlias: "elevay-review-only-compositor",
+          origin: "system_generated",
+          generationTaskId: null,
+          status: "review_ready",
+          storageKey: result.outputStorageKey,
+          assetUrl: result.outputUrl,
+          assetSha256: result.outputSha256,
+          mimeType: "video/mp4",
+          metadataJson: JSON.stringify({ compositionId, inputManifest: result.inputManifest, reviewOnly: true }),
+          supersededAt: null,
+          generatedAt: Date.now(),
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }).onDuplicateKeyUpdate({ set: { status: "review_ready", supersededAt: null, updatedAt: Date.now() } });
         await tx.update(marketingWeeklyResultsItems).set({ previewUrl: result.outputUrl, previewHash: result.outputSha256, status: "draft", blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: Date.now() }).where(eq(marketingWeeklyResultsItems.id, item.id));
       });
       await appendWeeklyResultsItemEvent({ itemId: item.id, action: "reel_narration_composed_for_review", fromStatus: item.status, toStatus: "draft", changedFields: ["preview"], payload: { compositionId, sourceApprovalId: sourceApproval.id, narrationApprovalId: narrationApproval.id, outputHash: result.outputSha256, reviewOnly: true, noPublishCommand: true, externalOperationsEnabled: false }, actorUserId: ctx.user.id, createdAt: Date.now() });

@@ -96,14 +96,14 @@ export function findDisallowedContentPacketData(value: string): string | null {
 }
 
 export function validatePreviewFingerprint(previewUrl: string | null | undefined, previewHash: string | null | undefined): string | null {
-  if (!previewUrl || !previewHash) return "A final HTTPS preview URL and its SHA-256 fingerprint are required before Approval Ready.";
+  if (!previewUrl || !previewHash) return "A system-generated final preview is required before final approval.";
   try {
     const parsed = new URL(previewUrl);
-    if (parsed.protocol !== "https:") return "Final previews must use HTTPS.";
+    if (parsed.protocol !== "https:") return "The system final preview is not available over a secure connection.";
   } catch {
-    return "The final preview URL is invalid.";
+    return "The system final preview is invalid.";
   }
-  if (!/^[a-f0-9]{64}$/i.test(previewHash)) return "The preview fingerprint must be a 64-character SHA-256 hash.";
+  if (!/^[a-f0-9]{64}$/i.test(previewHash)) return "The system final preview integrity check did not pass.";
   return null;
 }
 

@@ -14,13 +14,16 @@ describe("automatic preview verification and Manus reel policy", () => {
     expect(provider?.executionBoundary).toContain("Generation stays blocked");
   });
 
-  it("retains server-side verification without exposing manual URLs or fingerprints", () => {
+  it("requires a system-generated asset link without exposing manual URLs or fingerprints", () => {
     const router = read("server/marketingSystemRouter.ts");
     const page = read("client/src/pages/marketing/WeeklyResults.tsx");
     const media = read("server/reelCompositorService.ts");
-    expect(router).toContain("attachWeeklyResultsPreview");
-    expect(router).toContain("fingerprintMarketingPreview");
+    const schema = read("drizzle/schema.ts");
+    expect(router).toContain("requireSystemGeneratedWeeklyMedia");
+    expect(router).toContain("requireSystemGeneratedContentMedia");
+    expect(router).not.toContain("attachWeeklyResultsPreview");
     expect(router).toContain("fingerprintMarketingAsset(input.narration.url");
+    expect(schema).toContain("marketingGeneratedMediaAssets");
     expect(media).toContain("callers must never ask a");
     expect(page).toContain("System-generated preview");
     expect(page).toContain("You do not upload an image or video, paste a URL");
