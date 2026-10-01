@@ -29,6 +29,8 @@ import {
   marketingWeeklyAutomationControls,
   marketingWeeklyAutomationJobs,
   marketingWeeklyAutomationBudgetLedger,
+  marketingReelCompositionInputApprovals,
+  marketingReelCompositions,
   marketingDesignSystemAssets,
   marketingKnowledgeClaims,
   marketingKnowledgeSources,
@@ -154,6 +156,7 @@ import {
   weeklyResultsItemCanTransition,
   type WeeklyResultsItemStatus,
 } from "../shared/marketingWeeklyResults";
+import { evaluateSocialReleaseGovernance } from "../shared/marketingSocialReleaseGovernance";
 import {
   MARKETING_AUTOPILOT_MODE,
   MARKETING_PROVIDER_CONNECTIONS,
@@ -168,6 +171,7 @@ import {
   startWeeklyAutomationCycle,
 } from "./weeklyMarketingAutomationService";
 import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
+import { composeApprovedReelForReview } from "./reelCompositorService";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -298,6 +302,16 @@ const weeklyResultsItemInput = z.object({
 const createWeeklyResultsPlanInput = z.object({ periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), title: z.string().trim().min(4).max(300), items: z.array(weeklyResultsItemInput).min(1).max(48) });
 const updateWeeklyResultsItemInput = weeklyResultsItemInput.extend({ itemId: z.number().int().positive() });
 const weeklyResultsItemDecisionInput = z.object({ itemId: z.number().int().positive(), decision: z.enum(["send_back", "approve", "reject", "stop"]), note: z.string().trim().min(4).max(8_000), feedbackCategory: z.enum(WEEKLY_RESULTS_FEEDBACK_CATEGORIES).optional() });
+const approvedReelInputAsset = z.object({
+  url: z.string().url().max(2_000),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/i, "Asset fingerprint must be a SHA-256 hash.").transform(value => value.toLowerCase()),
+  mimeType: z.string().trim().min(3).max(128),
+});
+const composeApprovedReelInput = z.object({
+  itemId: z.number().int().positive(),
+  sourceVideo: approvedReelInputAsset.refine(value => value.mimeType.toLowerCase().startsWith("video/"), "The source must be an approved video asset."),
+  narration: approvedReelInputAsset.refine(value => value.mimeType.toLowerCase().startsWith("audio/"), "The narration must be an approved audio asset."),
+});
 const weeklyResultsPerformanceInput = z.object({
   periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), spendEgp: z.number().finite().min(0).max(100_000_000).default(0), impressions: z.number().int().min(0).max(10_000_000_000).default(0), clicks: z.number().int().min(0).max(10_000_000_000).default(0),
   leadForms: z.number().int().min(0).max(10_000_000_000).default(0), qualifiedLeads: z.number().int().min(0).max(10_000_000_000).default(0), clientStageLeads: z.number().int().min(0).max(10_000_000_000).default(0), notes: z.string().trim().max(4_000).optional(),
@@ -2773,6 +2787,18 @@ export const marketingSystemRouter = router({
     const itemIds = items.map(item => item.id);
     const events = itemIds.length === 0 ? [] : await db.select().from(marketingWeeklyResultsItemEvents)
       .where(inArray(marketingWeeklyResultsItemEvents.itemId, itemIds)).orderBy(desc(marketingWeeklyResultsItemEvents.createdAt));
+    const releaseGovernance = evaluateSocialReleaseGovernance(items.map(item => ({
+      id: item.id,
+      isSelected: item.isSelected,
+      status: item.status,
+      previewHash: item.previewHash,
+      approvedAt: item.approvedAt,
+      events: events.filter(event => event.itemId === item.id).map(event => ({
+        action: event.action,
+        createdAt: event.createdAt,
+        payload: parseJson<Record<string, unknown>>(event.payloadJson, {}),
+      })),
+    })));
     return {
       settings: parseWeeklyResultsSettings(settingsRows[0]),
       plans: plans.map(plan => ({
@@ -2795,6 +2821,11 @@ export const marketingSystemRouter = router({
         extraction: parseJson<Record<string, unknown>>(asset.extractionJson, {}), createdAt: asset.createdAt, updatedAt: asset.updatedAt,
       })),
       policy: WEEKLY_RESULTS_EXECUTION_BOUNDARY,
+      socialReleaseGovernance: {
+        ...releaseGovernance,
+        publicationEnabled: false,
+        explanation: "The 90% indicator is a trailing 30-day governance eligibility signal only. It never bypasses individual final-preview approval, resolved feedback, an explicit per-channel owner release, or separately validated Meta publishing credentials and permissions.",
+      },
       automation,
       boundedProviderAutomationEnabled: Boolean(automation.control.isEnabled),
       externalOperationsEnabled: false,
@@ -3014,12 +3045,63 @@ export const marketingSystemRouter = router({
       approvedByUserId: input.decision === "approve" ? ctx.user.id : null, approvedAt: input.decision === "approve" ? now : null,
       stoppedByUserId: input.decision === "stop" ? ctx.user.id : null, stoppedAt: input.decision === "stop" ? now : null, updatedAt: now,
     }).where(eq(marketingWeeklyResultsItems.id, item.id));
-    await appendWeeklyResultsItemEvent({ itemId: item.id, action: `individual_${input.decision}`, fromStatus: item.status, toStatus: nextStatus, feedback: normalizeWeeklyResultsText(input.note), payload: { explicitIndividualDecision: true, feedbackCategory: input.feedbackCategory ?? null, noBatchRule: true, noPublishCommand: true, externalOperationsEnabled: false }, actorUserId: ctx.user.id, createdAt: now });
+    await appendWeeklyResultsItemEvent({ itemId: item.id, action: `individual_${input.decision}`, fromStatus: item.status, toStatus: nextStatus, feedback: normalizeWeeklyResultsText(input.note), payload: { explicitIndividualDecision: true, feedbackCategory: input.feedbackCategory ?? null, finalPreviewApproved: input.decision === "approve", feedbackResolved: input.decision === "approve", previewHash: input.decision === "approve" ? item.previewHash : null, noBatchRule: true, noPublishCommand: true, externalOperationsEnabled: false }, actorUserId: ctx.user.id, createdAt: now });
     if (["send_back", "reject"].includes(input.decision)) {
       await db.insert(marketingWeeklyResultsPreferenceMemories).values({ scope: "weekly_results", scopeKey: item.programKey, preferenceText: normalizeWeeklyResultsText(input.note), sourceItemId: item.id, sourceEventId: null, status: "active", createdByUserId: ctx.user.id, createdAt: now, updatedAt: now });
     }
     await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_results_item_decision", item.id, JSON.stringify({ planId: item.planId, decision: input.decision, fromStatus: item.status, toStatus: nextStatus, individualOnly: true, externalOperationsEnabled: false }));
     return { success: true, status: nextStatus, externalOperationsEnabled: false };
+  }),
+
+  composeApprovedReelNarrationForReview: protectedProcedure.input(composeApprovedReelInput).mutation(async ({ ctx, input }) => {
+    if (!isOwner(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Only the CRM owner can approve source assets for review-only reel narration composition." });
+    const db = await requireDb();
+    const [item] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, input.itemId)).limit(1);
+    if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Weekly Results item not found." });
+    if (item.itemType !== "reel" || !item.isSelected || item.status !== "draft") throw new TRPCError({ code: "BAD_REQUEST", message: "Only a selected draft reel can be composed for its next final-preview review." });
+    validateWeeklyResultsItemLanguage(item);
+    if (item.previewUrl !== input.sourceVideo.url || item.previewHash?.toLowerCase() !== input.sourceVideo.sha256) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "The approved source video must exactly match the reel's current reviewed preview URL and SHA-256 fingerprint." });
+    }
+    const now = Date.now();
+    const approvalKey = (assetType: string, hash: string) => `reel-input:${item.id}:${assetType}:${hash}`;
+    const recordApproval = async (assetType: "source_video" | "arabic_narration", asset: z.infer<typeof approvedReelInputAsset>) => {
+      await db.update(marketingReelCompositionInputApprovals).set({ status: "superseded", supersededAt: now, updatedAt: now })
+        .where(and(eq(marketingReelCompositionInputApprovals.weeklyItemId, item.id), eq(marketingReelCompositionInputApprovals.assetType, assetType), eq(marketingReelCompositionInputApprovals.status, "approved")));
+      await db.insert(marketingReelCompositionInputApprovals).values({
+        approvalKey: approvalKey(assetType, asset.sha256), weeklyItemId: item.id, assetType, assetUrl: asset.url, assetSha256: asset.sha256, mimeType: asset.mimeType,
+        status: "approved", approvedByUserId: ctx.user.id, approvedAt: now, supersededAt: null, createdAt: now, updatedAt: now,
+      }).onDuplicateKeyUpdate({ set: { assetUrl: asset.url, mimeType: asset.mimeType, status: "approved", approvedByUserId: ctx.user.id, approvedAt: now, supersededAt: null, updatedAt: now } });
+      const [record] = await db.select().from(marketingReelCompositionInputApprovals).where(eq(marketingReelCompositionInputApprovals.approvalKey, approvalKey(assetType, asset.sha256))).limit(1);
+      if (!record) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Approved composition input could not be recorded." });
+      return record;
+    };
+    const sourceApproval = await recordApproval("source_video", input.sourceVideo);
+    const narrationApproval = await recordApproval("arabic_narration", input.narration);
+    const compositionKey = `reel-compose:${item.id}:${sourceApproval.id}:${narrationApproval.id}`;
+    const [existing] = await db.select().from(marketingReelCompositions).where(eq(marketingReelCompositions.compositionKey, compositionKey)).limit(1);
+    if (existing?.status === "review_ready") return { compositionId: existing.id, status: "review_ready" as const, previewUrl: existing.outputUrl, externalOperationsEnabled: false };
+    const creation = existing ?? (await db.insert(marketingReelCompositions).values({
+      compositionKey, weeklyItemId: item.id, status: "running", sourceVideoApprovalId: sourceApproval.id, narrationApprovalId: narrationApproval.id,
+      sourceDurationMs: 0, sourceWidth: 0, sourceHeight: 0, narrationDurationMs: 0, outputStorageKey: null, outputUrl: null, outputSha256: null, outputBytes: null,
+      outputDurationMs: null, outputVideoCodec: null, outputAudioCodec: null,
+      inputManifestJson: JSON.stringify({ sourceApprovalId: sourceApproval.id, narrationApprovalId: narrationApproval.id, externalActions: false }), errorSummary: null,
+      requestedByUserId: ctx.user.id, createdAt: now, completedAt: null, updatedAt: now,
+    }));
+    const compositionId = existing?.id ?? Number((creation as { insertId?: number }).insertId);
+    try {
+      const result = await composeApprovedReelForReview({ weeklyItemId: item.id, sourceVideo: input.sourceVideo, narration: input.narration });
+      await db.transaction(async tx => {
+        await tx.update(marketingReelCompositions).set({ status: "review_ready", sourceDurationMs: result.sourceProbe.durationMs, sourceWidth: result.sourceProbe.width!, sourceHeight: result.sourceProbe.height!, narrationDurationMs: result.narrationProbe.durationMs, outputStorageKey: result.outputStorageKey, outputUrl: result.outputUrl, outputSha256: result.outputSha256, outputBytes: result.outputBytes, outputDurationMs: result.outputProbe.durationMs, outputVideoCodec: result.outputProbe.videoCodec, outputAudioCodec: result.outputProbe.audioCodec, inputManifestJson: JSON.stringify(result.inputManifest), errorSummary: null, completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingReelCompositions.id, compositionId));
+        await tx.update(marketingWeeklyResultsItems).set({ previewUrl: result.outputUrl, previewHash: result.outputSha256, status: "draft", blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: Date.now() }).where(eq(marketingWeeklyResultsItems.id, item.id));
+      });
+      await appendWeeklyResultsItemEvent({ itemId: item.id, action: "reel_narration_composed_for_review", fromStatus: item.status, toStatus: "draft", changedFields: ["preview"], payload: { compositionId, sourceApprovalId: sourceApproval.id, narrationApprovalId: narrationApproval.id, outputHash: result.outputSha256, reviewOnly: true, noPublishCommand: true, externalOperationsEnabled: false }, actorUserId: ctx.user.id, createdAt: Date.now() });
+      await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_reel_composition", compositionId, JSON.stringify({ weeklyItemId: item.id, sourceApprovalId: sourceApproval.id, narrationApprovalId: narrationApproval.id, reviewOnly: true, externalOperationsEnabled: false }));
+      return { compositionId, status: "review_ready" as const, previewUrl: result.outputUrl, previewHash: result.outputSha256, externalOperationsEnabled: false };
+    } catch {
+      await db.update(marketingReelCompositions).set({ status: "failed", errorSummary: "review_only_composition_failed", completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingReelCompositions.id, compositionId));
+      throw new TRPCError({ code: "BAD_REQUEST", message: "The approved video and narration could not be composed for review. Their media streams, dimensions, duration, and fingerprints must be valid." });
+    }
   }),
 
   saveWeeklyResultsPerformance: protectedProcedure.input(weeklyResultsPerformanceInput).mutation(async ({ ctx, input }) => {

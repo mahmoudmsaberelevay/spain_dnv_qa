@@ -135,3 +135,18 @@
 - [x] Passed 12 focused voice/provider/UI tests, production build, zero-error TypeScript check, and secret/diff hygiene. The current UI can now generate and play verified MP3 files through the owner-selected voice.
 
 > **Remaining media boundary:** a separate video-compositor release is still required to mux a verified MP3 into final reel footage, measure both durations, mix background audio safely, and verify the final MP4 audio stream before approval.
+
+
+## Agentic Marketing — Bounded Weekly Activation, Review Governance, and Narration Composition
+
+- [x] Refactored weekly planning activation so it no longer changes shared provider profiles, the global Autopilot control, Meta/CAPI, social publishing, campaign, or spending authority. The weekly control alone enables internal review-only planning.
+- [x] Activated the permanent Saturday 10:00 Africa/Cairo Heartbeat-backed planner with the USD 100/month and USD 20/run limits. All shared provider profiles remain disabled and their kill switches remain engaged.
+- [x] Completed one bounded OpenAI → Anthropic → Manus planning test. The verified Manus structured result was recovered through the same idempotent callback processor after callback delivery did not update the CRM job. No second Manus task was created.
+- [x] Repaired strict schedule-label handling by constraining the Manus schema and normalizing supported Arabic day labels into the CRM’s stored English day values before validation.
+- [x] Generated one review-only weekly plan with five items. All five are automatically `on_hold` because their scripts did not satisfy Arabic-only creative policy. They remain editable/reviewable; no material was approved, rendered, published, scheduled, or used in advertising.
+- [x] Added and applied additive migration `0106_review_only_reel_composition_and_social_release_governance.sql`: owner-pinned composition-input approvals, review-only composition records, and future per-channel social-release authorization evidence.
+- [x] Added FFmpeg/ffprobe review-only narration composition. It requires an owner-approved source reel and SHA-256-pinned approved Arabic MP3, validates strict 9:16/video/audio/duration constraints, mixes audio, validates output streams, stores only final metadata/URL/hash, and assigns a new draft preview. It has no video-generation, publishing, Meta, campaign, CAPI, spend, Lead, or client path.
+- [x] Added transparent trailing 30-day 90% governance calculation: an item counts only with selected status, exact final-preview fingerprint, individual approval, and resolved-feedback evidence. First month and samples under 10 eligible items cannot authorize release. The score can never publish; a future exact-preview, per-channel owner authorization plus separately validated Meta configuration remains required.
+- [x] Confirmed no Higgsfield API key, Meta Page access token, Meta Page ID, or Instagram Business Account ID is configured. The existing Meta system-user/ad-account configuration was not changed or used.
+
+> **Next gate:** Connect and read-only validate Higgsfield (mandatory for reel generation), then separately configure and validate Meta Page/Instagram publishing scopes. Do not add reel generation, rendering-provider execution, social posting, campaign, spend, CAPI, or Lead/client operations until their independent authorization, idempotency, audit, and owner-release controls are implemented and passed.

@@ -85,6 +85,29 @@ function redactError(error: unknown) {
   return message.replace(/(?:sk-|key-|Bearer\s+)[A-Za-z0-9._-]+/g, "[redacted]").slice(0, 500);
 }
 
+/**
+ * The marketing control plane can contain historical owner-entered notes and
+ * source analyses. A plan must never forward identity-bearing text to an
+ * external model, even when it appears inside an otherwise useful field.
+ * Omitting an unsafe field is deliberately safer than attempting redaction:
+ * the final whole-snapshot guard remains in place before dispatch.
+ */
+function sanitizePlanningSnapshotValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return findDisallowedWeeklyResultsData(value) ? null : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizePlanningSnapshotValue).filter((item): item is Exclude<typeof item, null> => item !== null);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).flatMap(([key, nested]) => {
+      const sanitized = sanitizePlanningSnapshotValue(nested);
+      return sanitized === null ? [] : [[key, sanitized]];
+    }));
+  }
+  return value;
+}
+
 function boundedInternalReferenceAnalysis(value: string) {
   const parsed = asJson<Record<string, unknown>>(value, {});
   const bounded = (key: string, limit: number) => {
@@ -94,12 +117,12 @@ function boundedInternalReferenceAnalysis(value: string) {
     if (candidate && typeof candidate === "object") return JSON.stringify(candidate).slice(0, limit);
     return null;
   };
-  return {
+  return sanitizePlanningSnapshotValue({
     executiveSummary: bounded("executive_summary", 7_000),
     programmes: bounded("programmes", 12_000),
     criticalReviewFlags: bounded("critical_review_flags", 4_000),
     recommendedOfficialVerificationTopics: bounded("recommended_official_verification_topics", 4_000),
-  };
+  }) as Record<string, string | null>;
 }
 
 function selectedProgrammeKeys(settings: typeof marketingWeeklyResultsSettings.$inferSelect | null) {
@@ -241,8 +264,10 @@ export async function pauseWeeklyAutomation(input: { actorUserId: number; reason
   return getWeeklyAutomationReadiness();
 }
 
-async function reserveBudgetOrThrow(db: Awaited<ReturnType<typeof requireDb>>, control: AutomationControl, jobId: number, periodStart: string, now: number) {
-  const periodKey = periodStart.slice(0, 7);
+async function reserveBudgetOrThrow(db: Awaited<ReturnType<typeof requireDb>>, control: AutomationControl, jobId: number, now: number) {
+  // Reserve against the Cairo month in which provider work is dispatched—not
+  // the content week start, which can straddle two calendar months.
+  const periodKey = automationMonthKey(now);
   const [monthly] = await db.select({ total: sql<string>`COALESCE(SUM(${marketingWeeklyAutomationBudgetLedger.amountUsd}), 0)` }).from(marketingWeeklyAutomationBudgetLedger).where(eq(marketingWeeklyAutomationBudgetLedger.periodKey, periodKey));
   const reserve = Number(control.perRunReserveUsd);
   if (Number(monthly?.total ?? 0) + reserve > Number(control.monthlyBudgetUsd)) throw new Error("The USD 100 internal monthly automation reservation cap would be exceeded. No provider task was created.");
@@ -253,7 +278,7 @@ function publicPlanningSnapshot(context: Awaited<ReturnType<typeof readAutomatio
   if (!context.settings || !context.brandBook) throw new Error("Weekly automation prerequisites are incomplete.");
   return {
     periodStart,
-    languagePolicy: "All campaign copy, captions, CTAs, scripts and voice-over must be Arabic. On-screen visual text must be English only. Country names may be English in Arabic voice-over scripts. Never include personal, client, Lead, contact, passport, phone or email data.",
+    languagePolicy: "All campaign copy, captions, CTAs, scripts and voice-over must be Arabic. On-screen visual text must be English only. Country names may be English in Arabic voice-over scripts. Never include personal data.",
     executionBoundary: "Prepare review-ready material only. Do not publish, schedule posts, create or edit campaigns, spend money, send CAPI events, contact people, or mutate CRM records.",
     settings: {
       weeklyGoal: context.settings.weeklyGoal, programPriorities: asJson(context.settings.programPrioritiesJson, []), updatedSourcesNote: context.settings.updatedSourcesNote,
@@ -261,8 +286,16 @@ function publicPlanningSnapshot(context: Awaited<ReturnType<typeof readAutomatio
         likes30d: context.settings.targetLikes30d, views30d: context.settings.targetViews30d, leads30d: context.settings.targetLeads30d, qualifiedLeads30d: context.settings.targetQualifiedLeads30d, signedClients30d: context.settings.targetSignedClients30d, cplEgp: Number(context.settings.targetCostPerLeadEgp), maxAdSpend30dEgp: Number(context.settings.targetMaxAdSpend30dEgp),
       },
     },
-    brandBook: { version: context.brandBook.version, title: context.brandBook.title, rules: asJson(context.brandBook.brandPayloadJson, {}) },
-    designSystem: context.designAssets.map(asset => ({ type: asset.assetType, title: asset.title, extraction: asJson(asset.extractionJson, {}) })),
+    brandBook: {
+      version: context.brandBook.version,
+      title: sanitizePlanningSnapshotValue(context.brandBook.title) ?? "Active owner-approved Brand Book",
+      rules: sanitizePlanningSnapshotValue(asJson(context.brandBook.brandPayloadJson, {})),
+    },
+    designSystem: context.designAssets.map(asset => ({
+      type: asset.assetType,
+      title: sanitizePlanningSnapshotValue(asset.title) ?? `${asset.assetType} instruction`,
+      extraction: sanitizePlanningSnapshotValue(asJson(asset.extractionJson, {})),
+    })),
     sourcePolicy: {
       primarySource: "owner_provided_internal_programme_references",
       governmentSourceRule: "Do not retrieve, browse, cite, or use government or other external sources automatically. An external source may be considered only after the owner explicitly confirms the specific content draft.",
@@ -272,17 +305,71 @@ function publicPlanningSnapshot(context: Awaited<ReturnType<typeof readAutomatio
       id: reference.id,
       referenceKey: reference.referenceKey,
       programKeys: reference.programKeys,
-      title: reference.title,
+      title: sanitizePlanningSnapshotValue(reference.title) ?? "Owner-provided internal programme reference",
       sourceClassification: reference.sourceClassification,
       status: reference.status,
-      documentHash: reference.documentHash,
-      analysis: reference.analysis,
+      analysis: sanitizePlanningSnapshotValue(reference.analysis),
     })),
-    approvedOfficialClaims: context.claims,
-    ownerConfirmedInternalClaims: context.ownerConfirmedInternalClaims,
-    feedbackMemory: context.preferences.map(preference => ({ scope: preference.scope, scopeKey: preference.scopeKey, preferenceText: preference.preferenceText })),
-    aggregatePerformance: context.performance.map(snapshot => ({ periodStart: snapshot.periodStart, spendEgp: Number(snapshot.spendEgp), impressions: snapshot.impressions, clicks: snapshot.clicks, leadForms: snapshot.leadForms, qualifiedLeads: snapshot.qualifiedLeads, clientStageLeads: snapshot.clientStageLeads, notes: snapshot.notes })),
+    approvedOfficialClaims: context.claims.flatMap(claim => {
+      const safe = sanitizePlanningSnapshotValue({ id: claim.id, programKey: claim.programKey, claimType: claim.claimType, claimText: claim.claimText });
+      return safe && typeof safe === "object" && typeof (safe as Record<string, unknown>).claimText === "string" ? [safe] : [];
+    }),
+    ownerConfirmedInternalClaims: context.ownerConfirmedInternalClaims.flatMap(claim => {
+      // Source hashes are retained in the CRM record for provenance but are
+      // intentionally excluded from an external-model prompt. A hash can be
+      // misclassified by a PII heuristic and is not needed to draft a plan.
+      const safe = sanitizePlanningSnapshotValue({
+        id: claim.id,
+        programKey: claim.programKey,
+        claimType: claim.claimType,
+        claimText: claim.claimText,
+        sourceSection: claim.sourceSection,
+        riskLevel: claim.riskLevel,
+      });
+      return safe && typeof safe === "object" && typeof (safe as Record<string, unknown>).claimText === "string" ? [safe] : [];
+    }),
+    feedbackMemory: context.preferences.flatMap(preference => {
+      const preferenceText = sanitizePlanningSnapshotValue(preference.preferenceText);
+      return typeof preferenceText === "string" ? [{ scope: preference.scope, scopeKey: preference.scopeKey, preferenceText }] : [];
+    }),
+    aggregatePerformance: context.performance.map(snapshot => ({
+      periodStart: snapshot.periodStart,
+      spendEgp: Number(snapshot.spendEgp),
+      impressions: snapshot.impressions,
+      clicks: snapshot.clicks,
+      leadForms: snapshot.leadForms,
+      qualifiedLeads: snapshot.qualifiedLeads,
+      clientStageLeads: snapshot.clientStageLeads,
+      notes: sanitizePlanningSnapshotValue(snapshot.notes),
+    })),
   };
+}
+
+function planningSnapshotPrivacyProblems(snapshot: unknown) {
+  const problems: Array<{ path: string; reason: string }> = [];
+  const visit = (value: unknown, path: string) => {
+    if (typeof value === "string") {
+      // ISO calendar dates are structured schedule metadata, not free-form
+      // content. The generic detector intentionally recognizes long digit
+      // sequences as contact data, so scan prose but not date fields.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+      const reason = findDisallowedWeeklyResultsData(value);
+      if (reason) problems.push({ path, reason });
+      return;
+    }
+    if (Array.isArray(value)) value.forEach((item, index) => visit(item, `${path}[${index}]`));
+    else if (value && typeof value === "object") Object.entries(value).forEach(([key, item]) => visit(item, `${path}.${key}`));
+  };
+  visit(snapshot, "snapshot");
+  return problems;
+}
+
+// Internal test/operations diagnostic: it returns field paths and detector
+// categories only, never the stored value. It is not exposed through tRPC.
+export async function weeklyPlanningSnapshotPrivacyDiagnostics(periodStart = cairoPeriodStart()) {
+  const snapshot = publicPlanningSnapshot(await readAutomationContext(), periodStart);
+  const problems = planningSnapshotPrivacyProblems(snapshot);
+  return { problems, wholeSnapshotReason: findDisallowedWeeklyResultsData(JSON.stringify(snapshot)) };
 }
 
 function councilPrompt(snapshot: Record<string, unknown>, role: "strategy" | "challenge") {
@@ -296,22 +383,51 @@ function councilPrompt(snapshot: Record<string, unknown>, role: "strategy" | "ch
   ].join("\n\n");
 }
 
+function compactForManus(value: unknown, limit: number) {
+  const serialized = typeof value === "string" ? value : JSON.stringify(value);
+  if (serialized.length <= limit) return serialized;
+  return `${serialized.slice(0, Math.max(0, limit - 48))}\n[truncated for Manus API message limit]`;
+}
+
+function compactManusPlanningContext(snapshot: Record<string, any>) {
+  return {
+    periodStart: snapshot.periodStart,
+    languagePolicy: snapshot.languagePolicy,
+    executionBoundary: snapshot.executionBoundary,
+    settings: snapshot.settings,
+    sourcePolicy: snapshot.sourcePolicy,
+    designSystem: Array.isArray(snapshot.designSystem) ? snapshot.designSystem.map((asset: any) => ({ type: asset.type, title: asset.title, extraction: compactForManus(asset.extraction, 360) })) : [],
+    ownerProvidedInternalReferences: Array.isArray(snapshot.ownerProvidedInternalReferences) ? snapshot.ownerProvidedInternalReferences.map((reference: any) => ({ referenceKey: reference.referenceKey, programKeys: reference.programKeys, title: reference.title, analysis: compactForManus(reference.analysis, 800) })) : [],
+    approvedOfficialClaims: Array.isArray(snapshot.approvedOfficialClaims) ? snapshot.approvedOfficialClaims.slice(0, 20).map((claim: any) => ({ id: claim.id, programKey: claim.programKey, claimText: compactForManus(claim.claimText, 420) })) : [],
+    ownerConfirmedInternalClaims: Array.isArray(snapshot.ownerConfirmedInternalClaims) ? snapshot.ownerConfirmedInternalClaims.slice(0, 24).map((claim: any) => ({ id: claim.id, programKey: claim.programKey, claimType: claim.claimType, claimText: compactForManus(claim.claimText, 420), riskLevel: claim.riskLevel })) : [],
+  };
+}
+
+async function manusTaskRequestError(response: Response) {
+  const body = await response.json().catch(() => null) as { error?: { code?: unknown; message?: unknown } } | null;
+  const code = typeof body?.error?.code === "string" ? body.error.code.slice(0, 80) : "unknown_error";
+  const message = typeof body?.error?.message === "string" ? body.error.message.replace(/[\r\n]+/g, " ").slice(0, 280) : "no error message";
+  return new Error(`Manus task request failed with status ${response.status} (${code}: ${message}).`);
+}
+
 async function createManusWeeklyTask(snapshot: Record<string, unknown>, strategy: SpecialistOpinion, challenge: SpecialistOpinion, periodStart: string) {
+  const compactContext = compactManusPlanningContext(snapshot as Record<string, any>);
   const prompt = [
     "You are the ELEVAY weekly creative production orchestrator. Create an internal, review-ready weekly production pack after considering the OpenAI strategist and Claude challenger opinions below.",
     "Strict rules: all marketing copy/captions/CTAs/scripts/voice-over must be Arabic. Text visibly placed inside visual assets must be English only; use NONE when a visual has no text. Country names alone may be English in voice-over. Never use client, Lead, contact, passport, phone, email, or other personal data.",
     "Use only owner-provided internal programme references contained in the planning context. Do not browse, retrieve, cite, or use government or other external sources. Every researchResults.sourceUrl must use internal:// followed by an owner-provided referenceKey. You may use a statement from ownerConfirmedInternalClaims only by returning its ID in ownerConfirmedInternalClaimIds; it is owner-confirmed internal information for review only, not official evidence, legal advice, or publication authority. An approvedOfficialClaims ID remains the only official-evidence claim reference. If a fact needs external verification, list it as an evidence gap.",
     "Prepare final-quality research summary, static/carousel/reel concepts and any safe attachment deliverables you can create. Do not publish, schedule, create or edit ads/campaigns, spend money, send CAPI events, contact anyone, or change a CRM record. Every output is for review only.",
     `Week starting: ${periodStart}`,
-    "Planning context:", JSON.stringify(snapshot),
-    "OpenAI strategist opinion:", JSON.stringify(strategy),
-    "Claude independent challenge:", JSON.stringify(challenge),
+    "Planning context:", compactForManus(compactContext, 3_600),
+    "OpenAI strategist opinion:", compactForManus(strategy, 1_450),
+    "Claude independent challenge:", compactForManus(challenge, 1_450),
   ].join("\n\n");
+  if (prompt.length > 9_000) throw new Error("The bounded Manus planning prompt exceeds the safe API message size. No Manus task was created.");
   const response = await fetch("https://api.manus.ai/v2/task.create", {
     method: "POST", headers: { "Content-Type": "application/json", "x-manus-api-key": ENV.manusApiKey },
     body: JSON.stringify({ message: { content: prompt }, agent_profile: "standard", structured_output_schema: weeklyAutomationPlanJsonSchema }),
   });
-  if (!response.ok) throw new Error(`Manus task request failed with status ${response.status}.`);
+  if (!response.ok) throw await manusTaskRequestError(response);
   const body = await response.json() as Record<string, unknown>;
   const taskId = typeof body.task_id === "string" ? body.task_id : (body.task_detail as any)?.task_id;
   const taskUrl = typeof body.task_url === "string" ? body.task_url : (body.task_detail as any)?.task_url;
@@ -332,16 +448,28 @@ export async function startWeeklyAutomationCycle(input: { triggerType: "manual_t
   if (!isSaturdayDate(periodStart)) throw new Error("Automation period must begin on a Saturday in Cairo time.");
   const idempotencyKey = `weekly-automation:${periodStart}`;
   const [existing] = await context.db.select().from(marketingWeeklyAutomationJobs).where(eq(marketingWeeklyAutomationJobs.idempotencyKey, idempotencyKey)).limit(1);
-  if (existing) return { reused: true, job: existing };
+  if (existing) {
+    // A scheduled heartbeat must never retry a failed job by itself. A human
+    // can explicitly request one manual retry only when Manus was never
+    // created, preserving the original record and avoiding duplicate tasks.
+    const manuallyRetryable = input.triggerType === "manual_test" && existing.state === "failed" && !existing.manusTaskId;
+    if (!manuallyRetryable) return { reused: true, job: existing };
+    await context.db.update(marketingWeeklyAutomationJobs).set({
+      state: "stopped",
+      idempotencyKey: `${idempotencyKey}:manual-retry-released:${existing.id}`,
+      errorSummary: `${existing.errorSummary ?? "Failed before Manus dispatch."} Manual retry explicitly released; the failed record remains immutable evidence.`,
+      updatedAt: Date.now(),
+    }).where(eq(marketingWeeklyAutomationJobs.id, existing.id));
+  }
   const snapshot = publicPlanningSnapshot(context, periodStart);
   const snapshotString = JSON.stringify(snapshot);
-  if (findDisallowedWeeklyResultsData(snapshotString)) throw new Error("The planning snapshot contains disallowed personal data.");
+  if (planningSnapshotPrivacyProblems(snapshot).length > 0) throw new Error("The planning snapshot contains disallowed personal data.");
   const now = Date.now();
   const createdByUserId = input.actorUserId ?? control.configuredByUserId;
-  const insert = await context.db.insert(marketingWeeklyAutomationJobs).values({ jobKey: automationJobKey(), idempotencyKey, periodStart, triggerType: input.triggerType, state: "running_council", inputSnapshotJson: snapshotString, openAiOutputJson: null, anthropicOutputJson: null, manusTaskId: null, manusTaskUrl: null, manusOutputJson: null, attachmentsJson: "[]", planId: null, reservedCostUsd: control.perRunReserveUsd, errorCode: null, errorSummary: null, createdByUserId, startedAt: now, completedAt: null, createdAt: now, updatedAt: now });
+  const [insert] = await context.db.insert(marketingWeeklyAutomationJobs).values({ jobKey: automationJobKey(), idempotencyKey, periodStart, triggerType: input.triggerType, state: "running_council", inputSnapshotJson: snapshotString, openAiOutputJson: null, anthropicOutputJson: null, manusTaskId: null, manusTaskUrl: null, manusOutputJson: null, attachmentsJson: "[]", planId: null, reservedCostUsd: control.perRunReserveUsd, errorCode: null, errorSummary: null, createdByUserId, startedAt: now, completedAt: null, createdAt: now, updatedAt: now });
   const jobId = Number((insert as { insertId?: number }).insertId);
   try {
-    await reserveBudgetOrThrow(context.db, control, jobId, periodStart, now);
+    await reserveBudgetOrThrow(context.db, control, jobId, now);
     const [strategyResult, challengeResult] = await Promise.all([
       requestOpenAiJson({ system: "You are a cautious marketing strategist. Return only structured JSON and do not take external actions.", prompt: councilPrompt(snapshot, "strategy"), schemaName: "elevay_weekly_strategy", schema: specialistOpinionJsonSchema, validator: specialistOpinionSchema }),
       requestAnthropicJson({ system: "You are a strict editorial challenger. Return only structured JSON and do not take external actions.", prompt: councilPrompt(snapshot, "challenge"), validator: specialistOpinionSchema }),
@@ -367,6 +495,24 @@ function generatedItemLanguageProblem(item: WeeklyAutomationPlanOutput["items"][
     || (isVisualTextCreativeItemType(item.itemType) ? validateEnglishOnlyOnScreenText(item.onScreenEnglishText) : null);
 }
 
+const WEEKLY_PLAN_DAY_LABELS: Record<string, WeeklyAutomationPlanOutput["items"][number]["plannedDay"]> = {
+  sunday: "Sunday", monday: "Monday", tuesday: "Tuesday", wednesday: "Wednesday", thursday: "Thursday", friday: "Friday", saturday: "Saturday",
+  "الأحد": "Sunday", "الاثنين": "Monday", "الإثنين": "Monday", "الثلاثاء": "Tuesday", "الأربعاء": "Wednesday", "الخميس": "Thursday", "الجمعة": "Friday", "السبت": "Saturday",
+};
+
+export function normalizeWeeklyAutomationPlanScheduleLabels(value: unknown) {
+  if (!value || typeof value !== "object" || !Array.isArray((value as { items?: unknown }).items)) return value;
+  const plan = value as Record<string, unknown> & { items: Array<Record<string, unknown>> };
+  return {
+    ...plan,
+    items: plan.items.map(item => {
+      const rawDay = typeof item.plannedDay === "string" ? item.plannedDay.trim() : item.plannedDay;
+      const plannedDay = typeof rawDay === "string" ? (WEEKLY_PLAN_DAY_LABELS[rawDay.toLowerCase()] ?? rawDay) : rawDay;
+      return { ...item, plannedDay };
+    }),
+  };
+}
+
 async function persistReviewPlan(job: AutomationJob, output: WeeklyAutomationPlanOutput, attachments: Array<{ file_name?: string; url?: string; size_bytes?: number }>) {
   const db = await requireDb();
   const snapshot = asJson<Record<string, any>>(job.inputSnapshotJson, {});
@@ -376,7 +522,7 @@ async function persistReviewPlan(job: AutomationJob, output: WeeklyAutomationPla
   const now = Date.now();
   const planKey = weeklyPlanKey();
   const planHash = crypto.createHash("sha256").update(JSON.stringify({ jobKey: job.jobKey, output, attachments })).digest("hex");
-  const result = await db.insert(marketingWeeklyResultsPlans).values({ planKey, periodStart: job.periodStart, version: (next[0]?.version ?? 0) + 1, status: "draft_prepared", source: "automated_multi_model", title: normalizeWeeklyResultsText(output.weeklyTitle), weeklyGoal: typeof snapshot.settings?.weeklyGoal === "string" ? snapshot.settings.weeklyGoal : null, creativeDirection: typeof snapshot.settings?.creativeDirection === "string" ? snapshot.settings.creativeDirection : null, setupSnapshotJson: JSON.stringify(snapshot.settings ?? {}), previousWeekPerformanceJson: JSON.stringify(snapshot.aggregatePerformance ?? []), preferenceMemoryJson: JSON.stringify(snapshot.feedbackMemory ?? []), planHash, preparedByUserId: job.createdByUserId, preparedAt: now, deliveryDeadlineAt: null, createdAt: now, updatedAt: now });
+  const [result] = await db.insert(marketingWeeklyResultsPlans).values({ planKey, periodStart: job.periodStart, version: (next[0]?.version ?? 0) + 1, status: "draft_prepared", source: "automated_multi_model", title: normalizeWeeklyResultsText(output.weeklyTitle), weeklyGoal: typeof snapshot.settings?.weeklyGoal === "string" ? snapshot.settings.weeklyGoal : null, creativeDirection: typeof snapshot.settings?.creativeDirection === "string" ? snapshot.settings.creativeDirection : null, setupSnapshotJson: JSON.stringify(snapshot.settings ?? {}), previousWeekPerformanceJson: JSON.stringify(snapshot.aggregatePerformance ?? []), preferenceMemoryJson: JSON.stringify(snapshot.feedbackMemory ?? []), planHash, preparedByUserId: job.createdByUserId, preparedAt: now, deliveryDeadlineAt: null, createdAt: now, updatedAt: now });
   const planId = Number((result as { insertId?: number }).insertId);
   for (let index = 0; index < output.items.length; index += 1) {
     const item = output.items[index]!;
@@ -386,7 +532,7 @@ async function persistReviewPlan(job: AutomationJob, output: WeeklyAutomationPla
     const invalidOwnerConfirmedInternalClaim = item.ownerConfirmedInternalClaimIds.find(id => !validOwnerConfirmedInternalClaimIds.has(id));
     const blockedReason = unsafe ? `Generated item contains ${unsafe}.` : languageProblem ?? (invalidClaim ? `Generated item references a claim that is not approved in this snapshot (${invalidClaim}).` : (invalidOwnerConfirmedInternalClaim ? `Generated item references an internal claim that is not owner-confirmed in this snapshot (${invalidOwnerConfirmedInternalClaim}).` : null));
     const state = blockedReason ? "on_hold" : "draft";
-    const inserted = await db.insert(marketingWeeklyResultsItems).values({ planId, position: index + 1, itemType: item.itemType, title: normalizeWeeklyResultsText(item.title), programKey: item.programKey, objective: normalizeWeeklyResultsText(item.objective), creativeDirection: item.creativeDirection ? normalizeWeeklyResultsText(item.creativeDirection) : null, scriptCopy: item.scriptCopy ? normalizeWeeklyResultsText(item.scriptCopy) : null, caption: item.caption ? normalizeWeeklyResultsText(item.caption) : null, cta: item.cta ? normalizeWeeklyResultsText(item.cta) : null, hashtagsJson: JSON.stringify(item.hashtags.map(normalizeWeeklyResultsText)), visualBrief: item.visualBrief ? normalizeWeeklyResultsText(item.visualBrief) : null, plannedDay: item.plannedDay, plannedTime: item.plannedTime, previewUrl: null, previewHash: null, sourceClaimIdsJson: JSON.stringify(item.approvedClaimIds.filter(id => validClaimIds.has(id))), metadataJson: JSON.stringify({ onScreenEnglishText: item.onScreenEnglishText, generatedAssetFileNames: item.assetFileNames, generatedAdRecommendation: item.adRecommendation, automationJobKey: job.jobKey, manuscriptAttachmentCount: attachments.length, ownerConfirmedInternalClaimIds: item.ownerConfirmedInternalClaimIds.filter(id => validOwnerConfirmedInternalClaimIds.has(id)), internalClaimReviewOnly: true }), isSelected: !blockedReason, requiresIndividualApproval: true, status: state, blockedReason, contentPacketId: null, approvedByUserId: null, approvedAt: null, stoppedByUserId: null, stoppedAt: null, createdByUserId: job.createdByUserId, lastEditedByUserId: job.createdByUserId, createdAt: now, updatedAt: now });
+    const [inserted] = await db.insert(marketingWeeklyResultsItems).values({ planId, position: index + 1, itemType: item.itemType, title: normalizeWeeklyResultsText(item.title), programKey: item.programKey, objective: normalizeWeeklyResultsText(item.objective), creativeDirection: item.creativeDirection ? normalizeWeeklyResultsText(item.creativeDirection) : null, scriptCopy: item.scriptCopy ? normalizeWeeklyResultsText(item.scriptCopy) : null, caption: item.caption ? normalizeWeeklyResultsText(item.caption) : null, cta: item.cta ? normalizeWeeklyResultsText(item.cta) : null, hashtagsJson: JSON.stringify(item.hashtags.map(normalizeWeeklyResultsText)), visualBrief: item.visualBrief ? normalizeWeeklyResultsText(item.visualBrief) : null, plannedDay: item.plannedDay, plannedTime: item.plannedTime, previewUrl: null, previewHash: null, sourceClaimIdsJson: JSON.stringify(item.approvedClaimIds.filter(id => validClaimIds.has(id))), metadataJson: JSON.stringify({ onScreenEnglishText: item.onScreenEnglishText, generatedAssetFileNames: item.assetFileNames, generatedAdRecommendation: item.adRecommendation, automationJobKey: job.jobKey, manuscriptAttachmentCount: attachments.length, ownerConfirmedInternalClaimIds: item.ownerConfirmedInternalClaimIds.filter(id => validOwnerConfirmedInternalClaimIds.has(id)), internalClaimReviewOnly: true }), isSelected: !blockedReason, requiresIndividualApproval: true, status: state, blockedReason, contentPacketId: null, approvedByUserId: null, approvedAt: null, stoppedByUserId: null, stoppedAt: null, createdByUserId: job.createdByUserId, lastEditedByUserId: job.createdByUserId, createdAt: now, updatedAt: now });
     const itemId = Number((inserted as { insertId?: number }).insertId);
     await db.insert(marketingWeeklyResultsItemEvents).values({ itemId, action: "automation_generated", fromStatus: null, toStatus: state, feedback: null, changedFieldsJson: JSON.stringify(["ai_council", "manus_orchestration", "review_required"]), payloadJson: JSON.stringify({ jobKey: job.jobKey, hasOpenAiStrategy: true, hasAnthropicChallenge: true, manuscriptAttachmentCount: attachments.length, blockedReason }), actorUserId: job.createdByUserId, createdAt: now });
   }
@@ -408,7 +554,7 @@ export async function applyWeeklyAutomationManusWebhook(payload: any) {
   try {
     const structured = task.structured_output;
     if (!structured?.success) throw new Error(typeof structured?.error === "string" ? structured.error : "Manus did not return a valid structured weekly plan.");
-    const output = weeklyAutomationPlanSchema.parse(structured.value);
+    const output = weeklyAutomationPlanSchema.parse(normalizeWeeklyAutomationPlanScheduleLabels(structured.value));
     if (!hasOnlyInternalResearchResults(output)) throw new Error("The weekly plan included a non-internal research source and was blocked pending owner confirmation.");
     const attachments = Array.isArray(task.attachments) ? task.attachments.map((item: any) => ({ file_name: typeof item?.file_name === "string" ? item.file_name.slice(0, 500) : undefined, url: typeof item?.url === "string" ? item.url.slice(0, 2000) : undefined, size_bytes: Number.isFinite(Number(item?.size_bytes)) ? Number(item.size_bytes) : undefined })) : [];
     const planId = await persistReviewPlan(job, output, attachments);

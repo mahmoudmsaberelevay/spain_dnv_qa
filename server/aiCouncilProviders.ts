@@ -68,6 +68,14 @@ function safeProviderError(provider: string, response: Response) {
   return new Error(`${provider} request failed with status ${response.status}.`);
 }
 
+function anthropicResponseShape(body: { stop_reason?: unknown; content?: Array<{ type?: unknown }> }) {
+  const stopReason = typeof body.stop_reason === "string" ? body.stop_reason.slice(0, 80) : "unknown";
+  const contentTypes = Array.isArray(body.content)
+    ? body.content.map(part => typeof part?.type === "string" ? part.type.slice(0, 40) : "unknown").join(",") || "none"
+    : "none";
+  return `stop_reason=${stopReason}; content_types=${contentTypes}`;
+}
+
 export function readJsonPayload(value: string | unknown): unknown {
   if (typeof value !== "string") return value;
   const trimmed = value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
@@ -118,6 +126,7 @@ export async function requestOpenAiJson<T extends z.ZodTypeAny>(params: {
 export async function requestAnthropicJson<T extends z.ZodTypeAny>(params: {
   system: string;
   prompt: string;
+  schema?: Record<string, unknown>;
   validator: T;
 }): Promise<z.infer<T>> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -128,16 +137,22 @@ export async function requestAnthropicJson<T extends z.ZodTypeAny>(params: {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-5",
-      max_tokens: 2_800,
-      system: `${params.system}\n\nReturn only one valid JSON object. Do not wrap the JSON in Markdown or commentary.`,
+      model: "claude-sonnet-4-6",
+      max_tokens: 4_096,
+      system: `${params.system}\n\nReturn concise findings: summaries and recommendations under 700 characters; each list item under 280 characters; maximum five list items and four sources. Return only one valid JSON object. Do not wrap the JSON in Markdown or commentary.`,
       messages: [{ role: "user", content: params.prompt }],
+      output_config: {
+        format: {
+          type: "json_schema",
+          schema: params.schema ?? specialistOpinionJsonSchema,
+        },
+      },
     }),
   });
   if (!response.ok) throw safeProviderError("Anthropic", response);
-  const body = await response.json() as { content?: Array<{ type?: string; text?: string }> };
+  const body = await response.json() as { stop_reason?: unknown; content?: Array<{ type?: string; text?: string }> };
   const outputText = body.content?.find((part) => part.type === "text")?.text;
-  if (!outputText) throw new Error("Anthropic returned no usable council output.");
+  if (!outputText) throw new Error(`Anthropic returned no usable council output (${anthropicResponseShape(body)}).`);
   return params.validator.parse(readJsonPayload(outputText));
 }
 

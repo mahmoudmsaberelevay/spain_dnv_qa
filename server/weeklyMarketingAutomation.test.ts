@@ -6,7 +6,7 @@ import {
   WEEKLY_AUTOMATION_PER_RUN_RESERVE_USD,
   weeklyAutomationPlanSchema,
 } from "../shared/marketingWeeklyAutomation";
-import { cairoPeriodStart, isConfiguredCairoAutomationHour } from "./weeklyMarketingAutomationService";
+import { cairoPeriodStart, isConfiguredCairoAutomationHour, normalizeWeeklyAutomationPlanScheduleLabels } from "./weeklyMarketingAutomationService";
 
 const root = resolve(import.meta.dirname, "..");
 const read = (file: string) => readFileSync(resolve(root, file), "utf8");
@@ -24,6 +24,11 @@ const validPlan = {
 };
 
 describe("bounded weekly multi-model automation", () => {
+  it("normalizes supported Arabic schedule labels before strict output validation", () => {
+    const output = normalizeWeeklyAutomationPlanScheduleLabels({ items: [{ plannedDay: "الأربعاء" }, { plannedDay: "Saturday" }] }) as { items: Array<{ plannedDay: string }> };
+    expect(output.items.map(item => item.plannedDay)).toEqual(["Wednesday", "Saturday"]);
+  });
+
   it("keeps the owner-selected USD 100/month and USD 20/run caps fixed", () => {
     expect(WEEKLY_AUTOMATION_MONTHLY_CAP_USD).toBe(100);
     expect(WEEKLY_AUTOMATION_PER_RUN_RESERVE_USD).toBe(20);
@@ -88,5 +93,22 @@ describe("bounded weekly multi-model automation", () => {
     expect(service).toContain("internalClaimReviewOnly: true");
     expect(service).toContain("not official evidence, legal advice, or publication authority");
     expect(service).toContain("sourceDocumentHash, marketingInternalProgrammeReferences.documentHash");
+  });
+
+  it("sanitizes model-bound planning context and handles Drizzle insert-result tuples", () => {
+    const service = read("server/weeklyMarketingAutomationService.ts");
+    expect(service).toContain("sanitizePlanningSnapshotValue");
+    expect(service).toContain("planningSnapshotPrivacyProblems");
+    expect(service).toContain("const [insert] = await context.db.insert(marketingWeeklyAutomationJobs)");
+    expect(service).toContain("const [result] = await db.insert(marketingWeeklyResultsPlans)");
+    expect(service).toContain("const [inserted] = await db.insert(marketingWeeklyResultsItems)");
+    expect(service).toContain("ISO calendar dates are structured schedule metadata");
+    expect(service).toContain("Reserve against the Cairo month in which provider work is dispatched");
+    expect(service).toContain("const periodKey = automationMonthKey(now)");
+    expect(service).toContain("A scheduled heartbeat must never retry a failed job by itself");
+    expect(service).toContain("manual-retry-released");
+    expect(service).toContain("compactManusPlanningContext");
+    expect(service).toContain("bounded Manus planning prompt exceeds the safe API message size");
+    expect(service).toContain("manusTaskRequestError");
   });
 });

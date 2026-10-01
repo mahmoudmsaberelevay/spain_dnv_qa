@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   chairDecisionSchema,
@@ -28,6 +30,14 @@ describe("Administrative AI Council structured outputs", () => {
   it("rejects malformed specialist output before it can be persisted", () => {
     expect(() => specialistOpinionSchema.parse({ ...validSpecialistOpinion, sources: [{ title: "Missing URL" }] })).toThrow();
     expect(() => specialistOpinionSchema.parse({ ...validSpecialistOpinion, executiveSummary: "" })).toThrow();
+  });
+
+  it("uses Anthropic JSON-schema output rather than relying on a raw JSON prompt", () => {
+    const source = readFileSync(resolve(import.meta.dirname, "aiCouncilProviders.ts"), "utf8");
+    expect(source).toContain('model: "claude-sonnet-4-6"');
+    expect(source).toContain("output_config");
+    expect(source).toContain('type: "json_schema"');
+    expect(source).toContain("anthropicResponseShape");
   });
 
   it("accepts only governed Chairperson decisions with a bounded confidence score", () => {

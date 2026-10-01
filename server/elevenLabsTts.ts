@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import crypto from "node:crypto";
 import { ENV } from "./_core/env";
 import { storagePut } from "./storage";
 import { validateElevayArabicVoiceOverScript } from "../shared/marketingCreativeLanguagePolicy";
@@ -128,6 +129,7 @@ export async function generateElevayArabicVoiceOver(text: string) {
   const fileName = `elevay-arabic-voiceover-${Date.now()}.mp3`;
   const fileKey = `marketing/voice-overs/${nanoid(12)}-${fileName}`;
   const { url } = await storagePut(fileKey, audioBuffer, "audio/mpeg");
+  const sha256 = crypto.createHash("sha256").update(audioBuffer).digest("hex");
 
   return {
     url,
@@ -136,5 +138,6 @@ export async function generateElevayArabicVoiceOver(text: string) {
     model: ELEVAY_ARABIC_VOICE_DEFAULTS.modelId,
     outputFormat: ELEVAY_ARABIC_VOICE_DEFAULTS.outputFormat,
     bytes: audioBuffer.length,
+    sha256,
   };
 }

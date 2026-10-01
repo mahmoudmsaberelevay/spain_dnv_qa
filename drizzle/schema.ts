@@ -3150,6 +3150,93 @@ export const marketingWeeklyAutomationBudgetLedger = mysqlTable("marketing_weekl
 export type MarketingWeeklyAutomationBudgetLedgerEntry = typeof marketingWeeklyAutomationBudgetLedger.$inferSelect;
 export type InsertMarketingWeeklyAutomationBudgetLedgerEntry = typeof marketingWeeklyAutomationBudgetLedger.$inferInsert;
 
+// ─── AGENTIC MARKETING / REVIEW-ONLY REEL COMPOSITION & SOCIAL RELEASE ─────────
+// These records preserve approved asset provenance and future channel-release
+// evidence. They cannot publish, create campaigns, spend, call CAPI, or alter
+// Leads. Media bytes remain in object storage, never the database.
+export const marketingReelCompositionInputApprovals = mysqlTable("marketing_reel_composition_input_approvals", {
+  id: int("id").autoincrement().primaryKey(),
+  approvalKey: varchar("approvalKey", { length: 160 }).notNull(),
+  weeklyItemId: int("weeklyItemId").notNull(),
+  assetType: varchar("assetType", { length: 32 }).notNull(),
+  assetUrl: varchar("assetUrl", { length: 2000 }).notNull(),
+  assetSha256: varchar("assetSha256", { length: 64 }).notNull(),
+  mimeType: varchar("mimeType", { length: 128 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("approved"),
+  approvedByUserId: int("approvedByUserId").notNull(),
+  approvedAt: bigint("approvedAt", { mode: "number" }).notNull(),
+  supersededAt: bigint("supersededAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_reel_composition_input_approval_key_unique").on(table.approvalKey),
+  index("marketing_reel_composition_input_item_type_status_idx").on(table.weeklyItemId, table.assetType, table.status, table.updatedAt),
+]);
+export type MarketingReelCompositionInputApproval = typeof marketingReelCompositionInputApprovals.$inferSelect;
+export type InsertMarketingReelCompositionInputApproval = typeof marketingReelCompositionInputApprovals.$inferInsert;
+
+export const marketingReelCompositions = mysqlTable("marketing_reel_compositions", {
+  id: int("id").autoincrement().primaryKey(),
+  compositionKey: varchar("compositionKey", { length: 160 }).notNull(),
+  weeklyItemId: int("weeklyItemId").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("queued"),
+  sourceVideoApprovalId: int("sourceVideoApprovalId").notNull(),
+  narrationApprovalId: int("narrationApprovalId").notNull(),
+  sourceDurationMs: int("sourceDurationMs").notNull(),
+  sourceWidth: int("sourceWidth").notNull(),
+  sourceHeight: int("sourceHeight").notNull(),
+  narrationDurationMs: int("narrationDurationMs").notNull(),
+  outputStorageKey: varchar("outputStorageKey", { length: 768 }),
+  outputUrl: varchar("outputUrl", { length: 2000 }),
+  outputSha256: varchar("outputSha256", { length: 64 }),
+  outputBytes: bigint("outputBytes", { mode: "number" }),
+  outputDurationMs: int("outputDurationMs"),
+  outputVideoCodec: varchar("outputVideoCodec", { length: 64 }),
+  outputAudioCodec: varchar("outputAudioCodec", { length: 64 }),
+  inputManifestJson: mediumtext("inputManifestJson").notNull(),
+  errorSummary: text("errorSummary"),
+  requestedByUserId: int("requestedByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  completedAt: bigint("completedAt", { mode: "number" }),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_reel_composition_key_unique").on(table.compositionKey),
+  index("marketing_reel_composition_item_status_idx").on(table.weeklyItemId, table.status, table.updatedAt),
+]);
+export type MarketingReelComposition = typeof marketingReelCompositions.$inferSelect;
+export type InsertMarketingReelComposition = typeof marketingReelCompositions.$inferInsert;
+
+export const marketingSocialReleaseAuthorizations = mysqlTable("marketing_social_release_authorizations", {
+  id: int("id").autoincrement().primaryKey(),
+  authorizationKey: varchar("authorizationKey", { length: 200 }).notNull(),
+  weeklyItemId: int("weeklyItemId").notNull(),
+  platform: varchar("platform", { length: 32 }).notNull(),
+  previewUrl: varchar("previewUrl", { length: 2000 }).notNull(),
+  previewHash: varchar("previewHash", { length: 64 }).notNull(),
+  individualApprovalAt: bigint("individualApprovalAt", { mode: "number" }).notNull(),
+  feedbackResolvedAt: bigint("feedbackResolvedAt", { mode: "number" }).notNull(),
+  trailingWindowStartAt: bigint("trailingWindowStartAt", { mode: "number" }).notNull(),
+  trailingWindowEndAt: bigint("trailingWindowEndAt", { mode: "number" }).notNull(),
+  eligibleItemCount: int("eligibleItemCount").notNull(),
+  approvalScorePercent: decimal("approvalScorePercent", { precision: 6, scale: 2 }).notNull(),
+  thresholdPercent: int("thresholdPercent").notNull().default(90),
+  status: varchar("status", { length: 32 }).notNull().default("authorized_pending_channel_setup"),
+  authorizedByUserId: int("authorizedByUserId").notNull(),
+  authorizedAt: bigint("authorizedAt", { mode: "number" }).notNull(),
+  revokedByUserId: int("revokedByUserId"),
+  revokedAt: bigint("revokedAt", { mode: "number" }),
+  revokeReason: text("revokeReason"),
+  externalPublicationId: varchar("externalPublicationId", { length: 255 }),
+  lastReconciledAt: bigint("lastReconciledAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_social_release_authorization_key_unique").on(table.authorizationKey),
+  index("marketing_social_release_item_platform_idx").on(table.weeklyItemId, table.platform, table.status, table.updatedAt),
+]);
+export type MarketingSocialReleaseAuthorization = typeof marketingSocialReleaseAuthorizations.$inferSelect;
+export type InsertMarketingSocialReleaseAuthorization = typeof marketingSocialReleaseAuthorizations.$inferInsert;
+
 // ─── MARKETING READY SUMMARIES ─────────────────────────────────────────────────
 export const marketingReadySummaries = mysqlTable("marketing_ready_summaries", {
   id: int("id").autoincrement().primaryKey(),
