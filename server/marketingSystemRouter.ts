@@ -107,6 +107,7 @@ import {
   isCreativeItemType,
   isVisualTextCreativeItemType,
   validateArabicOnlyMarketingText,
+  validateBilingualElevayCaption,
   validateEnglishOnlyOnScreenText,
 } from "../shared/marketingCreativeLanguagePolicy";
 import {
@@ -171,7 +172,7 @@ import {
   startWeeklyAutomationCycle,
 } from "./weeklyMarketingAutomationService";
 import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
-import { composeApprovedReelForReview } from "./reelCompositorService";
+import { composeApprovedReelForReview, fingerprintMarketingAsset, fingerprintMarketingPreview } from "./reelCompositorService";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -301,16 +302,18 @@ const weeklyResultsItemInput = z.object({
 });
 const createWeeklyResultsPlanInput = z.object({ periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), title: z.string().trim().min(4).max(300), items: z.array(weeklyResultsItemInput).min(1).max(48) });
 const updateWeeklyResultsItemInput = weeklyResultsItemInput.extend({ itemId: z.number().int().positive() });
+const attachWeeklyResultsPreviewInput = z.object({ itemId: z.number().int().positive(), previewUrl: z.string().url().max(2_000) });
 const weeklyResultsItemDecisionInput = z.object({ itemId: z.number().int().positive(), decision: z.enum(["send_back", "approve", "reject", "stop"]), note: z.string().trim().min(4).max(8_000), feedbackCategory: z.enum(WEEKLY_RESULTS_FEEDBACK_CATEGORIES).optional() });
 const approvedReelInputAsset = z.object({
   url: z.string().url().max(2_000),
-  sha256: z.string().regex(/^[a-f0-9]{64}$/i, "Asset fingerprint must be a SHA-256 hash.").transform(value => value.toLowerCase()),
-  mimeType: z.string().trim().min(3).max(128),
+  // Both are server-populated after the asset is downloaded and verified.
+  sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional().transform(value => value?.toLowerCase() ?? ""),
+  mimeType: z.string().trim().min(3).max(128).optional().transform(value => value ?? ""),
 });
 const composeApprovedReelInput = z.object({
   itemId: z.number().int().positive(),
-  sourceVideo: approvedReelInputAsset.refine(value => value.mimeType.toLowerCase().startsWith("video/"), "The source must be an approved video asset."),
-  narration: approvedReelInputAsset.refine(value => value.mimeType.toLowerCase().startsWith("audio/"), "The narration must be an approved audio asset."),
+  sourceVideo: approvedReelInputAsset,
+  narration: approvedReelInputAsset,
 });
 const weeklyResultsPerformanceInput = z.object({
   periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), spendEgp: z.number().finite().min(0).max(100_000_000).default(0), impressions: z.number().int().min(0).max(10_000_000_000).default(0), clicks: z.number().int().min(0).max(10_000_000_000).default(0),
@@ -635,7 +638,9 @@ function normalizeWeeklyResultsItem(input: z.infer<typeof weeklyResultsItemInput
     plannedDay: input.plannedDay ?? null,
     plannedTime: input.plannedTime ?? null,
     previewUrl: input.previewUrl ?? null,
-    previewHash: input.previewHash?.toLowerCase() ?? null,
+    // Preview integrity is calculated by the server after a public HTTPS
+    // preview is attached. A user-supplied hash is never trusted.
+    previewHash: null,
     sourceClaimIdsJson: JSON.stringify(Array.from(new Set(input.sourceClaimIds)).sort((a, b) => a - b)),
     metadataJson: JSON.stringify(input.metadata),
     isSelected: input.isSelected,
@@ -648,7 +653,7 @@ function validateWeeklyResultsItemLanguage(item: Pick<typeof marketingWeeklyResu
   const onScreenEnglishText = typeof metadata.onScreenEnglishText === "string" ? metadata.onScreenEnglishText : "";
   const languageProblems = [
     item.scriptCopy ? validateArabicOnlyMarketingText(item.scriptCopy, "Script / marketing copy") : (item.itemType === "reel" ? "A reel requires Arabic voice-over / marketing copy before review." : null),
-    item.caption ? validateArabicOnlyMarketingText(item.caption, "Caption") : "An Arabic caption is required before individual review.",
+    item.caption ? validateBilingualElevayCaption(item.caption, "Caption") : "An Arabic caption is required before individual review.",
     item.cta ? validateArabicOnlyMarketingText(item.cta, "CTA") : null,
     isVisualTextCreativeItemType(item.itemType) ? validateEnglishOnlyOnScreenText(onScreenEnglishText) : null,
   ].filter((problem): problem is string => Boolean(problem));
@@ -720,7 +725,7 @@ function validateContentPacketText(input: z.infer<typeof contentPacketInput>) {
   }
   const languageProblems = [
     validateArabicOnlyMarketingText(input.arabicCopy, "Arabic primary copy"),
-    input.caption ? validateArabicOnlyMarketingText(input.caption, "Caption") : null,
+    input.caption ? validateBilingualElevayCaption(input.caption, "Caption") : null,
     validateArabicOnlyMarketingText(input.cta, "CTA"),
     isVisualTextCreativeItemType(input.contentType) ? validateEnglishOnlyOnScreenText(input.onScreenEnglishText ?? "") : null,
   ].filter((problem): problem is string => Boolean(problem));
@@ -730,7 +735,7 @@ function validateContentPacketText(input: z.infer<typeof contentPacketInput>) {
 function validateStoredContentPacketLanguage(packet: Pick<typeof marketingContentPackets.$inferSelect, "contentType" | "arabicCopy" | "englishCopy" | "caption" | "cta">) {
   const languageProblems = [
     validateArabicOnlyMarketingText(packet.arabicCopy, "Arabic primary copy"),
-    packet.caption ? validateArabicOnlyMarketingText(packet.caption, "Caption") : null,
+    packet.caption ? validateBilingualElevayCaption(packet.caption, "Caption") : null,
     validateArabicOnlyMarketingText(packet.cta, "CTA"),
     isVisualTextCreativeItemType(packet.contentType) ? validateEnglishOnlyOnScreenText(packet.englishCopy ?? "") : null,
   ].filter((problem): problem is string => Boolean(problem));
@@ -2954,7 +2959,12 @@ export const marketingSystemRouter = router({
     if (!isSaturdayDate(input.periodStart)) throw new TRPCError({ code: "BAD_REQUEST", message: "The planned week must start on a Saturday in YYYY-MM-DD form." });
     const unsafeTitle = findDisallowedWeeklyResultsData(input.title);
     if (unsafeTitle) throw new TRPCError({ code: "BAD_REQUEST", message: `Plan title cannot include ${unsafeTitle}.` });
-    const normalizedItems = input.items.map(normalizeWeeklyResultsItem);
+    const normalizedItems = await Promise.all(input.items.map(async sourceItem => {
+      const item = normalizeWeeklyResultsItem(sourceItem);
+      if (!item.previewUrl) return item;
+      try { return { ...item, previewHash: (await fingerprintMarketingPreview(item.previewUrl)).sha256 }; }
+      catch { throw new TRPCError({ code: "BAD_REQUEST", message: "Each supplied preview must be a reachable public HTTPS image or video. The CRM verifies its fingerprint automatically." }); }
+    }));
     const db = await requireDb();
     const [settingsRows, latest, preferences, performance, designAssets] = await Promise.all([
       db.select().from(marketingWeeklyResultsSettings).where(eq(marketingWeeklyResultsSettings.settingsKey, "primary-weekly-results")).limit(1),
@@ -2995,13 +3005,36 @@ export const marketingSystemRouter = router({
     const [existing] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, input.itemId)).limit(1);
     if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Weekly Results item not found." });
     if (["approved", "stopped", "superseded"].includes(existing.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "Approved, stopped, or superseded items cannot be edited. Create a new plan item instead." });
-    const item = normalizeWeeklyResultsItem(input);
+    const normalized = normalizeWeeklyResultsItem(input);
+    // Editing other copy fields must not discard the server-verified preview.
+    let previewHash = normalized.previewUrl === existing.previewUrl ? existing.previewHash : null;
+    if (normalized.previewUrl && normalized.previewUrl !== existing.previewUrl) {
+      try { previewHash = (await fingerprintMarketingPreview(normalized.previewUrl)).sha256; }
+      catch { throw new TRPCError({ code: "BAD_REQUEST", message: "The new preview must be a reachable public HTTPS image or video. The CRM verifies its fingerprint automatically." }); }
+    }
+    const item = { ...normalized, previewHash };
     const now = Date.now();
     const nextStatus: WeeklyResultsItemStatus = "draft";
     await db.update(marketingWeeklyResultsItems).set({ ...item, status: nextStatus, blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingWeeklyResultsItems.id, existing.id));
     await appendWeeklyResultsItemEvent({ itemId: existing.id, action: "edited", fromStatus: existing.status, toStatus: nextStatus, changedFields: ["content", "preview", "claims", "selection"], payload: { noProviderCall: true, requiresResubmission: true }, actorUserId: ctx.user.id, createdAt: now });
     await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_results_item", existing.id, JSON.stringify({ planId: existing.planId, fromStatus: existing.status, toStatus: nextStatus, externalOperationsEnabled: false }));
     return { success: true, status: nextStatus, externalOperationsEnabled: false };
+  }),
+
+  attachWeeklyResultsPreview: protectedProcedure.input(attachWeeklyResultsPreviewInput).mutation(async ({ ctx, input }) => {
+    await requireMarketingSystemAdministrator(ctx.user);
+    const db = await requireDb();
+    const [item] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, input.itemId)).limit(1);
+    if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Weekly Results item not found." });
+    if (["approved", "stopped", "superseded"].includes(item.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "A final preview cannot be changed after this item is closed." });
+    let verified: { sha256: string; mimeType: string; bytes: number };
+    try { verified = await fingerprintMarketingPreview(input.previewUrl); }
+    catch { throw new TRPCError({ code: "BAD_REQUEST", message: "The preview must be a reachable public HTTPS image or video. The CRM verifies its fingerprint automatically." }); }
+    const now = Date.now();
+    await db.update(marketingWeeklyResultsItems).set({ previewUrl: input.previewUrl, previewHash: verified.sha256, status: "draft", blockedReason: null, lastEditedByUserId: ctx.user.id, updatedAt: now }).where(eq(marketingWeeklyResultsItems.id, item.id));
+    await appendWeeklyResultsItemEvent({ itemId: item.id, action: "preview_verified_automatically", fromStatus: item.status, toStatus: "draft", changedFields: ["preview"], payload: { mimeType: verified.mimeType, bytes: verified.bytes, automaticFingerprint: true, noProviderCall: true, noPublishCommand: true }, actorUserId: ctx.user.id, createdAt: now });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_results_preview", item.id, JSON.stringify({ automaticFingerprint: true, mimeType: verified.mimeType, bytes: verified.bytes, externalOperationsEnabled: false }));
+    return { success: true, previewVerified: true, status: "draft" as const, externalOperationsEnabled: false };
   }),
 
   submitWeeklyResultsItemForIndividualReview: protectedProcedure.input(z.object({ itemId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -3060,9 +3093,18 @@ export const marketingSystemRouter = router({
     if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Weekly Results item not found." });
     if (item.itemType !== "reel" || !item.isSelected || item.status !== "draft") throw new TRPCError({ code: "BAD_REQUEST", message: "Only a selected draft reel can be composed for its next final-preview review." });
     validateWeeklyResultsItemLanguage(item);
-    if (item.previewUrl !== input.sourceVideo.url || item.previewHash?.toLowerCase() !== input.sourceVideo.sha256) {
-      throw new TRPCError({ code: "BAD_REQUEST", message: "The approved source video must exactly match the reel's current reviewed preview URL and SHA-256 fingerprint." });
-    }
+    if (item.previewUrl !== input.sourceVideo.url) throw new TRPCError({ code: "BAD_REQUEST", message: "The selected source video must exactly match the reel's current verified preview." });
+    let verifiedSource: { sha256: string; mimeType: string; bytes: number };
+    let verifiedNarration: { sha256: string; mimeType: string; bytes: number };
+    try {
+      verifiedSource = await fingerprintMarketingAsset(input.sourceVideo.url, ["video/"]);
+      verifiedNarration = await fingerprintMarketingAsset(input.narration.url, ["audio/"]);
+    } catch { throw new TRPCError({ code: "BAD_REQUEST", message: "The selected video or Arabic narration could not be verified automatically. Use reachable public HTTPS media files." }); }
+    if (item.previewHash?.toLowerCase() !== verifiedSource.sha256) throw new TRPCError({ code: "BAD_REQUEST", message: "The source reel has changed since its verified preview. Attach it again so the CRM can verify the current file automatically." });
+    input.sourceVideo.sha256 = verifiedSource.sha256;
+    input.sourceVideo.mimeType = verifiedSource.mimeType;
+    input.narration.sha256 = verifiedNarration.sha256;
+    input.narration.mimeType = verifiedNarration.mimeType;
     const now = Date.now();
     const approvalKey = (assetType: string, hash: string) => `reel-input:${item.id}:${assetType}:${hash}`;
     const recordApproval = async (assetType: "source_video" | "arabic_narration", asset: z.infer<typeof approvedReelInputAsset>) => {

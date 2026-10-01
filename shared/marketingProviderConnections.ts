@@ -1,4 +1,8 @@
 export const MARKETING_AUTOPILOT_MODE = "full_autopilot" as const;
+// Mahmoud explicitly selected Manus native video generation for ELEVAY reels.
+// The selection identifies the only future reel provider; it does not enable
+// video generation, production tasks, publication, campaigns, or spending.
+export const ELEVAY_REEL_PRODUCTION_PROVIDER = "manus-orchestrator" as const;
 
 export const MARKETING_PROVIDER_CONNECTIONS = [
   {
@@ -26,8 +30,8 @@ export const MARKETING_PROVIDER_CONNECTIONS = [
     secretKeys: ["MANUS_API_KEY"] as const,
     webhookPath: "/api/webhooks/marketing/manus",
     creativeCapabilities: ["research", "static_assets", "carousel_visuals", "reel_storyboards", "short_form_reels"] as const,
-    purpose: "Future bounded research plus creative-production task orchestration for approved static assets, carousel visuals, reel storyboards, and short-form 9:16 reels.",
-    executionBoundary: "Task creation is blocked until the execution release and an approved work order explicitly selects this provider. Any creative task must originate from an owner-approved content packet and pass final-preview, visual identity, human-depiction, Arabic, caption, and reel continuity QA before it can progress.",
+    purpose: "Primary Manus-native reel generation plus bounded research, static assets, carousel visuals, and reel storyboards for owner-approved production packets.",
+    executionBoundary: "Manus is the owner-selected reel production provider. Generation stays blocked until a separate execution release and an approved work order. Every generated reel must remain vertical 9:16, contain no embedded text, use the official logo on a clean white outro, pass Arabic/brand/wardrobe/continuity QA, and receive an individual final-preview decision before any later channel release.",
   },
   {
     alias: "openai-editorial",

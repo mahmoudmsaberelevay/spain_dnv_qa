@@ -119,6 +119,36 @@ async function downloadApprovedAsset(asset: ApprovedAsset, destination: string, 
   return { bytes, contentType };
 }
 
+/**
+ * Retrieves a public final-preview asset through the same SSRF and size controls
+ * used by the compositor, then calculates its server-side SHA-256 fingerprint.
+ * The fingerprint is a background integrity control; callers must never ask a
+ * marketing user to calculate or enter it manually.
+ */
+export async function fingerprintMarketingAsset(previewUrl: string, allowedMimePrefixes: string[] = ["image/", "video/"]) {
+  const url = await assertSafeHttpsUrl(previewUrl);
+  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(60_000) });
+  if (!response.ok || !response.body) throw new Error("The final preview could not be downloaded for automatic verification.");
+  const mimeType = response.headers.get("content-type")?.toLowerCase().split(";")[0]?.trim() ?? "";
+  if (!allowedMimePrefixes.some(prefix => mimeType.startsWith(prefix))) throw new Error("The selected asset type is not permitted for this review step.");
+  const reader = response.body.getReader();
+  const hash = crypto.createHash("sha256");
+  let bytes = 0;
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) break;
+    bytes += next.value.byteLength;
+    if (bytes > MAX_VIDEO_BYTES) throw new Error("The final preview exceeds the safe 350 MB limit.");
+    hash.update(next.value);
+  }
+  if (bytes === 0) throw new Error("The final preview is empty.");
+  return { sha256: hash.digest("hex"), mimeType, bytes };
+}
+
+export async function fingerprintMarketingPreview(previewUrl: string) {
+  return fingerprintMarketingAsset(previewUrl, ["image/", "video/"]);
+}
+
 async function composeLocal(sourcePath: string, narrationPath: string, outputPath: string): Promise<{ sourceProbe: ReelMediaProbe; narrationProbe: ReelMediaProbe; outputProbe: ReelMediaProbe }> {
   const sourceProbe = await probeReelMedia(sourcePath);
   const narrationProbe = await probeReelMedia(narrationPath);

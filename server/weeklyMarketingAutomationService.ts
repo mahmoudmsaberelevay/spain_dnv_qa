@@ -31,7 +31,7 @@ import {
   weeklyAutomationPlanSchema,
   type WeeklyAutomationPlanOutput,
 } from "../shared/marketingWeeklyAutomation";
-import { isCreativeItemType, isVisualTextCreativeItemType, validateArabicOnlyMarketingText, validateEnglishOnlyOnScreenText } from "../shared/marketingCreativeLanguagePolicy";
+import { isCreativeItemType, isVisualTextCreativeItemType, validateArabicOnlyMarketingText, validateBilingualElevayCaption, validateEnglishOnlyOnScreenText } from "../shared/marketingCreativeLanguagePolicy";
 
 const REQUIRED_ALIASES = ["openai-editorial", "editorial-challenge", "manus-orchestrator"] as const;
 const CAIRO = "Africa/Cairo";
@@ -489,7 +489,7 @@ export async function startWeeklyAutomationCycle(input: { triggerType: "manual_t
 function generatedItemLanguageProblem(item: WeeklyAutomationPlanOutput["items"][number]) {
   if (!isCreativeItemType(item.itemType)) return null;
   return validateArabicOnlyMarketingText(item.scriptCopy, "Generated script")
-    || validateArabicOnlyMarketingText(item.caption, "Generated caption")
+    || validateBilingualElevayCaption(item.caption, "Generated caption")
     || validateArabicOnlyMarketingText(item.cta, "Generated CTA")
     || validateArabicOnlyMarketingText(item.hashtags.join(" "), "Generated hashtags")
     || (isVisualTextCreativeItemType(item.itemType) ? validateEnglishOnlyOnScreenText(item.onScreenEnglishText) : null);

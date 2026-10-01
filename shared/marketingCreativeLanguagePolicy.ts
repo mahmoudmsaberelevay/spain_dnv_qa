@@ -1,6 +1,6 @@
 export const ELEVAY_CREATIVE_LANGUAGE_POLICY = {
-  version: "elevay-arabic-content-english-visual-v1",
-  marketingCopy: "Campaign, post, reel, caption and voice-over copy must be Arabic.",
+  version: "elevay-arabic-content-bilingual-caption-english-visual-v2",
+  marketingCopy: "Campaign, post, reel and voice-over copy must be Arabic. Captions may be bilingual Arabic and English, but must include Arabic.",
   onScreenVisualText: "Any text rendered inside a static design, carousel, reel or ad visual must be English only.",
   voiceOver: "Voice-over scripts are Arabic; only approved country names may appear in English.",
 } as const;
@@ -75,6 +75,13 @@ export function validateArabicOnlyMarketingText(value: string, label: string): s
   if (hasLatinLetters(readable)) {
     return `${label} must be Arabic only. English belongs only in the on-screen visual-text field.`;
   }
+  return null;
+}
+
+/** Captions may add English after the Arabic message, but Arabic remains required. */
+export function validateBilingualElevayCaption(value: string, label = "Caption"): string | null {
+  const readable = removeUrls(value).trim();
+  if (!hasArabicScript(readable)) return `${label} must include Arabic marketing text; English may be added as a bilingual caption.`;
   return null;
 }
 

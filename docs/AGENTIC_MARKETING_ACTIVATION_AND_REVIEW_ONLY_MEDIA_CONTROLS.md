@@ -14,7 +14,7 @@
 | First live test | **Completed and held for review** | The verified Manus task produced one plan with five draft candidates. All five were automatically put **on hold** because their generated scripts did not meet ELEVAY Arabic copy validation. No material was silently accepted. |
 | Global provider / autopilot controls | **Still locked** | Enabling weekly planning does not enable shared provider profiles, Meta/CAPI, rendering, publishing, campaign, or spend controls. |
 | Social publishing | **Disabled** | There is no publishing API call, token use, campaign/ad action, CAPI call, or schedule-to-post path. |
-| Reel generation | **Disabled** | Higgsfield remains required for future ELEVAY reels and is not configured. The compositor never generates footage. |
+| Reel generation | **Disabled** | Mahmoud selected **Manus native video generation** as the future ELEVAY reel provider. The compositor never generates footage. |
 
 ## First live planning-test recovery
 
@@ -26,16 +26,26 @@ The initial CRM validation correctly rejected Arabic day labels such as `الأ�
 
 The new server-side compositor accepts **only owner-approved, SHA-256-pinned assets**:
 
-1. A selected draft reel’s existing reviewed source video URL and fingerprint.
-2. A final Arabic narration MP3 URL and fingerprint.
-3. An owner-only command records both input approvals, downloads them to a locked temporary directory, and verifies fingerprint and media type.
+1. A selected draft reel’s existing system-stored source video and verified fingerprint.
+2. A final Arabic narration MP3 created and stored by ELEVAY with a verified fingerprint.
+3. An owner-only internal command records both input approvals, retrieves them to a locked temporary directory, and verifies fingerprint and media type.
 4. `ffprobe` validates a playable vertical 9:16 source video and a playable narration no longer than the source.
 5. `ffmpeg` mixes narration with source audio at a reduced bed level, pads narration as needed, preserves source duration, writes MP4/H.264/AAC, and validates the resulting audio/video streams and duration again with `ffprobe`.
 6. Only the verified output is uploaded to storage and assigned as a **new draft preview**. It must still pass final-preview QA and individual review before approval.
 
-The compositor rejects private-network input hosts, non-HTTPS URLs, unpinned assets, non-media responses, invalid streams, non-vertical footage, overlong narration, and invalid output. It has no code path to generate footage, invoke Higgsfield/Runway/Creatomate, publish social content, contact Meta, alter campaigns, spend money, send CAPI, or contact Leads/clients.
+The compositor rejects private-network input hosts, non-HTTPS internal asset locations, unpinned assets, non-media responses, invalid streams, non-vertical footage, overlong narration, and invalid output. It has no code path to generate footage, invoke Runway/Creatomate, publish social content, contact Meta, alter campaigns, spend money, send CAPI, or contact Leads/clients.
 
 Arabic voice-over responses now also include a SHA-256 fingerprint so a verified MP3 can become a pinned composition input.
+
+### System-owned media and automatic verification
+
+SHA-256 is a background system control, not a Marketing-user field. The Marketing screens no longer ask for an image/video upload, a URL, a MIME type, or a fingerprint. Under the future governed Manus production release, ELEVAY will create and store the generated asset itself, calculate the fingerprint, retain the verification event, and show the resulting preview for review. Existing internal legacy URLs remain restricted to system-only migration and verification paths.
+
+For reel composition, the current system-generated preview video and final Arabic narration are retrieved and re-fingerprinted internally. No Marketing user supplies an asset URL, MIME type, or hash.
+
+### Caption language
+
+Campaign copy, CTAs, reel narration, and voice-over remain Arabic. **Post captions may be bilingual Arabic and English**, provided the caption includes Arabic. Text visibly rendered in a static, carousel, reel, image, or graphic remains English-only (or `NONE` for no visual text).
 
 ## Durable 90% governance policy
 
@@ -57,7 +67,7 @@ Even when the score is eligible, it **does not publish**. A future channel requi
 
 | Capability | Still required | Current state |
 | --- | --- | --- |
-| Higgsfield reel generation | A securely configured `HIGGSFIELD_API_KEY`, read-only/low-impact connection validation, provider cost/task/poll/callback controls, and a separate disabled profile | **Not configured** |
+| Manus reel generation | A separate owner-approved production work order, per-reel cost/task/poll/callback controls, a reviewed 9:16 asset, and final visual QA | **Not implemented and intentionally disabled** |
 | Facebook Page publishing | Page access token, Page ID, permissions/app-review confirmation, read-only account validation, idempotent publication ledger and reconciliation | **Not configured** |
 | Instagram publishing | Instagram Business Account ID, Page linkage, permissions/app-review confirmation, read-only validation, idempotent publication ledger and reconciliation | **Not configured** |
 | Release execution | Per-channel owner authorization for the exact final preview after the valid 30-day policy | **Not implemented and intentionally disabled** |
@@ -68,7 +78,6 @@ The existing Meta system-user token and ad-account ID remain scoped to the prote
 
 - [Manus API v2 task lifecycle](https://open.manus.ai/docs/v2/task-lifecycle) and [structured output](https://open.manus.ai/docs/v2/structured-output)
 - [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)
-- [Higgsfield API guidance](https://higgsfield.ai/blog/generate-ai-videos-higgsfield-api)
 - [Meta Instagram content publishing documentation](https://developers.facebook.com/documentation/instagram-platform/content-publishing)
 - [Meta Pages API documentation](https://developers.facebook.com/documentation/pages-api)
 
