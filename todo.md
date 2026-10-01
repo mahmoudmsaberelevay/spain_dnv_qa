@@ -193,3 +193,6 @@
 - [x] Added read-only automatic English in-design text. For static/carousel/graphic material, the system writes a programme-appropriate English-only visual title before dispatch; no marketing user manually enters it. Reels remain no-on-screen-text by policy.
 - [x] Hid all seven existing Manus-generated media tasks from the Manus task list at Mahmoud’s request and changed future media dispatches to create/confirm private hidden tasks automatically. The CRM remains the sole production progress surface.
 - [x] Added bounded task-status reconciliation on Production refresh: stopped hidden tasks retrieve their own attachment output into the same governed preview pipeline, while an active task maintains its percentage stage.
+
+- [x] Regenerated the four static/carousel/image/graphic assets through hidden system-owned Manus jobs so the actual rendered previews include their new system-generated English-only in-design text; prior review assets were safely superseded rather than overwritten.
+- [x] Verified the complete current plan: all five items have an item preview URL plus matching review-ready system-generated asset/hash; all four non-reel items have the automatic English-text metadata; the reel is linked to its completed narration-composed MP4; and there are zero active media jobs.
