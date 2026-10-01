@@ -182,3 +182,5 @@
 
 - [x] Recovered the first completed Manus review-media outputs through the governed idempotent processor after the provider callback did not update the CRM. Four static previews are now stored, fingerprinted, item-linked and `review_ready`. The remaining reel is in its one allowed automatic retry while the vendor reports an active motion-render subtask; no user confirmation is required.
 - [x] Updated attachment parsing to accept both Manus `file_name` and canonical `filename` response fields, preventing completed future media tasks from being discarded solely because of metadata naming. TypeScript check, focused media regression, production build and diff validation passed.
+
+- [x] Updated the global left navigation ribbon so the visible toggle can switch it between a full-width menu and a fully hidden desktop panel. A persistent top-bar control remains available to restore the menu after it is hidden. The preference is stored locally and follows the user across CRM pages; existing width resize behavior remains available while the ribbon is visible.

@@ -322,6 +322,7 @@ const modules = [
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
+const SIDEBAR_OPEN_KEY = "elevay-sidebar-open";
 const DEFAULT_WIDTH = 260;
 const MIN_WIDTH = 220;
 const MAX_WIDTH = 400;
@@ -331,11 +332,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem(SIDEBAR_OPEN_KEY) !== "false");
   const { loading, user } = useAuth();
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_OPEN_KEY, String(sidebarOpen));
+  }, [sidebarOpen]);
 
   if (loading) return <DashboardLayoutSkeleton />;
 
@@ -365,7 +370,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <SidebarProvider style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
+    <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
       <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
         {children}
       </DashboardLayoutContent>
@@ -431,14 +436,15 @@ function DashboardLayoutContent({
   return (
     <>
       <div className="relative" ref={sidebarRef}>
-        <Sidebar collapsible="icon" className="border-r border-border/50" disableTransition={isResizing}>
+        <Sidebar collapsible="offcanvas" className="border-r border-border/50" disableTransition={isResizing}>
           {/* Header — Elevay branding */}
           <SidebarHeader className="h-16 justify-center border-b border-border/40">
             <div className="flex items-center gap-2 px-2 w-full">
               <button
                 onClick={toggleSidebar}
                 className="h-8 w-8 flex items-center justify-center hover:bg-accent rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
-                aria-label="Toggle navigation"
+                aria-label={isCollapsed ? "Show full navigation" : "Hide navigation"}
+                title={isCollapsed ? "Show full navigation" : "Hide navigation"}
               >
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
@@ -778,7 +784,8 @@ function DashboardLayoutContent({
           </div>
         )}
         {!isMobile && (
-          <div className="flex border-b h-12 items-center justify-end bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
+          <div className="flex border-b h-12 items-center justify-between bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
+            <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" title={isCollapsed ? "Show full navigation" : "Hide navigation"} />
             <NotificationBell />
           </div>
         )}
