@@ -34,6 +34,20 @@ describe("review-only reel compositor", () => {
     expect(Math.abs(outputProbe.durationMs - result.sourceProbe.durationMs)).toBeLessThanOrEqual(1250);
   });
 
+  it("extends the final source frame when approved Arabic narration is longer than the reel", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "reel-compositor-extended-outro-"));
+    tempDirs.push(dir);
+    const source = path.join(dir, "source.mp4");
+    const narration = path.join(dir, "narration.mp3");
+    const output = path.join(dir, "output.mp4");
+    await ffmpeg(["-f", "lavfi", "-i", "color=c=white:s=360x640:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]);
+    await ffmpeg(["-f", "lavfi", "-i", "sine=frequency=660:duration=3", "-c:a", "libmp3lame", narration]);
+    const result = await __reelCompositorForTests.composeLocal(source, narration, output);
+    expect(result.outputProbe.durationMs).toBeGreaterThanOrEqual(result.narrationProbe.durationMs - 1_250);
+    expect(result.outputProbe.videoCodec).toBeTruthy();
+    expect(result.outputProbe.audioCodec).toBeTruthy();
+  });
+
   it("rejects non-public source addresses before any media operation", () => {
     expect(__reelCompositorForTests.isPrivateIp("127.0.0.1")).toBe(true);
     expect(__reelCompositorForTests.isPrivateIp("10.0.0.5")).toBe(true);

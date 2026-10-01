@@ -37,6 +37,26 @@ function snapshotHash(item: WeeklyItem) {
   })).digest("hex");
 }
 function mediaKind(item: WeeklyItem) { return item.itemType === "reel" ? "reel" : "static"; }
+function systemGeneratedEnglishVisualText(item: WeeklyItem) {
+  const programme = (item.programKey ?? "").toLowerCase();
+  if (programme.includes("spain")) return "SPAIN DIGITAL NOMAD\nELEVAY";
+  if (programme.includes("malta")) return "MALTA RESIDENCY\nELEVAY";
+  if (programme.includes("portugal")) return "PORTUGAL RESIDENCY\nELEVAY";
+  if (programme.includes("greece")) return "GREECE GOLDEN VISA\nELEVAY";
+  if (programme.includes("caribbean") || programme.includes("dominica") || programme.includes("grenada") || programme.includes("antigua") || programme.includes("lucia") || programme.includes("kitts")) return "CARIBBEAN CITIZENSHIP\nELEVAY";
+  return "GLOBAL MOBILITY\nELEVAY";
+}
+async function prepareSystemGeneratedVisualText(db: any, item: WeeklyItem) {
+  if (mediaKind(item) !== "static") return item;
+  let metadata: Record<string, unknown> = {};
+  try { metadata = JSON.parse(item.metadataJson || "{}") as Record<string, unknown>; } catch { /* replace only malformed derived metadata */ }
+  const onScreenEnglishText = systemGeneratedEnglishVisualText(item);
+  const metadataJson = JSON.stringify({ ...metadata, onScreenEnglishText, onScreenEnglishTextSource: "system_generated" });
+  if (metadataJson !== item.metadataJson) {
+    await db.update(marketingWeeklyResultsItems).set({ metadataJson, updatedAt: Date.now() }).where(eq(marketingWeeklyResultsItems.id, item.id));
+  }
+  return { ...item, metadataJson };
+}
 function currentCairoMonth() {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit" }).formatToParts(new Date());
   const part = (type: string) => parts.find(value => value.type === type)?.value ?? "";
@@ -55,6 +75,8 @@ async function controlOrThrow() {
 }
 
 export async function getMediaProductionReadiness() {
+  await reconcileWaitingMarketingMediaJobs();
+  await repairMissingSystemMediaPreviewLinks();
   const db = await dbOrThrow();
   const [control] = await db.select().from(marketingMediaProductionControls).where(eq(marketingMediaProductionControls.controlKey, CONTROL_KEY)).limit(1);
   const month = currentCairoMonth();
@@ -80,9 +102,26 @@ function mediaPrompt(item: WeeklyItem, kind: "static" | "reel") {
   if (kind === "reel") return [...common,
     "Create one finished vertical 9:16 MP4 reel, 15–30 seconds, no embedded on-screen text, no spoken narration and no music. Use visual storytelling only; end with the approved ELEVAY logo outro on a white background. Return exactly one playable MP4 attachment.",
   ].join("\n");
+  let metadata: Record<string, unknown> = {};
+  try { metadata = JSON.parse(item.metadataJson || "{}") as Record<string, unknown>; } catch { /* generated fallback below */ }
+  const englishText = typeof metadata.onScreenEnglishText === "string" && metadata.onScreenEnglishText.trim()
+    ? metadata.onScreenEnglishText.trim() : systemGeneratedEnglishVisualText(item);
   return [...common,
-    "Create one finished ELEVAY static social image, portrait 4:5. Any visible design text must be English only; use NONE when no visual text is needed. Return exactly one PNG or JPEG attachment.",
+    `Create one finished ELEVAY static social image, portrait 4:5. Render this exact English-only in-design text with premium readable typography: ${englishText}. Do not render Arabic or any other visible text. Return exactly one PNG or JPEG attachment.`,
   ].join("\n");
+}
+
+async function hideManusTaskFromList(taskId: string) {
+  try {
+    await fetch("https://api.manus.ai/v2/task.update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-manus-api-key": ENV.manusApiKey },
+      body: JSON.stringify({ task_id: taskId, enable_visible_in_task_list: false, share_visibility: "private" }),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    // List visibility does not affect CRM-owned media safety, idempotency, or review state.
+  }
 }
 
 async function dispatchManusMediaTask(item: WeeklyItem, kind: "static" | "reel") {
@@ -92,7 +131,7 @@ async function dispatchManusMediaTask(item: WeeklyItem, kind: "static" | "reel")
     body: JSON.stringify({
       title: `ELEVAY review preview — ${item.id} — ${kind}`,
       interactive_mode: false,
-      hide_in_task_list: false,
+      hide_in_task_list: true,
       // Use the same authenticated task profile as the proven weekly planner.
       // Default account skills remain available without an extra skill-authorization boundary.
       agent_profile: "standard",
@@ -103,6 +142,7 @@ async function dispatchManusMediaTask(item: WeeklyItem, kind: "static" | "reel")
   const body = await response.json() as { task_id?: string; task_url?: string; task_detail?: { task_id?: string; task_url?: string } };
   const taskId = body.task_id ?? body.task_detail?.task_id;
   if (!taskId) throw new Error("Manus media task did not return an identifier.");
+  await hideManusTaskFromList(taskId);
   return { taskId, taskUrl: body.task_url ?? body.task_detail?.task_url ?? null };
 }
 
@@ -118,7 +158,8 @@ export async function queueSystemMediaForWeeklyPlan(input: { planId: number; act
   if (creatives.length * cost > remaining + 1e-9) throw new Error(`The remaining review-media budget is USD ${remaining.toFixed(2)}; this plan needs USD ${(creatives.length * cost).toFixed(2)} at the USD ${cost.toFixed(2)} per-item cap.`);
   const results: Array<{ itemId: number; jobId: number; taskUrl: string | null; reused: boolean }> = [];
   for (const item of creatives) {
-    const snapshot = snapshotHash(item); const kind = mediaKind(item); const idempotencyKey = `manus-review-media:${item.id}:${snapshot}`;
+    const preparedItem = await prepareSystemGeneratedVisualText(db, item);
+    const snapshot = snapshotHash(preparedItem); const kind = mediaKind(preparedItem); const idempotencyKey = `manus-review-media:${preparedItem.id}:${snapshot}`;
     const [existing] = await db.select().from(marketingMediaProductionJobs).where(eq(marketingMediaProductionJobs.idempotencyKey, idempotencyKey)).limit(1);
     if (existing) {
       if (existing.state === "dispatching" && !existing.manusTaskId) {
@@ -134,7 +175,7 @@ export async function queueSystemMediaForWeeklyPlan(input: { planId: number; act
     const jobId = Number((inserted as { insertId?: number }).insertId);
     if (!Number.isInteger(jobId) || jobId < 1) throw new Error("Media-production job persistence did not return an identifier.");
     try {
-      const task = await dispatchManusMediaTask(item, kind);
+      const task = await dispatchManusMediaTask(preparedItem, kind);
       await db.update(marketingMediaProductionJobs).set({ state: "waiting_manus", manusTaskId: task.taskId, manusTaskUrl: task.taskUrl, updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, jobId));
       results.push({ itemId: item.id, jobId, taskUrl: task.taskUrl, reused: false });
     } catch (error) {
@@ -241,5 +282,63 @@ export async function applyMarketingMediaManusWebhook(payload: any) {
     await db.update(marketingMediaProductionJobs).set({ state: "failed", errorCode: "completion_failed", errorSummary: safeError(error), completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, job.id));
     try { await retryFailedMarketingMediaJob({ jobId: job.id, actorUserId: job.requestedByUserId, automatic: true }); } catch { /* one bounded retry is best-effort; failure remains visible in Production */ }
     return true;
+  }
+}
+
+function collectTaskAttachments(value: unknown): Array<{ filename?: string; file_name?: string; url?: string }> {
+  if (!value || typeof value !== "object") return [];
+  if (Array.isArray(value)) return value.flatMap(collectTaskAttachments);
+  const record = value as Record<string, unknown>;
+  const own = typeof record.url === "string" && (typeof record.filename === "string" || typeof record.file_name === "string")
+    ? [{ url: record.url, filename: typeof record.filename === "string" ? record.filename : undefined, file_name: typeof record.file_name === "string" ? record.file_name : undefined }]
+    : [];
+  return [...own, ...Object.values(record).flatMap(collectTaskAttachments)];
+}
+
+async function reconcileWaitingMarketingMediaJobs() {
+  if (!ENV.manusApiKey) return;
+  const db = await dbOrThrow();
+  const now = Date.now();
+  const jobs = await db.select().from(marketingMediaProductionJobs)
+    .where(eq(marketingMediaProductionJobs.state, "waiting_manus"));
+  for (const job of jobs) {
+    if (!job.manusTaskId || now - job.updatedAt < 15_000) continue;
+    try {
+      const detailResponse = await fetch(`https://api.manus.ai/v2/task.detail?task_id=${encodeURIComponent(job.manusTaskId)}`, {
+        headers: { "x-manus-api-key": ENV.manusApiKey }, signal: AbortSignal.timeout(20_000),
+      });
+      const detail = await detailResponse.json().catch(() => null) as { task?: { status?: unknown } } | null;
+      const status = typeof detail?.task?.status === "string" ? detail.task.status : "unknown";
+      if (status === "running" || status === "waiting") {
+        await db.update(marketingMediaProductionJobs).set({ updatedAt: now }).where(eq(marketingMediaProductionJobs.id, job.id));
+        continue;
+      }
+      if (status !== "stopped") continue;
+      const messagesResponse = await fetch(`https://api.manus.ai/v2/task.listMessages?task_id=${encodeURIComponent(job.manusTaskId)}&order=desc&limit=50`, {
+        headers: { "x-manus-api-key": ENV.manusApiKey }, signal: AbortSignal.timeout(30_000),
+      });
+      const messages = await messagesResponse.json().catch(() => null);
+      const attachments = collectTaskAttachments(messages);
+      if (pickAttachment(attachments, job.mediaKind)) {
+        await applyMarketingMediaManusWebhook({ event_type: "task_stopped", task_detail: { task_id: job.manusTaskId, stop_reason: "finish", attachments } });
+      } else {
+        await db.update(marketingMediaProductionJobs).set({ state: "failed", errorCode: "task_stopped_without_output", errorSummary: "The hidden media task stopped without the required preview attachment.", completedAt: now, updatedAt: now }).where(eq(marketingMediaProductionJobs.id, job.id));
+        await retryFailedMarketingMediaJob({ jobId: job.id, actorUserId: job.requestedByUserId, automatic: true }).catch(() => undefined);
+      }
+    } catch {
+      // Leave the job active; a future bounded workspace refresh can retry the read-only reconciliation.
+    }
+  }
+}
+
+async function repairMissingSystemMediaPreviewLinks() {
+  const db = await dbOrThrow();
+  const assets = await db.select().from(marketingGeneratedMediaAssets)
+    .where(and(eq(marketingGeneratedMediaAssets.status, "review_ready"), eq(marketingGeneratedMediaAssets.origin, "system_generated"), isNull(marketingGeneratedMediaAssets.supersededAt)));
+  for (const asset of assets) {
+    if (!asset.weeklyItemId) continue;
+    const [item] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, asset.weeklyItemId)).limit(1);
+    if (!item || item.previewUrl || item.previewHash) continue;
+    await db.update(marketingWeeklyResultsItems).set({ previewUrl: asset.assetUrl, previewHash: asset.assetSha256, blockedReason: null, updatedAt: Date.now() }).where(eq(marketingWeeklyResultsItems.id, item.id));
   }
 }

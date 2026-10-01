@@ -92,8 +92,8 @@ function validateSourceVideo(probe: ReelMediaProbe) {
   if (Math.abs(ratio - VERTICAL_RATIO) > 0.035) throw new Error("The approved source reel must be vertical 9:16 before narration composition.");
 }
 
-function validateNarration(probe: ReelMediaProbe, source: ReelMediaProbe) {
-  if (!probe.audioCodec || probe.durationMs < 200 || probe.durationMs > source.durationMs) throw new Error("The approved Arabic narration must be playable and no longer than the approved source reel.");
+function validateNarration(probe: ReelMediaProbe) {
+  if (!probe.audioCodec || probe.durationMs < 200 || probe.durationMs > MAX_DURATION_SECONDS * 1000) throw new Error("The approved Arabic narration must be playable and shorter than three minutes.");
 }
 
 async function downloadApprovedAsset(asset: ApprovedAsset, destination: string, maxBytes: number, expectedPrefix: string) {
@@ -153,15 +153,20 @@ async function composeLocal(sourcePath: string, narrationPath: string, outputPat
   const sourceProbe = await probeReelMedia(sourcePath);
   const narrationProbe = await probeReelMedia(narrationPath);
   validateSourceVideo(sourceProbe);
-  validateNarration(narrationProbe, sourceProbe);
-  const sourceSeconds = (sourceProbe.durationMs / 1000).toFixed(3);
+  validateNarration(narrationProbe);
+  const outputDurationMs = Math.max(sourceProbe.durationMs, narrationProbe.durationMs);
+  const outputSeconds = (outputDurationMs / 1000).toFixed(3);
+  const outroExtensionSeconds = Math.max(0, (narrationProbe.durationMs - sourceProbe.durationMs) / 1000).toFixed(3);
+  const videoFilter = Number(outroExtensionSeconds) > 0
+    ? `[0:v]tpad=stop_mode=clone:stop_duration=${outroExtensionSeconds}[v]`
+    : `[0:v]null[v]`;
   const hasBedAudio = Boolean(sourceProbe.audioCodec);
   const args = hasBedAudio
-    ? ["-y", "-i", sourcePath, "-i", narrationPath, "-filter_complex", `[0:a]volume=0.18[bed];[1:a]apad=pad_dur=${sourceSeconds}[narration];[bed][narration]amix=inputs=2:duration=first:normalize=0[a]`, "-map", "0:v:0", "-map", "[a]", "-t", sourceSeconds, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outputPath]
-    : ["-y", "-i", sourcePath, "-i", narrationPath, "-filter_complex", `[1:a]apad=pad_dur=${sourceSeconds}[a]`, "-map", "0:v:0", "-map", "[a]", "-t", sourceSeconds, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outputPath];
+    ? ["-y", "-i", sourcePath, "-i", narrationPath, "-filter_complex", `${videoFilter};[0:a]volume=0.18,apad=pad_dur=${outputSeconds}[bed];[1:a]apad=pad_dur=${outputSeconds}[narration];[bed][narration]amix=inputs=2:duration=longest:normalize=0[a]`, "-map", "[v]", "-map", "[a]", "-t", outputSeconds, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outputPath]
+    : ["-y", "-i", sourcePath, "-i", narrationPath, "-filter_complex", `${videoFilter};[1:a]apad=pad_dur=${outputSeconds}[a]`, "-map", "[v]", "-map", "[a]", "-t", outputSeconds, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outputPath];
   await run("ffmpeg", args, 180_000);
   const outputProbe = await probeReelMedia(outputPath);
-  if (!outputProbe.videoCodec || !outputProbe.audioCodec || !outputProbe.width || !outputProbe.height || Math.abs(outputProbe.durationMs - sourceProbe.durationMs) > 1_250) {
+  if (!outputProbe.videoCodec || !outputProbe.audioCodec || !outputProbe.width || !outputProbe.height || Math.abs(outputProbe.durationMs - outputDurationMs) > 1_250) {
     throw new Error("The composed output did not pass audio/video stream and duration verification.");
   }
   return { sourceProbe, narrationProbe, outputProbe };

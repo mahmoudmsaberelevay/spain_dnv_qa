@@ -184,3 +184,12 @@
 - [x] Updated attachment parsing to accept both Manus `file_name` and canonical `filename` response fields, preventing completed future media tasks from being discarded solely because of metadata naming. TypeScript check, focused media regression, production build and diff validation passed.
 
 - [x] Updated the global left navigation ribbon so the visible toggle can switch it between a full-width menu and a fully hidden desktop panel. A persistent top-bar control remains available to restore the menu after it is hidden. The preference is stored locally and follows the user across CRM pages; existing width resize behavior remains available while the ribbon is visible.
+
+## Agentic Marketing — Preview Visibility, System Text, and Reel Synchronization Repair
+
+- [x] Recovered the completed generated source reel from its task attachment. The source existed; the original compositor rejected it because the approved Arabic narration was longer than the source MP4.
+- [x] Updated the review compositor to preserve source visuals and extend the final source frame (the required white logo outro) only when narration is longer. The output is revalidated for vertical video/audio streams and final narration-aligned duration before review storage. Added a regression test for the longer-narration case.
+- [x] Added direct in-card previews: generated static images render inline, generated reels render with native video controls, and every asset has an **Open full preview** link. A safe reconciliation path now repairs any missing item preview link from a verified system-generated asset.
+- [x] Added read-only automatic English in-design text. For static/carousel/graphic material, the system writes a programme-appropriate English-only visual title before dispatch; no marketing user manually enters it. Reels remain no-on-screen-text by policy.
+- [x] Hid all seven existing Manus-generated media tasks from the Manus task list at Mahmoud’s request and changed future media dispatches to create/confirm private hidden tasks automatically. The CRM remains the sole production progress surface.
+- [x] Added bounded task-status reconciliation on Production refresh: stopped hidden tasks retrieve their own attachment output into the same governed preview pipeline, while an active task maintains its percentage stage.

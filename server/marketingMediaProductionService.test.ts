@@ -31,4 +31,17 @@ describe("bounded Manus review-media production", () => {
     expect(service).toContain("typeof file.filename === \"string\"");
     expect(webhook).toContain("applyMarketingMediaManusWebhook");
   });
+
+  it("hides provider tasks, recovers stopped output, and generates English-only visual text automatically", () => {
+    const service = read("server/marketingMediaProductionService.ts");
+    const workspace = read("client/src/pages/marketing/WeeklyResults.tsx");
+    expect(service).toContain("enable_visible_in_task_list: false");
+    expect(service).toContain("hide_in_task_list: true");
+    expect(service).toContain("reconcileWaitingMarketingMediaJobs");
+    expect(service).toContain("repairMissingSystemMediaPreviewLinks");
+    expect(service).toContain("onScreenEnglishTextSource: \"system_generated\"");
+    expect(workspace).toContain("System-generated preview — linked to this exact item");
+    expect(workspace).toContain("English text inside the visual");
+    expect(workspace).toContain("You do not type this field.");
+  });
 });
