@@ -4,7 +4,6 @@ import { ENV } from "./_core/env";
 import { getDb } from "./db";
 import { requestAnthropicJson, requestOpenAiJson, specialistOpinionJsonSchema, specialistOpinionSchema, type SpecialistOpinion } from "./aiCouncilProviders";
 import {
-  marketingAutopilotControls,
   marketingBrandBooks,
   marketingDesignSystemAssets,
   marketingKnowledgeClaims,
@@ -149,10 +148,12 @@ async function readAutomationContext() {
   }));
   const missingInternalReferenceProgrammes = selectedProgrammes.filter(programmeKey => !normalizedInternalReferences.some(reference => reference.programKeys.includes(programmeKey)));
   const profileByAlias = new Map(profiles.map(profile => [profile.alias, profile]));
-  const providerReady = REQUIRED_ALIASES.every(alias => {
-    const profile = profileByAlias.get(alias);
-    return profile?.isEnabled && !profile.killSwitchEnabled;
-  });
+  // Provider profiles are the shared, future execution control plane. The
+  // bounded weekly planner deliberately does not use their enabled state:
+  // enabling planning must not make a provider available to work orders,
+  // rendering, publishing, campaign, CAPI, or spend paths. Registration is
+  // retained as a safe integrity check only.
+  const providerProfilesRegistered = REQUIRED_ALIASES.every(alias => profileByAlias.has(alias));
   const blockers = [
     !settings ? "Weekly Settings have not been saved." : null,
     settings && !settings.preparationScheduleEnabled ? "The weekly preparation schedule is disabled in Settings." : null,
@@ -165,9 +166,9 @@ async function readAutomationContext() {
     !ENV.anthropicApiKey ? "Anthropic server credential is unavailable." : null,
     !ENV.manusApiKey ? "Manus server credential is unavailable." : null,
     control && Number(control.monthlyBudgetUsd) > WEEKLY_AUTOMATION_MONTHLY_CAP_USD ? "The internal monthly cap cannot exceed USD 100." : null,
-    providerReady ? null : "The three weekly planning provider profiles are not all enabled for the bounded automation engine.",
+    providerProfilesRegistered ? null : "The bounded planning provider profiles have not been registered in the provider catalog.",
   ].filter((value): value is string => Boolean(value));
-  return { db, settings, control, brandBook, designAssets, claims, internalReferences: normalizedInternalReferences, ownerConfirmedInternalClaims, selectedProgrammes, missingInternalReferenceProgrammes, preferences, performance, profiles, providerReady, blockers };
+  return { db, settings, control, brandBook, designAssets, claims, internalReferences: normalizedInternalReferences, ownerConfirmedInternalClaims, selectedProgrammes, missingInternalReferenceProgrammes, preferences, performance, profiles, providerProfilesRegistered, blockers };
 }
 
 export async function getWeeklyAutomationReadiness() {
@@ -182,7 +183,18 @@ export async function getWeeklyAutomationReadiness() {
       scheduleTaskUid: context.control.scheduleTaskUid, manusWebhookId: context.control.manusWebhookId, lastRunAt: context.control.lastRunAt, lastRunStatus: context.control.lastRunStatus, lastError: context.control.lastError,
     } : { isEnabled: false, state: "disabled", monthlyBudgetUsd: WEEKLY_AUTOMATION_MONTHLY_CAP_USD, perRunReserveUsd: WEEKLY_AUTOMATION_PER_RUN_RESERVE_USD, scheduleTaskUid: null, manusWebhookId: null, lastRunAt: null, lastRunStatus: null, lastError: null },
     blockers: context.blockers,
-    readiness: { brandBook: Boolean(context.brandBook), designSystem: activeDesignAssetsPresent(context.designAssets), providerProfiles: context.providerReady, ownerProvidedInternalReferences: context.internalReferences.length, ownerConfirmedInternalClaims: context.ownerConfirmedInternalClaims.length, missingInternalReferenceProgrammes: context.missingInternalReferenceProgrammes, approvedClaims: context.claims.length, budgetUsedUsd: Number(spentRows[0]?.total ?? 0), month },
+    readiness: {
+      brandBook: Boolean(context.brandBook),
+      designSystem: activeDesignAssetsPresent(context.designAssets),
+      planningProviderProfilesRegistered: context.providerProfilesRegistered,
+      sharedProviderProfilesRemainDisabled: context.profiles.every(profile => !profile.isEnabled && profile.killSwitchEnabled),
+      ownerProvidedInternalReferences: context.internalReferences.length,
+      ownerConfirmedInternalClaims: context.ownerConfirmedInternalClaims.length,
+      missingInternalReferenceProgrammes: context.missingInternalReferenceProgrammes,
+      approvedClaims: context.claims.length,
+      budgetUsedUsd: Number(spentRows[0]?.total ?? 0),
+      month,
+    },
     jobs: jobs.map(job => ({ id: job.id, jobKey: job.jobKey, periodStart: job.periodStart, triggerType: job.triggerType, state: job.state, planId: job.planId, manusTaskUrl: job.manusTaskUrl, errorCode: job.errorCode, errorSummary: job.errorSummary, createdAt: job.createdAt, completedAt: job.completedAt, reservedCostUsd: Number(job.reservedCostUsd), attachments: asJson<Array<{ file_name?: string; url?: string; size_bytes?: number }>>(job.attachmentsJson, []) })),
   };
 }
@@ -205,13 +217,15 @@ export async function enableWeeklyAutomation(input: { actorUserId: number; month
   const initial = await readAutomationContext();
   const cap = Math.min(WEEKLY_AUTOMATION_MONTHLY_CAP_USD, Math.max(1, input.monthlyBudgetUsd ?? WEEKLY_AUTOMATION_MONTHLY_CAP_USD));
   const reserve = Math.min(WEEKLY_AUTOMATION_PER_RUN_RESERVE_USD, Math.max(1, input.perRunReserveUsd ?? WEEKLY_AUTOMATION_PER_RUN_RESERVE_USD));
-  if (initial.blockers.filter(blocker => !blocker.includes("provider profiles")).length > 0) throw new Error(initial.blockers.join(" "));
+  if (initial.blockers.length > 0) throw new Error(initial.blockers.join(" "));
   const manusWebhookId = await ensureManusWeeklyWebhook();
   const now = Date.now();
   await initial.db.transaction(async tx => {
     await tx.insert(marketingWeeklyAutomationControls).values({ controlKey: WEEKLY_AUTOMATION_CONTROL_KEY, isEnabled: true, state: "active", monthlyBudgetUsd: cap.toFixed(2), perRunReserveUsd: reserve.toFixed(2), scheduleTaskUid: null, manusWebhookId, lastRunAt: null, lastRunStatus: "ready", lastError: null, configuredByUserId: input.actorUserId, createdAt: now, updatedAt: now }).onDuplicateKeyUpdate({ set: { isEnabled: true, state: "active", monthlyBudgetUsd: cap.toFixed(2), perRunReserveUsd: reserve.toFixed(2), manusWebhookId, lastRunStatus: "ready", lastError: null, configuredByUserId: input.actorUserId, updatedAt: now } });
-    for (const alias of REQUIRED_ALIASES) await tx.update(marketingProviderProfiles).set({ isEnabled: true, killSwitchEnabled: false, status: "bounded_weekly_automation", configuredByUserId: input.actorUserId, updatedAt: now }).where(eq(marketingProviderProfiles.alias, alias));
-    await tx.update(marketingAutopilotControls).set({ masterKillSwitchEnabled: false, status: "weekly_production_review_only", lastChangedByUserId: input.actorUserId, updatedAt: now }).where(eq(marketingAutopilotControls.requestedMode, "full_autopilot"));
+    // Do not mutate marketingProviderProfiles or marketingAutopilotControls
+    // here. They are shared controls for future rendering/publication/purchase
+    // paths and must stay locked. The active weekly control is the sole
+    // authority for this review-only planning cycle.
   });
   return getWeeklyAutomationReadiness();
 }
@@ -220,8 +234,9 @@ export async function pauseWeeklyAutomation(input: { actorUserId: number; reason
   const db = await requireDb(); const now = Date.now();
   await db.transaction(async tx => {
     await tx.update(marketingWeeklyAutomationControls).set({ isEnabled: false, state: "paused", lastRunStatus: "paused", lastError: input.reason.slice(0, 500), configuredByUserId: input.actorUserId, updatedAt: now }).where(eq(marketingWeeklyAutomationControls.controlKey, WEEKLY_AUTOMATION_CONTROL_KEY));
-    for (const alias of REQUIRED_ALIASES) await tx.update(marketingProviderProfiles).set({ isEnabled: false, killSwitchEnabled: true, status: "paused", configuredByUserId: input.actorUserId, updatedAt: now }).where(eq(marketingProviderProfiles.alias, alias));
-    await tx.update(marketingAutopilotControls).set({ masterKillSwitchEnabled: true, status: "weekly_automation_paused", lastChangedByUserId: input.actorUserId, updatedAt: now }).where(eq(marketingAutopilotControls.requestedMode, "full_autopilot"));
+    // Shared provider profiles and the global autopilot kill switch are never
+    // changed by the weekly planning pause path. They remain independently
+    // locked, regardless of this planning control's state.
   });
   return getWeeklyAutomationReadiness();
 }
