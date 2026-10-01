@@ -3237,6 +3237,48 @@ export const marketingGeneratedMediaAssets = mysqlTable("marketing_generated_med
 export type MarketingGeneratedMediaAsset = typeof marketingGeneratedMediaAssets.$inferSelect;
 export type InsertMarketingGeneratedMediaAsset = typeof marketingGeneratedMediaAssets.$inferInsert;
 
+// Independent, owner-bounded cost controls for review-preview media production.
+// This control has no publishing, Meta, campaign, CAPI, Lead, or client authority.
+export const marketingMediaProductionControls = mysqlTable("marketing_media_production_controls", {
+  id: int("id").autoincrement().primaryKey(),
+  controlKey: varchar("controlKey", { length: 96 }).notNull(),
+  isEnabled: boolean("isEnabled").notNull().default(false),
+  state: varchar("state", { length: 32 }).notNull().default("disabled"),
+  monthlyBudgetUsd: decimal("monthlyBudgetUsd", { precision: 10, scale: 2 }).notNull(),
+  perItemBudgetUsd: decimal("perItemBudgetUsd", { precision: 10, scale: 2 }).notNull(),
+  providerAlias: varchar("providerAlias", { length: 96 }).notNull().default("manus-orchestrator"),
+  configuredByUserId: int("configuredByUserId").notNull(),
+  lastError: varchar("lastError", { length: 1000 }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [uniqueIndex("marketing_media_production_control_key_unique").on(table.controlKey)]);
+export type MarketingMediaProductionControl = typeof marketingMediaProductionControls.$inferSelect;
+
+export const marketingMediaProductionJobs = mysqlTable("marketing_media_production_jobs", {
+  id: int("id").autoincrement().primaryKey(),
+  jobKey: varchar("jobKey", { length: 160 }).notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 255 }).notNull(),
+  weeklyItemId: int("weeklyItemId").notNull(),
+  itemSnapshotHash: varchar("itemSnapshotHash", { length: 64 }).notNull(),
+  mediaKind: varchar("mediaKind", { length: 32 }).notNull(),
+  state: varchar("state", { length: 48 }).notNull(),
+  reservedCostUsd: decimal("reservedCostUsd", { precision: 10, scale: 2 }).notNull(),
+  manusTaskId: varchar("manusTaskId", { length: 255 }),
+  manusTaskUrl: varchar("manusTaskUrl", { length: 2000 }),
+  taskAttachmentsJson: mediumtext("taskAttachmentsJson").notNull(),
+  errorCode: varchar("errorCode", { length: 128 }),
+  errorSummary: varchar("errorSummary", { length: 1000 }),
+  requestedByUserId: int("requestedByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+  completedAt: bigint("completedAt", { mode: "number" }),
+}, table => [
+  uniqueIndex("marketing_media_production_job_key_unique").on(table.jobKey),
+  uniqueIndex("marketing_media_production_idempotency_unique").on(table.idempotencyKey),
+  index("marketing_media_production_item_idx").on(table.weeklyItemId, table.state, table.createdAt),
+]);
+export type MarketingMediaProductionJob = typeof marketingMediaProductionJobs.$inferSelect;
+
 export const marketingSocialReleaseAuthorizations = mysqlTable("marketing_social_release_authorizations", {
   id: int("id").autoincrement().primaryKey(),
   authorizationKey: varchar("authorizationKey", { length: 200 }).notNull(),

@@ -32,6 +32,7 @@ import {
   type WeeklyAutomationPlanOutput,
 } from "../shared/marketingWeeklyAutomation";
 import { isCreativeItemType, isVisualTextCreativeItemType, validateArabicOnlyMarketingText, validateBilingualElevayCaption, validateEnglishOnlyOnScreenText } from "../shared/marketingCreativeLanguagePolicy";
+import { queueSystemMediaForWeeklyPlan } from "./marketingMediaProductionService";
 
 const REQUIRED_ALIASES = ["openai-editorial", "editorial-challenge", "manus-orchestrator"] as const;
 const CAIRO = "Africa/Cairo";
@@ -560,6 +561,9 @@ export async function applyWeeklyAutomationManusWebhook(payload: any) {
     const planId = await persistReviewPlan(job, output, attachments);
     await db.update(marketingWeeklyAutomationJobs).set({ state: "completed_pending_review", manusOutputJson: JSON.stringify(output), attachmentsJson: JSON.stringify(attachments), planId, errorCode: null, errorSummary: null, completedAt: now, updatedAt: now }).where(eq(marketingWeeklyAutomationJobs.id, job.id));
     await db.update(marketingWeeklyAutomationControls).set({ lastRunAt: now, lastRunStatus: "completed_pending_review", lastError: null, updatedAt: now }).where(eq(marketingWeeklyAutomationControls.controlKey, WEEKLY_AUTOMATION_CONTROL_KEY));
+    // Media remains a separately capped, review-only release. A queue failure
+    // never deletes the plan and cannot reach Meta, publishing, CAPI or Leads.
+    try { await queueSystemMediaForWeeklyPlan({ planId, actorUserId: job.createdByUserId }); } catch { /* surfaced in the media production control */ }
     return { completed: true, planId };
   } catch (error) {
     const safe = redactError(error);

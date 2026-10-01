@@ -5,6 +5,7 @@ import { ENV } from "./_core/env";
 import { getDb } from "./db";
 import { marketingProviderWebhookEvents } from "../drizzle/schema";
 import { applyWeeklyAutomationManusWebhook } from "./weeklyMarketingAutomationService";
+import { applyMarketingMediaManusWebhook } from "./marketingMediaProductionService";
 
 let cachedPublicKey: { value: string; expiresAt: number } | null = null;
 const MARKETING_MANUS_CALLBACK_URL = process.env.MANUS_MARKETING_WEBHOOK_URL || "https://elevay.vip/api/webhooks/marketing/manus";
@@ -46,7 +47,8 @@ export async function handleWeeklyMarketingAutomationManusWebhook(req: Request, 
     await db.insert(marketingProviderWebhookEvents).values({ providerAlias: "manus-orchestrator", providerEventId: payload.event_id, eventType: payload.event_type, payloadHash: createHash("sha256").update(rawBody).digest("hex"), status: "accepted", errorClass: null, receivedAt: now, processedAt: null });
     res.status(200).json({ ok: true });
     try {
-      await applyWeeklyAutomationManusWebhook(payload);
+      const handledMedia = await applyMarketingMediaManusWebhook(payload);
+      if (!handledMedia) await applyWeeklyAutomationManusWebhook(payload);
       await db.update(marketingProviderWebhookEvents).set({ status: "processed", processedAt: Date.now() }).where(and(eq(marketingProviderWebhookEvents.providerAlias, "manus-orchestrator"), eq(marketingProviderWebhookEvents.providerEventId, payload.event_id)));
     } catch (error) {
       await db.update(marketingProviderWebhookEvents).set({ status: "failed", errorClass: error instanceof Error ? error.name.slice(0, 120) : "processing_error", processedAt: Date.now() }).where(and(eq(marketingProviderWebhookEvents.providerAlias, "manus-orchestrator"), eq(marketingProviderWebhookEvents.providerEventId, payload.event_id)));

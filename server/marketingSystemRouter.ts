@@ -174,6 +174,7 @@ import {
 } from "./weeklyMarketingAutomationService";
 import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import { composeApprovedReelForReview, fingerprintMarketingAsset, fingerprintMarketingPreview } from "./reelCompositorService";
+import { getMediaProductionReadiness, queueSystemMediaForWeeklyPlan } from "./marketingMediaProductionService";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -2815,13 +2816,14 @@ export const marketingSystemRouter = router({
   getWeeklyResultsWorkspace: protectedProcedure.query(async ({ ctx }) => {
     await requireCapability(ctx.user, "view_weekly_results");
     const db = await requireDb();
-    const [settingsRows, plans, preferences, performance, designAssets, automation] = await Promise.all([
+    const [settingsRows, plans, preferences, performance, designAssets, automation, mediaProduction] = await Promise.all([
       db.select().from(marketingWeeklyResultsSettings).where(eq(marketingWeeklyResultsSettings.settingsKey, "primary-weekly-results")).limit(1),
       db.select().from(marketingWeeklyResultsPlans).orderBy(desc(marketingWeeklyResultsPlans.periodStart), desc(marketingWeeklyResultsPlans.version)).limit(60),
       db.select().from(marketingWeeklyResultsPreferenceMemories).where(eq(marketingWeeklyResultsPreferenceMemories.status, "active")).orderBy(desc(marketingWeeklyResultsPreferenceMemories.updatedAt)).limit(80),
       db.select().from(marketingWeeklyResultsPerformanceSnapshots).orderBy(desc(marketingWeeklyResultsPerformanceSnapshots.periodStart), desc(marketingWeeklyResultsPerformanceSnapshots.recordedAt)).limit(80),
       db.select().from(marketingDesignSystemAssets).where(eq(marketingDesignSystemAssets.isActive, true)).orderBy(desc(marketingDesignSystemAssets.updatedAt)).limit(20),
       getWeeklyAutomationReadiness(),
+      getMediaProductionReadiness(),
     ]);
     const planIds = plans.map(plan => plan.id);
     const items = planIds.length === 0 ? [] : await db.select().from(marketingWeeklyResultsItems)
@@ -2869,6 +2871,7 @@ export const marketingSystemRouter = router({
         explanation: "The 90% indicator is a trailing 30-day governance eligibility signal only. It never bypasses individual final-preview approval, resolved feedback, an explicit per-channel owner release, or separately validated Meta publishing credentials and permissions.",
       },
       automation,
+      mediaProduction,
       boundedProviderAutomationEnabled: Boolean(automation.control.isEnabled),
       externalOperationsEnabled: false,
       scheduler: { kind: "crm_background_schedule", configuredFor: "Administrator-selected weekday and time, Africa/Cairo", state: automation.control.state, explanation: "When enabled, the bounded engine requests an internal OpenAI strategy, an Anthropic challenge, and one Manus structured production task. It creates review-ready plans only; publishing, campaign changes, spend, CAPI and client/Lead actions remain disabled." },
@@ -2913,6 +2916,13 @@ export const marketingSystemRouter = router({
     await requireCapability(ctx.user, "run_weekly_automation_test");
     const result = await startWeeklyAutomationCycle({ triggerType: "manual_test", actorUserId: ctx.user.id });
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_weekly_automation_job", "manual_test", JSON.stringify({ result: result.reused ? "reused_existing_period_job" : "started", publicationEnabled: false, campaignOperationsEnabled: false, spendingEnabled: false }));
+    return result;
+  }),
+
+  generateSystemMediaForWeeklyPlan: protectedProcedure.input(z.object({ planId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "manage_weekly_automation");
+    const result = await queueSystemMediaForWeeklyPlan({ planId: input.planId, actorUserId: ctx.user.id });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_media_production_jobs", input.planId, JSON.stringify({ queued: result.queued, reused: result.reused, provider: "manus-orchestrator", mediaBudgetOnly: true, publicationEnabled: false, campaignOperationsEnabled: false, metaOperationsEnabled: false, capiEnabled: false }));
     return result;
   }),
 
