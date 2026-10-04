@@ -9,6 +9,7 @@ import {
   isSaturdayDate,
   isSundayDate,
   isValidCairoClockTime,
+  nextCairoPublishingSunday,
   plannedCairoPublishingSlot,
   WEEKLY_RESULTS_EXECUTION_BOUNDARY,
   weeklyResultsItemCanTransition,
@@ -29,6 +30,9 @@ describe("Weekly Results shared policy", () => {
     expect(DEFAULT_WEEKLY_CONTENT_MIX).toEqual({ research_update: 0, static_post: 4, carousel: 0, reel: 3, image: 0, graphic: 0, ad_setup: 0 });
     expect(enforceWeeklyMediaMinimum({ static_post: 1, reel: 0, carousel: 3 })).toEqual(DEFAULT_WEEKLY_CONTENT_MIX);
     expect(currentCairoWeekStart(new Date("2026-10-04T09:00:00.000Z"))).toBe("2026-10-04");
+    expect(nextCairoPublishingSunday(new Date("2026-10-02T08:00:00.000Z"))).toBe("2026-10-04");
+    expect(nextCairoPublishingSunday(new Date("2026-10-04T09:00:00.000Z"))).toBe("2026-10-11");
+    expect(isSundayDate(nextCairoPublishingSunday(new Date("2026-10-03T21:05:00.000Z")))).toBe(true);
     expect(plannedCairoPublishingSlot("2026-10-04", "Monday", "17:30")).toBe("2026-10-05 17:30 Africa/Cairo");
     expect(plannedCairoPublishingSlot("2026-10-04", "Saturday", "20:00")).toBe("2026-10-10 20:00 Africa/Cairo");
     expect(plannedCairoPublishingSlot("2026-10-01", "Monday", "17:30")).toBeNull();
@@ -91,6 +95,22 @@ describe("Weekly Results CRM integration contract", () => {
     expect(router).toContain("requireSystemGeneratedWeeklyMedia(item)");
     expect(page).toContain("Review plan & copy");
     expect(page).toContain("Await system media");
+  });
+
+  it("allows a no-cost editable draft version on demand without masquerading as AI regeneration", () => {
+    const router = read("server/marketingSystemRouter.ts");
+    const page = read("client/src/pages/marketing/WeeklyResults.tsx");
+    expect(router).toContain("const version = (latest[0]?.version ?? 0) + 1");
+    expect(router).toContain("previewUrl: null");
+    expect(router).toContain('status: "draft", blockedReason: null, contentPacketId: null');
+    expect(page).toContain("Copy as editable v{plan.version + 1} draft");
+    expect(page).toContain("Start editable 3 reels + 4 static draft");
+    expect(page).toContain('sourceClaimIds: ""');
+    expect(page).toContain('plan.status !== "superseded" && isSundayDate(plan.periodStart)');
+    expect(page).toContain("copyPlan.mutate({ periodStart: plan.periodStart, title: plan.title, items: editableVersionItems(plan).map(normalizeDraft) })");
+    expect(page).toContain("Your unsaved form remains unchanged");
+    expect(page).toContain('disabled={true} onClick={() => regenerateWeekMedia.mutate');
+    expect(page).toContain("No AI media was generated and item approvals were reset");
   });
 
   it("stores reviewable Design System assets and 30-day targets without enabling autopublish", () => {

@@ -66,10 +66,20 @@ export function enforceWeeklyMediaMinimum<T extends { static_post?: number; reel
 }
 
 const WEEK_DAYS_FROM_SUNDAY: Record<string, number> = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+function cairoCalendarDate(now: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: WEEKLY_RESULTS_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  const part = (type: string) => parts.find(value => value.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
 export function currentCairoWeekStart(now = new Date()): string {
-  const local = new Intl.DateTimeFormat("en-CA", { timeZone: WEEKLY_RESULTS_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-  const day = new Date(`${local}T00:00:00.000Z`);
+  const day = new Date(`${cairoCalendarDate(now)}T00:00:00.000Z`);
   day.setUTCDate(day.getUTCDate() - day.getUTCDay());
+  return day.toISOString().slice(0, 10);
+}
+/** Initial date for a new publishing week; an existing version keeps its own Sunday. */
+export function nextCairoPublishingSunday(now = new Date()): string {
+  const day = new Date(`${cairoCalendarDate(now)}T12:00:00.000Z`);
+  day.setUTCDate(day.getUTCDate() + (7 - day.getUTCDay()));
   return day.toISOString().slice(0, 10);
 }
 /** Review-only posting slot. Does not enqueue a Meta post or produce a UTC publish event. */
