@@ -1,3 +1,4 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { ENV } from "./_core/env";
 
@@ -68,6 +69,26 @@ function safeProviderError(provider: string, response: Response) {
   return new Error(`${provider} request failed with status ${response.status}.`);
 }
 
+function providerNetworkError(provider: string, error: unknown) {
+  const code = error instanceof Error && error.cause && typeof error.cause === "object" && "code" in error.cause
+    ? String((error.cause as { code?: unknown }).code).slice(0, 40) : "network_unavailable";
+  return new Error(`${provider} network request failed (${code}). No response body or credential is recorded.`);
+}
+
+export async function fetchCouncilWithNetworkRetries(provider: string, request: () => Promise<Response>): Promise<Response> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try { return await request(); }
+    catch (error) {
+      const cause = error instanceof Error && error.cause && typeof error.cause === "object" && "code" in error.cause
+        ? String((error.cause as { code?: unknown }).code) : "";
+      if (attempt === 2 || !["UND_ERR_SOCKET", "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "ENETUNREACH"].includes(cause))
+        throw providerNetworkError(provider, error);
+      await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 600 : 1600));
+    }
+  }
+  throw new Error(`${provider} network retries exhausted.`);
+}
+
 function anthropicResponseShape(body: { stop_reason?: unknown; content?: Array<{ type?: unknown }> }) {
   const stopReason = typeof body.stop_reason === "string" ? body.stop_reason.slice(0, 80) : "unknown";
   const contentTypes = Array.isArray(body.content)
@@ -100,8 +121,9 @@ export async function requestOpenAiJson<T extends z.ZodTypeAny>(params: {
   schema: Record<string, unknown>;
   validator: T;
 }): Promise<z.infer<T>> {
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetchCouncilWithNetworkRetries("OpenAI", () => fetch("https://api.openai.com/v1/responses", {
     method: "POST",
+    signal: AbortSignal.timeout(180_000),
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${requireProviderKey(ENV.openAiApiKey, "OpenAI")}` },
     body: JSON.stringify({
       model: "gpt-5.6-terra",
@@ -111,7 +133,7 @@ export async function requestOpenAiJson<T extends z.ZodTypeAny>(params: {
       ],
       text: { format: { type: "json_schema", name: params.schemaName, strict: true, schema: params.schema } },
     }),
-  });
+  }));
   if (!response.ok) throw safeProviderError("OpenAI", response);
   const body = await response.json() as Record<string, unknown>;
   const outputText = typeof body.output_text === "string"
@@ -129,14 +151,10 @@ export async function requestAnthropicJson<T extends z.ZodTypeAny>(params: {
   schema?: Record<string, unknown>;
   validator: T;
 }): Promise<z.infer<T>> {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": requireProviderKey(ENV.anthropicApiKey, "Anthropic"),
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
+  const client = new Anthropic({ apiKey: requireProviderKey(ENV.anthropicApiKey, "Anthropic"), timeout: 180_000, maxRetries: 1 });
+  let body: { stop_reason?: string | null; content?: Array<{ type: string; text?: string }> };
+  try {
+    const stream = client.messages.stream({
       model: "claude-sonnet-4-6",
       max_tokens: 4_096,
       system: `${params.system}\n\nReturn concise findings: summaries and recommendations under 700 characters; each list item under 280 characters; maximum five list items and four sources. Return only one valid JSON object. Do not wrap the JSON in Markdown or commentary.`,
@@ -147,10 +165,13 @@ export async function requestAnthropicJson<T extends z.ZodTypeAny>(params: {
           schema: params.schema ?? specialistOpinionJsonSchema,
         },
       },
-    }),
-  });
-  if (!response.ok) throw safeProviderError("Anthropic", response);
-  const body = await response.json() as { stop_reason?: unknown; content?: Array<{ type?: string; text?: string }> };
+    });
+    body = await stream.finalMessage();
+  } catch (error) {
+    const status = error && typeof error === "object" && "status" in error ? Number((error as { status?: unknown }).status) : NaN;
+    if (Number.isFinite(status)) throw new Error(`Anthropic request failed with status ${status}.`);
+    throw providerNetworkError("Anthropic", error);
+  }
   const outputText = body.content?.find((part) => part.type === "text")?.text;
   if (!outputText) throw new Error(`Anthropic returned no usable council output (${anthropicResponseShape(body)}).`);
   return params.validator.parse(readJsonPayload(outputText));

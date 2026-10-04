@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   chairDecisionSchema,
+  fetchCouncilWithNetworkRetries,
   formatSpecialistOpinion,
   readJsonPayload,
   specialistOpinionSchema,
@@ -18,6 +19,17 @@ const validSpecialistOpinion = {
 };
 
 describe("Administrative AI Council structured outputs", () => {
+  it("recovers one transient Claude socket disconnect inside the same council run", async () => {
+    const request = vi.fn().mockRejectedValueOnce(Object.assign(new Error("fetch failed"), { cause: { code: "UND_ERR_SOCKET" } })).mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    await expect(fetchCouncilWithNetworkRetries("Anthropic", request)).resolves.toHaveProperty("status", 200);
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry unknown or non-network errors", async () => {
+    const request = vi.fn().mockRejectedValue(new Error("bad request"));
+    await expect(fetchCouncilWithNetworkRetries("Anthropic", request)).rejects.toThrow("network request failed");
+    expect(request).toHaveBeenCalledTimes(1);
+  });
   it("normalizes a fenced JSON provider response and validates the specialist opinion", () => {
     const parsed = readJsonPayload(`\`\`\`json\n${JSON.stringify(validSpecialistOpinion)}\n\`\`\``);
     const opinion = specialistOpinionSchema.parse(parsed);
@@ -37,6 +49,8 @@ describe("Administrative AI Council structured outputs", () => {
     expect(source).toContain('model: "claude-sonnet-4-6"');
     expect(source).toContain("output_config");
     expect(source).toContain('type: "json_schema"');
+    expect(source).toContain("client.messages.stream(");
+    expect(source).toContain("stream.finalMessage()");
     expect(source).toContain("anthropicResponseShape");
   });
 

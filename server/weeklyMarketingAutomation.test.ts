@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   WEEKLY_AUTOMATION_MONTHLY_CAP_USD,
   WEEKLY_AUTOMATION_PER_RUN_RESERVE_USD,
+  weeklyAutomationPlanJsonSchema,
   weeklyAutomationPlanSchema,
 } from "../shared/marketingWeeklyAutomation";
 import { cairoPeriodStart, isConfiguredCairoAutomationHour, normalizeWeeklyAutomationPlanScheduleLabels } from "./weeklyMarketingAutomationService";
@@ -24,6 +25,17 @@ const validPlan = {
 };
 
 describe("bounded weekly multi-model automation", () => {
+  it("uses a Manus-compatible schema but still validates Cairo posting times locally", () => {
+    expect(JSON.stringify(weeklyAutomationPlanJsonSchema)).not.toMatch(/"(?:pattern|format|minimum|maximum|minItems|maxItems|minLength|maxLength)"/);
+    expect(weeklyAutomationPlanSchema.safeParse({ ...validPlan, items: validPlan.items.map((item, index) => index === 0 ? { ...item, plannedTime: "25:00" } : item) }).success).toBe(false);
+  });
+  it("adjusts failed pre-Manus reservations idempotently without claiming provider charges were zero", () => {
+    const service = read("server/weeklyMarketingAutomationService.ts");
+    expect(service).toContain("releaseFailedPreManusReservation(context.db, jobId)");
+    expect(service).toContain("`mwa-release-${jobId}`");
+    expect(service).toContain("Number(reservation.amountUsd) - 1");
+    expect(service).toContain("not an invoice reconciliation");
+  });
   it("requires Egyptian Arabic narration instructions with country and company exceptions", () => {
     const service = read("server/weeklyMarketingAutomationService.ts");
     expect(service).toContain("reel scripts must be natural Egyptian Arabic");

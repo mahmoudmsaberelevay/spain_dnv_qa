@@ -33,6 +33,7 @@ import {
 } from "../shared/marketingWeeklyAutomation";
 import { isCreativeItemType, isVisualTextCreativeItemType, validateArabicOnlyMarketingText, validateElevayArabicVoiceOverScript, validateEnglishOnlyOnScreenText } from "../shared/marketingCreativeLanguagePolicy";
 import { queueSystemMediaForWeeklyPlan } from "./marketingMediaProductionService";
+import { checkManusMediaAuthentication, mediaCredential } from "./manusMediaAuthentication";
 
 const REQUIRED_ALIASES = ["openai-editorial", "editorial-challenge", "manus-orchestrator"] as const;
 const CAIRO = "Africa/Cairo";
@@ -188,7 +189,7 @@ async function readAutomationContext() {
     missingInternalReferenceProgrammes.length > 0 ? `No owner-provided internal reference covers: ${missingInternalReferenceProgrammes.join(", ")}.` : null,
     !ENV.openAiApiKey ? "OpenAI server credential is unavailable." : null,
     !ENV.anthropicApiKey ? "Anthropic server credential is unavailable." : null,
-    !ENV.manusApiKey ? "Manus server credential is unavailable." : null,
+    !mediaCredential().value ? "Manus server credential is unavailable." : null,
     control && Number(control.monthlyBudgetUsd) > WEEKLY_AUTOMATION_MONTHLY_CAP_USD ? "The internal monthly cap cannot exceed USD 100." : null,
     providerProfilesRegistered ? null : "The bounded planning provider profiles have not been registered in the provider catalog.",
   ].filter((value): value is string => Boolean(value));
@@ -224,8 +225,9 @@ export async function getWeeklyAutomationReadiness() {
 }
 
 async function ensureManusWeeklyWebhook() {
-  if (!ENV.manusApiKey) throw new Error("Manus server credential is unavailable.");
-  const headers = { "x-manus-api-key": ENV.manusApiKey, "Content-Type": "application/json" };
+  const key = mediaCredential().value;
+  if (!key) throw new Error("Manus server credential is unavailable.");
+  const headers = { "x-manus-api-key": key, "Content-Type": "application/json" };
   const listed = await fetch("https://api.manus.ai/v2/webhook.list", { headers });
   if (!listed.ok) throw new Error(`Manus webhook verification failed with status ${listed.status}.`);
   const payload = await listed.json() as { data?: Array<{ webhook_id?: string; id?: string; url?: string }> };
@@ -273,6 +275,27 @@ async function reserveBudgetOrThrow(db: Awaited<ReturnType<typeof requireDb>>, c
   const reserve = Number(control.perRunReserveUsd);
   if (Number(monthly?.total ?? 0) + reserve > Number(control.monthlyBudgetUsd)) throw new Error("The USD 100 internal monthly automation reservation cap would be exceeded. No provider task was created.");
   await db.insert(marketingWeeklyAutomationBudgetLedger).values({ entryKey: `mwa-reserve-${jobId}`, periodKey, jobId, entryType: "reservation", amountUsd: reserve.toFixed(2), note: "Internal reservation for one bounded weekly planning cycle. Provider invoices may differ and are not automatically reconciled.", createdAt: now });
+}
+
+async function releaseFailedPreManusReservation(db: Awaited<ReturnType<typeof requireDb>>, jobId: number) {
+  // OpenAI/Claude may have partially processed the request. Keep a conservative
+  // USD 1 allowance rather than claiming the provider cost was zero. This is a
+  // ledger reservation adjustment, not a statement about actual invoices.
+  const [reservation] = await db.select().from(marketingWeeklyAutomationBudgetLedger)
+    .where(eq(marketingWeeklyAutomationBudgetLedger.entryKey, `mwa-reserve-${jobId}`)).limit(1);
+  if (!reservation) return;
+  const release = Math.max(0, Number(reservation.amountUsd) - 1);
+  if (!release) return;
+  try {
+    await db.insert(marketingWeeklyAutomationBudgetLedger).values({
+      entryKey: `mwa-release-${jobId}`, periodKey: reservation.periodKey, jobId,
+      entryType: "failed_pre_manus_adjustment", amountUsd: (-release).toFixed(2),
+      note: "Manus task was not created; retain USD 1 as a conservative allowance for uncertain OpenAI/Claude charges, not an invoice reconciliation.",
+      createdAt: Date.now(),
+    });
+  } catch (error: any) {
+    if (error?.code !== "ER_DUP_ENTRY" && error?.cause?.code !== "ER_DUP_ENTRY") throw error;
+  }
 }
 
 function publicPlanningSnapshot(context: Awaited<ReturnType<typeof readAutomationContext>>, periodStart: string) {
@@ -427,9 +450,9 @@ async function createManusWeeklyTask(snapshot: Record<string, unknown>, strategy
   ].join("\n\n");
   if (prompt.length > 9_000) throw new Error("The bounded Manus planning prompt exceeds the safe API message size. No Manus task was created.");
   const response = await fetch("https://api.manus.ai/v2/task.create", {
-    method: "POST", headers: { "Content-Type": "application/json", "x-manus-api-key": ENV.manusApiKey },
+    method: "POST", headers: { "Content-Type": "application/json", "x-manus-api-key": mediaCredential().value },
     body: JSON.stringify({ message: { content: prompt }, agent_profile: "standard", structured_output_schema: weeklyAutomationPlanJsonSchema }),
-  });
+  }).catch(() => { throw new Error("Manus planning network request failed before task creation. No Manus task was recorded."); });
   if (!response.ok) throw await manusTaskRequestError(response);
   const body = await response.json() as Record<string, unknown>;
   const taskId = typeof body.task_id === "string" ? body.task_id : (body.task_detail as any)?.task_id;
@@ -449,6 +472,8 @@ export async function startWeeklyAutomationCycle(input: { triggerType: "manual_t
   if (context.blockers.length) throw new Error(context.blockers.join(" "));
   const periodStart = input.forcePeriodStart ?? cairoPeriodStart();
   if (!isSaturdayDate(periodStart)) throw new Error("Automation period must begin on a Saturday in Cairo time.");
+  const manusAuth = await checkManusMediaAuthentication();
+  if (!manusAuth.ready) throw new Error("Manus planning is paused: the CRM cannot validate its task credential. No provider task or budget reservation was created.");
   const idempotencyKey = `weekly-automation:${periodStart}`;
   const [existing] = await context.db.select().from(marketingWeeklyAutomationJobs).where(eq(marketingWeeklyAutomationJobs.idempotencyKey, idempotencyKey)).limit(1);
   if (existing) {
@@ -483,6 +508,7 @@ export async function startWeeklyAutomationCycle(input: { triggerType: "manual_t
     return { reused: false, job: { id: jobId, state: "waiting_manus", manusTaskUrl: manus.taskUrl } };
   } catch (error) {
     const safe = redactError(error);
+    try { await releaseFailedPreManusReservation(context.db, jobId); } catch { /* Never hide the original provider error. */ }
     await context.db.update(marketingWeeklyAutomationJobs).set({ state: "failed", errorCode: "automation_start_failed", errorSummary: safe, completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingWeeklyAutomationJobs.id, jobId));
     await context.db.update(marketingWeeklyAutomationControls).set({ lastRunAt: Date.now(), lastRunStatus: "failed", lastError: safe, updatedAt: Date.now() }).where(eq(marketingWeeklyAutomationControls.id, control.id));
     throw new Error(safe);
