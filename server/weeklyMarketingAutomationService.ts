@@ -202,9 +202,10 @@ async function readAutomationContext() {
 
 export async function getWeeklyAutomationReadiness() {
   const context = await readAutomationContext();
-  const month = automationMonthKey();
-  const spentRows = await context.db.select({ total: sql<string>`COALESCE(SUM(${marketingWeeklyAutomationBudgetLedger.amountUsd}), 0)` })
-    .from(marketingWeeklyAutomationBudgetLedger).where(eq(marketingWeeklyAutomationBudgetLedger.periodKey, month));
+  // This card describes the shared safety ceiling, not just the planner's
+  // ledger. Retired media reservations still count until reconciled; never
+  // imply their capacity is free or present this number as a vendor invoice.
+  const combinedBudget = await combinedMarketingBudgetRemaining(context.db);
   const jobs = await context.db.select().from(marketingWeeklyAutomationJobs).orderBy(desc(marketingWeeklyAutomationJobs.createdAt)).limit(24);
   return {
     control: context.control ? {
@@ -221,8 +222,11 @@ export async function getWeeklyAutomationReadiness() {
       ownerConfirmedInternalClaims: context.ownerConfirmedInternalClaims.length,
       missingInternalReferenceProgrammes: context.missingInternalReferenceProgrammes,
       approvedClaims: context.claims.length,
-      budgetUsedUsd: Number(spentRows[0]?.total ?? 0),
-      month,
+      budgetUsedUsd: combinedBudget.planningUsd + combinedBudget.mediaUsd,
+      budgetPlanningUsd: combinedBudget.planningUsd,
+      budgetMediaUsd: combinedBudget.mediaUsd,
+      budgetRemainingUsd: combinedBudget.remainingUsd,
+      month: combinedBudget.month,
     },
     jobs: jobs.map(job => ({ id: job.id, jobKey: job.jobKey, periodStart: job.periodStart, triggerType: job.triggerType, state: job.state, planId: job.planId, manusTaskUrl: job.manusTaskUrl, errorCode: job.errorCode, errorSummary: job.errorSummary, createdAt: job.createdAt, completedAt: job.completedAt, reservedCostUsd: Number(job.reservedCostUsd), attachments: asJson<Array<{ file_name?: string; url?: string; size_bytes?: number }>>(job.attachmentsJson, []) })),
   };

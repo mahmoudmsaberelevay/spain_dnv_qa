@@ -63,6 +63,20 @@ describe("bounded weekly multi-model automation", () => {
     expect(WEEKLY_AUTOMATION_PER_RUN_RESERVE_USD).toBe(20);
   });
 
+  it("shows the shared planning plus media reservation cap and labels internal claims honestly", () => {
+    const service = read("server/weeklyMarketingAutomationService.ts");
+    const page = read("client/src/pages/marketing/WeeklyResults.tsx");
+    expect(service).toContain("const combinedBudget = await combinedMarketingBudgetRemaining(context.db)");
+    expect(service).toContain("budgetUsedUsd: combinedBudget.planningUsd + combinedBudget.mediaUsd");
+    expect(service).toContain("budgetRemainingUsd: combinedBudget.remainingUsd");
+    expect(page).toContain('label="Combined reservations / cap"');
+    expect(page).toContain('label="Owner-confirmed internal claims"');
+    expect(page).toContain("approved official claims");
+    expect(page).toContain("not vendor charges");
+    expect(page).toContain("A disabled schedule is intentional");
+    expect(page).not.toContain('label="Approved claims"');
+  });
+
   it("accepts only bounded review-plan output with an explicit per-item schema", () => {
     expect(weeklyAutomationPlanSchema.parse(validPlan).items).toHaveLength(7);
     expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: [] })).toThrow();
