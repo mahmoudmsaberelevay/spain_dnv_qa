@@ -5,9 +5,11 @@ import { handleMarketingMediaCredentialProbe } from "./marketingMediaCredentialP
 
 const originalJwt = process.env.JWT_SECRET;
 const originalManus = process.env.MANUS_API_KEY;
+const originalMedia = process.env.MANUS_MEDIA_API_KEY;
 afterEach(() => {
   if (originalJwt === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = originalJwt;
   if (originalManus === undefined) delete process.env.MANUS_API_KEY; else process.env.MANUS_API_KEY = originalManus;
+  if (originalMedia === undefined) delete process.env.MANUS_MEDIA_API_KEY; else process.env.MANUS_MEDIA_API_KEY = originalMedia;
   vi.unstubAllGlobals();
 });
 function response() {
@@ -25,6 +27,7 @@ describe("temporary marketing media credential probe", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it("returns only read-only status and a short fingerprint for a signed request", async () => {
+    delete process.env.MANUS_MEDIA_API_KEY;
     const secret = "a-long-test-only-secret-please-change";
     const key = "test-only-manus-api-key-without-value";
     process.env.JWT_SECRET = secret;

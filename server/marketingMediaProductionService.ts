@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { ENV } from "./_core/env";
 import { getDb } from "./db";
 import { storagePut } from "./storage";
 import { generateElevayArabicVoiceOver } from "./elevenLabsTts";
@@ -13,6 +12,7 @@ import {
 } from "../drizzle/schema";
 import { isCreativeItemType } from "../shared/marketingCreativeLanguagePolicy";
 import { ELEVAY_AGENTIC_DESIGN_STANDARD } from "../shared/elevayAgenticDesignStandard";
+import { checkManusMediaAuthentication, mediaCredential, requireManusMediaAuthentication, MANUS_MEDIA_AUTH_MESSAGE } from "./manusMediaAuthentication";
 
 const CONTROL_KEY = "primary-manus-review-media";
 const MONTHLY_CAP_USD = 100;
@@ -24,15 +24,12 @@ function safeError(error: unknown) {
   return (error instanceof Error ? error.message : "Media generation failed.").replace(/(?:sk-|key-|Bearer\s+)[A-Za-z0-9._-]+/g, "[redacted]").slice(0, 900);
 }
 function manusCredentialForMedia() {
-  const value = ENV.manusApiKey.trim();
+  const { value, fingerprint } = mediaCredential();
   if (value.length < 20) throw new Error("Manus media credential is unavailable or malformed.");
-  return {
-    value,
-    // Operational trace only: never log, persist, or expose the secret itself.
-    fingerprint: crypto.createHash("sha256").update(value).digest("hex").slice(0, 12),
-  };
+  return { value, fingerprint };
 }
 async function manusTaskRequestError(response: Response) {
+  if (response.status === 401) return new Error(MANUS_MEDIA_AUTH_MESSAGE);
   const body = await response.json().catch(() => null) as { error?: { code?: unknown; message?: unknown } } | null;
   const code = typeof body?.error?.code === "string" ? body.error.code.slice(0, 80) : "unknown_error";
   const message = typeof body?.error?.message === "string" ? body.error.message.replace(/[\r\n]+/g, " ").slice(0, 280) : "no error message";
@@ -80,11 +77,12 @@ async function controlOrThrow() {
     .where(eq(marketingMediaProductionControls.controlKey, CONTROL_KEY)).limit(1);
   if (!control?.isEnabled || control.state !== "active") throw new Error("Manus review-media production is disabled.");
   if (Number(control.monthlyBudgetUsd) > MONTHLY_CAP_USD || Number(control.perItemBudgetUsd) > PER_ITEM_CAP_USD) throw new Error("Media-production control exceeds its owner-approved cap.");
-  if (!ENV.manusApiKey) throw new Error("Manus server credential is unavailable.");
+  if (!mediaCredential().value) throw new Error(MANUS_MEDIA_AUTH_MESSAGE);
   return { db, control };
 }
 
 export async function getMediaProductionReadiness() {
+  const auth = await checkManusMediaAuthentication();
   await reconcileWaitingMarketingMediaJobs();
   await repairMissingSystemMediaPreviewLinks();
   const db = await dbOrThrow();
@@ -95,7 +93,7 @@ export async function getMediaProductionReadiness() {
   const jobs = await db.select().from(marketingMediaProductionJobs).orderBy(desc(marketingMediaProductionJobs.createdAt)).limit(48);
   return {
     control: control ? { isEnabled: control.isEnabled, state: control.state, monthlyBudgetUsd: Number(control.monthlyBudgetUsd), perItemBudgetUsd: Number(control.perItemBudgetUsd), providerAlias: control.providerAlias, lastError: control.lastError } : null,
-    month, budgetUsedUsd: Number(totals?.total ?? 0), jobs: jobs.map(job => ({ id: job.id, weeklyItemId: job.weeklyItemId, mediaKind: job.mediaKind, state: job.state, reservedCostUsd: Number(job.reservedCostUsd), manusTaskUrl: job.manusTaskUrl, errorSummary: job.errorSummary, createdAt: job.createdAt })),
+    month, budgetUsedUsd: Number(totals?.total ?? 0), providerAuthentication: { ready: auth.ready, checkedAt: auth.checkedAt, message: auth.ready ? null : MANUS_MEDIA_AUTH_MESSAGE }, jobs: jobs.map(job => ({ id: job.id, weeklyItemId: job.weeklyItemId, mediaKind: job.mediaKind, state: job.state, reservedCostUsd: Number(job.reservedCostUsd), manusTaskUrl: job.manusTaskUrl, errorSummary: job.errorSummary, createdAt: job.createdAt })),
   };
 }
 
@@ -178,6 +176,7 @@ async function dispatchSystemMediaForWeeklyItem(input: {
   item: WeeklyItem;
   actorUserId: number;
 }) {
+  await requireManusMediaAuthentication();
   const preparedItem = await prepareSystemGeneratedVisualText(input.db, input.item);
   const snapshot = snapshotHash(preparedItem);
   const kind = mediaKind(preparedItem);
@@ -209,13 +208,14 @@ async function dispatchSystemMediaForWeeklyItem(input: {
     await input.db.update(marketingMediaProductionJobs).set({ state: "waiting_manus", manusTaskId: task.taskId, manusTaskUrl: task.taskUrl, updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, jobId));
     return { itemId: preparedItem.id, jobId, taskUrl: task.taskUrl, reused: false };
   } catch (error) {
-    await input.db.update(marketingMediaProductionJobs).set({ state: "failed", errorCode: "dispatch_failed", errorSummary: safeError(error), completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, jobId));
+    await input.db.update(marketingMediaProductionJobs).set({ state: "failed", errorCode: "dispatch_failed", errorSummary: safeError(error), reservedCostUsd: error instanceof Error && error.message === MANUS_MEDIA_AUTH_MESSAGE ? "0.00" : reservedCostUsd.toFixed(2), completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, jobId));
     throw error;
   }
 }
 
 export async function queueSystemMediaForWeeklyPlan(input: { planId: number; actorUserId: number }) {
   const { db, control } = await controlOrThrow();
+  await requireManusMediaAuthentication();
   const items = await db.select().from(marketingWeeklyResultsItems).where(and(eq(marketingWeeklyResultsItems.planId, input.planId), eq(marketingWeeklyResultsItems.isSelected, true)));
   const creatives = items.filter(item => isCreativeItemType(item.itemType) && !item.previewHash);
   const [totalRow] = await db.select({ total: sql<string>`COALESCE(SUM(${marketingMediaProductionJobs.reservedCostUsd}), 0)` }).from(marketingMediaProductionJobs)
@@ -247,7 +247,7 @@ export async function queueSystemMediaForWeeklyPlan(input: { planId: number; act
       await db.update(marketingMediaProductionJobs).set({ state: "waiting_manus", manusTaskId: task.taskId, manusTaskUrl: task.taskUrl, updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, jobId));
       results.push({ itemId: item.id, jobId, taskUrl: task.taskUrl, reused: false });
     } catch (error) {
-      await db.update(marketingMediaProductionJobs).set({ state: "failed", errorCode: "dispatch_failed", errorSummary: safeError(error), completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, jobId));
+      await db.update(marketingMediaProductionJobs).set({ state: "failed", errorCode: "dispatch_failed", errorSummary: safeError(error), reservedCostUsd: error instanceof Error && error.message === MANUS_MEDIA_AUTH_MESSAGE ? "0.00" : control.perItemBudgetUsd, completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, jobId));
       throw error;
     }
   }
@@ -261,6 +261,7 @@ export async function queueSystemMediaForWeeklyPlan(input: { planId: number; act
  */
 export async function regenerateSystemMediaFromFeedback(input: { itemId: number; actorUserId: number; revisionInstruction: string }) {
   const { db, control } = await controlOrThrow();
+  await requireManusMediaAuthentication();
   const [item] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, input.itemId)).limit(1);
   if (!item) throw new Error("Weekly marketing item was not found.");
   if (!item.isSelected || !isCreativeItemType(item.itemType)) throw new Error("Only a selected creative item can receive a replacement preview.");
@@ -286,6 +287,7 @@ const MAX_AUTOMATIC_MEDIA_RETRIES = 1;
 
 export async function retryFailedMarketingMediaJob(input: { jobId: number; actorUserId: number; automatic: boolean }) {
   const { db, control } = await controlOrThrow();
+  await requireManusMediaAuthentication();
   const [job] = await db.select().from(marketingMediaProductionJobs).where(eq(marketingMediaProductionJobs.id, input.jobId)).limit(1);
   if (!job) throw new Error("Media production job was not found.");
   if (job.state !== "failed") throw new Error("Only a failed media job can be retried.");
@@ -316,7 +318,7 @@ export async function retryFailedMarketingMediaJob(input: { jobId: number; actor
     await db.update(marketingMediaProductionJobs).set({ errorSummary: `${job.errorSummary ?? "failed"}; retry_dispatched=${retryJobId}`, updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, job.id));
     return { retried: true, jobId: retryJobId, taskUrl: task.taskUrl };
   } catch (error) {
-    await db.update(marketingMediaProductionJobs).set({ state: "failed", errorCode: "retry_dispatch_failed", errorSummary: `retry_count=${nextRetry}; ${safeError(error)}`, completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, retryJobId));
+    await db.update(marketingMediaProductionJobs).set({ state: "failed", errorCode: "retry_dispatch_failed", errorSummary: `retry_count=${nextRetry}; ${safeError(error)}`, reservedCostUsd: error instanceof Error && error.message === MANUS_MEDIA_AUTH_MESSAGE ? "0.00" : control.perItemBudgetUsd, completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, retryJobId));
     throw error;
   }
 }
@@ -392,7 +394,9 @@ function collectTaskAttachments(value: unknown): Array<{ filename?: string; file
 }
 
 async function reconcileWaitingMarketingMediaJobs() {
-  if (!ENV.manusApiKey) return;
+  const auth = await checkManusMediaAuthentication();
+  if (!auth.ready) return;
+  const key = mediaCredential().value;
   const db = await dbOrThrow();
   const now = Date.now();
   const jobs = await db.select().from(marketingMediaProductionJobs)
@@ -401,7 +405,7 @@ async function reconcileWaitingMarketingMediaJobs() {
     if (!job.manusTaskId || now - job.updatedAt < 15_000) continue;
     try {
       const detailResponse = await fetch(`https://api.manus.ai/v2/task.detail?task_id=${encodeURIComponent(job.manusTaskId)}`, {
-        headers: { "x-manus-api-key": ENV.manusApiKey }, signal: AbortSignal.timeout(20_000),
+        headers: { "x-manus-api-key": key }, signal: AbortSignal.timeout(20_000),
       });
       const detail = await detailResponse.json().catch(() => null) as { task?: { status?: unknown } } | null;
       const status = typeof detail?.task?.status === "string" ? detail.task.status : "unknown";
@@ -411,7 +415,7 @@ async function reconcileWaitingMarketingMediaJobs() {
       }
       if (status !== "stopped") continue;
       const messagesResponse = await fetch(`https://api.manus.ai/v2/task.listMessages?task_id=${encodeURIComponent(job.manusTaskId)}&order=desc&limit=50`, {
-        headers: { "x-manus-api-key": ENV.manusApiKey }, signal: AbortSignal.timeout(30_000),
+        headers: { "x-manus-api-key": key }, signal: AbortSignal.timeout(30_000),
       });
       const messages = await messagesResponse.json().catch(() => null);
       const attachments = collectTaskAttachments(messages);

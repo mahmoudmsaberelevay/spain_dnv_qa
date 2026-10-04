@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import type { Request, Response } from "express";
+import { mediaCredential } from "./manusMediaAuthentication";
 
 /** Diagnostic only: signed, read-only, no credential values in responses. Remove after root cause is confirmed. */
 export async function handleMarketingMediaCredentialProbe(req: Request, res: Response) {
@@ -13,8 +14,7 @@ export async function handleMarketingMediaCredentialProbe(req: Request, res: Res
   }
   const expected = crypto.createHmac("sha256", secret).update(`marketing-media-probe:${timestamp}`).digest();
   if (!crypto.timingSafeEqual(expected, Buffer.from(signature, "hex"))) { res.sendStatus(403); return; }
-  const key = (process.env.MANUS_API_KEY ?? "").trim();
-  const keyFingerprint = key ? crypto.createHash("sha256").update(key).digest("hex").slice(0, 12) : null;
+  const { value: key, fingerprint: keyFingerprint } = mediaCredential();
   let upstreamStatus = 0;
   try {
     const response = await fetch("https://api.manus.ai/v2/task.list?limit=1", {
