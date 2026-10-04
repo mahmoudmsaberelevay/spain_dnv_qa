@@ -153,6 +153,7 @@ import {
   enforceWeeklyMediaMinimum,
   findDisallowedWeeklyResultsData,
   isSaturdayDate,
+  isSundayDate,
   isValidCairoClockTime,
   normalizeWeeklyResultsText,
   WEEKLY_RESULTS_EXECUTION_BOUNDARY,
@@ -184,7 +185,8 @@ const providerSeeds = [
   { alias: "strategy-synthesis", provider: "Manus Built-in LLM", modelId: "gpt-5", purpose: "Brand synthesis, strategic interpretation and difficult attribution analysis", status: "available_internal", notes: "Configured alias only. Disabled until an approved work order exists." },
   { alias: "openai-editorial", provider: "OpenAI API", modelId: null, purpose: "Optional editorial drafting and structured creative assistance", status: "requires_configuration", notes: "Requires a server-side API key. Disabled until the future execution release and an approved work order." },
   { alias: "editorial-challenge", provider: "Anthropic", modelId: "claude-sonnet-4-6", purpose: "Independent claim and editorial challenge", status: "requires_configuration", notes: "No external provider credential is stored here. Configure a server-side connector before enabling." },
-  { alias: "manus-orchestrator", provider: "Manus API v2", modelId: null, purpose: "Bounded research plus approved static, carousel, storyboard and short-form reel production", status: "requires_configuration", notes: "Requires explicit API configuration, verified callback setup, an approved work order/content packet, final-preview QA, and a separate execution release before use." },
+  { alias: "manus-orchestrator", provider: "Manus API v2", modelId: null, purpose: "Planning and final assembly only; no reel footage generation", status: "requires_configuration", notes: "OpenAI provides keyframes and Higgsfield provides clips. Manus may add the exact logo outro, mix ELEVAY narration and export only after the separate review-only execution release." },
+  { alias: "higgsfield-clips", provider: "Higgsfield API", modelId: null, purpose: "9:16 image-to-video clips from OpenAI keyframes", status: "requires_configuration", notes: "Dedicated Higgsfield Key ID and Secret must pass a read-only authentication check. Generation is paused; the enabled Manus connector is not CRM authentication. No Higgsfield voices or publication." },
   { alias: "template-render", provider: "Creatomate", modelId: null, purpose: "Branded image and reel template rendering", status: "requires_configuration", notes: "Requires a server-side vendor credential and approved templates before use." },
   { alias: "specialty-motion", provider: "Runway", modelId: null, purpose: "Approved specialty motion footage", status: "requires_configuration", notes: "Requires a server-side vendor credential, per-clip cap and explicit approval before use." },
   { alias: "elevay-arabic-voice", provider: "Existing ELEVAY Voice Adapter", modelId: "eleven_v3", purpose: "Approved Arabic voice-over from a finalized script", status: "available_internal", notes: "Existing server-side voice adapter. Disabled until a script is approved; failed synthesis must hold for review without substitution." },
@@ -3062,7 +3064,7 @@ export const marketingSystemRouter = router({
 
   createWeeklyResultsPlan: protectedProcedure.input(createWeeklyResultsPlanInput).mutation(async ({ ctx, input }) => {
     await requireMarketingSystemAdministrator(ctx.user);
-    if (!isSaturdayDate(input.periodStart)) throw new TRPCError({ code: "BAD_REQUEST", message: "The planned week must start on a Saturday in YYYY-MM-DD form." });
+    if (!isSundayDate(input.periodStart)) throw new TRPCError({ code: "BAD_REQUEST", message: "The planned publishing week must start on a Sunday in YYYY-MM-DD form." });
     const unsafeTitle = findDisallowedWeeklyResultsData(input.title);
     if (unsafeTitle) throw new TRPCError({ code: "BAD_REQUEST", message: `Plan title cannot include ${unsafeTitle}.` });
     const normalizedItems = await Promise.all(input.items.map(async sourceItem => {
@@ -3267,7 +3269,7 @@ export const marketingSystemRouter = router({
 
   saveWeeklyResultsPerformance: protectedProcedure.input(weeklyResultsPerformanceInput).mutation(async ({ ctx, input }) => {
     await requireMarketingSystemAdministrator(ctx.user);
-    if (!isSaturdayDate(input.periodStart)) throw new TRPCError({ code: "BAD_REQUEST", message: "Performance snapshots must use the Saturday that starts the measured week." });
+    if (!isSundayDate(input.periodStart)) throw new TRPCError({ code: "BAD_REQUEST", message: "Performance snapshots must use the Sunday that starts the measured week." });
     const unsafe = input.notes ? findDisallowedWeeklyResultsData(input.notes) : null;
     if (unsafe) throw new TRPCError({ code: "BAD_REQUEST", message: `Performance notes cannot include ${unsafe}. Keep them aggregate only.` });
     const db = await requireDb();

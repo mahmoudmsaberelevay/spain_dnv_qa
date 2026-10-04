@@ -6,12 +6,14 @@ import { ELEVAY_REEL_PRODUCTION_PROVIDER, getMarketingProviderConnection } from 
 const root = resolve(import.meta.dirname, "..");
 const read = (relative: string) => readFileSync(resolve(root, relative), "utf8");
 
-describe("automatic preview verification and Manus reel policy", () => {
-  it("selects Manus as the future reel provider without unlocking generation", () => {
-    expect(ELEVAY_REEL_PRODUCTION_PROVIDER).toBe("manus-orchestrator");
+describe("automatic preview verification and Higgsfield reel policy", () => {
+  it("selects Higgsfield clips after OpenAI keyframes, without unlocking generation", () => {
+    expect(ELEVAY_REEL_PRODUCTION_PROVIDER).toBe("higgsfield-clips");
     const provider = getMarketingProviderConnection(ELEVAY_REEL_PRODUCTION_PROVIDER);
-    expect(provider?.provider).toBe("Manus API v2");
-    expect(provider?.executionBoundary).toContain("Generation stays blocked");
+    expect(provider?.provider).toBe("Higgsfield API");
+    expect(provider?.secretKeys).toEqual(["HF_API_KEY_ID", "HF_API_KEY_SECRET"]);
+    expect(provider?.executionBoundary).toContain("Read-only authentication");
+    expect(getMarketingProviderConnection("manus-orchestrator")?.executionBoundary).toContain("No Manus-native footage");
   });
 
   it("requires a system-generated asset link without exposing manual URLs or fingerprints", () => {

@@ -27,7 +27,13 @@ const egyptianPhrases: Array<[RegExp, string]> = [
 
 /** Strictly preparation-only: never sends text or logs script/credentials. */
 export function prepareEgyptianReelNarration(value: string): string {
-  let text = value.replace(/^\[thoughtful\]\s*/i, "").trim();
+  let text = value.replace(/^\[thoughtful\]\s*/i, "").replace(/\\n/g, "\n").trim();
+  // Planning models sometimes include shot directions in scriptCopy. Those
+  // directions belong in the visual brief, never in the spoken ElevenLabs text.
+  text = text.split(/\n+/).map(line => line.trim())
+    .filter(line => !/^Outro\s*:/i.test(line))
+    .map(line => line.replace(/^Scene\s*\d+\s*:\s*(?:[A-Za-z/ ]+\s*[-–—]\s*)?/i, ""))
+    .join(" ").trim();
   if (/https?:\/\/|www\.|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(text)) {
     throw new Error("Narration must not contain a contact link or address.");
   }
@@ -39,7 +45,7 @@ export function prepareEgyptianReelNarration(value: string): string {
   // Do not silently send unconverted formal scripts to ElevenLabs. The owner
   // can edit unusual phrasing rather than synthesizing the wrong dialect.
   if (/(?:^|[\s،.!؟])(?:هل|سوف|إنه|إنها|يمكنك|يمكن أن|من دون)(?=[\s،.!؟]|$)/.test(text)
-    || !/(?:بنبدأ|بنراجع|بنتكلم|بتفكر|بتشتغل|بتخطط|معاك|ليك|علشان|عشان|خلينا|من غير|محتاج|تقدر|خد قرارك)/.test(text)) {
+    || !/(?:بنبدأ|بنراجع|بنتكلم|بتفكر|بتشتغل|بتخطط|بنبص|بنرتب|بنوضح|بنقولك|بيبدأ|إيه|اسأل|معاك|ليك|علشان|عشان|خلينا|من غير|محتاج|تقدر|خد قرارك)/.test(text)) {
     throw new Error("Narration must be natural Egyptian Arabic before ElevenLabs; edit the script or request a revised plan.");
   }
   return text;

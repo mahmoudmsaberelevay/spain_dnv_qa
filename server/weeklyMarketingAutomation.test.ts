@@ -7,7 +7,7 @@ import {
   weeklyAutomationPlanJsonSchema,
   weeklyAutomationPlanSchema,
 } from "../shared/marketingWeeklyAutomation";
-import { cairoPeriodStart, isConfiguredCairoAutomationHour, normalizeWeeklyAutomationPlanScheduleLabels } from "./weeklyMarketingAutomationService";
+import { cairoPeriodStart, isConfiguredCairoAutomationHour, normalizeGeneratedWeeklyItem, normalizeWeeklyAutomationPlanScheduleLabels } from "./weeklyMarketingAutomationService";
 
 const root = resolve(import.meta.dirname, "..");
 const read = (file: string) => readFileSync(resolve(root, file), "utf8");
@@ -20,7 +20,7 @@ const validPlan = {
   crmMetaComparisonNotes: [],
   risksAndEvidenceGaps: ["لا تُستخدم أي معلومة برنامجية إلا عند ربطها بادعاء معتمد."],
   items: Array.from({ length: 7 }, (_, index) => ({
-    itemType: index < 2 ? "reel" : "static_post", title: `فكرة تجريبية ${index + 1}`, programKey: "spain_dnv", objective: "تقديم محتوى تعليمي قابل للمراجعة", creativeDirection: "Premium editorial look", scriptCopy: "تعليمات داخلية", caption: "محتوى تعليمي", cta: "تواصل معنا", hashtags: ["#إليفاي"], onScreenEnglishText: index < 2 ? "NONE" : "SPAIN RESIDENCY", visualBrief: "Luxury editorial composition", plannedDay: "Monday", plannedTime: "10:00", approvedClaimIds: [], ownerConfirmedInternalClaimIds: [], assetFileNames: [], adRecommendation: "No campaign action; review only.",
+    itemType: index < 3 ? "reel" : "static_post", title: `فكرة تجريبية ${index + 1}`, programKey: "spain_dnv", objective: "تقديم محتوى تعليمي قابل للمراجعة", creativeDirection: "Premium editorial look", scriptCopy: "تعليمات داخلية", caption: "محتوى تعليمي", cta: "تواصل معنا", hashtags: ["#إليفاي"], onScreenEnglishText: index < 3 ? "NONE" : "SPAIN RESIDENCY", visualBrief: "Luxury editorial composition", plannedDay: "Monday", plannedTime: "10:00", approvedClaimIds: [], ownerConfirmedInternalClaimIds: [], assetFileNames: [], adRecommendation: "No campaign action; review only.",
   })),
 };
 
@@ -42,6 +42,16 @@ describe("bounded weekly multi-model automation", () => {
     expect(service).toContain("ELEVAY as the company name may be written in English");
     expect(service).toContain("validateElevayArabicVoiceOverScript(item.scriptCopy)");
   });
+  it("keeps only spoken Egyptian narration on reels and removes non-spoken static scripts", () => {
+    const reel = normalizeGeneratedWeeklyItem({ ...validPlan.items[0], itemType: "reel",
+      scriptCopy: "Scene 1: Hook - لو بتشتغل أونلاين، خلينا نبدأ من Spain.\\nOutro: Brand signature on white background.",
+    } as any);
+    expect(reel.scriptCopy).toContain("Spain");
+    expect(reel.scriptCopy).not.toMatch(/Scene|Outro|Hook/);
+    const staticPost = normalizeGeneratedWeeklyItem({ ...validPlan.items[3], scriptCopy: "Scene 1: visual guidance", hashtags: ["#سفر", "#EnglishCampaign"] } as any);
+    expect(staticPost.scriptCopy).toBe("");
+    expect(staticPost.hashtags).toEqual(["#سفر"]);
+  });
 
   it("normalizes supported Arabic schedule labels before strict output validation", () => {
     const output = normalizeWeeklyAutomationPlanScheduleLabels({ items: [{ plannedDay: "الأربعاء" }, { plannedDay: "Saturday" }] }) as { items: Array<{ plannedDay: string }> };
@@ -57,16 +67,16 @@ describe("bounded weekly multi-model automation", () => {
     expect(weeklyAutomationPlanSchema.parse(validPlan).items).toHaveLength(7);
     expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: [] })).toThrow();
     expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: [{ ...validPlan.items[0], itemType: "publish_now" }] })).toThrow();
-    expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: validPlan.items.slice(1) })).toThrow(/At least 2 reels/);
-    expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: validPlan.items.slice(0, -1) })).toThrow(/At least 5 static posts/);
+    expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: [{ ...validPlan.items[0], itemType: "static_post" }, ...validPlan.items.slice(1)] })).toThrow(/At least 3 reels/);
+    expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: [...validPlan.items.slice(0, -1), { ...validPlan.items[6], itemType: "reel" }] })).toThrow(/At least 4 static posts/);
     expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: [{ ...validPlan.items[0], plannedTime: null }, ...validPlan.items.slice(1)] })).toThrow(/publishing time/);
     expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: [{ ...validPlan.items[0], onScreenEnglishText: "SUMMER" }, ...validPlan.items.slice(1)] })).toThrow(/no embedded text/);
   });
 
-  it("derives the Saturday Cairo period correctly and only starts at the configured Cairo minute", () => {
-    expect(cairoPeriodStart(new Date("2026-09-30T10:00:00.000Z"))).toMatch(/^2026-09-2[6-7]$/);
-    expect(isConfiguredCairoAutomationHour({ prepareDayOfWeek: 6, prepareStartTime: "08:00" }, new Date("2026-09-26T05:00:00.000Z"))).toBe(true);
-    expect(isConfiguredCairoAutomationHour({ prepareDayOfWeek: 6, prepareStartTime: "08:00" }, new Date("2026-09-26T05:01:00.000Z"))).toBe(false);
+  it("derives the following Sunday Cairo period and starts only at the configured Saturday minute", () => {
+    expect(cairoPeriodStart(new Date("2026-10-03T06:00:00.000Z"))).toBe("2026-10-04");
+    expect(isConfiguredCairoAutomationHour({ prepareDayOfWeek: 6, prepareStartTime: "09:00" }, new Date("2026-10-03T06:00:00.000Z"))).toBe(true);
+    expect(isConfiguredCairoAutomationHour({ prepareDayOfWeek: 6, prepareStartTime: "09:00" }, new Date("2026-10-03T06:01:00.000Z"))).toBe(false);
   });
 
   it("requires a signed raw-body callback, event idempotency and review-only output persistence", () => {

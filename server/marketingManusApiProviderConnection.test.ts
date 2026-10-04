@@ -9,12 +9,11 @@ describe("Manus API v2 orchestration provider policy", () => {
     expect(connection?.secretKeys).toEqual(["MANUS_API_KEY"]);
     expect(connection?.webhookPath).toBe("/api/webhooks/marketing/manus");
     expect(connection?.creativeCapabilities).toEqual([
-      "research", "static_assets", "carousel_visuals", "reel_storyboards", "short_form_reels",
+      "research", "workflow_orchestration", "reel_assembly", "logo_outro", "audio_mix", "export",
     ]);
-    expect(connection?.purpose).toContain("static assets");
-    expect(connection?.purpose).toContain("reel storyboards");
-    expect(connection?.executionBoundary).toContain("owner-selected reel production provider");
-    expect(connection?.executionBoundary).toContain("final-preview");
+    expect(connection?.purpose).toContain("Higgsfield-generated clips");
+    expect(connection?.executionBoundary).toContain("No Manus-native footage generation");
+    expect(connection?.executionBoundary).toContain("review/QA gates");
   });
 
   it("reports secret readiness without exposing the secret value", () => {

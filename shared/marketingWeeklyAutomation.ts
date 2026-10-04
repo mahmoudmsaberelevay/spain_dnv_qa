@@ -41,7 +41,7 @@ export const weeklyAutomationPlanSchema = z.object({
   })).max(8),
   adAuditRecommendations: z.array(z.string().trim().min(5).max(4_000)).max(12),
   crmMetaComparisonNotes: z.array(z.string().trim().min(5).max(4_000)).max(12),
-  items: z.array(weeklyAutomationItemSchema).min(MIN_WEEKLY_REELS + MIN_WEEKLY_STATIC_POSTS).max(12),
+  items: z.array(weeklyAutomationItemSchema).length(MIN_WEEKLY_REELS + MIN_WEEKLY_STATIC_POSTS),
   risksAndEvidenceGaps: z.array(z.string().trim().min(5).max(4_000)).max(12),
 }).superRefine((plan, ctx) => {
   const staticPosts = plan.items.filter(item => item.itemType === "static_post");

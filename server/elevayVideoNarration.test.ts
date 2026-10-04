@@ -8,6 +8,10 @@ describe("video and reel voice-over preflight", () => {
     expect(script).toContain("ELEVAY بنبدأ");
     expect(script).not.toMatch(/اسبانيا|إسبانيا|إيليفاي|هل تعمل|من دون/);
   });
+  it("strips escaped scene labels, delivery directions and the silent white-logo outro", () => {
+    const spoken = prepareEgyptianReelNarration("Scene 1: Hook - لو شغلك أونلاين بنبص على Spain.\\nScene 2: مع ELEVAY بنرتب التفاصيل.\\nOutro: Brand signature on white background.");
+    expect(spoken).toBe("لو شغلك أونلاين بنبص على Spain. مع ELEVAY بنرتب التفاصيل.");
+  });
   it("rejects unrecognized English, contact links, or formal non-Egyptian scripts before TTS", () => {
     expect(() => prepareEgyptianReelNarration("بنراجع تفاصيل residency في Spain")).toThrow("Egyptian Arabic");
     expect(() => prepareEgyptianReelNarration("بنراجع التفاصيل من خلال https://example.org")).toThrow("contact");

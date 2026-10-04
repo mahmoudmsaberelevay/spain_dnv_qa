@@ -19,6 +19,7 @@ import { checkManusMediaAuthentication, mediaCredential, requireManusMediaAuthen
 import { estimateMediaCompletion } from "../shared/marketingMediaEta";
 import { applyOfficialElevayLogoToStatic } from "./elevayBrandMedia";
 import { mediaRendererReadiness, requireMediaRenderer } from "./mediaExecutables";
+import { combinedMarketingBudgetRemaining } from "./marketingCombinedBudget";
 
 const CONTROL_KEY = "primary-manus-review-media";
 const MONTHLY_CAP_USD = 100;
@@ -81,6 +82,7 @@ async function controlOrThrow() {
   const db = await dbOrThrow();
   const [control] = await db.select().from(marketingMediaProductionControls)
     .where(eq(marketingMediaProductionControls.controlKey, CONTROL_KEY)).limit(1);
+  if (control?.providerAlias === "manus-orchestrator") throw new Error("This legacy Manus-footage generator is retired. OpenAI static design and Higgsfield reel motion must be configured before system media can run.");
   if (!control?.isEnabled || control.state !== "active") throw new Error("Manus review-media production is disabled.");
   if (Number(control.monthlyBudgetUsd) > MONTHLY_CAP_USD || Number(control.perItemBudgetUsd) > PER_ITEM_CAP_USD) throw new Error("Media-production control exceeds its owner-approved cap.");
   if (!mediaCredential().value) throw new Error(MANUS_MEDIA_AUTH_MESSAGE);
@@ -172,7 +174,8 @@ async function monthlyMediaBudgetRemaining(db: Awaited<ReturnType<typeof dbOrThr
   const [totalRow] = await db.select({ total: sql<string>`COALESCE(SUM(${marketingMediaProductionJobs.reservedCostUsd}), 0)` })
     .from(marketingMediaProductionJobs)
     .where(sql`DATE_FORMAT(FROM_UNIXTIME(${marketingMediaProductionJobs.createdAt} / 1000), '%Y-%m') = ${currentCairoMonth()}`);
-  return Number(control.monthlyBudgetUsd) - Number(totalRow?.total ?? 0);
+  const combined = await combinedMarketingBudgetRemaining(db);
+  return Math.min(Number(control.monthlyBudgetUsd) - Number(totalRow?.total ?? 0), combined.remainingUsd);
 }
 
 async function dispatchSystemMediaForWeeklyItem(input: {
@@ -201,6 +204,8 @@ async function dispatchSystemMediaForWeeklyItem(input: {
     }
   }
   const now = Date.now();
+  if (await monthlyMediaBudgetRemaining(input.db, { monthlyBudgetUsd: MONTHLY_CAP_USD }) + 1e-9 < reservedCostUsd)
+    throw new Error("The combined USD 100 monthly marketing reservation cap has no remaining media capacity. No task was created.");
   const [inserted] = await input.db.insert(marketingMediaProductionJobs).values({
     jobKey: jobKey(), idempotencyKey, weeklyItemId: preparedItem.id, itemSnapshotHash: snapshot,
     mediaKind: kind, state: "dispatching", reservedCostUsd: reservedCostUsd.toFixed(2),
@@ -225,9 +230,7 @@ export async function queueSystemMediaForWeeklyPlan(input: { planId: number; act
   await requireMediaRenderer();
   const items = await db.select().from(marketingWeeklyResultsItems).where(and(eq(marketingWeeklyResultsItems.planId, input.planId), eq(marketingWeeklyResultsItems.isSelected, true)));
   const creatives = items.filter(item => isCreativeItemType(item.itemType) && !item.previewHash);
-  const [totalRow] = await db.select({ total: sql<string>`COALESCE(SUM(${marketingMediaProductionJobs.reservedCostUsd}), 0)` }).from(marketingMediaProductionJobs)
-    .where(sql`DATE_FORMAT(FROM_UNIXTIME(${marketingMediaProductionJobs.createdAt} / 1000), '%Y-%m') = ${currentCairoMonth()}`);
-  const remaining = Number(control.monthlyBudgetUsd) - Number(totalRow?.total ?? 0);
+  const remaining = await monthlyMediaBudgetRemaining(db, control);
   const cost = Number(control.perItemBudgetUsd);
   if (creatives.length === 0) return { queued: 0, reused: items.length, remainingUsd: remaining };
   if (creatives.length * cost > remaining + 1e-9) throw new Error(`The remaining review-media budget is USD ${remaining.toFixed(2)}; this plan needs USD ${(creatives.length * cost).toFixed(2)} at the USD ${cost.toFixed(2)} per-item cap.`);
@@ -332,9 +335,7 @@ export async function retryFailedMarketingMediaJob(input: { jobId: number; actor
   if (input.automatic && retryCount >= MAX_AUTOMATIC_MEDIA_RETRIES) return { retried: false, reason: "automatic_retry_limit_reached" as const };
   const [item] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, job.weeklyItemId)).limit(1);
   if (!item || snapshotHash(item) !== job.itemSnapshotHash) throw new Error("The item changed after the failed generation. Review the changed item before starting a new preview.");
-  const [totalRow] = await db.select({ total: sql<string>`COALESCE(SUM(${marketingMediaProductionJobs.reservedCostUsd}), 0)` }).from(marketingMediaProductionJobs)
-    .where(sql`DATE_FORMAT(FROM_UNIXTIME(${marketingMediaProductionJobs.createdAt} / 1000), '%Y-%m') = ${currentCairoMonth()}`);
-  const remaining = Number(control.monthlyBudgetUsd) - Number(totalRow?.total ?? 0);
+  const remaining = await monthlyMediaBudgetRemaining(db, control);
   if (remaining + 1e-9 < Number(control.perItemBudgetUsd)) throw new Error("The review-media monthly limit has no remaining retry capacity.");
   const now = Date.now();
   const nextRetry = retryCount + 1;

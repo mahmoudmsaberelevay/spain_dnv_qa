@@ -49,35 +49,35 @@ export type WeeklyContentMix = Record<WeeklyResultsItemType, number>;
 
 export const DEFAULT_WEEKLY_CONTENT_MIX: WeeklyContentMix = {
   research_update: 0,
-  static_post: 5,
+  static_post: 4,
   carousel: 0,
-  reel: 2,
+  reel: 3,
   image: 0,
   graphic: 0,
   ad_setup: 0,
 };
 
-export const MIN_WEEKLY_STATIC_POSTS = 5;
-export const MIN_WEEKLY_REELS = 2;
+export const MIN_WEEKLY_STATIC_POSTS = 4;
+export const MIN_WEEKLY_REELS = 3;
 
-/** Never let legacy settings silently reduce the owner's weekly minimum. */
+/** The owner-selected weekly pack is exactly three reels plus four static designs. */
 export function enforceWeeklyMediaMinimum<T extends { static_post?: number; reel?: number }>(mix: T): T {
-  return { ...mix, static_post: Math.max(MIN_WEEKLY_STATIC_POSTS, Number(mix.static_post) || 0), reel: Math.max(MIN_WEEKLY_REELS, Number(mix.reel) || 0) };
+  return { ...mix, ...DEFAULT_WEEKLY_CONTENT_MIX };
 }
 
-const WEEK_DAYS_FROM_SATURDAY: Record<string, number> = { Saturday: 0, Sunday: 1, Monday: 2, Tuesday: 3, Wednesday: 4, Thursday: 5, Friday: 6 };
+const WEEK_DAYS_FROM_SUNDAY: Record<string, number> = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
 export function currentCairoWeekStart(now = new Date()): string {
   const local = new Intl.DateTimeFormat("en-CA", { timeZone: WEEKLY_RESULTS_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
   const day = new Date(`${local}T00:00:00.000Z`);
-  day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 1) % 7));
+  day.setUTCDate(day.getUTCDate() - day.getUTCDay());
   return day.toISOString().slice(0, 10);
 }
 /** Review-only posting slot. Does not enqueue a Meta post or produce a UTC publish event. */
 export function plannedCairoPublishingSlot(periodStart: string, day: string | null, time: string | null) {
-  const offset = day ? WEEK_DAYS_FROM_SATURDAY[day] : undefined;
+  const offset = day ? WEEK_DAYS_FROM_SUNDAY[day] : undefined;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(periodStart) || offset === undefined || !time || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
   const date = new Date(`${periodStart}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== periodStart || date.getUTCDay() !== 6) return null;
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== periodStart || date.getUTCDay() !== 0) return null;
   date.setUTCDate(date.getUTCDate() + offset);
   return `${date.toISOString().slice(0, 10)} ${time} Africa/Cairo`;
 }
@@ -118,4 +118,11 @@ export function isSaturdayDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T12:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value && parsed.getUTCDay() === 6;
+}
+
+/** New owner-approved Sunday–Saturday publishing week. Historical Saturday plans remain readable. */
+export function isSundayDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T12:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value && parsed.getUTCDay() === 0;
 }

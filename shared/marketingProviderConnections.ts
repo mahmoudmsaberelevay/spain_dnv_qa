@@ -1,8 +1,7 @@
 export const MARKETING_AUTOPILOT_MODE = "full_autopilot" as const;
-// Mahmoud explicitly selected Manus native video generation for ELEVAY reels.
-// The selection identifies the only future reel provider; it does not enable
-// video generation, production tasks, publication, campaigns, or spending.
-export const ELEVAY_REEL_PRODUCTION_PROVIDER = "manus-orchestrator" as const;
+// Owner override: OpenAI keyframes -> Higgsfield clips -> Manus assembly only.
+// This provider policy is not an authentication check or execution release.
+export const ELEVAY_REEL_PRODUCTION_PROVIDER = "higgsfield-clips" as const;
 
 export const MARKETING_PROVIDER_CONNECTIONS = [
   {
@@ -29,9 +28,9 @@ export const MARKETING_PROVIDER_CONNECTIONS = [
     connectionKind: "task_orchestration",
     secretKeys: ["MANUS_API_KEY"] as const,
     webhookPath: "/api/webhooks/marketing/manus",
-    creativeCapabilities: ["research", "static_assets", "carousel_visuals", "reel_storyboards", "short_form_reels"] as const,
-    purpose: "Primary Manus-native reel generation plus bounded research, static assets, carousel visuals, and reel storyboards for owner-approved production packets.",
-    executionBoundary: "Manus is the owner-selected reel production provider. Generation stays blocked until a separate execution release and an approved work order. Every generated reel must remain vertical 9:16, contain no embedded text, use the official logo on a clean white outro, pass Arabic/brand/wardrobe/continuity QA, and receive an individual final-preview decision before any later channel release.",
+    creativeCapabilities: ["research", "workflow_orchestration", "reel_assembly", "logo_outro", "audio_mix", "export"] as const,
+    purpose: "Bounded planning and final assembly of OpenAI-keyframed, Higgsfield-generated clips; Manus must not generate reel footage.",
+    executionBoundary: "No Manus-native footage generation. Reel assembly remains disabled until Higgsfield authentication, bounded clip pricing and complete review/QA gates are verified; this profile never grants publishing or ad-spend authority.",
   },
   {
     alias: "openai-editorial",
@@ -39,8 +38,17 @@ export const MARKETING_PROVIDER_CONNECTIONS = [
     connectionKind: "editorial_model",
     secretKeys: ["OPENAI_API_KEY"] as const,
     webhookPath: "/api/webhooks/marketing/openai",
-    purpose: "Optional editorial drafting and structured creative assistance.",
+    purpose: "Strategy, editorial drafting, and approved visual keyframes for Higgsfield reel clips.",
     executionBoundary: "No content request, publication, campaign action, or spending occurs from this connection phase.",
+  },
+  {
+    alias: "higgsfield-clips",
+    provider: "Higgsfield API",
+    connectionKind: "image_to_video",
+    secretKeys: ["HF_API_KEY_ID", "HF_API_KEY_SECRET"] as const,
+    webhookPath: null,
+    purpose: "The only owner-approved reel-footage generator, animating OpenAI keyframes into 9:16 clips.",
+    executionBoundary: "Read-only authentication and per-clip cost must be validated first. The Manus connector does not supply CRM server credentials. No Higgsfield voice, text, logo, Meta publishing or ad action is authorized.",
   },
   {
     alias: "editorial-challenge",

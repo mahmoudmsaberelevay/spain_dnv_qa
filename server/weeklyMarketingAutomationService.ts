@@ -21,7 +21,7 @@ import {
   marketingWeeklyResultsPreferenceMemories,
   marketingWeeklyResultsSettings,
 } from "../drizzle/schema";
-import { enforceWeeklyMediaMinimum, findDisallowedWeeklyResultsData, isSaturdayDate, normalizeWeeklyResultsText } from "../shared/marketingWeeklyResults";
+import { enforceWeeklyMediaMinimum, findDisallowedWeeklyResultsData, isSundayDate, normalizeWeeklyResultsText } from "../shared/marketingWeeklyResults";
 import {
   automationMonthKey,
   WEEKLY_AUTOMATION_CONTROL_KEY,
@@ -33,6 +33,8 @@ import {
 } from "../shared/marketingWeeklyAutomation";
 import { isCreativeItemType, isVisualTextCreativeItemType, validateArabicOnlyMarketingText, validateElevayArabicVoiceOverScript, validateEnglishOnlyOnScreenText } from "../shared/marketingCreativeLanguagePolicy";
 import { queueSystemMediaForWeeklyPlan } from "./marketingMediaProductionService";
+import { prepareEgyptianReelNarration } from "../shared/elevayVideoNarration";
+import { combinedMarketingBudgetRemaining } from "./marketingCombinedBudget";
 import { checkManusMediaAuthentication, mediaCredential } from "./manusMediaAuthentication";
 
 const REQUIRED_ALIASES = ["openai-editorial", "editorial-challenge", "manus-orchestrator"] as const;
@@ -66,7 +68,8 @@ export function cairoPeriodStart(now = new Date()): string {
   const part = (type: string) => parts.find(item => item.type === type)?.value ?? "";
   const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(part("weekday"));
   const base = new Date(Date.UTC(Number(part("year")), Number(part("month")) - 1, Number(part("day")), 12));
-  base.setUTCDate(base.getUTCDate() - ((weekday + 1) % 7));
+  // On Saturday, prepare the week beginning tomorrow; otherwise report the current Sunday-start week.
+  base.setUTCDate(base.getUTCDate() - weekday + (weekday === 6 ? 7 : 0));
   return base.toISOString().slice(0, 10);
 }
 
@@ -240,6 +243,7 @@ async function ensureManusWeeklyWebhook() {
 }
 
 export async function enableWeeklyAutomation(input: { actorUserId: number; monthlyBudgetUsd?: number; perRunReserveUsd?: number }) {
+  throw new Error("Weekly production remains paused: OpenAI keyframes, Higgsfield clips, the internal ELEVAY voice, and verified official-source citations must be validated under the new owner-approved workflow before activation.");
   const initial = await readAutomationContext();
   const cap = Math.min(WEEKLY_AUTOMATION_MONTHLY_CAP_USD, Math.max(1, input.monthlyBudgetUsd ?? WEEKLY_AUTOMATION_MONTHLY_CAP_USD));
   const reserve = Math.min(WEEKLY_AUTOMATION_PER_RUN_RESERVE_USD, Math.max(1, input.perRunReserveUsd ?? WEEKLY_AUTOMATION_PER_RUN_RESERVE_USD));
@@ -274,6 +278,8 @@ async function reserveBudgetOrThrow(db: Awaited<ReturnType<typeof requireDb>>, c
   const [monthly] = await db.select({ total: sql<string>`COALESCE(SUM(${marketingWeeklyAutomationBudgetLedger.amountUsd}), 0)` }).from(marketingWeeklyAutomationBudgetLedger).where(eq(marketingWeeklyAutomationBudgetLedger.periodKey, periodKey));
   const reserve = Number(control.perRunReserveUsd);
   if (Number(monthly?.total ?? 0) + reserve > Number(control.monthlyBudgetUsd)) throw new Error("The USD 100 internal monthly automation reservation cap would be exceeded. No provider task was created.");
+  if ((await combinedMarketingBudgetRemaining(db, now)).remainingUsd + 1e-9 < reserve)
+    throw new Error("The combined USD 100 monthly marketing reservation cap would be exceeded. No provider task was created.");
   await db.insert(marketingWeeklyAutomationBudgetLedger).values({ entryKey: `mwa-reserve-${jobId}`, periodKey, jobId, entryType: "reservation", amountUsd: reserve.toFixed(2), note: "Internal reservation for one bounded weekly planning cycle. Provider invoices may differ and are not automatically reconciled.", createdAt: now });
 }
 
@@ -401,7 +407,7 @@ function councilPrompt(snapshot: Record<string, unknown>, role: "strategy" | "ch
   return [
     strategy ? "You are ELEVAY's Arabic-first marketing strategist." : "You are ELEVAY's independent critical marketing reviewer.",
     strategy ? "Create a concrete weekly creative strategy that is safe for later human review." : "Challenge the weekly strategy: detect unsupported claims, brand drift, execution issues, and performance risks. Propose corrections.",
-    "Plan at least two distinct vertical reels and five distinct static posts for the Saturday–Friday Cairo week. Provide an exact Cairo publishing day and HH:MM time for each. Write all campaign copy, captions, post content, CTAs and voice-over in natural Egyptian Arabic; only approved country names and ELEVAY may appear in English. No reel-embedded text; static visual text is English only. Each post/reel will receive its own system-produced preview before final approval.",
+    "Plan exactly three distinct vertical reels and four distinct static posts for the Sunday–Saturday Cairo publishing week. Deliver the review plan Saturday by 09:00 Cairo ahead of that week. Provide an exact Cairo publishing day and HH:MM time for each. Write campaign copy and reel voice-over in natural Egyptian Arabic with approved country/company names in English. Follow the active ELEVAY caption policy separately. No reel-embedded text; static visual text is English only. OpenAI produces visual keyframes and Higgsfield animates reel clips; Manus coordinates only and must not generate footage.",
     "Use only the owner-provided internal programme references and the explicit ownerConfirmedInternalClaims in the planning context. You may use an owner-confirmed internal claim only for internal review material and must reference its ID in ownerConfirmedInternalClaimIds. Do not call it official, government evidence, legal advice, or publication authority. Do not retrieve, browse, cite, or rely on government or other external sources. Mark any point needing external verification as an evidence gap.",
     "Return only the requested JSON. Do not include personal data. Do not claim visa outcomes or guarantees. Do not propose publishing, campaign editing, spend, messaging, or any external action.",
     "Planning context:", JSON.stringify(snapshot),
@@ -440,7 +446,7 @@ async function createManusWeeklyTask(snapshot: Record<string, unknown>, strategy
   const prompt = [
     "You are the ELEVAY weekly creative production orchestrator. Create an internal, review-ready weekly production pack after considering the OpenAI strategist and Claude challenger opinions below.",
     "Strict rules: write ALL marketing copy, captions, CTAs, post content, scripts and voice-over in natural Egyptian Arabic. Only approved country names and ELEVAY as the company name may be written in English. Place English-only text inside static visuals where appropriate; set every reel onScreenEnglishText to NONE and embed NO text inside its video. Never use client, Lead, contact, passport, phone, email, or other personal data.",
-    "Mandatory weekly media pack: AT LEAST two distinct 9:16 reels and five distinct static_post items, each with plannedDay and plannedTime (Africa/Cairo) for the Saturday–Friday week. These are draft publishing slots only, not a command to publish. Do not substitute a carousel, ad_setup, graphic, image or research_update for a static_post or a reel.",
+    "Mandatory weekly media pack: exactly three distinct 9:16 reels and four distinct static_post items, each with plannedDay and plannedTime (Africa/Cairo) for the Sunday–Saturday publishing week. Deliver the review plan by Saturday 09:00 Cairo. These are draft publishing slots only, not a command to publish. OpenAI supplies keyframes, Higgsfield supplies reel footage; Manus may orchestrate, compose, add the exact logo outro, mix approved ELEVAY voice and export, but must not generate footage. Do not substitute a carousel, ad_setup, graphic, image or research_update for a static_post or a reel.",
     "Use only owner-provided internal programme references contained in the planning context. Do not browse, retrieve, cite, or use government or other external sources. Every researchResults.sourceUrl must use internal:// followed by an owner-provided referenceKey. You may use a statement from ownerConfirmedInternalClaims only by returning its ID in ownerConfirmedInternalClaimIds; it is owner-confirmed internal information for review only, not official evidence, legal advice, or publication authority. An approvedOfficialClaims ID remains the only official-evidence claim reference. If a fact needs external verification, list it as an evidence gap.",
     "Prepare final-quality research summary, static/carousel/reel concepts and any safe attachment deliverables you can create. Do not publish, schedule, create or edit ads/campaigns, spend money, send CAPI events, contact anyone, or change a CRM record. Every output is for review only.",
     `Week starting: ${periodStart}`,
@@ -466,12 +472,13 @@ function hasOnlyInternalResearchResults(output: WeeklyAutomationPlanOutput) {
 }
 
 export async function startWeeklyAutomationCycle(input: { triggerType: "manual_test" | "scheduled"; actorUserId?: number; forcePeriodStart?: string }) {
+  throw new Error("The previous Manus-footage planner is retired. The new OpenAI-to-Higgsfield reel and verified-source workflow is not yet enabled; no provider task or budget reservation was created.");
   const context = await readAutomationContext();
   const control = context.control;
   if (!control?.isEnabled || control.state !== "active") throw new Error("Weekly automation is paused or disabled. Activate it from Settings first.");
   if (context.blockers.length) throw new Error(context.blockers.join(" "));
   const periodStart = input.forcePeriodStart ?? cairoPeriodStart();
-  if (!isSaturdayDate(periodStart)) throw new Error("Automation period must begin on a Saturday in Cairo time.");
+  if (!isSundayDate(periodStart)) throw new Error("Automation publishing period must begin on a Sunday in Cairo time.");
   const manusAuth = await checkManusMediaAuthentication();
   if (!manusAuth.ready) throw new Error("Manus planning is paused: the CRM cannot validate its task credential. No provider task or budget reservation was created.");
   const idempotencyKey = `weekly-automation:${periodStart}`;
@@ -517,11 +524,26 @@ export async function startWeeklyAutomationCycle(input: { triggerType: "manual_t
 
 function generatedItemLanguageProblem(item: WeeklyAutomationPlanOutput["items"][number]) {
   if (!isCreativeItemType(item.itemType)) return null;
-  return validateElevayArabicVoiceOverScript(item.scriptCopy)
-    || validateElevayArabicVoiceOverScript(item.caption)
-    || validateElevayArabicVoiceOverScript(item.cta)
+  return (item.itemType === "reel" ? validateElevayArabicVoiceOverScript(item.scriptCopy) : null)
+    || (item.caption.trim() ? validateElevayArabicVoiceOverScript(item.caption) : null)
+    || (item.cta.trim() ? validateElevayArabicVoiceOverScript(item.cta) : null)
     || validateArabicOnlyMarketingText(item.hashtags.join(" "), "Generated hashtags")
     || (isVisualTextCreativeItemType(item.itemType) ? validateEnglishOnlyOnScreenText(item.onScreenEnglishText) : null);
+}
+
+export function normalizeGeneratedWeeklyItem(item: WeeklyAutomationPlanOutput["items"][number]) {
+  let scriptCopy = item.itemType === "reel" ? item.scriptCopy : "";
+  if (item.itemType === "reel") {
+    try { scriptCopy = prepareEgyptianReelNarration(scriptCopy); }
+    catch { /* Keep the original for human correction; the review gate blocks it. */ }
+  }
+  return {
+    ...item,
+    scriptCopy,
+    caption: item.caption.replace(/\\n/g, "\n"),
+    cta: item.cta.replace(/\\n/g, "\n"),
+    hashtags: item.hashtags.filter(tag => !validateArabicOnlyMarketingText(tag, "Generated hashtag")),
+  };
 }
 
 const WEEKLY_PLAN_DAY_LABELS: Record<string, WeeklyAutomationPlanOutput["items"][number]["plannedDay"]> = {
@@ -554,7 +576,7 @@ async function persistReviewPlan(job: AutomationJob, output: WeeklyAutomationPla
   const [result] = await db.insert(marketingWeeklyResultsPlans).values({ planKey, periodStart: job.periodStart, version: (next[0]?.version ?? 0) + 1, status: "draft_prepared", source: "automated_multi_model", title: normalizeWeeklyResultsText(output.weeklyTitle), weeklyGoal: typeof snapshot.settings?.weeklyGoal === "string" ? snapshot.settings.weeklyGoal : null, creativeDirection: typeof snapshot.settings?.creativeDirection === "string" ? snapshot.settings.creativeDirection : null, setupSnapshotJson: JSON.stringify(snapshot.settings ?? {}), previousWeekPerformanceJson: JSON.stringify(snapshot.aggregatePerformance ?? []), preferenceMemoryJson: JSON.stringify(snapshot.feedbackMemory ?? []), planHash, preparedByUserId: job.createdByUserId, preparedAt: now, deliveryDeadlineAt: null, createdAt: now, updatedAt: now });
   const planId = Number((result as { insertId?: number }).insertId);
   for (let index = 0; index < output.items.length; index += 1) {
-    const item = output.items[index]!;
+    const item = normalizeGeneratedWeeklyItem(output.items[index]!);
     const unsafe = findDisallowedWeeklyResultsData(JSON.stringify(item));
     const languageProblem = generatedItemLanguageProblem(item);
     const invalidClaim = item.approvedClaimIds.find(id => !validClaimIds.has(id));
@@ -574,8 +596,11 @@ export async function applyWeeklyAutomationManusWebhook(payload: any) {
   if (!task?.task_id) return { ignored: true };
   const db = await requireDb();
   const [job] = await db.select().from(marketingWeeklyAutomationJobs).where(eq(marketingWeeklyAutomationJobs.manusTaskId, task.task_id)).limit(1);
-  if (!job || ["completed_pending_review", "failed", "stopped"].includes(job.state)) return { ignored: true };
+  if (!job || job.state !== "waiting_manus") return { ignored: true };
   const now = Date.now();
+  const [claimed] = await db.update(marketingWeeklyAutomationJobs).set({ state: "processing_result", updatedAt: now })
+    .where(and(eq(marketingWeeklyAutomationJobs.id, job.id), eq(marketingWeeklyAutomationJobs.state, "waiting_manus")));
+  if (Number((claimed as { affectedRows?: number })?.affectedRows ?? 0) !== 1) return { ignored: true };
   if (task.stop_reason === "ask") {
     await db.update(marketingWeeklyAutomationJobs).set({ state: "stopped", errorCode: "manus_requires_input", errorSummary: "Manus requires input; the weekly run was stopped rather than continuing autonomously.", completedAt: now, updatedAt: now }).where(eq(marketingWeeklyAutomationJobs.id, job.id));
     return { stopped: true };
@@ -599,6 +624,37 @@ export async function applyWeeklyAutomationManusWebhook(payload: any) {
     await db.update(marketingWeeklyAutomationControls).set({ lastRunAt: now, lastRunStatus: "failed", lastError: safe, updatedAt: now }).where(eq(marketingWeeklyAutomationControls.controlKey, WEEKLY_AUTOMATION_CONTROL_KEY));
     return { failed: true };
   }
+}
+
+/** Recover existing structured weekly results when a Manus webhook is missed. */
+export async function reconcileWaitingWeeklyAutomationJobs() {
+  const db = await requireDb();
+  const jobs = await db.select({ taskId: marketingWeeklyAutomationJobs.manusTaskId })
+    .from(marketingWeeklyAutomationJobs).where(eq(marketingWeeklyAutomationJobs.state, "waiting_manus"))
+    .orderBy(marketingWeeklyAutomationJobs.createdAt).limit(2);
+  let completed = 0, failed = 0, waiting = 0;
+  for (const job of jobs) {
+    if (!job.taskId) { waiting++; continue; }
+    try {
+      const headers = { "x-manus-api-key": mediaCredential().value };
+      const detailResponse = await fetch(`https://api.manus.ai/v2/task.detail?task_id=${encodeURIComponent(job.taskId)}`, { headers, signal: AbortSignal.timeout(15_000) });
+      if (!detailResponse.ok) { waiting++; continue; }
+      const detailBody = await detailResponse.json() as { task?: { id?: string; status?: string } };
+      if (detailBody.task?.id !== job.taskId || detailBody.task.status !== "stopped") { waiting++; continue; }
+      const messagesResponse = await fetch(`https://api.manus.ai/v2/task.listMessages?task_id=${encodeURIComponent(job.taskId)}&order=desc&limit=50`, { headers, signal: AbortSignal.timeout(15_000) });
+      if (!messagesResponse.ok) { waiting++; continue; }
+      const messageBody = await messagesResponse.json() as { messages?: Array<{ type?: string; structured_output_result?: { success?: boolean; value?: unknown; error?: unknown } }> };
+      const structured = messageBody.messages?.find(message => message.type === "structured_output_result")?.structured_output_result;
+      if (!structured) { waiting++; continue; }
+      const result = await applyWeeklyAutomationManusWebhook({ event_type: "task_stopped", task_detail: { task_id: job.taskId, stop_reason: "finish", structured_output: structured, attachments: [] } });
+      if (result.completed) completed++;
+      else if (result.failed) failed++;
+    } catch (error) {
+      console.warn("[WeeklyMarketing] Existing task result temporarily unavailable", error instanceof Error ? error.name : "unknown");
+      waiting++;
+    }
+  }
+  return { examined: jobs.length, completed, failed, waiting };
 }
 
 export async function markAutomationScheduleTask(taskUid: string) {
