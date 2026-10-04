@@ -77,12 +77,15 @@ function currentCairoMonth() {
   return `${part("year")}-${part("month")}`;
 }
 function dbOrThrow() { return getDb().then(db => { if (!db) throw new Error("Marketing database unavailable."); return db; }); }
+function legacyManusMediaDispatchRetired(): boolean { return true; }
 
 async function controlOrThrow() {
   const db = await dbOrThrow();
   const [control] = await db.select().from(marketingMediaProductionControls)
     .where(eq(marketingMediaProductionControls.controlKey, CONTROL_KEY)).limit(1);
-  if (control?.providerAlias === "manus-orchestrator") throw new Error("This legacy Manus-footage generator is retired. OpenAI static design and Higgsfield reel motion must be configured before system media can run.");
+  // This entire service dispatches to Manus task.create. An alias change must
+  // never revive it under the owner-approved OpenAI → Higgsfield-only policy.
+  if (legacyManusMediaDispatchRetired()) throw new Error("The legacy Manus-footage media service is retired. New OpenAI-keyframe and Higgsfield-clip production requires a separate verified release.");
   if (!control?.isEnabled || control.state !== "active") throw new Error("Manus review-media production is disabled.");
   if (Number(control.monthlyBudgetUsd) > MONTHLY_CAP_USD || Number(control.perItemBudgetUsd) > PER_ITEM_CAP_USD) throw new Error("Media-production control exceeds its owner-approved cap.");
   if (!mediaCredential().value) throw new Error(MANUS_MEDIA_AUTH_MESSAGE);

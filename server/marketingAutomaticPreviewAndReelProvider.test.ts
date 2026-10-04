@@ -18,6 +18,17 @@ describe("automatic preview verification and Higgsfield reel policy", () => {
     expect(getMarketingProviderConnection("manus-orchestrator")?.executionBoundary).toContain("No Manus-native footage");
   });
 
+  it("labels retired historical plans by policy, not renderer readiness, and never retries old Manus media", () => {
+    const page = read("client/src/pages/marketing/WeeklyResults.tsx");
+    const service = read("server/marketingMediaProductionService.ts");
+    expect(page).toContain('plan.status === "superseded"');
+    expect(page).toContain("This historical plan was superseded");
+    expect(page).not.toContain("packaged FFmpeg/ffprobe are unavailable in the deployed CRM");
+    expect(page).toContain("mediaAuthReady={false}");
+    expect(service).toContain("if (legacyManusMediaDispatchRetired()) throw new Error");
+    expect(service).toContain("function legacyManusMediaDispatchRetired(): boolean { return true; }");
+  });
+
   it("requires a system-generated asset link without exposing manual URLs or fingerprints", () => {
     const router = read("server/marketingSystemRouter.ts");
     const page = read("client/src/pages/marketing/WeeklyResults.tsx");
