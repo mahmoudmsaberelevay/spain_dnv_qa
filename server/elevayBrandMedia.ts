@@ -6,6 +6,7 @@ import path from "node:path";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "./db";
 import { marketingDesignSystemAssets } from "../drizzle/schema";
+import { FFMPEG_BIN, requireMediaRenderer } from "./mediaExecutables";
 
 export async function officialElevayLogo() {
   const db = await getDb();
@@ -26,7 +27,7 @@ export async function verifiedLogoBytes() {
 
 function runFfmpeg(args: string[]) {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "ignore", "pipe"] });
     let errorTail = "";
     const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Official-logo composition timed out.")); }, 45_000);
     child.stderr.on("data", data => { errorTail = `${errorTail}${data.toString()}`.slice(-800); });
@@ -39,6 +40,7 @@ function runFfmpeg(args: string[]) {
  * already generated image. No generated/recreated wordmark can be used as the
  * system-owned brand mark. Source files are never overwritten. */
 export async function applyOfficialElevayLogoToStatic(source: Buffer) {
+  await requireMediaRenderer();
   const logo = await verifiedLogoBytes();
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "elevay-brand-"));
   try {

@@ -15,6 +15,7 @@ import { ELEVAY_AGENTIC_DESIGN_STANDARD } from "../shared/elevayAgenticDesignSta
 import { checkManusMediaAuthentication, mediaCredential, requireManusMediaAuthentication, MANUS_MEDIA_AUTH_MESSAGE } from "./manusMediaAuthentication";
 import { estimateMediaCompletion } from "../shared/marketingMediaEta";
 import { applyOfficialElevayLogoToStatic } from "./elevayBrandMedia";
+import { mediaRendererReadiness, requireMediaRenderer } from "./mediaExecutables";
 
 const CONTROL_KEY = "primary-manus-review-media";
 const MONTHLY_CAP_USD = 100;
@@ -84,7 +85,7 @@ async function controlOrThrow() {
 }
 
 export async function getMediaProductionReadiness() {
-  const auth = await checkManusMediaAuthentication();
+  const [auth, renderer] = await Promise.all([checkManusMediaAuthentication(), mediaRendererReadiness()]);
   const db = await dbOrThrow();
   const [control] = await db.select().from(marketingMediaProductionControls).where(eq(marketingMediaProductionControls.controlKey, CONTROL_KEY)).limit(1);
   const month = currentCairoMonth();
@@ -94,7 +95,7 @@ export async function getMediaProductionReadiness() {
   const now = Date.now();
   return {
     control: control ? { isEnabled: control.isEnabled, state: control.state, monthlyBudgetUsd: Number(control.monthlyBudgetUsd), perItemBudgetUsd: Number(control.perItemBudgetUsd), providerAlias: control.providerAlias, lastError: control.lastError } : null,
-    month, budgetUsedUsd: Number(totals?.total ?? 0), providerAuthentication: { ready: auth.ready, checkedAt: auth.checkedAt, message: auth.ready ? null : MANUS_MEDIA_AUTH_MESSAGE }, jobs: jobs.slice(0, 48).map(job => ({ id: job.id, weeklyItemId: job.weeklyItemId, mediaKind: job.mediaKind, state: job.state, reservedCostUsd: Number(job.reservedCostUsd), manusTaskUrl: job.manusTaskUrl, errorSummary: job.errorSummary, createdAt: job.createdAt, updatedAt: job.updatedAt, eta: estimateMediaCompletion(job, jobs, now) })),
+    month, budgetUsedUsd: Number(totals?.total ?? 0), providerAuthentication: { ready: auth.ready, checkedAt: auth.checkedAt, message: auth.ready ? null : MANUS_MEDIA_AUTH_MESSAGE }, renderer: { ready: renderer.ready, checkedAt: renderer.checkedAt }, jobs: jobs.slice(0, 48).map(job => ({ id: job.id, weeklyItemId: job.weeklyItemId, mediaKind: job.mediaKind, state: job.state, reservedCostUsd: Number(job.reservedCostUsd), manusTaskUrl: job.manusTaskUrl, errorSummary: job.errorSummary, createdAt: job.createdAt, updatedAt: job.updatedAt, eta: estimateMediaCompletion(job, jobs, now) })),
   };
 }
 
@@ -178,6 +179,7 @@ async function dispatchSystemMediaForWeeklyItem(input: {
   actorUserId: number;
 }) {
   await requireManusMediaAuthentication();
+  await requireMediaRenderer();
   const preparedItem = await prepareSystemGeneratedVisualText(input.db, input.item);
   const snapshot = snapshotHash(preparedItem);
   const kind = mediaKind(preparedItem);
@@ -217,6 +219,7 @@ async function dispatchSystemMediaForWeeklyItem(input: {
 export async function queueSystemMediaForWeeklyPlan(input: { planId: number; actorUserId: number }) {
   const { db, control } = await controlOrThrow();
   await requireManusMediaAuthentication();
+  await requireMediaRenderer();
   const items = await db.select().from(marketingWeeklyResultsItems).where(and(eq(marketingWeeklyResultsItems.planId, input.planId), eq(marketingWeeklyResultsItems.isSelected, true)));
   const creatives = items.filter(item => isCreativeItemType(item.itemType) && !item.previewHash);
   const [totalRow] = await db.select({ total: sql<string>`COALESCE(SUM(${marketingMediaProductionJobs.reservedCostUsd}), 0)` }).from(marketingMediaProductionJobs)
@@ -409,6 +412,7 @@ function collectTaskAttachments(value: unknown): Array<{ filename?: string; file
 export async function reconcileWaitingMarketingMediaJobs() {
   const auth = await checkManusMediaAuthentication();
   if (!auth.ready) return { checked: 0, blocked: "provider_authentication", refreshedAt: Date.now() };
+  if (!(await mediaRendererReadiness()).ready) return { checked: 0, blocked: "renderer_unavailable", refreshedAt: Date.now() };
   const key = mediaCredential().value;
   const db = await dbOrThrow();
   const now = Date.now();

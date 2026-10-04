@@ -228,3 +228,11 @@
 - Added fail-closed preflight to plan media, comment-driven replacements, and retries: an invalid live key now causes no task or reservation; late 401s refund the reservation. UI disables the retry/generate controls and explains the reason.
 - Released USD 15.00 in reservations for ten historical 401 jobs with no Manus task ID while retaining failure records. One bounded owner-requested graphic retry was accepted by Manus as job 300004, capped at USD 1.50. Existing previews were preserved.
 - Removed the temporary production diagnostic route after verifying the live fix. Meta publishing, campaigns, ad spend, CAPI, Leads and client data remain unchanged.
+
+## 2026-10-04 — Media narration, brand QC, ETA and recovery
+- [x] Egyptian-Arabic normalization before the ElevenLabs video/reel request; country and ELEVAY names normalized to English; actual script retained for the reviewer.
+- [x] New static outputs receive the SHA-256-verified exact active logo via FFmpeg; new reels get a deterministic centered exact-logo three-second white outro. Generation prompts forbid AI-made logos. Existing outputs are not silently changed.
+- [x] Final item approval requires an explicit reviewer design-QC acknowledgement for brand, palette, copy, head-to-toe wardrobe, footwear and continuity. The existing active design instructions require at least 90% palette-conformant designed elements.
+- [x] Per-item progress shows a transparent non-guaranteed remaining-time range or overdue/provider-input state; 55% is labelled stage-only, not a vendor completion percentage.
+- [x] Independent two-minute authenticated Heartbeat `4FUr4KjS8Wkk6mjgxY7rox` reconciles existing Manus tasks without a browser session; interrupted local processing is recovered from the original task, stop events are claimed once, and failures have a capped single automatic retry. Waiting provider confirmations are surfaced and never automatically approved.
+- [x] Type check, 147 test files / 723 tests (2 skipped), production build and diff hygiene passed; checkpoint d95d361b. Live task/heartbeat completion verification is in progress.

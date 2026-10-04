@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { nanoid } from "nanoid";
 import { storagePut } from "./storage";
 import { verifiedLogoBytes } from "./elevayBrandMedia";
+import { FFMPEG_BIN, FFPROBE_BIN, requireMediaRenderer } from "./mediaExecutables";
 
 const MAX_VIDEO_BYTES = 350 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 50 * 1024 * 1024;
@@ -73,7 +74,7 @@ function run(command: string, args: string[], timeoutMs = 120_000): Promise<stri
 }
 
 export async function probeReelMedia(filePath: string): Promise<ReelMediaProbe> {
-  const output = await run("ffprobe", ["-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height", "-of", "json", filePath], 30_000);
+  const output = await run(FFPROBE_BIN, ["-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height", "-of", "json", filePath], 30_000);
   const parsed = JSON.parse(output) as { format?: { duration?: string }; streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number }> };
   const durationSeconds = Number(parsed.format?.duration ?? 0);
   const video = parsed.streams?.find(stream => stream.codec_type === "video");
@@ -172,7 +173,7 @@ async function composeLocal(sourcePath: string, narrationPath: string, outputPat
     : hasBedAudio
     ? ["-y", "-i", sourcePath, "-i", narrationPath, "-filter_complex", `${videoFilter};[0:a]volume=0.18,apad=pad_dur=${outputSeconds}[bed];[1:a]apad=pad_dur=${outputSeconds}[narration];[bed][narration]amix=inputs=2:duration=longest:normalize=0[a]`, "-map", "[v]", "-map", "[a]", "-t", outputSeconds, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outputPath]
     : ["-y", "-i", sourcePath, "-i", narrationPath, "-filter_complex", `${videoFilter};[1:a]apad=pad_dur=${outputSeconds}[a]`, "-map", "[v]", "-map", "[a]", "-t", outputSeconds, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outputPath];
-  await run("ffmpeg", args, 180_000);
+  await run(FFMPEG_BIN, args, 180_000);
   const outputProbe = await probeReelMedia(outputPath);
   if (!outputProbe.videoCodec || !outputProbe.audioCodec || !outputProbe.width || !outputProbe.height || Math.abs(outputProbe.durationMs - outputDurationMs) > 1_250 || (logoPath && (outputProbe.width !== 1080 || outputProbe.height !== 1920))) {
     throw new Error("The composed output did not pass audio/video stream and duration verification.");
@@ -187,6 +188,7 @@ async function composeLocal(sourcePath: string, narrationPath: string, outputPat
  * schedules a post, or contacts any Meta endpoint.
  */
 export async function composeApprovedReelForReview(input: ReviewOnlyReelCompositionInput): Promise<ReviewOnlyReelCompositionOutput> {
+  await requireMediaRenderer();
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "elevay-reel-compose-"));
   try {
     const sourcePath = path.join(tempDir, "approved-source.mp4");
