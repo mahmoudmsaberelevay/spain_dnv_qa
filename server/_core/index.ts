@@ -184,6 +184,12 @@ async function startServer() {
   app.use("/api/trpc", apiLimiter);
   app.use("/api/oauth", oauthLimiter);
 
+  // Temporary HMAC-gated, read-only production credential comparison.
+  app.get("/api/diagnostics/marketing-media-credential", apiLimiter, async (req, res) => {
+    const { handleMarketingMediaCredentialProbe } = await import("../marketingMediaCredentialProbe");
+    await handleMarketingMediaCredentialProbe(req, res);
+  });
+
   // Manus signs council-task callbacks over the raw request body, so this route
   // must be registered before the global JSON parser consumes that body.
   app.post("/api/webhook/manus-ai-council", express.raw({ type: "application/json", limit: "2mb" }), async (req, res) => {
