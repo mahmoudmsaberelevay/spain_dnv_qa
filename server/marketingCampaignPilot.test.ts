@@ -60,7 +60,7 @@ describe("Campaign Pilot Proposal", () => {
     expect(workspace).toContain('title: "Pilot Proposal"');
     expect(workspace).toContain('href: "/marketing/campaign-pilot-proposal"');
     expect(mobile).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
-    expect(hub).toContain("Everything is now organized inside two main sections");
+    expect(hub).toContain("Choose one of three workspaces");
     expect(page).toContain("External operations locked");
     expect(page).toContain("Create hash-locked internal proposal");
     expect(page).toContain("does not authorize a Meta sign-in");

@@ -20,13 +20,12 @@ describe("Agentic Marketing System hub", () => {
     expect(desktop).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
     expect(dashboard).toContain('title: "AI Agentic Marketing System"');
     expect(page).toContain("ELEVAY AI Agentic Marketing System");
-    expect(page).toContain("Open Settings");
-    expect(page).toContain("Open Production");
-    expect(page).toContain('href: "/marketing/weekly-results?view=setup"');
-    expect(page).toContain('href: "/marketing/weekly-results"');
-    expect(dashboard).toContain("Start with Settings or Production");
-    expect(dashboard).toContain('navigate("/marketing/weekly-results?view=setup")');
-    expect(dashboard).toContain('navigate("/marketing/weekly-results")');
+    for (const path of ["/marketing/agentic-settings", "/marketing/media-production", "/marketing/meta-ads-production"]) {
+      expect(page).toContain(`href: "${path}"`);
+      expect(app).toContain(`path="${path}"`);
+    }
+    expect(dashboard).toContain("Three Agentic Marketing workspaces");
+    expect(dashboard).toContain('navigate("/marketing/meta-ads-production")');
     expect(desktop).toContain('label: "Marketing Dashboard", path: "/marketing"');
     expect(desktop).not.toContain('label: "Brand Discovery — 35 Questions", path: "/marketing/brand-studio"');
     expect(desktop).not.toContain('label: "1. Setup"');
@@ -45,7 +44,7 @@ describe("Agentic Marketing System hub", () => {
 
   it("keeps the hub informative and explicitly free of external action controls", () => {
     const page = read("client/src/pages/marketing/AgenticMarketingHub.tsx");
-    expect(page).toContain("provider execution, media rendering, Meta campaign creation, spend, publishing, scheduling and CAPI changes remain locked");
+    expect(page).toContain("Meta posts and ads remain blocked from automatic publication");
     expect(page).not.toContain("createCampaign");
     expect(page).not.toContain("launchCampaign");
   });

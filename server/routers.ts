@@ -48,6 +48,7 @@ import { adminRouter } from "./routers/admin";
 import { waQcRouter } from "./waQcRouter";
 import { marketingRouter } from "./marketingRouter";
 import { marketingSystemRouter } from "./marketingSystemRouter";
+import { metaAdsProductionRouter } from "./metaAdsProductionRouter";
 import { reportsRouter } from "./routers/reports";
 import { backupsRouter } from "./routers/backups";
 import { backupDownloadRouter } from "./routers/backupDownload";
@@ -2676,6 +2677,7 @@ export const appRouter = router({
   leadsSettings: leadsSettingsRouter,
   marketing: marketingRouter,
   marketingSystem: marketingSystemRouter,
+  metaAdsProduction: metaAdsProductionRouter,
   reports: reportsRouter,
   backups: backupsRouter,
   backupDownload: backupDownloadRouter,

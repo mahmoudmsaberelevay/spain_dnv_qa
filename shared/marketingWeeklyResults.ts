@@ -49,13 +49,38 @@ export type WeeklyContentMix = Record<WeeklyResultsItemType, number>;
 
 export const DEFAULT_WEEKLY_CONTENT_MIX: WeeklyContentMix = {
   research_update: 0,
-  static_post: 1,
-  carousel: 1,
-  reel: 1,
-  image: 1,
-  graphic: 1,
+  static_post: 5,
+  carousel: 0,
+  reel: 2,
+  image: 0,
+  graphic: 0,
   ad_setup: 0,
 };
+
+export const MIN_WEEKLY_STATIC_POSTS = 5;
+export const MIN_WEEKLY_REELS = 2;
+
+/** Never let legacy settings silently reduce the owner's weekly minimum. */
+export function enforceWeeklyMediaMinimum<T extends { static_post?: number; reel?: number }>(mix: T): T {
+  return { ...mix, static_post: Math.max(MIN_WEEKLY_STATIC_POSTS, Number(mix.static_post) || 0), reel: Math.max(MIN_WEEKLY_REELS, Number(mix.reel) || 0) };
+}
+
+const WEEK_DAYS_FROM_SATURDAY: Record<string, number> = { Saturday: 0, Sunday: 1, Monday: 2, Tuesday: 3, Wednesday: 4, Thursday: 5, Friday: 6 };
+export function currentCairoWeekStart(now = new Date()): string {
+  const local = new Intl.DateTimeFormat("en-CA", { timeZone: WEEKLY_RESULTS_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  const day = new Date(`${local}T00:00:00.000Z`);
+  day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 1) % 7));
+  return day.toISOString().slice(0, 10);
+}
+/** Review-only posting slot. Does not enqueue a Meta post or produce a UTC publish event. */
+export function plannedCairoPublishingSlot(periodStart: string, day: string | null, time: string | null) {
+  const offset = day ? WEEK_DAYS_FROM_SATURDAY[day] : undefined;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(periodStart) || offset === undefined || !time || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
+  const date = new Date(`${periodStart}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== periodStart || date.getUTCDay() !== 6) return null;
+  date.setUTCDate(date.getUTCDate() + offset);
+  return `${date.toISOString().slice(0, 10)} ${time} Africa/Cairo`;
+}
 
 export const WEEKLY_RESULTS_FEEDBACK_CATEGORIES = [
   "factual_accuracy",

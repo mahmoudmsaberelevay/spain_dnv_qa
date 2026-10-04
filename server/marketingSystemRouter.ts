@@ -150,6 +150,7 @@ import {
 } from "../shared/marketingExecutiveBriefs";
 import {
   DEFAULT_WEEKLY_CONTENT_MIX,
+  enforceWeeklyMediaMinimum,
   findDisallowedWeeklyResultsData,
   isSaturdayDate,
   isValidCairoClockTime,
@@ -176,7 +177,7 @@ import {
 } from "./weeklyMarketingAutomationService";
 import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import { composeApprovedReelForReview, fingerprintMarketingAsset, fingerprintMarketingPreview } from "./reelCompositorService";
-import { getMediaProductionReadiness, queueSystemMediaForWeeklyPlan, regenerateSystemMediaFromFeedback, retryFailedMarketingMediaJob } from "./marketingMediaProductionService";
+import { getMediaProductionReadiness, queueSystemMediaForWeeklyPlan, regenerateCurrentWeekSystemMedia, regenerateSystemMediaFromFeedback, retryFailedMarketingMediaJob } from "./marketingMediaProductionService";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -284,7 +285,7 @@ const weeklyExecutiveBriefDecisionInput = z.object({
 });
 const weeklyResultsContentMixInput = z.object({
   research_update: z.number().int().min(0).max(12), static_post: z.number().int().min(0).max(12), carousel: z.number().int().min(0).max(12), reel: z.number().int().min(0).max(12), image: z.number().int().min(0).max(12), graphic: z.number().int().min(0).max(12), ad_setup: z.number().int().min(0).max(12),
-}).refine(value => Object.values(value).some(count => count > 0), "Choose at least one content-item type.");
+}).transform(enforceWeeklyMediaMinimum);
 const weeklyResultsSettingsInput = z.object({
   prepareDayOfWeek: z.number().int().min(0).max(6), prepareStartTime: z.string().refine(isValidCairoClockTime, "Use HH:MM Cairo time."), deliveryDeadlineTime: z.string().refine(isValidCairoClockTime, "Use HH:MM Cairo time."), preparationScheduleEnabled: z.boolean(),
   weeklyGoal: z.string().trim().max(4_000).optional(),
@@ -542,7 +543,7 @@ function parseWeeklyResultsSettings(row: typeof marketingWeeklyResultsSettings.$
     programPriorities: parseJson<Array<{ key: string; priority: number; note?: string }>>(row.programPrioritiesJson, []),
     updatedSourcesNote: row.updatedSourcesNote,
     creativeDirection: row.creativeDirection,
-    contentMix: parseJson<typeof DEFAULT_WEEKLY_CONTENT_MIX>(row.contentMixJson, DEFAULT_WEEKLY_CONTENT_MIX),
+    contentMix: enforceWeeklyMediaMinimum(parseJson<typeof DEFAULT_WEEKLY_CONTENT_MIX>(row.contentMixJson, DEFAULT_WEEKLY_CONTENT_MIX)),
     allocationRules: parseJson<Record<string, string>>(row.allocationRulesJson, {}),
     learningEnabled: row.learningEnabled,
     targetLikes30d: row.targetLikes30d,
@@ -653,10 +654,10 @@ function validateWeeklyResultsItemLanguage(item: Pick<typeof marketingWeeklyResu
   const metadata = parseJson<Record<string, unknown>>(item.metadataJson, {});
   const onScreenEnglishText = typeof metadata.onScreenEnglishText === "string" ? metadata.onScreenEnglishText : "";
   const languageProblems = [
-    item.scriptCopy ? (item.itemType === "reel" ? validateElevayArabicVoiceOverScript(item.scriptCopy) : validateArabicOnlyMarketingText(item.scriptCopy, "Script / marketing copy")) : (item.itemType === "reel" ? "A reel requires an Egyptian Arabic voice-over script before review." : null),
-    item.caption ? validateBilingualElevayCaption(item.caption, "Caption") : "An Arabic caption is required before individual review.",
-    item.cta ? validateArabicOnlyMarketingText(item.cta, "CTA") : null,
-    isVisualTextCreativeItemType(item.itemType) ? validateEnglishOnlyOnScreenText(onScreenEnglishText) : null,
+    item.scriptCopy ? validateElevayArabicVoiceOverScript(item.scriptCopy) : (item.itemType === "reel" ? "A reel requires an Egyptian Arabic voice-over script before review." : null),
+    item.caption ? validateElevayArabicVoiceOverScript(item.caption) : "An Egyptian Arabic caption is required before individual review.",
+    item.cta ? validateElevayArabicVoiceOverScript(item.cta) : null,
+    item.itemType === "reel" && onScreenEnglishText.trim().toUpperCase() !== "NONE" ? "Reels must not contain embedded text; enter NONE." : (isVisualTextCreativeItemType(item.itemType) ? validateEnglishOnlyOnScreenText(onScreenEnglishText) : null),
   ].filter((problem): problem is string => Boolean(problem));
   if (languageProblems.length > 0) throw new TRPCError({ code: "BAD_REQUEST", message: languageProblems[0] });
 }
@@ -2928,6 +2929,13 @@ export const marketingSystemRouter = router({
     await requireCapability(ctx.user, "manage_weekly_automation");
     const result = await queueSystemMediaForWeeklyPlan({ planId: input.planId, actorUserId: ctx.user.id });
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_media_production_jobs", input.planId, JSON.stringify({ queued: result.queued, reused: result.reused, provider: "manus-orchestrator", mediaBudgetOnly: true, publicationEnabled: false, campaignOperationsEnabled: false, metaOperationsEnabled: false, capiEnabled: false }));
+    return result;
+  }),
+
+  regenerateCurrentWeekMedia: protectedProcedure.input(z.object({ planId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "manage_weekly_automation");
+    const result = await regenerateCurrentWeekSystemMedia({ planId: input.planId, actorUserId: ctx.user.id });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_media_weekly_regeneration", input.planId, JSON.stringify({ weekStart: result.weekStart, queued: result.queued, skipped: result.skipped, reviewOnly: true, publicationEnabled: false, campaignOperationsEnabled: false, capiEnabled: false }));
     return result;
   }),
 

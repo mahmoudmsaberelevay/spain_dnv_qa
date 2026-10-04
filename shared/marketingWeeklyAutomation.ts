@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MIN_WEEKLY_REELS, MIN_WEEKLY_STATIC_POSTS } from "./marketingWeeklyResults";
 
 export const WEEKLY_AUTOMATION_CONTROL_KEY = "primary-weekly-multi-model" as const;
 export const WEEKLY_AUTOMATION_MONTHLY_CAP_USD = 100;
@@ -40,8 +41,22 @@ export const weeklyAutomationPlanSchema = z.object({
   })).max(8),
   adAuditRecommendations: z.array(z.string().trim().min(5).max(4_000)).max(12),
   crmMetaComparisonNotes: z.array(z.string().trim().min(5).max(4_000)).max(12),
-  items: z.array(weeklyAutomationItemSchema).min(1).max(12),
+  items: z.array(weeklyAutomationItemSchema).min(MIN_WEEKLY_REELS + MIN_WEEKLY_STATIC_POSTS).max(12),
   risksAndEvidenceGaps: z.array(z.string().trim().min(5).max(4_000)).max(12),
+}).superRefine((plan, ctx) => {
+  const staticPosts = plan.items.filter(item => item.itemType === "static_post");
+  const reels = plan.items.filter(item => item.itemType === "reel");
+  if (staticPosts.length < MIN_WEEKLY_STATIC_POSTS) ctx.addIssue({ code: "custom", path: ["items"], message: `At least ${MIN_WEEKLY_STATIC_POSTS} static posts are required for each week.` });
+  if (reels.length < MIN_WEEKLY_REELS) ctx.addIssue({ code: "custom", path: ["items"], message: `At least ${MIN_WEEKLY_REELS} reels are required for each week.` });
+  for (let index = 0; index < plan.items.length; index += 1) {
+    const item = plan.items[index]!;
+    if ((item.itemType === "static_post" || item.itemType === "reel") && (!item.plannedDay || !item.plannedTime)) {
+      ctx.addIssue({ code: "custom", path: ["items", index, "plannedDay"], message: "Every static post and reel needs a day and Cairo publishing time for owner review." });
+    }
+    if (item.itemType === "reel" && item.onScreenEnglishText.trim().toUpperCase() !== "NONE") {
+      ctx.addIssue({ code: "custom", path: ["items", index, "onScreenEnglishText"], message: "ELEVAY reels use no embedded text; set visual text to NONE." });
+    }
+  }
 });
 export type WeeklyAutomationPlanOutput = z.infer<typeof weeklyAutomationPlanSchema>;
 

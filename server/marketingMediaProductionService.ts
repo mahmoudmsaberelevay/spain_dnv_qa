@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { storagePut } from "./storage";
 import { generateElevayVideoVoiceOver } from "./elevenLabsTts";
@@ -8,8 +8,11 @@ import {
   marketingGeneratedMediaAssets,
   marketingMediaProductionControls,
   marketingMediaProductionJobs,
+  marketingWeeklyResultsItemEvents,
   marketingWeeklyResultsItems,
+  marketingWeeklyResultsPlans,
 } from "../drizzle/schema";
+import { currentCairoWeekStart } from "../shared/marketingWeeklyResults";
 import { isCreativeItemType } from "../shared/marketingCreativeLanguagePolicy";
 import { ELEVAY_AGENTIC_DESIGN_STANDARD } from "../shared/elevayAgenticDesignStandard";
 import { checkManusMediaAuthentication, mediaCredential, requireManusMediaAuthentication, MANUS_MEDIA_AUTH_MESSAGE } from "./manusMediaAuthentication";
@@ -285,6 +288,35 @@ export async function regenerateSystemMediaFromFeedback(input: { itemId: number;
   });
   const refreshed = { ...item, previewUrl: null, previewHash: null, metadataJson: revisionMetadata, status: "changes_requested" as const, updatedAt: now };
   return dispatchSystemMediaForWeeklyItem({ db, control, item: refreshed, actorUserId: input.actorUserId });
+}
+
+/** Regenerate the selected, unapproved creative items of only the current Cairo week. */
+export async function regenerateCurrentWeekSystemMedia(input: { planId: number; actorUserId: number }) {
+  const { db, control } = await controlOrThrow();
+  await requireManusMediaAuthentication();
+  await requireMediaRenderer();
+  const [latest] = await db.select().from(marketingWeeklyResultsPlans)
+    .where(eq(marketingWeeklyResultsPlans.periodStart, currentCairoWeekStart()))
+    .orderBy(desc(marketingWeeklyResultsPlans.version)).limit(1);
+  if (!latest || latest.id !== input.planId) throw new Error("Regeneration is available only for the latest plan of the current Cairo week.");
+  const rows = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.planId, latest.id));
+  const creatives = rows.filter(row => row.isSelected && ["static_post", "reel"].includes(row.itemType) && !["approved", "stopped", "superseded", "rejected"].includes(row.status));
+  if (!creatives.length) throw new Error("No unapproved static posts or reels are eligible for current-week regeneration.");
+  const active = await db.select({ itemId: marketingMediaProductionJobs.weeklyItemId }).from(marketingMediaProductionJobs)
+    .where(and(inArray(marketingMediaProductionJobs.weeklyItemId, creatives.map(row => row.id)), inArray(marketingMediaProductionJobs.state, ["dispatching", "waiting_manus", "processing", "waiting_input"])));
+  if (active.length) throw new Error("Some media tasks are still active. Wait for their verified completion before regenerating this week's previews.");
+  const remaining = await monthlyMediaBudgetRemaining(db, control);
+  const required = creatives.length * Number(control.perItemBudgetUsd);
+  if (remaining + 1e-9 < required) throw new Error(`This week's new previews need USD ${required.toFixed(2)}; the remaining monthly media budget is USD ${remaining.toFixed(2)}. Nothing was dispatched.`);
+  const jobs = [];
+  for (const item of creatives) {
+    const [feedback] = await db.select({ feedback: marketingWeeklyResultsItemEvents.feedback }).from(marketingWeeklyResultsItemEvents)
+      .where(and(eq(marketingWeeklyResultsItemEvents.itemId, item.id), eq(marketingWeeklyResultsItemEvents.action, "individual_send_back")))
+      .orderBy(desc(marketingWeeklyResultsItemEvents.createdAt)).limit(1);
+    const note = feedback?.feedback ? ` Owner's most recent comment: ${feedback.feedback.slice(0, 1200)}` : "";
+    jobs.push(await regenerateSystemMediaFromFeedback({ itemId: item.id, actorUserId: input.actorUserId, revisionInstruction: `Owner requested a fresh current-week version. Apply the active ELEVAY design instructions, Egyptian-Arabic copy and the exact item objective. Do not retain the old preview in the active media library.${note}` }));
+  }
+  return { weekStart: latest.periodStart, queued: jobs.length, skipped: rows.length - creatives.length, jobs, monthlyRemainingAfterReservationUsd: remaining - required, publicationEnabled: false as const };
 }
 
 const MAX_AUTOMATIC_MEDIA_RETRIES = 1;

@@ -21,7 +21,7 @@ import {
   marketingWeeklyResultsPreferenceMemories,
   marketingWeeklyResultsSettings,
 } from "../drizzle/schema";
-import { findDisallowedWeeklyResultsData, isSaturdayDate, normalizeWeeklyResultsText } from "../shared/marketingWeeklyResults";
+import { enforceWeeklyMediaMinimum, findDisallowedWeeklyResultsData, isSaturdayDate, normalizeWeeklyResultsText } from "../shared/marketingWeeklyResults";
 import {
   automationMonthKey,
   WEEKLY_AUTOMATION_CONTROL_KEY,
@@ -31,7 +31,7 @@ import {
   weeklyAutomationPlanSchema,
   type WeeklyAutomationPlanOutput,
 } from "../shared/marketingWeeklyAutomation";
-import { isCreativeItemType, isVisualTextCreativeItemType, validateArabicOnlyMarketingText, validateBilingualElevayCaption, validateElevayArabicVoiceOverScript, validateEnglishOnlyOnScreenText } from "../shared/marketingCreativeLanguagePolicy";
+import { isCreativeItemType, isVisualTextCreativeItemType, validateArabicOnlyMarketingText, validateElevayArabicVoiceOverScript, validateEnglishOnlyOnScreenText } from "../shared/marketingCreativeLanguagePolicy";
 import { queueSystemMediaForWeeklyPlan } from "./marketingMediaProductionService";
 
 const REQUIRED_ALIASES = ["openai-editorial", "editorial-challenge", "manus-orchestrator"] as const;
@@ -279,11 +279,11 @@ function publicPlanningSnapshot(context: Awaited<ReturnType<typeof readAutomatio
   if (!context.settings || !context.brandBook) throw new Error("Weekly automation prerequisites are incomplete.");
   return {
     periodStart,
-    languagePolicy: "All campaign copy, captions, CTAs, scripts and voice-over must be Arabic. Every reel voice-over script must be written in Egyptian Arabic. Only approved country names and the ELEVAY company name may be written in English inside voice-over scripts. On-screen visual text must be English only. Never include personal data.",
+    languagePolicy: "All campaign copy, captions, CTAs, post content and reel scripts must be natural Egyptian Arabic. Only approved country names and ELEVAY as the company name may be written in English. Static/carousel visuals may show English-only text; reels have no embedded text. Never include personal data.",
     executionBoundary: "Prepare review-ready material only. Do not publish, schedule posts, create or edit campaigns, spend money, send CAPI events, contact people, or mutate CRM records.",
     settings: {
       weeklyGoal: context.settings.weeklyGoal, programPriorities: asJson(context.settings.programPrioritiesJson, []), updatedSourcesNote: context.settings.updatedSourcesNote,
-      creativeDirection: context.settings.creativeDirection, contentMix: asJson(context.settings.contentMixJson, {}), allocationRules: asJson(context.settings.allocationRulesJson, {}), targets: {
+      creativeDirection: context.settings.creativeDirection, contentMix: enforceWeeklyMediaMinimum(asJson(context.settings.contentMixJson, {})), allocationRules: asJson(context.settings.allocationRulesJson, {}), targets: {
         likes30d: context.settings.targetLikes30d, views30d: context.settings.targetViews30d, leads30d: context.settings.targetLeads30d, qualifiedLeads30d: context.settings.targetQualifiedLeads30d, signedClients30d: context.settings.targetSignedClients30d, cplEgp: Number(context.settings.targetCostPerLeadEgp), maxAdSpend30dEgp: Number(context.settings.targetMaxAdSpend30dEgp),
       },
     },
@@ -378,6 +378,7 @@ function councilPrompt(snapshot: Record<string, unknown>, role: "strategy" | "ch
   return [
     strategy ? "You are ELEVAY's Arabic-first marketing strategist." : "You are ELEVAY's independent critical marketing reviewer.",
     strategy ? "Create a concrete weekly creative strategy that is safe for later human review." : "Challenge the weekly strategy: detect unsupported claims, brand drift, execution issues, and performance risks. Propose corrections.",
+    "Plan at least two distinct vertical reels and five distinct static posts for the Saturday–Friday Cairo week. Provide an exact Cairo publishing day and HH:MM time for each. Write all campaign copy, captions, post content, CTAs and voice-over in natural Egyptian Arabic; only approved country names and ELEVAY may appear in English. No reel-embedded text; static visual text is English only. Each post/reel will receive its own system-produced preview before final approval.",
     "Use only the owner-provided internal programme references and the explicit ownerConfirmedInternalClaims in the planning context. You may use an owner-confirmed internal claim only for internal review material and must reference its ID in ownerConfirmedInternalClaimIds. Do not call it official, government evidence, legal advice, or publication authority. Do not retrieve, browse, cite, or rely on government or other external sources. Mark any point needing external verification as an evidence gap.",
     "Return only the requested JSON. Do not include personal data. Do not claim visa outcomes or guarantees. Do not propose publishing, campaign editing, spend, messaging, or any external action.",
     "Planning context:", JSON.stringify(snapshot),
@@ -415,7 +416,8 @@ async function createManusWeeklyTask(snapshot: Record<string, unknown>, strategy
   const compactContext = compactManusPlanningContext(snapshot as Record<string, any>);
   const prompt = [
     "You are the ELEVAY weekly creative production orchestrator. Create an internal, review-ready weekly production pack after considering the OpenAI strategist and Claude challenger opinions below.",
-    "Strict rules: all marketing copy/captions/CTAs/scripts/voice-over must be Arabic. Every reel voice-over script must be written in Egyptian Arabic. Inside a voice-over, only approved country names and ELEVAY as the company name may be written in English. Text visibly placed inside visual assets must be English only; use NONE when a visual has no text. Never use client, Lead, contact, passport, phone, email, or other personal data.",
+    "Strict rules: write ALL marketing copy, captions, CTAs, post content, scripts and voice-over in natural Egyptian Arabic. Only approved country names and ELEVAY as the company name may be written in English. Place English-only text inside static visuals where appropriate; set every reel onScreenEnglishText to NONE and embed NO text inside its video. Never use client, Lead, contact, passport, phone, email, or other personal data.",
+    "Mandatory weekly media pack: AT LEAST two distinct 9:16 reels and five distinct static_post items, each with plannedDay and plannedTime (Africa/Cairo) for the Saturday–Friday week. These are draft publishing slots only, not a command to publish. Do not substitute a carousel, ad_setup, graphic, image or research_update for a static_post or a reel.",
     "Use only owner-provided internal programme references contained in the planning context. Do not browse, retrieve, cite, or use government or other external sources. Every researchResults.sourceUrl must use internal:// followed by an owner-provided referenceKey. You may use a statement from ownerConfirmedInternalClaims only by returning its ID in ownerConfirmedInternalClaimIds; it is owner-confirmed internal information for review only, not official evidence, legal advice, or publication authority. An approvedOfficialClaims ID remains the only official-evidence claim reference. If a fact needs external verification, list it as an evidence gap.",
     "Prepare final-quality research summary, static/carousel/reel concepts and any safe attachment deliverables you can create. Do not publish, schedule, create or edit ads/campaigns, spend money, send CAPI events, contact anyone, or change a CRM record. Every output is for review only.",
     `Week starting: ${periodStart}`,
@@ -489,9 +491,9 @@ export async function startWeeklyAutomationCycle(input: { triggerType: "manual_t
 
 function generatedItemLanguageProblem(item: WeeklyAutomationPlanOutput["items"][number]) {
   if (!isCreativeItemType(item.itemType)) return null;
-  return (item.itemType === "reel" ? validateElevayArabicVoiceOverScript(item.scriptCopy) : validateArabicOnlyMarketingText(item.scriptCopy, "Generated script"))
-    || validateBilingualElevayCaption(item.caption, "Generated caption")
-    || validateArabicOnlyMarketingText(item.cta, "Generated CTA")
+  return validateElevayArabicVoiceOverScript(item.scriptCopy)
+    || validateElevayArabicVoiceOverScript(item.caption)
+    || validateElevayArabicVoiceOverScript(item.cta)
     || validateArabicOnlyMarketingText(item.hashtags.join(" "), "Generated hashtags")
     || (isVisualTextCreativeItemType(item.itemType) ? validateEnglishOnlyOnScreenText(item.onScreenEnglishText) : null);
 }

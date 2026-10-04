@@ -3,9 +3,12 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_WEEKLY_CONTENT_MIX,
+  currentCairoWeekStart,
+  enforceWeeklyMediaMinimum,
   findDisallowedWeeklyResultsData,
   isSaturdayDate,
   isValidCairoClockTime,
+  plannedCairoPublishingSlot,
   WEEKLY_RESULTS_EXECUTION_BOUNDARY,
   weeklyResultsItemCanTransition,
 } from "../shared/marketingWeeklyResults";
@@ -20,7 +23,12 @@ describe("Weekly Results shared policy", () => {
     expect(isValidCairoClockTime("24:00")).toBe(false);
     expect(isSaturdayDate("2026-10-03")).toBe(true);
     expect(isSaturdayDate("2026-09-29")).toBe(false);
-    expect(DEFAULT_WEEKLY_CONTENT_MIX).toEqual({ research_update: 0, static_post: 1, carousel: 1, reel: 1, image: 1, graphic: 1, ad_setup: 0 });
+    expect(DEFAULT_WEEKLY_CONTENT_MIX).toEqual({ research_update: 0, static_post: 5, carousel: 0, reel: 2, image: 0, graphic: 0, ad_setup: 0 });
+    expect(enforceWeeklyMediaMinimum({ static_post: 1, reel: 0, carousel: 3 })).toEqual({ static_post: 5, reel: 2, carousel: 3 });
+    expect(currentCairoWeekStart(new Date("2026-10-04T09:00:00.000Z"))).toBe("2026-10-03");
+    expect(plannedCairoPublishingSlot("2026-10-03", "Monday", "17:30")).toBe("2026-10-05 17:30 Africa/Cairo");
+    expect(plannedCairoPublishingSlot("2026-10-03", "Friday", "20:00")).toBe("2026-10-09 20:00 Africa/Cairo");
+    expect(plannedCairoPublishingSlot("2026-10-01", "Monday", "17:30")).toBeNull();
   });
 
   it("preserves individual-only review decisions and terminal stop behavior", () => {

@@ -18,15 +18,15 @@ const validPlan = {
   adAuditRecommendations: [],
   crmMetaComparisonNotes: [],
   risksAndEvidenceGaps: ["لا تُستخدم أي معلومة برنامجية إلا عند ربطها بادعاء معتمد."],
-  items: [{
-    itemType: "reel", title: "فكرة ريل تجريبية", programKey: "spain_dnv", objective: "تقديم محتوى تعليمي قابل للمراجعة", creativeDirection: "Premium editorial look", scriptCopy: "اكتشف خيارات الإقامة مع Elevay.", caption: "محتوى تعليمي من Elevay", cta: "تواصل معنا", hashtags: ["#إليفاي"], onScreenEnglishText: "SPAIN DNV", visualBrief: "Luxury editorial composition", plannedDay: "Monday", plannedTime: "10:00", approvedClaimIds: [], ownerConfirmedInternalClaimIds: [], assetFileNames: [], adRecommendation: "No campaign action; review only.",
-  }],
+  items: Array.from({ length: 7 }, (_, index) => ({
+    itemType: index < 2 ? "reel" : "static_post", title: `فكرة تجريبية ${index + 1}`, programKey: "spain_dnv", objective: "تقديم محتوى تعليمي قابل للمراجعة", creativeDirection: "Premium editorial look", scriptCopy: "تعليمات داخلية", caption: "محتوى تعليمي", cta: "تواصل معنا", hashtags: ["#إليفاي"], onScreenEnglishText: index < 2 ? "NONE" : "SPAIN RESIDENCY", visualBrief: "Luxury editorial composition", plannedDay: "Monday", plannedTime: "10:00", approvedClaimIds: [], ownerConfirmedInternalClaimIds: [], assetFileNames: [], adRecommendation: "No campaign action; review only.",
+  })),
 };
 
 describe("bounded weekly multi-model automation", () => {
   it("requires Egyptian Arabic narration instructions with country and company exceptions", () => {
     const service = read("server/weeklyMarketingAutomationService.ts");
-    expect(service).toContain("Every reel voice-over script must be written in Egyptian Arabic");
+    expect(service).toContain("reel scripts must be natural Egyptian Arabic");
     expect(service).toContain("ELEVAY as the company name may be written in English");
     expect(service).toContain("validateElevayArabicVoiceOverScript(item.scriptCopy)");
   });
@@ -42,9 +42,13 @@ describe("bounded weekly multi-model automation", () => {
   });
 
   it("accepts only bounded review-plan output with an explicit per-item schema", () => {
-    expect(weeklyAutomationPlanSchema.parse(validPlan).items).toHaveLength(1);
+    expect(weeklyAutomationPlanSchema.parse(validPlan).items).toHaveLength(7);
     expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: [] })).toThrow();
     expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: [{ ...validPlan.items[0], itemType: "publish_now" }] })).toThrow();
+    expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: validPlan.items.slice(1) })).toThrow(/At least 2 reels/);
+    expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: validPlan.items.slice(0, -1) })).toThrow(/At least 5 static posts/);
+    expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: [{ ...validPlan.items[0], plannedTime: null }, ...validPlan.items.slice(1)] })).toThrow(/publishing time/);
+    expect(() => weeklyAutomationPlanSchema.parse({ ...validPlan, items: [{ ...validPlan.items[0], onScreenEnglishText: "SUMMER" }, ...validPlan.items.slice(1)] })).toThrow(/no embedded text/);
   });
 
   it("derives the Saturday Cairo period correctly and only starts at the configured Cairo minute", () => {

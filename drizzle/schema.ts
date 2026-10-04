@@ -3561,3 +3561,30 @@ export const aiCouncilDecisions = mysqlTable("aiCouncilDecisions", {
 });
 export type AiCouncilDecision = typeof aiCouncilDecisions.$inferSelect;
 export type InsertAiCouncilDecision = typeof aiCouncilDecisions.$inferInsert;
+
+// ─── META ADS PRODUCTION / READ-ONLY REPORT SNAPSHOTS ───────────────────────
+// Immutable reporting records for the one approved EGP Ads account. Snapshot JSON
+// contains only aggregate campaign/ad delivery metrics and review-only proposals;
+// it must never include a token, a client/Lead identity, a destination payload, or
+// a publish/campaign/spend instruction.
+export const marketingMetaAdsProductionReports = mysqlTable("marketing_meta_ads_production_reports", {
+  id: int("id").autoincrement().primaryKey(),
+  reportKey: varchar("reportKey", { length: 96 }).notNull(),
+  adAccountId: varchar("adAccountId", { length: 32 }).notNull(),
+  currency: varchar("currency", { length: 10 }).notNull(),
+  windowStart: varchar("windowStart", { length: 10 }).notNull(),
+  windowEnd: varchar("windowEnd", { length: 10 }).notNull(),
+  reportRunAt: bigint("reportRunAt", { mode: "number" }).notNull(),
+  reportHash: varchar("reportHash", { length: 64 }).notNull(),
+  snapshotJson: mediumtext("snapshotJson").notNull(),
+  capturedByUserId: int("capturedByUserId").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_meta_ads_production_report_key_unique").on(table.reportKey),
+  uniqueIndex("marketing_meta_ads_production_report_hash_unique").on(table.reportHash),
+  index("marketing_meta_ads_production_source_window_idx").on(table.adAccountId, table.windowStart, table.windowEnd),
+  index("marketing_meta_ads_production_run_idx").on(table.reportRunAt),
+  index("marketing_meta_ads_production_captured_by_idx").on(table.capturedByUserId, table.reportRunAt),
+]);
+export type MarketingMetaAdsProductionReport = typeof marketingMetaAdsProductionReports.$inferSelect;
+export type InsertMarketingMetaAdsProductionReport = typeof marketingMetaAdsProductionReports.$inferInsert;

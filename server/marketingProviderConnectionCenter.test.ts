@@ -57,7 +57,7 @@ describe("Provider Connection Center and scoped administrator", () => {
     expect(read("client/src/components/MobileLayout.tsx")).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
     const hub = read("client/src/pages/marketing/AgenticMarketingHub.tsx");
     const settings = read("client/src/pages/marketing/WeeklyResults.tsx");
-    expect(hub).toContain("Everything is now organized inside two main sections");
+    expect(hub).toContain("Choose one of three workspaces");
     expect(settings).toContain("Provider Connections");
     expect(settings).toContain('href: "/marketing/provider-connections"');
   });

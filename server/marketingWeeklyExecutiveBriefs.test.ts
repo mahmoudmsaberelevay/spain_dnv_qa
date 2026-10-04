@@ -65,7 +65,7 @@ describe("Weekly Executive Brief CRM integration contract", () => {
     expect(app).toContain('path="/marketing/weekly-executive-briefs"');
     expect(workspace).toContain('title: "Decision Log"');
     expect(workspace).toContain('href: "/marketing/weekly-executive-briefs"');
-    expect(hub).toContain("Everything is now organized inside two main sections");
+    expect(hub).toContain("Choose one of three workspaces");
     expect(page).toContain("No schedule, email, message, campaign, spend, publication, provider call, CAPI event, or CRM mutation");
     expect(page).not.toContain("fullName");
     expect(page).not.toContain("passport");

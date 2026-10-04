@@ -8,10 +8,10 @@ const tools = [
   {
     icon: Sparkles,
     title: "AI Agentic Marketing System",
-    description: "Open the central Settings and Production workspace for Brand Identity, Design System, targets, weekly research, content, reels, static designs, ads, approvals, and governed controls.",
+    description: "Open the three Agentic workspaces: Settings, Media Production, and META ADS Production.",
     href: "/marketing/agentic-system",
     color: "from-[#C9A84C] via-[#5BA3B8] to-[#1A3A5C]",
-    badge: "Settings + Production",
+    badge: "Three workspaces",
   },
   {
     icon: FolderOpen,
@@ -124,12 +124,13 @@ export default function MarketingDashboard() {
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
             <div className="flex items-center gap-2 text-[#a9d6e3]"><Sparkles className="h-5 w-5" /><span className="text-xs font-bold uppercase tracking-[.15em]">AI Agentic Marketing</span></div>
-            <h2 id="agentic-workspace-heading" className="mt-2 text-2xl font-semibold text-white">Start with Settings or Production</h2>
-            <p className="mt-2 text-sm leading-6 text-white">Settings controls the Brand Identity, official logo, Design System, 30-day targets, and weekly timing. Production is where you review research, posts, static designs, reels, and ad proposals.</p>
+            <h2 id="agentic-workspace-heading" className="mt-2 text-2xl font-semibold text-white">Three Agentic Marketing workspaces</h2>
+            <p className="mt-2 text-sm leading-6 text-white">Settings governs the brand and schedule. Media Production holds weekly static posts and reels. META ADS Production holds dated account reports and separately reviewed ad proposals.</p>
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:min-w-[360px]">
-            <Button onClick={() => navigate("/marketing/weekly-results?view=setup")} className="h-auto bg-[#5BA3B8] px-4 py-3 text-[#0A1628] hover:bg-[#77b7c8]"><Settings2 className="mr-2 h-4 w-4" />Open Settings</Button>
-            <Button onClick={() => navigate("/marketing/weekly-results")} variant="outline" className="h-auto border-[#EBD990]/45 bg-[#C9A84C]/10 px-4 py-3 text-[#f6dda3] hover:bg-[#C9A84C]/20 hover:text-white"><CalendarClock className="mr-2 h-4 w-4" />Open Production</Button>
+          <div className="grid grid-cols-1 gap-3 sm:min-w-[360px] sm:grid-cols-3">
+            <Button onClick={() => navigate("/marketing/agentic-settings")} className="h-auto bg-[#5BA3B8] px-4 py-3 text-[#0A1628] hover:bg-[#77b7c8]"><Settings2 className="mr-2 h-4 w-4" />Settings</Button>
+            <Button onClick={() => navigate("/marketing/media-production")} variant="outline" className="h-auto border-[#EBD990]/45 bg-[#C9A84C]/10 px-4 py-3 text-[#f6dda3] hover:bg-[#C9A84C]/20 hover:text-white"><CalendarClock className="mr-2 h-4 w-4" />Media Production</Button>
+            <Button onClick={() => navigate("/marketing/meta-ads-production")} variant="outline" className="h-auto border-[#5BA3B8]/45 bg-[#5BA3B8]/10 px-4 py-3 text-[#b3e7f2] hover:bg-[#5BA3B8]/20 hover:text-white"><Target className="mr-2 h-4 w-4" />META ADS</Button>
           </div>
         </div>
       </section>
