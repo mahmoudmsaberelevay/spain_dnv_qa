@@ -53,4 +53,21 @@ describe("review-only reel compositor", () => {
     expect(__reelCompositorForTests.isPrivateIp("10.0.0.5")).toBe(true);
     expect(__reelCompositorForTests.isPrivateIp("8.8.8.8")).toBe(false);
   });
+
+  it("composites a three-second white outro from the supplied logo input", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "reel-compositor-logo-outro-"));
+    tempDirs.push(dir);
+    const source = path.join(dir, "source.mp4");
+    const narration = path.join(dir, "narration.mp3");
+    const logo = path.join(dir, "brand.png");
+    const output = path.join(dir, "output.mp4");
+    await ffmpeg(["-f", "lavfi", "-i", "color=c=#1A3A5C:s=360x640:d=5:r=30", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]);
+    await ffmpeg(["-f", "lavfi", "-i", "sine=frequency=660:duration=1", "-c:a", "libmp3lame", narration]);
+    await ffmpeg(["-f", "lavfi", "-i", "color=c=#5BA3B8:s=80x30:d=1", "-frames:v", "1", logo]);
+    const result = await __reelCompositorForTests.composeLocal(source, narration, output, logo);
+    expect(result.outputProbe.durationMs).toBeGreaterThanOrEqual(4800);
+    expect(result.outputProbe.width).toBe(1080);
+    expect(result.outputProbe.height).toBe(1920);
+    expect(result.outputProbe.audioCodec).toBeTruthy();
+  });
 });

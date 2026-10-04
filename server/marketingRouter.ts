@@ -11,7 +11,7 @@ import { generatePlanRuleBased, generateWeekMediaPrompts } from "./marketingTemp
 import {
   ELEVAY_ARABIC_VOICE_DEFAULTS,
   ElevenLabsVoiceUnavailableError,
-  generateElevayArabicVoiceOver,
+  generateElevayVideoVoiceOver,
 } from "./elevenLabsTts";
 import { generateProgramProposal } from "./marketingProposalService";
 import { proposalInputSchema } from "./marketingProposalCalculator";
@@ -367,7 +367,7 @@ export const marketingRouter = router({
     }))
     .mutation(async ({ input }) => {
       try {
-        const result = await generateElevayArabicVoiceOver(input.text);
+        const result = await generateElevayVideoVoiceOver(input.text);
         return {
           ...result,
           settings: {

@@ -337,6 +337,8 @@ async function startServer() {
   app.post("/api/scheduled/clientChatMessage", scheduledClientChatMessageHandler);
   const { scheduledWeeklyMarketingAutomationHandler } = await import("../scheduledWeeklyMarketingAutomationHandler");
   app.post("/api/scheduled/weeklyMarketingAutomation", scheduledWeeklyMarketingAutomationHandler);
+  const { scheduledMarketingMediaReconciliationHandler } = await import("../scheduledMarketingMediaReconciliationHandler");
+  app.post("/api/scheduled/marketingMediaReconciliation", scheduledMarketingMediaReconciliationHandler);
 
   // Backup list endpoint
   app.get("/api/backup/list", requireBackupAdmin, (req, res) => {

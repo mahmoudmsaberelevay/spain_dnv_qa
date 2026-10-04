@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { storagePut } from "./storage";
-import { generateElevayArabicVoiceOver } from "./elevenLabsTts";
+import { generateElevayVideoVoiceOver } from "./elevenLabsTts";
 import { composeApprovedReelForReview } from "./reelCompositorService";
 import {
   marketingGeneratedMediaAssets,
@@ -13,6 +13,8 @@ import {
 import { isCreativeItemType } from "../shared/marketingCreativeLanguagePolicy";
 import { ELEVAY_AGENTIC_DESIGN_STANDARD } from "../shared/elevayAgenticDesignStandard";
 import { checkManusMediaAuthentication, mediaCredential, requireManusMediaAuthentication, MANUS_MEDIA_AUTH_MESSAGE } from "./manusMediaAuthentication";
+import { estimateMediaCompletion } from "../shared/marketingMediaEta";
+import { applyOfficialElevayLogoToStatic } from "./elevayBrandMedia";
 
 const CONTROL_KEY = "primary-manus-review-media";
 const MONTHLY_CAP_USD = 100;
@@ -83,17 +85,16 @@ async function controlOrThrow() {
 
 export async function getMediaProductionReadiness() {
   const auth = await checkManusMediaAuthentication();
-  await reconcileWaitingMarketingMediaJobs();
-  await repairMissingSystemMediaPreviewLinks();
   const db = await dbOrThrow();
   const [control] = await db.select().from(marketingMediaProductionControls).where(eq(marketingMediaProductionControls.controlKey, CONTROL_KEY)).limit(1);
   const month = currentCairoMonth();
   const [totals] = await db.select({ total: sql<string>`COALESCE(SUM(${marketingMediaProductionJobs.reservedCostUsd}), 0)` })
     .from(marketingMediaProductionJobs).where(sql`DATE_FORMAT(FROM_UNIXTIME(${marketingMediaProductionJobs.createdAt} / 1000), '%Y-%m') = ${month}`);
-  const jobs = await db.select().from(marketingMediaProductionJobs).orderBy(desc(marketingMediaProductionJobs.createdAt)).limit(48);
+  const jobs = await db.select().from(marketingMediaProductionJobs).orderBy(desc(marketingMediaProductionJobs.createdAt)).limit(80);
+  const now = Date.now();
   return {
     control: control ? { isEnabled: control.isEnabled, state: control.state, monthlyBudgetUsd: Number(control.monthlyBudgetUsd), perItemBudgetUsd: Number(control.perItemBudgetUsd), providerAlias: control.providerAlias, lastError: control.lastError } : null,
-    month, budgetUsedUsd: Number(totals?.total ?? 0), providerAuthentication: { ready: auth.ready, checkedAt: auth.checkedAt, message: auth.ready ? null : MANUS_MEDIA_AUTH_MESSAGE }, jobs: jobs.map(job => ({ id: job.id, weeklyItemId: job.weeklyItemId, mediaKind: job.mediaKind, state: job.state, reservedCostUsd: Number(job.reservedCostUsd), manusTaskUrl: job.manusTaskUrl, errorSummary: job.errorSummary, createdAt: job.createdAt })),
+    month, budgetUsedUsd: Number(totals?.total ?? 0), providerAuthentication: { ready: auth.ready, checkedAt: auth.checkedAt, message: auth.ready ? null : MANUS_MEDIA_AUTH_MESSAGE }, jobs: jobs.slice(0, 48).map(job => ({ id: job.id, weeklyItemId: job.weeklyItemId, mediaKind: job.mediaKind, state: job.state, reservedCostUsd: Number(job.reservedCostUsd), manusTaskUrl: job.manusTaskUrl, errorSummary: job.errorSummary, createdAt: job.createdAt, updatedAt: job.updatedAt, eta: estimateMediaCompletion(job, jobs, now) })),
   };
 }
 
@@ -113,12 +114,12 @@ function mediaPrompt(item: WeeklyItem, kind: "static" | "reel") {
     common.push(`Mandatory owner revision instruction: ${revisionInstruction}`, "Replace the prior design completely. Do not recreate, retain, or refer to the prior preview.");
   }
   if (kind === "reel") return [...common,
-    "Create one finished vertical 9:16 MP4 reel, 15–30 seconds, no embedded on-screen text, no spoken narration and no music. The separately generated narration source must be Egyptian Arabic, with English limited to approved country names and ELEVAY. Use visual storytelling only; end with the approved ELEVAY logo outro on a white background. Return exactly one playable MP4 attachment.",
+    "Create one vertical 9:16 MP4 narrative reel, 15–30 seconds, no embedded on-screen text, no spoken narration, no music, NO logo or brand mark. The CRM adds narration and the exact official logo outro after generation. Never recreate the logo with AI. Return exactly one playable MP4 attachment.",
   ].join("\n");
   const englishText = typeof metadata.onScreenEnglishText === "string" && metadata.onScreenEnglishText.trim()
     ? metadata.onScreenEnglishText.trim() : systemGeneratedEnglishVisualText(item);
   return [...common,
-    `Create one finished ELEVAY static social image, portrait 4:5. Render this exact English-only in-design text with premium readable typography: ${englishText}. Do not render Arabic or any other visible text. Return exactly one PNG or JPEG attachment.`,
+    `Create one finished ELEVAY static social image, portrait 4:5. Render this exact English-only in-design text with premium readable typography: ${englishText}. Do not render Arabic or any other visible text. Leave the upper-left 350×120 px quiet and free of typography. DO NOT generate or imitate an ELEVAY logo or brand mark: the CRM adds the exact official source logo after generation. Return exactly one PNG or JPEG attachment.`,
   ].join("\n");
 }
 
@@ -337,31 +338,43 @@ async function applyMarketingMediaManusWebhookUnsafe(payload: any) {
   if (!taskId) return false;
   const db = await dbOrThrow();
   const [job] = await db.select().from(marketingMediaProductionJobs).where(eq(marketingMediaProductionJobs.manusTaskId, taskId)).limit(1);
-  if (!job || job.state === "completed") return false;
+  if (!job || !["waiting_manus", "waiting_input"].includes(job.state)) return false;
+  // The signed webhook and the background scheduler may observe the same stop.
+  const [claimed] = await db.update(marketingMediaProductionJobs).set({ state: "processing", updatedAt: Date.now() })
+    .where(and(eq(marketingMediaProductionJobs.id, job.id), sql`${marketingMediaProductionJobs.state} IN ('waiting_manus', 'waiting_input')`));
+  if (Number((claimed as { affectedRows?: number })?.affectedRows ?? 0) !== 1) return false;
   const attachments = Array.isArray(payload.task_detail?.attachments) ? payload.task_detail.attachments : [];
   const attachment = pickAttachment(attachments, job.mediaKind);
   if (!attachment || typeof attachment.url !== "string") throw new Error("Manus media task completed without the required visual attachment.");
   const source = await fetch(attachment.url, { signal: AbortSignal.timeout(90_000) });
   if (!source.ok) throw new Error("Generated media attachment could not be downloaded.");
-  const bytes = Buffer.from(await source.arrayBuffer());
+  let bytes: Buffer = Buffer.from(await source.arrayBuffer());
   if (bytes.length === 0 || bytes.length > 80 * 1024 * 1024) throw new Error("Generated media attachment is empty or exceeds the review limit.");
+  let exactLogoSha256: string | null = null;
+  if (job.mediaKind !== "reel") {
+    const branded = await applyOfficialElevayLogoToStatic(bytes);
+    bytes = branded.bytes;
+    exactLogoSha256 = branded.logoSha256;
+  }
   const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
-  const mimeType = job.mediaKind === "reel" ? "video/mp4" : (source.headers.get("content-type")?.split(";")[0] || "image/png");
-  const extension = job.mediaKind === "reel" ? "mp4" : (mimeType.includes("jpeg") ? "jpg" : mimeType.includes("webp") ? "webp" : "png");
+  const mimeType = job.mediaKind === "reel" ? "video/mp4" : "image/png";
+  const extension = job.mediaKind === "reel" ? "mp4" : "png";
   const storageKey = `marketing/system-media/${job.weeklyItemId}/${sha256}.${extension}`;
   const stored = await storagePut(storageKey, bytes, mimeType);
   const now = Date.now();
   if (job.mediaKind === "reel") {
     const [item] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, job.weeklyItemId)).limit(1);
     if (!item?.scriptCopy) throw new Error("A reel requires its final Arabic script before narration composition.");
-    const narration = await generateElevayArabicVoiceOver(item.scriptCopy);
+    const narration = await generateElevayVideoVoiceOver(item.scriptCopy);
     const composed = await composeApprovedReelForReview({ weeklyItemId: item.id, sourceVideo: { url: stored.url, sha256, mimeType }, narration: { url: narration.url, sha256: narration.sha256, mimeType: "audio/mpeg" } });
     await db.update(marketingGeneratedMediaAssets).set({ status: "superseded", supersededAt: now, updatedAt: now }).where(and(eq(marketingGeneratedMediaAssets.weeklyItemId, item.id), eq(marketingGeneratedMediaAssets.status, "review_ready"), isNull(marketingGeneratedMediaAssets.supersededAt)));
-    await db.insert(marketingGeneratedMediaAssets).values({ assetKey: `system-media:reel:${item.id}:${composed.outputSha256}`, weeklyItemId: item.id, contentPacketId: null, assetType: "reel", providerAlias: "manus-orchestrator", origin: "system_generated", generationTaskId: taskId, status: "review_ready", storageKey: composed.outputStorageKey, assetUrl: composed.outputUrl, assetSha256: composed.outputSha256, mimeType: "video/mp4", metadataJson: JSON.stringify({ mediaJobId: job.id, inputSourceSha256: sha256, narrationSha256: narration.sha256, reviewOnly: true }), supersededAt: null, generatedAt: now, createdAt: now, updatedAt: now });
-    await db.update(marketingWeeklyResultsItems).set({ previewUrl: composed.outputUrl, previewHash: composed.outputSha256, status: "draft", blockedReason: null, updatedAt: now }).where(eq(marketingWeeklyResultsItems.id, item.id));
+    await db.insert(marketingGeneratedMediaAssets).values({ assetKey: `system-media:reel:${item.id}:${composed.outputSha256}`, weeklyItemId: item.id, contentPacketId: null, assetType: "reel", providerAlias: "manus-orchestrator", origin: "system_generated", generationTaskId: taskId, status: "review_ready", storageKey: composed.outputStorageKey, assetUrl: composed.outputUrl, assetSha256: composed.outputSha256, mimeType: "video/mp4", metadataJson: JSON.stringify({ mediaJobId: job.id, inputSourceSha256: sha256, narrationSha256: narration.sha256, narrationScript: narration.script, reviewOnly: true }), supersededAt: null, generatedAt: now, createdAt: now, updatedAt: now });
+    let currentMetadata: Record<string, unknown> = {};
+    try { currentMetadata = JSON.parse(item.metadataJson || "{}"); } catch { /* replace malformed optional metadata */ }
+    await db.update(marketingWeeklyResultsItems).set({ previewUrl: composed.outputUrl, previewHash: composed.outputSha256, status: "draft", blockedReason: null, metadataJson: JSON.stringify({ ...currentMetadata, finalNarrationScript: narration.script, narrationLanguage: "Egyptian Arabic" }), updatedAt: now }).where(eq(marketingWeeklyResultsItems.id, item.id));
   } else {
     await db.update(marketingGeneratedMediaAssets).set({ status: "superseded", supersededAt: now, updatedAt: now }).where(and(eq(marketingGeneratedMediaAssets.weeklyItemId, job.weeklyItemId), eq(marketingGeneratedMediaAssets.status, "review_ready"), isNull(marketingGeneratedMediaAssets.supersededAt)));
-    await db.insert(marketingGeneratedMediaAssets).values({ assetKey: `system-media:static:${job.weeklyItemId}:${sha256}`, weeklyItemId: job.weeklyItemId, contentPacketId: null, assetType: "static", providerAlias: "manus-orchestrator", origin: "system_generated", generationTaskId: taskId, status: "review_ready", storageKey, assetUrl: stored.url, assetSha256: sha256, mimeType, metadataJson: JSON.stringify({ mediaJobId: job.id, reviewOnly: true }), supersededAt: null, generatedAt: now, createdAt: now, updatedAt: now });
+    await db.insert(marketingGeneratedMediaAssets).values({ assetKey: `system-media:static:${job.weeklyItemId}:${sha256}`, weeklyItemId: job.weeklyItemId, contentPacketId: null, assetType: "static", providerAlias: "manus-orchestrator", origin: "system_generated", generationTaskId: taskId, status: "review_ready", storageKey, assetUrl: stored.url, assetSha256: sha256, mimeType, metadataJson: JSON.stringify({ mediaJobId: job.id, exactOfficialLogoSha256: exactLogoSha256, reviewOnly: true }), supersededAt: null, generatedAt: now, createdAt: now, updatedAt: now });
     await db.update(marketingWeeklyResultsItems).set({ previewUrl: stored.url, previewHash: sha256, status: "draft", blockedReason: null, updatedAt: now }).where(eq(marketingWeeklyResultsItems.id, job.weeklyItemId));
   }
   await db.update(marketingMediaProductionJobs).set({ state: "completed", taskAttachmentsJson: JSON.stringify(attachments.map((attachment: any) => ({ file_name: attachment.file_name, size_bytes: attachment.size_bytes }))), completedAt: now, updatedAt: now }).where(eq(marketingMediaProductionJobs.id, job.id));
@@ -393,24 +406,40 @@ function collectTaskAttachments(value: unknown): Array<{ filename?: string; file
   return [...own, ...Object.values(record).flatMap(collectTaskAttachments)];
 }
 
-async function reconcileWaitingMarketingMediaJobs() {
+export async function reconcileWaitingMarketingMediaJobs() {
   const auth = await checkManusMediaAuthentication();
-  if (!auth.ready) return;
+  if (!auth.ready) return { checked: 0, blocked: "provider_authentication", refreshedAt: Date.now() };
   const key = mediaCredential().value;
   const db = await dbOrThrow();
   const now = Date.now();
+  // A runtime restart may interrupt local composition after the Manus task
+  // stops. Recover from that same task, not a duplicate provider generation.
+  await db.update(marketingMediaProductionJobs).set({ state: "waiting_manus", updatedAt: now, errorSummary: "Interrupted composition is being recovered from the existing task." })
+    .where(and(eq(marketingMediaProductionJobs.state, "processing"), sql`${marketingMediaProductionJobs.updatedAt} < ${now - 10 * 60_000}`));
   const jobs = await db.select().from(marketingMediaProductionJobs)
-    .where(eq(marketingMediaProductionJobs.state, "waiting_manus"));
+    .where(sql`${marketingMediaProductionJobs.state} IN ('waiting_manus', 'waiting_input')`).orderBy(marketingMediaProductionJobs.createdAt).limit(6);
+  let checked = 0;
   for (const job of jobs) {
-    if (!job.manusTaskId || now - job.updatedAt < 15_000) continue;
+    if (!job.manusTaskId || now - job.updatedAt < 30_000) continue;
     try {
       const detailResponse = await fetch(`https://api.manus.ai/v2/task.detail?task_id=${encodeURIComponent(job.manusTaskId)}`, {
         headers: { "x-manus-api-key": key }, signal: AbortSignal.timeout(20_000),
       });
+      if (!detailResponse.ok) continue;
+      checked++;
       const detail = await detailResponse.json().catch(() => null) as { task?: { status?: unknown } } | null;
       const status = typeof detail?.task?.status === "string" ? detail.task.status : "unknown";
-      if (status === "running" || status === "waiting") {
-        await db.update(marketingMediaProductionJobs).set({ updatedAt: now }).where(eq(marketingMediaProductionJobs.id, job.id));
+      if (status === "waiting") {
+        await db.update(marketingMediaProductionJobs).set({ state: "waiting_input", updatedAt: now, errorSummary: "Manus is awaiting input or confirmation. External actions will not be authorized automatically." }).where(eq(marketingMediaProductionJobs.id, job.id));
+        continue;
+      }
+      if (status === "running") {
+        await db.update(marketingMediaProductionJobs).set({ state: "waiting_manus", updatedAt: now, errorSummary: null }).where(eq(marketingMediaProductionJobs.id, job.id));
+        continue;
+      }
+      if (status === "error") {
+        await db.update(marketingMediaProductionJobs).set({ state: "failed", errorCode: "provider_error", errorSummary: "Manus reported an error without a preview attachment.", completedAt: now, updatedAt: now }).where(eq(marketingMediaProductionJobs.id, job.id));
+        await retryFailedMarketingMediaJob({ jobId: job.id, actorUserId: job.requestedByUserId, automatic: true }).catch(() => undefined);
         continue;
       }
       if (status !== "stopped") continue;
@@ -426,9 +455,11 @@ async function reconcileWaitingMarketingMediaJobs() {
         await retryFailedMarketingMediaJob({ jobId: job.id, actorUserId: job.requestedByUserId, automatic: true }).catch(() => undefined);
       }
     } catch {
-      // Leave the job active; a future bounded workspace refresh can retry the read-only reconciliation.
+      // Leave the job active; a future heartbeat safely rechecks the task.
     }
   }
+  await repairMissingSystemMediaPreviewLinks();
+  return { checked, pending: jobs.length, refreshedAt: Date.now() };
 }
 
 async function repairMissingSystemMediaPreviewLinks() {

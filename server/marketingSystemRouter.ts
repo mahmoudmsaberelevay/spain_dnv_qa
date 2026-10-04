@@ -306,7 +306,7 @@ const weeklyResultsItemInput = z.object({
 });
 const createWeeklyResultsPlanInput = z.object({ periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), title: z.string().trim().min(4).max(300), items: z.array(weeklyResultsItemInput).min(1).max(48) });
 const updateWeeklyResultsItemInput = weeklyResultsItemInput.extend({ itemId: z.number().int().positive() });
-const weeklyResultsItemDecisionInput = z.object({ itemId: z.number().int().positive(), decision: z.enum(["send_back", "approve", "reject", "stop"]), note: z.string().trim().min(4).max(8_000), feedbackCategory: z.enum(WEEKLY_RESULTS_FEEDBACK_CATEGORIES).optional() });
+const weeklyResultsItemDecisionInput = z.object({ itemId: z.number().int().positive(), decision: z.enum(["send_back", "approve", "reject", "stop"]), note: z.string().trim().min(4).max(8_000), feedbackCategory: z.enum(WEEKLY_RESULTS_FEEDBACK_CATEGORIES).optional(), designQcConfirmed: z.boolean().default(false) });
 const approvedReelInputAsset = z.object({
   url: z.string().url().max(2_000),
   // Both are server-populated after the asset is downloaded and verified.
@@ -3146,6 +3146,7 @@ export const marketingSystemRouter = router({
     const nextStatus = nextByDecision[input.decision];
     if (!weeklyResultsItemCanTransition(item.status as WeeklyResultsItemStatus, nextStatus)) throw new TRPCError({ code: "BAD_REQUEST", message: "This individual decision is not valid for the current item state." });
     if (input.decision === "approve") {
+      if (!input.designQcConfirmed) throw new TRPCError({ code: "BAD_REQUEST", message: "Inspect the actual final preview and confirm the ELEVAY design, exact logo, wording and any head-to-toe wardrobe/footwear continuity before approving." });
       const previewProblem = validatePreviewFingerprint(item.previewUrl, item.previewHash);
       if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: previewProblem });
       await requireSystemGeneratedWeeklyMedia(item);
@@ -3157,7 +3158,7 @@ export const marketingSystemRouter = router({
       approvedByUserId: input.decision === "approve" ? ctx.user.id : null, approvedAt: input.decision === "approve" ? now : null,
       stoppedByUserId: input.decision === "stop" ? ctx.user.id : null, stoppedAt: input.decision === "stop" ? now : null, updatedAt: now,
     }).where(eq(marketingWeeklyResultsItems.id, item.id));
-    await appendWeeklyResultsItemEvent({ itemId: item.id, action: `individual_${input.decision}`, fromStatus: item.status, toStatus: nextStatus, feedback: normalizeWeeklyResultsText(input.note), payload: { explicitIndividualDecision: true, feedbackCategory: input.feedbackCategory ?? null, finalPreviewApproved: input.decision === "approve", feedbackResolved: input.decision === "approve", previewHash: input.decision === "approve" ? item.previewHash : null, noBatchRule: true, noPublishCommand: true, externalOperationsEnabled: false }, actorUserId: ctx.user.id, createdAt: now });
+    await appendWeeklyResultsItemEvent({ itemId: item.id, action: `individual_${input.decision}`, fromStatus: item.status, toStatus: nextStatus, feedback: normalizeWeeklyResultsText(input.note), payload: { explicitIndividualDecision: true, feedbackCategory: input.feedbackCategory ?? null, finalPreviewApproved: input.decision === "approve", designQcConfirmed: input.decision === "approve" && input.designQcConfirmed, feedbackResolved: input.decision === "approve", previewHash: input.decision === "approve" ? item.previewHash : null, noBatchRule: true, noPublishCommand: true, externalOperationsEnabled: false }, actorUserId: ctx.user.id, createdAt: now });
     if (["send_back", "reject"].includes(input.decision)) {
       await db.insert(marketingWeeklyResultsPreferenceMemories).values({ scope: "weekly_results", scopeKey: item.programKey, preferenceText: normalizeWeeklyResultsText(input.note), sourceItemId: item.id, sourceEventId: null, status: "active", createdByUserId: ctx.user.id, createdAt: now, updatedAt: now });
     }

@@ -11,9 +11,9 @@ describe("Manus API v2 orchestration provider policy", () => {
     expect(connection?.creativeCapabilities).toEqual([
       "research", "static_assets", "carousel_visuals", "reel_storyboards", "short_form_reels",
     ]);
-    expect(connection?.purpose).toContain("approved static assets");
-    expect(connection?.purpose).toContain("short-form 9:16 reels");
-    expect(connection?.executionBoundary).toContain("Task creation is blocked");
+    expect(connection?.purpose).toContain("static assets");
+    expect(connection?.purpose).toContain("reel storyboards");
+    expect(connection?.executionBoundary).toContain("owner-selected reel production provider");
     expect(connection?.executionBoundary).toContain("final-preview");
   });
 

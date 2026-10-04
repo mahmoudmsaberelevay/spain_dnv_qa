@@ -6,6 +6,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { nanoid } from "nanoid";
 import { storagePut } from "./storage";
+import { verifiedLogoBytes } from "./elevayBrandMedia";
 
 const MAX_VIDEO_BYTES = 350 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 50 * 1024 * 1024;
@@ -149,24 +150,31 @@ export async function fingerprintMarketingPreview(previewUrl: string) {
   return fingerprintMarketingAsset(previewUrl, ["image/", "video/"]);
 }
 
-async function composeLocal(sourcePath: string, narrationPath: string, outputPath: string): Promise<{ sourceProbe: ReelMediaProbe; narrationProbe: ReelMediaProbe; outputProbe: ReelMediaProbe }> {
+async function composeLocal(sourcePath: string, narrationPath: string, outputPath: string, logoPath?: string): Promise<{ sourceProbe: ReelMediaProbe; narrationProbe: ReelMediaProbe; outputProbe: ReelMediaProbe }> {
   const sourceProbe = await probeReelMedia(sourcePath);
   const narrationProbe = await probeReelMedia(narrationPath);
   validateSourceVideo(sourceProbe);
   validateNarration(narrationProbe);
-  const outputDurationMs = Math.max(sourceProbe.durationMs, narrationProbe.durationMs);
+  const sourceNarrativeSeconds = Math.max(1, sourceProbe.durationMs / 1000 - (logoPath ? 3 : 0));
+  const narrativeSeconds = logoPath ? Math.max(sourceNarrativeSeconds, narrationProbe.durationMs / 1000) : Math.max(sourceProbe.durationMs, narrationProbe.durationMs) / 1000;
+  if (logoPath && narrativeSeconds / sourceNarrativeSeconds > 1.8) throw new Error("The Egyptian narration exceeds the reel's available scene time. Shorten the script or regenerate longer footage before review.");
+  const outputDurationMs = Math.round((narrativeSeconds + (logoPath ? 3 : 0)) * 1000);
   const outputSeconds = (outputDurationMs / 1000).toFixed(3);
   const outroExtensionSeconds = Math.max(0, (narrationProbe.durationMs - sourceProbe.durationMs) / 1000).toFixed(3);
   const videoFilter = Number(outroExtensionSeconds) > 0
     ? `[0:v]tpad=stop_mode=clone:stop_duration=${outroExtensionSeconds}[v]`
     : `[0:v]null[v]`;
   const hasBedAudio = Boolean(sourceProbe.audioCodec);
-  const args = hasBedAudio
+  const args = logoPath
+    ? ["-y", "-i", sourcePath, "-i", narrationPath, "-loop", "1", "-framerate", "30", "-i", logoPath,
+      "-filter_complex", `[0:v]trim=duration=${sourceNarrativeSeconds.toFixed(3)},setpts=(PTS-STARTPTS)*${(narrativeSeconds / sourceNarrativeSeconds).toFixed(6)},scale=1080:1920:flags=lanczos,setsar=1,fps=30[vmain];color=c=white:s=1080x1920:r=30:d=3[white];[2:v]scale=350:-1:flags=lanczos[logo];[white][logo]overlay=(W-w)/2:(H-h)/2:shortest=1,trim=duration=3,setpts=PTS-STARTPTS[outro];[vmain][outro]concat=n=2:v=1:a=0[v];${hasBedAudio ? `[0:a]volume=0.18,apad=pad_dur=${outputSeconds}[bed];[1:a]apad=pad_dur=${narrativeSeconds.toFixed(3)}[narration];[bed][narration]amix=inputs=2:duration=longest:normalize=0,atrim=duration=${outputSeconds}[a]` : `[1:a]apad=pad_dur=${outputSeconds},atrim=duration=${outputSeconds}[a]`}`,
+      "-map", "[v]", "-map", "[a]", "-t", outputSeconds, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outputPath]
+    : hasBedAudio
     ? ["-y", "-i", sourcePath, "-i", narrationPath, "-filter_complex", `${videoFilter};[0:a]volume=0.18,apad=pad_dur=${outputSeconds}[bed];[1:a]apad=pad_dur=${outputSeconds}[narration];[bed][narration]amix=inputs=2:duration=longest:normalize=0[a]`, "-map", "[v]", "-map", "[a]", "-t", outputSeconds, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outputPath]
     : ["-y", "-i", sourcePath, "-i", narrationPath, "-filter_complex", `${videoFilter};[1:a]apad=pad_dur=${outputSeconds}[a]`, "-map", "[v]", "-map", "[a]", "-t", outputSeconds, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outputPath];
   await run("ffmpeg", args, 180_000);
   const outputProbe = await probeReelMedia(outputPath);
-  if (!outputProbe.videoCodec || !outputProbe.audioCodec || !outputProbe.width || !outputProbe.height || Math.abs(outputProbe.durationMs - outputDurationMs) > 1_250) {
+  if (!outputProbe.videoCodec || !outputProbe.audioCodec || !outputProbe.width || !outputProbe.height || Math.abs(outputProbe.durationMs - outputDurationMs) > 1_250 || (logoPath && (outputProbe.width !== 1080 || outputProbe.height !== 1920))) {
     throw new Error("The composed output did not pass audio/video stream and duration verification.");
   }
   return { sourceProbe, narrationProbe, outputProbe };
@@ -183,10 +191,13 @@ export async function composeApprovedReelForReview(input: ReviewOnlyReelComposit
   try {
     const sourcePath = path.join(tempDir, "approved-source.mp4");
     const narrationPath = path.join(tempDir, "approved-narration.mp3");
+    const logoPath = path.join(tempDir, "official-elevay-logo.png");
     const outputPath = path.join(tempDir, "review-composition.mp4");
     await downloadApprovedAsset(input.sourceVideo, sourcePath, MAX_VIDEO_BYTES, "video/");
     await downloadApprovedAsset(input.narration, narrationPath, MAX_AUDIO_BYTES, "audio/");
-    const probes = await composeLocal(sourcePath, narrationPath, outputPath);
+    const officialLogo = await verifiedLogoBytes();
+    await fs.writeFile(logoPath, officialLogo.bytes, { mode: 0o600 });
+    const probes = await composeLocal(sourcePath, narrationPath, outputPath, logoPath);
     const output = await fs.readFile(outputPath);
     if (!output.length) throw new Error("The composed output is empty.");
     const outputSha256 = crypto.createHash("sha256").update(output).digest("hex");
@@ -202,7 +213,8 @@ export async function composeApprovedReelForReview(input: ReviewOnlyReelComposit
         weeklyItemId: input.weeklyItemId,
         sourceVideo: { sha256: input.sourceVideo.sha256, mimeType: input.sourceVideo.mimeType },
         narration: { sha256: input.narration.sha256, mimeType: input.narration.mimeType },
-        composition: "ffmpeg_review_only_narration_mix",
+        composition: "ffmpeg_review_only_egyptian_narration_exact_official_logo_outro",
+        exactOfficialLogoSha256: officialLogo.sha256,
         externalActions: false,
       },
     };

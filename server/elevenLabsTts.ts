@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { ENV } from "./_core/env";
 import { storagePut } from "./storage";
 import { validateElevayArabicVoiceOverScript } from "../shared/marketingCreativeLanguagePolicy";
+import { prepareEgyptianReelNarration } from "../shared/elevayVideoNarration";
 
 const ELEVENLABS_TTS_ENDPOINT = "https://api.elevenlabs.io/v1/text-to-speech";
 const ELEVENLABS_TIMEOUT_MS = 60_000;
@@ -140,4 +141,11 @@ export async function generateElevayArabicVoiceOver(text: string) {
     bytes: audioBuffer.length,
     sha256,
   };
+}
+
+/** Video/reel-only entry point: prepare spoken Egyptian Arabic before TTS.
+ * Never send unconverted MSA or Arabic spellings of country/company names. */
+export async function generateElevayVideoVoiceOver(text: string) {
+  const egyptianScript = prepareEgyptianReelNarration(text);
+  return generateElevayArabicVoiceOver(egyptianScript);
 }

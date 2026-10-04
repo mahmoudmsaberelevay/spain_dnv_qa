@@ -33,7 +33,7 @@ describe("bounded Manus review-media production", () => {
     const service = read("server/marketingMediaProductionService.ts");
     const webhook = read("server/weeklyMarketingAutomationWebhook.ts");
     expect(service).toContain("marketingGeneratedMediaAssets");
-    expect(service).toContain("generateElevayArabicVoiceOver(item.scriptCopy)");
+    expect(service).toContain("generateElevayVideoVoiceOver(item.scriptCopy)");
     expect(service).toContain("composeApprovedReelForReview");
     expect(service).toContain("origin: \"system_generated\"");
     expect(service).toContain("filename?: unknown");
