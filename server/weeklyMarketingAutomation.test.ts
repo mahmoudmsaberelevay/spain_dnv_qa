@@ -79,6 +79,14 @@ describe("bounded weekly multi-model automation", () => {
     expect(isConfiguredCairoAutomationHour({ prepareDayOfWeek: 6, prepareStartTime: "09:00" }, new Date("2026-10-03T06:01:00.000Z"))).toBe(false);
   });
 
+  it("defaults inactive preparation to Friday 11:00 for Saturday 09:00 Cairo review", () => {
+    const router = read("server/marketingSystemRouter.ts");
+    expect(router).toMatch(/function defaultWeeklyResultsSettings\(\)[\s\S]*?prepareDayOfWeek: 5,[\s\S]*?prepareStartTime: "11:00",[\s\S]*?deliveryDeadlineTime: "09:00"/);
+    expect(cairoPeriodStart(new Date("2026-10-01T08:00:00.000Z"))).toBe("2026-09-27");
+    expect(cairoPeriodStart(new Date("2026-10-02T08:00:00.000Z"))).toBe("2026-10-04");
+    expect(isConfiguredCairoAutomationHour({ prepareDayOfWeek: 5, prepareStartTime: "11:00" }, new Date("2026-10-02T08:00:00.000Z"))).toBe(true);
+  });
+
   it("requires a signed raw-body callback, event idempotency and review-only output persistence", () => {
     const callback = read("server/weeklyMarketingAutomationWebhook.ts");
     const service = read("server/weeklyMarketingAutomationService.ts");

@@ -506,9 +506,9 @@ function defaultWeeklyResultsSettings() {
   return {
     settingsKey: "primary-weekly-results",
     timezone: "Africa/Cairo",
-    prepareDayOfWeek: 6,
-    prepareStartTime: "08:00",
-    deliveryDeadlineTime: "10:00",
+    prepareDayOfWeek: 5,
+    prepareStartTime: "11:00",
+    deliveryDeadlineTime: "09:00",
     preparationScheduleEnabled: true,
     scheduleState: "waiting_execution_release",
     weeklyGoal: null as string | null,

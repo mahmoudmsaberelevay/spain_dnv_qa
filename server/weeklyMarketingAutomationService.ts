@@ -68,8 +68,9 @@ export function cairoPeriodStart(now = new Date()): string {
   const part = (type: string) => parts.find(item => item.type === type)?.value ?? "";
   const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(part("weekday"));
   const base = new Date(Date.UTC(Number(part("year")), Number(part("month")) - 1, Number(part("day")), 12));
-  // On Saturday, prepare the week beginning tomorrow; otherwise report the current Sunday-start week.
-  base.setUTCDate(base.getUTCDate() - weekday + (weekday === 6 ? 7 : 0));
+  // Friday production and Saturday delivery both target the upcoming Sunday;
+  // Sunday–Thursday refer to the current Sunday-start publishing week.
+  base.setUTCDate(base.getUTCDate() - weekday + (weekday >= 5 ? 7 : 0));
   return base.toISOString().slice(0, 10);
 }
 
