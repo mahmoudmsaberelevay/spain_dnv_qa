@@ -3332,6 +3332,67 @@ export const marketingReviewMediaSteps = mysqlTable("marketing_review_media_step
 ]);
 export type MarketingReviewMediaStep = typeof marketingReviewMediaSteps.$inferSelect;
 
+// Owner-triggered weekly production packs are regenerated per explicit click.
+// Snapshot fields must contain only approved, privacy-safe planning/settings data;
+// these records do not authorize publication, Meta activity, or client/Lead data.
+export const marketingOneClickWeeklyRuns = mysqlTable("marketing_one_click_weekly_runs", {
+  id: int("id").autoincrement().primaryKey(),
+  runKey: varchar("runKey", { length: 160 }).notNull(),
+  // Cairo-local Sunday in YYYY-MM-DD form; calculated by the application.
+  periodStart: varchar("periodStart", { length: 10 }).notNull(),
+  generationMode: varchar("generationMode", { length: 48 }).notNull().default("owner_one_click"),
+  state: varchar("state", { length: 48 }).notNull().default("queued"),
+  phase: varchar("phase", { length: 48 }).notNull().default("planning"),
+  planId: int("planId"),
+  planningTaskId: varchar("planningTaskId", { length: 255 }),
+  // Includes saved settings only after privacy-safe redaction; never client/Lead PII.
+  inputSnapshotJson: mediumtext("inputSnapshotJson").notNull(),
+  councilOutputsJson: mediumtext("councilOutputsJson"),
+  progressPercent: int("progressPercent").notNull().default(0),
+  lastErrorCode: varchar("lastErrorCode", { length: 128 }),
+  lastErrorSummary: varchar("lastErrorSummary", { length: 1000 }),
+  startedByUserId: int("startedByUserId").notNull(),
+  startedAt: bigint("startedAt", { mode: "number" }).notNull(),
+  completedAt: bigint("completedAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  uniqueIndex("marketing_one_click_weekly_runs_run_key_unique").on(table.runKey),
+  index("marketing_one_click_weekly_runs_period_state_idx").on(table.periodStart, table.state),
+  index("marketing_one_click_weekly_runs_state_updated_idx").on(table.state, table.updatedAt),
+]);
+export type MarketingOneClickWeeklyRun = typeof marketingOneClickWeeklyRuns.$inferSelect;
+export type InsertMarketingOneClickWeeklyRun = typeof marketingOneClickWeeklyRuns.$inferInsert;
+
+// One row per pack item: exactly seven rows are planned per run (three reels and
+// four statics). Reels set sceneRequestCount to four so their scene progress is
+// visible without repurposing marketingReviewMediaSteps or its runId semantics.
+export const marketingOneClickWeeklyRunItems = mysqlTable("marketing_one_click_weekly_run_items", {
+  id: int("id").autoincrement().primaryKey(),
+  runId: int("runId").notNull(),
+  itemKey: varchar("itemKey", { length: 200 }).notNull(),
+  position: int("position").notNull(),
+  itemType: varchar("itemType", { length: 16 }).notNull(),
+  state: varchar("state", { length: 48 }).notNull().default("queued"),
+  phase: varchar("phase", { length: 48 }).notNull().default("planning"),
+  progressPercent: int("progressPercent").notNull().default(0),
+  sceneRequestCount: int("sceneRequestCount").notNull().default(0),
+  completedSceneRequestCount: int("completedSceneRequestCount").notNull().default(0),
+  generationTaskId: varchar("generationTaskId", { length: 255 }),
+  outputManifestJson: mediumtext("outputManifestJson"),
+  lastErrorCode: varchar("lastErrorCode", { length: 128 }),
+  lastErrorSummary: varchar("lastErrorSummary", { length: 1000 }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+  completedAt: bigint("completedAt", { mode: "number" }),
+}, table => [
+  uniqueIndex("marketing_one_click_weekly_run_items_item_key_unique").on(table.itemKey),
+  uniqueIndex("marketing_one_click_weekly_run_items_run_position_unique").on(table.runId, table.position),
+  index("marketing_one_click_weekly_run_items_run_state_idx").on(table.runId, table.state, table.position),
+]);
+export type MarketingOneClickWeeklyRunItem = typeof marketingOneClickWeeklyRunItems.$inferSelect;
+export type InsertMarketingOneClickWeeklyRunItem = typeof marketingOneClickWeeklyRunItems.$inferInsert;
+
 export const marketingSocialReleaseAuthorizations = mysqlTable("marketing_social_release_authorizations", {
   id: int("id").autoincrement().primaryKey(),
   authorizationKey: varchar("authorizationKey", { length: 200 }).notNull(),

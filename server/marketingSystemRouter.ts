@@ -33,6 +33,8 @@ import {
   marketingReelCompositionInputApprovals,
   marketingReelCompositions,
   marketingGeneratedMediaAssets,
+  marketingOneClickWeeklyRuns,
+  marketingOneClickWeeklyRunItems,
   marketingReviewMediaRuns,
   marketingSocialReleaseAuthorizations,
   marketingDesignSystemAssets,
@@ -183,6 +185,7 @@ import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import { composeApprovedReelForReview, fingerprintMarketingAsset, fingerprintMarketingPreview } from "./reelCompositorService";
 import { getMediaProductionReadiness, queueSystemMediaForWeeklyPlan, regenerateCurrentWeekSystemMedia, regenerateSystemMediaFromFeedback, retryFailedMarketingMediaJob } from "./marketingMediaProductionService";
 import { quoteElevayMarketingMediaItem, recordOwnerElevayMediaCostReview } from "./elevayMarketingMediaQuoteService";
+import { oneClickWeeklyDraftSchema, planOneClickSundayToSaturdayWeek } from "./elevayOneClickWeeklyPlanner";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -2820,6 +2823,65 @@ export const marketingSystemRouter = router({
   getPilotReadinessExecutiveDashboard: protectedProcedure.query(async ({ ctx }) => {
     await requireCapability(ctx.user, "view_analytics");
     return getPilotReadinessExecutiveData();
+  }),
+
+  getOneClickWeeklyRun: protectedProcedure.input(z.object({ runId: z.number().int().positive().optional() }).optional()).query(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "view_weekly_results");
+    const db = await requireDb();
+    const run = input?.runId
+      ? (await db.select().from(marketingOneClickWeeklyRuns).where(eq(marketingOneClickWeeklyRuns.id, input.runId)).limit(1))[0]
+      : (await db.select().from(marketingOneClickWeeklyRuns).orderBy(desc(marketingOneClickWeeklyRuns.createdAt)).limit(1))[0];
+    if (!run) return null;
+    const items = await db.select().from(marketingOneClickWeeklyRunItems).where(eq(marketingOneClickWeeklyRunItems.runId, run.id)).orderBy(marketingOneClickWeeklyRunItems.position);
+    return { ...run, inputSnapshot: parseJson<Record<string, unknown>>(run.inputSnapshotJson, {}), councilOutputs: parseJson<Record<string, unknown>>(run.councilOutputsJson, {}), items: items.map(item => ({ ...item, outputManifest: parseJson<Record<string, unknown>>(item.outputManifestJson, {}) })) };
+  }),
+
+  startOneClickWeeklyProduction: protectedProcedure.input(z.object({ periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).optional()).mutation(async ({ ctx, input }) => {
+    await requireMarketingSystemAdministrator(ctx.user);
+    if (input?.periodStart && !isSundayDate(input.periodStart)) throw new TRPCError({ code: "BAD_REQUEST", message: "The publishing week must start on a Sunday in Cairo." });
+    let planning;
+    try {
+      planning = await planOneClickSundayToSaturdayWeek({ periodStart: input?.periodStart });
+    } catch (error) {
+      const message = error instanceof Error ? error.message.slice(0, 500) : "Council planning failed before a run could be created.";
+      throw new TRPCError({ code: "BAD_REQUEST", message });
+    }
+    const now = Date.now();
+    const db = await requireDb();
+    const runKey = `elevay-one-click:${planning.snapshot.periodStart}:${now.toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
+    if (planning.state === "blocked") {
+      await db.insert(marketingOneClickWeeklyRuns).values({ runKey, periodStart: planning.snapshot.periodStart, generationMode: "owner_one_click", state: "blocked", phase: "planning", planId: null, planningTaskId: null, inputSnapshotJson: JSON.stringify(planning.snapshot), councilOutputsJson: null, progressPercent: 0, lastErrorCode: "planning_blocked", lastErrorSummary: planning.snapshot.readiness.blockers.join(" ").slice(0, 1000) || "Saved setup is not ready.", startedByUserId: ctx.user.id, startedAt: now, completedAt: now, createdAt: now, updatedAt: now });
+      const [saved] = await db.select({ id: marketingOneClickWeeklyRuns.id }).from(marketingOneClickWeeklyRuns).where(eq(marketingOneClickWeeklyRuns.runKey, runKey)).limit(1);
+      return { success: false as const, state: "blocked" as const, runId: saved?.id ?? null, planId: null, blockers: planning.snapshot.readiness.blockers };
+    }
+    const draft = oneClickWeeklyDraftSchema.parse(planning.draft);
+    const [settingsRow] = await db.select().from(marketingWeeklyResultsSettings).where(eq(marketingWeeklyResultsSettings.settingsKey, "primary-weekly-results")).limit(1);
+    const setup = parseWeeklyResultsSettings(settingsRow);
+    const normalizedItems = draft.plan.items.map(item => normalizeWeeklyResultsItem({ itemType: item.itemType, title: item.title, programKey: item.programKey ?? undefined, objective: item.objective, creativeDirection: item.creativeDirection, scriptCopy: item.scriptCopy, caption: item.caption, cta: item.cta, hashtags: item.hashtags, metadata: { onScreenEnglishText: item.onScreenEnglishText }, visualBrief: item.visualBrief, plannedDay: item.plannedDay ?? undefined, plannedTime: item.plannedTime ?? undefined, sourceClaimIds: [], isSelected: true }));
+    const planKey = weeklyResultsPlanKey();
+    const [latest] = await db.select({ version: marketingWeeklyResultsPlans.version }).from(marketingWeeklyResultsPlans).where(eq(marketingWeeklyResultsPlans.periodStart, draft.periodStart)).orderBy(desc(marketingWeeklyResultsPlans.version)).limit(1);
+    const version = (latest?.version ?? 0) + 1;
+    const planHash = weeklyResultsPlanHash({ periodStart: draft.periodStart, title: draft.plan.weeklyTitle, setup, performance: [], preferences: [], items: normalizedItems });
+    await db.insert(marketingOneClickWeeklyRuns).values({ runKey, periodStart: draft.periodStart, generationMode: "owner_one_click", state: "running_council", phase: "planning", planId: null, planningTaskId: null, inputSnapshotJson: JSON.stringify(planning.snapshot), councilOutputsJson: JSON.stringify({ challenger: draft.challenger, sourceEvidence: draft.sourceEvidence }), progressPercent: 15, lastErrorCode: null, lastErrorSummary: null, startedByUserId: ctx.user.id, startedAt: now, completedAt: null, createdAt: now, updatedAt: now });
+    const [run] = await db.select({ id: marketingOneClickWeeklyRuns.id }).from(marketingOneClickWeeklyRuns).where(eq(marketingOneClickWeeklyRuns.runKey, runKey)).limit(1);
+    if (!run?.id) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The one-click run could not be persisted." });
+    const planId = await db.transaction(async tx => {
+      await tx.insert(marketingWeeklyResultsPlans).values({ planKey, periodStart: draft.periodStart, version, status: "draft_prepared", source: "manual_internal", title: draft.plan.weeklyTitle, weeklyGoal: setup.weeklyGoal, creativeDirection: setup.creativeDirection, setupSnapshotJson: JSON.stringify(setup), previousWeekPerformanceJson: "[]", preferenceMemoryJson: "[]", planHash, preparedByUserId: ctx.user.id, preparedAt: now, deliveryDeadlineAt: null, createdAt: now, updatedAt: now });
+      const [created] = await tx.select({ id: marketingWeeklyResultsPlans.id }).from(marketingWeeklyResultsPlans).where(eq(marketingWeeklyResultsPlans.planKey, planKey)).limit(1);
+      if (!created?.id) throw new Error("The generated weekly plan ID could not be verified.");
+      for (let index = 0; index < normalizedItems.length; index += 1) {
+        const item = normalizedItems[index]!;
+        await tx.insert(marketingWeeklyResultsItems).values({ planId: created.id, position: index + 1, ...item, requiresIndividualApproval: true, status: "draft", blockedReason: null, contentPacketId: null, approvedByUserId: null, approvedAt: null, stoppedByUserId: null, stoppedAt: null, createdByUserId: ctx.user.id, lastEditedByUserId: ctx.user.id, createdAt: now, updatedAt: now });
+        const [createdItem] = await tx.select({ id: marketingWeeklyResultsItems.id }).from(marketingWeeklyResultsItems).where(and(eq(marketingWeeklyResultsItems.planId, created.id), eq(marketingWeeklyResultsItems.position, index + 1))).limit(1);
+        if (!createdItem?.id) throw new Error("A generated weekly item ID could not be verified.");
+        await tx.insert(marketingWeeklyResultsItemEvents).values({ itemId: createdItem.id, action: "created", fromStatus: null, toStatus: "draft", feedback: null, changedFieldsJson: JSON.stringify(["one_click_council_plan"]), payloadJson: JSON.stringify({ runId: run.id, reviewOnly: true, mediaDispatchStarted: false, publishingEnabled: false }), actorUserId: ctx.user.id, createdAt: now });
+        await tx.insert(marketingOneClickWeeklyRunItems).values({ runId: run.id, itemKey: `${runKey}:item:${index + 1}`, position: index + 1, itemType: item.itemType === "reel" ? "reel" : "static", state: "completed_pending_review", phase: "owner_review", progressPercent: 100, sceneRequestCount: item.itemType === "reel" ? 4 : 0, completedSceneRequestCount: 0, generationTaskId: null, outputManifestJson: JSON.stringify({ weeklyItemPosition: index + 1, mediaGeneration: "not_started", reviewOnly: true }), lastErrorCode: null, lastErrorSummary: null, createdAt: now, updatedAt: now, completedAt: now });
+      }
+      return created.id;
+    });
+    await db.update(marketingOneClickWeeklyRuns).set({ planId, state: "completed_pending_review", phase: "owner_review", progressPercent: 100, completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingOneClickWeeklyRuns.id, run.id));
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_one_click_weekly_run", run.id, JSON.stringify({ planId, periodStart: draft.periodStart, itemCount: 7, mediaDispatchStarted: false, publishingEnabled: false }));
+    return { success: true as const, state: "completed_pending_review" as const, runId: run.id, planId, blockers: [] as string[] };
   }),
 
   getWeeklyResultsWorkspace: protectedProcedure.query(async ({ ctx }) => {

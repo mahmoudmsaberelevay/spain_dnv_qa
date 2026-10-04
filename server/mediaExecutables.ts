@@ -3,10 +3,13 @@ import { accessSync, constants } from "node:fs";
 import ffmpegStatic from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
 
-// Both binaries are packaged with the application. Never rely on a shell PATH
-// that differs between the Sandbox, dev server, and published CRM process.
-export const FFMPEG_BIN = ffmpegStatic || "";
-export const FFPROBE_BIN = ffprobeStatic?.path || "";
+// Prefer verified, absolute paths provided by the production image; otherwise
+// use the app-packaged binaries. Never resolve a command through shell PATH.
+function serverBinaryPath(override: string | undefined, packaged: string | null | undefined) {
+  return override?.startsWith("/") && !/[\r\n\0]/.test(override) ? override : packaged || "";
+}
+export const FFMPEG_BIN = serverBinaryPath(process.env.ELEVAY_FFMPEG_BIN, ffmpegStatic);
+export const FFPROBE_BIN = serverBinaryPath(process.env.ELEVAY_FFPROBE_BIN, ffprobeStatic?.path);
 let cached: { ready: boolean; checkedAt: number } | null = null;
 
 function checkBinary(binary: string) {
