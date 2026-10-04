@@ -205,3 +205,10 @@
 - [x] Registered Mahmoud’s supplied `ELEVAYDesignInstructions.md` as the active owner-confirmed Design System instruction asset, retiring the prior active instruction document while preserving the existing official logo record.
 - [x] Added a compact execution version of the owner design standard to every bounded Manus media prompt: luxury-editorial brand, 90% palette, exact logo restrictions, white 3-second logo outro, no forbidden visual elements, Arabic/Middle Eastern wardrobe/realism requirements, 9:16 reel standards, sentence-case English visual text, Egyptian-Arabic narration default, and premium non-guaranteed copy rules. Automatic visual copy now uses sentence case.
 - [x] TypeScript check, focused media/review/language regressions, production build and diff check passed. No new media task was dispatched while making these changes.
+
+
+## Agentic Marketing — Manus Production Credential Repair
+
+- [x] Diagnosed the repeated replacement-generation failures as a production-only `401 unauthenticated: invalid api key` response. The sandbox key probe succeeded, confirming an environment mismatch rather than an item, feedback, or media-policy fault.
+- [x] Replaced the deployed server-side `MANUS_API_KEY` through managed secret configuration without exposing it. Added and passed a live, non-disclosing `task.list?limit=1` credential regression test (HTTP 200 / API envelope `ok: true`).
+- [ ] Deploy the refreshed secret and retry the current failed comment-driven replacement from the production workflow. The retry remains bounded to the existing USD 1.50 per-item review-media policy and does not publish, call Meta, change campaigns, spend ad money, invoke CAPI, or modify Leads/clients.
