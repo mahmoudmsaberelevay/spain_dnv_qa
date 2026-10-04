@@ -12,6 +12,7 @@ import {
   marketingWeeklyResultsItems,
 } from "../drizzle/schema";
 import { isCreativeItemType } from "../shared/marketingCreativeLanguagePolicy";
+import { ELEVAY_AGENTIC_DESIGN_STANDARD } from "../shared/elevayAgenticDesignStandard";
 
 const CONTROL_KEY = "primary-manus-review-media";
 const MONTHLY_CAP_USD = 100;
@@ -39,12 +40,12 @@ function snapshotHash(item: WeeklyItem) {
 function mediaKind(item: WeeklyItem) { return item.itemType === "reel" ? "reel" : "static"; }
 function systemGeneratedEnglishVisualText(item: WeeklyItem) {
   const programme = (item.programKey ?? "").toLowerCase();
-  if (programme.includes("spain")) return "SPAIN DIGITAL NOMAD\nELEVAY";
-  if (programme.includes("malta")) return "MALTA RESIDENCY\nELEVAY";
-  if (programme.includes("portugal")) return "PORTUGAL RESIDENCY\nELEVAY";
-  if (programme.includes("greece")) return "GREECE GOLDEN VISA\nELEVAY";
-  if (programme.includes("caribbean") || programme.includes("dominica") || programme.includes("grenada") || programme.includes("antigua") || programme.includes("lucia") || programme.includes("kitts")) return "CARIBBEAN CITIZENSHIP\nELEVAY";
-  return "GLOBAL MOBILITY\nELEVAY";
+  if (programme.includes("spain")) return "Spain Digital Nomad\nElevay";
+  if (programme.includes("malta")) return "Malta Residency\nElevay";
+  if (programme.includes("portugal")) return "Portugal Residency\nElevay";
+  if (programme.includes("greece")) return "Greece Golden Visa\nElevay";
+  if (programme.includes("caribbean") || programme.includes("dominica") || programme.includes("grenada") || programme.includes("antigua") || programme.includes("lucia") || programme.includes("kitts")) return "Caribbean Citizenship\nElevay";
+  return "Global Mobility\nElevay";
 }
 async function prepareSystemGeneratedVisualText(db: any, item: WeeklyItem) {
   if (mediaKind(item) !== "static") return item;
@@ -93,17 +94,20 @@ function mediaPrompt(item: WeeklyItem, kind: "static" | "reel") {
   const common = [
     "You are producing exactly one review-only ELEVAY marketing visual from an approved CRM plan item.",
     "Use only the supplied internal brief; do not browse or cite external/government sources, do not invent legal claims, and never include personal/client/Lead/contact information.",
-    "Premium ELEVAY luxury-editorial style. Follow the supplied Design System and logo. Never add phone, email, WhatsApp, QR, URL, guarantee or promise.",
-    "Every depicted person must have coherent, realistic head-to-toe clothing, polished formal footwear where appropriate, natural anatomy/hands, no random traditional headwear or cultural accessories, and continuity across shots.",
+    ELEVAY_AGENTIC_DESIGN_STANDARD,
     `Title: ${item.title}`, `Programme key: ${item.programKey ?? "not specified"}`, `Objective: ${item.objective}`,
     `Creative direction: ${item.creativeDirection ?? "Follow the ELEVAY Design System."}`,
     `Visual brief: ${item.visualBrief ?? "Use a premium, trustworthy educational visual."}`,
   ];
+  let metadata: Record<string, unknown> = {};
+  try { metadata = JSON.parse(item.metadataJson || "{}") as Record<string, unknown>; } catch { /* derived metadata is optional */ }
+  const revisionInstruction = typeof metadata.latestRevisionInstruction === "string" ? metadata.latestRevisionInstruction.trim() : "";
+  if (revisionInstruction) {
+    common.push(`Mandatory owner revision instruction: ${revisionInstruction}`, "Replace the prior design completely. Do not recreate, retain, or refer to the prior preview.");
+  }
   if (kind === "reel") return [...common,
     "Create one finished vertical 9:16 MP4 reel, 15–30 seconds, no embedded on-screen text, no spoken narration and no music. Use visual storytelling only; end with the approved ELEVAY logo outro on a white background. Return exactly one playable MP4 attachment.",
   ].join("\n");
-  let metadata: Record<string, unknown> = {};
-  try { metadata = JSON.parse(item.metadataJson || "{}") as Record<string, unknown>; } catch { /* generated fallback below */ }
   const englishText = typeof metadata.onScreenEnglishText === "string" && metadata.onScreenEnglishText.trim()
     ? metadata.onScreenEnglishText.trim() : systemGeneratedEnglishVisualText(item);
   return [...common,
@@ -146,6 +150,55 @@ async function dispatchManusMediaTask(item: WeeklyItem, kind: "static" | "reel")
   return { taskId, taskUrl: body.task_url ?? body.task_detail?.task_url ?? null };
 }
 
+async function monthlyMediaBudgetRemaining(db: Awaited<ReturnType<typeof dbOrThrow>>, control: { monthlyBudgetUsd: unknown }) {
+  const [totalRow] = await db.select({ total: sql<string>`COALESCE(SUM(${marketingMediaProductionJobs.reservedCostUsd}), 0)` })
+    .from(marketingMediaProductionJobs)
+    .where(sql`DATE_FORMAT(FROM_UNIXTIME(${marketingMediaProductionJobs.createdAt} / 1000), '%Y-%m') = ${currentCairoMonth()}`);
+  return Number(control.monthlyBudgetUsd) - Number(totalRow?.total ?? 0);
+}
+
+async function dispatchSystemMediaForWeeklyItem(input: {
+  db: Awaited<ReturnType<typeof dbOrThrow>>;
+  control: { perItemBudgetUsd: unknown };
+  item: WeeklyItem;
+  actorUserId: number;
+}) {
+  const preparedItem = await prepareSystemGeneratedVisualText(input.db, input.item);
+  const snapshot = snapshotHash(preparedItem);
+  const kind = mediaKind(preparedItem);
+  const idempotencyKey = `manus-review-media:${preparedItem.id}:${snapshot}`;
+  const reservedCostUsd = Number(input.control.perItemBudgetUsd);
+  const [existing] = await input.db.select().from(marketingMediaProductionJobs).where(eq(marketingMediaProductionJobs.idempotencyKey, idempotencyKey)).limit(1);
+  if (existing) {
+    if (existing.state === "dispatching" && !existing.manusTaskId) {
+      await input.db.update(marketingMediaProductionJobs).set({
+        state: "failed", errorCode: "orphaned_dispatch",
+        errorSummary: "The prior dispatch stopped before a task ID was saved; it was released for one clean retry.",
+        completedAt: Date.now(), updatedAt: Date.now(), idempotencyKey: `${existing.idempotencyKey}:released:${existing.id}`,
+      }).where(eq(marketingMediaProductionJobs.id, existing.id));
+    } else {
+      return { itemId: preparedItem.id, jobId: existing.id, taskUrl: existing.manusTaskUrl, reused: true };
+    }
+  }
+  const now = Date.now();
+  const [inserted] = await input.db.insert(marketingMediaProductionJobs).values({
+    jobKey: jobKey(), idempotencyKey, weeklyItemId: preparedItem.id, itemSnapshotHash: snapshot,
+    mediaKind: kind, state: "dispatching", reservedCostUsd: reservedCostUsd.toFixed(2),
+    manusTaskId: null, manusTaskUrl: null, taskAttachmentsJson: "[]", errorCode: null,
+    errorSummary: null, requestedByUserId: input.actorUserId, createdAt: now, updatedAt: now, completedAt: null,
+  });
+  const jobId = Number((inserted as { insertId?: number }).insertId);
+  if (!Number.isInteger(jobId) || jobId < 1) throw new Error("Media-production job persistence did not return an identifier.");
+  try {
+    const task = await dispatchManusMediaTask(preparedItem, kind);
+    await input.db.update(marketingMediaProductionJobs).set({ state: "waiting_manus", manusTaskId: task.taskId, manusTaskUrl: task.taskUrl, updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, jobId));
+    return { itemId: preparedItem.id, jobId, taskUrl: task.taskUrl, reused: false };
+  } catch (error) {
+    await input.db.update(marketingMediaProductionJobs).set({ state: "failed", errorCode: "dispatch_failed", errorSummary: safeError(error), completedAt: Date.now(), updatedAt: Date.now() }).where(eq(marketingMediaProductionJobs.id, jobId));
+    throw error;
+  }
+}
+
 export async function queueSystemMediaForWeeklyPlan(input: { planId: number; actorUserId: number }) {
   const { db, control } = await controlOrThrow();
   const items = await db.select().from(marketingWeeklyResultsItems).where(and(eq(marketingWeeklyResultsItems.planId, input.planId), eq(marketingWeeklyResultsItems.isSelected, true)));
@@ -184,6 +237,34 @@ export async function queueSystemMediaForWeeklyPlan(input: { planId: number; act
     }
   }
   return { queued: results.filter(result => !result.reused).length, reused: results.filter(result => result.reused).length, remainingUsd: remaining - creatives.length * cost, jobs: results };
+}
+
+/**
+ * A requested change creates one replacement preview from the owner's comment.
+ * The old preview is removed from the active CRM media library; only the
+ * privacy-safe feedback event and preference memory remain for future learning.
+ */
+export async function regenerateSystemMediaFromFeedback(input: { itemId: number; actorUserId: number; revisionInstruction: string }) {
+  const { db, control } = await controlOrThrow();
+  const [item] = await db.select().from(marketingWeeklyResultsItems).where(eq(marketingWeeklyResultsItems.id, input.itemId)).limit(1);
+  if (!item) throw new Error("Weekly marketing item was not found.");
+  if (!item.isSelected || !isCreativeItemType(item.itemType)) throw new Error("Only a selected creative item can receive a replacement preview.");
+  const remaining = await monthlyMediaBudgetRemaining(db, control);
+  if (remaining + 1e-9 < Number(control.perItemBudgetUsd)) throw new Error("The review-media monthly limit has no remaining capacity for this replacement.");
+  let metadata: Record<string, unknown> = {};
+  try { metadata = JSON.parse(item.metadataJson || "{}") as Record<string, unknown>; } catch { /* replace malformed derived metadata */ }
+  const now = Date.now();
+  const revisionMetadata = JSON.stringify({ ...metadata, latestRevisionInstruction: input.revisionInstruction, latestRevisionRequestedAt: now, latestRevisionSource: "individual_owner_feedback" });
+  await db.transaction(async tx => {
+    // The former asset is never selectable or previewable after a requested change.
+    await tx.delete(marketingGeneratedMediaAssets).where(eq(marketingGeneratedMediaAssets.weeklyItemId, item.id));
+    await tx.update(marketingWeeklyResultsItems).set({
+      previewUrl: null, previewHash: null, metadataJson: revisionMetadata, status: "changes_requested",
+      blockedReason: "System is generating the replacement from the submitted comment.", lastEditedByUserId: input.actorUserId, updatedAt: now,
+    }).where(eq(marketingWeeklyResultsItems.id, item.id));
+  });
+  const refreshed = { ...item, previewUrl: null, previewHash: null, metadataJson: revisionMetadata, status: "changes_requested" as const, updatedAt: now };
+  return dispatchSystemMediaForWeeklyItem({ db, control, item: refreshed, actorUserId: input.actorUserId });
 }
 
 const MAX_AUTOMATIC_MEDIA_RETRIES = 1;

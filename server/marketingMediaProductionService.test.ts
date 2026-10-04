@@ -44,4 +44,31 @@ describe("bounded Manus review-media production", () => {
     expect(workspace).toContain("English text inside the visual");
     expect(workspace).toContain("You do not type this field.");
   });
+
+  it("replaces a preview from owner feedback without retaining an older media version", () => {
+    const service = read("server/marketingMediaProductionService.ts");
+    const router = read("server/marketingSystemRouter.ts");
+    const workspace = read("client/src/pages/marketing/WeeklyResults.tsx");
+    const decisionSection = router.slice(router.indexOf("decideWeeklyResultsItem"), router.indexOf("composeApprovedReelNarrationForReview"));
+    expect(service).toContain("regenerateSystemMediaFromFeedback");
+    expect(service).toContain("latestRevisionInstruction");
+    expect(service).toContain("Mandatory owner revision instruction");
+    expect(service).toContain("tx.delete(marketingGeneratedMediaAssets)");
+    expect(decisionSection).toContain("regenerateSystemMediaFromFeedback");
+    expect(decisionSection).not.toContain("getApprovedContentClaims");
+    expect(workspace).toContain("Request changes & regenerate");
+    expect(workspace).toContain("No claim-reference IDs are required.");
+  });
+
+  it("injects the active owner design standard into every system media task", () => {
+    const service = read("server/marketingMediaProductionService.ts");
+    const standard = read("shared/elevayAgenticDesignStandard.ts");
+    expect(service).toContain("ELEVAY_AGENTIC_DESIGN_STANDARD");
+    expect(standard).toContain("at least 90% of designed elements");
+    expect(standard).toContain("exact official ELEVAY logo");
+    expect(standard).toContain("centered on pure white #FFFFFF");
+    expect(standard).toContain("Arab/Middle Eastern");
+    expect(standard).toContain("sentence case");
+    expect(standard).toContain("Egyptian Arabic by default");
+  });
 });

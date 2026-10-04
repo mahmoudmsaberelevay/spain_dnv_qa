@@ -196,3 +196,12 @@
 
 - [x] Regenerated the four static/carousel/image/graphic assets through hidden system-owned Manus jobs so the actual rendered previews include their new system-generated English-only in-design text; prior review assets were safely superseded rather than overwritten.
 - [x] Verified the complete current plan: all five items have an item preview URL plus matching review-ready system-generated asset/hash; all four non-reel items have the automatic English-text metadata; the reel is linked to its completed narration-composed MP4; and there are zero active media jobs.
+
+
+## Agentic Marketing — Comment Revision and Active Owner Design Standard
+
+- [x] Removed approved-claim-reference IDs as a requirement from Weekly Results review and final individual approval. Programme key, Arabic/caption policy, system-generated exact preview, resolved feedback, individual approval, and separate channel-release governance remain intact. Internal source use remains owner-provided only; no automatic external/government research is enabled.
+- [x] **Request changes & regenerate** now saves the comment as a future active preference and immediately queues one replacement, item-linked system preview using the comment as a mandatory generation instruction. It clears the old preview from the active CRM item and removes its active CRM media record before dispatch; prior creative is not offered as a review/version choice. A failed queue leaves a readable in-CRM status and the saved feedback remains intact.
+- [x] Registered Mahmoud’s supplied `ELEVAYDesignInstructions.md` as the active owner-confirmed Design System instruction asset, retiring the prior active instruction document while preserving the existing official logo record.
+- [x] Added a compact execution version of the owner design standard to every bounded Manus media prompt: luxury-editorial brand, 90% palette, exact logo restrictions, white 3-second logo outro, no forbidden visual elements, Arabic/Middle Eastern wardrobe/realism requirements, 9:16 reel standards, sentence-case English visual text, Egyptian-Arabic narration default, and premium non-guaranteed copy rules. Automatic visual copy now uses sentence case.
+- [x] TypeScript check, focused media/review/language regressions, production build and diff check passed. No new media task was dispatched while making these changes.

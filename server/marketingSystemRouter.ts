@@ -175,7 +175,7 @@ import {
 } from "./weeklyMarketingAutomationService";
 import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import { composeApprovedReelForReview, fingerprintMarketingAsset, fingerprintMarketingPreview } from "./reelCompositorService";
-import { getMediaProductionReadiness, queueSystemMediaForWeeklyPlan, retryFailedMarketingMediaJob } from "./marketingMediaProductionService";
+import { getMediaProductionReadiness, queueSystemMediaForWeeklyPlan, regenerateSystemMediaFromFeedback, retryFailedMarketingMediaJob } from "./marketingMediaProductionService";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -3149,7 +3149,6 @@ export const marketingSystemRouter = router({
       if (previewProblem) throw new TRPCError({ code: "BAD_REQUEST", message: previewProblem });
       await requireSystemGeneratedWeeklyMedia(item);
       if (!item.programKey) throw new TRPCError({ code: "BAD_REQUEST", message: "An approved item must have a programme key." });
-      await getApprovedContentClaims(parseJson<number[]>(item.sourceClaimIdsJson, []), item.programKey);
     }
     const now = Date.now();
     await db.update(marketingWeeklyResultsItems).set({
@@ -3161,8 +3160,19 @@ export const marketingSystemRouter = router({
     if (["send_back", "reject"].includes(input.decision)) {
       await db.insert(marketingWeeklyResultsPreferenceMemories).values({ scope: "weekly_results", scopeKey: item.programKey, preferenceText: normalizeWeeklyResultsText(input.note), sourceItemId: item.id, sourceEventId: null, status: "active", createdByUserId: ctx.user.id, createdAt: now, updatedAt: now });
     }
-    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_results_item_decision", item.id, JSON.stringify({ planId: item.planId, decision: input.decision, fromStatus: item.status, toStatus: nextStatus, individualOnly: true, externalOperationsEnabled: false }));
-    return { success: true, status: nextStatus, externalOperationsEnabled: false };
+    let regeneration: { queued: boolean; jobId?: number; error?: string } | null = null;
+    if (input.decision === "send_back") {
+      try {
+        const replacement = await regenerateSystemMediaFromFeedback({ itemId: item.id, actorUserId: ctx.user.id, revisionInstruction: normalizeWeeklyResultsText(input.note) });
+        regeneration = { queued: !replacement.reused, jobId: replacement.jobId };
+      } catch (error) {
+        const message = error instanceof Error ? error.message.replace(/(?:sk-|key-|Bearer\s+)[A-Za-z0-9._-]+/g, "[redacted]").slice(0, 500) : "Replacement media could not be queued.";
+        await db.update(marketingWeeklyResultsItems).set({ blockedReason: `Comment saved. Automatic replacement is waiting: ${message}`, updatedAt: Date.now() }).where(eq(marketingWeeklyResultsItems.id, item.id));
+        regeneration = { queued: false, error: message };
+      }
+    }
+    await writeAuditLog(auditCtxFromTrpc(ctx), "update", "marketing_weekly_results_item_decision", item.id, JSON.stringify({ planId: item.planId, decision: input.decision, fromStatus: item.status, toStatus: nextStatus, individualOnly: true, replacementQueued: regeneration?.queued ?? false, externalOperationsEnabled: false }));
+    return { success: true, status: nextStatus, regeneration, externalOperationsEnabled: false };
   }),
 
   composeApprovedReelNarrationForReview: protectedProcedure.input(composeApprovedReelInput).mutation(async ({ ctx, input }) => {
