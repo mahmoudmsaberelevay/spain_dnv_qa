@@ -2880,9 +2880,22 @@ export const marketingSystemRouter = router({
       socialReleaseAuthorizations: socialReleaseAuthorizations.map(authorization => ({ ...authorization, approvalScorePercent: Number(authorization.approvalScorePercent) })),
       automation,
       mediaProduction,
+      onDemandRegeneration: {
+        enabled: false as const,
+        editableDraftVersionsAvailable: true as const,
+        scheduleRequired: false as const,
+        combinedUnreservedUsd: automation.readiness.budgetRemainingUsd,
+        retiredPlannerReservationUsd: Number(automation.control.perRunReserveUsd),
+        blockers: [
+          "OpenAI keyframe and Higgsfield-only clip generation, real-output QC, and the ELEVAY voice/compositor are not released.",
+          "Verified news citations and full item-cost preflight are not integrated into AI regeneration.",
+          ...(automation.readiness.budgetRemainingUsd < Number(automation.control.perRunReserveUsd)
+            ? ["The retired planner's USD 20 reservation does not fit the remaining shared cap. The new workflow needs a separate verified total-cost quote; historical charges require evidence before adjustment."] : []),
+        ],
+      },
       boundedProviderAutomationEnabled: Boolean(automation.control.isEnabled),
       externalOperationsEnabled: false,
-      scheduler: { kind: "crm_background_schedule", configuredFor: "Administrator-selected weekday and time, Africa/Cairo", state: automation.control.state, explanation: "When enabled, the bounded engine requests an internal OpenAI strategy, an Anthropic challenge, and one Manus structured production task. It creates review-ready plans only; publishing, campaign changes, spend, CAPI and client/Lead actions remain disabled." },
+      scheduler: { kind: "crm_background_schedule", configuredFor: "Administrator-selected weekday and time, Africa/Cairo", state: automation.control.state, explanation: "The old Manus-footage scheduler is retired and disabled. Saved Cairo timing preferences do not authorize generation; on-demand editable drafts need no schedule, while future AI/media production requires a separate validated release." },
     };
   }),
 

@@ -111,6 +111,11 @@ describe("Weekly Results CRM integration contract", () => {
     expect(page).toContain("Your unsaved form remains unchanged");
     expect(page).toContain('disabled={true} onClick={() => regenerateWeekMedia.mutate');
     expect(page).toContain("No AI media was generated and item approvals were reset");
+    expect(router).toContain("onDemandRegeneration: {");
+    expect(router).toContain("scheduleRequired: false as const");
+    expect(router).toContain("automation.readiness.budgetRemainingUsd < Number(automation.control.perRunReserveUsd)");
+    expect(page).toContain("Full AI Regenerate is not available yet.");
+    expect(page).toContain("workspace.data.onDemandRegeneration.blockers.map");
   });
 
   it("stores reviewable Design System assets and 30-day targets without enabling autopublish", () => {
