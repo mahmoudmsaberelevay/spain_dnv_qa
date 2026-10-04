@@ -6,6 +6,15 @@ const root = resolve(import.meta.dirname, "..");
 const read = (relative: string) => readFileSync(resolve(root, relative), "utf8");
 
 describe("bounded Manus review-media production", () => {
+  it("uses one normalized Manus credential with non-secret dispatch diagnostics", () => {
+    const service = read("server/marketingMediaProductionService.ts");
+    const env = read("server/_core/env.ts");
+    expect(service).toContain("function manusCredentialForMedia()");
+    expect(service).toContain("keyFingerprint: credential.fingerprint");
+    expect(service).toContain('"x-manus-api-key": credential.value');
+    expect(env).toContain('manusApiKey: (process.env.MANUS_API_KEY ?? "").trim()');
+  });
+
   it("uses separate owner-approved USD caps and has no Meta or publishing path", () => {
     const service = read("server/marketingMediaProductionService.ts");
     const migration = read("drizzle/0108_bounded_manus_media_production_controls.sql");

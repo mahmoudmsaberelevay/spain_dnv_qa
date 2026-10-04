@@ -110,6 +110,7 @@ import {
   isVisualTextCreativeItemType,
   validateArabicOnlyMarketingText,
   validateBilingualElevayCaption,
+  validateElevayArabicVoiceOverScript,
   validateEnglishOnlyOnScreenText,
 } from "../shared/marketingCreativeLanguagePolicy";
 import {
@@ -652,7 +653,7 @@ function validateWeeklyResultsItemLanguage(item: Pick<typeof marketingWeeklyResu
   const metadata = parseJson<Record<string, unknown>>(item.metadataJson, {});
   const onScreenEnglishText = typeof metadata.onScreenEnglishText === "string" ? metadata.onScreenEnglishText : "";
   const languageProblems = [
-    item.scriptCopy ? validateArabicOnlyMarketingText(item.scriptCopy, "Script / marketing copy") : (item.itemType === "reel" ? "A reel requires Arabic voice-over / marketing copy before review." : null),
+    item.scriptCopy ? (item.itemType === "reel" ? validateElevayArabicVoiceOverScript(item.scriptCopy) : validateArabicOnlyMarketingText(item.scriptCopy, "Script / marketing copy")) : (item.itemType === "reel" ? "A reel requires an Egyptian Arabic voice-over script before review." : null),
     item.caption ? validateBilingualElevayCaption(item.caption, "Caption") : "An Arabic caption is required before individual review.",
     item.cta ? validateArabicOnlyMarketingText(item.cta, "CTA") : null,
     isVisualTextCreativeItemType(item.itemType) ? validateEnglishOnlyOnScreenText(onScreenEnglishText) : null,

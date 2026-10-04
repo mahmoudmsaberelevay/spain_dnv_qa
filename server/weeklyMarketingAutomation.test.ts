@@ -24,6 +24,13 @@ const validPlan = {
 };
 
 describe("bounded weekly multi-model automation", () => {
+  it("requires Egyptian Arabic narration instructions with country and company exceptions", () => {
+    const service = read("server/weeklyMarketingAutomationService.ts");
+    expect(service).toContain("Every reel voice-over script must be written in Egyptian Arabic");
+    expect(service).toContain("ELEVAY as the company name may be written in English");
+    expect(service).toContain("validateElevayArabicVoiceOverScript(item.scriptCopy)");
+  });
+
   it("normalizes supported Arabic schedule labels before strict output validation", () => {
     const output = normalizeWeeklyAutomationPlanScheduleLabels({ items: [{ plannedDay: "الأربعاء" }, { plannedDay: "Saturday" }] }) as { items: Array<{ plannedDay: string }> };
     expect(output.items.map(item => item.plannedDay)).toEqual(["Wednesday", "Saturday"]);

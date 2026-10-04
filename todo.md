@@ -212,3 +212,11 @@
 - [x] Diagnosed the repeated replacement-generation failures as a production-only `401 unauthenticated: invalid api key` response. The sandbox key probe succeeded, confirming an environment mismatch rather than an item, feedback, or media-policy fault.
 - [x] Replaced the deployed server-side `MANUS_API_KEY` through managed secret configuration without exposing it. Added and passed a live, non-disclosing `task.list?limit=1` credential regression test (HTTP 200 / API envelope `ok: true`).
 - [x] Deployed the refreshed secret and retried both current comment-driven replacements. Verified the reel and static jobs are `completed`, each has a current `review_ready` system-generated asset, and each item has a matching preview URL/hash linked for review. The retries remained bounded to the existing USD 1.50 per-item review-media policy and did not publish, call Meta, change campaigns, spend ad money, invoke CAPI, or modify Leads/clients.
+
+
+## Agentic Marketing — Production Credential Hardening and Egyptian Arabic Narration
+
+- [x] Diagnosed recurring comment-regeneration failures as a production runtime credential drift: the sandbox validation could list Manus tasks while new production tRPC media calls returned Manus `401 unauthenticated: invalid api key`. Each affected item safely remains `changes_requested` with no active preview rather than using an unverified fallback.
+- [x] Normalized `MANUS_API_KEY` at the central environment boundary (trim whitespace/newlines), added an exact server-side media credential helper, and added non-secret SHA-256 fingerprint logging for each task create/update attempt. The key itself is never logged, persisted, rendered, or exposed.
+- [x] Enforced Egyptian Arabic for all new reel narration scripts in planning prompts, generated-plan validation, manual-review validation and reel-production briefs. English in spoken voice-over is now limited strictly to approved country names and the company name `ELEVAY`; captions remain Arabic-first bilingual by policy.
+- [x] Passed TypeScript check, 18 focused policy/automation/media tests, production build and diff validation. The managed runtime was restarted to clear cached development secrets. A fresh managed production secret refresh is required before retrying the two newly failed replacement jobs.

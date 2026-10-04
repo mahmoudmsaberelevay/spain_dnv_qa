@@ -23,5 +23,7 @@ export const ENV = {
   // Administrative AI Council — server-only provider credentials
   openAiApiKey: process.env.OPENAI_API_KEY ?? "",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
-  manusApiKey: process.env.MANUS_API_KEY ?? "",
+  // Managed secret forms can preserve an accidental trailing newline or space.
+  // Normalize centrally so every API v2 caller receives the same credential bytes.
+  manusApiKey: (process.env.MANUS_API_KEY ?? "").trim(),
 };

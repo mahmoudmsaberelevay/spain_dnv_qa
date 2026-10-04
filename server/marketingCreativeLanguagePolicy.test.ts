@@ -26,9 +26,10 @@ describe("ELEVAY creative language policy", () => {
     expect(validateEnglishOnlyOnScreenText("")).toContain("required");
   });
 
-  it("allows English country names but rejects other English in Arabic voice-over scripts", () => {
-    expect(validateElevayArabicVoiceOverScript("اكتشف الإقامة في Spain مع ELEVAY")).toContain("English");
+  it("allows only English country and company names in Egyptian Arabic voice-over scripts", () => {
+    expect(validateElevayArabicVoiceOverScript("اكتشف الإقامة في Spain مع ELEVAY")).toBeNull();
     expect(validateElevayArabicVoiceOverScript("اكتشف الإقامة في Spain معنا اليوم")).toBeNull();
     expect(validateElevayArabicVoiceOverScript("Discover Spain residency")).toContain("Arabic");
+    expect(validateElevayArabicVoiceOverScript("اكتشف Spain residency مع ELEVAY")).toContain("Egyptian Arabic");
   });
 });

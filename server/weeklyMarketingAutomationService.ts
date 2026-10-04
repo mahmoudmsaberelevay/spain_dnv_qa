@@ -31,7 +31,7 @@ import {
   weeklyAutomationPlanSchema,
   type WeeklyAutomationPlanOutput,
 } from "../shared/marketingWeeklyAutomation";
-import { isCreativeItemType, isVisualTextCreativeItemType, validateArabicOnlyMarketingText, validateBilingualElevayCaption, validateEnglishOnlyOnScreenText } from "../shared/marketingCreativeLanguagePolicy";
+import { isCreativeItemType, isVisualTextCreativeItemType, validateArabicOnlyMarketingText, validateBilingualElevayCaption, validateElevayArabicVoiceOverScript, validateEnglishOnlyOnScreenText } from "../shared/marketingCreativeLanguagePolicy";
 import { queueSystemMediaForWeeklyPlan } from "./marketingMediaProductionService";
 
 const REQUIRED_ALIASES = ["openai-editorial", "editorial-challenge", "manus-orchestrator"] as const;
@@ -279,7 +279,7 @@ function publicPlanningSnapshot(context: Awaited<ReturnType<typeof readAutomatio
   if (!context.settings || !context.brandBook) throw new Error("Weekly automation prerequisites are incomplete.");
   return {
     periodStart,
-    languagePolicy: "All campaign copy, captions, CTAs, scripts and voice-over must be Arabic. On-screen visual text must be English only. Country names may be English in Arabic voice-over scripts. Never include personal data.",
+    languagePolicy: "All campaign copy, captions, CTAs, scripts and voice-over must be Arabic. Every reel voice-over script must be written in Egyptian Arabic. Only approved country names and the ELEVAY company name may be written in English inside voice-over scripts. On-screen visual text must be English only. Never include personal data.",
     executionBoundary: "Prepare review-ready material only. Do not publish, schedule posts, create or edit campaigns, spend money, send CAPI events, contact people, or mutate CRM records.",
     settings: {
       weeklyGoal: context.settings.weeklyGoal, programPriorities: asJson(context.settings.programPrioritiesJson, []), updatedSourcesNote: context.settings.updatedSourcesNote,
@@ -415,7 +415,7 @@ async function createManusWeeklyTask(snapshot: Record<string, unknown>, strategy
   const compactContext = compactManusPlanningContext(snapshot as Record<string, any>);
   const prompt = [
     "You are the ELEVAY weekly creative production orchestrator. Create an internal, review-ready weekly production pack after considering the OpenAI strategist and Claude challenger opinions below.",
-    "Strict rules: all marketing copy/captions/CTAs/scripts/voice-over must be Arabic. Text visibly placed inside visual assets must be English only; use NONE when a visual has no text. Country names alone may be English in voice-over. Never use client, Lead, contact, passport, phone, email, or other personal data.",
+    "Strict rules: all marketing copy/captions/CTAs/scripts/voice-over must be Arabic. Every reel voice-over script must be written in Egyptian Arabic. Inside a voice-over, only approved country names and ELEVAY as the company name may be written in English. Text visibly placed inside visual assets must be English only; use NONE when a visual has no text. Never use client, Lead, contact, passport, phone, email, or other personal data.",
     "Use only owner-provided internal programme references contained in the planning context. Do not browse, retrieve, cite, or use government or other external sources. Every researchResults.sourceUrl must use internal:// followed by an owner-provided referenceKey. You may use a statement from ownerConfirmedInternalClaims only by returning its ID in ownerConfirmedInternalClaimIds; it is owner-confirmed internal information for review only, not official evidence, legal advice, or publication authority. An approvedOfficialClaims ID remains the only official-evidence claim reference. If a fact needs external verification, list it as an evidence gap.",
     "Prepare final-quality research summary, static/carousel/reel concepts and any safe attachment deliverables you can create. Do not publish, schedule, create or edit ads/campaigns, spend money, send CAPI events, contact anyone, or change a CRM record. Every output is for review only.",
     `Week starting: ${periodStart}`,
@@ -489,7 +489,7 @@ export async function startWeeklyAutomationCycle(input: { triggerType: "manual_t
 
 function generatedItemLanguageProblem(item: WeeklyAutomationPlanOutput["items"][number]) {
   if (!isCreativeItemType(item.itemType)) return null;
-  return validateArabicOnlyMarketingText(item.scriptCopy, "Generated script")
+  return (item.itemType === "reel" ? validateElevayArabicVoiceOverScript(item.scriptCopy) : validateArabicOnlyMarketingText(item.scriptCopy, "Generated script"))
     || validateBilingualElevayCaption(item.caption, "Generated caption")
     || validateArabicOnlyMarketingText(item.cta, "Generated CTA")
     || validateArabicOnlyMarketingText(item.hashtags.join(" "), "Generated hashtags")

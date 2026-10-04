@@ -23,6 +23,15 @@ type WeeklyItem = typeof marketingWeeklyResultsItems.$inferSelect;
 function safeError(error: unknown) {
   return (error instanceof Error ? error.message : "Media generation failed.").replace(/(?:sk-|key-|Bearer\s+)[A-Za-z0-9._-]+/g, "[redacted]").slice(0, 900);
 }
+function manusCredentialForMedia() {
+  const value = ENV.manusApiKey.trim();
+  if (value.length < 20) throw new Error("Manus media credential is unavailable or malformed.");
+  return {
+    value,
+    // Operational trace only: never log, persist, or expose the secret itself.
+    fingerprint: crypto.createHash("sha256").update(value).digest("hex").slice(0, 12),
+  };
+}
 async function manusTaskRequestError(response: Response) {
   const body = await response.json().catch(() => null) as { error?: { code?: unknown; message?: unknown } } | null;
   const code = typeof body?.error?.code === "string" ? body.error.code.slice(0, 80) : "unknown_error";
@@ -106,7 +115,7 @@ function mediaPrompt(item: WeeklyItem, kind: "static" | "reel") {
     common.push(`Mandatory owner revision instruction: ${revisionInstruction}`, "Replace the prior design completely. Do not recreate, retain, or refer to the prior preview.");
   }
   if (kind === "reel") return [...common,
-    "Create one finished vertical 9:16 MP4 reel, 15–30 seconds, no embedded on-screen text, no spoken narration and no music. Use visual storytelling only; end with the approved ELEVAY logo outro on a white background. Return exactly one playable MP4 attachment.",
+    "Create one finished vertical 9:16 MP4 reel, 15–30 seconds, no embedded on-screen text, no spoken narration and no music. The separately generated narration source must be Egyptian Arabic, with English limited to approved country names and ELEVAY. Use visual storytelling only; end with the approved ELEVAY logo outro on a white background. Return exactly one playable MP4 attachment.",
   ].join("\n");
   const englishText = typeof metadata.onScreenEnglishText === "string" && metadata.onScreenEnglishText.trim()
     ? metadata.onScreenEnglishText.trim() : systemGeneratedEnglishVisualText(item);
@@ -117,9 +126,10 @@ function mediaPrompt(item: WeeklyItem, kind: "static" | "reel") {
 
 async function hideManusTaskFromList(taskId: string) {
   try {
+    const credential = manusCredentialForMedia();
     await fetch("https://api.manus.ai/v2/task.update", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-manus-api-key": ENV.manusApiKey },
+      headers: { "Content-Type": "application/json", "x-manus-api-key": credential.value },
       body: JSON.stringify({ task_id: taskId, enable_visible_in_task_list: false, share_visibility: "private" }),
       signal: AbortSignal.timeout(20_000),
     });
@@ -129,9 +139,11 @@ async function hideManusTaskFromList(taskId: string) {
 }
 
 async function dispatchManusMediaTask(item: WeeklyItem, kind: "static" | "reel") {
+  const credential = manusCredentialForMedia();
+  console.info("[Marketing media] Dispatching Manus task", { kind, keyFingerprint: credential.fingerprint });
   const response = await fetch("https://api.manus.ai/v2/task.create", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-manus-api-key": ENV.manusApiKey },
+    headers: { "Content-Type": "application/json", "x-manus-api-key": credential.value },
     body: JSON.stringify({
       title: `ELEVAY review preview — ${item.id} — ${kind}`,
       interactive_mode: false,
@@ -142,7 +154,10 @@ async function dispatchManusMediaTask(item: WeeklyItem, kind: "static" | "reel")
       message: { content: mediaPrompt(item, kind) },
     }),
   });
-  if (!response.ok) throw await manusTaskRequestError(response);
+  if (!response.ok) {
+    console.error("[Marketing media] Manus task dispatch failed", { kind, status: response.status, keyFingerprint: credential.fingerprint });
+    throw await manusTaskRequestError(response);
+  }
   const body = await response.json() as { task_id?: string; task_url?: string; task_detail?: { task_id?: string; task_url?: string } };
   const taskId = body.task_id ?? body.task_detail?.task_id;
   if (!taskId) throw new Error("Manus media task did not return an identifier.");

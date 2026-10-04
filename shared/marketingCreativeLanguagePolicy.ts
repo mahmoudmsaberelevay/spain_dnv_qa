@@ -1,8 +1,8 @@
 export const ELEVAY_CREATIVE_LANGUAGE_POLICY = {
-  version: "elevay-arabic-content-bilingual-caption-english-visual-v2",
+  version: "elevay-egyptian-arabic-voice-country-company-exceptions-v3",
   marketingCopy: "Campaign, post, reel and voice-over copy must be Arabic. Captions may be bilingual Arabic and English, but must include Arabic.",
   onScreenVisualText: "Any text rendered inside a static design, carousel, reel or ad visual must be English only.",
-  voiceOver: "Voice-over scripts are Arabic; only approved country names may appear in English.",
+  voiceOver: "Voice-over scripts must be written in Egyptian Arabic. Only approved country names and ELEVAY as the company name may appear in English.",
 } as const;
 
 export const ELEVAY_APPROVED_ENGLISH_COUNTRY_NAMES = [
@@ -25,6 +25,8 @@ export const ELEVAY_APPROVED_ENGLISH_COUNTRY_NAMES = [
   "UK",
 ] as const;
 
+export const ELEVAY_APPROVED_ENGLISH_COMPANY_NAMES = ["ELEVAY"] as const;
+
 const ARABIC_SCRIPT = /[\u0600-\u06FF]/;
 const LATIN_LETTERS = /[A-Za-z]/;
 const CREATIVE_ITEM_TYPES = new Set(["static_post", "carousel", "reel", "image", "graphic", "ad_setup", "lead_ad"]);
@@ -42,10 +44,10 @@ function removeUrls(value: string) {
   return value.replace(/https?:\/\/\S+/gi, " ");
 }
 
-function removeApprovedCountryNames(value: string) {
+function removeApprovedVoiceOverEnglishNames(value: string) {
   let result = value;
-  for (const country of [...ELEVAY_APPROVED_ENGLISH_COUNTRY_NAMES].sort((a, b) => b.length - a.length)) {
-    result = result.replace(new RegExp(escapeForRegex(country), "gi"), " ");
+  for (const name of [...ELEVAY_APPROVED_ENGLISH_COUNTRY_NAMES, ...ELEVAY_APPROVED_ENGLISH_COMPANY_NAMES].sort((a, b) => b.length - a.length)) {
+    result = result.replace(new RegExp(escapeForRegex(name), "gi"), " ");
   }
   return result;
 }
@@ -102,17 +104,18 @@ export function validateEnglishOnlyOnScreenText(value: string, label = "On-scree
 }
 
 /**
- * ElevenLabs speaks Arabic by default. Country names are deliberately written in English
- * so the provider can pronounce those names consistently; no other English words are allowed.
+ * ElevenLabs narration is Egyptian Arabic by default. Country and company names are
+ * deliberately written in English so the provider can pronounce them consistently;
+ * no other English words are allowed in the spoken script.
  */
 export function validateElevayArabicVoiceOverScript(value: string): string | null {
   const spokenText = removeNonSpokenTags(value).trim();
   if (!hasArabicScript(spokenText)) {
     return "Voice-over scripts must contain Arabic text.";
   }
-  const withoutCountryNames = removeApprovedCountryNames(spokenText);
-  if (hasLatinLetters(withoutCountryNames)) {
-    return `Voice-over scripts must be Arabic. Only these country names may be written in English: ${ELEVAY_APPROVED_ENGLISH_COUNTRY_NAMES.join(", ")}.`;
+  const withoutApprovedNames = removeApprovedVoiceOverEnglishNames(spokenText);
+  if (hasLatinLetters(withoutApprovedNames)) {
+    return `Voice-over scripts must be Egyptian Arabic. Only these country names and company names may be written in English: ${[...ELEVAY_APPROVED_ENGLISH_COUNTRY_NAMES, ...ELEVAY_APPROVED_ENGLISH_COMPANY_NAMES].join(", ")}.`;
   }
   return null;
 }
