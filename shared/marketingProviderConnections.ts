@@ -45,7 +45,7 @@ export const MARKETING_PROVIDER_CONNECTIONS = [
     alias: "higgsfield-clips",
     provider: "Higgsfield API",
     connectionKind: "image_to_video",
-    secretKeys: ["HF_API_KEY_ID", "HF_API_KEY_SECRET"] as const,
+    secretKeys: ["HF_API_KEY"] as const,
     webhookPath: null,
     purpose: "The only owner-approved reel-footage generator, animating OpenAI keyframes into 9:16 clips.",
     executionBoundary: "Read-only authentication and per-clip cost must be validated first. The Manus connector does not supply CRM server credentials. No Higgsfield voice, text, logo, Meta publishing or ad action is authorized.",
