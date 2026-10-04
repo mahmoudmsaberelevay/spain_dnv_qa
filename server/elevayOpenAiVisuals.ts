@@ -3,7 +3,8 @@ import { nanoid } from "nanoid";
 import { storagePut } from "./storage";
 
 const API_URL = "https://api.openai.com/v1/images/generations";
-export const ELEVAY_OPENAI_VISUAL_MODEL = "gpt-image-2.5-flare";
+export const ELEVAY_OPENAI_VISUAL_MODEL = "gpt-image-2.5-sunburst";
+export const ELEVAY_OPENAI_VISUAL_QUALITY = "high";
 export const ELEVAY_REEL_KEYFRAME_SIZE = "864x1536";
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const PNG_MAGIC = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -37,7 +38,7 @@ export async function createElevayOpenAiKeyframe(input: { prompt: string; purpos
   const response = await (dependencies.request ?? fetch)(API_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: ELEVAY_OPENAI_VISUAL_MODEL, prompt, n: 1, size, quality: "medium", output_format: "png" }),
+    body: JSON.stringify({ model: ELEVAY_OPENAI_VISUAL_MODEL, prompt, n: 1, size, quality: ELEVAY_OPENAI_VISUAL_QUALITY, output_format: "png" }),
     signal: AbortSignal.timeout(150_000),
   });
   if (!response.ok) throw new Error(`OpenAI image request returned HTTP ${response.status}; no provider error body is exposed.`);

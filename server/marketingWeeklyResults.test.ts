@@ -139,6 +139,20 @@ describe("Weekly Results CRM integration contract", () => {
     expect(page).toContain("Linked previews, reviews and audit records are preserved.");
   });
 
+  it("atomically saves plans, items and events using verified unique-key IDs, not a driver insertId", () => {
+    const router = read("server/marketingSystemRouter.ts");
+    const page = read("client/src/pages/marketing/WeeklyResults.tsx");
+    const create = router.slice(router.indexOf("createWeeklyResultsPlan: protectedProcedure"), router.indexOf("updateWeeklyResultsItem: protectedProcedure"));
+    expect(create).toContain("await db.transaction(async tx => {");
+    expect(create).toContain("eq(marketingWeeklyResultsPlans.planKey, planKey)");
+    expect(create).toContain("eq(marketingWeeklyResultsItems.planId, created.id)");
+    expect(create).toContain("await tx.insert(marketingWeeklyResultsItemEvents).values(");
+    expect(create).not.toContain("Number((result as { insertId?");
+    expect(create).not.toContain("Number((itemResult as { insertId?");
+    expect(create).toContain("The weekly plan could not be saved. Its plan and items were rolled back together");
+    expect(page).toContain('plan.status === "superseded" && plan.items?.length === 0');
+  });
+
   it("stores reviewable Design System assets and 30-day targets without enabling autopublish", () => {
     const migration = read("drizzle/0102_agentic_marketing_settings_production.sql");
     const schema = read("drizzle/schema.ts");

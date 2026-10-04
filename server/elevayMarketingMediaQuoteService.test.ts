@@ -34,6 +34,14 @@ describe("isolated owner-reviewed marketing media cost quote", () => {
     item.updatedAt += 1;
     await expect(recordOwnerElevayMediaCostReview({ runId: q.runId, quoteFingerprint: q.quote.quoteFingerprint, actorUserId: 1 })).rejects.toThrow("creative or active design changed");
   });
+  it("expires the precise owner-review quote instead of silently refreshing its price", async () => {
+    const q = await quoteElevayMarketingMediaItem(item.id);
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(q.expiresAt + 1);
+      await expect(recordOwnerElevayMediaCostReview({ runId: q.runId, quoteFingerprint: q.quote.quoteFingerprint, actorUserId: 1 })).rejects.toThrow("expired or changed");
+    } finally { vi.useRealTimers(); }
+  });
   it("rejects retired plans and unselected items before any quote request", async () => {
     plan.source = "automated_multi_model";
     await expect(quoteElevayMarketingMediaItem(item.id)).rejects.toThrow("Historical or retired");

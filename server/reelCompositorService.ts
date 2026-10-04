@@ -239,4 +239,64 @@ export async function composeApprovedReelForReview(input: ReviewOnlyReelComposit
   }
 }
 
-export const __reelCompositorForTests = { composeLocal, validateSourceVideo, validateNarration, isPrivateIp, planFourSceneReelTiming };
+/** Combine four individually verified silent clips into an exact 20-second scene master. */
+function fourSceneConcatArgs(paths: readonly string[], outputPath: string) {
+  if (paths.length !== 4) throw new Error("Exactly four distinct Higgsfield scenes are required.");
+  const sceneFilters = paths.map((_, index) => `[${index}:v]fps=30,scale=1080:1920:flags=lanczos,setsar=1,tpad=stop_mode=clone:stop_duration=0.6,trim=duration=5,setpts=PTS-STARTPTS[v${index}]`);
+  return ["-y", ...paths.flatMap(file => ["-i", file]), "-filter_complex", `${sceneFilters.join(";")};[v0][v1][v2][v3]concat=n=4:v=1:a=0[v]`,
+    "-map", "[v]", "-t", "20", "-an", "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-r", "30", "-movflags", "+faststart", outputPath];
+}
+async function concatFourHiggsfieldScenes(paths: readonly string[], outputPath: string) {
+  await run(FFMPEG_BIN, fourSceneConcatArgs(paths, outputPath), 180_000);
+  const probe = await probeReelMedia(outputPath);
+  if (!probe.videoCodec || probe.audioCodec || probe.width !== 1080 || probe.height !== 1920 || Math.abs(probe.durationMs - 20_000) > 400) {
+    throw new Error("The four-scene silent master failed the exact twenty-second portrait validation.");
+  }
+  return probe;
+}
+
+/** No provider generation or release occurs here. Every clip must already be SHA-256 pinned. */
+export async function composeFourHiggsfieldClipsForReview(input: { weeklyItemId: number; clips: readonly ApprovedAsset[]; narration: ApprovedAsset }): Promise<ReviewOnlyReelCompositionOutput> {
+  if (input.clips.length !== 4 || new Set(input.clips.map(clip => clip.sha256.toLowerCase())).size !== 4) throw new Error("Four distinct owned Higgsfield clips are required before composition.");
+  await requireMediaRenderer();
+  const { validateHiggsfieldClipProbe } = await import("./higgsfieldClipTechnicalQa");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "elevay-four-scenes-"));
+  try {
+    const paths: string[] = [];
+    const probes: ReelMediaProbe[] = [];
+    for (let index = 0; index < input.clips.length; index++) {
+      const file = path.join(tempDir, `higgsfield-${index + 1}.mp4`);
+      await downloadApprovedAsset(input.clips[index], file, MAX_VIDEO_BYTES / 4, "video/");
+      const probe = await probeReelMedia(file);
+      validateHiggsfieldClipProbe(probe);
+      paths.push(file); probes.push(probe);
+    }
+    const sourcePath = path.join(tempDir, "four-silent-scenes.mp4");
+    await concatFourHiggsfieldScenes(paths, sourcePath);
+    const narrationPath = path.join(tempDir, "elevay-voice.mp3");
+    await downloadApprovedAsset(input.narration, narrationPath, MAX_AUDIO_BYTES, "audio/");
+    const logo = await verifiedLogoBytes();
+    const logoPath = path.join(tempDir, "official-logo.png");
+    await fs.writeFile(logoPath, logo.bytes, { mode: 0o600 });
+    const outputPath = path.join(tempDir, "elevay-four-scenes-review.mp4");
+    const composed = await composeLocal(sourcePath, narrationPath, outputPath, logoPath, true);
+    const bytes = await fs.readFile(outputPath);
+    if (!bytes.length) throw new Error("The ELEVAY four-scene review output is empty.");
+    const outputSha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+    const outputStorageKey = `marketing/reel-compositions/higgsfield-review/${nanoid(16)}-${outputSha256.slice(0, 12)}.mp4`;
+    const stored = await storagePut(outputStorageKey, bytes, "video/mp4");
+    return {
+      outputStorageKey: stored.key, outputUrl: stored.url, outputSha256, outputBytes: bytes.length, ...composed,
+      inputManifest: {
+        weeklyItemId: input.weeklyItemId, providers: { footage: "higgsfield", voice: "elevay_internal_elevenlabs", assembly: "manus_ffmpeg" },
+        clipHashes: input.clips.map(clip => clip.sha256), clipProbes: probes,
+        narrationSha256: input.narration.sha256, exactOfficialLogoSha256: logo.sha256,
+        fourScenesSeconds: 20, silentWhiteLogoOutroSeconds: 3,
+        needsHeadToToeFrameReview: true, individualFinalPreviewApprovalRequired: true,
+        publicationEnabled: false, metaActionsEnabled: false,
+      },
+    };
+  } finally { await fs.rm(tempDir, { recursive: true, force: true }); }
+}
+
+export const __reelCompositorForTests = { composeLocal, fourSceneConcatArgs, validateSourceVideo, validateNarration, isPrivateIp, planFourSceneReelTiming };

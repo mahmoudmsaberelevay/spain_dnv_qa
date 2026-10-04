@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createElevayOpenAiKeyframe, ELEVAY_OPENAI_VISUAL_MODEL, ELEVAY_REEL_KEYFRAME_SIZE } from "./elevayOpenAiVisuals";
+import { createElevayOpenAiKeyframe, ELEVAY_OPENAI_VISUAL_MODEL, ELEVAY_OPENAI_VISUAL_QUALITY, ELEVAY_REEL_KEYFRAME_SIZE } from "./elevayOpenAiVisuals";
 
 function image(width = 864, height = 1536) {
   const png = Buffer.alloc(33);
@@ -21,7 +21,8 @@ describe("server-only direct OpenAI visuals", () => {
     expect(save).toHaveBeenCalledWith(expect.stringMatching(/^marketing\/openai\/reel_keyframe\//), expect.any(Buffer), "image/png");
     const [, init] = request.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe("POST");
-    expect(JSON.parse(String(init.body))).toMatchObject({ model: ELEVAY_OPENAI_VISUAL_MODEL, size: ELEVAY_REEL_KEYFRAME_SIZE, n: 1, quality: "medium" });
+    expect(ELEVAY_OPENAI_VISUAL_MODEL).toBe("gpt-image-2.5-sunburst");
+    expect(JSON.parse(String(init.body))).toMatchObject({ model: ELEVAY_OPENAI_VISUAL_MODEL, size: ELEVAY_REEL_KEYFRAME_SIZE, n: 1, quality: ELEVAY_OPENAI_VISUAL_QUALITY });
     expect(JSON.stringify(output)).not.toContain("test-openai-key");
   });
 

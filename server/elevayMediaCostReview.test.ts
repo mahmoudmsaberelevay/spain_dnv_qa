@@ -7,6 +7,8 @@ describe("owner-reviewed media quote", () => {
     expect(quote.breakdown).toHaveLength(4);
     expect(quote.breakdown.map(line => line.provider)).toEqual(["openai", "higgsfield", "elevenlabs", "manus_assembly"]);
     expect(quote.breakdown[1].estimatedUsd).toBe(1.192);
+    expect(quote.breakdown[0].estimatedUsd).toBe(2);
+    expect(quote.breakdown[0].basis).toContain("NOT a model quote");
     expect(quote.breakdown[2].estimatedUsd).toBeGreaterThan(0);
     expect(quote.fixedCostCap).toBe(false);
     expect(quote.estimatedSubtotalUsd).toBeGreaterThan(1.192);
@@ -24,7 +26,8 @@ describe("owner-reviewed media quote", () => {
     const result = itemizedElevayStaticCostReview({ itemId: item.itemId, snapshotHash: item.snapshotHash });
     expect(result.fixedCostCap).toBe(false);
     expect(result.breakdown.map(part => part.provider)).toEqual(["openai", "manus_assembly"]);
-    expect(result.breakdown[0].estimatedUsd).toBe(0.0091);
+    expect(result.breakdown[0].estimatedUsd).toBe(0.5);
+    expect(result.breakdown[0].basis).toContain("NOT a quoted");
     expect(result.breakdown[1].estimatedUsd).toBe(0);
     expect(result.quoteFingerprint).toMatch(/^[a-f0-9]{64}$/);
   });

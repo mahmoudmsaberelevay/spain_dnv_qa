@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { __reelCompositorForTests, probeReelMedia } from "./reelCompositorService";
+import { __reelCompositorForTests, composeFourHiggsfieldClipsForReview, probeReelMedia } from "./reelCompositorService";
 
 const tempDirs: string[] = [];
 function ffmpeg(args: string[]) {
@@ -16,6 +16,24 @@ function ffmpeg(args: string[]) {
 afterEach(async () => { await Promise.all(tempDirs.splice(0).map(dir => fs.rm(dir, { recursive: true, force: true }))); });
 
 describe("review-only reel compositor", () => {
+  it("refuses duplicate clip hashes before accessing any real media asset", async () => {
+    const duplicated = ["a".repeat(64), "A".repeat(64), "b".repeat(64), "c".repeat(64)];
+    await expect(composeFourHiggsfieldClipsForReview({ weeklyItemId: 1,
+      clips: duplicated.map((sha256, index) => ({ url: `https://cdn.example.org/reel-${index}.mp4`, sha256, mimeType: "video/mp4" })),
+      narration: { url: "https://cdn.example.org/audio.mp3", sha256: "d".repeat(64), mimeType: "audio/mpeg" },
+    })).rejects.toThrow("Four distinct");
+  });
+  it("constructs a four-clip silent 20-second 1080×1920 master without provider audio", () => {
+    const files = [1, 2, 3, 4].map(index => `/tmp/private-clip-${index}.mp4`);
+    const args = __reelCompositorForTests.fourSceneConcatArgs(files, "/tmp/private-output.mp4");
+    const filters = args[args.indexOf("-filter_complex") + 1];
+    expect(filters.match(/trim=duration=5/g)).toHaveLength(4);
+    expect(filters.match(/scale=1080:1920/g)).toHaveLength(4);
+    expect(filters).toContain("[v0][v1][v2][v3]concat=n=4:v=1:a=0[v]");
+    expect(args).toContain("-an");
+    expect(args.slice(args.indexOf("-t"), args.indexOf("-t") + 2)).toEqual(["-t", "20"]);
+    expect(() => __reelCompositorForTests.fourSceneConcatArgs(files.slice(0, 3), "/tmp/out.mp4")).toThrow("Exactly four");
+  });
   it("preserves all 20 seconds of four silent Higgsfield scenes before a 3-second logo outro", () => {
     const raw = { durationMs: 20_000, videoCodec: "h264", audioCodec: null, width: 1080, height: 1920 };
     const voice = { durationMs: 18_500, videoCodec: null, audioCodec: "mp3", width: null, height: null };

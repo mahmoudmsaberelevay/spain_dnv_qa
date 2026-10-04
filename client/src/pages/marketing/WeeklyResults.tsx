@@ -184,8 +184,9 @@ function isCompliantRevisionSource(plan: any): boolean {
 }
 function isRetiredGeneratedPlan(plan: any): boolean {
   // The old automated_multi_model service used Manus to generate reel footage.
-  // Hide its plans by default, but never delete linked jobs, reviews or audit.
-  return plan.source === "automated_multi_model";
+  // Empty manual drafts created by a failed ID lookup are likewise audit-only.
+  // Hide by default, but never delete linked jobs, reviews or audit.
+  return plan.source === "automated_multi_model" || (plan.status === "superseded" && plan.items?.length === 0);
 }
 
 function editableVersionItems(plan: any): DraftItem[] {

@@ -3121,22 +3121,38 @@ export const marketingSystemRouter = router({
     const performanceSnapshot = performance.map(snapshot => ({ periodStart: snapshot.periodStart, spendEgp: Number(snapshot.spendEgp), impressions: snapshot.impressions, clicks: snapshot.clicks, leadForms: snapshot.leadForms, qualifiedLeads: snapshot.qualifiedLeads, clientStageLeads: snapshot.clientStageLeads, notes: snapshot.notes }));
     const planKey = weeklyResultsPlanKey();
     const planHash = weeklyResultsPlanHash({ periodStart: input.periodStart, title: normalizeWeeklyResultsText(input.title), setup, performance: performanceSnapshot, preferences: preferencesSnapshot, items: normalizedItems });
-    const result = await db.insert(marketingWeeklyResultsPlans).values({
-      planKey, periodStart: input.periodStart, version, status: "draft_prepared", source: "manual_internal", title: normalizeWeeklyResultsText(input.title), weeklyGoal: setup.weeklyGoal, creativeDirection: setup.creativeDirection,
-      setupSnapshotJson: JSON.stringify(setup), previousWeekPerformanceJson: JSON.stringify(performanceSnapshot), preferenceMemoryJson: JSON.stringify(preferencesSnapshot), planHash,
-      preparedByUserId: ctx.user.id, preparedAt: now, deliveryDeadlineAt: null, createdAt: now, updatedAt: now,
-    });
-    const planId = Number((result as { insertId?: number }).insertId);
-    for (let index = 0; index < normalizedItems.length; index += 1) {
-      const item = normalizedItems[index]!;
-      const itemResult = await db.insert(marketingWeeklyResultsItems).values({
-        planId, position: index + 1, ...item, requiresIndividualApproval: true, status: "draft", blockedReason: null, contentPacketId: null,
-        approvedByUserId: null, approvedAt: null, stoppedByUserId: null, stoppedAt: null, createdByUserId: ctx.user.id, lastEditedByUserId: ctx.user.id, createdAt: now, updatedAt: now,
+    const planId = await db.transaction(async tx => {
+      await tx.insert(marketingWeeklyResultsPlans).values({
+        planKey, periodStart: input.periodStart, version, status: "draft_prepared", source: "manual_internal", title: normalizeWeeklyResultsText(input.title), weeklyGoal: setup.weeklyGoal, creativeDirection: setup.creativeDirection,
+        setupSnapshotJson: JSON.stringify(setup), previousWeekPerformanceJson: JSON.stringify(performanceSnapshot), preferenceMemoryJson: JSON.stringify(preferencesSnapshot), planHash,
+        preparedByUserId: ctx.user.id, preparedAt: now, deliveryDeadlineAt: null, createdAt: now, updatedAt: now,
       });
-      const itemId = Number((itemResult as { insertId?: number }).insertId);
-      await appendWeeklyResultsItemEvent({ itemId, action: "created", toStatus: "draft", changedFields: ["initial_plan_item"], payload: { planKey, position: index + 1, noProviderCall: true, requiresIndividualApproval: true }, actorUserId: ctx.user.id, createdAt: now });
-    }
-    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_weekly_results_plan", planId, JSON.stringify({ planKey, periodStart: input.periodStart, version, itemCount: normalizedItems.length, planHash, externalOperationsEnabled: false }));
+      // This database driver's insert result is not a portable { insertId }; query our unique key instead.
+      const [created] = await tx.select({ id: marketingWeeklyResultsPlans.id }).from(marketingWeeklyResultsPlans).where(eq(marketingWeeklyResultsPlans.planKey, planKey)).limit(1);
+      if (!created || !Number.isSafeInteger(created.id) || created.id <= 0) throw new Error("The new weekly plan ID could not be verified; no plan was saved.");
+      for (let index = 0; index < normalizedItems.length; index += 1) {
+        const item = normalizedItems[index]!;
+        const position = index + 1;
+        await tx.insert(marketingWeeklyResultsItems).values({
+          planId: created.id, position, ...item, requiresIndividualApproval: true, status: "draft", blockedReason: null, contentPacketId: null,
+          approvedByUserId: null, approvedAt: null, stoppedByUserId: null, stoppedAt: null, createdByUserId: ctx.user.id, lastEditedByUserId: ctx.user.id, createdAt: now, updatedAt: now,
+        });
+        const [createdItem] = await tx.select({ id: marketingWeeklyResultsItems.id }).from(marketingWeeklyResultsItems)
+          .where(and(eq(marketingWeeklyResultsItems.planId, created.id), eq(marketingWeeklyResultsItems.position, position))).limit(1);
+        if (!createdItem || !Number.isSafeInteger(createdItem.id) || createdItem.id <= 0) throw new Error("A weekly item ID could not be verified; the incomplete plan was rolled back.");
+        await tx.insert(marketingWeeklyResultsItemEvents).values({
+          itemId: createdItem.id, action: "created", fromStatus: null, toStatus: "draft", feedback: null,
+          changedFieldsJson: JSON.stringify(["initial_plan_item"]),
+          payloadJson: JSON.stringify({ planKey, position, noProviderCall: true, requiresIndividualApproval: true }),
+          actorUserId: ctx.user.id, createdAt: now,
+        });
+      }
+      return created.id;
+    }).catch(() => { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The weekly plan could not be saved. Its plan and items were rolled back together; please retry." }); });
+    // Item-event audit is committed atomically above. A supplementary audit-log outage
+    // must not turn a successfully saved plan into an apparent failure and duplicate retry.
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_weekly_results_plan", planId, JSON.stringify({ planKey, periodStart: input.periodStart, version, itemCount: normalizedItems.length, planHash, externalOperationsEnabled: false }))
+      .catch(() => { console.warn("Weekly plan supplementary audit unavailable after committed creation", planId); });
     return { success: true, planId, planKey, version, status: "draft_prepared" as const, externalOperationsEnabled: false };
   }),
 
