@@ -18,6 +18,8 @@ describe("one-click weekly production integration", () => {
     expect(router).toContain('itemCount: 7');
     expect(router).toContain('mediaDispatchStarted: false');
     expect(router).toContain('publishingEnabled: false');
+    expect(router).toContain('state: "planning_complete_media_locked"');
+    expect(router).toContain('progressPercent: 0');
     expect(router).toContain('state: "completed_pending_review"');
     expect(migration).toContain("marketing_one_click_weekly_runs");
     expect(migration).toContain("marketing_one_click_weekly_run_items");
