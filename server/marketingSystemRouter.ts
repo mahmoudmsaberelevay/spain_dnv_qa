@@ -162,6 +162,7 @@ import {
   weeklyResultsItemCanTransition,
   type WeeklyResultsItemStatus,
 } from "../shared/marketingWeeklyResults";
+import { weeklyProgramKeyInput } from "../shared/marketingWeeklyProgramKey";
 import { evaluateSocialReleaseGovernance } from "../shared/marketingSocialReleaseGovernance";
 import {
   MARKETING_AUTOPILOT_MODE,
@@ -302,7 +303,7 @@ const designSystemAssetInput = z.object({
   fileBase64: z.string().min(4).max(14_000_000),
 });
 const weeklyResultsItemInput = z.object({
-  itemType: z.enum(WEEKLY_RESULTS_ITEM_TYPES), title: z.string().trim().min(4).max(300), programKey: z.string().trim().min(2).max(96).regex(/^[a-z0-9_]+$/).optional(), objective: z.string().trim().min(8).max(500),
+  itemType: z.enum(WEEKLY_RESULTS_ITEM_TYPES), title: z.string().trim().min(4).max(300), programKey: weeklyProgramKeyInput.optional(), objective: z.string().trim().min(8).max(500),
   creativeDirection: z.string().trim().max(12_000).optional(), scriptCopy: z.string().trim().max(30_000).optional(), caption: z.string().trim().max(20_000).optional(), cta: z.string().trim().max(500).optional(),
   hashtags: z.array(z.string().trim().min(1).max(120)).max(40).default([]), visualBrief: z.string().trim().max(12_000).optional(), plannedDay: z.enum(["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]).optional(), plannedTime: z.string().refine(isValidCairoClockTime, "Use HH:MM Cairo time.").optional(),
   sourceClaimIds: z.array(z.number().int().positive()).max(32).default([]), metadata: z.record(z.string(), z.unknown()).default({}), isSelected: z.boolean().default(true),

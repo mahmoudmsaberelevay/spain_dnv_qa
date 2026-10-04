@@ -14,6 +14,7 @@ import {
   WEEKLY_RESULTS_EXECUTION_BOUNDARY,
   weeklyResultsItemCanTransition,
 } from "../shared/marketingWeeklyResults";
+import { normalizeWeeklyProgramKey } from "../shared/marketingWeeklyProgramKey";
 
 const root = resolve(import.meta.dirname, "..");
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
@@ -116,6 +117,19 @@ describe("Weekly Results CRM integration contract", () => {
     expect(router).toContain("automation.readiness.budgetRemainingUsd < Number(automation.control.perRunReserveUsd)");
     expect(page).toContain("Full AI Regenerate is not available yet.");
     expect(page).toContain("workspace.data.onDemandRegeneration.blockers.map");
+  });
+
+  it("accepts readable programme names and only archives retired plans in the UI, preserving their audit data", () => {
+    const router = read("server/marketingSystemRouter.ts");
+    const page = read("client/src/pages/marketing/WeeklyResults.tsx");
+    expect(normalizeWeeklyProgramKey("Spain DNV")).toBe("spain_dnv");
+    expect(router).toContain("programKey: weeklyProgramKeyInput.optional()");
+    expect(page).toContain("validDraftProgrammeKeys(draftItems) && createPlan.mutate");
+    expect(page).toContain("validDraftProgrammeKeys([editDraft]) && updateItem.mutate");
+    expect(page).toContain('return plan.source === "automated_multi_model"');
+    expect(page).toContain("showRetiredPlans || !isRetiredGeneratedPlan(plan)");
+    expect(page).toContain("Show archived history");
+    expect(page).toContain("Linked previews, reviews and audit records are preserved.");
   });
 
   it("stores reviewable Design System assets and 30-day targets without enabling autopublish", () => {
