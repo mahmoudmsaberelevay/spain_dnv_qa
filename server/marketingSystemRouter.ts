@@ -5,6 +5,7 @@ import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { router, protectedProcedure } from "./_core/trpc";
 import { getDb } from "./db";
+import { requireMarketingInsertId } from "./marketingInsertId";
 import {
   contracts,
   leads,
@@ -1177,7 +1178,7 @@ export const marketingSystemRouter = router({
       createdAt: now,
       updatedAt: now,
     });
-    const sessionId = Number((result as { insertId?: number }).insertId);
+    const sessionId = requireMarketingInsertId(result);
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_meta_ads_strategy_session", sessionId, "Started Meta Ads Strategy Intake");
     return presentMetaStrategySession(await getMetaStrategySessionWithAnswers(sessionId));
   }),
@@ -1245,7 +1246,7 @@ export const marketingSystemRouter = router({
       .orderBy(desc(marketingMetaAdsStrategySessions.version)).limit(1);
     const now = Date.now();
     const result = await db.insert(marketingMetaAdsStrategySessions).values({ version: (latest?.version ?? 0) + 1, status: "in_progress", resetScope: input.scope, currentQuestionNumber: 1, createdByUserId: ctx.user.id, createdAt: now, updatedAt: now });
-    const sessionId = Number((result as { insertId?: number }).insertId);
+    const sessionId = requireMarketingInsertId(result);
     if (current && input.scope !== "all") {
       const oldAnswers = (await getMetaStrategySessionWithAnswers(current.id)).answers;
       const resetNumbers = new Set(META_ADS_STRATEGY_QUESTIONS.filter(question => question.section === input.scope).map(question => question.number));
@@ -1361,7 +1362,7 @@ export const marketingSystemRouter = router({
       createdAt: now,
       updatedAt: now,
     });
-    const packetId = Number((result as { insertId?: number }).insertId);
+    const packetId = requireMarketingInsertId(result);
     await db.update(marketingMetaAdsStrategySessions).set({ status: "proposed", proposedAt: now, updatedAt: now }).where(eq(marketingMetaAdsStrategySessions.id, readiness.session.id));
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_meta_ads_strategy_approval_packet", packetId, JSON.stringify({ strategySessionId: readiness.session.id, packetHash, sourceAnswerHash, brandBookVersion: readiness.activeBrandBook.version }));
     return { packetId, packetHash, status: "proposed" as const };
@@ -1517,7 +1518,7 @@ export const marketingSystemRouter = router({
       createdAt: now,
       updatedAt: now,
     });
-    const proposalId = Number((result as { insertId?: number }).insertId);
+    const proposalId = requireMarketingInsertId(result);
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_meta_campaign_pilot_proposal", proposalId, JSON.stringify({ strategyPacketId: strategyPacket.id, strategyPacketHash: strategyPacket.packetHash, proposalHash, programKeys, requestedPermissionCount: requestedPermissions.length, proposedCaps: input.budgetPlan, noExecution: true }));
     return { proposalId, proposalHash, status: "proposed" as const };
   }),
@@ -1606,7 +1607,7 @@ export const marketingSystemRouter = router({
       createdAt: now,
       updatedAt: now,
     });
-    const sessionId = Number((result as { insertId?: number }).insertId);
+    const sessionId = requireMarketingInsertId(result);
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_brand_discovery_session", sessionId, "Started Brand Discovery interview");
     return presentSession(await getSessionWithAnswers(sessionId));
   }),
@@ -1739,7 +1740,7 @@ export const marketingSystemRouter = router({
       createdAt: now,
       updatedAt: now,
     });
-    const newSessionId = Number((result as { insertId?: number }).insertId);
+    const newSessionId = requireMarketingInsertId(result);
 
     if (current && input.scope !== "all") {
       const sourceAnswers = (await getSessionWithAnswers(current.id)).answers;
@@ -1802,7 +1803,7 @@ export const marketingSystemRouter = router({
       createdByUserId: ctx.user.id,
       createdAt: now,
     });
-    const brandBookId = Number((result as { insertId?: number }).insertId);
+    const brandBookId = requireMarketingInsertId(result);
     await db.update(marketingBrandDiscoverySessions).set({ status: "proposed", proposedAt: now, updatedAt: now })
       .where(eq(marketingBrandDiscoverySessions.id, record.session.id));
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_brand_book_proposal", brandBookId, JSON.stringify({ sessionId: record.session.id, contentHash }));
@@ -2063,7 +2064,7 @@ export const marketingSystemRouter = router({
       createdAt: now,
       updatedAt: now,
     });
-    const sourceId = Number((result as { insertId?: number }).insertId);
+    const sourceId = requireMarketingInsertId(result);
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_knowledge_source", sourceId, JSON.stringify({ programKey: input.programKey, sourceDomain: normalized.domain, snapshotHash }));
     return { id: sourceId, status: "candidate", snapshotHash };
   }),
@@ -2134,7 +2135,7 @@ export const marketingSystemRouter = router({
       retiredAt: null,
       updatedAt: now,
     });
-    const claimId = Number((result as { insertId?: number }).insertId);
+    const claimId = requireMarketingInsertId(result);
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_knowledge_claim", claimId, JSON.stringify({ programKey: input.programKey, sourceId: source.id, contentHash, riskLevel: input.riskLevel }));
     return { id: claimId, status: "proposed", duplicate: false };
   }),
@@ -2297,7 +2298,7 @@ export const marketingSystemRouter = router({
       createdAt: now,
       updatedAt: now,
     });
-    const workOrderId = Number((result as { insertId?: number }).insertId);
+    const workOrderId = requireMarketingInsertId(result);
     await db.insert(marketingWorkOrderCostLedger).values([
       { workOrderId, entryKey: `${key}:ceiling`, entryType: "ceiling", amountUsd: money(input.costCeilingUsd), currency: "USD", providerAlias: provider.alias, note: "Owner approval is still required; this is a ceiling, not spend.", createdByUserId: ctx.user.id, createdAt: now },
       { workOrderId, entryKey: `${key}:estimate`, entryType: "estimate", amountUsd: money(input.estimatedCostUsd), currency: "USD", providerAlias: provider.alias, note: "Declared estimate only; no provider request or charge has occurred.", createdByUserId: ctx.user.id, createdAt: now },
@@ -2407,7 +2408,7 @@ export const marketingSystemRouter = router({
       createdByUserId: ctx.user.id,
       createdAt: now,
     });
-    const artifactId = Number((result as { insertId?: number }).insertId);
+    const artifactId = requireMarketingInsertId(result);
     await db.insert(marketingWorkOrderCostLedger).values({ workOrderId: order.id, entryKey: `${order.workOrderKey}:dry-run:${artifactId}`, entryType: "dry_run", amountUsd: "0.00", currency: "USD", providerAlias: order.requestedProviderAlias, note: "Dry-run validation only. No provider request, media generation, publication, campaign change, or charge occurred.", createdByUserId: ctx.user.id, createdAt: now });
     await db.update(marketingWorkOrders).set({ lastDryRunAt: now, updatedAt: now }).where(eq(marketingWorkOrders.id, order.id));
     await appendWorkOrderEvent({ workOrderId: order.id, action: "dry_run", fromStatus: "approved", toStatus: "approved", actorUserId: ctx.user.id, createdAt: now, payload: { artifactId, executionAllowed: false, blockingReasons } });
@@ -2569,7 +2570,7 @@ export const marketingSystemRouter = router({
       createdAt: now,
       updatedAt: now,
     });
-    const packetId = Number((result as { insertId?: number }).insertId);
+    const packetId = requireMarketingInsertId(result);
     await appendContentReviewEvent({ packetId, action: "created", toStatus: "draft", actorUserId: ctx.user.id, createdAt: now, payload: { rootPacketKey, versionNumber: 1, workOrderKey: order.workOrderKey, claimCount: claims.length, designSystemAssetKeys: [designSystem.instructions.assetKey, designSystem.logo.assetKey], noProviderCall: true } });
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_content_packet", packetId, JSON.stringify({ rootPacketKey, workOrderId: order.id, contentType: input.contentType, programKey: input.programKey, contentHash, claimCount: claims.length }));
     return { id: packetId, rootPacketKey, versionNumber: 1, status: "draft" as const, contentHash };
@@ -2636,7 +2637,7 @@ export const marketingSystemRouter = router({
       createdAt: now,
       updatedAt: now,
     });
-    const packetId = Number((result as { insertId?: number }).insertId);
+    const packetId = requireMarketingInsertId(result);
     await db.update(marketingContentPackets).set({ status: "superseded", updatedAt: now, blockedReason: `Superseded by revision ${versionNumber}.` }).where(eq(marketingContentPackets.id, previous.id));
     await appendContentReviewEvent({ packetId: previous.id, action: "superseded", fromStatus: previous.status, toStatus: "superseded", feedback: input.changeSummary, actorUserId: ctx.user.id, createdAt: now, payload: { successorPacketId: packetId, successorVersion: versionNumber } });
     await appendContentReviewEvent({ packetId, action: "revision_created", toStatus: "draft", feedback: input.changeSummary, actorUserId: ctx.user.id, createdAt: now, payload: { previousPacketId: previous.id, rootPacketKey: previous.rootPacketKey, versionNumber, designSystemAssetKeys: [designSystem.instructions.assetKey, designSystem.logo.assetKey], noProviderCall: true } });
@@ -2756,7 +2757,7 @@ export const marketingSystemRouter = router({
     const batchKey = `mab-${now.toString(36)}-${crypto.randomUUID().slice(0, 10)}`;
     const contentHashes = packets.map(packet => packet.contentHash);
     const result = await db.insert(marketingContentApprovalBatches).values({ batchKey, packetIdsJson: JSON.stringify(ids), packetContentHashesJson: JSON.stringify(contentHashes), status: "approved", ownerNote: input.note, approvedByUserId: ctx.user.id, approvedAt: now, createdAt: now });
-    const batchId = Number((result as { insertId?: number }).insertId);
+    const batchId = requireMarketingInsertId(result);
     for (const packet of packets) {
       await db.update(marketingContentPackets).set({ status: "approved", approvedByUserId: ctx.user.id, approvedAt: now, blockedReason: null, updatedAt: now }).where(eq(marketingContentPackets.id, packet.id));
       await appendContentReviewEvent({ packetId: packet.id, action: "owner_batch_approved", fromStatus: "approval_ready", toStatus: "approved", feedback: input.note, actorUserId: ctx.user.id, createdAt: now, payload: { batchId, batchKey, explicitOwnerDecision: true, confirmedFullyReviewed: input.confirmedFullyReviewed, noPublishCommand: true } });
@@ -3280,7 +3281,7 @@ export const marketingSystemRouter = router({
       inputManifestJson: JSON.stringify({ sourceApprovalId: sourceApproval.id, narrationApprovalId: narrationApproval.id, externalActions: false }), errorSummary: null,
       requestedByUserId: ctx.user.id, createdAt: now, completedAt: null, updatedAt: now,
     }));
-    const compositionId = existing?.id ?? Number((creation as { insertId?: number }).insertId);
+    const compositionId = existing?.id ?? requireMarketingInsertId(creation);
     try {
       const result = await composeApprovedReelForReview({ weeklyItemId: item.id, sourceVideo: input.sourceVideo, narration: input.narration });
       await db.transaction(async tx => {
@@ -3402,7 +3403,7 @@ export const marketingSystemRouter = router({
       createdAt: now,
       updatedAt: now,
     });
-    const briefId = Number((result as { insertId?: number }).insertId);
+    const briefId = requireMarketingInsertId(result);
     await db.insert(marketingWeeklyExecutiveBriefEvents).values({
       briefId,
       action: "captured",

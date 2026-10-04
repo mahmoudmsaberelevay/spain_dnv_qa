@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { marketingDesignSystemAssets, marketingReviewMediaRuns, marketingWeeklyResultsItems, marketingWeeklyResultsPlans } from "../drizzle/schema";
 import { getDb } from "./db";
 import { quoteElevayHiggsfieldProClips } from "./higgsfieldProClipQuote";
-import { quoteElevayMarketingMediaItem, recordOwnerElevayMediaCostReview } from "./elevayMarketingMediaQuoteService";
+import { quoteElevayMarketingMediaItem, recordOwnerElevayMediaCostReview, requireCurrentOwnerReviewedMediaRun } from "./elevayMarketingMediaQuoteService";
 vi.mock("./db", () => ({ getDb: vi.fn() }));
 vi.mock("./higgsfieldProClipQuote", () => ({ ELEVAY_HIGGSFIELD_PRO_MODEL: "kling-video/v2.5-turbo/pro/image-to-video", quoteElevayHiggsfieldProClips: vi.fn() }));
 const item: any = { id: 15, planId: 3, isSelected: true, itemType: "static_post", status: "draft", title: "Quiet city life", programKey: "spain_dnv", objective: "Educational", creativeDirection: "Warm editorial", scriptCopy: "بنراجع التفاصيل معاك، ومع ELEVAY بنوضحلك الخيارات خطوة بخطوة.", caption: "", cta: null, visualBrief: "Architecture", sourceClaimIdsJson: "[]", metadataJson: "{}", updatedAt: 1791110000000 };
@@ -27,6 +27,22 @@ describe("isolated owner-reviewed marketing media cost quote", () => {
     const saved = await recordOwnerElevayMediaCostReview({ runId: q.runId, quoteFingerprint: q.quote.quoteFingerprint, actorUserId: 1 });
     expect(saved).toMatchObject({ runId: 61, paidGenerationStarted: false, publicationEnabled: false });
     expect(quoteElevayHiggsfieldProClips).not.toHaveBeenCalled();
+  });
+  it("permits only a fresh unchanged, exact owner-reviewed run to pass the non-generative dispatch guard", async () => {
+    const q = await quoteElevayMarketingMediaItem(item.id);
+    await expect(requireCurrentOwnerReviewedMediaRun(q.runId, item.id)).rejects.toThrow("has not received");
+    await recordOwnerElevayMediaCostReview({ runId: q.runId, quoteFingerprint: q.quote.quoteFingerprint, actorUserId: 1 });
+    expect((await requireCurrentOwnerReviewedMediaRun(q.runId, item.id)).quoteFingerprint).toBe(q.quote.quoteFingerprint);
+    item.updatedAt += 1;
+    await expect(requireCurrentOwnerReviewedMediaRun(q.runId, item.id)).rejects.toThrow("creative or Design System changed");
+    expect(quoteElevayHiggsfieldProClips).not.toHaveBeenCalled();
+  });
+  it("refuses a formerly approved owner quote after its review window expires", async () => {
+    const q = await quoteElevayMarketingMediaItem(item.id);
+    await recordOwnerElevayMediaCostReview({ runId: q.runId, quoteFingerprint: q.quote.quoteFingerprint, actorUserId: 1 });
+    vi.useFakeTimers();
+    try { vi.setSystemTime(q.expiresAt + 1); await expect(requireCurrentOwnerReviewedMediaRun(q.runId, item.id)).rejects.toThrow("expired or changed"); }
+    finally { vi.useRealTimers(); }
   });
   it("rejects changed creative and guessed quote fingerprints", async () => {
     const q = await quoteElevayMarketingMediaItem(item.id);

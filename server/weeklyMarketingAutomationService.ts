@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { ENV } from "./_core/env";
 import { getDb } from "./db";
+import { requireMarketingInsertId } from "./marketingInsertId";
 import { requestAnthropicJson, requestOpenAiJson, specialistOpinionJsonSchema, specialistOpinionSchema, type SpecialistOpinion } from "./aiCouncilProviders";
 import {
   marketingBrandBooks,
@@ -507,7 +508,7 @@ export async function startWeeklyAutomationCycle(input: { triggerType: "manual_t
   const now = Date.now();
   const createdByUserId = input.actorUserId ?? control.configuredByUserId;
   const [insert] = await context.db.insert(marketingWeeklyAutomationJobs).values({ jobKey: automationJobKey(), idempotencyKey, periodStart, triggerType: input.triggerType, state: "running_council", inputSnapshotJson: snapshotString, openAiOutputJson: null, anthropicOutputJson: null, manusTaskId: null, manusTaskUrl: null, manusOutputJson: null, attachmentsJson: "[]", planId: null, reservedCostUsd: control.perRunReserveUsd, errorCode: null, errorSummary: null, createdByUserId, startedAt: now, completedAt: null, createdAt: now, updatedAt: now });
-  const jobId = Number((insert as { insertId?: number }).insertId);
+  const jobId = requireMarketingInsertId(insert);
   try {
     await reserveBudgetOrThrow(context.db, control, jobId, now);
     const [strategyResult, challengeResult] = await Promise.all([
@@ -579,7 +580,7 @@ async function persistReviewPlan(job: AutomationJob, output: WeeklyAutomationPla
   const planKey = weeklyPlanKey();
   const planHash = crypto.createHash("sha256").update(JSON.stringify({ jobKey: job.jobKey, output, attachments })).digest("hex");
   const [result] = await db.insert(marketingWeeklyResultsPlans).values({ planKey, periodStart: job.periodStart, version: (next[0]?.version ?? 0) + 1, status: "draft_prepared", source: "automated_multi_model", title: normalizeWeeklyResultsText(output.weeklyTitle), weeklyGoal: typeof snapshot.settings?.weeklyGoal === "string" ? snapshot.settings.weeklyGoal : null, creativeDirection: typeof snapshot.settings?.creativeDirection === "string" ? snapshot.settings.creativeDirection : null, setupSnapshotJson: JSON.stringify(snapshot.settings ?? {}), previousWeekPerformanceJson: JSON.stringify(snapshot.aggregatePerformance ?? []), preferenceMemoryJson: JSON.stringify(snapshot.feedbackMemory ?? []), planHash, preparedByUserId: job.createdByUserId, preparedAt: now, deliveryDeadlineAt: null, createdAt: now, updatedAt: now });
-  const planId = Number((result as { insertId?: number }).insertId);
+  const planId = requireMarketingInsertId(result);
   for (let index = 0; index < output.items.length; index += 1) {
     const item = normalizeGeneratedWeeklyItem(output.items[index]!);
     const unsafe = findDisallowedWeeklyResultsData(JSON.stringify(item));
@@ -589,7 +590,7 @@ async function persistReviewPlan(job: AutomationJob, output: WeeklyAutomationPla
     const blockedReason = unsafe ? `Generated item contains ${unsafe}.` : languageProblem ?? (invalidClaim ? `Generated item references a claim that is not approved in this snapshot (${invalidClaim}).` : (invalidOwnerConfirmedInternalClaim ? `Generated item references an internal claim that is not owner-confirmed in this snapshot (${invalidOwnerConfirmedInternalClaim}).` : null));
     const state = blockedReason ? "on_hold" : "draft";
     const [inserted] = await db.insert(marketingWeeklyResultsItems).values({ planId, position: index + 1, itemType: item.itemType, title: normalizeWeeklyResultsText(item.title), programKey: item.programKey, objective: normalizeWeeklyResultsText(item.objective), creativeDirection: item.creativeDirection ? normalizeWeeklyResultsText(item.creativeDirection) : null, scriptCopy: item.scriptCopy ? normalizeWeeklyResultsText(item.scriptCopy) : null, caption: item.caption ? normalizeWeeklyResultsText(item.caption) : null, cta: item.cta ? normalizeWeeklyResultsText(item.cta) : null, hashtagsJson: JSON.stringify(item.hashtags.map(normalizeWeeklyResultsText)), visualBrief: item.visualBrief ? normalizeWeeklyResultsText(item.visualBrief) : null, plannedDay: item.plannedDay, plannedTime: item.plannedTime, previewUrl: null, previewHash: null, sourceClaimIdsJson: JSON.stringify(item.approvedClaimIds.filter(id => validClaimIds.has(id))), metadataJson: JSON.stringify({ onScreenEnglishText: item.onScreenEnglishText, generatedAssetFileNames: item.assetFileNames, generatedAdRecommendation: item.adRecommendation, automationJobKey: job.jobKey, manuscriptAttachmentCount: attachments.length, ownerConfirmedInternalClaimIds: item.ownerConfirmedInternalClaimIds.filter(id => validOwnerConfirmedInternalClaimIds.has(id)), internalClaimReviewOnly: true }), isSelected: !blockedReason, requiresIndividualApproval: true, status: state, blockedReason, contentPacketId: null, approvedByUserId: null, approvedAt: null, stoppedByUserId: null, stoppedAt: null, createdByUserId: job.createdByUserId, lastEditedByUserId: job.createdByUserId, createdAt: now, updatedAt: now });
-    const itemId = Number((inserted as { insertId?: number }).insertId);
+    const itemId = requireMarketingInsertId(inserted);
     await db.insert(marketingWeeklyResultsItemEvents).values({ itemId, action: "automation_generated", fromStatus: null, toStatus: state, feedback: null, changedFieldsJson: JSON.stringify(["ai_council", "manus_orchestration", "review_required"]), payloadJson: JSON.stringify({ jobKey: job.jobKey, hasOpenAiStrategy: true, hasAnthropicChallenge: true, manuscriptAttachmentCount: attachments.length, blockedReason }), actorUserId: job.createdByUserId, createdAt: now });
   }
   return planId;

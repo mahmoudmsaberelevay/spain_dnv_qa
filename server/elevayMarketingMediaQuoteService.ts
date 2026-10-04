@@ -77,3 +77,19 @@ export async function recordOwnerElevayMediaCostReview(input: { runId: number; q
   if (!saved || saved.status !== "cost_reviewed_generation_locked" || saved.ownerReviewedByUserId !== input.actorUserId) throw new Error("A concurrent cost review changed; refresh before proceeding.");
   return { runId: run.id, status: saved.status, itemId: run.weeklyItemId, quotedSubtotalUsd: Number(run.estimatedCostUsd ?? 0), paidGenerationStarted: false as const, publicationEnabled: false as const };
 }
+
+/** Read-only pre-dispatch gate; this neither claims a step nor contacts a provider. */
+export async function requireCurrentOwnerReviewedMediaRun(runId: number, itemId: number) {
+  if (!Number.isSafeInteger(runId) || runId <= 0 || !Number.isSafeInteger(itemId) || itemId <= 0) throw new Error("A saved reviewed run and exact weekly item are required.");
+  const db = await getDb(); if (!db) throw new Error("Marketing database unavailable.");
+  const [run] = await db.select().from(marketingReviewMediaRuns).where(and(eq(marketingReviewMediaRuns.id, runId), eq(marketingReviewMediaRuns.weeklyItemId, itemId))).limit(1);
+  if (!run || run.status !== "cost_reviewed_generation_locked" || !run.ownerReviewedByUserId || !run.ownerReviewedAt) throw new Error("The media run has not received an exact owner cost review.");
+  let stored: { quote?: { quoteFingerprint?: string; itemSnapshotHash?: string }; expiresAt?: number };
+  try { stored = JSON.parse(run.costQuoteJson); } catch { throw new Error("The saved owner cost quote cannot be verified."); }
+  if (!stored.quote?.quoteFingerprint || stored.quote.itemSnapshotHash !== run.itemSnapshotHash || !Number.isFinite(stored.expiresAt) || Date.now() > Number(stored.expiresAt)) {
+    throw new Error("The owner-reviewed cost quote expired or changed; request a new itemized estimate.");
+  }
+  const current = await itemSnapshot(itemId);
+  if (current.itemSnapshotHash !== run.itemSnapshotHash || current.item.itemType !== run.itemType) throw new Error("The weekly creative or Design System changed since owner cost review.");
+  return { run, item: current.item, itemSnapshotHash: current.itemSnapshotHash, quoteFingerprint: stored.quote.quoteFingerprint };
+}

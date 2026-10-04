@@ -17,6 +17,14 @@ const assets = [
     source: join(projectRoot, "server", "questionnaire-font-bold.ttf"),
     destination: join(projectRoot, "dist", "questionnaire-font-bold.ttf"),
   },
+  {
+    source: join(projectRoot, "server", "marketing-fonts", "PlusJakartaSans-Regular.ttf"),
+    destination: join(projectRoot, "dist", "marketing-fonts", "PlusJakartaSans-Regular.ttf"),
+  },
+  {
+    source: join(projectRoot, "server", "marketing-fonts", "PlusJakartaSans-Bold.ttf"),
+    destination: join(projectRoot, "dist", "marketing-fonts", "PlusJakartaSans-Bold.ttf"),
+  },
 ];
 
 function sha256(buffer) {
@@ -27,6 +35,7 @@ await mkdir(join(projectRoot, "dist"), { recursive: true });
 
 for (const asset of assets) {
   const sourceBuffer = await readFile(asset.source);
+  await mkdir(dirname(asset.destination), { recursive: true });
   await copyFile(asset.source, asset.destination);
   const destinationBuffer = await readFile(asset.destination);
   const sourceHash = sha256(sourceBuffer);
