@@ -16,6 +16,9 @@ describe("ELEVAY official knowledge library policy", () => {
     });
     expect(() => normalizeOfficialKnowledgeUrl("http://prie.comercio.gob.es/a")).toThrow("Only HTTPS official sources are accepted");
     expect(() => normalizeOfficialKnowledgeUrl("https://lookalike-prie.com/a")).toThrow("official-source allowlist");
+    expect(() => normalizeOfficialKnowledgeUrl("https://user:secret@prie.comercio.gob.es/a")).toThrow("credentials or alternate ports");
+    expect(() => normalizeOfficialKnowledgeUrl("https://prie.comercio.gob.es:8443/a")).toThrow("credentials or alternate ports");
+    expect(() => normalizeOfficialKnowledgeUrl("https://prie.comercio.gob.es/a\nb")).toThrow("control characters");
     expect(OFFICIAL_KNOWLEDGE_ALLOWED_DOMAINS).toContain("residencymalta.gov.mt");
   });
 

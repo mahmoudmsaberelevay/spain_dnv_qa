@@ -79,8 +79,10 @@ export const OFFICIAL_KNOWLEDGE_SOURCE_SEEDS: readonly KnowledgeSourceSeed[] = [
 ] as const;
 
 export function normalizeOfficialKnowledgeUrl(rawUrl: string): { url: string; domain: string } {
+  if (/[\u0000-\u001F\u007F]/.test(rawUrl)) throw new Error("Official source URLs cannot contain control characters.");
   const parsed = new URL(rawUrl.trim());
   if (parsed.protocol !== "https:") throw new Error("Only HTTPS official sources are accepted.");
+  if (parsed.username || parsed.password || parsed.port) throw new Error("Official source URLs cannot include credentials or alternate ports.");
   const domain = parsed.hostname.toLowerCase();
   if (!(OFFICIAL_KNOWLEDGE_ALLOWED_DOMAINS as readonly string[]).includes(domain)) {
     throw new Error("This domain is not on ELEVAY’s official-source allowlist. Ask Mahmoud to approve it before adding it.");
