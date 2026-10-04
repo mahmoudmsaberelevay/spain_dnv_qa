@@ -98,6 +98,18 @@ function validateNarration(probe: ReelMediaProbe) {
   if (!probe.audioCodec || probe.durationMs < 200 || probe.durationMs > MAX_DURATION_SECONDS * 1000) throw new Error("The approved Arabic narration must be playable and shorter than three minutes.");
 }
 
+/** Four raw Higgsfield scenes have no pre-existing outro; legacy review footage does. */
+export function planFourSceneReelTiming(sourceProbe: ReelMediaProbe, narrationProbe: ReelMediaProbe) {
+  if (!sourceProbe.videoCodec || !sourceProbe.width || !sourceProbe.height || sourceProbe.audioCodec) {
+    throw new Error("The four Higgsfield source scenes must form a playable silent video.");
+  }
+  if (Math.abs(sourceProbe.durationMs - 20_000) > 400) throw new Error("The source must preserve four complete five-second scenes before the logo outro.");
+  if (!narrationProbe.audioCodec || narrationProbe.durationMs <= 0 || narrationProbe.durationMs > 20_000) {
+    throw new Error("The ELEVAY narration must end within the twenty seconds of scenes, before the silent logo outro.");
+  }
+  return { narrativeSeconds: 20, outputDurationMs: 23_000, logoOutroSeconds: 3 } as const;
+}
+
 async function downloadApprovedAsset(asset: ApprovedAsset, destination: string, maxBytes: number, expectedPrefix: string) {
   const url = await assertSafeHttpsUrl(asset.url);
   const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(60_000) });
@@ -151,15 +163,17 @@ export async function fingerprintMarketingPreview(previewUrl: string) {
   return fingerprintMarketingAsset(previewUrl, ["image/", "video/"]);
 }
 
-async function composeLocal(sourcePath: string, narrationPath: string, outputPath: string, logoPath?: string): Promise<{ sourceProbe: ReelMediaProbe; narrationProbe: ReelMediaProbe; outputProbe: ReelMediaProbe }> {
+async function composeLocal(sourcePath: string, narrationPath: string, outputPath: string, logoPath?: string, rawFourScenes = false): Promise<{ sourceProbe: ReelMediaProbe; narrationProbe: ReelMediaProbe; outputProbe: ReelMediaProbe }> {
   const sourceProbe = await probeReelMedia(sourcePath);
   const narrationProbe = await probeReelMedia(narrationPath);
   validateSourceVideo(sourceProbe);
   validateNarration(narrationProbe);
-  const sourceNarrativeSeconds = Math.max(1, sourceProbe.durationMs / 1000 - (logoPath ? 3 : 0));
-  const narrativeSeconds = logoPath ? Math.max(sourceNarrativeSeconds, narrationProbe.durationMs / 1000) : Math.max(sourceProbe.durationMs, narrationProbe.durationMs) / 1000;
+  if (rawFourScenes && !logoPath) throw new Error("Four raw scenes require the exact ELEVAY logo outro.");
+  const rawTiming = rawFourScenes ? planFourSceneReelTiming(sourceProbe, narrationProbe) : null;
+  const sourceNarrativeSeconds = rawTiming?.narrativeSeconds ?? Math.max(1, sourceProbe.durationMs / 1000 - (logoPath ? 3 : 0));
+  const narrativeSeconds = rawTiming?.narrativeSeconds ?? (logoPath ? Math.max(sourceNarrativeSeconds, narrationProbe.durationMs / 1000) : Math.max(sourceProbe.durationMs, narrationProbe.durationMs) / 1000);
   if (logoPath && narrativeSeconds / sourceNarrativeSeconds > 1.8) throw new Error("The Egyptian narration exceeds the reel's available scene time. Shorten the script or regenerate longer footage before review.");
-  const outputDurationMs = Math.round((narrativeSeconds + (logoPath ? 3 : 0)) * 1000);
+  const outputDurationMs = rawTiming?.outputDurationMs ?? Math.round((narrativeSeconds + (logoPath ? 3 : 0)) * 1000);
   const outputSeconds = (outputDurationMs / 1000).toFixed(3);
   const outroExtensionSeconds = Math.max(0, (narrationProbe.durationMs - sourceProbe.durationMs) / 1000).toFixed(3);
   const videoFilter = Number(outroExtensionSeconds) > 0
@@ -225,4 +239,4 @@ export async function composeApprovedReelForReview(input: ReviewOnlyReelComposit
   }
 }
 
-export const __reelCompositorForTests = { composeLocal, validateSourceVideo, validateNarration, isPrivateIp };
+export const __reelCompositorForTests = { composeLocal, validateSourceVideo, validateNarration, isPrivateIp, planFourSceneReelTiming };

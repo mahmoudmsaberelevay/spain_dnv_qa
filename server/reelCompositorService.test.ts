@@ -16,6 +16,15 @@ function ffmpeg(args: string[]) {
 afterEach(async () => { await Promise.all(tempDirs.splice(0).map(dir => fs.rm(dir, { recursive: true, force: true }))); });
 
 describe("review-only reel compositor", () => {
+  it("preserves all 20 seconds of four silent Higgsfield scenes before a 3-second logo outro", () => {
+    const raw = { durationMs: 20_000, videoCodec: "h264", audioCodec: null, width: 1080, height: 1920 };
+    const voice = { durationMs: 18_500, videoCodec: null, audioCodec: "mp3", width: null, height: null };
+    expect(__reelCompositorForTests.planFourSceneReelTiming(raw, voice)).toEqual({ narrativeSeconds: 20, outputDurationMs: 23_000, logoOutroSeconds: 3 });
+    expect(() => __reelCompositorForTests.planFourSceneReelTiming({ ...raw, durationMs: 17_000 }, voice)).toThrow("four complete");
+    expect(() => __reelCompositorForTests.planFourSceneReelTiming({ ...raw, audioCodec: "aac" }, voice)).toThrow("silent video");
+    expect(() => __reelCompositorForTests.planFourSceneReelTiming(raw, { ...voice, durationMs: 20_001 })).toThrow("before the silent logo outro");
+  });
+
   it("mixes approved narration into a vertical source and verifies a playable MP4", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "reel-compositor-test-"));
     tempDirs.push(dir);

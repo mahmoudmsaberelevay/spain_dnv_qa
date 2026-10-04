@@ -114,7 +114,14 @@ describe("Weekly Results CRM integration contract", () => {
     expect(page).toContain("No AI media was generated and item approvals were reset");
     expect(router).toContain("onDemandRegeneration: {");
     expect(router).toContain("scheduleRequired: false as const");
-    expect(router).toContain("automation.readiness.budgetRemainingUsd < Number(automation.control.perRunReserveUsd)");
+    expect(router).toContain('costPolicy: "itemized_estimate_and_owner_review_no_fixed_caps"');
+    expect(router).not.toContain("automation.readiness.budgetRemainingUsd < Number(automation.control.perRunReserveUsd)");
+    expect(page).toContain("no fixed per-item or monthly cap");
+    expect(router).toContain("quoteOwnerReviewedMediaItem: protectedProcedure");
+    expect(router).toContain("reviewOwnerMediaItemCost: protectedProcedure");
+    expect(router).toContain('Only Mahmoud, the CRM owner, can review and acknowledge a media generation cost quote.');
+    expect(page).toContain("Record owner cost review — no generation");
+    expect(page).toContain("See itemized cost estimate");
     expect(page).toContain("Full AI Regenerate is not available yet.");
     expect(page).toContain("workspace.data.onDemandRegeneration.blockers.map");
   });

@@ -3279,6 +3279,59 @@ export const marketingMediaProductionJobs = mysqlTable("marketing_media_producti
 ]);
 export type MarketingMediaProductionJob = typeof marketingMediaProductionJobs.$inferSelect;
 
+// Isolated owner-reviewed OpenAI/Higgsfield marketing-media run metadata.
+// These records do not establish provider authority, publishing, or budgets.
+export const marketingReviewMediaRuns = mysqlTable("marketing_review_media_runs", {
+  id: int("id").autoincrement().primaryKey(),
+  runKey: varchar("runKey", { length: 200 }).notNull(),
+  weeklyItemId: int("weeklyItemId").notNull(),
+  itemSnapshotHash: varchar("itemSnapshotHash", { length: 64 }).notNull(),
+  itemType: varchar("itemType", { length: 16 }).notNull(),
+  status: varchar("status", { length: 48 }).notNull(),
+  inputManifestJson: mediumtext("inputManifestJson").notNull(),
+  costQuoteJson: mediumtext("costQuoteJson").notNull(),
+  estimatedCostUsd: decimal("estimatedCostUsd", { precision: 12, scale: 4 }),
+  ownerReviewedByUserId: int("ownerReviewedByUserId"),
+  ownerReviewedAt: bigint("ownerReviewedAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+  completedAt: bigint("completedAt", { mode: "number" }),
+}, table => [
+  uniqueIndex("marketing_review_media_runs_run_key_unique").on(table.runKey),
+  index("marketing_review_media_runs_weekly_item_created_idx").on(table.weeklyItemId, table.createdAt),
+]);
+export type MarketingReviewMediaRun = typeof marketingReviewMediaRuns.$inferSelect;
+
+export const marketingReviewMediaSteps = mysqlTable("marketing_review_media_steps", {
+  id: int("id").autoincrement().primaryKey(),
+  runId: int("runId").notNull(),
+  stepKey: varchar("stepKey", { length: 200 }).notNull(),
+  stepType: varchar("stepType", { length: 32 }).notNull(),
+  sceneIndex: int("sceneIndex"),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  model: varchar("model", { length: 128 }).notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 255 }).notNull(),
+  requestBodyHash: varchar("requestBodyHash", { length: 64 }).notNull(),
+  estimatedCostUsd: decimal("estimatedCostUsd", { precision: 12, scale: 4 }),
+  actualCostUsd: decimal("actualCostUsd", { precision: 12, scale: 4 }),
+  state: varchar("state", { length: 48 }).notNull(),
+  providerRequestId: varchar("providerRequestId", { length: 255 }),
+  statusUrl: varchar("statusUrl", { length: 2000 }),
+  cancelUrl: varchar("cancelUrl", { length: 2000 }),
+  assetUrl: varchar("assetUrl", { length: 2000 }),
+  storageKey: varchar("storageKey", { length: 400 }),
+  assetSha256: varchar("assetSha256", { length: 64 }),
+  errorCode: varchar("errorCode", { length: 100 }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+  completedAt: bigint("completedAt", { mode: "number" }),
+}, table => [
+  uniqueIndex("marketing_review_media_steps_step_key_unique").on(table.stepKey),
+  uniqueIndex("marketing_review_media_steps_idempotency_key_unique").on(table.idempotencyKey),
+  index("marketing_review_media_steps_run_state_idx").on(table.runId, table.state),
+]);
+export type MarketingReviewMediaStep = typeof marketingReviewMediaSteps.$inferSelect;
+
 export const marketingSocialReleaseAuthorizations = mysqlTable("marketing_social_release_authorizations", {
   id: int("id").autoincrement().primaryKey(),
   authorizationKey: varchar("authorizationKey", { length: 200 }).notNull(),

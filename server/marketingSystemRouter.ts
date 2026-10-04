@@ -32,6 +32,7 @@ import {
   marketingReelCompositionInputApprovals,
   marketingReelCompositions,
   marketingGeneratedMediaAssets,
+  marketingReviewMediaRuns,
   marketingSocialReleaseAuthorizations,
   marketingDesignSystemAssets,
   marketingKnowledgeClaims,
@@ -180,6 +181,7 @@ import {
 import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import { composeApprovedReelForReview, fingerprintMarketingAsset, fingerprintMarketingPreview } from "./reelCompositorService";
 import { getMediaProductionReadiness, queueSystemMediaForWeeklyPlan, regenerateCurrentWeekSystemMedia, regenerateSystemMediaFromFeedback, retryFailedMarketingMediaJob } from "./marketingMediaProductionService";
+import { quoteElevayMarketingMediaItem, recordOwnerElevayMediaCostReview } from "./elevayMarketingMediaQuoteService";
 
 const providerSeeds = [
   { alias: "routine-copy", provider: "Manus Built-in LLM", modelId: "gpt-5-mini", purpose: "Structured extraction, classification and copy variants", status: "available_internal", notes: "Configured alias only. Disabled until a Brand Book is approved and a work order is approved." },
@@ -2839,6 +2841,11 @@ export const marketingSystemRouter = router({
       .where(inArray(marketingWeeklyResultsItemEvents.itemId, itemIds)).orderBy(desc(marketingWeeklyResultsItemEvents.createdAt));
     const socialReleaseAuthorizations = itemIds.length === 0 ? [] : await db.select().from(marketingSocialReleaseAuthorizations)
       .where(inArray(marketingSocialReleaseAuthorizations.weeklyItemId, itemIds)).orderBy(desc(marketingSocialReleaseAuthorizations.updatedAt));
+    const mediaCostReviews = itemIds.length === 0 ? [] : await db.select({
+      runId: marketingReviewMediaRuns.id, weeklyItemId: marketingReviewMediaRuns.weeklyItemId,
+      status: marketingReviewMediaRuns.status, estimatedCostUsd: marketingReviewMediaRuns.estimatedCostUsd,
+      ownerReviewedAt: marketingReviewMediaRuns.ownerReviewedAt,
+    }).from(marketingReviewMediaRuns).where(inArray(marketingReviewMediaRuns.weeklyItemId, itemIds)).orderBy(desc(marketingReviewMediaRuns.createdAt)).limit(200);
     const releaseGovernance = evaluateSocialReleaseGovernance(items.map(item => ({
       id: item.id,
       isSelected: item.isSelected,
@@ -2881,17 +2888,17 @@ export const marketingSystemRouter = router({
       socialReleaseAuthorizations: socialReleaseAuthorizations.map(authorization => ({ ...authorization, approvalScorePercent: Number(authorization.approvalScorePercent) })),
       automation,
       mediaProduction,
+      mediaCostReviews: mediaCostReviews.map(review => ({ ...review, estimatedCostUsd: Number(review.estimatedCostUsd ?? 0) })),
       onDemandRegeneration: {
         enabled: false as const,
         editableDraftVersionsAvailable: true as const,
         scheduleRequired: false as const,
-        combinedUnreservedUsd: automation.readiness.budgetRemainingUsd,
-        retiredPlannerReservationUsd: Number(automation.control.perRunReserveUsd),
+        costPolicy: "itemized_estimate_and_owner_review_no_fixed_caps" as const,
+        historicalReservedUsd: automation.readiness.budgetUsedUsd,
         blockers: [
-          "OpenAI keyframe and Higgsfield-only clip generation, real-output QC, and the ELEVAY voice/compositor are not released.",
-          "Verified news citations and full item-cost preflight are not integrated into AI regeneration.",
-          ...(automation.readiness.budgetRemainingUsd < Number(automation.control.perRunReserveUsd)
-            ? ["The retired planner's USD 20 reservation does not fit the remaining shared cap. The new workflow needs a separate verified total-cost quote; historical charges require evidence before adjustment."] : []),
+          "Itemized static/reel cost estimates and owner review records are available for saved draft items, but they do not dispatch paid tasks.",
+          "Direct OpenAI keyframe and Higgsfield-only clip generation, real-output QC, and the ELEVAY voice/compositor are not released as an end-to-end workflow.",
+          "Verified news citations and actual-source re-quoting are not yet integrated into full AI regeneration.",
         ],
       },
       boundedProviderAutomationEnabled: Boolean(automation.control.isEnabled),
@@ -2938,6 +2945,18 @@ export const marketingSystemRouter = router({
     await requireCapability(ctx.user, "run_weekly_automation_test");
     const result = await startWeeklyAutomationCycle({ triggerType: "manual_test", actorUserId: ctx.user.id });
     await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_weekly_automation_job", "manual_test", JSON.stringify({ result: result.reused ? "reused_existing_period_job" : "started", publicationEnabled: false, campaignOperationsEnabled: false, spendingEnabled: false }));
+    return result;
+  }),
+
+  quoteOwnerReviewedMediaItem: protectedProcedure.input(z.object({ itemId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    await requireCapability(ctx.user, "manage_weekly_automation");
+    return quoteElevayMarketingMediaItem(input.itemId);
+  }),
+
+  reviewOwnerMediaItemCost: protectedProcedure.input(z.object({ runId: z.number().int().positive(), quoteFingerprint: z.string().regex(/^[a-f0-9]{64}$/) })).mutation(async ({ ctx, input }) => {
+    if (!isOwner(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Only Mahmoud, the CRM owner, can review and acknowledge a media generation cost quote." });
+    const result = await recordOwnerElevayMediaCostReview({ runId: input.runId, quoteFingerprint: input.quoteFingerprint, actorUserId: ctx.user.id });
+    await writeAuditLog(auditCtxFromTrpc(ctx), "create", "marketing_review_media_run", result.runId, JSON.stringify({ itemId: result.itemId, action: "cost_reviewed_generation_locked", quoteFingerprint: input.quoteFingerprint, estimatedSubtotalUsd: result.quotedSubtotalUsd, paidGenerationStarted: false, publicationEnabled: false, metaActionsEnabled: false }));
     return result;
   }),
 

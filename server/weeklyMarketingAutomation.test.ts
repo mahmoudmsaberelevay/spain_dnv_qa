@@ -58,18 +58,19 @@ describe("bounded weekly multi-model automation", () => {
     expect(output.items.map(item => item.plannedDay)).toEqual(["Wednesday", "Saturday"]);
   });
 
-  it("keeps the owner-selected USD 100/month and USD 20/run caps fixed", () => {
+  it("retains the old locked planner's historical USD 100/month and USD 20/run settings without using them for new media", () => {
     expect(WEEKLY_AUTOMATION_MONTHLY_CAP_USD).toBe(100);
     expect(WEEKLY_AUTOMATION_PER_RUN_RESERVE_USD).toBe(20);
   });
 
-  it("shows the shared planning plus media reservation cap and labels internal claims honestly", () => {
+  it("labels historical reservations and internal claims without presenting an old cap for new production", () => {
     const service = read("server/weeklyMarketingAutomationService.ts");
     const page = read("client/src/pages/marketing/WeeklyResults.tsx");
     expect(service).toContain("const combinedBudget = await combinedMarketingBudgetRemaining(context.db)");
     expect(service).toContain("budgetUsedUsd: combinedBudget.planningUsd + combinedBudget.mediaUsd");
     expect(service).toContain("budgetRemainingUsd: combinedBudget.remainingUsd");
-    expect(page).toContain('label="Combined reservations / cap"');
+    expect(page).toContain('label="Historical reservations"');
+    expect(page).toContain('label="New production cost" value="Itemized quote + owner review"');
     expect(page).toContain('label="Owner-confirmed internal claims"');
     expect(page).toContain("approved official claims");
     expect(page).toContain("not vendor charges");
