@@ -141,15 +141,31 @@
 
   function renderLogin(msg) {
     if (S.ext) {
-      app.innerHTML = `<div class="login"><form onsubmit="return false">
-        <div class="brand"><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div>
-        <p>Sign in with your elevay.vip account to open the Command Center.</p>
-        <a class="btn primary" href="${esc(S.ext.loginUrl)}">Sign in to elevay.vip</a>
-        <p class="small muted">Access follows your Agentic Marketing role: owner and administrator approve, managers and producers request changes, analysts view.</p></form></div>`;
+      // Sign in right here with the elevay.vip account (same session as the CRM), then open the dashboard.
+      app.innerHTML = `<div class="login"><form id="login" novalidate>
+        <div class="brand"><img src="/admin-cc/brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div>
+        <label class="field"><span>elevay.vip email</span><input class="input" id="lg-email" type="email" autocomplete="username" required></label>
+        <label class="field"><span>Password</span><input class="input" id="lg-pw" type="password" autocomplete="current-password" required></label>
+        ${msg ? `<p class="small" style="color:var(--bad)">${esc(msg)}</p>` : ''}
+        <button class="btn primary" type="submit" id="lg-go">Open Command Center</button>
+        <p class="small muted"><a href="/login?forgot=1">Forgot password?</a> · Access follows your Agentic Marketing role.</p></form></div>`;
+      const em = document.getElementById('lg-email');
+      try { const last = store.get('elevay-cc-email'); if (last) { em.value = last; document.getElementById('lg-pw').focus(); } else em.focus(); } catch { /* ignore */ }
+      document.getElementById('login').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const btn = document.getElementById('lg-go'); btn.disabled = true; btn.textContent = 'Signing in…';
+        try {
+          const res = await fetch('/api/auth/login', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: em.value.trim(), password: document.getElementById('lg-pw').value }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Sign-in failed.');
+          store.set('elevay-cc-email', em.value.trim());
+        } catch (e) { renderLogin(e.message); return; }
+        try { await refresh(); render(); setInterval(poll, 20000); } catch { /* no-access screen already shown */ }
+      });
       return;
     }
     app.innerHTML = `<div class="login"><form id="login" novalidate>
-      <div class="brand"><img src="brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div>
+      <div class="brand"><img src="/admin-cc/brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div>
       <label class="field"><span>Work email</span><input class="input" id="lg-email" type="email" autocomplete="username" required></label>
       <label class="field"><span>Password</span><input class="input" id="lg-pw" type="password" autocomplete="current-password" required></label>
       ${msg ? `<p class="small" style="color:var(--bad)">${esc(msg)}</p>` : ''}
@@ -173,7 +189,7 @@
 
   function renderSetup(msg) {
     app.innerHTML = `<div class="login"><form id="setup" novalidate>
-      <div class="brand"><img src="brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div>
+      <div class="brand"><img src="/admin-cc/brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div>
       <div><h2>Create the owner account</h2><p class="small muted" style="margin-top:4px">One-time setup. Use the setup code you were given.</p></div>
       <label class="field"><span>Setup code</span><input class="input" id="su-code" autocomplete="one-time-code" required></label>
       <label class="field"><span>Your name</span><input class="input" id="su-name" autocomplete="name" required></label>
@@ -211,7 +227,7 @@
     const me = S.data.me;
     app.innerHTML = `<div class="shell">
       <aside class="rail">
-        <div class="brand"><img id="logo" src="brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div></div>
+        <div class="brand"><img id="logo" src="/admin-cc/brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div></div>
         <nav class="nav" aria-label="Sections">${VIEWS.map(([k, l]) => `<button data-view="${k}" ${k === S.view ? 'aria-current="page"' : ''}><span>${l}</span>${c[k] ? `<span class="count${k === 'monthly' ? ' quiet' : ''}">${c[k]}</span>` : ''}</button>`).join('')}</nav>
         <div class="rail-foot">
           <div class="who"><span>${esc(me.name || me.email)} · ${esc(me.role)}</span>${S.mode === 'server' && !S.ext ? '<button class="btn ghost sm" id="logout">Sign out</button>' : ''}</div>
