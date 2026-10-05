@@ -9,7 +9,7 @@
   const S = { mode: null, ext: null, data: null, view: 'overview', week: null, jobFilter: 'open', openItem: null, demoRole: 'owner', busy: false };
   const VIEWS = [
     ['overview', 'Overview'], ['plan', 'Weekly plan'], ['actions', 'Action plan'], ['performance', 'Performance'],
-    ['news', 'News'], ['monthly', 'Monthly plan'], ['manus', 'Manus bridge'], ['settings', 'Settings'],
+    ['news', 'News'], ['monthly', 'Monthly plan'], ['studio', 'AI Studio'], ['manus', 'Manus bridge'], ['settings', 'Settings'],
   ];
 
   // ------------------------------------------------------------ utils
@@ -200,6 +200,7 @@
       manus: s.needsInput,
       performance: s.guardrails.alerts.filter((a) => a.level === 'critical').length,
       monthly: d.plans.filter((p) => p.status === 'pending_approval').length,
+      studio: S.studio ? S.studio.runs.filter((r) => r.status === 'awaiting_approval').length : 0,
     };
   }
 
@@ -223,7 +224,7 @@
         <div id="view"></div>
       </main></div>`;
     const v = document.getElementById('view');
-    ({ overview: viewOverview, plan: viewPlan, actions: viewActions, performance: viewPerformance, news: viewNews, monthly: viewMonthly, manus: viewManus, settings: viewSettings })[S.view](v);
+    ({ overview: viewOverview, plan: viewPlan, actions: viewActions, performance: viewPerformance, news: viewNews, monthly: viewMonthly, studio: viewStudio, manus: viewManus, settings: viewSettings })[S.view](v);
     wireShell();
   }
 
@@ -236,6 +237,7 @@
       performance: 'Live from Meta and the ELEVAY CRM: last 30 days of ads, leads, qualified, unqualified, clients and page growth. Read-only.',
       news: 'Weekly news search: Manus collects, Claude verifies. Only verified or reported items can feed posts.',
       monthly: 'Next month’s plan, built from 6 months of Meta and CRM results. The owner approves it.',
+      studio: 'Claude conducts: it routes each request to OpenAI (statics, keyframes), Higgsfield (reel clips) or Manus (Meta), and checks the results. Paid steps wait for approval.',
       manus: 'Every decision here becomes a job for Manus, which runs Meta, OpenAI, Higgsfield and the Elevay.vip voice module.',
       settings: 'Hard limits, the autopublish gate, team access and the audit log.',
     })[v];
@@ -686,6 +688,87 @@
     }));
   }
 
+  // ------------------------------------------------------------ AI Studio
+  const PROV = { claude: ['Claude', '#C9A84C'], openai: ['OpenAI', '#5BA3B8'], higgsfield: ['Higgsfield', '#7a6fb0'], manus: ['Manus', '#2f8a74'], system: ['ELEVAY rules', '#5E6A71'], studio: ['Studio', '#5E6A71'], team: ['Team', '#1A3A5C'] };
+  const provChip = (p) => { const [l, c] = PROV[p] || [p, '#5E6A71']; return `<span class="pchip" style="--c:${c}">${esc(l)}</span>`; };
+  const RUN_PILL = { queued: ['info', 'Queued'], running: ['info', 'Working'], waiting: ['info', 'Waiting on provider'], awaiting_approval: ['warn', 'Needs approval'], done: ['ok', 'Done'], failed: ['bad', 'Failed'], cancelled: ['', 'Cancelled'] };
+  const STEP_ICON = { pending: '○', running: '◐', waiting: '◔', needs_approval: '!', done: '●', failed: '✕', skipped: '–' };
+  let studioTimer = null;
+  async function loadStudio() {
+    const [p, r] = await Promise.all([S.studio && S.studio.providers ? Promise.resolve(S.studio) : api.req('GET', 'ai/providers'), api.req('GET', 'ai/runs')]);
+    S.studio = { providers: p.providers, pipelines: p.pipelines, runs: r.runs };
+    return S.studio;
+  }
+  function viewStudio(el) {
+    if (S.mode === 'demo') { el.innerHTML = '<div class="empty">AI Studio runs on elevay.vip/admin.</div>'; return; }
+    el.innerHTML = '<div class="empty">Loading AI Studio…</div>';
+    loadStudio().then(() => { if (el.isConnected) drawStudio(el); }).catch((e) => { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
+    clearInterval(studioTimer);
+    studioTimer = setInterval(async () => {
+      if (S.view !== 'studio' || !el.isConnected) return clearInterval(studioTimer);
+      if (document.hidden || (document.activeElement && /TEXTAREA|INPUT|SELECT/.test(document.activeElement.tagName))) return;
+      if (!S.studio || !S.studio.runs.some((r) => ['queued', 'running', 'waiting'].includes(r.status))) return;
+      try { await loadStudio(); drawStudio(el); } catch { /* keep last */ }
+    }, 6000);
+  }
+  function drawStudio(el) {
+    const st = S.studio, pv = st.providers;
+    const open = new Set([...el.querySelectorAll('details[data-run][open]')].map((d) => d.dataset.run));
+    el.innerHTML = `<div class="stack" style="gap:16px">
+      <section class="panel"><div class="panel-h"><h2>Connected models</h2>${isOwner() ? '<button class="btn sm" id="provTest">Test connections</button>' : ''}</div>
+        <div class="grid g4">${['claude', 'openai', 'higgsfield', 'manus'].map((k) => { const p = pv[k]; return `<div class="kpi">${provChip(k)}<span class="small">${esc(p.role)}</span><span class="t">${p.ready ? '<span class="pill ok">Connected</span>' : `<span class="pill bad">Not set up</span> ${p.key ? esc(p.key) + ' missing' : ''}`}${k === 'manus' && p.lastSeen ? ' · seen ' + ago(p.lastSeen) : ''}${p.model ? ' · ' + esc(p.model) : ''}</span><span class="t" id="pt-${k}"></span></div>`; }).join('')}</div></section>
+      ${canEdit() ? `<section class="panel"><div class="panel-h"><h2>New request</h2><span class="small muted">Claude plans the work and hands each part to the right model</span></div>
+        <div class="stack" style="gap:10px">
+          <div class="row"><select class="input" id="stKind" style="max-width:260px">${[['request', 'Let Claude decide'], ['static', 'Static post (OpenAI)'], ['reel', 'Reel (OpenAI + Higgsfield)'], ['plan', 'Monthly plan from data'], ['manus', 'Meta / Manus task'], ['answer', 'Question about our data']].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+            <input class="input" id="stProgram" placeholder="Program (optional), e.g. Spain DNV" style="max-width:260px"></div>
+          <textarea class="input" id="stReq" rows="3" placeholder="e.g. A reel for Portugal D7 aimed at retired Egyptian couples, calm Lisbon lifestyle"></textarea>
+          <div class="row"><button class="btn primary" id="stGo">Start</button><span class="small muted" id="stFlow"></span></div>
+        </div></section>` : ''}
+      <section class="panel"><div class="panel-h"><h2>Runs</h2><span class="small muted">${st.runs.length} recent</span></div>
+        ${st.runs.length ? `<div class="stack" style="gap:10px">${st.runs.map((r) => runCard(r, open.has(String(r.id)))).join('')}</div>` : '<div class="empty">No runs yet.</div>'}
+      </section></div>`;
+    const kind = el.querySelector('#stKind');
+    const flow = () => { const p = st.pipelines[kind.value]; el.querySelector('#stFlow').innerHTML = p ? p.steps.map((x) => provChip(x.provider) + (x.gate ? '<span class="small muted">(approval)</span>' : '')).join(' → ') : ''; };
+    if (kind) { kind.onchange = flow; flow(); }
+    const go = el.querySelector('#stGo');
+    if (go) go.onclick = () => act(async () => {
+      const request = el.querySelector('#stReq').value.trim();
+      if (!request && kind.value !== 'plan') throw new Error('Describe what you need.');
+      await api.req('POST', 'ai/runs', { kind: kind.value, request, program: el.querySelector('#stProgram').value.trim() });
+      await loadStudio();
+    }, 'Started. Follow it in Runs.');
+    const pt = el.querySelector('#provTest');
+    if (pt) pt.onclick = () => act(async () => { const r = await api.req('POST', 'ai/providers/test'); for (const [k, v] of Object.entries(r.results)) { const n = document.getElementById('pt-' + k); if (n) n.innerHTML = `${v.ok ? '✓' : '✕'} ${esc(v.detail)}`; } });
+    el.querySelectorAll('[data-run-act]').forEach((b) => (b.onclick = () => {
+      const [a, id, n] = b.dataset.runAct.split(':');
+      if (a === 'approve' && b.dataset.cost && !confirm(b.dataset.cost)) return;
+      act(async () => { await api.req('POST', a === 'approve' ? `ai/runs/${id}/steps/${n}/approve` : `ai/runs/${id}/${a}`); await loadStudio(); }, a === 'approve' ? 'Approved. The models continue.' : a === 'retry' ? 'Retrying.' : 'Cancelled.');
+    }));
+    el.querySelectorAll('[data-goview]').forEach((b) => (b.onclick = (ev) => { ev.preventDefault(); go(b.dataset.goview); }));
+  }
+  const COST = { openai: 'This calls OpenAI image generation (paid, roughly $0.05–0.25 per image). Continue?', higgsfield: 'This submits 4 paid Higgsfield Pro clips. Continue?', manus: 'Manus will act on Meta with these instructions. Continue?' };
+  function runCard(r, isOpen) {
+    const [pc, pl] = RUN_PILL[r.status] || ['', r.status];
+    const A = r.artifacts || {};
+    const steps = r.steps.map((s) => `<li class="step ${s.status}"><span class="ico">${STEP_ICON[s.status] || '○'}</span>${provChip(s.provider)} <span>${esc(s.title)}</span>
+      ${s.status === 'needs_approval' ? ((s.gate === 'owner' && !isOwner()) || !canEdit() ? `<span class="pill warn">Waiting for ${s.gate === 'owner' ? 'owner' : 'approval'}</span>` : `<button class="btn sm primary" data-run-act="approve:${r.id}:${s.n}" data-cost="${esc(COST[s.provider] || '')}">Approve</button>`) : ''}
+      ${s.error ? `<div class="small" style="color:var(--bad)">${esc(s.error)}</div>` : ''}${s.approved_by ? `<span class="small muted"> · approved by ${esc(s.approved_by)}</span>` : ''}</li>`).join('');
+    const imgs = (A.images || []).map((i) => i.url).concat(A.keyframes ? A.keyframes.map((k) => k.url) : []);
+    const clips = (A.clips || []).filter((c) => c.url);
+    const brief = A.brief;
+    return `<details class="run" data-run="${r.id}" ${isOpen || ['awaiting_approval', 'failed'].includes(r.status) ? 'open' : ''}><summary><span class="pill ${pc}">${pl}</span> <strong>${esc(r.title)}</strong> <span class="small muted">· ${esc((S.studio.pipelines[r.kind] || {}).label || r.kind)} · #${r.id} · ${esc(r.created_by)} · ${ago(r.created_at)}</span></summary>
+      <div class="run-body"><ol class="steps">${steps}</ol>
+        ${A.answer ? `<div class="answer">${esc(A.answer)}</div>` : ''}
+        ${A.qc && A.qc.pass === false ? `<div class="alert"><span class="tag">Claude QC</span><span>${esc((A.qc.issues || []).join(' · '))}</span></div>` : A.qc ? '<div class="small" style="color:var(--ok)">Claude visual check passed.</div>' : ''}
+        ${brief ? `<div class="grid g2" style="margin-top:8px"><div><div class="small muted">Caption (Arabic)</div><div dir="rtl" class="small" style="white-space:pre-wrap">${esc(brief.caption_ar || '')}</div></div><div>${brief.design ? `<div class="small muted">Design text</div><div>${esc(brief.design.headline_en || '')}</div>` : ''}${brief.reel ? `<div class="small muted">Voice-over (Egyptian Arabic)</div><ol class="small" dir="rtl">${brief.reel.storyboard.map((c) => `<li>${esc(c.spoken_text_ar || '')}</li>`).join('')}</ol>` : ''}</div></div>` : ''}
+        ${imgs.length ? `<div class="thumbs">${imgs.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Generated design" loading="lazy"></a>`).join('')}</div>` : ''}
+        ${clips.length ? `<div class="thumbs">${clips.map((c) => `<video src="${esc(c.url)}" controls playsinline preload="metadata"></video>`).join('')}</div>` : ''}
+        ${A.item_id ? `<p class="small">In the weekly plan as <a href="#plan" data-goview="plan">${esc(A.item_id)}</a>.</p>` : ''}
+        ${A.plan ? '<p class="small">Plan sent to the <a href="#monthly" data-goview="monthly">Monthly plan</a> tab.</p>' : ''}
+        <details class="small"><summary>Conversation between the models (${(r.messages || []).length})</summary><ul class="msgs">${(r.messages || []).map((m) => `<li><span class="muted">${fmtDT(m.at)}</span> ${provChip(m.from)} → ${provChip(m.to)}<pre>${esc(m.text)}</pre></li>`).join('')}</ul></details>
+        ${canEdit() ? `<div class="row" style="margin-top:8px">${r.status === 'failed' ? `<button class="btn sm" data-run-act="retry:${r.id}">Retry failed step</button>` : ''}${!['done', 'failed', 'cancelled'].includes(r.status) ? `<button class="btn ghost sm" data-run-act="cancel:${r.id}">Cancel</button>` : ''}</div>` : ''}
+      </div></details>`;
+  }
   // ------------------------------------------------------------ manus bridge
   function viewManus(el) {
     const m = S.data.manus, jobs = S.data.jobs;

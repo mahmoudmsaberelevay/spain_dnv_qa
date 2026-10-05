@@ -28,6 +28,7 @@ import E from "./engine";
 import Manus from "./manus";
 import { PAGE_HTML } from "./page";
 import { buildLiveReport } from "./live";
+import { createOrchestrator, makeProviders, PIPELINES } from "./ai";
 import { sdk } from "../_core/sdk";
 import { COOKIE_NAME } from "@shared/const";
 import { isOwner } from "../permissionsRouter";
@@ -319,6 +320,46 @@ route("POST", "/live/replan", "marketer", async (ctx) => {
 });
 route("GET", "/agent/live", "agent", async (ctx) => ok(await liveReport(ctx.query.refresh === "1")));
 
+// ------------------------------------------------------------------ AI Studio (Claude ⇄ OpenAI ⇄ Higgsfield ⇄ Manus)
+let studioPromise = null;
+function studio() {
+  if (!studioPromise) studioPromise = (async () => {
+    const o = createOrchestrator({ q, mutate, loadState, liveReport, providers: makeProviders(), E, R });
+    await o.ensureTable();
+    return o;
+  })().catch((e) => { studioPromise = null; throw e; });
+  return studioPromise;
+}
+const STUDIO_KINDS = Object.keys(PIPELINES);
+function providerStatus(lastAgentSeen) {
+  const has = (k) => !!process.env[k];
+  return {
+    claude: { role: "Conductor: routes requests, writes briefs, storyboards and plans, checks visuals", ready: has("ANTHROPIC_API_KEY"), key: "ANTHROPIC_API_KEY", model: process.env.ELEVAY_CLAUDE_MODEL || "claude-sonnet-4-6" },
+    openai: { role: "Static designs and reel keyframes", ready: has("OPENAI_API_KEY"), key: "OPENAI_API_KEY" },
+    higgsfield: { role: "4 × 5 s reel clips from the keyframes", ready: has("HF_API_KEY"), key: "HF_API_KEY" },
+    manus: { role: "Meta and other connected platforms, through the job queue", ready: !!lastAgentSeen || has("ELEVAY_COMMAND_CENTER_MANUS_API_KEY"), lastSeen: lastAgentSeen },
+  };
+}
+route("GET", "/ai/providers", "team", async () => ok({ ok: true, providers: providerStatus(await kvGet("last_agent_seen")), pipelines: Object.fromEntries(STUDIO_KINDS.map((k) => [k, { label: PIPELINES[k].label, steps: PIPELINES[k].steps().map((st) => ({ provider: st.provider, title: st.title, gate: st.gate || null })) }])) }));
+route("POST", "/ai/providers/test", "owner", async () => ok({ ok: true, results: await (await studio()).test() }));
+route("GET", "/ai/runs", "team", async () => ok({ ok: true, runs: await (await studio()).list(40) }));
+route("GET", "/ai/runs/:id", "team", async (ctx) => { const r = await (await studio()).get(Number(ctx.params.id)); return r ? ok({ ok: true, run: r }) : fail(404, "Run not found"); });
+route("POST", "/ai/runs", "marketer", async (ctx) => {
+  const kind = STUDIO_KINDS.includes(ctx.body.kind) ? ctx.body.kind : "request";
+  const options = { program: String(ctx.body.program || "").slice(0, 80), datetime_cairo: String(ctx.body.datetime_cairo || "").slice(0, 16), week: /^\d{4}-W\d{2}$/.test(ctx.body.week || "") ? ctx.body.week : undefined };
+  try { return ok({ ok: true, run: await (await studio()).create({ kind, request: ctx.body.request, options, user: ctx.user }) }); } catch (e) { return fail(400, e.message); }
+});
+const studioAct = (fn) => async (ctx) => { try { await fn(await studio(), ctx); return ok({ ok: true }); } catch (e) { return fail(400, e.message); } };
+route("POST", "/ai/runs/:id/steps/:n/approve", "marketer", studioAct((o, ctx) => o.approve(Number(ctx.params.id), ctx.params.n, ctx.user)));
+route("POST", "/ai/runs/:id/retry", "marketer", studioAct((o, ctx) => o.retry(Number(ctx.params.id), ctx.user)));
+route("POST", "/ai/runs/:id/cancel", "marketer", studioAct((o, ctx) => o.cancel(Number(ctx.params.id), ctx.user)));
+// Manus can ask the studio too (e.g. Claude analysis or a new design). Paid steps still wait for a person.
+route("GET", "/agent/ai/runs", "agent", async () => ok({ ok: true, runs: await (await studio()).list(40) }));
+route("POST", "/agent/ai/runs", "agent", async (ctx) => {
+  const kind = STUDIO_KINDS.includes(ctx.body.kind) ? ctx.body.kind : "request";
+  try { return ok({ ok: true, run: await (await studio()).create({ kind, request: ctx.body.request, options: {}, user: { email: "manus", role: "marketer" } }) }); } catch (e) { return fail(400, e.message); }
+});
+
 route("GET", "/agent/ping", "agent", async () => ok({ ok: true, time: new Date().toISOString() }));
 route("GET", "/agent/summary", "agent", async () => { const { state } = await loadState(); return ok({ ok: true, settings: state.settings, summary: E.summary(state) }); });
 route("GET", "/agent/jobs", "agent", async (ctx) => {
@@ -418,6 +459,9 @@ export function registerCommandCenterRoutes(app: Express) {
     res.type("html").send(PAGE_HTML);
   });
   app.all(BASE + "/api/*", handle);
+  // Resume AI Studio runs that wait on Higgsfield clips or Manus jobs.
+  const t = setInterval(() => { if (process.env.DATABASE_URL) studio().then((o) => o.tick()).catch(() => {}); }, 45000);
+  if (t.unref) t.unref();
 }
 
 // Exported for tests.

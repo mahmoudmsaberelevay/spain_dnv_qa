@@ -22,6 +22,20 @@ A separate section of elevay.vip where the marketing team approves the work Manu
 
 All Meta calls are GET. It reads `leads`, `lead_activities` and `lead_integrations` and writes nothing to them.
 
+## AI Studio (Claude ⇄ OpenAI ⇄ Higgsfield ⇄ Manus)
+
+The **AI Studio** tab (`server/commandCenter/ai.ts`) runs requests through the models. Claude is the conductor: it routes a free request, writes briefs, storyboards and plans, fixes brand blocks once, and checks the generated visuals. Every instruction and answer is kept in the run's "Conversation between the models".
+
+| Request | Steps |
+|---|---|
+| Static post | Claude brief → ELEVAY rules check → **OpenAI** design (approval: marketer/owner) → official logo composited → Claude visual QC → weekly plan |
+| Reel | Claude storyboard + Egyptian Arabic voice-over → rules check → **OpenAI** 4 keyframes (approval) → Claude QC → **Higgsfield** 4 × 5 s clips (owner approval) → weekly plan |
+| Monthly plan from data | Claude reads the live Meta + CRM report → monthly plan for owner approval |
+| Meta / Manus task | Claude writes Manus instructions → owner approval when it changes Meta → **Manus** job → Claude summary |
+| Question | Claude answers from the live data |
+
+Keys used on the server: `ANTHROPIC_API_KEY` (optional `ELEVAY_CLAUDE_MODEL`), `OPENAI_API_KEY`, `HF_API_KEY`; Manus through the existing job queue. Runs are stored in `ec_ai_runs`; waiting runs resume every 45 s, and a step interrupted by a restart is marked failed for a manual retry (paid work is never re-run silently). Manus can read runs (`GET /agent/ai/runs`) and start one (`POST /agent/ai/runs` with `kind` and `request`); paid steps still wait for a person.
+
 ## Access
 
 People sign in with their elevay.vip accounts. Access comes from the Agentic Marketing roles:
@@ -64,6 +78,7 @@ Optional push mode: set the secret `ELEVAY_COMMAND_CENTER_MANUS_API_KEY` (and op
 ## Files
 
 - `server/commandCenter/routes.ts`: routes, storage, access
+- `server/commandCenter/ai.ts`: AI Studio orchestrator and provider adapters (`ai.test.ts`)
 - `server/commandCenter/live.ts`: live Meta + CRM report and 6-month analysis (`live.test.ts`)
 - `server/commandCenter/{rules,engine,demo-data,manus}.ts`: generated from `client/public/admin-cc/shared/*.js` and `manus.src.js` by `node scripts/build-command-center-modules.mjs`; the browser and the server run the same rules
 - `client/public/admin-cc/`: dashboard (plain JS + CSS)
