@@ -353,11 +353,11 @@
     const bars = weeks.map((w, i) => {
       const x = padL + i * bw + bw * 0.18, h = (H - padT - padB) * (w.rate || 0), ok = (w.rate || 0) >= thr;
       return `<rect x="${x.toFixed(1)}" y="${y(w.rate || 0).toFixed(1)}" width="${(bw * 0.64).toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${ok ? 'var(--accent)' : 'var(--warn)'}"><title>${w.week}: ${w.firstPass}/${w.presented}</title></rect>
-        <text x="${(x + bw * 0.32).toFixed(1)}" y="${(y(w.rate || 0) - 4).toFixed(1)}" text-anchor="middle" font-size="10" fill="var(--ink-2)">${Math.round((w.rate || 0) * 100)}%</text>
-        <text x="${(x + bw * 0.32).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--ink-3)">${w.week.slice(5)}</text>`;
+        <text x="${(x + bw * 0.32).toFixed(1)}" y="${(y(w.rate || 0) - 4).toFixed(1)}" text-anchor="middle" font-size="13" fill="var(--ink-2)">${Math.round((w.rate || 0) * 100)}%</text>
+        <text x="${(x + bw * 0.32).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="13" fill="var(--ink-3)">${w.week.slice(5)}</text>`;
     }).join('');
-    const grid = [0, 0.5, 1].map((v) => `<line x1="${padL}" x2="${W - 6}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" /><text x="${padL - 6}" y="${y(v) + 3}" text-anchor="end" font-size="10" fill="var(--ink-3)">${v * 100}%</text>`).join('');
-    const line = `<line x1="${padL}" x2="${W - 6}" y1="${y(thr)}" y2="${y(thr)}" stroke="var(--gold)" stroke-dasharray="4 3" stroke-width="1.5" /><text x="${W - 8}" y="${y(thr) - 4}" text-anchor="end" font-size="10" fill="var(--gold)">${thr * 100}% gate</text>`;
+    const grid = [0, 0.5, 1].map((v) => `<line x1="${padL}" x2="${W - 6}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" /><text x="${padL - 6}" y="${y(v) + 3}" text-anchor="end" font-size="13" fill="var(--ink-3)">${v * 100}%</text>`).join('');
+    const line = `<line x1="${padL}" x2="${W - 6}" y1="${y(thr)}" y2="${y(thr)}" stroke="var(--gold)" stroke-dasharray="4 3" stroke-width="1.5" /><text x="${W - 8}" y="${y(thr) - 4}" text-anchor="end" font-size="13" fill="var(--gold)">${thr * 100}% gate</text>`;
     const weeksLeft = Math.max(0, set.manualWeeks - st.weeksDone);
     return `<div class="weeks-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly first-pass approval rate">${grid}${line}${bars}</svg></div>
       <div class="grid g3" style="margin-top:10px">
