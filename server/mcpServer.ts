@@ -1,5 +1,6 @@
 import { z } from "zod/v4";
 import { createMcpHandler } from "mcp-handler";
+import crypto from "node:crypto";
 import type { Express, Request as ExpressRequest, Response as ExpressResponse } from "express";
 
 /**
@@ -23,6 +24,36 @@ function toWebRequest(req: ExpressRequest): Request {
 }
 
 export function registerMcpServer(app: Express) {
+  const requestWindows = new Map<string, { startedAt: number; count: number }>();
+  const maxRequestsPerMinute = 120;
+  const configuredToken = process.env.ELEVAY_CLAUDE_MCP_READ_TOKEN?.trim() ?? "";
+
+  const authenticateReadOnlyMcp = (req: ExpressRequest, res: ExpressResponse): boolean => {
+    if (!configuredToken) {
+      res.status(503).json({ error: "ELEVAY Claude MCP connector is not configured." });
+      return false;
+    }
+    const authorization = req.header("authorization") ?? "";
+    const supplied = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+    const expectedBytes = Buffer.from(configuredToken);
+    const suppliedBytes = Buffer.from(supplied);
+    const valid = expectedBytes.length === suppliedBytes.length && crypto.timingSafeEqual(expectedBytes, suppliedBytes);
+    if (!valid) {
+      res.status(401).json({ error: "Unauthorized MCP request." });
+      return false;
+    }
+    const identity = crypto.createHash("sha256").update(supplied).digest("hex").slice(0, 16);
+    const now = Date.now();
+    const window = requestWindows.get(identity);
+    if (!window || now - window.startedAt >= 60_000) requestWindows.set(identity, { startedAt: now, count: 1 });
+    else if (window.count >= maxRequestsPerMinute) {
+      res.status(429).json({ error: "MCP request rate limit exceeded." });
+      return false;
+    } else window.count += 1;
+    console.info(`[MCP][claude-read-only] ${req.method} ${req.path} authenticated token=${identity}`);
+    return true;
+  };
+
   const mcpHandler = createMcpHandler(
     (server: any) => {
       // ─── TOOL 1: Search Clients ─────────────────────────────────────────
@@ -184,6 +215,30 @@ export function registerMcpServer(app: Express) {
         }
       });
 
+      // ─── TOOL 6: Full Read-Only Lead Details ─────────────────────────────
+      server.registerTool("get_lead_details", {
+        description: "Read the complete CRM record for one Lead, including personal, qualification, attribution, consent, assignment, and status fields. This tool is read-only.",
+        inputSchema: z.object({ leadId: z.number().int().positive() }),
+      }, async ({ leadId }: { leadId: number }) => {
+        try {
+          const { getDb } = await import("./db");
+          const { leads, leadActivities, leadNotes, leadTasks } = await import("../drizzle/schema");
+          const { eq, desc } = await import("drizzle-orm");
+          const db = await getDb();
+          if (!db) throw new Error("Database unavailable");
+          const [lead] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+          if (!lead) return { content: [{ type: "text" as const, text: `No lead found with ID ${leadId}.` }] };
+          const [activities, notes, tasks] = await Promise.all([
+            db.select().from(leadActivities).where(eq(leadActivities.leadId, leadId)).orderBy(desc(leadActivities.createdAt)),
+            db.select().from(leadNotes).where(eq(leadNotes.leadId, leadId)).orderBy(desc(leadNotes.createdAt)),
+            db.select().from(leadTasks).where(eq(leadTasks.leadId, leadId)).orderBy(desc(leadTasks.createdAt)),
+          ]);
+          return { content: [{ type: "text" as const, text: JSON.stringify({ lead, activities, notes, tasks, readOnly: true }, null, 2) }] };
+        } catch (error) {
+          return { content: [{ type: "text" as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+        }
+      });
+
       // ─── TOOL 6: Get Client Details ─────────────────────────────────────
       server.registerTool("get_client_details", {
         description: "Get full details for a specific client by their client code or name, including all receipts and payment history.",
@@ -275,6 +330,7 @@ export function registerMcpServer(app: Express) {
 
   // Mount MCP handler with Express-to-Web adapter
   app.all("/api/mcp", async (req: ExpressRequest, res: ExpressResponse) => {
+    if (!authenticateReadOnlyMcp(req, res)) return;
     try {
       const webRequest = toWebRequest(req);
       const webResponse = await mcpHandler(webRequest);
