@@ -11,6 +11,17 @@ A separate section of elevay.vip where the marketing team approves the work Manu
 - **Manus job queue**: every decision becomes a job for Manus; Manus questions show up for the team to answer.
 - Friday action plan, Meta report view, weekly news with confidence levels, monthly plan approval, audit log.
 
+## Live Meta + CRM data (read-only)
+
+`GET /admin/api/live` (team) and `GET /admin/api/agent/live` (Manus) build one report, cached 30 minutes in `ec_cache` (Refresh forces a rebuild, at most every 2 minutes):
+
+- **Meta ads, last 30 complete Cairo days**: spend, Meta leads, CPL, reach, frequency, impressions, CPM, clicks, CTR, video views, ThruPlays, page likes and messages from ads, per campaign and best/weakest ads. Uses `META_SYSTEM_USER_ACCESS_TOKEN` and `META_AD_ACCOUNT_ID` (needs `ads_read`).
+- **Page growth**: page views, new likes/follows, unfollows, video views and Instagram views/new followers. Uses `META_PAGE_ACCESS_TOKEN` / `META_PAGE_ID`, falling back to the active Meta lead integration (needs `read_insights`, `pages_read_engagement`, `instagram_manage_insights` for Instagram). Each metric tries Meta's current name first and older names after, and the page shows which one answered.
+- **CRM funnel (ELEVAY CRM, same database)**: new leads, moved to qualified, moved to unqualified (with reasons), new clients (stage Client or contract signed), from Meta and all sources, plus where the 30-day leads stand today. Each campaign is joined with its CRM outcomes for cost per qualified lead.
+- **6-month analysis** for the monthly plan: month-by-month spend, CPL, CRM leads, qualified rate, clients and cost per qualified, trends against the last complete month, top unqualified reason, best program, and campaign suggestions (scale / reduce / fix quality) with a budget split inside 90% of the cap. *Ask Manus to update the plan* turns it into a Manus job; the revised plan comes back for owner approval.
+
+All Meta calls are GET. It reads `leads`, `lead_activities` and `lead_integrations` and writes nothing to them.
+
 ## Access
 
 People sign in with their elevay.vip accounts. Access comes from the Agentic Marketing roles:
@@ -24,7 +35,7 @@ People sign in with their elevay.vip accounts. Access comes from the Agentic Mar
 
 ## Data
 
-Stored in its own tables (`ec_meta`, `ec_items`, `ec_jobs`, `ec_audit`, `ec_kv`), created automatically on first use with `CREATE TABLE IF NOT EXISTS`. It does not read or write Lead, client, CRM or finance tables. It reads `users` and `marketing_system_role_assignments` only to decide access.
+Stored in its own tables (`ec_meta`, `ec_items`, `ec_jobs`, `ec_audit`, `ec_kv`, `ec_cache`), created automatically on first use with `CREATE TABLE IF NOT EXISTS`. It reads `users` and `marketing_system_role_assignments` to decide access and reads (never writes) `leads`, `lead_activities` and `lead_integrations` for the live report.
 
 ## Manus connection
 
@@ -46,12 +57,14 @@ Endpoints (all JSON, Bearer token):
 | POST | `/actions` · `/actions/{id}/result` | Friday action plan and execution results |
 | POST | `/news` · `/plans` | Weekly news, monthly plan |
 | GET | `/summary` · `/items` · `/ping` | Read state |
+| GET | `/live` | Live Meta + CRM report and the 6-month analysis (use it for the monthly plan) |
 
 Optional push mode: set the secret `ELEVAY_COMMAND_CENTER_MANUS_API_KEY` (and optionally `ELEVAY_COMMAND_CENTER_MANUS_PROJECT_ID`) so each new job also starts a Manus task immediately.
 
 ## Files
 
 - `server/commandCenter/routes.ts`: routes, storage, access
+- `server/commandCenter/live.ts`: live Meta + CRM report and 6-month analysis (`live.test.ts`)
 - `server/commandCenter/{rules,engine,demo-data,manus}.ts`: generated from `client/public/admin-cc/shared/*.js` and `manus.src.js` by `node scripts/build-command-center-modules.mjs`; the browser and the server run the same rules
 - `client/public/admin-cc/`: dashboard (plain JS + CSS)
 - `server/commandCenter/commandCenter.test.ts`: tests

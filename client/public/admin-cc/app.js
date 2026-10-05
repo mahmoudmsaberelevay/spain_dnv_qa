@@ -90,6 +90,8 @@
     autopublish: (on, reason) => api.run(() => api.req('POST', `autopublish/${on ? 'enable' : 'disable'}`, { reason }), () => (on ? E.enableAutopublish(demoState, who(), role()) : E.disableAutopublish(demoState, reason || 'Turned off by owner', who()))),
     addUser: (u) => api.run(() => api.req('POST', 'users', u), () => ({ ok: false, error: 'Team accounts work once the app runs on the server.' })),
     removeUser: (id) => api.run(() => api.req('DELETE', `users/${id}`), () => ({ ok: false, error: 'Team accounts work once the app runs on the server.' })),
+    live: (refresh) => api.req('GET', 'live' + (refresh ? '?refresh=1' : '')),
+    replan: (note) => api.run(() => api.req('POST', 'live/replan', { note }), () => ({ ok: false, error: 'Live data works on elevay.vip only.' })),
     password: (current, next) => api.run(() => api.req('POST', 'me/password', { current, next }), () => ({ ok: false, error: 'Passwords work once the app runs on the server.' })),
   };
 
@@ -231,9 +233,9 @@
       overview: `${t} Cairo. Targets, spend guardrails and what needs a decision.`,
       plan: '7 posts a week (4 static + 3 reels). Approve, request changes or reject each item. Manus regenerates only what you flag.',
       actions: 'Friday action plan from the Meta report. Manus executes only what the owner approves.',
-      performance: 'Latest Meta report from Manus, checked against the 200,000 EGP monthly cap and 100 EGP CPL ceiling.',
+      performance: 'Live from Meta and the ELEVAY CRM: last 30 days of ads, leads, qualified, unqualified, clients and page growth. Read-only.',
       news: 'Weekly news search: Manus collects, Claude verifies. Only verified or reported items can feed posts.',
-      monthly: 'Next month’s marketing plan, delivered in the last week of each month.',
+      monthly: 'Next month’s plan, built from 6 months of Meta and CRM results. The owner approves it.',
       manus: 'Every decision here becomes a job for Manus, which runs Meta, OpenAI, Higgsfield and the Elevay.vip voice module.',
       settings: 'Hard limits, the autopublish gate, team access and the audit log.',
     })[v];
@@ -274,6 +276,7 @@
         ${att('performance', crit, 'guardrail alerts', crit ? 'Spend cap or CPL ceiling at risk' : 'Spend and CPL within limits', crit ? 'bad' : 'calm')}
         ${att('manus', s.needsInput, 'questions from Manus', `${s.jobsOpen} open job${s.jobsOpen === 1 ? '' : 's'} in the bridge`, s.needsInput ? 'bad' : 'calm')}
       </div>
+      <div id="liveStrip"></div>
       <section class="panel"><div class="panel-h"><h2>Monthly funnel</h2><span class="muted small">${rep ? `Meta report for ${esc(rep.month)}, as of ${esc(rep.asOf)} · day ${g.day} of ${g.daysInMonth}` : 'No Meta report yet'}</span></div>
         ${rep ? funnel(rep, set, g) : '<div class="empty">Manus posts the Meta report every Friday at 09:00 Cairo. The funnel fills in from it.</div>'}</section>
       <div class="grid g2">
@@ -283,6 +286,7 @@
       <section class="panel"><div class="panel-h"><h2>This week’s operating calendar</h2><span class="muted small">Sunday to Saturday, Cairo time</span></div><div class="table-wrap">${calendar()}</div></section>
     </div>`;
     el.querySelectorAll('[data-go]').forEach((b) => (b.onclick = () => go(b.dataset.go)));
+    liveInto(document.getElementById('liveStrip'), 'strip').then(() => el.querySelectorAll('#liveStrip [data-go]').forEach((b) => (b.onclick = (ev) => { ev.preventDefault(); go(b.dataset.go); })));
   }
   const att = (view, n, what, sub, cls) => `<button class="att ${cls}" data-go="${view}"><span class="n">${n}</span><strong>${what}</strong><span class="small muted">${sub}</span></button>`;
 
@@ -524,10 +528,15 @@
 
   // ------------------------------------------------------------ performance
   function viewPerformance(el) {
+    el.innerHTML = '<div id="live"></div><div id="manusReport" style="margin-top:16px"></div>';
+    liveInto(document.getElementById('live'), 'full');
+    manusReport(document.getElementById('manusReport'));
+  }
+  function manusReport(el) {
     const s = S.data.summary, rep = s.report, set = S.data.settings, g = s.guardrails;
-    if (!rep) { el.innerHTML = '<div class="empty">No Meta report yet. Manus posts it every Friday at 09:00 Cairo.</div>'; return; }
+    if (!rep) { el.innerHTML = ''; return; }
     const cplOf = (a) => (a.leads ? a.spendEgp / a.leads : null);
-    el.innerHTML = `<div class="stack" style="gap:16px">
+    el.innerHTML = `<div class="stack" style="gap:16px"><h2 style="margin:8px 0 0">Manus Friday report</h2>
       ${g.alerts.length ? `<section class="panel"><div class="panel-h"><h2>Guardrails</h2><span class="small muted">Breaches need the owner’s approval before Manus acts</span></div><div class="alerts">${g.alerts.map(alertRow).join('')}</div></section>` : ''}
       <section class="panel"><div class="panel-h"><h2>Report ${esc(rep.month)}</h2><span class="small muted">As of ${esc(rep.asOf)} · received ${ago(rep.received_at)}</span></div>
         <div class="grid g5">${[['Spend MTD', n0(rep.spendMtdEgp) + ' EGP'], ['Blended CPL', rep.leads ? n0(rep.spendMtdEgp / rep.leads) + ' EGP' : '—'], ['CTR', pct(rep.ctr, 2)], ['CPM', rep.cpm ? n0(rep.cpm) + ' EGP' : '—'], ['Frequency', rep.frequency || '—'], ['Reach', n0(rep.reach)], ['Impressions', n0(rep.impressions)], ['Video views', n0(rep.videoViews)], ['ThruPlay rate', pct(rep.thruPlayRate, 1)], ['Page likes', n0(rep.pageLikes)]].map(([l, v]) => `<div class="kpi"><span class="label">${l}</span><span class="v">${v}</span></div>`).join('')}</div></section>
@@ -537,6 +546,104 @@
           return `<tr><td>${esc(a.name)}</td><td class="r num">${n0(a.spendEgp)}</td><td class="r num">${n0(a.leads)}</td><td class="r num" style="color:${lead && c > set.maxCplEgp ? 'var(--bad)' : lead && c > set.targetCplEgp ? 'var(--warn)' : 'inherit'}">${lead ? n0(c) : '—'}</td><td class="num small">${(a.cplHistory || []).map((h) => `<span style="color:${h.cpl > set.maxCplEgp ? 'var(--bad)' : 'inherit'}">${n0(h.cpl)}</span>`).join(' · ') || '—'}</td><td>${!lead ? `<span class="pill plain">${esc(a.objective)}</span>` : flag ? `<span class="pill bad">CPL breach</span> ${isOwner() ? `<button class="btn sm" data-pause="${esc(a.name)}">Propose pause</button>` : ''}` : c > set.targetCplEgp ? '<span class="pill warn">Above target</span>' : '<span class="pill ok">Healthy</span>'}</td></tr>`; }).join('')}</tbody></table></div></section>
       <div class="grid g2"><section class="panel"><h3 style="margin-bottom:8px">Top creatives</h3>${list(rep.topCreatives)}</section><section class="panel"><h3 style="margin-bottom:8px">Bottom creatives</h3>${list(rep.bottomCreatives)}</section></div>
     </div>`;
+  }
+  // ------------------------------------------------------------ live Meta + CRM (read-only)
+  const egp = (v) => (v === null || v === undefined || isNaN(v) ? '—' : n0(v) + ' EGP');
+  const kpi = (l, v, t) => `<div class="kpi"><span class="label">${l}</span><span class="v">${v}</span>${t ? `<span class="t">${t}</span>` : ''}</div>`;
+  async function loadLive(refresh) {
+    if (S.mode === 'demo') return null;
+    if (!refresh && S.live && Date.now() - S.liveAt < 5 * 60 * 1000) return S.live;
+    S.live = await api.req('GET', 'live' + (refresh ? '?refresh=1' : '')); S.liveAt = Date.now();
+    return S.live;
+  }
+  async function liveInto(el, mode, refresh) {
+    if (S.mode === 'demo') { el.innerHTML = '<div class="empty">Live Meta and CRM data shows on elevay.vip/admin.</div>'; return; }
+    if (!S.live || refresh) el.innerHTML = '<div class="empty">Loading Meta and CRM data…</div>';
+    try { const d = await loadLive(refresh); if (el.isConnected) el.innerHTML = mode === 'strip' ? liveStrip(d) : mode === 'analysis' ? liveAnalysis(d) : liveFull(d); }
+    catch (e) { el.innerHTML = `<div class="empty">Could not load live data: ${esc(e.message)}</div>`; return; }
+    const rb = el.querySelector('[data-live-refresh]');
+    if (rb) rb.onclick = () => liveInto(el, mode, true);
+    const rp = el.querySelector('[data-replan]');
+    if (rp) rp.onclick = () => act(() => api.replan((el.querySelector('#replanNote') || {}).value || ''), 'Sent to Manus. The revised plan will come back here for approval.');
+  }
+  function liveErrors(d) {
+    const e = d.errors || {}, names = { ads: 'Meta ads', page: 'Facebook Page', crm: 'CRM (30 days)', crm6: 'CRM (6 months)' };
+    const k = Object.keys(e);
+    return k.length ? `<div class="alerts" style="margin-bottom:12px">${k.map((x) => `<div class="alert warning"><strong>${names[x] || x}:</strong> ${esc(e[x])}</div>`).join('')}</div>` : '';
+  }
+  function liveHead(d, title) {
+    return `<div class="panel-h"><h2>${title}</h2><span class="row small muted">${esc(d.window.since)} → ${esc(d.window.until)} · updated ${ago(d.generatedAt)} ${canEdit() ? '<button class="btn sm" data-live-refresh>Refresh</button>' : ''}</span></div>`;
+  }
+  function liveStrip(d) {
+    const a = d.ads && d.ads.total, c = d.crm && d.crm.meta, p = d.page;
+    return `<section class="panel">${liveHead(d, 'Last 30 days (live)')}${liveErrors(d)}<div class="grid g5">
+      ${kpi('Ad spend', egp(a && a.spend), a && a.leads ? 'CPL ' + egp(a.spend / a.leads) : '')}
+      ${kpi('Meta leads', n0(c && c.leads), a ? n0(a.leads) + ' reported by Meta' : '')}
+      ${kpi('Qualified', n0(c && c.qualified), (c ? n0(c.unqualified) : '—') + ' unqualified')}
+      ${kpi('Clients', n0(c && c.clients), '')}
+      ${kpi('New page likes', n0(p && p.newLikes && p.newLikes.total), p && p.views && p.views.total !== null ? n0(p.views.total) + ' page views' : '')}
+    </div><p class="small muted" style="margin-top:10px">Meta-sourced leads in the CRM. <a href="#performance" data-go="performance">Full report</a></p></section>`;
+  }
+  function liveFull(d) {
+    const a = d.ads, t = a && a.total, crm = d.crm, p = d.page, set = S.data.settings;
+    const funnelRow = (label, b) => b ? `<tr><td>${label}</td><td class="r num">${n0(b.leads)}</td><td class="r num">${n0(b.qualified)}</td><td class="r num">${n0(b.unqualified)}</td><td class="r num">${n0(b.clients)}</td><td class="r num">${b.leads ? pct(b.cohort.qualifiedOrBetter / b.leads, 1) : '—'}</td><td class="r num">${n0(b.cohort.open)}</td></tr>` : '';
+    const reasons = crm && crm.all.unqualifiedReasons, rk = reasons ? Object.keys(reasons) : [];
+    const pv = (m) => (m && m.total !== null && m.total !== undefined ? n0(m.total) : '—');
+    const pvNote = (m) => (m && m.metric ? `<span class="t">${esc(m.metric)}</span>` : m && m.error ? `<span class="t" title="${esc(m.error)}">not available</span>` : '');
+    const ig = p && p.instagram;
+    return `<div class="stack" style="gap:16px">
+      <section class="panel">${liveHead(d, 'Meta ads, last 30 days')}${liveErrors(d)}
+        ${t ? `<div class="grid g5">${[
+          kpi('Spend', egp(t.spend), a.account && a.account.currency !== 'EGP' ? 'Account currency ' + esc(a.account.currency) : ''),
+          kpi('Meta leads', n0(t.leads), t.leads ? 'CPL ' + egp(t.cpl) : ''),
+          kpi('Reach', n0(t.reach), 'Frequency ' + (t.frequency ? t.frequency.toFixed(2) : '—')),
+          kpi('Impressions', n0(t.impressions), 'CPM ' + egp(t.cpm)),
+          kpi('Clicks', n0(t.clicks), 'CTR ' + pct(t.ctr, 2)),
+          kpi('Video views (3s)', n0(t.videoViews), 'ThruPlays ' + n0(t.thruplays)),
+          kpi('Page likes from ads', n0(t.pageLikes), ''),
+          kpi('Messages started', n0(t.messages), ''),
+          kpi('Cost per qualified', crm && crm.meta.qualified ? egp(t.spend / crm.meta.qualified) : '—', 'Spend ÷ Meta leads qualified'),
+          kpi('Cost per client', crm && crm.meta.clients ? egp(t.spend / crm.meta.clients) : '—', ''),
+        ].join('')}</div>` : '<div class="empty">No ad data.</div>'}
+      </section>
+      <section class="panel"><div class="panel-h"><h2>CRM funnel, last 30 days</h2><span class="small muted">From the ELEVAY CRM stage history</span></div>
+        ${crm ? `<div class="table-wrap"><table><thead><tr><th>Source</th><th class="r">New leads</th><th class="r">Moved to qualified</th><th class="r">Moved to unqualified</th><th class="r">New clients</th><th class="r">Qualified rate*</th><th class="r">Still open*</th></tr></thead>
+          <tbody>${funnelRow('From Meta', crm.meta)}${funnelRow('All sources', crm.all)}</tbody></table></div>
+          ${rk.length ? `<p class="small" style="margin-top:10px"><strong>Unqualified reasons:</strong> ${rk.map((k) => `${esc(k)} ${n0(reasons[k])}`).join(' · ')}</p>` : ''}
+          <p class="small muted" style="margin-top:6px">*Of the leads created in these 30 days, where they stand today (qualified, prospect or client; still fresh or contacted).</p>` : '<div class="empty">CRM data unavailable.</div>'}
+      </section>
+      <section class="panel"><div class="panel-h"><h2>Page growth, last 30 days</h2><span class="small muted">${p ? esc(p.name || '') + ' · ' + n0(p.likesTotal) + ' total likes · ' + n0(p.followersTotal) + ' followers' : ''}</span></div>
+        ${p ? `<div class="grid g5">
+          <div class="kpi"><span class="label">Page views</span><span class="v">${pv(p.views)}</span>${pvNote(p.views)}</div>
+          <div class="kpi"><span class="label">New page likes / follows</span><span class="v">${pv(p.newLikes)}</span>${pvNote(p.newLikes)}</div>
+          <div class="kpi"><span class="label">Unfollows</span><span class="v">${pv(p.unlikes)}</span>${pvNote(p.unlikes)}</div>
+          <div class="kpi"><span class="label">Net new</span><span class="v">${p.newLikes && p.newLikes.total !== null ? n0(p.newLikes.total - ((p.unlikes && p.unlikes.total) || 0)) : '—'}</span></div>
+          <div class="kpi"><span class="label">Page video views</span><span class="v">${pv(p.videoViews)}</span>${pvNote(p.videoViews)}</div>
+          ${ig ? `<div class="kpi"><span class="label">Instagram views</span><span class="v">${pv(ig.views)}</span><span class="t">@${esc(ig.username || '')}</span></div><div class="kpi"><span class="label">Instagram new followers</span><span class="v">${pv(ig.newFollowers)}</span><span class="t">${n0(ig.followers)} total</span></div>` : ''}
+        </div>` : '<div class="empty">Page data unavailable.</div>'}
+      </section>
+      ${a && a.campaigns.length ? `<section class="panel"><div class="panel-h"><h2>Campaigns, last 30 days</h2><span class="small muted">Meta results joined with CRM outcomes · max CPL ${set.maxCplEgp} EGP</span></div><div class="table-wrap"><table>
+        <thead><tr><th>Campaign</th><th>Status</th><th class="r">Spend</th><th class="r">Meta leads</th><th class="r">CPL</th><th class="r">CRM leads</th><th class="r">Qualified</th><th class="r">Unqualified</th><th class="r">Clients</th><th class="r">Cost / qualified</th></tr></thead>
+        <tbody>${a.campaigns.map((c) => `<tr><td>${esc(c.campaign)}<div class="small muted">${esc(c.objective || '')}</div></td><td class="small">${esc(c.status || '')}</td><td class="r num">${n0(c.spend)}</td><td class="r num">${n0(c.leads)}</td><td class="r num" style="color:${c.cpl > set.maxCplEgp ? 'var(--bad)' : c.cpl > set.targetCplEgp ? 'var(--warn)' : 'inherit'}">${c.cpl ? n0(c.cpl) : '—'}</td><td class="r num">${n0(c.crmLeads)}</td><td class="r num">${n0(c.qualified)}</td><td class="r num">${n0(c.unqualified)}</td><td class="r num">${n0(c.clients)}</td><td class="r num">${c.costPerQualified ? n0(c.costPerQualified) : '—'}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
+      ${a ? `<div class="grid g2"><section class="panel"><h3 style="margin-bottom:8px">Best ads by CPL</h3>${adList(a.topAds)}</section><section class="panel"><h3 style="margin-bottom:8px">Weakest ads (500+ EGP spent)</h3>${adList(a.bottomAds)}</section></div>` : ''}
+      ${liveAnalysis(d, true)}
+      <details class="small muted"><summary>How these numbers are counted</summary><ul>${Object.entries(d.definitions || {}).map(([k, v]) => `<li><strong>${esc(k)}</strong>: ${esc(v)}</li>`).join('')}</ul></details>
+    </div>`;
+  }
+  const adList = (arr) => (arr && arr.length ? `<ol class="small" style="margin:0;padding-left:18px">${arr.map((x) => `<li>${esc(x.ad)} <span class="muted">· ${esc(x.campaign || '')} · ${n0(x.spend)} EGP · ${n0(x.leads)} leads · CPL ${x.cpl ? n0(x.cpl) : '—'}</span></li>`).join('')}</ol>` : '<p class="small muted">None.</p>');
+  function liveAnalysis(d, embedded) {
+    const an = d.analysis;
+    if (!an) return embedded ? '' : `<section class="panel">${liveErrors(d)}<div class="empty">The 6-month analysis is not available yet.</div></section>`;
+    const REC = { scale: ['ok', 'Scale'], reduce: ['bad', 'Reduce / pause'], fix_quality: ['warn', 'Fix lead quality'] };
+    return `<section class="panel"><div class="panel-h"><h2>6-month analysis for the plan</h2><span class="small muted">${esc(d.sixMonths.since)} → ${esc(d.sixMonths.until)}</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Month</th><th class="r">Spend</th><th class="r">Meta leads</th><th class="r">CPL</th><th class="r">CRM leads</th><th class="r">Qualified</th><th class="r">Qualified rate</th><th class="r">Clients</th><th class="r">Cost / qualified</th></tr></thead>
+      <tbody>${an.byMonth.map((m) => `<tr><td>${esc(m.month)}${m.partial ? ' <span class="small muted">(so far)</span>' : ''}</td><td class="r num">${n0(m.spend)}</td><td class="r num">${n0(m.metaLeads)}</td><td class="r num">${m.cpl ? n0(m.cpl) : '—'}</td><td class="r num">${n0(m.crmLeads)}</td><td class="r num">${n0(m.qualified)}</td><td class="r num">${pct(m.qualifiedRate, 1)}</td><td class="r num">${n0(m.clients)}</td><td class="r num">${m.costPerQualified ? n0(m.costPerQualified) : '—'}</td></tr>`).join('')}</tbody></table></div>
+      ${an.findings.length ? `<h3 style="margin:14px 0 6px">What the data says</h3><ul class="small">${an.findings.map((f) => `<li>${esc(f.text)}</li>`).join('')}</ul>` : ''}
+      ${an.recommendations.length ? `<h3 style="margin:14px 0 6px">Suggested campaign changes</h3><ul class="small" style="list-style:none;padding:0">${an.recommendations.map((r) => { const [c, l] = REC[r.type] || ['', r.type]; return `<li style="margin-bottom:6px"><span class="pill ${c}">${l}</span> <strong>${esc(r.campaign || r.campaignId)}</strong> — ${esc(r.why)}</li>`; }).join('')}</ul>` : ''}
+      ${an.budgetSplit.length ? `<h3 style="margin:14px 0 6px">Suggested budget split (within the cap)</h3><div class="table-wrap"><table><thead><tr><th>Campaign</th><th class="r">Share</th><th class="r">Monthly EGP</th></tr></thead><tbody>${an.budgetSplit.map((b) => `<tr><td>${esc(b.campaign || b.campaignId)}</td><td class="r num">${pct(b.shareOfCap)}</td><td class="r num">${n0(b.monthlyEgp)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+      <p class="small muted" style="margin-top:8px">${esc(an.note)}</p>
+      ${canEdit() ? `<div class="row" style="margin-top:12px"><input class="input" id="replanNote" placeholder="Optional note for Manus" style="max-width:420px"><button class="btn primary" data-replan>Ask Manus to update the plan from this data</button></div>` : ''}
+    </section>`;
   }
   const list = (arr) => (arr && arr.length ? `<ol class="small" style="margin:0;padding-left:18px">${arr.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>` : '<p class="small muted">Not reported.</p>');
 
@@ -560,6 +667,9 @@
   // ------------------------------------------------------------ monthly plan
   function viewMonthly(el) {
     const plans = S.data.plans;
+    el.innerHTML = '<div id="liveAnalysis" style="margin-bottom:16px"></div><div id="plans"></div>';
+    liveInto(document.getElementById('liveAnalysis'), 'analysis');
+    el = document.getElementById('plans');
     if (!plans.length) { el.innerHTML = '<div class="empty">Manus delivers next month’s plan in the last week of each month.</div>'; return; }
     el.innerHTML = `<div class="cards">${plans.map((p) => `<section class="panel"><div class="panel-h"><div><span class="small muted">${esc(p.id)} · ${esc(p.month)}</span><h2>${esc(p.title || 'Marketing plan ' + p.month)}</h2></div>${statusPill(p.status === 'pending_approval' ? 'pending_approval' : p.status === 'approved' ? 'approved' : 'changes_requested')}</div>
       <div style="white-space:pre-wrap;max-width:75ch">${esc(p.body)}</div>
