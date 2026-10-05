@@ -569,7 +569,9 @@
   function liveErrors(d) {
     const e = d.errors || {}, names = { ads: 'Meta ads', page: 'Facebook Page', crm: 'CRM (30 days)', crm6: 'CRM (6 months)' };
     const k = Object.keys(e);
-    return k.length ? `<div class="alerts" style="margin-bottom:12px">${k.map((x) => `<div class="alert warning"><strong>${names[x] || x}:</strong> ${esc(e[x])}</div>`).join('')}</div>` : '';
+    const al = (d.alerts || []).map((a) => `<div class="alert ${a.level === 'critical' ? 'critical' : ''}"><span class="tag">${a.level === 'critical' ? 'Critical' : 'Check'}</span><span>${esc(a.text)}</span></div>`);
+    const er = k.map((x) => `<div class="alert"><strong>${names[x] || x}:</strong> ${esc(e[x])}</div>`);
+    return al.length || er.length ? `<div class="alerts" style="margin-bottom:12px">${al.concat(er).join('')}</div>` : '';
   }
   function liveHead(d, title) {
     return `<div class="panel-h"><h2>${title}</h2><span class="row small muted">${esc(d.window.since)} → ${esc(d.window.until)} · updated ${ago(d.generatedAt)} ${canEdit() ? '<button class="btn sm" data-live-refresh>Refresh</button>' : ''}</span></div>`;
@@ -589,13 +591,13 @@
     const funnelRow = (label, b) => b ? `<tr><td>${label}</td><td class="r num">${n0(b.leads)}</td><td class="r num">${n0(b.qualified)}</td><td class="r num">${n0(b.unqualified)}</td><td class="r num">${n0(b.clients)}</td><td class="r num">${b.leads ? pct(b.cohort.qualifiedOrBetter / b.leads, 1) : '—'}</td><td class="r num">${n0(b.cohort.open)}</td></tr>` : '';
     const reasons = crm && crm.all.unqualifiedReasons, rk = reasons ? Object.keys(reasons) : [];
     const pv = (m) => (m && m.total !== null && m.total !== undefined ? n0(m.total) : '—');
-    const pvNote = (m) => (m && m.metric ? `<span class="t">${esc(m.metric)}</span>` : m && m.error ? `<span class="t" title="${esc(m.error)}">not available</span>` : '');
+    const pvNote = (m) => (m && m.metric ? `<span class="t">${esc(m.metric)}</span>` : m && m.error ? `<span class="t" style="color:var(--warn)">Not available: ${esc(String(m.error).split(' | ')[0].replace(/^[^:]+: /, '').slice(0, 160))}</span>` : '');
     const ig = p && p.instagram;
     return `<div class="stack" style="gap:16px">
       <section class="panel">${liveHead(d, 'Meta ads, last 30 days')}${liveErrors(d)}
         ${t ? `<div class="grid g5">${[
           kpi('Spend', egp(t.spend), a.account && a.account.currency !== 'EGP' ? 'Account currency ' + esc(a.account.currency) : ''),
-          kpi('Meta leads', n0(t.leads), t.leads ? 'CPL ' + egp(t.cpl) : ''),
+          kpi('Meta leads', n0(t.leads), t.leadCampaignCpl ? 'CPL ' + egp(t.leadCampaignCpl) + ' on lead campaigns' : t.leads ? 'CPL ' + egp(t.cpl) : ''),
           kpi('Reach', n0(t.reach), 'Frequency ' + (t.frequency ? t.frequency.toFixed(2) : '—')),
           kpi('Impressions', n0(t.impressions), 'CPM ' + egp(t.cpm)),
           kpi('Clicks', n0(t.clicks), 'CTR ' + pct(t.ctr, 2)),
@@ -619,7 +621,7 @@
           <div class="kpi"><span class="label">Unfollows</span><span class="v">${pv(p.unlikes)}</span>${pvNote(p.unlikes)}</div>
           <div class="kpi"><span class="label">Net new</span><span class="v">${p.newLikes && p.newLikes.total !== null ? n0(p.newLikes.total - ((p.unlikes && p.unlikes.total) || 0)) : '—'}</span></div>
           <div class="kpi"><span class="label">Page video views</span><span class="v">${pv(p.videoViews)}</span>${pvNote(p.videoViews)}</div>
-          ${ig ? `<div class="kpi"><span class="label">Instagram views</span><span class="v">${pv(ig.views)}</span><span class="t">@${esc(ig.username || '')}</span></div><div class="kpi"><span class="label">Instagram new followers</span><span class="v">${pv(ig.newFollowers)}</span><span class="t">${n0(ig.followers)} total</span></div>` : ''}
+          ${ig ? `<div class="kpi"><span class="label">Instagram views · @${esc(ig.username || '')}</span><span class="v">${pv(ig.views)}</span>${pvNote(ig.views)}</div><div class="kpi"><span class="label">Instagram new followers · ${n0(ig.followers)} total</span><span class="v">${pv(ig.newFollowers)}</span>${pvNote(ig.newFollowers)}</div>` : ''}
         </div>` : '<div class="empty">Page data unavailable.</div>'}
       </section>
       ${a && a.campaigns.length ? `<section class="panel"><div class="panel-h"><h2>Campaigns, last 30 days</h2><span class="small muted">Meta results joined with CRM outcomes · max CPL ${set.maxCplEgp} EGP</span></div><div class="table-wrap"><table>

@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe, expect, it } from "vitest";
-import { analyze, buildLiveReport, cairoMidnight, lastDays, leadsFromActions, outcomesBy, summarizeCrm } from "./live";
+import { analyze, buildLiveReport, campaignKeyResolver, cairoMidnight, lastDays, leadsFromActions, outcomesBy, summarizeCrm } from "./live";
 
 describe("live report helpers", () => {
   it("uses Cairo days and matches Meta's last 30 complete days", () => {
@@ -48,6 +48,17 @@ describe("live report helpers", () => {
     const total = a.budgetSplit.reduce((s, b) => s + b.monthlyEgp, 0);
     expect(total).toBeLessThanOrEqual(180000);
     expect(a.budgetSplit.map((b) => b.campaignId)).not.toContain("costly");
+  });
+});
+
+describe("campaign matching", () => {
+  it("matches CRM leads to Meta campaigns by id, attribution or name", () => {
+    const key = campaignKeyResolver([{ campaignId: "120", campaign: "EG | Spain DNV | Leads | Instant Form | ABO | 2026-09 | v1" }]);
+    expect(key({ metaCampaignId: "120" })).toBe("120");
+    expect(key({ attrCampaignId: "120" })).toBe("120");
+    expect(key({ metaCampaign: "eg | spain dnv | leads | instant form | abo | 2026-09 | v1 " })).toBe("120");
+    expect(key({ metaCampaign: "120" })).toBe("120");
+    expect(key({ metaCampaign: "Old campaign" })).toBe("Old campaign");
   });
 });
 

@@ -119,11 +119,14 @@ export async function metaAds(graph, { token, account, d30, m6 }) {
   ]);
   const status = Object.fromEntries(list.map((c) => [c.id, { status: c.effective_status || c.status, dailyBudget: c.daily_budget ? num(c.daily_budget) / 100 : null, lifetimeBudget: c.lifetime_budget ? num(c.lifetime_budget) / 100 : null }]));
   const adRows = ads.map(insightRow).filter((a) => a.spend > 0);
+  const campRows = campaigns.map(insightRow);
+  const leadCamps = campRows.filter((c) => c.leads > 0 || /LEAD/i.test(c.objective || ""));
+  const leadSpend = leadCamps.reduce((s, c) => s + c.spend, 0), leadCount = leadCamps.reduce((s, c) => s + c.leads, 0);
   return {
     account: { id: acct, name: info.name, currency: info.currency, timezone: info.timezone_name, status: info.account_status },
     last30: {
-      total: insightRow((total.data || [])[0] || {}),
-      campaigns: campaigns.map(insightRow).map((c) => ({ ...c, ...(status[c.campaignId] || {}) })).sort((a, b) => b.spend - a.spend),
+      total: { ...insightRow((total.data || [])[0] || {}), leadCampaignSpend: leadSpend, leadCampaignCpl: leadCount ? leadSpend / leadCount : null },
+      campaigns: campRows.map((c) => ({ ...c, ...(status[c.campaignId] || {}) })).sort((a, b) => b.spend - a.spend),
       topAds: adRows.filter((a) => a.leads > 0).sort((a, b) => a.cpl - b.cpl).slice(0, 5),
       bottomAds: adRows.filter((a) => a.spend >= 500).sort((a, b) => (b.cpl ?? Infinity) - (a.cpl ?? Infinity)).slice(0, 5),
     },
@@ -193,7 +196,9 @@ export function parseStageChange(description) {
 /** Leads created in the window plus stage movements recorded in the window. */
 export async function crmWindow(q, fromMs: number, toMs: number) {
   const created = await q(
-    `SELECT l.id, l.stage, l.metaCampaignId, l.metaCampaign, l.interestedProgram, ${IS_META} AS isMeta, ${LEAD_TS} AS ts
+    `SELECT l.id, l.stage, l.metaCampaignId, l.metaCampaign, l.interestedProgram, ${IS_META} AS isMeta, ${LEAD_TS} AS ts,
+            (SELECT a.metaCampaignId FROM lead_meta_attributions a WHERE a.leadId = l.id AND a.metaCampaignId IS NOT NULL ORDER BY a.isPrimary DESC, a.id ASC LIMIT 1) AS attrCampaignId,
+            (SELECT a.metaCampaignName FROM lead_meta_attributions a WHERE a.leadId = l.id AND a.metaCampaignName IS NOT NULL ORDER BY a.isPrimary DESC, a.id ASC LIMIT 1) AS attrCampaignName
        FROM leads l WHERE l.isMetaTestLead = 0 AND ${LEAD_TS} BETWEEN ? AND ? LIMIT 100000`, [fromMs, toMs]);
   const moves = await q(
     `SELECT a.leadId, a.description, a.createdAt, ${IS_META} AS isMeta
@@ -230,6 +235,29 @@ export function summarizeCrm({ created, moves, signed }) {
   return { all: out(all), meta: out(meta) };
 }
 
+/**
+ * Campaign of a CRM lead as a Meta campaign id. Leads carry it in different places
+ * (leads.metaCampaignId, the primary lead_meta_attributions row, or only the campaign
+ * name in leads.metaCampaign), so names are mapped back to ids using Meta's own list.
+ */
+export function campaignKeyResolver(metaCampaigns = []) {
+  const norm = (x) => String(x || "").trim().toLowerCase();
+  const ids = new Set(metaCampaigns.map((c) => String(c.campaignId || c.id || "")).filter(Boolean));
+  const byName = new Map();
+  for (const c of metaCampaigns) { const n = norm(c.campaign || c.name); if (n && !byName.has(n)) byName.set(n, String(c.campaignId || c.id)); }
+  return (l) => {
+    for (const v of [l.metaCampaignId, l.attrCampaignId]) if (v && String(v).trim()) return String(v).trim();
+    for (const v of [l.metaCampaign, l.attrCampaignName]) {
+      if (!v) continue;
+      const t = String(v).trim();
+      if (ids.has(t)) return t;
+      const id = byName.get(norm(t));
+      if (id) return id;
+    }
+    return l.metaCampaign || l.attrCampaignName || null;
+  };
+}
+
 /** Leads grouped by key with current-stage outcomes (for campaign/program/month quality). */
 export function outcomesBy(rows, keyFn) {
   const map = new Map();
@@ -241,7 +269,7 @@ export function outcomesBy(rows, keyFn) {
     if (QUALIFIED_OR_BETTER.has(l.stage)) o.qualifiedOrBetter++;
     if (isUnq(l.stage)) o.unqualified++;
     if (l.stage === "client") o.clients++;
-    if (!o.name && l.metaCampaign) o.name = l.metaCampaign;
+    if (!o.name && (l.metaCampaign || l.attrCampaignName)) o.name = l.attrCampaignName || l.metaCampaign;
     map.set(k, o);
   }
   return [...map.values()];
@@ -330,7 +358,9 @@ export async function buildLiveReport({ q, fetcher = fetch, settings, now = Date
 
   const crm30 = crm30raw ? summarizeCrm(crm30raw) : null;
   let crmByCampaign30 = [];
-  if (crm30raw) crmByCampaign30 = outcomesBy(crm30raw.created, (l) => l.metaCampaignId);
+  const allMetaCampaigns = meta ? [...meta.last30.campaigns, ...meta.monthly.campaigns] : [];
+  const campKey = campaignKeyResolver(allMetaCampaigns);
+  if (crm30raw) crmByCampaign30 = outcomesBy(crm30raw.created.filter((l) => l.isMeta), campKey);
   if (meta) for (const c of meta.last30.campaigns) {
     const o = crmByCampaign30.find((x) => x.key === c.campaignId);
     Object.assign(c, { crmLeads: o?.leads || 0, qualified: o?.qualifiedOrBetter || 0, unqualified: o?.unqualified || 0, clients: o?.clients || 0, costPerQualified: o?.qualifiedOrBetter ? c.spend / o.qualifiedOrBetter : null });
@@ -341,15 +371,25 @@ export async function buildLiveReport({ q, fetcher = fetch, settings, now = Date
     const s6 = summarizeCrm(crm6raw);
     const crm6 = {
       byMonth: outcomesBy(crm6raw.created, (l) => cairoDate(Number(l.ts)).slice(0, 7)),
-      byCampaign: outcomesBy(crm6raw.created.filter((l) => l.isMeta), (l) => l.metaCampaignId),
+      byCampaign: outcomesBy(crm6raw.created.filter((l) => l.isMeta), campKey),
       byProgram: outcomesBy(crm6raw.created, (l) => (l.interestedProgram || "").trim() || null),
       unqualifiedReasons: Object.fromEntries(Object.entries(s6.all.cohort.stages).filter(([k]) => isUnq(k)).map(([k, v]) => [k.replace("not_qualified_", ""), v])),
     };
     analysis = analyze({ meta, crm6, months: m6.months, settings });
   }
 
+  const alerts = [];
+  const cap = settings?.monthlyAdCapEgp ?? 200000, maxCpl = settings?.maxCplEgp ?? 100;
+  if (meta) {
+    const t = meta.last30.total;
+    if (t.spend > cap) alerts.push({ level: "critical", text: `Spend in the last 30 days is ${Math.round(t.spend).toLocaleString("en-US")} EGP, above the ${cap.toLocaleString("en-US")} EGP monthly cap.` });
+    for (const c of meta.last30.campaigns) if (c.leads > 0 && c.spend >= 1000 && c.cpl > maxCpl) alerts.push({ level: "critical", text: `${c.campaign}: CPL ${Math.round(c.cpl)} EGP over 30 days, above the ${maxCpl} EGP ceiling.` });
+    const unmatched = crm30 ? crm30.meta.leads - meta.last30.campaigns.reduce((s, c) => s + (c.crmLeads || 0), 0) : 0;
+    if (crm30 && crm30.meta.leads && unmatched / crm30.meta.leads > 0.2) alerts.push({ level: "warning", text: `${unmatched} of ${crm30.meta.leads} Meta leads in the CRM could not be matched to a campaign, so campaign quality numbers are partial.` });
+  }
+
   return {
-    ok: true, generatedAt: new Date(now).toISOString(),
+    ok: true, generatedAt: new Date(now).toISOString(), alerts,
     window: { since: d30.since, until: d30.until }, sixMonths: { since: m6.since, until: m6.until, months: m6.months },
     ads: meta ? { account: meta.account, ...meta.last30 } : null,
     page: pageData, crm: crm30, analysis, errors,
