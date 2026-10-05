@@ -218,6 +218,12 @@ async function startServer() {
   registerOAuthRoutes(app);
   // Email/password authentication routes
   registerAuthRoutes(app);
+  // ELEVAY Marketing Command Center: separate section at /admin/ (dashboard,
+  // team API on elevay.vip sessions, Manus agent API and webhook). Only the
+  // exact /admin and /admin/api/* paths are claimed; /admin/permissions etc.
+  // keep going to the SPA.
+  const { registerCommandCenterRoutes } = await import("../commandCenter/routes");
+  registerCommandCenterRoutes(app);
   // WhatsApp webhook
   app.get("/api/webhook/whatsapp", async (req, res) => {
     const { "hub.mode": mode, "hub.verify_token": token, "hub.challenge": challenge } = req.query as Record<string, string>;
