@@ -166,7 +166,7 @@ import {
   weeklyResultsItemCanTransition,
   type WeeklyResultsItemStatus,
 } from "../shared/marketingWeeklyResults";
-import { weeklyProgramKeyInput } from "../shared/marketingWeeklyProgramKey";
+import { normalizeWeeklyProgramKey, weeklyProgramKeyInput } from "../shared/marketingWeeklyProgramKey";
 import { evaluateSocialReleaseGovernance } from "../shared/marketingSocialReleaseGovernance";
 import {
   MARKETING_AUTOPILOT_MODE,
@@ -3147,7 +3147,7 @@ export const marketingSystemRouter = router({
     const now = Date.now();
     const values = {
       prepareDayOfWeek: input.prepareDayOfWeek, prepareStartTime: input.prepareStartTime, deliveryDeadlineTime: input.deliveryDeadlineTime, preparationScheduleEnabled: input.preparationScheduleEnabled, scheduleState: "waiting_execution_release",
-      weeklyGoal: input.weeklyGoal ? normalizeWeeklyResultsText(input.weeklyGoal) : null, programPrioritiesJson: JSON.stringify(input.programPriorities), updatedSourcesNote: input.updatedSourcesNote ? normalizeWeeklyResultsText(input.updatedSourcesNote) : null,
+      weeklyGoal: input.weeklyGoal ? normalizeWeeklyResultsText(input.weeklyGoal) : null, programPrioritiesJson: JSON.stringify(input.programPriorities.map(priority => ({ ...priority, key: normalizeWeeklyProgramKey(priority.key) }))), updatedSourcesNote: input.updatedSourcesNote ? normalizeWeeklyResultsText(input.updatedSourcesNote) : null,
       creativeDirection: input.creativeDirection ? normalizeWeeklyResultsText(input.creativeDirection) : null, contentMixJson: JSON.stringify(input.contentMix), allocationRulesJson: JSON.stringify(input.allocationRules), learningEnabled: input.learningEnabled,
       targetLikes30d: input.targetLikes30d, targetViews30d: input.targetViews30d, targetLeads30d: input.targetLeads30d, targetQualifiedLeads30d: input.targetQualifiedLeads30d, targetSignedClients30d: input.targetSignedClients30d,
       targetCostPerLeadEgp: input.targetCostPerLeadEgp.toFixed(2), targetMaxAdSpend30dEgp: input.targetMaxAdSpend30dEgp.toFixed(2), requestedAutopublishThreshold: input.requestedAutopublishThreshold,

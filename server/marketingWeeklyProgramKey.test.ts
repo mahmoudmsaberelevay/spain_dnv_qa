@@ -6,6 +6,8 @@ describe("Weekly plan programme input", () => {
     expect(normalizeWeeklyProgramKey("spain_dnv")).toBe("spain_dnv");
     expect(normalizeWeeklyProgramKey("Spain DNV")).toBe("spain_dnv");
     expect(normalizeWeeklyProgramKey(" Malta MPRP ")).toBe("malta_mprp");
+    expect(normalizeWeeklyProgramKey("malta_permanent_residence_programme")).toBe("malta_mprp");
+    expect(normalizeWeeklyProgramKey("spain_digital_nomad_residency")).toBe("spain_dnv");
     expect(normalizeWeeklyProgramKey("St. Kitts")).toBe("st_kitts");
     expect(normalizeWeeklyProgramKey("Greece-Golden Visa")).toBe("greece_golden_visa");
   });

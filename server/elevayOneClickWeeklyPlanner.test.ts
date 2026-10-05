@@ -178,4 +178,17 @@ describe("elevay one-click weekly planner", () => {
     expect(JSON.stringify(result.draft)).not.toContain("example.invalid");
     expect(result.draft.plan.researchResults.every(entry => entry.sourceUrl.startsWith("internal://"))).toBe(true);
   });
+
+  it("canonicalizes legacy Malta programme keys before checking internal claim coverage", () => {
+    const snapshot = prepareOneClickWeeklyPlanningSnapshot(savedContext({
+      settings: { ...savedContext().settings!, programPriorities: ["malta_permanent_residence_programme"] },
+      internalReferences: [{ ...savedContext().internalReferences[0]!, programKeys: ["malta_permanent_residence_programme"] }],
+      ownerConfirmedInternalClaims: [{ ...savedContext().ownerConfirmedInternalClaims[0]!, programKey: "malta_permanent_residence_programme" }],
+    }), { periodStart });
+
+    expect(snapshot.settings?.programPriorities).toEqual(["malta_mprp"]);
+    expect(snapshot.ownerProvidedInternalReferences[0]?.programKeys).toEqual(["malta_mprp"]);
+    expect(snapshot.ownerConfirmedInternalClaims[0]?.programKey).toBe("malta_mprp");
+    expect(snapshot.readiness.blockers).not.toContain("No owner-confirmed internal claim covers: malta_permanent_residence_programme.");
+  });
 });

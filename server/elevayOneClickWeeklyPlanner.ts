@@ -29,6 +29,7 @@ import {
   validateElevayArabicVoiceOverScript,
   validateEnglishOnlyOnScreenText,
 } from "../shared/marketingCreativeLanguagePolicy";
+import { normalizeWeeklyProgramKey } from "../shared/marketingWeeklyProgramKey";
 
 /**
  * Read-only, review-only weekly planner.
@@ -268,11 +269,20 @@ function boundedReferenceAnalysis(value: unknown): unknown {
 function selectedProgrammeKeys(value: unknown): string[] {
   const priorities = Array.isArray(value) ? value : [];
   return priorities.flatMap(priority => {
-    if (typeof priority === "string") return safeText(priority, 96) ? [priority.trim()] : [];
+    if (typeof priority === "string") {
+      const safe = safeText(priority, 96);
+      if (!safe) return [];
+      try { return [normalizeWeeklyProgramKey(safe)]; } catch { return []; }
+    }
     if (!priority || typeof priority !== "object") return [];
     const key = safeText((priority as Record<string, unknown>).key, 96);
-    return key ? [key] : [];
+    if (!key) return [];
+    try { return [normalizeWeeklyProgramKey(key)]; } catch { return []; }
   }).slice(0, MAX_PROGRAMMES);
+}
+
+function canonicalProgrammeKey(value: string): string {
+  try { return normalizeWeeklyProgramKey(value); } catch { return value; }
 }
 
 function findSnapshotPrivacyProblems(snapshot: unknown): Array<{ path: string; reason: string }> {
@@ -335,7 +345,7 @@ export function prepareOneClickWeeklyPlanningSnapshot(
     return [{
       id: reference.id,
       referenceKey,
-      programKeys: safeStringArray(reference.programKeys, MAX_PROGRAMMES, 96),
+      programKeys: safeStringArray(reference.programKeys, MAX_PROGRAMMES, 96).map(canonicalProgrammeKey),
       title,
       sourceClassification,
       analysis: boundedReferenceAnalysis(reference.analysis),
@@ -351,7 +361,7 @@ export function prepareOneClickWeeklyPlanningSnapshot(
     const sourceSection = safeText(claim.sourceSection, 160);
     const riskLevel = safeText(claim.riskLevel, 24);
     if (!programKey || !claimType || !claimText || !sourceSection || !riskLevel) return [];
-    return [{ id: claim.id, internalReferenceId: claim.internalReferenceId, programKey, claimType, claimText, sourceSection, riskLevel }];
+    return [{ id: claim.id, internalReferenceId: claim.internalReferenceId, programKey: canonicalProgrammeKey(programKey), claimType, claimText, sourceSection, riskLevel }];
   });
 
   const referenceProgrammes = new Set(ownerProvidedInternalReferences.flatMap(reference => reference.programKeys));
