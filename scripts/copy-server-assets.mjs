@@ -25,6 +25,11 @@ const assets = [
     source: join(projectRoot, "server", "marketing-fonts", "PlusJakartaSans-Bold.ttf"),
     destination: join(projectRoot, "dist", "marketing-fonts", "PlusJakartaSans-Bold.ttf"),
   },
+  // ELEVAY Command Center: approved program sources, creative direction, official logo and font.
+  ...["ApexSansBook.ttf", "elevay-logo.png", "knowledge/spain-digital-nomad.md", "knowledge/malta-permanent-residence.md", "creative/brand-identity.md", "creative/brand-and-design.md", "creative/video-and-audio.md", "creative/delivery-checklist.md"].map((name) => ({
+    source: join(projectRoot, "server", "commandCenter", "assets", name),
+    destination: join(projectRoot, "dist", "command-center-assets", name),
+  })),
 ];
 
 function sha256(buffer) {

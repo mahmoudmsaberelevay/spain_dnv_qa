@@ -15,13 +15,14 @@ const CAPTION = `هل تفكر في مستقبل عائلتك في أوروبا�
 تواصل مع ELEVAY اليوم واحجز استشارتك الخاصة لتبدأ رحلتك بثقة.`;
 
 function memoryDb() {
-  const rows = new Map();
+  const rows = new Map(), kv = new Map();
   let seq = 0;
   const q = async (sql, args = []) => {
     if (sql.startsWith("CREATE")) return [];
     if (sql.startsWith("INSERT INTO ec_ai_runs")) { const id = ++seq; rows.set(id, { id, status: args[1], ver: 0, doc: args[2] }); return { insertId: id }; }
     if (sql.startsWith("SELECT id, ver, doc")) { const r = rows.get(Number(args[0])); return r ? [{ ...r }] : []; }
     if (sql.startsWith("UPDATE ec_ai_runs")) { const [doc, status, id, ver] = args; const r = rows.get(id); if (!r || r.ver !== ver) return { affectedRows: 0 }; Object.assign(r, { doc, status, ver: ver + 1 }); return { affectedRows: 1 }; }
+    if (sql.startsWith("INSERT IGNORE INTO ec_kv")) { if (kv.has(args[0])) return { affectedRows: 0 }; kv.set(args[0], args[1]); return { affectedRows: 1 }; }
     if (sql.startsWith("SELECT id, doc")) return [...rows.values()].sort((a, b) => b.id - a.id).slice(0, args[0]);
     if (sql.startsWith("SELECT id, status, doc")) return [...rows.values()].filter((r) => ["waiting", "queued", "running"].includes(r.status));
     throw new Error("unexpected sql " + sql);
@@ -29,8 +30,9 @@ function memoryDb() {
   return q;
 }
 
-function setup(claudeAnswers) {
+function setup(claudeAnswers, { autopilot = false } = {}) {
   const state = E.emptyState();
+  if (autopilot) state.settings.autopublish = { enabled: true, enabledAt: "2026-11-20T00:00:00Z", enabledBy: "autopilot", disabledReason: null };
   const calls = { claude: [], openai: 0, hfSubmit: 0, hfPoll: 0 };
   let hfDone = false;
   const providers = {
@@ -52,37 +54,32 @@ const STATIC_BRIEF = { topic: "Family residency", pillar: "Family Security", pro
 const scene = (i) => ({ keyframe_prompt: `Arab couple in Lisbon, scene ${i}, elegant clothing, no text, no logo`, motion_prompt: "Slow dolly forward", spoken_text_ar: "عيلتك تستاهل حياة هادية في Portugal مع ELEVAY" });
 
 describe("AI Studio orchestrator", () => {
-  it("static: Claude brief → check → OpenAI (after approval) → Claude QC → weekly plan", async () => {
+  it("static: Claude brief → check → OpenAI (no approval) → Claude QC → weekly plan for the owner", async () => {
     const { o, state, calls } = setup([STATIC_BRIEF, { pass: true, issues: [] }]);
     const run = await o.create({ kind: "static", request: "Family post for Portugal D7", user: marketer });
-    let r = await settle(o, run.id);
-    expect(r.status).toBe("awaiting_approval");
-    expect(r.steps[2]).toMatchObject({ provider: "openai", status: "needs_approval" });
-    expect(calls.openai).toBe(0); // nothing paid before approval
-    await o.approve(run.id, 3, marketer);
-    r = await settle(o, run.id);
+    const r = await settle(o, run.id);
+    expect(calls.openai).toBe(1);
     expect(r.status).toBe("done");
     expect(calls.claude[1].images).toEqual(["https://cdn.example/static_post-1-logo.png"]);
     const item = state.items.find((i) => i.item_id === r.artifacts.item_id);
     expect(item).toMatchObject({ type: "static", status: "pending_approval", media: { image_url: "https://cdn.example/static_post-1-logo.png" } });
+    expect(calls.claude[0].prompt).toMatch(/PROGRAM FACT RULE/);
     expect(r.messages.some((m) => m.from === "claude") && r.messages.some((m) => m.to === "openai")).toBe(true);
   });
 
   it("asks Claude to fix a blocked brief once", async () => {
     const bad = { ...STATIC_BRIEF, caption_ar: CAPTION.replace("الإقامة المناسبة", "التأشيرة المناسبة") };
-    const { o, calls } = setup([bad, (p) => { expect(p).toMatch(/blocking checks/); return { caption_ar: CAPTION }; }]);
+    const { o, calls } = setup([bad, { caption_ar: CAPTION }, { pass: true }]);
     const run = await o.create({ kind: "static", request: "x", user: marketer });
     const r = await settle(o, run.id);
-    expect(r.status).toBe("awaiting_approval");
-    expect(calls.claude).toHaveLength(2);
+    expect(calls.claude).toHaveLength(3); // brief, fix, visual QC
+    expect(calls.claude[1].prompt).toMatch(/blocking checks/);
     expect(r.artifacts.brief.caption_ar).not.toMatch(/تأشير/);
   });
 
   it("reel: Higgsfield needs the owner, waits for clips, then lands in the plan", async () => {
     const { o, state, calls, finishClips } = setup([{ topic: "Lisbon", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: true }]);
     const run = await o.create({ kind: "reel", request: "Reel for retirees", user: marketer });
-    await settle(o, run.id);
-    await o.approve(run.id, 3, marketer); // OpenAI keyframes
     let r = await settle(o, run.id);
     expect(calls.openai).toBe(4);
     expect(r.steps[4]).toMatchObject({ provider: "higgsfield", status: "needs_approval", gate: "owner" });
@@ -120,6 +117,54 @@ describe("AI Studio orchestrator", () => {
     r = await settle(o, run.id, ["running", "queued", "waiting"]);
     expect(r.status).toBe("done");
     expect(r.artifacts.answer).toBe("Paused.");
+  });
+});
+
+describe("Autopilot", () => {
+  it("runs Higgsfield and approves finished statics itself once the 6-week gate is reached", async () => {
+    const { o, state, calls } = setup([STATIC_BRIEF, { pass: true }], { autopilot: true });
+    const run = await o.create({ kind: "static", request: "Spain DNV for remote professionals", user: { email: "autopilot", role: "owner" } });
+    const r = await settle(o, run.id);
+    expect(r.status).toBe("done");
+    const item = state.items.find((i) => i.item_id === r.artifacts.item_id);
+    expect(item).toMatchObject({ status: "approved", auto_approved: true, first_pass: null, presented_at: null });
+    expect(state.jobs.some((j) => j.type === "schedule_post" && j.payload.item_id === item.item_id && j.payload.autopublish === true)).toBe(true);
+    expect(calls.claude[0].prompt).toMatch(/€35,000/); // Spain approved facts
+  });
+
+  it("Manus requests run Higgsfield without waiting, within the weekly reel limit", async () => {
+    const { o, calls, state } = setup([{ topic: "Malta", pillar: "Family Security", program: "Malta Permanent Residence", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: true }]);
+    state.settings.studio = { reelLimitPerWeek: 1 };
+    const run = await o.create({ kind: "reel", request: "Malta family reel", options: { auto: true }, user: { email: "manus", role: "marketer" } });
+    let r = await settle(o, run.id);
+    expect(r.status).toBe("waiting");
+    expect(r.steps[4].approved_by).toMatch(/Manus/);
+    expect(calls.claude[0].prompt).toMatch(/USD 100,000/);
+  });
+
+  it("plans the week: 4 statics + 3 reels started as items 01–07", async () => {
+    const posts = [..."SSSSRRR"].map((t, i) => ({ type: t === "S" ? "static" : "reel", date: "2026-10-1" + (i % 7), time: "20:00", program: "Spain Digital Nomad Residence", brief: "Remote professionals in Madrid" }));
+    const { o } = setup([{ rationale: "Spain converts best", posts }]);
+    const run = await o.startWeekly("2026-W42", owner);
+    const r = await settle(o, run.id);
+    expect(r.status).toBe("done");
+    expect(r.artifacts.children).toHaveLength(7);
+    const kids = await Promise.all(r.artifacts.children.map((id) => o.get(id)));
+    expect(kids.map((k) => k.kind)).toEqual(["static", "static", "static", "static", "reel", "reel", "reel"]);
+    expect(kids[0].options.item_id).toBe("2026-W42-01");
+    await expect(o.startWeekly("2026-W42", owner)).rejects.toThrow(/already/);
+  });
+
+  it("switches autopilot on the first time the gate is reached and plans on Saturday morning", async () => {
+    const { o, state } = setup([]);
+    for (let w = 1; w <= 6; w++) for (let i = 1; i <= 7; i++) state.items.push({ item_id: `2026-W3${w}-0${i}`, presented_at: "x", first_pass: true, owner_comments: [] });
+    await o.autopilot(Date.parse("2026-10-07T08:00:00Z")); // Wednesday
+    expect(state.settings.autopublish.enabled).toBe(true);
+    const before = (await o.list()).length;
+    await o.autopilot(Date.parse("2026-10-10T07:30:00Z")); // Saturday 10:30 Cairo
+    const runs = await o.list();
+    expect(runs.length).toBe(before + 1);
+    expect(runs[0]).toMatchObject({ kind: "weekly_plan", options: { week: "2026-W42" } });
   });
 });
 

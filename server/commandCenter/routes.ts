@@ -28,7 +28,13 @@ import E from "./engine";
 import Manus from "./manus";
 import { PAGE_HTML } from "./page";
 import { buildLiveReport } from "./live";
-import { createOrchestrator, makeProviders, PIPELINES } from "./ai";
+import { createOrchestrator, makeProviders, PIPELINES, planningWeek } from "./ai";
+import { PROGRAMS, assetPath, assetText } from "./knowledge";
+function sourcesStatus() {
+  const has = (f) => { try { assetPath(f); return true; } catch { return false; } };
+  return { programs: PROGRAMS.map((p) => ({ name: p.name, loaded: !!assetText(p.file) })), creative: ["brand-identity", "brand-and-design", "video-and-audio", "delivery-checklist"].map((n) => ({ name: n, loaded: !!assetText(`creative/${n}.md`) })), logo: has("elevay-logo.png"), font: has("ApexSansBook.ttf") };
+}
+const isoWeekOf = (ms: number) => planningWeek(ms - 2 * 86400000); // ISO week containing ms
 import { sdk } from "../_core/sdk";
 import { COOKIE_NAME } from "@shared/const";
 import { isOwner } from "../permissionsRouter";
@@ -265,7 +271,8 @@ route("POST", "/jobs/:id/retry", "marketer", (ctx) => mutate(ctx, (st) => {
   return E.setJobStatus(st, job.id, "pending", {}, ctx.user.email);
 }).then(fromResult));
 route("PUT", "/settings", "owner", (ctx) => mutate(ctx, (st) => {
-  const allowed = ["monthlyAdCapEgp", "maxCplEgp", "targetCplEgp", "cplBreachDays", "cplBreachMinSpendEgp", "approvalThreshold", "killSwitchRollingThreshold", "manualWeeks", "approvalChannel", "targets"];
+  const allowed = ["monthlyAdCapEgp", "maxCplEgp", "targetCplEgp", "cplBreachDays", "cplBreachMinSpendEgp", "approvalThreshold", "killSwitchRollingThreshold", "manualWeeks", "approvalChannel", "targets", "studio"];
+  if ("studio" in ctx.body) ctx.body.studio = { autoplan: ctx.body.studio?.autoplan !== false, reelLimitPerWeek: Math.max(0, Math.min(30, Math.round(Number(ctx.body.studio?.reelLimitPerWeek ?? 6)))) };
   if (Number(ctx.body.monthlyAdCapEgp) > R.DEFAULT_SETTINGS.monthlyAdCapEgp && !ctx.body.confirmRaiseCap) return { ok: false, error: "Raising the monthly cap above 200,000 EGP needs confirmRaiseCap: true." };
   for (const k of allowed) if (k in ctx.body) st.settings[k] = ctx.body[k];
   E.audit(st, ctx.user.email, "settings.updated", null, Object.keys(ctx.body).join(", "));
@@ -340,7 +347,7 @@ function providerStatus(lastAgentSeen) {
     manus: { role: "Meta and other connected platforms, through the job queue", ready: !!lastAgentSeen || has("ELEVAY_COMMAND_CENTER_MANUS_API_KEY"), lastSeen: lastAgentSeen },
   };
 }
-route("GET", "/ai/providers", "team", async () => ok({ ok: true, providers: providerStatus(await kvGet("last_agent_seen")), pipelines: Object.fromEntries(STUDIO_KINDS.map((k) => [k, { label: PIPELINES[k].label, steps: PIPELINES[k].steps().map((st) => ({ provider: st.provider, title: st.title, gate: st.gate || null })) }])) }));
+route("GET", "/ai/providers", "team", async () => ok({ ok: true, sources: sourcesStatus(), providers: providerStatus(await kvGet("last_agent_seen")), pipelines: Object.fromEntries(STUDIO_KINDS.map((k) => [k, { label: PIPELINES[k].label, steps: PIPELINES[k].steps().map((st) => ({ provider: st.provider, title: st.title, gate: st.gate || null })) }])) }));
 route("POST", "/ai/providers/test", "owner", async () => ok({ ok: true, results: await (await studio()).test() }));
 route("GET", "/ai/runs", "team", async () => ok({ ok: true, runs: await (await studio()).list(40) }));
 route("GET", "/ai/runs/:id", "team", async (ctx) => { const r = await (await studio()).get(Number(ctx.params.id)); return r ? ok({ ok: true, run: r }) : fail(404, "Run not found"); });
@@ -353,11 +360,25 @@ const studioAct = (fn) => async (ctx) => { try { await fn(await studio(), ctx); 
 route("POST", "/ai/runs/:id/steps/:n/approve", "marketer", studioAct((o, ctx) => o.approve(Number(ctx.params.id), ctx.params.n, ctx.user)));
 route("POST", "/ai/runs/:id/retry", "marketer", studioAct((o, ctx) => o.retry(Number(ctx.params.id), ctx.user)));
 route("POST", "/ai/runs/:id/cancel", "marketer", studioAct((o, ctx) => o.cancel(Number(ctx.params.id), ctx.user)));
-// Manus can ask the studio too (e.g. Claude analysis or a new design). Paid steps still wait for a person.
+route("GET", "/ai/autopilot", "team", async () => {
+  const { state } = await loadState();
+  const a = R.approvalStats(state.items, state.settings);
+  return ok({ ok: true, autopublish: state.settings.autopublish, approval: { weeksDone: a.weeksDone, cumulative: a.cumulative, rolling4: a.rolling4, gateEligible: a.gateEligible, manualWeeks: state.settings.manualWeeks, threshold: state.settings.approvalThreshold }, studio: { autoplan: state.settings.studio?.autoplan !== false, reelLimitPerWeek: Number(state.settings.studio?.reelLimitPerWeek ?? 6) }, lastWeekly: await kvGet("autoplan_last_week") });
+});
+route("POST", "/ai/autoplan/weekly", "marketer", async (ctx) => {
+  const week = /^\d{4}-W\d{2}$/.test(ctx.body.week || "") ? ctx.body.week : ctx.body.which === "this" ? isoWeekOf(Date.now()) : ctx.body.which === "next" ? isoWeekOf(Date.now() + 7 * 86400000) : undefined;
+  try { const run = await (await studio()).startWeekly(week, ctx.user); return ok({ ok: true, run }); } catch (e) { return fail(400, e.message); }
+});
+route("POST", "/ai/autoplan/monthly", "marketer", async (ctx) => {
+  const d = new Date(); d.setUTCMonth(d.getUTCMonth() + 1, 1);
+  const month = /^\d{4}-\d{2}$/.test(ctx.body.month || "") ? ctx.body.month : d.toISOString().slice(0, 7);
+  try { const run = await (await studio()).startMonthly(month + (ctx.body.again ? "-" + Date.now() : ""), ctx.user); return ok({ ok: true, run }); } catch (e) { return fail(400, e.message); }
+});
+// Manus can ask the studio too (e.g. Claude analysis or a new design). Its runs are automatic (weekly reel limit still applies).
 route("GET", "/agent/ai/runs", "agent", async () => ok({ ok: true, runs: await (await studio()).list(40) }));
 route("POST", "/agent/ai/runs", "agent", async (ctx) => {
   const kind = STUDIO_KINDS.includes(ctx.body.kind) ? ctx.body.kind : "request";
-  try { return ok({ ok: true, run: await (await studio()).create({ kind, request: ctx.body.request, options: {}, user: { email: "manus", role: "marketer" } }) }); } catch (e) { return fail(400, e.message); }
+  try { return ok({ ok: true, run: await (await studio()).create({ kind, request: ctx.body.request, options: { auto: true }, user: { email: "manus", role: "marketer" } }) }); } catch (e) { return fail(400, e.message); }
 });
 
 route("GET", "/agent/ping", "agent", async () => ok({ ok: true, time: new Date().toISOString() }));

@@ -237,7 +237,7 @@
       performance: 'Live from Meta and the ELEVAY CRM: last 30 days of ads, leads, qualified, unqualified, clients and page growth. Read-only.',
       news: 'Weekly news search: Manus collects, Claude verifies. Only verified or reported items can feed posts.',
       monthly: 'Next month’s plan, built from 6 months of Meta and CRM results. The owner approves it.',
-      studio: 'Claude conducts: it routes each request to OpenAI (statics, keyframes), Higgsfield (reel clips) or Manus (Meta), and checks the results. Paid steps wait for approval.',
+      studio: 'Autopilot plans the week from your Meta and CRM results, Claude hands each part to OpenAI, Higgsfield or Manus, and checks the results.',
       manus: 'Every decision here becomes a job for Manus, which runs Meta, OpenAI, Higgsfield and the Elevay.vip voice module.',
       settings: 'Hard limits, the autopublish gate, team access and the audit log.',
     })[v];
@@ -695,8 +695,8 @@
   const STEP_ICON = { pending: '○', running: '◐', waiting: '◔', needs_approval: '!', done: '●', failed: '✕', skipped: '–' };
   let studioTimer = null;
   async function loadStudio() {
-    const [p, r] = await Promise.all([S.studio && S.studio.providers ? Promise.resolve(S.studio) : api.req('GET', 'ai/providers'), api.req('GET', 'ai/runs')]);
-    S.studio = { providers: p.providers, pipelines: p.pipelines, runs: r.runs };
+    const [p, r, ap] = await Promise.all([S.studio && S.studio.providers ? Promise.resolve(S.studio) : api.req('GET', 'ai/providers'), api.req('GET', 'ai/runs'), api.req('GET', 'ai/autopilot')]);
+    S.studio = { providers: p.providers, pipelines: p.pipelines, sources: p.sources, runs: r.runs, autopilot: ap };
     return S.studio;
   }
   function viewStudio(el) {
@@ -717,7 +717,9 @@
     el.innerHTML = `<div class="stack" style="gap:16px">
       <section class="panel"><div class="panel-h"><h2>Connected models</h2>${isOwner() ? '<button class="btn sm" id="provTest">Test connections</button>' : ''}</div>
         <div class="grid g4">${['claude', 'openai', 'higgsfield', 'manus'].map((k) => { const p = pv[k]; return `<div class="kpi">${provChip(k)}<span class="small">${esc(p.role)}</span><span class="t">${p.ready ? '<span class="pill ok">Connected</span>' : `<span class="pill bad">Not set up</span> ${p.key ? esc(p.key) + ' missing' : ''}`}${k === 'manus' && p.lastSeen ? ' · seen ' + ago(p.lastSeen) : ''}${p.model ? ' · ' + esc(p.model) : ''}</span><span class="t" id="pt-${k}"></span></div>`; }).join('')}</div></section>
-      ${canEdit() ? `<section class="panel"><div class="panel-h"><h2>New request</h2><span class="small muted">Claude plans the work and hands each part to the right model</span></div>
+      ${autopilotPanel(st.autopilot)}
+      ${st.sources ? `<section class="panel"><div class="panel-h"><h2>Approved sources the models use</h2></div><div class="row small" style="gap:8px;flex-wrap:wrap">${st.sources.programs.map((x) => `<span class="pill ${x.loaded ? 'ok' : 'bad'}">${esc(x.name)}</span>`).join('')}${st.sources.creative.map((x) => `<span class="pill ${x.loaded ? 'ok' : 'bad'}">Creative direction: ${esc(x.name.replace(/-/g, ' '))}</span>`).join('')}<span class="pill ${st.sources.logo ? 'ok' : 'bad'}">Official logo</span><span class="pill ${st.sources.font ? 'ok' : 'bad'}">Apex Sans font</span></div><p class="small muted" style="margin:8px 0 0">Program figures come only from these approved sources; other programs are described without numbers until their sources are added.</p></section>` : ''}
+      ${canEdit() ? `<section class="panel"><div class="panel-h"><h2>Extra request</h2><span class="small muted">Claude plans the work and hands each part to the right model</span></div>
         <div class="stack" style="gap:10px">
           <div class="row"><select class="input" id="stKind" style="max-width:260px">${[['request', 'Let Claude decide'], ['static', 'Static post (OpenAI)'], ['reel', 'Reel (OpenAI + Higgsfield)'], ['plan', 'Monthly plan from data'], ['manus', 'Meta / Manus task'], ['answer', 'Question about our data']].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
             <input class="input" id="stProgram" placeholder="Program (optional), e.g. Spain DNV" style="max-width:260px"></div>
@@ -739,6 +741,16 @@
     }, 'Started. Follow it in Runs.');
     const pt = el.querySelector('#provTest');
     if (pt) pt.onclick = () => act(async () => { const r = await api.req('POST', 'ai/providers/test'); for (const [k, v] of Object.entries(r.results)) { const n = document.getElementById('pt-' + k); if (n) n.innerHTML = `${v.ok ? '✓' : '✕'} ${esc(v.detail)}`; } });
+    el.querySelectorAll('[data-autoplan]').forEach((b) => (b.onclick = () => act(async () => {
+      const k = b.dataset.autoplan;
+      await api.req('POST', k === 'monthly' ? 'ai/autoplan/monthly' : 'ai/autoplan/weekly', k === 'monthly' ? { again: true } : { which: k });
+      await loadStudio();
+    }, 'Started. Claude is planning; production starts automatically.')));
+    const aps = el.querySelector('#apSave');
+    if (aps) aps.onclick = () => act(async () => {
+      await api.saveSettings({ studio: { autoplan: el.querySelector('#apAuto').checked, reelLimitPerWeek: Number(el.querySelector('#apReels').value) } });
+      S.studio.autopilot = await api.req('GET', 'ai/autopilot');
+    }, 'Autopilot settings saved.');
     el.querySelectorAll('[data-run-act]').forEach((b) => (b.onclick = () => {
       const [a, id, n] = b.dataset.runAct.split(':');
       if (a === 'approve' && b.dataset.cost && !confirm(b.dataset.cost)) return;
@@ -746,7 +758,22 @@
     }));
     el.querySelectorAll('[data-goview]').forEach((b) => (b.onclick = (ev) => { ev.preventDefault(); go(b.dataset.goview); }));
   }
-  const COST = { openai: 'This calls OpenAI image generation (paid, roughly $0.05–0.25 per image). Continue?', higgsfield: 'This submits 4 paid Higgsfield Pro clips. Continue?', manus: 'Manus will act on Meta with these instructions. Continue?' };
+  function autopilotPanel(ap) {
+    if (!ap) return '';
+    const a = ap.approval, on = ap.autopublish && ap.autopublish.enabled, killed = ap.autopublish && ap.autopublish.disabledAt && !on;
+    const status = on
+      ? `<span class="pill ok">Automatic</span> Higgsfield clips, Meta tasks, approved posts and monthly plans run without waiting. Any rejection, compliance flag or a rolling rate below 85% switches back to manual.`
+      : killed
+        ? `<span class="pill bad">Back to manual</span> ${esc(ap.autopublish.disabledReason || '')}. The owner can switch it on again in Settings.`
+        : `<span class="pill warn">Learning phase</span> Week ${Math.min(a.weeksDone, a.manualWeeks)} of ${a.manualWeeks} · first-pass approval ${pct(a.cumulative)} (needs ${pct(a.threshold)}). Until then the owner approves Higgsfield clips, Meta changes, posts and plans. It switches to automatic by itself when the gate is reached.`;
+    return `<section class="panel"><div class="panel-h"><h2>Autopilot</h2><span class="small muted">${ap.studio.autoplan ? 'Plans itself every Saturday 09:00 Cairo (next week) and from the 25th (next month)' : 'Automatic planning is paused'}</span></div>
+      <p style="margin:0 0 10px">${status}</p>
+      <p class="small muted" style="margin:0 0 12px">OpenAI designs never wait for approval. Requests from Manus run automatically. Higgsfield is limited to ${ap.studio.reelLimitPerWeek} reels per 7 days; Meta work stays inside the 200,000 EGP cap and 100 EGP max CPL.</p>
+      ${canEdit() ? `<div class="row"><button class="btn primary" data-autoplan="this">Plan this week now</button><button class="btn" data-autoplan="next">Plan next week now</button><button class="btn" data-autoplan="monthly">Draft next month's plan now</button></div>` : ''}
+      ${isOwner() ? `<div class="row small" style="margin-top:12px"><label class="row"><input type="checkbox" id="apAuto" ${ap.studio.autoplan ? 'checked' : ''}> Plan automatically</label><label class="row">Reel limit per 7 days <input class="input" id="apReels" type="number" min="0" max="30" value="${ap.studio.reelLimitPerWeek}" style="width:70px"></label><button class="btn sm" id="apSave">Save</button></div>` : ''}
+    </section>`;
+  }
+  const COST = { higgsfield: 'This submits 4 paid Higgsfield Pro clips. Continue?', manus: 'Manus will act on Meta with these instructions. Continue?' };
   function runCard(r, isOpen) {
     const [pc, pl] = RUN_PILL[r.status] || ['', r.status];
     const A = r.artifacts || {};
@@ -849,7 +876,7 @@ Auth        Authorization: Bearer &lt;MANUS_AGENT_TOKEN&gt;</div>
     const dis = owner ? '' : 'disabled';
     el.innerHTML = `<div class="stack" style="gap:16px">
       <section class="panel"><div class="panel-h"><h2>Autopublish gate</h2>${autopubPill()}</div>
-        <p style="max-width:70ch">Weeks 1–${set.manualWeeks} are manual approval only. After that, if cumulative first-pass approval is ${set.approvalThreshold * 100}% or higher, the owner can switch on autopublish for organic posts that pass QC and compliance. Budget increases, new campaigns, audience changes and flagged items always need approval.</p>
+        <p style="max-width:70ch">Weeks 1–${set.manualWeeks} are manual approval only. After that, if cumulative first-pass approval is ${set.approvalThreshold * 100}% or higher, autopilot switches on by itself (the first time). Then posts that pass QC and compliance, monthly plans, Higgsfield clips and Meta actions from the Friday plan and AI Studio run without approval, always inside the monthly cap and max CPL; actions that would break the cap are still refused. Any rejection, compliance flag or a rolling 4-week rate below ${set.killSwitchRollingThreshold * 100}% switches it off, and the owner switches it back on here.</p>
         <div class="grid g3" style="margin:12px 0"><div class="kpi"><span class="label">Weeks decided</span><span class="v">${st.weeksDone} / ${set.manualWeeks}</span></div><div class="kpi"><span class="label">Cumulative first-pass</span><span class="v">${pct(st.cumulative, 1)}</span></div><div class="kpi"><span class="label">Rolling 4 weeks</span><span class="v">${pct(st.rolling4, 1)}</span></div></div>
         ${ap.disabledReason && !ap.enabled ? `<p class="small" style="color:var(--warn)">Last turned off: ${esc(ap.disabledReason)}</p>` : ''}
         <p class="small muted">Kill switch: turns off on any rejection, any compliance flag, or rolling approval below ${set.killSwitchRollingThreshold * 100}%.</p>

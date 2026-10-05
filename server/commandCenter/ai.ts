@@ -9,12 +9,22 @@
  *
  * Every run is a list of steps. Each step records the instruction sent to a model and
  * the answer it returned, so the team sees the conversation between the models.
- * Paid generation stops at an approval gate (OpenAI: marketer or owner; Higgsfield: owner).
- * Finished work lands in the weekly plan or monthly plan for the usual owner approval.
- * Nothing here publishes, spends ad budget or changes Meta.
+ * Autopilot: every Saturday Claude plans next week's 7 posts (4 static + 3 reels) from the live
+ * Meta + CRM data and the approved monthly plan, and starts their production; in the last week
+ * of each month it drafts next month's plan.
+ * OpenAI runs without approval. Higgsfield clips, Meta-changing Manus tasks, posts and plans need
+ * the owner during the first weeks; once the 6-week / 90% first-pass gate is reached (autopublish
+ * on), they run automatically. The kill switch (any rejection, compliance flag, rolling rate below
+ * 85%) returns them to manual. Runs Manus starts are automatic. A weekly reel limit caps
+ * Higgsfield spend, and Meta work stays inside the 200,000 EGP cap and 100 EGP max CPL.
  */
 import crypto from "crypto";
 import { ELEVAY_AGENTIC_DESIGN_STANDARD } from "@shared/elevayAgenticDesignStandard";
+import { spawn } from "child_process";
+import fsp from "fs/promises";
+import os from "os";
+import path from "path";
+import { assetPath, CREATIVE_DIRECTION, programFactsFor, allProgramFacts, fullProgramSource, DELIVERY_CHECKLIST } from "./knowledge";
 
 // ------------------------------------------------------------------ rules every model receives
 export const ELEVAY_RULES = `
@@ -28,8 +38,58 @@ Hard rules:
 - No phone numbers, emails, WhatsApp, URLs or QR codes in captions, images or videos.
 - Text inside images is English only. People shown are Arab / Middle Eastern in modern elegant clothing. Never show passports, flags as hero objects, or an AI-drawn logo (the official logo is added afterwards).
 - Reels: 4 clips × 5 s + 3 s white logo outro (23 s), no text inside the video.
-- Voice-over scripts: Egyptian Arabic (عامية مصرية), but every country, city, program and company name in English letters (Spain, Portugal, Golden Visa program name only if official, ELEVAY) so the voice pronounces it correctly. 8–13 words per clip.
+- Voice-over scripts: Egyptian Arabic (عامية مصرية), but every country, city, program and company name in English letters (Spain, Malta, Lisbon, ELEVAY) so the voice pronounces it correctly. 8–13 words per clip.
+- Positioning: a strategic global mobility advisory firm, never an immigration broker or "visa agent". Messaging pillars: Family Security, Global Mobility, Long-term Planning, Premium Service, Ethical Advisory.
+${CREATIVE_DIRECTION}
 ${ELEVAY_AGENTIC_DESIGN_STANDARD}`;
+
+/** Wrap an English headline into at most 3 lines for the static design. */
+export function wrapHeadline(text: string, max = 22) {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  const lines = [];
+  for (const w of words) {
+    const last = lines[lines.length - 1];
+    if (last && (last + " " + w).length <= max) lines[lines.length - 1] = last + " " + w; else lines.push(w);
+  }
+  if (lines.length > 3) throw new Error("The design headline is too long for three lines; Claude must shorten it.");
+  return lines.join("\n");
+}
+
+function runFfmpeg(args) {
+  return new Promise(async (resolve, reject) => {
+    let bin = "ffmpeg";
+    try { bin = (await import("../mediaExecutables")).FFMPEG_BIN || bin; } catch { /* system ffmpeg */ }
+    const child = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let err = "";
+    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Static composition timed out.")); }, 60000);
+    child.stderr.on("data", (d) => { err = (err + d).slice(-600); });
+    child.on("error", (e) => { clearTimeout(timer); reject(e); });
+    child.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error("Static composition failed: " + err.slice(-200))); });
+  });
+}
+
+/**
+ * Final ELEVAY static: 1080×1080, the OpenAI photograph, a soft dark-navy fade for legibility,
+ * the English headline in the official Apex Sans font and the exact official logo top-left.
+ */
+export async function composeElevayStatic(source: Buffer, headline: string) {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "elevay-cc-static-"));
+  try {
+    const src = path.join(dir, "photo.png"), txt = path.join(dir, "headline.txt"), out = path.join(dir, "final.png");
+    await Promise.all([fsp.writeFile(src, source), fsp.writeFile(txt, wrapHeadline(headline))]);
+    const esc = (p) => p.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
+    const filter = [
+      "[0:v]scale=1080:1080:flags=lanczos,format=rgba[base]",
+      "color=c=0x3D4750:s=1080x1080,format=rgba,geq=r='61':g='71':b='80':a='if(gte(Y,560),min(215,(Y-560)*0.42),0)'[shade]",
+      "[base][shade]overlay=0:0[toned]",
+      `[toned]drawtext=fontfile='${esc(assetPath("ApexSansBook.ttf"))}':textfile='${esc(txt)}':fontcolor=0xFFFFFF:fontsize=66:line_spacing=16:x=80:y=h-th-96[texted]`,
+      "[1:v]scale=118:-1:flags=lanczos[logo]",
+      "[texted][logo]overlay=x=56:y=52:format=auto[out]",
+    ].join(";");
+    await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", "-i", src, "-i", assetPath("elevay-logo.png"), "-filter_complex", filter, "-map", "[out]", "-frames:v", "1", out]);
+    return await fsp.readFile(out);
+  } finally { await fsp.rm(dir, { recursive: true, force: true }); }
+}
 
 // ------------------------------------------------------------------ providers
 const CLAUDE_MODEL = () => process.env.ELEVAY_CLAUDE_MODEL || "claude-sonnet-4-6";
@@ -70,11 +130,11 @@ export function makeProviders(fetcher = fetch) {
     return createElevayOpenAiKeyframe({ prompt, purpose });
   }
 
-  async function brandStatic(url) {
-    // Composite the official ELEVAY logo on the generated static (never an AI-drawn logo).
-    const [{ applyOfficialElevayLogoToStatic }, { storagePut }] = await Promise.all([import("../elevayBrandMedia"), import("../storage")]);
+  async function brandStatic(url, headline) {
+    // Official ELEVAY font + exact official logo composited on the photograph (never AI-drawn).
+    const { storagePut } = await import("../storage");
     const src = Buffer.from(await (await fetcher(url)).arrayBuffer());
-    const { bytes } = await applyOfficialElevayLogoToStatic(src);
+    const bytes = await composeElevayStatic(src, headline);
     const sha = crypto.createHash("sha256").update(bytes).digest("hex");
     return (await storagePut(`marketing/command-center/static/${sha.slice(0, 24)}.png`, bytes, "image/png")).url;
   }
@@ -110,17 +170,21 @@ export const PIPELINES = {
   static: { label: "Static post", steps: () => [
     S("claude", "static_brief", "Claude writes the brief, caption and image direction"),
     S("system", "check_brief", "Brand and compliance check (Claude fixes blocks once)"),
-    S("openai", "static_image", "OpenAI designs the static", { gate: "marketer" }),
+    S("openai", "static_image", "OpenAI designs the static"),
     S("claude", "qc_visual", "Claude checks the design against the ELEVAY rules"),
     S("system", "to_weekly_plan", "Send to the weekly plan for owner approval"),
   ] },
   reel: { label: "Reel", steps: () => [
     S("claude", "reel_storyboard", "Claude writes the 4-scene storyboard, caption and Egyptian Arabic voice-over"),
     S("system", "check_brief", "Brand and compliance check (Claude fixes blocks once)"),
-    S("openai", "reel_keyframes", "OpenAI creates the 4 keyframes (9:16)", { gate: "marketer" }),
+    S("openai", "reel_keyframes", "OpenAI creates the 4 keyframes (9:16)"),
     S("claude", "qc_visual", "Claude checks the keyframes against the ELEVAY rules"),
     S("higgsfield", "clips", "Higgsfield animates 4 × 5 s clips", { gate: "owner" }),
     S("system", "to_weekly_plan", "Send clips to the weekly plan (voice-over and final edit follow)"),
+  ] },
+  weekly_plan: { label: "Weekly plan (automatic)", steps: () => [
+    S("claude", "weekly_plan", "Claude plans the week's 7 posts from Meta + CRM results and the monthly plan"),
+    S("system", "spawn_week", "Start production of the 4 statics and 3 reels"),
   ] },
   plan: { label: "Monthly plan from data", steps: () => [
     S("claude", "plan", "Claude drafts next month's plan from 6 months of Meta + CRM data"),
@@ -145,12 +209,26 @@ function isoWeek(d = new Date()) {
   const y = t.getUTCFullYear(), w = Math.ceil(((t - Date.UTC(y, 0, 1)) / 86400000 + 1) / 7);
   return `${y}-W${String(w).padStart(2, "0")}`;
 }
-export function nextItemId(items, week = isoWeek()) {
-  const used = items.filter((i) => String(i.item_id).startsWith(week + "-")).map((i) => Number(i.item_id.slice(-2)));
-  const n = Math.max(7, ...used) + 1;
+export function nextItemId(items, week = isoWeek(), planned = false) {
+  const used = new Set(items.filter((i) => String(i.item_id).startsWith(week + "-")).map((i) => Number(i.item_id.slice(-2))));
+  let n = planned ? 1 : Math.max(7, ...used) + 1;
+  while (used.has(n)) n++;
   if (n > 99) throw new Error(`No free item number left in ${week}.`);
   return `${week}-${String(n).padStart(2, "0")}`;
 }
+/** Cairo calendar parts for scheduling. */
+export function cairoParts(ms = Date.now()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "Africa/Cairo", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", weekday: "short" }).formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, hour: +p.hour, weekday: p.weekday, day: +p.day };
+}
+/** The week Saturday's planning is for: the ISO week that starts two days later. */
+export function planningWeek(ms = Date.now()) { return isoWeek(new Date(ms + 2 * 86400000)); }
+const WEEKDAY_DATES = (week) => { // Sunday..Saturday dates (Cairo) of the publishing week around that ISO week's Monday
+  const [y, w] = week.split("-W").map(Number);
+  const jan4 = new Date(Date.UTC(y, 0, 4)); const mon = new Date(jan4); mon.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() || 7) - 1) + (w - 1) * 7);
+  return Array.from({ length: 7 }, (_, i) => { const d = new Date(mon); d.setUTCDate(mon.getUTCDate() - 1 + i); return d.toISOString().slice(0, 10); });
+};
+
 function liveSummary(live) {
   if (!live) return "No live data available.";
   const pick = { window: live.window, alerts: live.alerts, adsTotal: live.ads?.total, campaigns: (live.ads?.campaigns || []).slice(0, 12).map((c) => ({ campaign: c.campaign, status: c.status, spend: Math.round(c.spend), leads: c.leads, cpl: c.cpl && Math.round(c.cpl), crmLeads: c.crmLeads, qualified: c.qualified, clients: c.clients })), crm30: live.crm, page: live.page && { views: live.page.views?.total, newLikes: live.page.newLikes?.total, unlikes: live.page.unlikes?.total }, analysis: live.analysis && { byMonth: live.analysis.byMonth, findings: live.analysis.findings, recommendations: live.analysis.recommendations, budgetSplit: live.analysis.budgetSplit, programs: live.analysis.programs?.slice(0, 8), unqualifiedReasons: live.analysis.unqualifiedReasons } };
@@ -215,7 +293,11 @@ export function createOrchestrator(deps) {
       const step = run.steps.find((s) => !["done", "skipped"].includes(s.status));
       if (!step) { run.status = "done"; run.finished_at = nowIso(); await save(run, ver); return; }
       if (step.status === "failed") { run.status = "failed"; await save(run, ver); return; }
-      if (step.gate && !step.approved_by) { step.status = "needs_approval"; run.status = "awaiting_approval"; await save(run, ver); return; }
+      if (step.gate && !step.approved_by) {
+        const auto = await autoApproval(run, step);
+        if (auto) { step.approved_by = auto; step.approved_at = nowIso(); log(run, "studio", "team", `Approved automatically (${auto}): ${step.title}`); }
+        else { step.status = "needs_approval"; run.status = "awaiting_approval"; await save(run, ver); return; }
+      }
       if (step.status === "waiting") {
         const r = await poll(run, step);
         if (!r) { run.status = "waiting"; ver = await save(run, ver); return; }
@@ -234,6 +316,28 @@ export function createOrchestrator(deps) {
       }
       ver = await save(run, ver);
     }
+  }
+
+  // ---------------------------------------------------------------- automation rules
+  async function autopilotOn() {
+    const { state } = await deps.loadState();
+    return { on: !!state.settings.autopublish?.enabled, state };
+  }
+  async function reelsThisWeek() {
+    const rows = await q("SELECT id, doc FROM ec_ai_runs ORDER BY id DESC LIMIT ?", [200]);
+    const since = Date.now() - 7 * 86400000;
+    return rows.map((r) => JSON.parse(r.doc)).filter((r) => Date.parse(r.created_at) >= since && r.steps.some((s) => s.provider === "higgsfield" && s.approved_by)).length;
+  }
+  /** Returns who approved automatically, or null when a person must approve. */
+  async function autoApproval(run, step) {
+    const { on, state } = await autopilotOn();
+    const why = run.options?.auto ? "Manus request" : on ? "autopilot: 6-week 90% gate reached" : null;
+    if (!why) return null;
+    if (step.provider === "higgsfield") {
+      const limit = Number(state.settings.studio?.reelLimitPerWeek ?? 6);
+      if ((await reelsThisWeek()) >= limit) { log(run, "studio", "team", `Weekly reel limit (${limit}) reached, so the owner must approve these clips.`); return null; }
+    }
+    return why;
   }
 
   // ---------------------------------------------------------------- step executors
@@ -259,17 +363,18 @@ export function createOrchestrator(deps) {
       }
       case "claude.answer": {
         const live = await deps.liveReport(false).catch(() => null);
-        const r = await askClaude(run, step, `Live ELEVAY Meta + CRM data (JSON):\n${liveSummary(live)}\n\nQuestion from the team:\n"""${run.request}"""\n\nAnswer in clear English (Arabic if the question is in Arabic), with numbers from the data. Say when the data does not cover something. Return JSON: {"answer": "..."}`, { note: `Question with live data attached: ${run.request}`, maxTokens: 2500 });
+        const src = fullProgramSource(run.request);
+        const r = await askClaude(run, step, `${src ? "Approved ELEVAY program source (use it for program questions):\n" + clip(src, 30000) + "\n\n" : programFactsFor(run.request) + "\n\n"}Live ELEVAY Meta + CRM data (JSON):\n${liveSummary(live)}\n\nQuestion from the team:\n"""${run.request}"""\n\nAnswer in clear English (Arabic if the question is in Arabic), with numbers from the data. Say when the data does not cover something. Return JSON: {"answer": "..."}`, { note: `Question with live data attached: ${run.request}`, maxTokens: 2500 });
         A.answer = r.data?.answer || r.text;
         return;
       }
       case "claude.static_brief": {
-        const r = await askClaude(run, step, `Write one ELEVAY static Instagram/Facebook post for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": one of ["Family Security","Global Mobility","Long-term Planning","Premium Service","Ethical Advisory"], "program": "...", "headline_en": "English headline for inside the design, max 7 words, sentence case", "caption_ar": "MSA caption following every rule", "image_prompt": "Detailed English scene for the image model: setting, Arab/Middle Eastern people and clothing, light, composition with clear space top-left for the official logo, and the exact headline text to render. Must say no logo and no other text, no passports, no flags, no contact details.", "format": "1080x1080"}`);
+        const r = await askClaude(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY static Instagram/Facebook post for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": one of ["Family Security","Global Mobility","Long-term Planning","Premium Service","Ethical Advisory"], "program": "...", "headline_en": "English headline for inside the design, 3–7 words (max 55 characters), sentence case, no Visa/guarantee wording", "caption_ar": "MSA caption following every rule", "image_prompt": "Detailed English scene for the image model: setting, Arab/Middle Eastern people and clothing, light, composition with clear space top-left for the official logo, and the exact headline text to render. Must say no logo and no other text, no passports, no flags, no contact details.", "format": "1080x1080"}`);
         A.brief = { type: "static", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", design: { format: "1080x1080", headline_en: r.data.headline_en, image_prompt: r.data.image_prompt }, talent: { mode: "none" }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
         return;
       }
       case "claude.reel_storyboard": {
-        const r = await askClaude(run, step, `Write one ELEVAY reel for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "scenes": [4 × {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "Egyptian Arabic voice-over for this clip, 8–13 words, country/company/program names in English letters"}]}`, { maxTokens: 5000 });
+        const r = await askClaude(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "scenes": [4 scenes in order hook → explanation → trust → realistic outcome, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "Egyptian Arabic voice-over for this clip, 8–13 words, country/company/program names in English letters"}]}`, { maxTokens: 5000 });
         const scenes = (r.data.scenes || []).slice(0, 4);
         if (scenes.length !== 4) throw new Error("Claude did not return 4 scenes.");
         A.brief = { type: "reel", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", talent: { mode: "voiceover_elevay_vip", voice_source: "elevay_vip_module", speech_language: "egyptian_arabic" }, reel: { storyboard: scenes.map((s, i) => ({ clip: i + 1, keyframe_prompt: s.keyframe_prompt, motion_prompt: s.motion_prompt, spoken_text_ar: s.spoken_text_ar, delivery_direction_en: "Calm, warm, premium advisory tone" })), music_direction: r.data.music_direction || "Soft cinematic, royalty-free", duration_s: 23 }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
@@ -289,12 +394,12 @@ export function createOrchestrator(deps) {
       }
       case "openai.static_image": {
         const d = A.brief.design;
-        const prompt = `${d.image_prompt}\n\nRender this English headline exactly, cleanly, in a refined sans-serif, sentence case: "${d.headline_en}". Square 1:1 premium editorial social post. Leave the top-left corner clear for the official logo; do not draw any logo. No other text.\n\nDesign rules: ${ELEVAY_AGENTIC_DESIGN_STANDARD.replace(/\s+/g, " ").slice(0, 1800)}`.slice(0, 3990);
+        const prompt = `${d.image_prompt}\n\nSquare 1:1 premium editorial photograph for a social post. Do not render any text, letters, numbers, logo or logo-like mark: the English headline (Apex Sans) and the exact official ELEVAY logo are added afterwards. Keep the top-left area calm and uncluttered for the logo and the lower third calm and darker for the headline. Diagonal, asymmetric composition; no frames or geometric shapes.\n\n${CREATIVE_DIRECTION.replace(/\s+/g, " ").slice(0, 2300)}`.slice(0, 3990);
         log(run, "studio", "openai", prompt);
         const img = await providers.openaiImage({ prompt, purpose: "static_post" });
         let url = img.url;
-        try { url = await providers.brandStatic(img.url); log(run, "studio", "studio", "Official ELEVAY logo composited."); }
-        catch (e) { log(run, "studio", "studio", "Logo could not be composited automatically: " + e.message); }
+        url = await providers.brandStatic(img.url, d.headline_en);
+        log(run, "studio", "studio", "Headline set in Apex Sans and the official ELEVAY logo composited.");
         A.images = [{ url, raw_url: img.url, sha256: img.sha256, cost_usd: img.measuredCostUsd }];
         log(run, "openai", "studio", `Design ready (${img.width}×${img.height}${img.measuredCostUsd ? `, about $${img.measuredCostUsd}` : ""}).`);
         step.output = { images: A.images.map((i) => i.url) };
@@ -315,7 +420,7 @@ export function createOrchestrator(deps) {
       }
       case "claude.qc_visual": {
         const imgs = run.kind === "reel" ? A.keyframes.map((k) => k.url) : A.images.map((i) => i.url);
-        const r = await askClaude(run, step, `Check ${imgs.length > 1 ? "these " + imgs.length + " images" : "this image"} for ELEVAY (${run.kind === "reel" ? "reel keyframes, no text allowed" : `static post, the only text must be: "${A.brief.design.headline_en}"`}). Check: people are Arab/Middle Eastern in elegant clothing incl. footwear; no passports, flags, seals, contact details, URLs, QR codes; no AI-drawn logo; palette and premium editorial look; text spelling; anatomy. Return JSON: {"pass": true/false, "issues": ["..."], "per_image": [{"index": 1, "pass": true/false, "issues": ["..."]}]}`, { images: imgs, note: `Visual QC of ${imgs.length} image(s)`, maxTokens: 1500 });
+        const r = await askClaude(run, step, `Check ${imgs.length > 1 ? "these " + imgs.length + " images" : "this image"} for ELEVAY (${run.kind === "reel" ? "reel keyframes, no text allowed" : `static post, the only text must be: "${A.brief.design.headline_en}"`}). Check against the ELEVAY delivery checklist:\n${clip(DELIVERY_CHECKLIST(), 3000)}\nAlso check: people are Arab/Middle Eastern in elegant clothing incl. footwear; no passports, flags, seals, contact details, URLs, QR codes; no AI-drawn logo; palette and premium editorial look; text spelling; anatomy. Return JSON: {"pass": true/false, "issues": ["..."], "per_image": [{"index": 1, "pass": true/false, "issues": ["..."]}]}`, { images: imgs, note: `Visual QC of ${imgs.length} image(s)`, maxTokens: 1500 });
         A.qc = r.data;
         if (r.data && r.data.pass === false) log(run, "studio", "team", "Claude flagged issues. Review them before approving the next step: " + (r.data.issues || []).join("; "));
         return;
@@ -335,13 +440,64 @@ export function createOrchestrator(deps) {
       case "system.to_weekly_plan": {
         const media = run.kind === "reel" ? { clips: A.clips.map((c) => c.url), keyframes: A.keyframes.map((k) => k.url) } : { image_url: A.images[0].url };
         let itemId;
+        let auto = false;
         const r = await deps.mutate({}, (st) => {
-          itemId = nextItemId(st.items, opts.week || undefined);
-          return E.upsertBrief(st, { ...A.brief, item_id: itemId, status: "pending_approval", media, produced_by: { studio_run: run.id, claude: true, openai: true, higgsfield: run.kind === "reel" }, qc: { reviewer: "claude", pass: A.qc?.pass ?? null, issues: A.qc?.issues || [] } }, "ai-studio");
+          itemId = opts.item_id && !st.items.some((i) => i.item_id === opts.item_id) ? opts.item_id : nextItemId(st.items, opts.week || undefined, !!opts.planned);
+          const up = E.upsertBrief(st, { ...A.brief, item_id: itemId, status: "pending_approval", media, produced_by: { studio_run: run.id, claude: true, openai: true, higgsfield: run.kind === "reel" }, qc: { reviewer: "claude", pass: A.qc?.pass ?? null, issues: A.qc?.issues || [] } }, "ai-studio");
+          if (up.ok === false) return up;
+          // Autopilot approves clean items itself; they do not count toward the human first-pass rate.
+          auto = false;
+          if (st.settings.autopublish?.enabled && up.item.status === "pending_approval" && A.qc?.pass !== false && run.kind !== "reel") {
+            const d = E.decideItem(st, itemId, "approve", {}, "autopilot", "owner");
+            if (d.ok !== false) { Object.assign(up.item, { auto_approved: true, first_pass: null, presented_at: null }); auto = true; }
+          }
+          return up;
         });
         if (r && r.ok === false) throw new Error(r.error);
         A.item_id = itemId;
-        log(run, "studio", "team", `Added to the weekly plan as ${itemId} for approval.${run.kind === "reel" ? " Voice-over and the final 23 s edit follow in the next step of the pipeline." : ""}`);
+        log(run, "studio", "team", auto ? `Added as ${itemId} and approved by autopilot; Manus schedules it.` : `Added to the weekly plan as ${itemId} for approval.${run.kind === "reel" ? " Voice-over and the final 23 s edit follow in the next step of the pipeline." : ""}`);
+        return;
+      }
+      case "claude.weekly_plan": {
+        const live = await deps.liveReport(false).catch(() => null);
+        const { state } = await deps.loadState();
+        const week = opts.week || planningWeek();
+        const days = WEEKDAY_DATES(week);
+        const monthPlan = state.plans.find((p) => p.status === "approved");
+        const news = state.news.filter((n) => n.selected || n.confidence === "verified").slice(0, 8).map((n) => ({ headline: n.headline, country: n.country, program: n.program, angle: n.marketing_angle }));
+        const recent = state.items.slice(-21).map((i) => ({ id: i.item_id, type: i.type, topic: i.topic, program: i.program, status: i.status }));
+        const r = await askClaude(run, step, `Plan ELEVAY's social content for ${week} (Sunday ${days[0]} to Saturday ${days[6]}, Cairo).
+
+Goal: more qualified leads and signed clients at lower cost per qualified lead, plus views and page likes.
+
+Live Meta + CRM data:
+${liveSummary(live)}
+
+Approved monthly plan:
+${monthPlan ? clip(monthPlan.body, 5000) : "none yet"}
+
+Verified news to use where relevant:
+${JSON.stringify(news)}
+
+Recent posts (avoid repeating):
+${JSON.stringify(recent)}
+
+Today is ${cairoParts().date}; never schedule a date before today or after ${days[6]} (if fewer days remain, use two slots per day).\n\nApproved program sources (programs with confirmed facts):\n${allProgramFacts()}\nELEVAY also offers Portugal D7/D8/D2/Golden Visa, Greece Golden Visa, UK Expansion Worker, Canada Skilled Migration and Caribbean Citizenship by Investment; for those, plan benefit-led posts without figures until approved sources exist.\n\nReturn JSON: {"rationale": "2–4 sentences on why this mix", "posts": [exactly 7 items, exactly 4 with "type":"static" and 3 with "type":"reel": {"type": "static"|"reel", "date": "YYYY-MM-DD within the week", "time": "HH:MM Cairo, evening slots perform best unless the data says otherwise", "program": "...", "pillar": "...", "audience": "...", "brief": "2–3 sentences: the angle, the scene, the message and the call to action"}]}`, { note: `Weekly plan for ${week} with live data, monthly plan and news attached`, maxTokens: 4000 });
+        const posts = (r.data.posts || []).slice(0, 7);
+        const statics = posts.filter((p) => p.type === "static").length, reels = posts.filter((p) => p.type === "reel").length;
+        if (posts.length !== 7 || statics !== 4 || reels !== 3) throw new Error(`Claude returned ${statics} statics and ${reels} reels instead of 4 and 3.`);
+        A.week_plan = { week, rationale: r.data.rationale, posts };
+        return;
+      }
+      case "system.spawn_week": {
+        const { week, posts } = A.week_plan;
+        A.children = A.children || [];
+        for (let i = A.children.length; i < posts.length; i++) {
+          const p = posts[i];
+          const child = await create({ kind: p.type === "reel" ? "reel" : "static", request: `${p.brief}\nAudience: ${p.audience || ""}`, options: { program: p.program || "", datetime_cairo: p.date && p.time ? `${p.date}T${p.time}` : "", week, item_id: `${week}-${String(i + 1).padStart(2, "0")}`, planned: true, parent: run.id, auto: !!opts.auto }, user: { email: "autopilot", role: "owner" } });
+          A.children.push(child.id);
+        }
+        log(run, "studio", "team", `Started ${posts.length} runs for ${week}: ${A.children.map((c) => "#" + c).join(", ")}.`);
         return;
       }
       case "claude.plan": {
@@ -352,9 +508,14 @@ export function createOrchestrator(deps) {
         return;
       }
       case "system.to_monthly_plan": {
-        const r = await deps.mutate({}, (st) => E.addPlan(st, { ...A.plan, source: "ai-studio", studio_run: run.id }, "ai-studio"));
+        let auto = false;
+        const r = await deps.mutate({}, (st) => {
+          const added = E.addPlan(st, { ...A.plan, source: "ai-studio", studio_run: run.id }, "ai-studio");
+          if (added.ok && st.settings.autopublish?.enabled) { E.decidePlan(st, added.plan.id, "approve", "Approved by autopilot (6-week gate reached)", "autopilot", "owner"); auto = true; }
+          return added;
+        });
         if (r && r.ok === false) throw new Error(r.error);
-        log(run, "studio", "team", `Plan for ${A.plan.month} sent to the Monthly plan tab for owner approval.`);
+        log(run, "studio", "team", auto ? `Plan for ${A.plan.month} approved by autopilot.` : `Plan for ${A.plan.month} sent to the Monthly plan tab for owner approval.`);
         return;
       }
       case "claude.manus_brief": {
@@ -443,8 +604,46 @@ export function createOrchestrator(deps) {
     await save(g.run, g.ver);
   }
 
+  /**
+   * Autopilot schedule (Cairo): Saturday from 09:00 → next week's plan; from the 25th → next
+   * month's plan. Also opens the autopublish gate the first time it is reached.
+   */
+  async function autopilot(nowMs = Date.now()) {
+    const { state } = await deps.loadState();
+    const st = state.settings;
+    const ap = st.autopublish || {};
+    if (!ap.enabled && !ap.enabledAt && !ap.disabledAt && R.approvalStats(state.items, st).gateEligible) {
+      await deps.mutate({}, (s2) => E.enableAutopublish(s2, "autopilot", "owner"));
+    }
+    if (ap.enabled) {
+      // Friday action plan items: approve automatically; decideAction still refuses anything that breaks the cap.
+      const pending = state.actions.filter((x) => x.status === "pending").map((x) => x.id);
+      if (pending.length) await deps.mutate({}, (s2) => { for (const id of pending) { const r = E.decideAction(s2, id, "approve", { comment: "Approved by autopilot (6-week gate reached)" }, "autopilot", "owner"); if (r.ok === false) E.audit(s2, "autopilot", "action.left_for_owner", id, r.error); } return { ok: true }; });
+    }
+    if (st.studio?.autoplan === false) return;
+    const c = cairoParts(nowMs);
+    if (c.weekday === "Sat" && c.hour >= 9) await startWeekly(planningWeek(nowMs), { email: "autopilot", role: "owner" }).catch(() => {});
+    if (c.day >= 25) {
+      const d = new Date(nowMs); d.setUTCMonth(d.getUTCMonth() + 1, 1);
+      await startMonthly(d.toISOString().slice(0, 7), { email: "autopilot", role: "owner" }).catch(() => {});
+    }
+  }
+  async function claimOnce(key) {
+    const res = await q("INSERT IGNORE INTO ec_kv (name, value) VALUES (?, ?)", [key, nowIso()]);
+    return res.affectedRows === 1;
+  }
+  async function startWeekly(week = planningWeek(), user) {
+    if (!(await claimOnce(`autoplan_week_${week}`))) throw new Error(`The plan for ${week} was already started.`);
+    return create({ kind: "weekly_plan", request: `Weekly content plan ${week}`, options: { week }, user });
+  }
+  async function startMonthly(month, user) {
+    if (!(await claimOnce(`autoplan_month_${month}`))) throw new Error(`The plan for ${month} was already started.`);
+    return create({ kind: "plan", request: "", options: { month }, user });
+  }
+
   /** Background tick: resume waiting runs (Higgsfield clips, Manus jobs). */
   async function tick() {
+    await autopilot().catch(() => {});
     const rows = await q("SELECT id, status, doc FROM ec_ai_runs WHERE status IN ('waiting','queued','running') ORDER BY id LIMIT 30");
     for (const r of rows) {
       if (r.status !== "running") { kick(r.id); continue; }
@@ -460,5 +659,5 @@ export function createOrchestrator(deps) {
     }
   }
 
-  return { ensureTable, create, list, get: async (id) => (await get(id))?.run || null, approve, retry, cancel, tick, test: () => providers.test() };
+  return { ensureTable, create, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, approve, retry, cancel, tick, test: () => providers.test() };
 }

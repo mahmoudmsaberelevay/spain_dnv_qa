@@ -36,6 +36,19 @@ The **AI Studio** tab (`server/commandCenter/ai.ts`) runs requests through the m
 
 Keys used on the server: `ANTHROPIC_API_KEY` (optional `ELEVAY_CLAUDE_MODEL`), `OPENAI_API_KEY`, `HF_API_KEY`; Manus through the existing job queue. Runs are stored in `ec_ai_runs`; waiting runs resume every 45 s, and a step interrupted by a restart is marked failed for a manual retry (paid work is never re-run silently). Manus can read runs (`GET /agent/ai/runs`) and start one (`POST /agent/ai/runs` with `kind` and `request`); paid steps still wait for a person.
 
+### Autopilot
+
+- **Weekly**: every Saturday from 09:00 Cairo, Claude plans next week's 7 posts (4 static + 3 reels) from the live Meta + CRM data, the approved monthly plan and verified news, then starts their production as items 01–07. **Monthly**: from the 25th, Claude drafts next month's plan. Buttons in AI Studio start either immediately.
+- **Approvals**: OpenAI never waits. During the first weeks the owner approves Higgsfield clips, Meta-changing Manus tasks, posts and plans. The first time the 6-week / 90% first-pass gate is reached, autopilot switches on by itself: clips, Meta tasks (inside the cap and max CPL), Friday action-plan items (cap-breaking ones are still refused), posts that pass QC and compliance, and monthly plans then go ahead automatically. Auto-approved posts don't count toward the human first-pass rate. Any rejection, compliance flag or rolling rate below 85% switches it off; the owner switches it back on in Settings.
+- **Runs started by Manus** are automatic. A reel limit per 7 days (default 6, Settings in AI Studio) caps Higgsfield spend.
+
+### Approved sources
+
+`server/commandCenter/assets/` (copied to `dist/command-center-assets/` on build):
+- `knowledge/spain-digital-nomad.md`, `knowledge/malta-permanent-residence.md`: owner-approved program Q&A. `knowledge.ts` turns them into fact sheets for Claude; program figures may only come from these sources, and other programs are described without numbers.
+- `creative/*.md`: ELEVAY creative direction (brand identity, design, video and audio, delivery checklist), condensed into the rules every model receives; the checklist drives Claude's visual QC.
+- `elevay-logo.png` (official logo) and `ApexSansBook.ttf` (official font): statics are composed server-side (photo + Apex Sans headline + exact logo); OpenAI never draws text or the logo.
+
 ## Access
 
 People sign in with their elevay.vip accounts. Access comes from the Agentic Marketing roles:
