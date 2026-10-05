@@ -30,6 +30,8 @@ import { PAGE_HTML } from "./page";
 import { buildLiveReport } from "./live";
 import { createOrchestrator, makeProviders, PIPELINES, planningWeek } from "./ai";
 import { PROGRAMS, assetPath, assetText } from "./knowledge";
+import { createMetaHub, META_KINDS, cleanMetaAction as cleanMeta } from "./meta";
+const cleanMetaAction = (b) => cleanMeta(b, R);
 function sourcesStatus() {
   const has = (f) => { try { assetPath(f); return true; } catch { return false; } };
   return { programs: PROGRAMS.map((p) => ({ name: p.name, loaded: !!assetText(p.file) })), creative: ["brand-identity", "brand-and-design", "video-and-audio", "delivery-checklist"].map((n) => ({ name: n, loaded: !!assetText(`creative/${n}.md`) })), logo: has("elevay-logo.png"), font: has("ApexSansBook.ttf") };
@@ -138,6 +140,10 @@ async function mutate(ctx, fn) {
     const r = await fn(state);
     if (r && r.ok === false) return r;
     E.killSwitchCheck(state);
+    if (state.settings.meta?.directPublish) {
+      // elevay.vip publishes approved posts itself, so Manus must not schedule them too.
+      for (const j of state.jobs) if (j.type === "schedule_post" && j.status === "pending") E.setJobStatus(state, j.id, "done", { result: { handled_by: "elevay.vip direct publishing" } }, "system");
+    }
     if (await saveState(state, snap)) { ctx.changed = true; return r; }
     await new Promise((res) => setTimeout(res, 40 + crypto.randomInt(120)));
   }
@@ -271,7 +277,8 @@ route("POST", "/jobs/:id/retry", "marketer", (ctx) => mutate(ctx, (st) => {
   return E.setJobStatus(st, job.id, "pending", {}, ctx.user.email);
 }).then(fromResult));
 route("PUT", "/settings", "owner", (ctx) => mutate(ctx, (st) => {
-  const allowed = ["monthlyAdCapEgp", "maxCplEgp", "targetCplEgp", "cplBreachDays", "cplBreachMinSpendEgp", "approvalThreshold", "killSwitchRollingThreshold", "manualWeeks", "approvalChannel", "targets", "studio"];
+  const allowed = ["monthlyAdCapEgp", "maxCplEgp", "targetCplEgp", "cplBreachDays", "cplBreachMinSpendEgp", "approvalThreshold", "killSwitchRollingThreshold", "manualWeeks", "approvalChannel", "targets", "studio", "meta"];
+  if ("meta" in ctx.body) ctx.body.meta = { directPublish: ctx.body.meta?.directPublish === true, inbox: ctx.body.meta?.inbox !== false };
   if ("studio" in ctx.body) ctx.body.studio = { autoplan: ctx.body.studio?.autoplan !== false, reelLimitPerWeek: Math.max(0, Math.min(30, Math.round(Number(ctx.body.studio?.reelLimitPerWeek ?? 6)))) };
   if (Number(ctx.body.monthlyAdCapEgp) > R.DEFAULT_SETTINGS.monthlyAdCapEgp && !ctx.body.confirmRaiseCap) return { ok: false, error: "Raising the monthly cap above 200,000 EGP needs confirmRaiseCap: true." };
   for (const k of allowed) if (k in ctx.body) st.settings[k] = ctx.body[k];
@@ -331,7 +338,7 @@ route("GET", "/agent/live", "agent", async (ctx) => ok(await liveReport(ctx.quer
 let studioPromise = null;
 function studio() {
   if (!studioPromise) studioPromise = (async () => {
-    const o = createOrchestrator({ q, mutate, loadState, liveReport, providers: makeProviders(), E, R });
+    const o = createOrchestrator({ q, mutate, loadState, liveReport, providers: makeProviders(), E, R, meta: await metaHub() });
     await o.ensureTable();
     return o;
   })().catch((e) => { studioPromise = null; throw e; });
@@ -381,6 +388,28 @@ route("POST", "/agent/ai/runs", "agent", async (ctx) => {
   const kind = STUDIO_KINDS.includes(ctx.body.kind) ? ctx.body.kind : "request";
   try { return ok({ ok: true, run: await (await studio()).create({ kind, request: ctx.body.request, options: { auto: true }, user: { email: "manus", role: "marketer" } }) }); } catch (e) { return fail(400, e.message); }
 });
+
+// ------------------------------------------------------------------ Meta actions (replies, publishing, campaigns)
+let metaPromise = null;
+function metaHub() {
+  if (!metaPromise) metaPromise = (async () => {
+    const m = createMetaHub({ q, mutate, loadState, E, R, providers: makeProviders() });
+    await m.ensureTables();
+    return m;
+  })().catch((e) => { metaPromise = null; throw e; });
+  return metaPromise;
+}
+const metaAct = (fn) => async (ctx) => { try { return ok({ ok: true, ...(await fn(await metaHub(), ctx)) }); } catch (e) { return fail(400, e.message); } };
+route("GET", "/meta/actions", "team", metaAct(async (m, ctx) => ({ actions: await m.list({ status: ctx.query.status || undefined, limit: 150 }), kinds: META_KINDS })));
+route("POST", "/meta/actions", "marketer", metaAct(async (m, ctx) => ({ action: await m.enqueue(cleanMetaAction(ctx.body), ctx.user.email) })));
+route("POST", "/meta/actions/:id/approve", "owner", metaAct(async (m, ctx) => ({ action: await m.approve(Number(ctx.params.id), ctx.user, { text: ctx.body.text, daily_budget_egp: ctx.body.daily_budget_egp }) })));
+route("POST", "/meta/actions/:id/reject", "owner", metaAct(async (m, ctx) => { await m.reject(Number(ctx.params.id), ctx.user, String(ctx.body.reason || "")); return {}; }));
+route("POST", "/meta/inbox/sync", "marketer", metaAct(async (m) => m.syncInbox()));
+route("GET", "/meta/connection", "owner", metaAct(async (m) => ({ checks: await m.checkConnection() })));
+route("GET", "/meta/forms", "team", metaAct(async (m) => ({ forms: await m.leadForms() })));
+route("GET", "/meta/campaigns", "team", metaAct(async (m) => { const s = await m.adsSnapshot(); return { campaigns: s.campaigns.map((c) => ({ ...c, cpl30: s.cpl[c.id] ?? null })), mtd: s.mtd, dailyTotal: s.dailyTotal }; }));
+route("GET", "/agent/meta/actions", "agent", metaAct(async (m, ctx) => ({ actions: await m.list({ status: ctx.query.status || undefined, limit: 100 }) })));
+route("POST", "/agent/meta/actions", "agent", metaAct(async (m, ctx) => ({ action: await m.enqueue(cleanMetaAction(ctx.body), "manus") })));
 
 route("GET", "/agent/ping", "agent", async () => ok({ ok: true, time: new Date().toISOString() }));
 route("GET", "/agent/summary", "agent", async () => { const { state } = await loadState(); return ok({ ok: true, settings: state.settings, summary: E.summary(state) }); });
@@ -482,7 +511,11 @@ export function registerCommandCenterRoutes(app: Express) {
   });
   app.all(BASE + "/api/*", handle);
   // Resume AI Studio runs that wait on Higgsfield clips or Manus jobs.
-  const t = setInterval(() => { if (process.env.DATABASE_URL) studio().then((o) => o.tick()).catch(() => {}); }, 45000);
+  const t = setInterval(() => {
+    if (!process.env.DATABASE_URL) return;
+    studio().then((o) => o.tick()).catch(() => {});
+    metaHub().then((m) => m.tick()).catch(() => {});
+  }, 45000);
   if (t.unref) t.unref();
 }
 

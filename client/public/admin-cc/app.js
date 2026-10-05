@@ -9,7 +9,7 @@
   const S = { mode: null, ext: null, data: null, view: 'overview', week: null, jobFilter: 'open', openItem: null, demoRole: 'owner', busy: false };
   const VIEWS = [
     ['overview', 'Overview'], ['plan', 'Weekly plan'], ['actions', 'Action plan'], ['performance', 'Performance'],
-    ['news', 'News'], ['monthly', 'Monthly plan'], ['studio', 'AI Studio'], ['manus', 'Manus bridge'], ['settings', 'Settings'],
+    ['news', 'News'], ['monthly', 'Monthly plan'], ['studio', 'AI Studio'], ['meta', 'Meta'], ['manus', 'Manus bridge'], ['settings', 'Settings'],
   ];
 
   // ------------------------------------------------------------ utils
@@ -217,6 +217,7 @@
       performance: s.guardrails.alerts.filter((a) => a.level === 'critical').length,
       monthly: d.plans.filter((p) => p.status === 'pending_approval').length,
       studio: S.studio ? S.studio.runs.filter((r) => r.status === 'awaiting_approval').length : 0,
+      meta: S.meta ? S.meta.actions.filter((a) => a.status === 'pending').length : 0,
     };
   }
 
@@ -240,7 +241,7 @@
         <div id="view"></div>
       </main></div>`;
     const v = document.getElementById('view');
-    ({ overview: viewOverview, plan: viewPlan, actions: viewActions, performance: viewPerformance, news: viewNews, monthly: viewMonthly, studio: viewStudio, manus: viewManus, settings: viewSettings })[S.view](v);
+    ({ overview: viewOverview, plan: viewPlan, actions: viewActions, performance: viewPerformance, news: viewNews, monthly: viewMonthly, studio: viewStudio, meta: viewMeta, manus: viewManus, settings: viewSettings })[S.view](v);
     wireShell();
   }
 
@@ -254,6 +255,7 @@
       news: 'Weekly news search: Manus collects, Claude verifies. Only verified or reported items can feed posts.',
       monthly: 'Next month’s plan, built from 6 months of Meta and CRM results. The owner approves it.',
       studio: 'Autopilot plans the week from your Meta and CRM results, Claude hands each part to OpenAI, Higgsfield or Manus, and checks the results.',
+      meta: 'Replies to comments and messages, publishing approved posts, and campaign changes. Nothing runs on Meta without approval (automatic only after the 6-week gate), always inside the cap and max CPL.',
       manus: 'Every decision here becomes a job for Manus, which runs Meta, OpenAI, Higgsfield and the Elevay.vip voice module.',
       settings: 'Hard limits, the autopublish gate, team access and the audit log.',
     })[v];
@@ -812,6 +814,89 @@
         <details class="small"><summary>Conversation between the models (${(r.messages || []).length})</summary><ul class="msgs">${(r.messages || []).map((m) => `<li><span class="muted">${fmtDT(m.at)}</span> ${provChip(m.from)} → ${provChip(m.to)}<pre>${esc(m.text)}</pre></li>`).join('')}</ul></details>
         ${canEdit() ? `<div class="row" style="margin-top:8px">${r.status === 'failed' ? `<button class="btn sm" data-run-act="retry:${r.id}">Retry failed step</button>` : ''}${!['done', 'failed', 'cancelled'].includes(r.status) ? `<button class="btn ghost sm" data-run-act="cancel:${r.id}">Cancel</button>` : ''}</div>` : ''}
       </div></details>`;
+  }
+  // ------------------------------------------------------------ Meta (replies, publishing, campaigns)
+  const META_PILL = { pending: ['warn', 'Needs approval'], running: ['info', 'Running'], done: ['ok', 'Done'], failed: ['bad', 'Failed'], blocked: ['bad', 'Refused by guardrail'], rejected: ['', 'Rejected'] };
+  async function loadMeta() {
+    const [a, c, f] = await Promise.all([api.req('GET', 'meta/actions'), api.req('GET', 'meta/campaigns').catch((e) => ({ error: e.message })), S.meta && S.meta.forms ? Promise.resolve({ forms: S.meta.forms }) : api.req('GET', 'meta/forms').catch(() => ({ forms: [] }))]);
+    S.meta = { actions: a.actions, campaigns: c, forms: f.forms || [], checks: S.meta && S.meta.checks };
+    return S.meta;
+  }
+  function viewMeta(el) {
+    if (S.mode === 'demo') { el.innerHTML = '<div class="empty">Meta actions run on elevay.vip/admin.</div>'; return; }
+    el.innerHTML = '<div class="empty">Loading Meta…</div>';
+    loadMeta().then(() => el.isConnected && drawMeta(el)).catch((e) => (el.innerHTML = `<div class="empty">${esc(e.message)}</div>`));
+  }
+  function drawMeta(el) {
+    const m = S.meta, set = S.data.settings, mset = set.meta || {}, owner = isOwner();
+    const pending = m.actions.filter((a) => a.status === 'pending'), history = m.actions.filter((a) => a.status !== 'pending');
+    const camps = m.campaigns && m.campaigns.campaigns ? m.campaigns.campaigns : [];
+    const approvedDesigns = S.data.items.filter((i) => ['approved', 'scheduled', 'published'].includes(i.status) && i.media && i.media.image_url);
+    const posts = [...S.data.items.filter((i) => ['approved', 'scheduled'].includes(i.status)), ...S.data.items.filter((i) => i.status === 'published').slice(-5).reverse()];
+    el.innerHTML = `<div class="stack" style="gap:16px">
+      <section class="panel"><div class="panel-h"><h2>Needs your approval</h2><span class="row small muted">${pending.length} waiting ${canEdit() ? '<button class="btn sm" id="mxSync">Check comments & messages now</button>' : ''}</span></div>
+        ${pending.length ? `<div class="stack" style="gap:10px">${pending.map(metaCard).join('')}</div>` : '<div class="empty">Nothing waiting. New comments and messages are checked every 10 minutes; Claude drafts each reply.</div>'}</section>
+      <section class="panel"><div class="panel-h"><h2>Campaigns</h2><span class="small muted">${m.campaigns && m.campaigns.mtd !== undefined ? `Month to date ${n0(m.campaigns.mtd)} EGP · active budgets ${n0(m.campaigns.dailyTotal)} EGP/day · cap ${n0(set.monthlyAdCapEgp)} EGP` : esc((m.campaigns && m.campaigns.error) || '')}</span></div>
+        ${camps.length ? `<div class="table-wrap"><table><thead><tr><th>Campaign</th><th>Status</th><th class="r">Daily budget</th><th class="r">30-day CPL</th><th></th></tr></thead><tbody>${camps.map((c) => `<tr><td>${esc(c.name)}</td><td class="small">${esc(c.status)}</td><td class="r num">${c.daily ? n0(c.daily) : '—'}</td><td class="r num" style="color:${c.cpl30 > set.maxCplEgp ? 'var(--bad)' : 'inherit'}">${c.cpl30 ? n0(c.cpl30) : '—'}</td><td class="r">${canEdit() ? `<button class="btn sm" data-mx-status="${c.id}" data-to="${c.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'}" data-name="${esc(c.name)}">${c.status === 'ACTIVE' ? 'Pause' : 'Activate'}</button> ${c.daily ? `<button class="btn sm" data-mx-budget="${c.id}" data-name="${esc(c.name)}" data-cur="${c.daily}">Budget</button>` : ''}` : ''}</td></tr>`).join('')}</tbody></table></div>
+        <p class="small muted" style="margin-top:8px">Buttons create an action for owner approval. Activations and budget increases are refused when they would break the monthly cap, and increases are refused on campaigns above the max CPL.</p>` : '<div class="empty">No campaigns loaded.</div>'}
+      </section>
+      ${canEdit() ? `<section class="panel"><div class="panel-h"><h2>New lead campaign</h2><span class="small muted">Created paused; activating it is a separate approval</span></div>
+        <div class="grid g2"><label class="field"><span>Campaign name</span><input class="input" id="ncName" placeholder="EG | Malta PR | Leads | 2026-10"></label><label class="field"><span>Daily budget (EGP)</span><input class="input" id="ncBudget" type="number" min="100" value="1500"></label>
+        <label class="field"><span>Lead form</span><select class="input" id="ncForm">${m.forms.map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('') || '<option value="">No active lead forms found</option>'}</select></label>
+        <label class="field"><span>Approved design</span><select class="input" id="ncItem">${approvedDesigns.map((i) => `<option value="${esc(i.item_id)}">${esc(i.item_id)} · ${esc(i.topic || '')}</option>`).join('') || '<option value="">No approved static design yet</option>'}</select></label>
+        <label class="field"><span>Countries (comma separated)</span><input class="input" id="ncCountries" value="EG"></label><label class="field"><span>Ages</span><span class="row"><input class="input" id="ncAgeMin" type="number" value="28" style="width:80px"> to <input class="input" id="ncAgeMax" type="number" value="60" style="width:80px"></span></label></div>
+        <p class="small muted">The ad uses the design's image, Arabic caption and English headline.</p><button class="btn primary" id="ncGo">Propose campaign</button></section>` : ''}
+      <section class="panel"><div class="panel-h"><h2>Publishing</h2><span class="small muted">${mset.directPublish ? 'elevay.vip publishes approved posts at their time' : 'Manus publishes approved posts'}</span></div>
+        ${posts.length ? `<div class="table-wrap"><table><thead><tr><th>Item</th><th>Time (Cairo)</th><th>Channel</th><th>Status</th></tr></thead><tbody>${posts.map((i) => `<tr><td>${esc(i.item_id)} · ${esc(i.topic || '')}</td><td class="small">${fmtDT(i.publish && i.publish.datetime_cairo)}</td><td class="small">${esc((i.publish && i.publish.channel) || 'both')}</td><td>${statusPill(i.status)}${i.publish && i.publish.direct && i.publish.direct.error ? ` <span class="small" style="color:var(--bad)">${esc(i.publish.direct.error)}</span>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No approved posts yet.</div>'}</section>
+      ${owner ? `<section class="panel"><div class="panel-h"><h2>Connection and settings</h2><button class="btn sm" id="mxCheck">Check Meta connection</button></div>
+        <div id="mxChecks" class="small">${m.checks ? metaChecks(m.checks) : ''}</div>
+        <div class="stack small" style="gap:6px;margin-top:10px"><label class="row"><input type="checkbox" id="mxDirect" ${mset.directPublish ? 'checked' : ''}> Publish approved posts directly to Facebook and Instagram (instead of Manus)</label>
+        <label class="row"><input type="checkbox" id="mxInbox" ${mset.inbox !== false ? 'checked' : ''}> Check comments and messages every 10 minutes and draft replies</label>
+        <div><button class="btn sm" id="mxSave">Save</button></div></div></section>` : ''}
+      <section class="panel"><div class="panel-h"><h2>History</h2></div>${history.length ? `<div class="stack" style="gap:8px">${history.slice(0, 60).map(metaCard).join('')}</div>` : '<div class="empty">No actions yet.</div>'}</section>
+    </div>`;
+    const reload = async () => { await loadMeta(); drawMeta(el); };
+    const on = (sel, fn) => el.querySelectorAll(sel).forEach((b) => (b.onclick = () => fn(b)));
+    on('[data-mx-approve]', (b) => {
+      const id = b.dataset.mxApprove, ta = document.getElementById('mxt-' + id), bi = document.getElementById('mxb-' + id);
+      act(async () => { await api.req('POST', `meta/actions/${id}/approve`, { text: ta ? ta.value : undefined, daily_budget_egp: bi ? Number(bi.value) : undefined }); await reload(); }, 'Approved and done on Meta.');
+    });
+    on('[data-mx-reject]', (b) => act(async () => { await api.req('POST', `meta/actions/${b.dataset.mxReject}/reject`, {}); await reload(); }, 'Rejected.'));
+    on('[data-mx-status]', (b) => act(async () => { await api.req('POST', 'meta/actions', { kind: 'campaign_status', target_id: b.dataset.mxStatus, target_name: b.dataset.name, status_to: b.dataset.to }); await reload(); }, 'Action created. Approve it above.'));
+    on('[data-mx-budget]', (b) => { const v = prompt(`New daily budget for ${b.dataset.name} (EGP)`, b.dataset.cur); if (!v) return; act(async () => { await api.req('POST', 'meta/actions', { kind: 'campaign_budget', target_id: b.dataset.mxBudget, target_name: b.dataset.name, daily_budget_egp: Number(v) }); await reload(); }, 'Action created. Approve it above.'); });
+    const g = (id) => document.getElementById(id);
+    if (g('mxSync')) g('mxSync').onclick = () => act(async () => { const r = await api.req('POST', 'meta/inbox/sync', {}); await reload(); if (r.errors && r.errors.length) toast(r.errors.join(' · '), true); }, 'Inbox checked.');
+    if (g('mxCheck')) g('mxCheck').onclick = () => act(async () => { const r = await api.req('GET', 'meta/connection'); S.meta.checks = r.checks; g('mxChecks').innerHTML = metaChecks(r.checks); });
+    if (g('mxSave')) g('mxSave').onclick = () => act(() => api.saveSettings({ meta: { directPublish: g('mxDirect').checked, inbox: g('mxInbox').checked } }), 'Meta settings saved.');
+    if (g('ncGo')) g('ncGo').onclick = () => {
+      const item = S.data.items.find((i) => i.item_id === g('ncItem').value);
+      if (!item) return toast('Choose an approved design.', true);
+      act(async () => {
+        await api.req('POST', 'meta/actions', { kind: 'create_campaign', campaign: { name: g('ncName').value.trim(), daily_budget_egp: Number(g('ncBudget').value), form_id: g('ncForm').value, image_url: item.media.image_url, message: item.caption_ar, headline: (item.design && item.design.headline_en) || '', item_id: item.item_id, countries: g('ncCountries').value.split(',').map((x) => x.trim()).filter(Boolean), age_min: Number(g('ncAgeMin').value), age_max: Number(g('ncAgeMax').value) } });
+        await reload();
+      }, 'Campaign proposed. Approve it above.');
+    };
+  }
+  function metaChecks(c) {
+    const names = { page: 'Facebook Page', comments: 'Comments', messages: 'Messenger', instagram: 'Instagram', ads: 'Ad account', forms: 'Lead forms' };
+    return `<div class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(c).map(([k, v]) => `<span class="pill ${v.ok ? 'ok' : 'bad'}" title="${esc(v.detail)}">${esc(names[k] || k)}: ${esc(String(v.detail).slice(0, 80))}</span>`).join('')}</div>`;
+  }
+  function metaCard(a) {
+    const [pc, pl] = META_PILL[a.status] || ['', a.status];
+    const reply = ['reply_comment', 'reply_message'].includes(a.kind);
+    const editable = a.status === 'pending' && isOwner();
+    return `<div class="run"><div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><div><span class="pill ${pc}">${pl}</span> <strong>${esc(a.preview || a.kind)}</strong> <span class="small muted">#${a.id} · ${esc(a.created_by || '')} · ${ago(a.created_at)}${a.category ? ' · ' + esc(a.category) : ''}</span></div>${a.permalink ? `<a class="small" href="${esc(a.permalink)}" target="_blank" rel="noopener">Open post</a>` : ''}</div>
+      ${a.incoming ? `<div class="small" style="margin-top:6px"><span class="muted">They wrote:</span> <span dir="auto">${esc(a.incoming)}</span></div>` : ''}
+      ${reply ? (editable ? `<textarea class="input" id="mxt-${a.id}" rows="3" dir="auto" style="margin-top:6px">${esc(a.text || '')}</textarea>` : a.text ? `<div class="small" style="margin-top:6px"><span class="muted">Reply:</span> <span dir="auto">${esc(a.text)}</span></div>` : '') : ''}
+      ${a.kind === 'campaign_budget' && editable ? `<label class="row small" style="margin-top:6px">Daily budget (EGP) <input class="input" id="mxb-${a.id}" type="number" value="${esc(a.daily_budget_egp)}" style="width:110px"></label>` : ''}
+      ${a.kind === 'create_campaign' && a.campaign ? `<div class="small muted" style="margin-top:6px">${esc(a.campaign.countries.join(', '))} · ages ${a.campaign.age_min}–${a.campaign.age_max} · ${esc(a.campaign.headline || '')}</div>` : ''}
+      ${a.needs_human && a.reason ? `<div class="small" style="color:var(--warn);margin-top:6px">Needs a person: ${esc(a.reason)}</div>` : a.reason ? `<div class="small muted" style="margin-top:6px">${esc(a.reason)}</div>` : ''}
+      ${a.check && a.check.projected ? `<div class="small muted" style="margin-top:4px">Projected month-end spend ${n0(a.check.projected)} of ${n0(a.check.cap)} EGP</div>` : ''}
+      ${a.check && a.check.ok === false ? `<div class="small" style="color:var(--bad);margin-top:4px">${esc(a.check.reason)}</div>` : ''}
+      ${a.error ? `<div class="small" style="color:var(--bad);margin-top:4px">${esc(a.error)}</div>` : ''}
+      ${a.result ? `<div class="small muted" style="margin-top:4px">${esc(Object.entries(a.result).map(([k, v]) => k + ': ' + v).join(' · '))}${a.approved_by ? ' · approved by ' + esc(a.approved_by) : ''}</div>` : ''}
+      ${editable ? `<div class="row" style="margin-top:8px"><button class="btn sm primary" data-mx-approve="${a.id}">${reply ? 'Approve & send' : 'Approve & run'}</button><button class="btn sm ghost" data-mx-reject="${a.id}">Reject</button></div>` : a.status === 'pending' ? '<div class="small muted" style="margin-top:6px">Waiting for the owner.</div>' : ''}
+    </div>`;
   }
   // ------------------------------------------------------------ manus bridge
   function viewManus(el) {

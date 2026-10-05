@@ -338,6 +338,10 @@ export const PIPELINES = {
     S("claude", "plan", "Claude drafts next month's plan from 6 months of Meta + CRM data"),
     S("system", "to_monthly_plan", "Send to the monthly plan for owner approval"),
   ] },
+  meta: { label: "Meta campaign change", steps: () => [
+    S("claude", "meta_plan", "Claude turns the request into Meta actions using live campaign data"),
+    S("system", "queue_meta", "Queue them in the Meta tab (cap and CPL checked; owner approves until autopilot)"),
+  ] },
   manus: { label: "Manus task", steps: () => [
     S("claude", "manus_brief", "Claude turns the request into clear instructions for Manus"),
     S("manus", "job", "Manus does the work with its connectors"),
@@ -532,7 +536,8 @@ export function createOrchestrator(deps) {
     const A = run.artifacts, opts = run.options || {};
     switch (`${step.provider}.${step.action}`) {
       case "claude.route": {
-        const r = await askClaude(run, step, `A team member asked the ELEVAY AI Studio:\n"""${run.request}"""\n\nDecide who should handle it. Options:\n- "static": a static social post (OpenAI designs it)\n- "reel": a reel/video (OpenAI keyframes + Higgsfield clips + ELEVAY voice)\n- "plan": a marketing plan built from Meta + CRM data\n- "manus": anything that needs Meta (campaigns, posting, comments, messages, reports) or other connected platforms\n- "answer": a question you can answer from the live Meta + CRM data\nReturn JSON: {"route": one of the options, "why": short reason, "request": the request rewritten clearly for that pipeline}.`, { maxTokens: 600 });
+        const r = await askClaude(run, step, `A team member asked the ELEVAY AI Studio:\n"""${run.request}"""\n\nDecide who should handle it. Options:\n- "static": a static social post (OpenAI designs it)\n- "reel": a reel/video (OpenAI keyframes + Higgsfield clips + ELEVAY voice)\n- "plan": a marketing plan built from Meta + CRM data\n- "meta": a change to Meta ad campaigns: pause or activate, change a daily budget, or create a new lead campaign
+- "manus": anything else that needs another platform or manual work in Meta Business Suite\n- "answer": a question you can answer from the live Meta + CRM data\nReturn JSON: {"route": one of the options, "why": short reason, "request": the request rewritten clearly for that pipeline}.`, { maxTokens: 600 });
         const route = PIPELINES[r.data?.route] && r.data.route !== "request" ? r.data.route : "answer";
         run.kind = route; run.request = String(r.data?.request || run.request);
         const fresh = PIPELINES[route].steps();
@@ -747,6 +752,30 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
         });
         if (r && r.ok === false) throw new Error(r.error);
         log(run, "studio", "team", auto ? `Plan for ${A.plan.month} approved by autopilot.` : `Plan for ${A.plan.month} sent to the Monthly plan tab for owner approval.`);
+        return;
+      }
+      case "claude.meta_plan": {
+        if (!deps.meta) throw new Error("Meta actions are not available.");
+        const snap = await deps.meta.adsSnapshot();
+        const forms = await deps.meta.leadForms().catch(() => []);
+        const { state } = await deps.loadState();
+        const designs = state.items.filter((i) => ["approved", "scheduled", "published"].includes(i.status) && i.media?.image_url).slice(-12).map((i) => ({ item_id: i.item_id, topic: i.topic, program: i.program, headline: i.design?.headline_en, image_url: i.media.image_url, caption_ar: clip(i.caption_ar, 500) }));
+        const r = await askClaude(run, step, `${programFactsFor(run.request)}\n\nELEVAY Meta ad account now (EGP): month-to-date spend ${Math.round(snap.mtd)}, active daily budgets ${Math.round(snap.dailyTotal)}/day; monthly cap ${state.settings.monthlyAdCapEgp}, max CPL ${state.settings.maxCplEgp}.\nCampaigns: ${JSON.stringify(snap.campaigns.slice(0, 40).map((c) => ({ id: c.id, name: c.name, status: c.status, daily_budget_egp: c.daily, cpl30: snap.cpl[c.id] ? Math.round(snap.cpl[c.id]) : null })))}\nLead forms: ${JSON.stringify(forms.map((f) => ({ id: f.id, name: f.name })))}\nApproved designs: ${JSON.stringify(designs)}\n\nTeam request: """${run.request}"""\n\nTurn it into Meta actions. Allowed kinds:\n- {"kind":"campaign_status","target_id":"<campaign or ad set id>","target_name":"...","status_to":"ACTIVE"|"PAUSED","reason":"..."}\n- {"kind":"campaign_budget","target_id":"...","target_name":"...","daily_budget_egp":number,"reason":"..."}\n- {"kind":"create_campaign","campaign":{"name":"...","daily_budget_egp":number,"countries":["EG"],"age_min":28,"age_max":60,"form_id":"<lead form id>","image_url":"<approved design image_url>","message":"Arabic ad text (MSA, rules apply, no Visa/guarantee/contact details)","headline":"short English headline","item_id":"..."},"reason":"..."} (created paused)\nNever exceed the monthly cap or raise budget on a campaign above the max CPL. Use only ids from the lists. Return JSON: {"actions": [...], "note": "what you did and anything you could not do"}`, { note: `Meta plan for: ${run.request}`, maxTokens: 2500 });
+        A.meta_actions = Array.isArray(r.data?.actions) ? r.data.actions.slice(0, 10) : [];
+        A.answer = r.data?.note || "";
+        if (!A.meta_actions.length) log(run, "studio", "team", "No Meta action needed: " + (r.data?.note || ""));
+        return;
+      }
+      case "system.queue_meta": {
+        const { cleanMetaAction } = await import("./meta");
+        A.meta_queued = [];
+        for (const raw of A.meta_actions || []) {
+          try {
+            const a = await deps.meta.enqueue({ ...cleanMetaAction(raw, R), studio_run: run.id }, run.options?.auto ? "manus" : `ai-studio (${run.created_by})`);
+            A.meta_queued.push({ id: a.id, status: a.status, preview: a.preview, reason: a.check?.reason || null });
+            log(run, "studio", "team", `Meta action #${a.id} ${a.status === "done" ? "done (autopilot)" : a.status === "blocked" ? "refused: " + a.check?.reason : "waiting for the owner in the Meta tab"}: ${a.preview}`);
+          } catch (e) { log(run, "studio", "team", "Skipped an invalid action: " + e.message); }
+        }
         return;
       }
       case "claude.manus_brief": {

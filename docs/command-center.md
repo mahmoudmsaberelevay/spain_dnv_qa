@@ -61,6 +61,17 @@ After the clips pass review: Claude's script must be natural Egyptian Arabic (ch
 - `creative/*.md`: ELEVAY creative direction (brand identity, design, video and audio, delivery checklist), condensed into the rules every model receives; the checklist drives Claude's visual QC.
 - `elevay-logo.png` (official logo) and `ApexSansBook.ttf` (official font): statics are composed server-side (photo + Apex Sans headline + exact logo); OpenAI never draws text or the logo.
 
+## Meta tab (replies, publishing, campaigns)
+
+`server/commandCenter/meta.ts`. Every change is an action in `ec_meta_actions` and runs only after the **owner approves it** in the Meta tab, or automatically once autopilot is on (6-week / 90% gate).
+
+- **Replies**: every 10 minutes (or *Check comments & messages now*) new Facebook and Instagram comments on recent posts and Messenger / Instagram direct messages (24-hour window) are read; Claude drafts a reply in the person's language using the approved program facts. Public replies never include prices, personal details, phone numbers or links; private replies answer from approved facts and ask for a name and call time. Spam is skipped. Complaints, sensitive or unclear messages are marked *needs a person* and are never sent automatically. The owner can edit a reply before sending; edits are checked against the ELEVAY terminology rules.
+- **Publishing**: with *Publish approved posts directly* on, approved posts are published at their Cairo time to the Facebook Page (photo or video) and Instagram (image, or reel via a processed container). The item approval is the approval; Manus is no longer asked to schedule those posts.
+- **Campaigns**: pause/activate and daily-budget changes from the Campaigns table, new lead campaigns from an approved design and an active lead form (campaign, ad set, creative and ad are created **paused**), and campaign requests in AI Studio (Claude turns them into actions). Activations and budget increases are refused when projected month-end spend (month-to-date + active daily budgets × days left) would pass the cap; increases are refused on campaigns whose 30-day CPL is above the max.
+- **Manus** can propose campaign actions (`POST /agent/meta/actions`); they follow the same approval and guardrails.
+
+Meta permissions needed: Page token with `pages_manage_posts`, `pages_manage_engagement`, `pages_read_engagement`, `pages_read_user_content`, `pages_messaging`, `instagram_basic`, `instagram_content_publish`, `instagram_manage_comments`, `instagram_manage_messages`, `read_insights`; system-user token with `ads_management` and `ads_read`. *Check Meta connection* shows what works.
+
 ## Access
 
 People sign in with their elevay.vip accounts. Access comes from the Agentic Marketing roles:
