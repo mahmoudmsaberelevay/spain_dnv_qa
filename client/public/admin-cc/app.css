@@ -272,3 +272,4 @@ details.more[open] summary { margin-bottom: 10px; }
 .answer { white-space: pre-wrap; font-size: 14px; line-height: 1.55; max-width: 80ch; }
 .msgs { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 8px; }
 .msgs pre { white-space: pre-wrap; word-break: break-word; margin: 4px 0 0; font-size: 12px; background: color-mix(in srgb, var(--ink-3, #888) 8%, transparent); padding: 8px; border-radius: 6px; max-height: 260px; overflow: auto; }
+.kpi > .pchip { align-self: flex-start; }
