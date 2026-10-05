@@ -377,8 +377,11 @@ async function handle(req: Request, res: Response) {
 }
 
 export function registerCommandCenterRoutes(app: Express) {
-  app.get(BASE, (_req, res) => res.redirect(301, BASE + "/"));
-  app.get(BASE + "/", (_req, res) => {
+  // Express matches /admin and /admin/ with the same route (non-strict routing),
+  // so decide on the raw URL: the page must load at /admin/ for its relative API calls.
+  app.get(BASE, (req, res) => {
+    const rawPath = req.originalUrl.split("?")[0];
+    if (!rawPath.endsWith("/")) return res.redirect(302, BASE + "/");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("X-Robots-Tag", "noindex, nofollow");
     res.type("html").send(PAGE_HTML);
