@@ -13,7 +13,7 @@ The ELEVAY outro must be clean, minimal, exact, and consistent across reels and 
 5. If the video is a 25-second reel with a 5-second outro, use:
    - `0:00–0:03`: logo static on white
    - `0:03–0:05`: smooth fade from white/logo to black
-6. Preserve the bird, wordmark, proportions, colors, and `EXPANDING YOUR FREEDOM` tagline.
+6. Use the official ELEVAY logo file exactly as supplied (owner-confirmed 5 Oct 2026: the origami-bird mark is the official logo for the outro); preserve its proportions and colors.
 7. Do not generate the logo with an AI model; composite the approved official source asset.
 8. Keep the logo sharp, centered, and comfortably separated from all edges.
 9. Music should resolve gently and fade with the outro. Narration should finish before the outro whenever possible.
@@ -47,7 +47,7 @@ When generating Arabic speech with the default workflow, use:
 
 | Setting | Default |
 |---|---|
-| Voice ID | `9JAj5x86tg9L2DFnuxOw` |
+| Voice ID | The ELEVAY voice clone configured on elevay.vip (`ELEVAY_ARABIC_VOICE_DEFAULTS` in server/elevenLabsTts.ts; owner-confirmed 5 Oct 2026) |
 | Model | `eleven_v3` |
 | Language override | `ar` |
 | Stability | `0.50` |

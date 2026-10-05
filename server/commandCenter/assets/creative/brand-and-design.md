@@ -78,7 +78,7 @@ Do not use the following unless Mahmoud explicitly requests a special campaign e
 
 ### Official logo rule
 
-Always use the **exact official ELEVAY logo**. The logo includes:
+Always use the **exact official ELEVAY logo** file as supplied (owner-confirmed 5 Oct 2026: the origami-bird mark is used for statics and the reel outro). The full brand mark includes:
 
 - Origami Arctic Tern bird
 - ELEVAY wordmark

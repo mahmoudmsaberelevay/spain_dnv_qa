@@ -12,7 +12,7 @@
 ### Logo
 
 - [ ] Exact official logo source used.
-- [ ] Bird, wordmark, and tagline preserved where the full logo is required.
+- [ ] Official logo file used exactly as supplied (the origami-bird mark, owner-confirmed 5 Oct 2026).
 - [ ] No stretching, cropping, recoloring, rotation, glow, shadow, or redesign.
 - [ ] At least 10px clear space maintained.
 - [ ] Video logo appears centered on the clean white outro.

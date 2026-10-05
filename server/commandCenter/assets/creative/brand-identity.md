@@ -130,7 +130,7 @@ Gradients: Primary = Dark Navy → Baby Blue. Warm = Deep Gold → Bright Gold. 
 
 ## 9. Reference Program List (for content topics)
 
-**Residency programs:** Spain Digital Nomad Visa (remote income ≥ €2,334/mo), Portugal D7 (passive income ≥ €760/mo), Portugal D8/Digital Nomad (remote/freelance income ≥ €3,040/mo), Portugal D2/Entrepreneur (business owner/investor creating local jobs), Portugal Golden Visa (fund/real estate investment €250k–€500k), Greece Golden Visa (real estate €250k–€800k depending on region), Malta Permanent Residency (government contribution + property + donation), UK Expansion Worker (overseas business expanding to UK), Canada Skilled Migration (Express Entry / PNP points-based).
+**Residency programs:** Spain Digital Nomad Residence (remote income ≥ €35,000/year, about €2,917/month; owner-confirmed 5 Oct 2026), Portugal D7 (passive income ≥ €760/mo), Portugal D8/Digital Nomad (remote/freelance income ≥ €3,040/mo), Portugal D2/Entrepreneur (business owner/investor creating local jobs), Portugal Golden Visa (fund/real estate investment €250k–€500k), Greece Golden Visa (real estate €250k–€800k depending on region), Malta Permanent Residency (government contribution + property + donation), UK Expansion Worker (overseas business expanding to UK), Canada Skilled Migration (Express Entry / PNP points-based).
 
 **Citizenship programs:** Caribbean Citizenship by Investment — Antigua, Dominica, Grenada, St. Kitts, St. Lucia, Vanuatu.
 
