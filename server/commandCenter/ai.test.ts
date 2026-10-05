@@ -38,7 +38,9 @@ function setup(claudeAnswers, { autopilot = false } = {}) {
   const providers = {
     claude: async ({ prompt, images }) => { calls.claude.push({ prompt, images }); const next = claudeAnswers.shift(); const data = typeof next === "function" ? next(prompt) : next; return { text: JSON.stringify(data), data }; },
     openaiImage: async ({ purpose }) => { calls.openai++; return { url: `https://cdn.example/${purpose}-${calls.openai}.png`, sha256: "a".repeat(64), width: purpose === "static_post" ? 1024 : 864, height: purpose === "static_post" ? 1024 : 1536, measuredCostUsd: 0.1 }; },
+    openaiPortrait: async () => { calls.openai++; return { url: `https://cdn.example/static_post-${calls.openai}.png`, sha256: "b".repeat(64), width: 1024, height: 1536, measuredCostUsd: 0.1 }; },
     brandStatic: async (url) => url.replace(".png", "-logo.png"),
+    clipFrames: async (url) => [1, 2, 3].map((n) => ({ base64: Buffer.from(url + n).toString("base64"), mediaType: "image/jpeg" })),
     higgsfieldSubmit: async ({ idempotencyKey }) => { calls.hfSubmit++; return { requestId: `00000000-0000-0000-0000-00000000000${calls.hfSubmit}`, statusUrl: `https://api.higgsfield.ai/requests/x/status`, key: idempotencyKey }; },
     higgsfieldStatus: async (c) => { calls.hfPoll++; return hfDone ? { state: "completed", videoUrl: `https://cdn.hf/${c.requestId}.mp4` } : { state: "in_progress", videoUrl: null }; },
     test: async () => ({}),
@@ -78,7 +80,7 @@ describe("AI Studio orchestrator", () => {
   });
 
   it("reel: Higgsfield needs the owner, waits for clips, then lands in the plan", async () => {
-    const { o, state, calls, finishClips } = setup([{ topic: "Lisbon", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: true }]);
+    const { o, state, calls, finishClips } = setup([{ topic: "Lisbon", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: true }, { pass: true }]);
     const run = await o.create({ kind: "reel", request: "Reel for retirees", user: marketer });
     let r = await settle(o, run.id);
     expect(calls.openai).toBe(4);
@@ -94,6 +96,7 @@ describe("AI Studio orchestrator", () => {
     expect(r.status).toBe("done");
     const item = state.items.find((i) => i.item_id === r.artifacts.item_id);
     expect(item.media.clips).toHaveLength(4);
+    expect(calls.claude[2].images).toHaveLength(12); // 3 frames × 4 clips
     expect(item.reel.storyboard[0].spoken_text_ar).toMatch(/Portugal/);
   });
 
@@ -117,6 +120,39 @@ describe("AI Studio orchestrator", () => {
     r = await settle(o, run.id, ["running", "queued", "waiting"]);
     expect(r.status).toBe("done");
     expect(r.artifacts.answer).toBe("Paused.");
+  });
+});
+
+describe("Strict design QC", () => {
+  it("redesigns a failing static twice, then blocks it as QC failed", async () => {
+    const fail = { pass: false, issues: ["Man wears sandals with a suit"], per_image: [{ index: 1, pass: false, issues: ["sandals"], fix: "Polished oxford shoes" }] };
+    const { o, state, calls } = setup([STATIC_BRIEF, fail, fail, fail], { autopilot: true });
+    const run = await o.create({ kind: "static", request: "x", user: marketer });
+    const r = await settle(o, run.id);
+    expect(calls.openai).toBe(3);
+    expect(calls.claude.filter((c) => c.images?.length)).toHaveLength(3);
+    const item = state.items.find((i) => i.item_id === r.artifacts.item_id);
+    expect(item.status).toBe("qc_failed"); // never auto-approved
+    expect(item.qc.blocked).toBe(true);
+  });
+
+  it("redoes only the failing keyframe and passes the fix to OpenAI", async () => {
+    const { o, calls } = setup([{ topic: "Malta", pillar: "Family Security", program: "Malta Permanent Residence", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: false, per_image: [{ index: 1, pass: true }, { index: 2, pass: false, issues: ["passport on table"], fix: "Remove the passport" }, { index: 3, pass: true }, { index: 4, pass: true }] }, { pass: true }]);
+    const run = await o.create({ kind: "reel", request: "Malta", user: marketer });
+    const r = await settle(o, run.id);
+    expect(calls.openai).toBe(5); // 4 + 1 redo
+    expect(r.status).toBe("awaiting_approval"); // Higgsfield waits for the owner in the learning phase
+    expect(r.artifacts.keyframes.every(Boolean)).toBe(true);
+  });
+
+  it("skips paid clips when keyframes keep failing", async () => {
+    const bad = { pass: false, per_image: [{ index: 3, pass: false, fix: "x" }] };
+    const { o, calls, state } = setup([{ topic: "t", pillar: "Family Security", program: "p", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, bad, bad, bad]);
+    const run = await o.create({ kind: "reel", request: "x", user: marketer });
+    const r = await settle(o, run.id);
+    expect(calls.hfSubmit).toBe(0);
+    expect(r.steps.find((s) => s.action === "clips").status).toBe("skipped");
+    expect(state.items.find((i) => i.item_id === r.artifacts.item_id).status).toBe("qc_failed");
   });
 });
 

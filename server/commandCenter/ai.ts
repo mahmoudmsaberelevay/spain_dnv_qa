@@ -72,15 +72,16 @@ function runFfmpeg(args) {
  * Final ELEVAY static: 1080×1080, the OpenAI photograph, a soft dark-navy fade for legibility,
  * the English headline in the official Apex Sans font and the exact official logo top-left.
  */
-export async function composeElevayStatic(source: Buffer, headline: string) {
+export async function composeElevayStatic(source: Buffer, headline: string, format = "1080x1080") {
+  const [W, H] = format === "1080x1350" ? [1080, 1350] : [1080, 1080];
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "elevay-cc-static-"));
   try {
     const src = path.join(dir, "photo.png"), txt = path.join(dir, "headline.txt"), out = path.join(dir, "final.png");
     await Promise.all([fsp.writeFile(src, source), fsp.writeFile(txt, wrapHeadline(headline))]);
     const esc = (p) => p.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
     const filter = [
-      "[0:v]scale=1080:1080:flags=lanczos,format=rgba[base]",
-      "color=c=0x3D4750:s=1080x1080,format=rgba,geq=r='61':g='71':b='80':a='if(gte(Y,560),min(215,(Y-560)*0.42),0)'[shade]",
+      `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase:flags=lanczos,crop=${W}:${H},format=rgba[base]`,
+      `color=c=0x3D4750:s=${W}x${H},format=rgba,geq=r='61':g='71':b='80':a='if(gte(Y,${Math.round(H * 0.52)}),min(215,(Y-${Math.round(H * 0.52)})*0.42),0)'[shade]`,
       "[base][shade]overlay=0:0[toned]",
       `[toned]drawtext=fontfile='${esc(assetPath("ApexSansBook.ttf"))}':textfile='${esc(txt)}':fontcolor=0xFFFFFF:fontsize=66:line_spacing=16:x=80:y=h-th-96[texted]`,
       "[1:v]scale=118:-1:flags=lanczos[logo]",
@@ -112,7 +113,7 @@ export function makeProviders(fetcher = fetch) {
   async function claude({ system, prompt, images = [], maxTokens = 4000, json = true }) {
     const key = process.env.ANTHROPIC_API_KEY;
     if (!key) throw new Error("ANTHROPIC_API_KEY is not set on elevay.vip.");
-    const content = [...images.map((url) => ({ type: "image", source: { type: "url", url } })), { type: "text", text: prompt }];
+    const content = [...images.map((im) => (typeof im === "string" ? { type: "image", source: { type: "url", url: im } } : { type: "image", source: { type: "base64", media_type: im.mediaType || "image/jpeg", data: im.base64 } })), { type: "text", text: prompt }];
     const res = await fetcher("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -130,11 +131,46 @@ export function makeProviders(fetcher = fetch) {
     return createElevayOpenAiKeyframe({ prompt, purpose });
   }
 
-  async function brandStatic(url, headline) {
+  /** Portrait 4:5 statics: OpenAI 1024×1536, cropped to 1080×1350 when composed. */
+  async function openaiPortrait({ prompt }) {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) throw new Error("OPENAI_API_KEY is not set on elevay.vip.");
+    const { ELEVAY_OPENAI_VISUAL_MODEL, ELEVAY_OPENAI_VISUAL_QUALITY } = await import("../elevayOpenAiVisuals");
+    const res = await fetcher("https://api.openai.com/v1/images/generations", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: ELEVAY_OPENAI_VISUAL_MODEL, prompt, n: 1, size: "1024x1536", quality: ELEVAY_OPENAI_VISUAL_QUALITY, output_format: "png" }), signal: AbortSignal.timeout(150000) });
+    if (!res.ok) throw new Error(`OpenAI image request returned HTTP ${res.status}.`);
+    const body = await res.json();
+    const b64 = body.data?.[0]?.b64_json;
+    if (typeof b64 !== "string") throw new Error("OpenAI returned no image.");
+    const bytes = Buffer.from(b64, "base64");
+    const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+    const { storagePut } = await import("../storage");
+    const stored = await storagePut(`marketing/command-center/openai/${sha256.slice(0, 24)}.png`, bytes, "image/png");
+    const u = body.usage || {};
+    const cost = Number.isFinite(u.input_tokens) && Number.isFinite(u.output_tokens) ? Math.ceil(((u.input_tokens * 5 + u.output_tokens * 30) / 1e6) * 1e4) / 1e4 : null;
+    return { url: stored.url, sha256, width: 1024, height: 1536, measuredCostUsd: cost };
+  }
+
+  /** Three frames (start, middle, end) of a 5 s clip for Claude's frame-by-frame QC. */
+  async function clipFrames(url) {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "elevay-cc-frames-"));
+    try {
+      const src = path.join(dir, "clip.mp4");
+      await fsp.writeFile(src, Buffer.from(await (await fetcher(url)).arrayBuffer()));
+      const out = [];
+      for (const [i, t] of [0.3, 2.5, 4.6].entries()) {
+        const f = path.join(dir, `f${i}.jpg`);
+        await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", "-ss", String(t), "-i", src, "-frames:v", "1", "-vf", "scale=540:-2", "-q:v", "4", f]);
+        out.push({ base64: (await fsp.readFile(f)).toString("base64"), mediaType: "image/jpeg" });
+      }
+      return out;
+    } finally { await fsp.rm(dir, { recursive: true, force: true }); }
+  }
+
+  async function brandStatic(url, headline, format) {
     // Official ELEVAY font + exact official logo composited on the photograph (never AI-drawn).
     const { storagePut } = await import("../storage");
     const src = Buffer.from(await (await fetcher(url)).arrayBuffer());
-    const bytes = await composeElevayStatic(src, headline);
+    const bytes = await composeElevayStatic(src, headline, format);
     const sha = crypto.createHash("sha256").update(bytes).digest("hex");
     return (await storagePut(`marketing/command-center/static/${sha.slice(0, 24)}.png`, bytes, "image/png")).url;
   }
@@ -161,7 +197,7 @@ export function makeProviders(fetcher = fetch) {
     return out;
   }
 
-  return { claude, openaiImage, brandStatic, higgsfieldSubmit, higgsfieldStatus, test };
+  return { claude, openaiImage, openaiPortrait, brandStatic, clipFrames, higgsfieldSubmit, higgsfieldStatus, test };
 }
 
 // ------------------------------------------------------------------ pipelines
@@ -171,15 +207,16 @@ export const PIPELINES = {
     S("claude", "static_brief", "Claude writes the brief, caption and image direction"),
     S("system", "check_brief", "Brand and compliance check (Claude fixes blocks once)"),
     S("openai", "static_image", "OpenAI designs the static"),
-    S("claude", "qc_visual", "Claude checks the design against the ELEVAY rules"),
+    S("claude", "qc_visual", "Claude checks the design against the ELEVAY rules (redesigns up to 2 times)"),
     S("system", "to_weekly_plan", "Send to the weekly plan for owner approval"),
   ] },
   reel: { label: "Reel", steps: () => [
     S("claude", "reel_storyboard", "Claude writes the 4-scene storyboard, caption and Egyptian Arabic voice-over"),
     S("system", "check_brief", "Brand and compliance check (Claude fixes blocks once)"),
     S("openai", "reel_keyframes", "OpenAI creates the 4 keyframes (9:16)"),
-    S("claude", "qc_visual", "Claude checks the keyframes against the ELEVAY rules"),
+    S("claude", "qc_visual", "Claude checks the keyframes against the ELEVAY rules (redoes failing ones up to 2 times)"),
     S("higgsfield", "clips", "Higgsfield animates 4 × 5 s clips", { gate: "owner" }),
+    S("claude", "qc_clips", "Claude checks frames of every clip (wardrobe, footwear, anatomy, continuity)"),
     S("system", "to_weekly_plan", "Send clips to the weekly plan (voice-over and final edit follow)"),
   ] },
   weekly_plan: { label: "Weekly plan (automatic)", steps: () => [
@@ -288,7 +325,7 @@ export function createOrchestrator(deps) {
     let g = await get(id);
     if (!g) return;
     let { run, ver } = g;
-    for (let guard = 0; guard < 20; guard++) {
+    for (let guard = 0; guard < 40; guard++) {
       if (["done", "failed", "cancelled"].includes(run.status)) return;
       const step = run.steps.find((s) => !["done", "skipped"].includes(s.status));
       if (!step) { run.status = "done"; run.finished_at = nowIso(); await save(run, ver); return; }
@@ -307,7 +344,7 @@ export function createOrchestrator(deps) {
       ver = await save(run, ver);
       try {
         const r = await execute(run, step);
-        step.status = r === "waiting" ? "waiting" : "done";
+        step.status = r === "waiting" ? "waiting" : r === "rewind" ? "pending" : "done";
         if (step.status === "done") step.ended_at = nowIso();
       } catch (e) {
         step.status = "failed"; step.error = String(e?.message || e); step.ended_at = nowIso();
@@ -341,6 +378,37 @@ export function createOrchestrator(deps) {
   }
 
   // ---------------------------------------------------------------- step executors
+  function strictQcPrompt(what) {
+    return `You are ELEVAY's strict design reviewer. Review ${what}.\nFail an image if ANY rule below is broken. Be strict: when in doubt, fail it and say exactly what to change.\n\nELEVAY delivery checklist:\n${clip(DELIVERY_CHECKLIST(), 3000)}\n\nCheck in particular: every person Arab/Middle Eastern; complete elegant outfit head to toe; suits with polished formal shoes or loafers (no sandals, slippers, sneakers); no keffiyeh/turban/ghutra or random accessories; natural anatomy, hands, faces and grounded feet; no passports, flags, seals, stamps, documents, QR codes, phone numbers, URLs; no AI-drawn logo or brand mark; no stray or misspelled text; ELEVAY palette and warm premium editorial look (no neon, harsh black, fake HDR, clutter, frames or geometric shapes); realistic European architecture.\n\nReturn JSON: {"pass": true/false, "issues": ["short summary"], "per_image": [{"index": 1, "pass": true/false, "issues": ["..."], "fix": "one sentence telling the image model what to change"}]}`;
+  }
+  /** Applies a strict QC verdict: redo only failing items, up to maxRedo times; then block. */
+  function applyQc(run, step, data, count, redoAction, maxRedo) {
+    const A = run.artifacts;
+    const per = Array.isArray(data?.per_image) ? data.per_image : [];
+    const failing = per.filter((p) => p && p.pass === false && p.index >= 1 && p.index <= count).map((p) => p.index - 1);
+    if (data?.pass === false && !failing.length) for (let i = 0; i < count; i++) failing.push(i);
+    const key = step.action + "_attempts";
+    A[key] = A[key] || 0;
+    A.qc = { pass: !failing.length, issues: data?.issues || [], per_image: per, step: step.action, attempts: A[key] };
+    if (!failing.length) { log(run, "studio", "team", `${step.action === "qc_clips" ? "Clip" : "Design"} QC passed${A[key] ? ` after ${A[key]} redo(s)` : ""}.`); return; }
+    if (A[key] >= maxRedo) {
+      A.qc_blocked = true;
+      log(run, "studio", "team", `Still failing after ${A[key]} redo(s): ${(data?.issues || []).join("; ")}. It goes to the owner marked QC failed and will not be approved or published automatically.`);
+      if (step.action === "qc_visual" && run.kind === "reel") for (const s2 of run.steps) if (["clips", "qc_clips"].includes(s2.action) && s2.status === "pending") { s2.status = "skipped"; s2.error = "Skipped: keyframes failed design QC, so no paid clips were made."; }
+      return;
+    }
+    A[key]++;
+    A.qc_attempts = (A.qc_attempts || 0) + 1;
+    const fixes = per.filter((p) => failing.includes(p.index - 1)).map((p) => `${count > 1 ? `#${p.index}: ` : ""}${p.fix || (p.issues || []).join("; ")}`);
+    log(run, "studio", "team", `QC failed ${failing.map((i) => "#" + (i + 1)).join(", ")}: ${fixes.join(" | ") || (data?.issues || []).join("; ")}. Redoing only those (redo ${A[key]} of ${maxRedo}).`);
+    if (redoAction === "openai.static_image") A.fix = fixes.join(" ") || (data?.issues || []).join("; ");
+    if (redoAction === "openai.reel_keyframes") { A.fixByIndex = A.fixByIndex || {}; for (const i of failing) { A.fixByIndex[i] = (per.find((p) => p.index === i + 1)?.fix) || ""; A.keyframes[i] = null; } }
+    if (redoAction === "higgsfield.clips") for (const i of failing) A.clips[i] = null;
+    const target = run.steps.find((s2) => `${s2.provider}.${s2.action}` === redoAction);
+    target.status = "pending"; target.output = null;
+    return "rewind";
+  }
+
   async function askClaude(run, step, prompt, opts = {}) {
     log(run, "studio", "claude", opts.note || prompt);
     const r = await providers.claude({ system: ELEVAY_RULES, prompt, ...opts });
@@ -369,8 +437,8 @@ export function createOrchestrator(deps) {
         return;
       }
       case "claude.static_brief": {
-        const r = await askClaude(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY static Instagram/Facebook post for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": one of ["Family Security","Global Mobility","Long-term Planning","Premium Service","Ethical Advisory"], "program": "...", "headline_en": "English headline for inside the design, 3–7 words (max 55 characters), sentence case, no Visa/guarantee wording", "caption_ar": "MSA caption following every rule", "image_prompt": "Detailed English scene for the image model: setting, Arab/Middle Eastern people and clothing, light, composition with clear space top-left for the official logo, and the exact headline text to render. Must say no logo and no other text, no passports, no flags, no contact details.", "format": "1080x1080"}`);
-        A.brief = { type: "static", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", design: { format: "1080x1080", headline_en: r.data.headline_en, image_prompt: r.data.image_prompt }, talent: { mode: "none" }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
+        const r = await askClaude(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY static Instagram/Facebook post for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": one of ["Family Security","Global Mobility","Long-term Planning","Premium Service","Ethical Advisory"], "program": "...", "headline_en": "English headline for inside the design, 3–7 words (max 55 characters), sentence case, no Visa/guarantee wording", "caption_ar": "MSA caption following every rule", "image_prompt": "Detailed English scene for the image model: setting, Arab/Middle Eastern people and clothing, light, complete elegant outfits incl. footwear, natural light, diagonal/asymmetric composition with a calm top-left area and a calm lower third. Must say: no text, no logo, no passports, no flags, no contact details.", "format": "1080x1350 (4:5, default, best reach) or 1080x1080 (1:1)"}`);
+        A.brief = { type: "static", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", design: { format: /1080x1080/.test(String(r.data.format)) && !/1350/.test(String(r.data.format)) ? "1080x1080" : "1080x1350", headline_en: r.data.headline_en, image_prompt: r.data.image_prompt }, talent: { mode: "none" }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
         return;
       }
       case "claude.reel_storyboard": {
@@ -394,60 +462,69 @@ export function createOrchestrator(deps) {
       }
       case "openai.static_image": {
         const d = A.brief.design;
-        const prompt = `${d.image_prompt}\n\nSquare 1:1 premium editorial photograph for a social post. Do not render any text, letters, numbers, logo or logo-like mark: the English headline (Apex Sans) and the exact official ELEVAY logo are added afterwards. Keep the top-left area calm and uncluttered for the logo and the lower third calm and darker for the headline. Diagonal, asymmetric composition; no frames or geometric shapes.\n\n${CREATIVE_DIRECTION.replace(/\s+/g, " ").slice(0, 2300)}`.slice(0, 3990);
+        const portrait = d.format === "1080x1350";
+        const fix = A.fix ? `\n\nCorrections from the ELEVAY design review (must be fixed): ${A.fix}` : "";
+        const prompt = `${d.image_prompt}${fix}\n\n${portrait ? "Portrait 4:5" : "Square 1:1"} premium editorial photograph for a social post. Do not render any text, letters, numbers, logo or logo-like mark: the English headline (Apex Sans) and the exact official ELEVAY logo are added afterwards. Keep the top-left area calm and uncluttered for the logo and the lower third calm and darker for the headline. Diagonal, asymmetric composition; no frames or geometric shapes.\n\n${CREATIVE_DIRECTION.replace(/\s+/g, " ").slice(0, 2300)}`.slice(0, 3990);
         log(run, "studio", "openai", prompt);
-        const img = await providers.openaiImage({ prompt, purpose: "static_post" });
-        let url = img.url;
-        url = await providers.brandStatic(img.url, d.headline_en);
+        const img = portrait ? await providers.openaiPortrait({ prompt }) : await providers.openaiImage({ prompt, purpose: "static_post" });
+        const url = await providers.brandStatic(img.url, d.headline_en, d.format);
         log(run, "studio", "studio", "Headline set in Apex Sans and the official ELEVAY logo composited.");
         A.images = [{ url, raw_url: img.url, sha256: img.sha256, cost_usd: img.measuredCostUsd }];
-        log(run, "openai", "studio", `Design ready (${img.width}×${img.height}${img.measuredCostUsd ? `, about $${img.measuredCostUsd}` : ""}).`);
+        log(run, "openai", "studio", `Design ready (${d.format}${A.qc_attempts ? `, redesign ${A.qc_attempts}` : ""}${img.measuredCostUsd ? `, about $${img.measuredCostUsd}` : ""}).`);
         step.output = { images: A.images.map((i) => i.url) };
         return;
       }
       case "openai.reel_keyframes": {
         A.keyframes = A.keyframes || [];
         const sb = A.brief.reel.storyboard;
-        for (let i = A.keyframes.length; i < 4; i++) {
-          const prompt = `${sb[i].keyframe_prompt}\n\nVertical 9:16 cinematic premium photograph, first frame of a 5-second clip. No text, no logo, no passports, no flags.\n\nDesign rules: ${ELEVAY_AGENTIC_DESIGN_STANDARD.replace(/\s+/g, " ").slice(0, 2000)}`.slice(0, 3990);
+        for (let i = 0; i < 4; i++) {
+          if (A.keyframes[i]) continue;
+          const fix = A.fixByIndex?.[i] ? `\n\nCorrections from the ELEVAY design review (must be fixed): ${A.fixByIndex[i]}` : "";
+          const prompt = `${sb[i].keyframe_prompt}${fix}\n\nComplete realistic outfits including appropriate footwear; Arab/Middle Eastern people only.\n\nVertical 9:16 cinematic premium photograph, first frame of a 5-second clip. No text, no logo, no passports, no flags.\n\nDesign rules: ${ELEVAY_AGENTIC_DESIGN_STANDARD.replace(/\s+/g, " ").slice(0, 2000)}`.slice(0, 3990);
           log(run, "studio", "openai", `Keyframe ${i + 1}: ${sb[i].keyframe_prompt}`);
           const img = await providers.openaiImage({ prompt, purpose: "reel_keyframe" });
-          A.keyframes.push({ url: img.url, sha256: img.sha256, cost_usd: img.measuredCostUsd });
+          A.keyframes[i] = { url: img.url, sha256: img.sha256, cost_usd: img.measuredCostUsd };
           log(run, "openai", "studio", `Keyframe ${i + 1} ready.`);
         }
         step.output = { keyframes: A.keyframes.map((k) => k.url) };
         return;
       }
       case "claude.qc_visual": {
-        const imgs = run.kind === "reel" ? A.keyframes.map((k) => k.url) : A.images.map((i) => i.url);
-        const r = await askClaude(run, step, `Check ${imgs.length > 1 ? "these " + imgs.length + " images" : "this image"} for ELEVAY (${run.kind === "reel" ? "reel keyframes, no text allowed" : `static post, the only text must be: "${A.brief.design.headline_en}"`}). Check against the ELEVAY delivery checklist:\n${clip(DELIVERY_CHECKLIST(), 3000)}\nAlso check: people are Arab/Middle Eastern in elegant clothing incl. footwear; no passports, flags, seals, contact details, URLs, QR codes; no AI-drawn logo; palette and premium editorial look; text spelling; anatomy. Return JSON: {"pass": true/false, "issues": ["..."], "per_image": [{"index": 1, "pass": true/false, "issues": ["..."]}]}`, { images: imgs, note: `Visual QC of ${imgs.length} image(s)`, maxTokens: 1500 });
-        A.qc = r.data;
-        if (r.data && r.data.pass === false) log(run, "studio", "team", "Claude flagged issues. Review them before approving the next step: " + (r.data.issues || []).join("; "));
-        return;
+        const reel = run.kind === "reel";
+        const imgs = reel ? A.keyframes.map((k) => k.url) : A.images.map((i) => i.url);
+        const r = await askClaude(run, step, strictQcPrompt(reel ? `${imgs.length} reel keyframes (no text or logo allowed anywhere)` : `one finished static post. The only text allowed is the English headline "${A.brief.design.headline_en}" in Apex Sans, and the only logo is the official origami-bird mark in a corner`), { images: imgs, note: `Strict design QC of ${imgs.length} image(s), attempt ${(A.qc_attempts || 0) + 1}`, maxTokens: 2000 });
+        return applyQc(run, step, r.data, imgs.length, reel ? "openai.reel_keyframes" : "openai.static_image", 2);
+      }
+      case "claude.qc_clips": {
+        const frames = [];
+        for (const c of A.clips) frames.push(await providers.clipFrames(c.url));
+        const r = await askClaude(run, step, strictQcPrompt(`4 reel clips; for each clip you get 3 frames (start, middle, end) in order, so images 1–3 are clip 1, 4–6 clip 2, 7–9 clip 3, 10–12 clip 4. Report per CLIP (index 1–4). Also check continuity inside each clip: no wardrobe or footwear changes, no objects appearing or vanishing, no warped faces, hands or architecture, physically believable motion`), { images: frames.flat(), note: "Frame-by-frame QC of the 4 clips", maxTokens: 2000 });
+        return applyQc(run, step, r.data, 4, "higgsfield.clips", 1);
       }
       case "higgsfield.clips": {
         A.clips = A.clips || [];
         const sb = A.brief.reel.storyboard;
-        for (let i = A.clips.length; i < 4; i++) {
-          const key = `ec-${run.id}-clip-${i + 1}-${A.keyframes[i].sha256.slice(0, 12)}`;
+        for (let i = 0; i < 4; i++) {
+          if (A.clips[i]) continue;
+          const key = `ec-${run.id}-clip-${i + 1}-${A.keyframes[i].sha256.slice(0, 12)}-r${A.qc_clips_attempts || 0}`;
           log(run, "studio", "higgsfield", `Clip ${i + 1}: ${sb[i].motion_prompt}`);
           const r = await providers.higgsfieldSubmit({ runId: run.id, stepId: step.n, idempotencyKey: key, prompt: sb[i].motion_prompt, keyframe: A.keyframes[i] });
-          A.clips.push({ requestId: r.requestId, statusUrl: r.statusUrl, state: "queued", url: null });
+          A.clips[i] = { requestId: r.requestId, statusUrl: r.statusUrl, state: "queued", url: null };
         }
-        log(run, "higgsfield", "studio", "4 clips queued.");
+        log(run, "higgsfield", "studio", A.qc_clips_attempts ? "Replacement clips queued." : "4 clips queued.");
         return "waiting";
       }
       case "system.to_weekly_plan": {
-        const media = run.kind === "reel" ? { clips: A.clips.map((c) => c.url), keyframes: A.keyframes.map((k) => k.url) } : { image_url: A.images[0].url };
+        const media = run.kind === "reel" ? { clips: (A.clips || []).filter(Boolean).map((c) => c.url).filter(Boolean), keyframes: A.keyframes.filter(Boolean).map((k) => k.url) } : { image_url: A.images[0].url };
         let itemId;
         let auto = false;
         const r = await deps.mutate({}, (st) => {
           itemId = opts.item_id && !st.items.some((i) => i.item_id === opts.item_id) ? opts.item_id : nextItemId(st.items, opts.week || undefined, !!opts.planned);
-          const up = E.upsertBrief(st, { ...A.brief, item_id: itemId, status: "pending_approval", media, produced_by: { studio_run: run.id, claude: true, openai: true, higgsfield: run.kind === "reel" }, qc: { reviewer: "claude", pass: A.qc?.pass ?? null, issues: A.qc?.issues || [] } }, "ai-studio");
+          const up = E.upsertBrief(st, { ...A.brief, item_id: itemId, status: A.qc_blocked ? "qc_failed" : "pending_approval", media, produced_by: { studio_run: run.id, claude: true, openai: true, higgsfield: run.kind === "reel" }, qc: { reviewer: "claude", pass: A.qc_blocked ? false : (A.qc?.pass ?? null), issues: A.qc?.issues || [], blocked: !!A.qc_blocked } }, "ai-studio");
           if (up.ok === false) return up;
           // Autopilot approves clean items itself; they do not count toward the human first-pass rate.
           auto = false;
-          if (st.settings.autopublish?.enabled && up.item.status === "pending_approval" && A.qc?.pass !== false && run.kind !== "reel") {
+          if (st.settings.autopublish?.enabled && up.item.status === "pending_approval" && !A.qc_blocked && A.qc?.pass === true && run.kind !== "reel") {
             const d = E.decideItem(st, itemId, "approve", {}, "autopilot", "owner");
             if (d.ok !== false) { Object.assign(up.item, { auto_approved: true, first_pass: null, presented_at: null }); auto = true; }
           }
@@ -455,7 +532,7 @@ export function createOrchestrator(deps) {
         });
         if (r && r.ok === false) throw new Error(r.error);
         A.item_id = itemId;
-        log(run, "studio", "team", auto ? `Added as ${itemId} and approved by autopilot; Manus schedules it.` : `Added to the weekly plan as ${itemId} for approval.${run.kind === "reel" ? " Voice-over and the final 23 s edit follow in the next step of the pipeline." : ""}`);
+        log(run, "studio", "team", A.qc_blocked ? `Added as ${itemId} marked QC failed; the owner decides.` : auto ? `Added as ${itemId} and approved by autopilot; Manus schedules it.` : `Added to the weekly plan as ${itemId} for approval.${run.kind === "reel" ? " Voice-over and the final 23 s edit follow in the next step of the pipeline." : ""}`);
         return;
       }
       case "claude.weekly_plan": {

@@ -42,6 +42,14 @@ Keys used on the server: `ANTHROPIC_API_KEY` (optional `ELEVAY_CLAUDE_MODEL`), `
 - **Approvals**: OpenAI never waits. During the first weeks the owner approves Higgsfield clips, Meta-changing Manus tasks, posts and plans. The first time the 6-week / 90% first-pass gate is reached, autopilot switches on by itself: clips, Meta tasks (inside the cap and max CPL), Friday action-plan items (cap-breaking ones are still refused), posts that pass QC and compliance, and monthly plans then go ahead automatically. Auto-approved posts don't count toward the human first-pass rate. Any rejection, compliance flag or rolling rate below 85% switches it off; the owner switches it back on in Settings.
 - **Runs started by Manus** are automatic. A reel limit per 7 days (default 6, Settings in AI Studio) caps Higgsfield spend.
 
+### Strict design rules
+
+Every design goes through three layers; nothing that fails reaches autopilot or publishing:
+
+1. **Rules check before any paid generation** (`rules.js`, shared with the dashboard and applied to Manus briefs too): sentence-case English design text; image and keyframe prompts with Arab/Middle Eastern people, complete outfits and formal shoes with suits; no passports, flags, seals, documents, portals, sculptures, QR/contact details, traditional headwear, handshakes or AI-drawn logos (negated phrases like "no passports" are allowed); reel motion prompts without on-screen text or flashy effects; voice-over names in English letters. Claude fixes blocks once, otherwise the run stops.
+2. **Server-side composition**: statics are 1080×1350 (4:5, default) or 1080×1080, full-bleed photograph, Apex Sans headline, official logo in the top-left corner; OpenAI never draws text or the logo.
+3. **Strict Claude review**: the finished static (or each reel keyframe) is checked against the delivery checklist; failing designs are redone with Claude's fix (only the failing keyframes), up to 2 times. Reel clips get a frame-by-frame review (start, middle, end of each clip) with one automatic re-generation of failing clips. Still failing → the item goes to the owner as **QC failed**, is never auto-approved, and a reel with failing keyframes never reaches the paid Higgsfield step.
+
 ### Approved sources
 
 `server/commandCenter/assets/` (copied to `dist/command-center-assets/` on build):
