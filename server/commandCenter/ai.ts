@@ -38,10 +38,77 @@ Hard rules:
 - No phone numbers, emails, WhatsApp, URLs or QR codes in captions, images or videos.
 - Text inside images is English only. People shown are Arab / Middle Eastern in modern elegant clothing. Never show passports, flags as hero objects, or an AI-drawn logo (the official logo is added afterwards).
 - Reels: 4 clips × 5 s + 3 s white logo outro (23 s), no text inside the video.
-- Voice-over scripts: Egyptian Arabic (عامية مصرية), but every country, city, program and company name in English letters (Spain, Malta, Lisbon, ELEVAY) so the voice pronounces it correctly. 8–13 words per clip.
+- Voice-over scripts: natural Egyptian Arabic (عامية مصرية: بنبدأ، معاك، علشان، محتاج، خلينا، تقدر), 8–13 words per 5-second scene, one idea per scene. Country names (Spain, Malta, Portugal, Greece, Canada, United Kingdom…) and the company name ELEVAY are written in English letters for correct pronunciation; everything else, including city names and program types, is written in Arabic. No other English words.
 - Positioning: a strategic global mobility advisory firm, never an immigration broker or "visa agent". Messaging pillars: Family Security, Global Mobility, Long-term Planning, Premium Service, Ethical Advisory.
 ${CREATIVE_DIRECTION}
 ${ELEVAY_AGENTIC_DESIGN_STANDARD}`;
+
+// ------------------------------------------------------------------ reel media (voice + final edit)
+async function binOf(name) {
+  try { const m = await import("../mediaExecutables"); return (name === "ffprobe" ? m.FFPROBE_BIN : m.FFMPEG_BIN) || name; } catch { return name; }
+}
+/** Duration of a media file in seconds (ffprobe). */
+export async function mediaSeconds(file: string) {
+  const bin = await binOf("ffprobe");
+  return new Promise((resolve, reject) => {
+    const child = spawn(bin, ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", file]);
+    let out = "";
+    child.stdout.on("data", (d) => (out += d));
+    child.on("error", reject);
+    child.on("close", (code) => { const v = parseFloat(out); code === 0 && Number.isFinite(v) ? resolve(v) : reject(new Error("Could not read media duration.")); });
+  });
+}
+export const REEL = { scene: 5, fade: 0.3, outro: 3, maxVoice: 4.85, maxTempo: 1.12 };
+
+/**
+ * Final ELEVAY reel, 1080×1920, 30 fps, about 23 s: four 5-second clips joined with short
+ * cross-dissolves, the ELEVAY voice clone placed at the start of each scene (finishing before
+ * the outro), optional licensed music ducked under the voice, then 3 s of the exact official
+ * logo static and centred on pure white, with no narration over it.
+ */
+export async function composeElevayReel({ clips, voices, music }: { clips: Buffer[]; voices: Buffer[]; music?: Buffer | null }) {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "elevay-cc-reel-"));
+  try {
+    const { scene, fade, outro } = REEL;
+    const clipFiles = [], voiceFiles = [], tempos = [];
+    for (let i = 0; i < 4; i++) {
+      const c = path.join(dir, `clip${i}.mp4`); await fsp.writeFile(c, clips[i]); clipFiles.push(c);
+      const v = path.join(dir, `voice${i}.mp3`); await fsp.writeFile(v, voices[i]); voiceFiles.push(v);
+      const d = await mediaSeconds(v);
+      const tempo = d > REEL.maxVoice ? d / REEL.maxVoice : 1;
+      if (tempo > REEL.maxTempo) throw Object.assign(new Error(`Scene ${i + 1} narration is ${d.toFixed(1)} s; it must fit in 5 s.`), { tooLong: i });
+      tempos.push(tempo);
+    }
+    const logo = assetPath("elevay-logo.png");
+    const inputs = [];
+    for (const c of clipFiles) inputs.push("-i", c);
+    inputs.push("-loop", "1", "-framerate", "30", "-t", String(outro + fade + 0.2), "-i", logo);
+    for (const v of voiceFiles) inputs.push("-i", v);
+    if (music) { const m = path.join(dir, "music.mp3"); await fsp.writeFile(m, music); inputs.push("-stream_loop", "-1", "-i", m); }
+    const total = 4 * scene + outro + fade; // 23.3 s
+    const f = [];
+    for (let i = 0; i < 4; i++) f.push(`[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,setsar=1,fps=30,trim=duration=${scene},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${fade},format=yuv420p[s${i}]`);
+    f.push(`color=c=white:s=1080x1920:r=30:d=${outro + fade}[white]`, `[4:v]scale=300:-1:flags=lanczos[lg]`, `[white][lg]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,setsar=1[outro]`);
+    f.push(`[s0][s1]xfade=transition=fade:duration=${fade}:offset=${scene}[x1]`);
+    f.push(`[x1][s2]xfade=transition=fade:duration=${fade}:offset=${2 * scene}[x2]`, `[x2][s3]xfade=transition=fade:duration=${fade}:offset=${3 * scene}[x3]`, `[x3][outro]xfade=transition=fade:duration=${fade}:offset=${4 * scene}[v]`);
+    const vo = [];
+    for (let i = 0; i < 4; i++) {
+      const delay = Math.round((i * scene + 0.15) * 1000);
+      f.push(`[${5 + i}:a]aresample=44100,${tempos[i] > 1 ? `atempo=${tempos[i].toFixed(3)},` : ""}atrim=duration=${REEL.maxVoice},adelay=${delay}|${delay},apad=whole_dur=${total}[n${i}]`);
+      vo.push(`[n${i}]`);
+    }
+    f.push(`${vo.join("")}amix=inputs=4:duration=longest:normalize=0[voice]`);
+    if (music) {
+      // Music about 28% lower under the narration and fading out over the logo outro.
+      f.push(`[9:a]aresample=44100,atrim=duration=${total},volume=0.22,afade=t=in:d=0.8,afade=t=out:st=${4 * scene}:d=${outro}[bed]`, `[voice]asplit=2[vmain][vkey]`, `[bed][vkey]sidechaincompress=threshold=0.05:ratio=4:attack=20:release=400[ducked]`, `[ducked][vmain]amix=inputs=2:duration=longest:normalize=0,atrim=duration=${total}[a]`);
+    } else f.push(`[voice]atrim=duration=${total}[a]`);
+    const out = path.join(dir, "reel.mp4");
+    await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", ...inputs, "-filter_complex", f.join(";"), "-map", "[v]", "-map", "[a]", "-t", String(total), "-r", "30", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out]);
+    const seconds = await mediaSeconds(out);
+    if (Math.abs(seconds - total) > 0.6) throw new Error(`Final reel is ${seconds.toFixed(1)} s instead of ${total} s.`);
+    return { bytes: await fsp.readFile(out), seconds };
+  } finally { await fsp.rm(dir, { recursive: true, force: true }); }
+}
 
 /** Wrap an English headline into at most 3 lines for the static design. */
 export function wrapHeadline(text: string, max = 22) {
@@ -61,10 +128,10 @@ function runFfmpeg(args) {
     try { bin = (await import("../mediaExecutables")).FFMPEG_BIN || bin; } catch { /* system ffmpeg */ }
     const child = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
-    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Static composition timed out.")); }, 60000);
+    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Media composition timed out.")); }, 240000);
     child.stderr.on("data", (d) => { err = (err + d).slice(-600); });
     child.on("error", (e) => { clearTimeout(timer); reject(e); });
-    child.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error("Static composition failed: " + err.slice(-200))); });
+    child.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error("Media composition failed: " + err.slice(-200))); });
   });
 }
 
@@ -166,6 +233,46 @@ export function makeProviders(fetcher = fetch) {
     } finally { await fsp.rm(dir, { recursive: true, force: true }); }
   }
 
+  /** One take per scene with the ELEVAY voice clone configured on elevay.vip. */
+  async function voiceScene(text) {
+    const tts = await import("../elevenLabsTts");
+    let r;
+    try { r = await tts.generateElevayVideoVoiceOver(text); }
+    catch (e) {
+      // The Egyptian-dialect gate is checked on the whole script; a short scene may lack its marker words.
+      if (/natural Egyptian Arabic/.test(String(e?.message))) r = await tts.generateElevayArabicVoiceOver(text);
+      else throw e;
+    }
+    const bytes = Buffer.from(await (await fetcher(r.url)).arrayBuffer());
+    return { url: r.url, sha256: r.sha256, bytes, script: r.script };
+  }
+  async function checkEgyptianScript(text) {
+    const { prepareEgyptianReelNarration } = await import("@shared/elevayVideoNarration");
+    return prepareEgyptianReelNarration(text);
+  }
+  async function composeReel({ clipUrls, voiceUrls, musicUrl }) {
+    const get = async (u) => Buffer.from(await (await fetcher(u)).arrayBuffer());
+    const [clips, voices, music] = await Promise.all([Promise.all(clipUrls.map(get)), Promise.all(voiceUrls.map(get)), musicUrl ? get(musicUrl) : null]);
+    const { bytes, seconds } = await composeElevayReel({ clips, voices, music });
+    const sha = crypto.createHash("sha256").update(bytes).digest("hex");
+    const { storagePut } = await import("../storage");
+    return { url: (await storagePut(`marketing/command-center/reels/${sha.slice(0, 24)}.mp4`, bytes, "video/mp4")).url, seconds, sha256: sha };
+  }
+  async function videoFrames(url, times) {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "elevay-cc-vf-"));
+    try {
+      const src = path.join(dir, "v.mp4");
+      await fsp.writeFile(src, Buffer.from(await (await fetcher(url)).arrayBuffer()));
+      const out = [];
+      for (const [i, t] of times.entries()) {
+        const f = path.join(dir, `f${i}.jpg`);
+        await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", "-ss", String(t), "-i", src, "-frames:v", "1", "-vf", "scale=540:-2", "-q:v", "4", f]);
+        out.push({ base64: (await fsp.readFile(f)).toString("base64"), mediaType: "image/jpeg" });
+      }
+      return out;
+    } finally { await fsp.rm(dir, { recursive: true, force: true }); }
+  }
+
   async function brandStatic(url, headline, format) {
     // Official ELEVAY font + exact official logo composited on the photograph (never AI-drawn).
     const { storagePut } = await import("../storage");
@@ -193,11 +300,12 @@ export function makeProviders(fetcher = fetch) {
     const k = (name) => !!process.env[name];
     out.claude = k("ANTHROPIC_API_KEY") ? await claude({ system: "Reply with OK.", prompt: "ping", maxTokens: 5, json: false }).then((r) => ({ ok: true, detail: r.model }), (e) => ({ ok: false, detail: e.message })) : { ok: false, detail: "ANTHROPIC_API_KEY is not set" };
     out.openai = k("OPENAI_API_KEY") ? await fetcher("https://api.openai.com/v1/models?limit=1", { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, signal: AbortSignal.timeout(20000) }).then((r) => ({ ok: r.ok, detail: r.ok ? "Key accepted" : `HTTP ${r.status}` }), (e) => ({ ok: false, detail: e.message })) : { ok: false, detail: "OPENAI_API_KEY is not set" };
+    out.elevenlabs = k("ELEVENLABS_API_KEY") ? { ok: true, detail: "Key is set; ELEVAY voice clone checked on the first voice-over" } : { ok: false, detail: "ELEVENLABS_API_KEY is not set" };
     out.higgsfield = k("HF_API_KEY") ? { ok: true, detail: "Key is set (checked when the first clip is submitted)" } : { ok: false, detail: "HF_API_KEY is not set" };
     return out;
   }
 
-  return { claude, openaiImage, openaiPortrait, brandStatic, clipFrames, higgsfieldSubmit, higgsfieldStatus, test };
+  return { claude, openaiImage, openaiPortrait, brandStatic, clipFrames, voiceScene, checkEgyptianScript, composeReel, videoFrames, higgsfieldSubmit, higgsfieldStatus, test };
 }
 
 // ------------------------------------------------------------------ pipelines
@@ -217,7 +325,10 @@ export const PIPELINES = {
     S("claude", "qc_visual", "Claude checks the keyframes against the ELEVAY rules (redoes failing ones up to 2 times)"),
     S("higgsfield", "clips", "Higgsfield animates 4 × 5 s clips", { gate: "owner" }),
     S("claude", "qc_clips", "Claude checks frames of every clip (wardrobe, footwear, anatomy, continuity)"),
-    S("system", "to_weekly_plan", "Send clips to the weekly plan (voice-over and final edit follow)"),
+    S("elevenlabs", "voice", "ELEVAY voice clone reads the Egyptian Arabic script, one take per scene"),
+    S("system", "compose_reel", "Final edit: 4 clips + voice-over + 3 s white logo outro (1080×1920)"),
+    S("claude", "qc_final", "Claude checks the final reel (scenes, outro, no text)"),
+    S("system", "to_weekly_plan", "Send the finished reel to the weekly plan"),
   ] },
   weekly_plan: { label: "Weekly plan (automatic)", steps: () => [
     S("claude", "weekly_plan", "Claude plans the week's 7 posts from Meta + CRM results and the monthly plan"),
@@ -394,7 +505,7 @@ export function createOrchestrator(deps) {
     if (A[key] >= maxRedo) {
       A.qc_blocked = true;
       log(run, "studio", "team", `Still failing after ${A[key]} redo(s): ${(data?.issues || []).join("; ")}. It goes to the owner marked QC failed and will not be approved or published automatically.`);
-      if (step.action === "qc_visual" && run.kind === "reel") for (const s2 of run.steps) if (["clips", "qc_clips"].includes(s2.action) && s2.status === "pending") { s2.status = "skipped"; s2.error = "Skipped: keyframes failed design QC, so no paid clips were made."; }
+      if (step.action === "qc_visual" && run.kind === "reel") for (const s2 of run.steps) if (["clips", "qc_clips", "voice", "compose_reel", "qc_final"].includes(s2.action) && s2.status === "pending") { s2.status = "skipped"; s2.error = "Skipped: keyframes failed design QC, so no paid clips were made."; }
       return;
     }
     A[key]++;
@@ -442,7 +553,7 @@ export function createOrchestrator(deps) {
         return;
       }
       case "claude.reel_storyboard": {
-        const r = await askClaude(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "scenes": [4 scenes in order hook → explanation → trust → realistic outcome, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "Egyptian Arabic voice-over for this clip, 8–13 words, country/company/program names in English letters"}]}`, { maxTokens: 5000 });
+        const r = await askClaude(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "scenes": [4 scenes in order hook → explanation → trust → realistic outcome, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic voice-over for this scene, 8–13 words; ONLY country names and ELEVAY in English letters, everything else in Arabic"}]}`, { maxTokens: 5000 });
         const scenes = (r.data.scenes || []).slice(0, 4);
         if (scenes.length !== 4) throw new Error("Claude did not return 4 scenes.");
         A.brief = { type: "reel", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", talent: { mode: "voiceover_elevay_vip", voice_source: "elevay_vip_module", speech_language: "egyptian_arabic" }, reel: { storyboard: scenes.map((s, i) => ({ clip: i + 1, keyframe_prompt: s.keyframe_prompt, motion_prompt: s.motion_prompt, spoken_text_ar: s.spoken_text_ar, delivery_direction_en: "Calm, warm, premium advisory tone" })), music_direction: r.data.music_direction || "Soft cinematic, royalty-free", duration_s: 23 }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
@@ -514,8 +625,51 @@ export function createOrchestrator(deps) {
         log(run, "higgsfield", "studio", A.qc_clips_attempts ? "Replacement clips queued." : "4 clips queued.");
         return "waiting";
       }
+      case "elevenlabs.voice": {
+        const sb = A.brief.reel.storyboard;
+        await providers.checkEgyptianScript(sb.map((c) => c.spoken_text_ar).join(" ")); // whole script must be natural Egyptian Arabic
+        A.voices = A.voices || [];
+        for (let i = 0; i < 4; i++) {
+          if (A.voices[i]) continue;
+          log(run, "studio", "elevenlabs", `Scene ${i + 1}: ${sb[i].spoken_text_ar}`);
+          const v = await providers.voiceScene(sb[i].spoken_text_ar);
+          A.voices[i] = { url: v.url, sha256: v.sha256 };
+        }
+        log(run, "elevenlabs", "studio", "4 voice takes ready (ELEVAY voice clone).");
+        return;
+      }
+      case "system.compose_reel": {
+        const music = (process.env.ELEVAY_REEL_MUSIC_URLS || "").split(",").map((x) => x.trim()).filter(Boolean);
+        const musicUrl = music.length ? music[run.id % music.length] : null;
+        try {
+          const r = await providers.composeReel({ clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl });
+          A.final = { url: r.url, seconds: r.seconds, sha256: r.sha256, music: !!musicUrl };
+          log(run, "studio", "team", `Final reel ready: ${r.seconds.toFixed(1)} s, 1080×1920, ELEVAY voice${musicUrl ? " + licensed music" : ""}, white logo outro.`);
+          return;
+        } catch (e) {
+          if (e?.tooLong === undefined || A.voice_fixed) throw e;
+          // A scene's narration is too long for 5 s: Claude shortens that line once, then the voice is redone.
+          const i = e.tooLong; A.voice_fixed = true;
+          const r = await askClaude(run, step, `This Egyptian Arabic voice-over line for scene ${i + 1} is too long to fit in 5 seconds: "${A.brief.reel.storyboard[i].spoken_text_ar}". Rewrite it in 7–10 words, natural Egyptian Arabic, same idea, country names and ELEVAY in English letters only, everything else in Arabic. Return JSON: {"line": "..."}`, { maxTokens: 300 });
+          A.brief.reel.storyboard[i].spoken_text_ar = String(r.data.line || "").trim();
+          A.voices[i] = null;
+          run.steps.find((s2) => s2.action === "voice").status = "pending";
+          log(run, "studio", "team", `Scene ${i + 1} narration shortened; recording it again.`);
+          return "rewind";
+        }
+      }
+      case "claude.qc_final": {
+        const frames = await providers.videoFrames(A.final.url, [2.5, 7.5, 12.5, 17.5, 21.0, 22.8]);
+        const r = await askClaude(run, step, `${strictQcPrompt("the finished ELEVAY reel")}\n\nYou get 6 frames: one from the middle of each of the 4 scenes, then two from the outro. Pass only if: no text, captions or logos appear in scenes 1–4; frames 5 and 6 show ONLY the official ELEVAY origami-bird logo, static and centred on a pure white background; vertical 9:16; consistent people and wardrobe across scenes. Return JSON in the same format; per_image index = frame number.`, { images: frames, note: "Final reel QC (6 frames)", maxTokens: 1500 });
+        const per = Array.isArray(r.data?.per_image) ? r.data.per_image : [];
+        const failed = r.data?.pass === false || per.some((p) => p.pass === false);
+        A.final_qc = { pass: !failed, issues: r.data?.issues || [] };
+        if (failed) { A.qc_blocked = true; A.qc = { pass: false, issues: r.data?.issues || [] }; log(run, "studio", "team", "Final reel review failed: " + (r.data?.issues || []).join("; ") + ". It goes to the owner marked QC failed."); }
+        else log(run, "studio", "team", "Final reel passed the ELEVAY review.");
+        return;
+      }
       case "system.to_weekly_plan": {
-        const media = run.kind === "reel" ? { clips: (A.clips || []).filter(Boolean).map((c) => c.url).filter(Boolean), keyframes: A.keyframes.filter(Boolean).map((k) => k.url) } : { image_url: A.images[0].url };
+        const media = run.kind === "reel" ? { video_url: A.final?.url || null, clips: (A.clips || []).filter(Boolean).map((c) => c.url).filter(Boolean), keyframes: A.keyframes.filter(Boolean).map((k) => k.url), voice: (A.voices || []).filter(Boolean).map((v) => v.url), duration_s: A.final?.seconds || null } : { image_url: A.images[0].url };
         let itemId;
         let auto = false;
         const r = await deps.mutate({}, (st) => {
@@ -524,7 +678,7 @@ export function createOrchestrator(deps) {
           if (up.ok === false) return up;
           // Autopilot approves clean items itself; they do not count toward the human first-pass rate.
           auto = false;
-          if (st.settings.autopublish?.enabled && up.item.status === "pending_approval" && !A.qc_blocked && A.qc?.pass === true && run.kind !== "reel") {
+          if (st.settings.autopublish?.enabled && up.item.status === "pending_approval" && !A.qc_blocked && A.qc?.pass === true && (run.kind !== "reel" || A.final_qc?.pass === true)) {
             const d = E.decideItem(st, itemId, "approve", {}, "autopilot", "owner");
             if (d.ok !== false) { Object.assign(up.item, { auto_approved: true, first_pass: null, presented_at: null }); auto = true; }
           }
@@ -532,7 +686,7 @@ export function createOrchestrator(deps) {
         });
         if (r && r.ok === false) throw new Error(r.error);
         A.item_id = itemId;
-        log(run, "studio", "team", A.qc_blocked ? `Added as ${itemId} marked QC failed; the owner decides.` : auto ? `Added as ${itemId} and approved by autopilot; Manus schedules it.` : `Added to the weekly plan as ${itemId} for approval.${run.kind === "reel" ? " Voice-over and the final 23 s edit follow in the next step of the pipeline." : ""}`);
+        log(run, "studio", "team", A.qc_blocked ? `Added as ${itemId} marked QC failed; the owner decides.` : auto ? `Added as ${itemId} and approved by autopilot; Manus schedules it.` : `Added to the weekly plan as ${itemId} for approval.`);
         return;
       }
       case "claude.weekly_plan": {

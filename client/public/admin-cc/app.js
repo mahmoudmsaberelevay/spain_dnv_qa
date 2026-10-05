@@ -408,7 +408,7 @@
     const fmt = i.design && i.design.format === '1080x1350' ? 'p45' : 'sq';
     if (i.type === 'reel') {
       if (m.video_url) return `<div class="frame v916"><video src="${esc(m.video_url)}" controls playsinline preload="metadata"></video></div>`;
-      return `<div class="frame v916" style="max-width:230px"><div class="ph reel"><span class="note">Reel preview pending from Manus</span><div><div class="hl">${esc(i.topic)}</div><div class="small" style="opacity:.8;margin-top:6px">4 × 5 s clips + 3 s white logo outro</div></div><div class="clips">${[1, 2, 3, 4].map((c) => `<span>Clip ${c}</span>`).join('')}</div></div></div>`;
+      return `<div class="frame v916" style="max-width:230px"><div class="ph reel"><span class="note">Final reel pending</span><div><div class="hl">${esc(i.topic)}</div><div class="small" style="opacity:.8;margin-top:6px">4 × 5 s clips + 3 s white logo outro</div></div><div class="clips">${[1, 2, 3, 4].map((c) => `<span>Clip ${c}</span>`).join('')}</div></div></div>`;
     }
     if (m.image_url) return `<div class="frame ${fmt}"><img src="${esc(m.image_url)}" alt="Design for ${esc(i.item_id)}" loading="lazy"></div>`;
     return `<div class="frame ${fmt}"><div class="ph"><span class="note">Design pending from Manus</span><div class="hl">${esc((i.design && i.design.headline_en) || i.topic)}</div><span class="small" style="opacity:.75">${esc((i.design && i.design.format) || '1080x1080')} · logo composited after generation</span></div></div>`;
@@ -690,7 +690,7 @@
   }
 
   // ------------------------------------------------------------ AI Studio
-  const PROV = { claude: ['Claude', '#C9A84C'], openai: ['OpenAI', '#5BA3B8'], higgsfield: ['Higgsfield', '#7a6fb0'], manus: ['Manus', '#2f8a74'], system: ['ELEVAY rules', '#5E6A71'], studio: ['Studio', '#5E6A71'], team: ['Team', '#1A3A5C'] };
+  const PROV = { claude: ['Claude', '#C9A84C'], openai: ['OpenAI', '#5BA3B8'], higgsfield: ['Higgsfield', '#7a6fb0'], elevenlabs: ['ELEVAY voice', '#4B6475'], manus: ['Manus', '#2f8a74'], system: ['ELEVAY rules', '#5E6A71'], studio: ['Studio', '#5E6A71'], team: ['Team', '#1A3A5C'] };
   const provChip = (p) => { const [l, c] = PROV[p] || [p, '#5E6A71']; return `<span class="pchip" style="--c:${c}">${esc(l)}</span>`; };
   const RUN_PILL = { queued: ['info', 'Queued'], running: ['info', 'Working'], waiting: ['info', 'Waiting on provider'], awaiting_approval: ['warn', 'Needs approval'], done: ['ok', 'Done'], failed: ['bad', 'Failed'], cancelled: ['', 'Cancelled'] };
   const STEP_ICON = { pending: '○', running: '◐', waiting: '◔', needs_approval: '!', done: '●', failed: '✕', skipped: '–' };
@@ -717,7 +717,7 @@
     const open = new Set([...el.querySelectorAll('details[data-run][open]')].map((d) => d.dataset.run));
     el.innerHTML = `<div class="stack" style="gap:16px">
       <section class="panel"><div class="panel-h"><h2>Connected models</h2>${isOwner() ? '<button class="btn sm" id="provTest">Test connections</button>' : ''}</div>
-        <div class="grid g4">${['claude', 'openai', 'higgsfield', 'manus'].map((k) => { const p = pv[k]; return `<div class="kpi">${provChip(k)}<span class="small">${esc(p.role)}</span><span class="t">${p.ready ? '<span class="pill ok">Connected</span>' : `<span class="pill bad">Not set up</span> ${p.key ? esc(p.key) + ' missing' : ''}`}${k === 'manus' && p.lastSeen ? ' · seen ' + ago(p.lastSeen) : ''}${p.model ? ' · ' + esc(p.model) : ''}</span><span class="t" id="pt-${k}"></span></div>`; }).join('')}</div></section>
+        <div class="grid g5">${['claude', 'openai', 'higgsfield', 'elevenlabs', 'manus'].filter((k) => pv[k]).map((k) => { const p = pv[k]; return `<div class="kpi">${provChip(k)}<span class="small">${esc(p.role)}</span><span class="t">${p.ready ? '<span class="pill ok">Connected</span>' : `<span class="pill bad">Not set up</span> ${p.key ? esc(p.key) + ' missing' : ''}`}${k === 'manus' && p.lastSeen ? ' · seen ' + ago(p.lastSeen) : ''}${p.model ? ' · ' + esc(p.model) : ''}</span><span class="t" id="pt-${k}"></span></div>`; }).join('')}</div></section>
       ${autopilotPanel(st.autopilot)}
       ${st.sources ? `<section class="panel"><div class="panel-h"><h2>Approved sources the models use</h2></div><div class="row small" style="gap:8px;flex-wrap:wrap">${st.sources.programs.map((x) => `<span class="pill ${x.loaded ? 'ok' : 'bad'}">${esc(x.name)}</span>`).join('')}${st.sources.creative.map((x) => `<span class="pill ${x.loaded ? 'ok' : 'bad'}">Creative direction: ${esc(x.name.replace(/-/g, ' '))}</span>`).join('')}<span class="pill ${st.sources.logo ? 'ok' : 'bad'}">Official logo</span><span class="pill ${st.sources.font ? 'ok' : 'bad'}">Apex Sans font</span></div><p class="small muted" style="margin:8px 0 0">Program figures come only from these approved sources; other programs are described without numbers until their sources are added.</p></section>` : ''}
       ${canEdit() ? `<section class="panel"><div class="panel-h"><h2>Extra request</h2><span class="small muted">Claude plans the work and hands each part to the right model</span></div>

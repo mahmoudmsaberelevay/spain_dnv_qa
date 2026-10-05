@@ -30,7 +30,7 @@ function memoryDb() {
   return q;
 }
 
-function setup(claudeAnswers, { autopilot = false } = {}) {
+function setup(claudeAnswers, { autopilot = false, composeTooLong = false } = {}) {
   const state = E.emptyState();
   if (autopilot) state.settings.autopublish = { enabled: true, enabledAt: "2026-11-20T00:00:00Z", enabledBy: "autopilot", disabledReason: null };
   const calls = { claude: [], openai: 0, hfSubmit: 0, hfPoll: 0 };
@@ -40,6 +40,10 @@ function setup(claudeAnswers, { autopilot = false } = {}) {
     openaiImage: async ({ purpose }) => { calls.openai++; return { url: `https://cdn.example/${purpose}-${calls.openai}.png`, sha256: "a".repeat(64), width: purpose === "static_post" ? 1024 : 864, height: purpose === "static_post" ? 1024 : 1536, measuredCostUsd: 0.1 }; },
     openaiPortrait: async () => { calls.openai++; return { url: `https://cdn.example/static_post-${calls.openai}.png`, sha256: "b".repeat(64), width: 1024, height: 1536, measuredCostUsd: 0.1 }; },
     brandStatic: async (url) => url.replace(".png", "-logo.png"),
+    voiceScene: async (text) => { calls.voice = (calls.voice || 0) + 1; return { url: `https://cdn.example/voice-${calls.voice}.mp3`, sha256: "c".repeat(64) }; },
+    checkEgyptianScript: async (t) => t,
+    composeReel: async ({ clipUrls, voiceUrls }) => { calls.compose = (calls.compose || 0) + 1; if (composeTooLong && calls.compose === 1) throw Object.assign(new Error("too long"), { tooLong: 2 }); return { url: "https://cdn.example/final.mp4", seconds: 23.3, sha256: "d".repeat(64), clipUrls, voiceUrls }; },
+    videoFrames: async () => [1, 2, 3, 4, 5, 6].map((n) => ({ base64: "eA==", mediaType: "image/jpeg" })),
     clipFrames: async (url) => [1, 2, 3].map((n) => ({ base64: Buffer.from(url + n).toString("base64"), mediaType: "image/jpeg" })),
     higgsfieldSubmit: async ({ idempotencyKey }) => { calls.hfSubmit++; return { requestId: `00000000-0000-0000-0000-00000000000${calls.hfSubmit}`, statusUrl: `https://api.higgsfield.ai/requests/x/status`, key: idempotencyKey }; },
     higgsfieldStatus: async (c) => { calls.hfPoll++; return hfDone ? { state: "completed", videoUrl: `https://cdn.hf/${c.requestId}.mp4` } : { state: "in_progress", videoUrl: null }; },
@@ -80,7 +84,7 @@ describe("AI Studio orchestrator", () => {
   });
 
   it("reel: Higgsfield needs the owner, waits for clips, then lands in the plan", async () => {
-    const { o, state, calls, finishClips } = setup([{ topic: "Lisbon", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: true }, { pass: true }]);
+    const { o, state, calls, finishClips } = setup([{ topic: "Lisbon", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: true }, { pass: true }, { pass: true }]);
     const run = await o.create({ kind: "reel", request: "Reel for retirees", user: marketer });
     let r = await settle(o, run.id);
     expect(calls.openai).toBe(4);
@@ -96,6 +100,9 @@ describe("AI Studio orchestrator", () => {
     expect(r.status).toBe("done");
     const item = state.items.find((i) => i.item_id === r.artifacts.item_id);
     expect(item.media.clips).toHaveLength(4);
+    expect(item.media.video_url).toBe("https://cdn.example/final.mp4");
+    expect(calls.voice).toBe(4); // one ELEVAY voice take per scene
+    expect(item.status).toBe("pending_approval");
     expect(calls.claude[2].images).toHaveLength(12); // 3 frames × 4 clips
     expect(item.reel.storyboard[0].spoken_text_ar).toMatch(/Portugal/);
   });
@@ -152,6 +159,32 @@ describe("Strict design QC", () => {
     const r = await settle(o, run.id);
     expect(calls.hfSubmit).toBe(0);
     expect(r.steps.find((s) => s.action === "clips").status).toBe("skipped");
+    expect(state.items.find((i) => i.item_id === r.artifacts.item_id).status).toBe("qc_failed");
+  });
+});
+
+describe("Voice-over and final edit", () => {
+  it("shortens a scene line that is too long for 5 s, re-records only that scene, then composes", async () => {
+    const answers = [{ topic: "Spain", pillar: "Global Mobility", program: "Spain Digital Nomad Residence", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: true }, { pass: true }, { line: "خطة واضحة معاك من الأول" }, { pass: true }];
+    const { o, calls, state, finishClips } = setup(answers, { autopilot: true, composeTooLong: true });
+    const run = await o.create({ kind: "reel", request: "Spain reel", user: { email: "autopilot", role: "owner" } });
+    let r = await settle(o, run.id);
+    expect(r.status).toBe("waiting"); // autopilot approved Higgsfield itself
+    finishClips(); await o.tick();
+    r = await settle(o, run.id, ["running", "queued", "waiting"]);
+    expect(r.status).toBe("done");
+    expect(calls.voice).toBe(5); // 4 scenes + 1 re-record
+    expect(r.artifacts.brief.reel.storyboard[2].spoken_text_ar).toBe("خطة واضحة معاك من الأول");
+    const item = state.items.find((i) => i.item_id === r.artifacts.item_id);
+    expect(item).toMatchObject({ status: "approved", auto_approved: true }); // finished reel passed final QC under autopilot
+  });
+
+  it("blocks the reel when the final review fails", async () => {
+    const answers = [{ topic: "t", pillar: "Family Security", program: "Malta Permanent Residence", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: true }, { pass: true }, { pass: false, issues: ["Outro shows text"], per_image: [{ index: 5, pass: false }] }];
+    const { o, state, finishClips } = setup(answers, { autopilot: true });
+    const run = await o.create({ kind: "reel", request: "Malta", user: owner });
+    await settle(o, run.id); finishClips(); await o.tick();
+    const r = await settle(o, run.id, ["running", "queued", "waiting"]);
     expect(state.items.find((i) => i.item_id === r.artifacts.item_id).status).toBe("qc_failed");
   });
 });

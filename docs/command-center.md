@@ -29,7 +29,7 @@ The **AI Studio** tab (`server/commandCenter/ai.ts`) runs requests through the m
 | Request | Steps |
 |---|---|
 | Static post | Claude brief → ELEVAY rules check → **OpenAI** design (approval: marketer/owner) → official logo composited → Claude visual QC → weekly plan |
-| Reel | Claude storyboard + Egyptian Arabic voice-over → rules check → **OpenAI** 4 keyframes (approval) → Claude QC → **Higgsfield** 4 × 5 s clips (owner approval) → weekly plan |
+| Reel | Claude storyboard + Egyptian Arabic voice-over → rules check → **OpenAI** 4 keyframes → Claude QC → **Higgsfield** 4 × 5 s clips (owner approval until autopilot) → clip QC → **ELEVAY voice clone** → final 23 s edit with logo outro → final QC → weekly plan |
 | Monthly plan from data | Claude reads the live Meta + CRM report → monthly plan for owner approval |
 | Meta / Manus task | Claude writes Manus instructions → owner approval when it changes Meta → **Manus** job → Claude summary |
 | Question | Claude answers from the live data |
@@ -49,6 +49,10 @@ Every design goes through three layers; nothing that fails reaches autopilot or 
 1. **Rules check before any paid generation** (`rules.js`, shared with the dashboard and applied to Manus briefs too): sentence-case English design text; image and keyframe prompts with Arab/Middle Eastern people, complete outfits and formal shoes with suits; no passports, flags, seals, documents, portals, sculptures, QR/contact details, traditional headwear, handshakes or AI-drawn logos (negated phrases like "no passports" are allowed); reel motion prompts without on-screen text or flashy effects; voice-over names in English letters. Claude fixes blocks once, otherwise the run stops.
 2. **Server-side composition**: statics are 1080×1350 (4:5, default) or 1080×1080, full-bleed photograph, Apex Sans headline, official logo in the top-left corner; OpenAI never draws text or the logo.
 3. **Strict Claude review**: the finished static (or each reel keyframe) is checked against the delivery checklist; failing designs are redone with Claude's fix (only the failing keyframes), up to 2 times. Reel clips get a frame-by-frame review (start, middle, end of each clip) with one automatic re-generation of failing clips. Still failing → the item goes to the owner as **QC failed**, is never auto-approved, and a reel with failing keyframes never reaches the paid Higgsfield step.
+
+### Reel voice-over and final edit
+
+After the clips pass review: Claude's script must be natural Egyptian Arabic (checked on the whole script), with only country names and ELEVAY in English letters. The **ELEVAY voice clone configured on elevay.vip** (`ELEVAY_ARABIC_VOICE_DEFAULTS`, ElevenLabs `eleven_v3`, `[thoughtful]` delivery) records one take per scene. The final edit (`composeElevayReel`) is 1080×1920 at 30 fps, about 23 s: four 5-second clips with 0.3 s cross-dissolves, each scene's voice starting with its scene and finishing before the outro (a line longer than 5 s is sped up at most 12%, otherwise Claude shortens it once and that scene is re-recorded), then 3 s of the official logo static and centred on white with no narration. Optional licensed music: set `ELEVAY_REEL_MUSIC_URLS` (comma-separated MP3 links); it is ducked under the voice and fades over the outro. Claude reviews 6 frames of the final reel (one per scene plus the outro); a failure marks the reel QC failed. Under autopilot, a reel that passes every review is approved automatically like a static.
 
 ### Approved sources
 

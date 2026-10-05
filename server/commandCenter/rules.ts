@@ -105,7 +105,7 @@ const module = { exports: {} };
   const BAD_SHOES_RE = /\b(slippers|flip[- ]?flops|sandals|sneakers|trainers|house shoes)\b/;
   const PEOPLE_RE = /\b(man|men|woman|women|person|people|family|couple|professional|child|children|kids?|father|mother|son|daughter|businessman|businesswoman|executive|entrepreneur|retiree|investor|traveller|traveler)\b/;
   const ARAB_RE = /\b(arab|middle[- ]eastern|egyptian|gulf|emirati|saudi|levantine)\b/;
-  const ARABIC_PLACE_NAMES = /إسبانيا|اسبانيا|مالطا|البرتغال|اليونان|كندا|بريطانيا|المملكة المتحدة|لشبونة|مدريد|برشلونة|أثينا|إيليفاي|إليفاي|ايليفاي|الكاريبي|غرينادا|دومينيكا/u;
+  const ARABIC_PLACE_NAMES = /إسبانيا|اسبانيا|مالطا|البرتغال|اليونان|كندا|بريطانيا|المملكة المتحدة|إيليفاي|إليفاي|ايليفاي|اليفاي|غرينادا|جرينادا|دومينيكا|سانت لوسيا|أنتيغوا/u;
 
   /** Design-rule checks for one image or keyframe prompt. */
   function checkVisualPrompt(prompt, add, prefix, labelPrefix) {
@@ -187,7 +187,8 @@ const module = { exports: {} };
         add('voice_source', 'Voice comes from the Elevay.vip voice clone', (brief.talent?.voice_source || '') === 'elevay_vip_module');
         const spoken = sb.map((c) => c.spoken_text_ar || '').join(' ');
         for (const r of TERM_RULES) if (r.re.test(spoken)) add('spoken_' + r.id, 'Script: ' + r.label, false, r.severity);
-        add('spoken_english_names', 'Script writes country, city and company names in English letters (e.g. Spain, Malta, ELEVAY)', !ARABIC_PLACE_NAMES.test(spoken));
+        add('spoken_latin', 'Script has no English words other than country names and ELEVAY', !/[A-Za-z]/.test(spoken.replace(/\b(ELEVAY|Spain|Malta|Portugal|Greece|Canada|United Kingdom|UK|Grenada|Dominica|Saint Lucia|St\. Lucia|Saint Kitts and Nevis|St\. Kitts and Nevis|Antigua and Barbuda|Antigua|Barbuda|Caribbean)\b/g, '')));
+        add('spoken_english_names', 'Script writes country names and ELEVAY in English letters (e.g. Spain, Malta, ELEVAY)', !ARABIC_PLACE_NAMES.test(spoken));
         const perClip = sb.map((c) => countWords(c.spoken_text_ar || ''));
         add('spoken_length', 'Script is ~8–13 Arabic words per clip', perClip.every((n) => n === 0 || (n >= 6 && n <= 15)), 'warn');
       }

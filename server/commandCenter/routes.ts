@@ -344,6 +344,7 @@ function providerStatus(lastAgentSeen) {
     claude: { role: "Conductor: routes requests, writes briefs, storyboards and plans, checks visuals", ready: has("ANTHROPIC_API_KEY"), key: "ANTHROPIC_API_KEY", model: process.env.ELEVAY_CLAUDE_MODEL || "claude-sonnet-4-6" },
     openai: { role: "Static designs and reel keyframes", ready: has("OPENAI_API_KEY"), key: "OPENAI_API_KEY" },
     higgsfield: { role: "4 × 5 s reel clips from the keyframes", ready: has("HF_API_KEY"), key: "HF_API_KEY" },
+    elevenlabs: { role: "ELEVAY voice clone for Egyptian Arabic voice-overs", ready: has("ELEVENLABS_API_KEY"), key: "ELEVENLABS_API_KEY" },
     manus: { role: "Meta and other connected platforms, through the job queue", ready: !!lastAgentSeen || has("ELEVAY_COMMAND_CENTER_MANUS_API_KEY"), lastSeen: lastAgentSeen },
   };
 }
