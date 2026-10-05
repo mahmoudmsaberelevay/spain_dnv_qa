@@ -9,7 +9,7 @@
   const S = { mode: null, ext: null, data: null, view: 'overview', week: null, jobFilter: 'open', openItem: null, demoRole: 'owner', busy: false };
   const VIEWS = [
     ['overview', 'Overview'], ['plan', 'Weekly plan'], ['actions', 'Action plan'], ['performance', 'Performance'],
-    ['news', 'News'], ['monthly', 'Monthly plan'], ['manus', 'Manus bridge'], ['settings', 'Settings'],
+    ['news', 'News'], ['monthly', 'Monthly plan'], ['studio', 'AI Studio'], ['meta', 'Meta'], ['manus', 'Manus bridge'], ['settings', 'Settings'],
   ];
 
   // ------------------------------------------------------------ utils
@@ -141,15 +141,31 @@
 
   function renderLogin(msg) {
     if (S.ext) {
-      app.innerHTML = `<div class="login"><form onsubmit="return false">
-        <div class="brand"><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div>
-        <p>Sign in with your elevay.vip account to open the Command Center.</p>
-        <a class="btn primary" href="${esc(S.ext.loginUrl)}">Sign in to elevay.vip</a>
-        <p class="small muted">Access follows your Agentic Marketing role: owner and administrator approve, managers and producers request changes, analysts view.</p></form></div>`;
+      // Sign in right here with the elevay.vip account (same session as the CRM), then open the dashboard.
+      app.innerHTML = `<div class="login"><form id="login" novalidate>
+        <div class="brand"><img src="/admin-cc/brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div>
+        <label class="field"><span>elevay.vip email</span><input class="input" id="lg-email" type="email" autocomplete="username" required></label>
+        <label class="field"><span>Password</span><input class="input" id="lg-pw" type="password" autocomplete="current-password" required></label>
+        ${msg ? `<p class="small" style="color:var(--bad)">${esc(msg)}</p>` : ''}
+        <button class="btn primary" type="submit" id="lg-go">Open Command Center</button>
+        <p class="small muted"><a href="/login?forgot=1">Forgot password?</a> · Access follows your Agentic Marketing role.</p></form></div>`;
+      const em = document.getElementById('lg-email');
+      try { const last = store.get('elevay-cc-email'); if (last) { em.value = last; document.getElementById('lg-pw').focus(); } else em.focus(); } catch { /* ignore */ }
+      document.getElementById('login').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const btn = document.getElementById('lg-go'); btn.disabled = true; btn.textContent = 'Signing in…';
+        try {
+          const res = await fetch('/api/auth/login', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: em.value.trim(), password: document.getElementById('lg-pw').value }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Sign-in failed.');
+          store.set('elevay-cc-email', em.value.trim());
+        } catch (e) { renderLogin(e.message); return; }
+        try { await refresh(); render(); setInterval(poll, 20000); } catch { /* no-access screen already shown */ }
+      });
       return;
     }
     app.innerHTML = `<div class="login"><form id="login" novalidate>
-      <div class="brand"><img src="brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div>
+      <div class="brand"><img src="/admin-cc/brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div>
       <label class="field"><span>Work email</span><input class="input" id="lg-email" type="email" autocomplete="username" required></label>
       <label class="field"><span>Password</span><input class="input" id="lg-pw" type="password" autocomplete="current-password" required></label>
       ${msg ? `<p class="small" style="color:var(--bad)">${esc(msg)}</p>` : ''}
@@ -173,7 +189,7 @@
 
   function renderSetup(msg) {
     app.innerHTML = `<div class="login"><form id="setup" novalidate>
-      <div class="brand"><img src="brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div>
+      <div class="brand"><img src="/admin-cc/brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div>
       <div><h2>Create the owner account</h2><p class="small muted" style="margin-top:4px">One-time setup. Use the setup code you were given.</p></div>
       <label class="field"><span>Setup code</span><input class="input" id="su-code" autocomplete="one-time-code" required></label>
       <label class="field"><span>Your name</span><input class="input" id="su-name" autocomplete="name" required></label>
@@ -200,6 +216,8 @@
       manus: s.needsInput,
       performance: s.guardrails.alerts.filter((a) => a.level === 'critical').length,
       monthly: d.plans.filter((p) => p.status === 'pending_approval').length,
+      studio: S.studio ? S.studio.runs.filter((r) => r.status === 'awaiting_approval').length : 0,
+      meta: S.meta ? S.meta.actions.filter((a) => a.status === 'pending').length : 0,
     };
   }
 
@@ -210,7 +228,7 @@
     const me = S.data.me;
     app.innerHTML = `<div class="shell">
       <aside class="rail">
-        <div class="brand"><img id="logo" src="brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div></div>
+        <div class="brand"><img id="logo" src="/admin-cc/brand/elevay_logo_official.png" alt="ELEVAY" onerror="this.remove()"><div><div class="product">Marketing Command Center</div><div class="tag">EXPANDING YOUR FREEDOM</div></div></div>
         <nav class="nav" aria-label="Sections">${VIEWS.map(([k, l]) => `<button data-view="${k}" ${k === S.view ? 'aria-current="page"' : ''}><span>${l}</span>${c[k] ? `<span class="count${k === 'monthly' ? ' quiet' : ''}">${c[k]}</span>` : ''}</button>`).join('')}</nav>
         <div class="rail-foot">
           <div class="who"><span>${esc(me.name || me.email)} · ${esc(me.role)}</span>${S.mode === 'server' && !S.ext ? '<button class="btn ghost sm" id="logout">Sign out</button>' : ''}</div>
@@ -223,7 +241,7 @@
         <div id="view"></div>
       </main></div>`;
     const v = document.getElementById('view');
-    ({ overview: viewOverview, plan: viewPlan, actions: viewActions, performance: viewPerformance, news: viewNews, monthly: viewMonthly, manus: viewManus, settings: viewSettings })[S.view](v);
+    ({ overview: viewOverview, plan: viewPlan, actions: viewActions, performance: viewPerformance, news: viewNews, monthly: viewMonthly, studio: viewStudio, meta: viewMeta, manus: viewManus, settings: viewSettings })[S.view](v);
     wireShell();
   }
 
@@ -236,6 +254,8 @@
       performance: 'Live from Meta and the ELEVAY CRM: last 30 days of ads, leads, qualified, unqualified, clients and page growth. Read-only.',
       news: 'Weekly news search: Manus collects, Claude verifies. Only verified or reported items can feed posts.',
       monthly: 'Next month’s plan, built from 6 months of Meta and CRM results. The owner approves it.',
+      studio: 'Autopilot plans the week from your Meta and CRM results, Claude hands each part to OpenAI, Higgsfield or Manus, and checks the results.',
+      meta: 'Replies to comments and messages, publishing approved posts, and campaign changes. Nothing runs on Meta without approval (automatic only after the 6-week gate), always inside the cap and max CPL.',
       manus: 'Every decision here becomes a job for Manus, which runs Meta, OpenAI, Higgsfield and the Elevay.vip voice module.',
       settings: 'Hard limits, the autopublish gate, team access and the audit log.',
     })[v];
@@ -333,11 +353,11 @@
     const bars = weeks.map((w, i) => {
       const x = padL + i * bw + bw * 0.18, h = (H - padT - padB) * (w.rate || 0), ok = (w.rate || 0) >= thr;
       return `<rect x="${x.toFixed(1)}" y="${y(w.rate || 0).toFixed(1)}" width="${(bw * 0.64).toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${ok ? 'var(--accent)' : 'var(--warn)'}"><title>${w.week}: ${w.firstPass}/${w.presented}</title></rect>
-        <text x="${(x + bw * 0.32).toFixed(1)}" y="${(y(w.rate || 0) - 4).toFixed(1)}" text-anchor="middle" font-size="10" fill="var(--ink-2)">${Math.round((w.rate || 0) * 100)}%</text>
-        <text x="${(x + bw * 0.32).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--ink-3)">${w.week.slice(5)}</text>`;
+        <text x="${(x + bw * 0.32).toFixed(1)}" y="${(y(w.rate || 0) - 4).toFixed(1)}" text-anchor="middle" font-size="13" fill="var(--ink-2)">${Math.round((w.rate || 0) * 100)}%</text>
+        <text x="${(x + bw * 0.32).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="13" fill="var(--ink-3)">${w.week.slice(5)}</text>`;
     }).join('');
-    const grid = [0, 0.5, 1].map((v) => `<line x1="${padL}" x2="${W - 6}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" /><text x="${padL - 6}" y="${y(v) + 3}" text-anchor="end" font-size="10" fill="var(--ink-3)">${v * 100}%</text>`).join('');
-    const line = `<line x1="${padL}" x2="${W - 6}" y1="${y(thr)}" y2="${y(thr)}" stroke="var(--gold)" stroke-dasharray="4 3" stroke-width="1.5" /><text x="${W - 8}" y="${y(thr) - 4}" text-anchor="end" font-size="10" fill="var(--gold)">${thr * 100}% gate</text>`;
+    const grid = [0, 0.5, 1].map((v) => `<line x1="${padL}" x2="${W - 6}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" /><text x="${padL - 6}" y="${y(v) + 3}" text-anchor="end" font-size="13" fill="var(--ink-3)">${v * 100}%</text>`).join('');
+    const line = `<line x1="${padL}" x2="${W - 6}" y1="${y(thr)}" y2="${y(thr)}" stroke="var(--gold)" stroke-dasharray="4 3" stroke-width="1.5" /><text x="${W - 8}" y="${y(thr) - 4}" text-anchor="end" font-size="13" fill="var(--gold)">${thr * 100}% gate</text>`;
     const weeksLeft = Math.max(0, set.manualWeeks - st.weeksDone);
     return `<div class="weeks-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly first-pass approval rate">${grid}${line}${bars}</svg></div>
       <div class="grid g3" style="margin-top:10px">
@@ -406,7 +426,7 @@
     const fmt = i.design && i.design.format === '1080x1350' ? 'p45' : 'sq';
     if (i.type === 'reel') {
       if (m.video_url) return `<div class="frame v916"><video src="${esc(m.video_url)}" controls playsinline preload="metadata"></video></div>`;
-      return `<div class="frame v916" style="max-width:230px"><div class="ph reel"><span class="note">Reel preview pending from Manus</span><div><div class="hl">${esc(i.topic)}</div><div class="small" style="opacity:.8;margin-top:6px">4 × 5 s clips + 3 s white logo outro</div></div><div class="clips">${[1, 2, 3, 4].map((c) => `<span>Clip ${c}</span>`).join('')}</div></div></div>`;
+      return `<div class="frame v916" style="max-width:230px"><div class="ph reel"><span class="note">Final reel pending</span><div><div class="hl">${esc(i.topic)}</div><div class="small" style="opacity:.8;margin-top:6px">4 × 5 s clips + 3 s white logo outro</div></div><div class="clips">${[1, 2, 3, 4].map((c) => `<span>Clip ${c}</span>`).join('')}</div></div></div>`;
     }
     if (m.image_url) return `<div class="frame ${fmt}"><img src="${esc(m.image_url)}" alt="Design for ${esc(i.item_id)}" loading="lazy"></div>`;
     return `<div class="frame ${fmt}"><div class="ph"><span class="note">Design pending from Manus</span><div class="hl">${esc((i.design && i.design.headline_en) || i.topic)}</div><span class="small" style="opacity:.75">${esc((i.design && i.design.format) || '1080x1080')} · logo composited after generation</span></div></div>`;
@@ -434,11 +454,12 @@
         ${i.status === 'changes_requested' && lastReq ? `<div class="comment change_request"><strong>Sent to Manus (${esc(scopeLabel(lastReq.scope))}${lastReq.clip ? ' ' + lastReq.clip : ''}):</strong> ${esc(lastReq.text)}</div>` : ''}
         <div><div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="label">Arabic caption</span><span class="small muted num">${c.words || 0} words · target 100–150</span></div>
           <div class="caption ar" dir="rtl" lang="ar">${esc(i.caption_ar || '')}</div></div>
+        ${i.qc && i.qc.blocked ? `<div class="alert critical"><span class="tag">Design QC failed</span><span>${esc((i.qc.issues || []).join(' · ') || 'Claude found design-rule problems after 2 redesigns.')}</span></div>` : ''}
         ${c.blocks.length || c.warnings.length ? `<div class="checks">${c.blocks.map((b) => `<span class="chk block">${esc(b.label)}</span>`).join('')}${c.warnings.map((b) => `<span class="chk warn">${esc(b.label)}</span>`).join('')}</div>` : ''}
         <details class="more"><summary>Brief details, QC and history</summary><div class="stack">
           ${i.type !== 'reel' && i.design ? `<div><span class="label">Design headline (English)</span><p>${esc(i.design.headline_en || '—')}</p></div><div><span class="label">Image prompt</span><p class="small">${esc(i.design.image_prompt || '—')}</p></div>` : ''}
           ${i.type === 'reel' && i.reel ? `<div><span class="label">Storyboard · ${esc(i.reel.duration_s || '?')} s · ${esc(i.reel.music_direction || '')}</span><div class="story" style="margin-top:6px">${(i.reel.storyboard || []).map((s) => `<div class="clip"><strong>Clip ${s.clip}</strong><span>${esc(s.keyframe_prompt)}</span><span class="muted">${esc(s.motion_prompt)}</span>${s.spoken_text_ar ? `<span class="ar" dir="rtl" lang="ar">${esc(s.spoken_text_ar)}</span>` : ''}</div>`).join('')}</div></div>` : ''}
-          <div><span class="label">Claude QC</span><p class="small">${i.qc ? `Passed: ${esc((i.qc.checks_passed || []).join(', ') || '—')}${(i.qc.checks_failed || []).length ? ` · Failed: ${esc(i.qc.checks_failed.join(', '))}` : ''}` : 'Not reported'}</p></div>
+          <div><span class="label">Claude QC</span><p class="small">${i.qc && i.qc.reviewer === 'claude' && 'pass' in i.qc ? (i.qc.pass ? 'Passed the strict ELEVAY design review.' : `Failed: ${esc((i.qc.issues || []).join('; '))}`) : i.qc ? `Passed: ${esc((i.qc.checks_passed || []).join(', ') || '—')}${(i.qc.checks_failed || []).length ? ` · Failed: ${esc(i.qc.checks_failed.join(', '))}` : ''}` : 'Not reported'}</p></div>
           <div><span class="label">Compliance checks</span><div class="small">${c.checks.map((x) => `<div>${x.ok ? '✓' : x.severity === 'block' ? '✕' : '!'} ${esc(x.label)}</div>`).join('')}</div></div>
           ${(i.owner_comments || []).length ? `<div><span class="label">Comments</span><div class="comments">${i.owner_comments.map((x) => `<div class="comment ${x.kind}"><span class="muted small">${fmtDT(x.at)} · ${esc(x.by)} · v${x.version}${x.scope ? ' · ' + esc(scopeLabel(x.scope)) : ''}</span><div>${esc(x.text)}</div></div>`).join('')}</div></div>` : ''}
           ${(i.history || []).length ? `<div><span class="label">Versions</span><div class="small">${i.history.map((h) => `<div>v${h.version} replaced ${fmtDT(h.at)} by ${esc(h.by)}</div>`).join('')}</div></div>` : ''}
@@ -569,7 +590,9 @@
   function liveErrors(d) {
     const e = d.errors || {}, names = { ads: 'Meta ads', page: 'Facebook Page', crm: 'CRM (30 days)', crm6: 'CRM (6 months)' };
     const k = Object.keys(e);
-    return k.length ? `<div class="alerts" style="margin-bottom:12px">${k.map((x) => `<div class="alert warning"><strong>${names[x] || x}:</strong> ${esc(e[x])}</div>`).join('')}</div>` : '';
+    const al = (d.alerts || []).map((a) => `<div class="alert ${a.level === 'critical' ? 'critical' : ''}"><span class="tag">${a.level === 'critical' ? 'Critical' : 'Check'}</span><span>${esc(a.text)}</span></div>`);
+    const er = k.map((x) => `<div class="alert"><strong>${names[x] || x}:</strong> ${esc(e[x])}</div>`);
+    return al.length || er.length ? `<div class="alerts" style="margin-bottom:12px">${al.concat(er).join('')}</div>` : '';
   }
   function liveHead(d, title) {
     return `<div class="panel-h"><h2>${title}</h2><span class="row small muted">${esc(d.window.since)} → ${esc(d.window.until)} · updated ${ago(d.generatedAt)} ${canEdit() ? '<button class="btn sm" data-live-refresh>Refresh</button>' : ''}</span></div>`;
@@ -589,13 +612,13 @@
     const funnelRow = (label, b) => b ? `<tr><td>${label}</td><td class="r num">${n0(b.leads)}</td><td class="r num">${n0(b.qualified)}</td><td class="r num">${n0(b.unqualified)}</td><td class="r num">${n0(b.clients)}</td><td class="r num">${b.leads ? pct(b.cohort.qualifiedOrBetter / b.leads, 1) : '—'}</td><td class="r num">${n0(b.cohort.open)}</td></tr>` : '';
     const reasons = crm && crm.all.unqualifiedReasons, rk = reasons ? Object.keys(reasons) : [];
     const pv = (m) => (m && m.total !== null && m.total !== undefined ? n0(m.total) : '—');
-    const pvNote = (m) => (m && m.metric ? `<span class="t">${esc(m.metric)}</span>` : m && m.error ? `<span class="t" title="${esc(m.error)}">not available</span>` : '');
+    const pvNote = (m) => (m && m.metric ? `<span class="t">${esc(m.metric)}</span>` : m && m.error ? `<span class="t" style="color:var(--warn)">Not available: ${esc(String(m.error).split(' | ')[0].replace(/^[^:]+: /, '').slice(0, 160))}</span>` : '');
     const ig = p && p.instagram;
     return `<div class="stack" style="gap:16px">
       <section class="panel">${liveHead(d, 'Meta ads, last 30 days')}${liveErrors(d)}
         ${t ? `<div class="grid g5">${[
           kpi('Spend', egp(t.spend), a.account && a.account.currency !== 'EGP' ? 'Account currency ' + esc(a.account.currency) : ''),
-          kpi('Meta leads', n0(t.leads), t.leads ? 'CPL ' + egp(t.cpl) : ''),
+          kpi('Meta leads', n0(t.leads), t.leadCampaignCpl ? 'CPL ' + egp(t.leadCampaignCpl) + ' on lead campaigns' : t.leads ? 'CPL ' + egp(t.cpl) : ''),
           kpi('Reach', n0(t.reach), 'Frequency ' + (t.frequency ? t.frequency.toFixed(2) : '—')),
           kpi('Impressions', n0(t.impressions), 'CPM ' + egp(t.cpm)),
           kpi('Clicks', n0(t.clicks), 'CTR ' + pct(t.ctr, 2)),
@@ -619,7 +642,7 @@
           <div class="kpi"><span class="label">Unfollows</span><span class="v">${pv(p.unlikes)}</span>${pvNote(p.unlikes)}</div>
           <div class="kpi"><span class="label">Net new</span><span class="v">${p.newLikes && p.newLikes.total !== null ? n0(p.newLikes.total - ((p.unlikes && p.unlikes.total) || 0)) : '—'}</span></div>
           <div class="kpi"><span class="label">Page video views</span><span class="v">${pv(p.videoViews)}</span>${pvNote(p.videoViews)}</div>
-          ${ig ? `<div class="kpi"><span class="label">Instagram views</span><span class="v">${pv(ig.views)}</span><span class="t">@${esc(ig.username || '')}</span></div><div class="kpi"><span class="label">Instagram new followers</span><span class="v">${pv(ig.newFollowers)}</span><span class="t">${n0(ig.followers)} total</span></div>` : ''}
+          ${ig ? `<div class="kpi"><span class="label">Instagram views · @${esc(ig.username || '')}</span><span class="v">${pv(ig.views)}</span>${pvNote(ig.views)}</div><div class="kpi"><span class="label">Instagram new followers · ${n0(ig.followers)} total</span><span class="v">${pv(ig.newFollowers)}</span>${pvNote(ig.newFollowers)}</div>` : ''}
         </div>` : '<div class="empty">Page data unavailable.</div>'}
       </section>
       ${a && a.campaigns.length ? `<section class="panel"><div class="panel-h"><h2>Campaigns, last 30 days</h2><span class="small muted">Meta results joined with CRM outcomes · max CPL ${set.maxCplEgp} EGP</span></div><div class="table-wrap"><table>
@@ -684,6 +707,197 @@
     }));
   }
 
+  // ------------------------------------------------------------ AI Studio
+  const PROV = { claude: ['Claude', '#C9A84C'], openai: ['OpenAI', '#5BA3B8'], higgsfield: ['Higgsfield', '#7a6fb0'], elevenlabs: ['ELEVAY voice', '#4B6475'], manus: ['Manus', '#2f8a74'], system: ['ELEVAY rules', '#5E6A71'], studio: ['Studio', '#5E6A71'], team: ['Team', '#1A3A5C'] };
+  const provChip = (p) => { const [l, c] = PROV[p] || [p, '#5E6A71']; return `<span class="pchip" style="--c:${c}">${esc(l)}</span>`; };
+  const RUN_PILL = { queued: ['info', 'Queued'], running: ['info', 'Working'], waiting: ['info', 'Waiting on provider'], awaiting_approval: ['warn', 'Needs approval'], done: ['ok', 'Done'], failed: ['bad', 'Failed'], cancelled: ['', 'Cancelled'] };
+  const STEP_ICON = { pending: '○', running: '◐', waiting: '◔', needs_approval: '!', done: '●', failed: '✕', skipped: '–' };
+  let studioTimer = null;
+  async function loadStudio() {
+    const [p, r, ap] = await Promise.all([S.studio && S.studio.providers ? Promise.resolve(S.studio) : api.req('GET', 'ai/providers'), api.req('GET', 'ai/runs'), api.req('GET', 'ai/autopilot')]);
+    S.studio = { providers: p.providers, pipelines: p.pipelines, sources: p.sources, runs: r.runs, autopilot: ap };
+    return S.studio;
+  }
+  function viewStudio(el) {
+    if (S.mode === 'demo') { el.innerHTML = '<div class="empty">AI Studio runs on elevay.vip/admin.</div>'; return; }
+    el.innerHTML = '<div class="empty">Loading AI Studio…</div>';
+    loadStudio().then(() => { if (el.isConnected) drawStudio(el); }).catch((e) => { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
+    clearInterval(studioTimer);
+    studioTimer = setInterval(async () => {
+      if (S.view !== 'studio' || !el.isConnected) return clearInterval(studioTimer);
+      if (document.hidden || (document.activeElement && /TEXTAREA|INPUT|SELECT/.test(document.activeElement.tagName))) return;
+      if (!S.studio || !S.studio.runs.some((r) => ['queued', 'running', 'waiting'].includes(r.status))) return;
+      try { await loadStudio(); drawStudio(el); } catch { /* keep last */ }
+    }, 6000);
+  }
+  function drawStudio(el) {
+    const st = S.studio, pv = st.providers;
+    const open = new Set([...el.querySelectorAll('details[data-run][open]')].map((d) => d.dataset.run));
+    el.innerHTML = `<div class="stack" style="gap:16px">
+      <section class="panel"><div class="panel-h"><h2>Connected models</h2>${isOwner() ? '<button class="btn sm" id="provTest">Test connections</button>' : ''}</div>
+        <div class="grid g5">${['claude', 'openai', 'higgsfield', 'elevenlabs', 'manus'].filter((k) => pv[k]).map((k) => { const p = pv[k]; return `<div class="kpi">${provChip(k)}<span class="small">${esc(p.role)}</span><span class="t">${p.ready ? '<span class="pill ok">Connected</span>' : `<span class="pill bad">Not set up</span> ${p.key ? esc(p.key) + ' missing' : ''}`}${k === 'manus' && p.lastSeen ? ' · seen ' + ago(p.lastSeen) : ''}${p.model ? ' · ' + esc(p.model) : ''}</span><span class="t" id="pt-${k}"></span></div>`; }).join('')}</div></section>
+      ${autopilotPanel(st.autopilot)}
+      ${st.sources ? `<section class="panel"><div class="panel-h"><h2>Approved sources the models use</h2></div><div class="row small" style="gap:8px;flex-wrap:wrap">${st.sources.programs.map((x) => `<span class="pill ${x.loaded ? 'ok' : 'bad'}">${esc(x.name)}</span>`).join('')}${st.sources.creative.map((x) => `<span class="pill ${x.loaded ? 'ok' : 'bad'}">Creative direction: ${esc(x.name.replace(/-/g, ' '))}</span>`).join('')}<span class="pill ${st.sources.logo ? 'ok' : 'bad'}">Official logo</span><span class="pill ${st.sources.font ? 'ok' : 'bad'}">Apex Sans font</span></div><p class="small muted" style="margin:8px 0 0">Program figures come only from these approved sources; other programs are described without numbers until their sources are added.</p></section>` : ''}
+      ${canEdit() ? `<section class="panel"><div class="panel-h"><h2>Extra request</h2><span class="small muted">Claude plans the work and hands each part to the right model</span></div>
+        <div class="stack" style="gap:10px">
+          <div class="row"><select class="input" id="stKind" style="max-width:260px">${[['request', 'Let Claude decide'], ['static', 'Static post (OpenAI)'], ['reel', 'Reel (OpenAI + Higgsfield)'], ['plan', 'Monthly plan from data'], ['manus', 'Meta / Manus task'], ['answer', 'Question about our data']].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+            <input class="input" id="stProgram" placeholder="Program (optional), e.g. Spain DNV" style="max-width:260px"></div>
+          <textarea class="input" id="stReq" rows="3" placeholder="e.g. A reel for Portugal D7 aimed at retired Egyptian couples, calm Lisbon lifestyle"></textarea>
+          <div class="row"><button class="btn primary" id="stGo">Start</button><span class="small muted" id="stFlow"></span></div>
+        </div></section>` : ''}
+      <section class="panel"><div class="panel-h"><h2>Runs</h2><span class="small muted">${st.runs.length} recent</span></div>
+        ${st.runs.length ? `<div class="stack" style="gap:10px">${st.runs.map((r) => runCard(r, open.has(String(r.id)))).join('')}</div>` : '<div class="empty">No runs yet.</div>'}
+      </section></div>`;
+    const kind = el.querySelector('#stKind');
+    const flow = () => { const p = st.pipelines[kind.value]; el.querySelector('#stFlow').innerHTML = p ? p.steps.map((x) => provChip(x.provider) + (x.gate ? '<span class="small muted">(approval)</span>' : '')).join(' → ') : ''; };
+    if (kind) { kind.onchange = flow; flow(); }
+    const go = el.querySelector('#stGo');
+    if (go) go.onclick = () => act(async () => {
+      const request = el.querySelector('#stReq').value.trim();
+      if (!request && kind.value !== 'plan') throw new Error('Describe what you need.');
+      await api.req('POST', 'ai/runs', { kind: kind.value, request, program: el.querySelector('#stProgram').value.trim() });
+      await loadStudio();
+    }, 'Started. Follow it in Runs.');
+    const pt = el.querySelector('#provTest');
+    if (pt) pt.onclick = () => act(async () => { const r = await api.req('POST', 'ai/providers/test'); for (const [k, v] of Object.entries(r.results)) { const n = document.getElementById('pt-' + k); if (n) n.innerHTML = `${v.ok ? '✓' : '✕'} ${esc(v.detail)}`; } });
+    el.querySelectorAll('[data-autoplan]').forEach((b) => (b.onclick = () => act(async () => {
+      const k = b.dataset.autoplan;
+      await api.req('POST', k === 'monthly' ? 'ai/autoplan/monthly' : 'ai/autoplan/weekly', k === 'monthly' ? { again: true } : { which: k });
+      await loadStudio();
+    }, 'Started. Claude is planning; production starts automatically.')));
+    const aps = el.querySelector('#apSave');
+    if (aps) aps.onclick = () => act(async () => {
+      await api.saveSettings({ studio: { autoplan: el.querySelector('#apAuto').checked, reelLimitPerWeek: Number(el.querySelector('#apReels').value) } });
+      S.studio.autopilot = await api.req('GET', 'ai/autopilot');
+    }, 'Autopilot settings saved.');
+    el.querySelectorAll('[data-run-act]').forEach((b) => (b.onclick = () => {
+      const [a, id, n] = b.dataset.runAct.split(':');
+      if (a === 'approve' && b.dataset.cost && !confirm(b.dataset.cost)) return;
+      act(async () => { await api.req('POST', a === 'approve' ? `ai/runs/${id}/steps/${n}/approve` : `ai/runs/${id}/${a}`); await loadStudio(); }, a === 'approve' ? 'Approved. The models continue.' : a === 'retry' ? 'Retrying.' : 'Cancelled.');
+    }));
+    el.querySelectorAll('[data-goview]').forEach((b) => (b.onclick = (ev) => { ev.preventDefault(); go(b.dataset.goview); }));
+  }
+  function autopilotPanel(ap) {
+    if (!ap) return '';
+    const a = ap.approval, on = ap.autopublish && ap.autopublish.enabled, killed = ap.autopublish && ap.autopublish.disabledAt && !on;
+    const status = on
+      ? `<span class="pill ok">Automatic</span> Higgsfield clips, Meta tasks, approved posts and monthly plans run without waiting. Any rejection, compliance flag or a rolling rate below 85% switches back to manual.`
+      : killed
+        ? `<span class="pill bad">Back to manual</span> ${esc(ap.autopublish.disabledReason || '')}. The owner can switch it on again in Settings.`
+        : `<span class="pill warn">Learning phase</span> Week ${Math.min(a.weeksDone, a.manualWeeks)} of ${a.manualWeeks} · first-pass approval ${pct(a.cumulative)} (needs ${pct(a.threshold)}). Until then the owner approves Higgsfield clips, Meta changes, posts and plans. It switches to automatic by itself when the gate is reached.`;
+    return `<section class="panel"><div class="panel-h"><h2>Autopilot</h2><span class="small muted">${ap.studio.autoplan ? 'Plans itself every Saturday 09:00 Cairo (next week) and from the 25th (next month)' : 'Automatic planning is paused'}</span></div>
+      <p style="margin:0 0 10px">${status}</p>
+      <p class="small muted" style="margin:0 0 12px">OpenAI designs never wait for approval. Requests from Manus run automatically. Higgsfield is limited to ${ap.studio.reelLimitPerWeek} reels per 7 days; Meta work stays inside the 200,000 EGP cap and 100 EGP max CPL.</p>
+      ${canEdit() ? `<div class="row"><button class="btn primary" data-autoplan="this">Plan this week now</button><button class="btn" data-autoplan="next">Plan next week now</button><button class="btn" data-autoplan="monthly">Draft next month's plan now</button></div>` : ''}
+      ${isOwner() ? `<div class="row small" style="margin-top:12px"><label class="row"><input type="checkbox" id="apAuto" ${ap.studio.autoplan ? 'checked' : ''}> Plan automatically</label><label class="row">Reel limit per 7 days <input class="input" id="apReels" type="number" min="0" max="30" value="${ap.studio.reelLimitPerWeek}" style="width:70px"></label><button class="btn sm" id="apSave">Save</button></div>` : ''}
+    </section>`;
+  }
+  const COST = { higgsfield: 'This submits 4 paid Higgsfield Pro clips. Continue?', manus: 'Manus will act on Meta with these instructions. Continue?' };
+  function runCard(r, isOpen) {
+    const [pc, pl] = RUN_PILL[r.status] || ['', r.status];
+    const A = r.artifacts || {};
+    const steps = r.steps.map((s) => `<li class="step ${s.status}"><span class="ico">${STEP_ICON[s.status] || '○'}</span>${provChip(s.provider)} <span>${esc(s.title)}</span>
+      ${s.status === 'needs_approval' ? ((s.gate === 'owner' && !isOwner()) || !canEdit() ? `<span class="pill warn">Waiting for ${s.gate === 'owner' ? 'owner' : 'approval'}</span>` : `<button class="btn sm primary" data-run-act="approve:${r.id}:${s.n}" data-cost="${esc(COST[s.provider] || '')}">Approve</button>`) : ''}
+      ${s.error ? `<div class="small" style="color:var(--bad)">${esc(s.error)}</div>` : ''}${s.approved_by ? `<span class="small muted"> · approved by ${esc(s.approved_by)}</span>` : ''}</li>`).join('');
+    const imgs = (A.images || []).map((i) => i.url).concat(A.keyframes ? A.keyframes.map((k) => k.url) : []);
+    const clips = (A.clips || []).filter((c) => c.url);
+    const brief = A.brief;
+    return `<details class="run" data-run="${r.id}" ${isOpen || ['awaiting_approval', 'failed'].includes(r.status) ? 'open' : ''}><summary><span class="pill ${pc}">${pl}</span> <strong>${esc(r.title)}</strong> <span class="small muted">· ${esc((S.studio.pipelines[r.kind] || {}).label || r.kind)} · #${r.id} · ${esc(r.created_by)} · ${ago(r.created_at)}</span></summary>
+      <div class="run-body"><ol class="steps">${steps}</ol>
+        ${A.answer ? `<div class="answer">${esc(A.answer)}</div>` : ''}
+        ${A.qc && A.qc.pass === false ? `<div class="alert"><span class="tag">Claude QC</span><span>${esc((A.qc.issues || []).join(' · '))}</span></div>` : A.qc ? '<div class="small" style="color:var(--ok)">Claude visual check passed.</div>' : ''}
+        ${brief ? `<div class="grid g2" style="margin-top:8px"><div><div class="small muted">Caption (Arabic)</div><div dir="rtl" class="small" style="white-space:pre-wrap">${esc(brief.caption_ar || '')}</div></div><div>${brief.design ? `<div class="small muted">Design text</div><div>${esc(brief.design.headline_en || '')}</div>` : ''}${brief.reel ? `<div class="small muted">Voice-over (Egyptian Arabic)</div><ol class="small" dir="rtl">${brief.reel.storyboard.map((c) => `<li>${esc(c.spoken_text_ar || '')}</li>`).join('')}</ol>` : ''}</div></div>` : ''}
+        ${imgs.length ? `<div class="thumbs">${imgs.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Generated design" loading="lazy"></a>`).join('')}</div>` : ''}
+        ${clips.length ? `<div class="thumbs">${clips.map((c) => `<video src="${esc(c.url)}" controls playsinline preload="metadata"></video>`).join('')}</div>` : ''}
+        ${A.item_id ? `<p class="small">In the weekly plan as <a href="#plan" data-goview="plan">${esc(A.item_id)}</a>.</p>` : ''}
+        ${A.plan ? '<p class="small">Plan sent to the <a href="#monthly" data-goview="monthly">Monthly plan</a> tab.</p>' : ''}
+        <details class="small"><summary>Conversation between the models (${(r.messages || []).length})</summary><ul class="msgs">${(r.messages || []).map((m) => `<li><span class="muted">${fmtDT(m.at)}</span> ${provChip(m.from)} → ${provChip(m.to)}<pre>${esc(m.text)}</pre></li>`).join('')}</ul></details>
+        ${canEdit() ? `<div class="row" style="margin-top:8px">${r.status === 'failed' ? `<button class="btn sm" data-run-act="retry:${r.id}">Retry failed step</button>` : ''}${!['done', 'failed', 'cancelled'].includes(r.status) ? `<button class="btn ghost sm" data-run-act="cancel:${r.id}">Cancel</button>` : ''}</div>` : ''}
+      </div></details>`;
+  }
+  // ------------------------------------------------------------ Meta (replies, publishing, campaigns)
+  const META_PILL = { pending: ['warn', 'Needs approval'], running: ['info', 'Running'], done: ['ok', 'Done'], failed: ['bad', 'Failed'], blocked: ['bad', 'Refused by guardrail'], rejected: ['', 'Rejected'] };
+  async function loadMeta() {
+    const [a, c, f] = await Promise.all([api.req('GET', 'meta/actions'), api.req('GET', 'meta/campaigns').catch((e) => ({ error: e.message })), S.meta && S.meta.forms ? Promise.resolve({ forms: S.meta.forms }) : api.req('GET', 'meta/forms').catch(() => ({ forms: [] }))]);
+    S.meta = { actions: a.actions, campaigns: c, forms: f.forms || [], checks: S.meta && S.meta.checks };
+    return S.meta;
+  }
+  function viewMeta(el) {
+    if (S.mode === 'demo') { el.innerHTML = '<div class="empty">Meta actions run on elevay.vip/admin.</div>'; return; }
+    el.innerHTML = '<div class="empty">Loading Meta…</div>';
+    loadMeta().then(() => el.isConnected && drawMeta(el)).catch((e) => (el.innerHTML = `<div class="empty">${esc(e.message)}</div>`));
+  }
+  function drawMeta(el) {
+    const m = S.meta, set = S.data.settings, mset = set.meta || {}, owner = isOwner();
+    const pending = m.actions.filter((a) => a.status === 'pending'), history = m.actions.filter((a) => a.status !== 'pending');
+    const camps = m.campaigns && m.campaigns.campaigns ? m.campaigns.campaigns : [];
+    const approvedDesigns = S.data.items.filter((i) => ['approved', 'scheduled', 'published'].includes(i.status) && i.media && i.media.image_url);
+    const posts = [...S.data.items.filter((i) => ['approved', 'scheduled'].includes(i.status)), ...S.data.items.filter((i) => i.status === 'published').slice(-5).reverse()];
+    el.innerHTML = `<div class="stack" style="gap:16px">
+      <section class="panel"><div class="panel-h"><h2>Needs your approval</h2><span class="row small muted">${pending.length} waiting ${canEdit() ? '<button class="btn sm" id="mxSync">Check comments & messages now</button>' : ''}</span></div>
+        ${pending.length ? `<div class="stack" style="gap:10px">${pending.map(metaCard).join('')}</div>` : '<div class="empty">Nothing waiting. New comments and messages are checked every 10 minutes; Claude drafts each reply.</div>'}</section>
+      <section class="panel"><div class="panel-h"><h2>Campaigns</h2><span class="small muted">${m.campaigns && m.campaigns.mtd !== undefined ? `Month to date ${n0(m.campaigns.mtd)} EGP · active budgets ${n0(m.campaigns.dailyTotal)} EGP/day · cap ${n0(set.monthlyAdCapEgp)} EGP` : esc((m.campaigns && m.campaigns.error) || '')}</span></div>
+        ${camps.length ? `<div class="table-wrap"><table><thead><tr><th>Campaign</th><th>Status</th><th class="r">Daily budget</th><th class="r">30-day CPL</th><th></th></tr></thead><tbody>${camps.map((c) => `<tr><td>${esc(c.name)}</td><td class="small">${esc(c.status)}</td><td class="r num">${c.daily ? n0(c.daily) : '—'}</td><td class="r num" style="color:${c.cpl30 > set.maxCplEgp ? 'var(--bad)' : 'inherit'}">${c.cpl30 ? n0(c.cpl30) : '—'}</td><td class="r">${canEdit() ? `<button class="btn sm" data-mx-status="${c.id}" data-to="${c.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'}" data-name="${esc(c.name)}">${c.status === 'ACTIVE' ? 'Pause' : 'Activate'}</button> ${c.daily ? `<button class="btn sm" data-mx-budget="${c.id}" data-name="${esc(c.name)}" data-cur="${c.daily}">Budget</button>` : ''}` : ''}</td></tr>`).join('')}</tbody></table></div>
+        <p class="small muted" style="margin-top:8px">Buttons create an action for owner approval. Activations and budget increases are refused when they would break the monthly cap, and increases are refused on campaigns above the max CPL.</p>` : '<div class="empty">No campaigns loaded.</div>'}
+      </section>
+      ${canEdit() ? `<section class="panel"><div class="panel-h"><h2>New lead campaign</h2><span class="small muted">Created paused; activating it is a separate approval</span></div>
+        <div class="grid g2"><label class="field"><span>Campaign name</span><input class="input" id="ncName" placeholder="EG | Malta PR | Leads | 2026-10"></label><label class="field"><span>Daily budget (EGP)</span><input class="input" id="ncBudget" type="number" min="100" value="1500"></label>
+        <label class="field"><span>Lead form</span><select class="input" id="ncForm">${m.forms.map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('') || '<option value="">No active lead forms found</option>'}</select></label>
+        <label class="field"><span>Approved design</span><select class="input" id="ncItem">${approvedDesigns.map((i) => `<option value="${esc(i.item_id)}">${esc(i.item_id)} · ${esc(i.topic || '')}</option>`).join('') || '<option value="">No approved static design yet</option>'}</select></label>
+        <label class="field"><span>Countries (comma separated)</span><input class="input" id="ncCountries" value="EG"></label><label class="field"><span>Ages</span><span class="row"><input class="input" id="ncAgeMin" type="number" value="28" style="width:80px"> to <input class="input" id="ncAgeMax" type="number" value="60" style="width:80px"></span></label></div>
+        <p class="small muted">The ad uses the design's image, Arabic caption and English headline.</p><button class="btn primary" id="ncGo">Propose campaign</button></section>` : ''}
+      <section class="panel"><div class="panel-h"><h2>Publishing</h2><span class="small muted">${mset.directPublish ? 'elevay.vip publishes approved posts at their time' : 'Manus publishes approved posts'}</span></div>
+        ${posts.length ? `<div class="table-wrap"><table><thead><tr><th>Item</th><th>Time (Cairo)</th><th>Channel</th><th>Status</th></tr></thead><tbody>${posts.map((i) => `<tr><td>${esc(i.item_id)} · ${esc(i.topic || '')}</td><td class="small">${fmtDT(i.publish && i.publish.datetime_cairo)}</td><td class="small">${esc((i.publish && i.publish.channel) || 'both')}</td><td>${statusPill(i.status)}${i.publish && i.publish.direct && i.publish.direct.error ? ` <span class="small" style="color:var(--bad)">${esc(i.publish.direct.error)}</span>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No approved posts yet.</div>'}</section>
+      ${owner ? `<section class="panel"><div class="panel-h"><h2>Connection and settings</h2><button class="btn sm" id="mxCheck">Check Meta connection</button></div>
+        <div id="mxChecks" class="small">${m.checks ? metaChecks(m.checks) : ''}</div>
+        <div class="stack small" style="gap:6px;margin-top:10px"><label class="row"><input type="checkbox" id="mxDirect" ${mset.directPublish ? 'checked' : ''}> Publish approved posts directly to Facebook and Instagram (instead of Manus)</label>
+        <label class="row"><input type="checkbox" id="mxInbox" ${mset.inbox !== false ? 'checked' : ''}> Check comments and messages every 10 minutes and draft replies</label>
+        <div><button class="btn sm" id="mxSave">Save</button></div></div></section>` : ''}
+      <section class="panel"><div class="panel-h"><h2>History</h2></div>${history.length ? `<div class="stack" style="gap:8px">${history.slice(0, 60).map(metaCard).join('')}</div>` : '<div class="empty">No actions yet.</div>'}</section>
+    </div>`;
+    const reload = async () => { await loadMeta(); drawMeta(el); };
+    const on = (sel, fn) => el.querySelectorAll(sel).forEach((b) => (b.onclick = () => fn(b)));
+    on('[data-mx-approve]', (b) => {
+      const id = b.dataset.mxApprove, ta = document.getElementById('mxt-' + id), bi = document.getElementById('mxb-' + id);
+      act(async () => { await api.req('POST', `meta/actions/${id}/approve`, { text: ta ? ta.value : undefined, daily_budget_egp: bi ? Number(bi.value) : undefined }); await reload(); }, 'Approved and done on Meta.');
+    });
+    on('[data-mx-reject]', (b) => act(async () => { await api.req('POST', `meta/actions/${b.dataset.mxReject}/reject`, {}); await reload(); }, 'Rejected.'));
+    on('[data-mx-status]', (b) => act(async () => { await api.req('POST', 'meta/actions', { kind: 'campaign_status', target_id: b.dataset.mxStatus, target_name: b.dataset.name, status_to: b.dataset.to }); await reload(); }, 'Action created. Approve it above.'));
+    on('[data-mx-budget]', (b) => { const v = prompt(`New daily budget for ${b.dataset.name} (EGP)`, b.dataset.cur); if (!v) return; act(async () => { await api.req('POST', 'meta/actions', { kind: 'campaign_budget', target_id: b.dataset.mxBudget, target_name: b.dataset.name, daily_budget_egp: Number(v) }); await reload(); }, 'Action created. Approve it above.'); });
+    const g = (id) => document.getElementById(id);
+    if (g('mxSync')) g('mxSync').onclick = () => act(async () => { const r = await api.req('POST', 'meta/inbox/sync', {}); await reload(); if (r.errors && r.errors.length) toast(r.errors.join(' · '), true); }, 'Inbox checked.');
+    if (g('mxCheck')) g('mxCheck').onclick = () => act(async () => { const r = await api.req('GET', 'meta/connection'); S.meta.checks = r.checks; g('mxChecks').innerHTML = metaChecks(r.checks); });
+    if (g('mxSave')) g('mxSave').onclick = () => act(() => api.saveSettings({ meta: { directPublish: g('mxDirect').checked, inbox: g('mxInbox').checked } }), 'Meta settings saved.');
+    if (g('ncGo')) g('ncGo').onclick = () => {
+      const item = S.data.items.find((i) => i.item_id === g('ncItem').value);
+      if (!item) return toast('Choose an approved design.', true);
+      act(async () => {
+        await api.req('POST', 'meta/actions', { kind: 'create_campaign', campaign: { name: g('ncName').value.trim(), daily_budget_egp: Number(g('ncBudget').value), form_id: g('ncForm').value, image_url: item.media.image_url, message: item.caption_ar, headline: (item.design && item.design.headline_en) || '', item_id: item.item_id, countries: g('ncCountries').value.split(',').map((x) => x.trim()).filter(Boolean), age_min: Number(g('ncAgeMin').value), age_max: Number(g('ncAgeMax').value) } });
+        await reload();
+      }, 'Campaign proposed. Approve it above.');
+    };
+  }
+  function metaChecks(c) {
+    const names = { page: 'Facebook Page', comments: 'Comments', messages: 'Messenger', instagram: 'Instagram', ads: 'Ad account', forms: 'Lead forms' };
+    return `<div class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(c).map(([k, v]) => `<span class="pill ${v.ok ? 'ok' : 'bad'}" title="${esc(v.detail)}">${esc(names[k] || k)}: ${esc(String(v.detail).slice(0, 80))}</span>`).join('')}</div>`;
+  }
+  function metaCard(a) {
+    const [pc, pl] = META_PILL[a.status] || ['', a.status];
+    const reply = ['reply_comment', 'reply_message'].includes(a.kind);
+    const editable = a.status === 'pending' && isOwner();
+    return `<div class="run"><div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><div><span class="pill ${pc}">${pl}</span> <strong>${esc(a.preview || a.kind)}</strong> <span class="small muted">#${a.id} · ${esc(a.created_by || '')} · ${ago(a.created_at)}${a.category ? ' · ' + esc(a.category) : ''}</span></div>${a.permalink ? `<a class="small" href="${esc(a.permalink)}" target="_blank" rel="noopener">Open post</a>` : ''}</div>
+      ${a.incoming ? `<div class="small" style="margin-top:6px"><span class="muted">They wrote:</span> <span dir="auto">${esc(a.incoming)}</span></div>` : ''}
+      ${reply ? (editable ? `<textarea class="input" id="mxt-${a.id}" rows="3" dir="auto" style="margin-top:6px">${esc(a.text || '')}</textarea>` : a.text ? `<div class="small" style="margin-top:6px"><span class="muted">Reply:</span> <span dir="auto">${esc(a.text)}</span></div>` : '') : ''}
+      ${a.kind === 'campaign_budget' && editable ? `<label class="row small" style="margin-top:6px">Daily budget (EGP) <input class="input" id="mxb-${a.id}" type="number" value="${esc(a.daily_budget_egp)}" style="width:110px"></label>` : ''}
+      ${a.kind === 'create_campaign' && a.campaign ? `<div class="small muted" style="margin-top:6px">${esc(a.campaign.countries.join(', '))} · ages ${a.campaign.age_min}–${a.campaign.age_max} · ${esc(a.campaign.headline || '')}</div>` : ''}
+      ${a.needs_human && a.reason ? `<div class="small" style="color:var(--warn);margin-top:6px">Needs a person: ${esc(a.reason)}</div>` : a.reason ? `<div class="small muted" style="margin-top:6px">${esc(a.reason)}</div>` : ''}
+      ${a.check && a.check.projected ? `<div class="small muted" style="margin-top:4px">Projected month-end spend ${n0(a.check.projected)} of ${n0(a.check.cap)} EGP</div>` : ''}
+      ${a.check && a.check.ok === false ? `<div class="small" style="color:var(--bad);margin-top:4px">${esc(a.check.reason)}</div>` : ''}
+      ${a.error ? `<div class="small" style="color:var(--bad);margin-top:4px">${esc(a.error)}</div>` : ''}
+      ${a.result ? `<div class="small muted" style="margin-top:4px">${esc(Object.entries(a.result).map(([k, v]) => k + ': ' + v).join(' · '))}${a.approved_by ? ' · approved by ' + esc(a.approved_by) : ''}</div>` : ''}
+      ${editable ? `<div class="row" style="margin-top:8px"><button class="btn sm primary" data-mx-approve="${a.id}">${reply ? 'Approve & send' : 'Approve & run'}</button><button class="btn sm ghost" data-mx-reject="${a.id}">Reject</button></div>` : a.status === 'pending' ? '<div class="small muted" style="margin-top:6px">Waiting for the owner.</div>' : ''}
+    </div>`;
+  }
   // ------------------------------------------------------------ manus bridge
   function viewManus(el) {
     const m = S.data.manus, jobs = S.data.jobs;
@@ -764,7 +978,7 @@ Auth        Authorization: Bearer &lt;MANUS_AGENT_TOKEN&gt;</div>
     const dis = owner ? '' : 'disabled';
     el.innerHTML = `<div class="stack" style="gap:16px">
       <section class="panel"><div class="panel-h"><h2>Autopublish gate</h2>${autopubPill()}</div>
-        <p style="max-width:70ch">Weeks 1–${set.manualWeeks} are manual approval only. After that, if cumulative first-pass approval is ${set.approvalThreshold * 100}% or higher, the owner can switch on autopublish for organic posts that pass QC and compliance. Budget increases, new campaigns, audience changes and flagged items always need approval.</p>
+        <p style="max-width:70ch">Weeks 1–${set.manualWeeks} are manual approval only. After that, if cumulative first-pass approval is ${set.approvalThreshold * 100}% or higher, autopilot switches on by itself (the first time). Then posts that pass QC and compliance, monthly plans, Higgsfield clips and Meta actions from the Friday plan and AI Studio run without approval, always inside the monthly cap and max CPL; actions that would break the cap are still refused. Any rejection, compliance flag or a rolling 4-week rate below ${set.killSwitchRollingThreshold * 100}% switches it off, and the owner switches it back on here.</p>
         <div class="grid g3" style="margin:12px 0"><div class="kpi"><span class="label">Weeks decided</span><span class="v">${st.weeksDone} / ${set.manualWeeks}</span></div><div class="kpi"><span class="label">Cumulative first-pass</span><span class="v">${pct(st.cumulative, 1)}</span></div><div class="kpi"><span class="label">Rolling 4 weeks</span><span class="v">${pct(st.rolling4, 1)}</span></div></div>
         ${ap.disabledReason && !ap.enabled ? `<p class="small" style="color:var(--warn)">Last turned off: ${esc(ap.disabledReason)}</p>` : ''}
         <p class="small muted">Kill switch: turns off on any rejection, any compliance flag, or rolling approval below ${set.killSwitchRollingThreshold * 100}%.</p>

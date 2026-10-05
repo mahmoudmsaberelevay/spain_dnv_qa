@@ -82,6 +82,55 @@ const module = { exports: {} };
   function countWords(text) {
     return (String(text || '').trim().match(/[^\s]+/gu) || []).length;
   }
+  // ---------- Design rules (ELEVAY creative direction) ----------
+  // Remove negated phrases ("no passports", "without text", "do not draw the logo") before
+  // looking for forbidden subjects, so instructions that forbid them are not flagged.
+  function affirmative(text) {
+    return String(text || '').toLowerCase()
+      .replace(/\b(no|without|never|avoid|not|nor|exclude|excluding|free of)\b[^.;:\n]*/g, ' ')
+      .replace(/\bdo not\b[^.;:\n]*|\bdon't\b[^.;:\n]*/g, ' ');
+  }
+  const FORBIDDEN_VISUAL = [
+    { id: 'passport', re: /passports?|visa stamps?/, label: 'Passport or visa imagery' },
+    { id: 'flag', re: /\bflags?\b/, label: 'Flags as visual objects' },
+    { id: 'seal', re: /\b(seals?|stamps?|government documents?|certificates?)\b/, label: 'Seals, stamps or official-looking documents' },
+    { id: 'portal', re: /\b(portals?|sculptures?|museum|installations?|immigration symbols?|cross-sections?)\b/, label: 'Portals, sculptures, museum installations or abstract immigration symbols' },
+    { id: 'contact', re: /\b(qr codes?|phone numbers?|whatsapp|email address|urls?|website address)\b/, label: 'QR codes or contact details' },
+    { id: 'headwear', re: /\b(keffiyeh|kufiya|ghutra|shemagh|turbans?|agal|igal)\b/, label: 'Traditional headwear not requested' },
+    { id: 'handshake', re: /\bhandshakes?\b/, label: 'Staged business handshake' },
+    { id: 'logo_ai', re: /\b(draw|draws|drawn|render|renders|rendered|include|includes|add|adds|show|shows|place|places|with|featuring|feature)\s+(the\s+|an?\s+|its\s+)?(elevay\s+|official\s+|company\s+)?(logo|brand mark|wordmark|watermark)\b|\blogo (on|printed|engraved)\b/, label: 'Asks the image model to draw a logo (the official logo is composited afterwards)' },
+  ];
+  const SUIT_RE = /\b(suits?|suited|blazers?|tuxedos?|business attire|formal wear|businessman|businesswoman|executive)\b/;
+  const SHOES_RE = /\b(shoes|loafers|oxfords|brogues|derbies|heels|pumps|footwear|boots)\b/;
+  const BAD_SHOES_RE = /\b(slippers|flip[- ]?flops|sandals|sneakers|trainers|house shoes)\b/;
+  const PEOPLE_RE = /\b(man|men|woman|women|person|people|family|couple|professional|child|children|kids?|father|mother|son|daughter|businessman|businesswoman|executive|entrepreneur|retiree|investor|traveller|traveler)\b/;
+  const ARAB_RE = /\b(arab|middle[- ]eastern|egyptian|gulf|emirati|saudi|levantine)\b/;
+  const ARABIC_PLACE_NAMES = /إسبانيا|اسبانيا|مالطا|البرتغال|اليونان|كندا|بريطانيا|المملكة المتحدة|إيليفاي|إليفاي|ايليفاي|اليفاي|غرينادا|جرينادا|دومينيكا|سانت لوسيا|أنتيغوا/u;
+
+  /** Design-rule checks for one image or keyframe prompt. */
+  function checkVisualPrompt(prompt, add, prefix, labelPrefix) {
+    const raw = String(prompt || '').toLowerCase();
+    const yes = affirmative(prompt);
+    for (const f of FORBIDDEN_VISUAL) add(`${prefix}_${f.id}`, `${labelPrefix}: no ${f.label.toLowerCase()}`, !f.re.test(yes));
+    if (PEOPLE_RE.test(yes)) {
+      add(`${prefix}_arab`, `${labelPrefix}: people are Arab / Middle Eastern`, ARAB_RE.test(raw));
+      add(`${prefix}_wardrobe`, `${labelPrefix}: complete elegant outfit described`, /\b(cloth|outfit|wear|dressed|attire|suit|dress|shirt|linen|tailored|elegant)\w*/.test(raw), 'warn');
+    }
+    if (SUIT_RE.test(yes)) add(`${prefix}_footwear`, `${labelPrefix}: suits/business wear come with polished formal shoes or loafers`, SHOES_RE.test(yes) && !BAD_SHOES_RE.test(yes));
+    else if (BAD_SHOES_RE.test(yes) && /\b(formal|office|meeting|consultation)\b/.test(yes)) add(`${prefix}_footwear`, `${labelPrefix}: no casual footwear in formal scenes`, false);
+  }
+
+  /** English design text must be sentence case (not ALL CAPS, not Title Case). */
+  function isSentenceCase(text) {
+    const words = String(text || '').trim().split(/\s+/).filter((w) => /[A-Za-z]/.test(w));
+    if (!words.length) return true;
+    const letters = words.join('').replace(/[^A-Za-z]/g, '');
+    if (letters.length > 3 && letters === letters.toUpperCase()) return false;
+    const small = /^(a|an|the|and|or|of|in|on|to|for|with|at|by|your|our|from)$/i;
+    const significant = words.slice(1).filter((w) => !small.test(w) && !/^[A-Z0-9]{2,}$/.test(w) && !/^(ELEVAY|Spain|Malta|Portugal|Greece|Lisbon|Madrid|Barcelona|Europe|European|Schengen|Canada|UK|Caribbean|Athens|Valletta|Mediterranean|Golden|D7|D8|D2)$/.test(w.replace(/[^A-Za-z0-9]/g, '')));
+    return words.length < 3 || significant.length < 1 || !significant.every((w) => /^[A-Z]/.test(w));
+  }
+
   function hasArabic(text) { return /[\u0600-\u06FF]/.test(String(text || '')); }
 
   /**
@@ -113,22 +162,33 @@ const module = { exports: {} };
       add('headline_english', 'Design text is English only', !hasArabic(h));
       const fmt = brief.design?.format || '';
       add('static_format', 'Static format is 1080x1080 or 1080x1350 (4:5)', /1080x1080|1080x1350/.test(fmt), 'warn');
-      const prompt = (brief.design?.image_prompt || '').toLowerCase();
+      if (h) {
+        add('headline_case', 'Design text is in sentence case (not ALL CAPS or Title Case)', isSentenceCase(h));
+        add('headline_length', 'Design text is short: up to 8 words / 60 characters', h.length <= 60 && h.trim().split(/\s+/).length <= 8, 'warn');
+      }
+      const prompt = brief.design?.image_prompt || '';
       if (prompt) {
-        add('prompt_no_logo', 'Image prompt tells the model not to draw the logo', /no logo|without (the )?logo|do not (draw|render|include) (the )?logo/.test(prompt), 'warn');
-        add('prompt_people', 'Image prompt casts Arab / Middle Eastern people', /arab|middle eastern|no people|without people/.test(prompt), 'warn');
-        add('prompt_no_passport', 'Image prompt avoids passports and flags as hero objects', !/passport|flag/.test(prompt.replace(/no (passports?|flags?)[^.]*/g, '')), 'block');
+        add('prompt_no_logo', 'Image prompt tells the model not to draw the logo', /no logo|without (the )?logo|do not (draw|render|include) (the )?logo/i.test(prompt), 'warn');
+        checkVisualPrompt(prompt, add, 'prompt', 'Image');
       }
     }
     if (brief.type === 'reel') {
       const sb = brief.reel?.storyboard || [];
       add('reel_clips', `Reel has 4 clips of 5 s (now ${sb.length})`, sb.length === 4, 'warn');
       add('reel_duration', 'Reel totals 23 s (4×5 s + 3 s white logo outro)', Number(brief.reel?.duration_s) === 23, 'warn');
+      sb.forEach((c, i) => {
+        if (c.keyframe_prompt) checkVisualPrompt(c.keyframe_prompt, add, `clip${i + 1}`, `Clip ${i + 1} keyframe`);
+        const motion = affirmative(c.motion_prompt);
+        if (c.motion_prompt) add(`clip${i + 1}_motion_text`, `Clip ${i + 1} motion: no on-screen text, captions or logos`, !/\b(text|caption|captions|title|titles|subtitle|subtitles|logo|lettering|typography|sign reading)\b/.test(motion));
+        if (c.motion_prompt) add(`clip${i + 1}_motion_style`, `Clip ${i + 1} motion: restrained and cinematic (no flashy effects)`, !/\b(whip pan|spin|glitch|zoom burst|bounce|flash|strobe|parallax|warp|morph)\w*/.test(motion), 'warn');
+      });
       const mode = brief.talent?.mode || 'none';
       if (mode !== 'none') {
         add('voice_source', 'Voice comes from the Elevay.vip voice clone', (brief.talent?.voice_source || '') === 'elevay_vip_module');
         const spoken = sb.map((c) => c.spoken_text_ar || '').join(' ');
         for (const r of TERM_RULES) if (r.re.test(spoken)) add('spoken_' + r.id, 'Script: ' + r.label, false, r.severity);
+        add('spoken_latin', 'Script has no English words other than country names and ELEVAY', !/[A-Za-z]/.test(spoken.replace(/\b(ELEVAY|Spain|Malta|Portugal|Greece|Canada|United Kingdom|UK|Grenada|Dominica|Saint Lucia|St\. Lucia|Saint Kitts and Nevis|St\. Kitts and Nevis|Antigua and Barbuda|Antigua|Barbuda|Caribbean)\b/g, '')));
+        add('spoken_english_names', 'Script writes country names and ELEVAY in English letters (e.g. Spain, Malta, ELEVAY)', !ARABIC_PLACE_NAMES.test(spoken));
         const perClip = sb.map((c) => countWords(c.spoken_text_ar || ''));
         add('spoken_length', 'Script is ~8–13 Arabic words per clip', perClip.every((n) => n === 0 || (n >= 6 && n <= 15)), 'warn');
       }
@@ -224,6 +284,7 @@ const module = { exports: {} };
   function fmt(n) { return Math.round(Number(n || 0)).toLocaleString('en-US'); }
 
   return {
+    affirmative, isSentenceCase,
     DEFAULT_SETTINGS, TERM_RULES, CONTACT_RULES, DISCLAIMERS, PILLARS, PROGRAMS, STATUSES, CHANGE_SCOPES,
     checkBrief, classifyChange, approvalStats, guardrails, countWords, hasArabic, weekOf,
   };

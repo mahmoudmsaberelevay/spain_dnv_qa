@@ -101,10 +101,10 @@ ${DISC} تطبق الشروط والأحكام.
       }),
       brief(`${W}-02`, 'reel', 'Working remotely from Spain', 'Global Mobility', 'Spain Digital Nomad Residency', captions.spainDnv, {
         reel: reel([
-          ['Arab professional woman in a tailored navy blazer at a Madrid café terrace with a laptop, golden hour', 'Slow push-in, steam rising from coffee'],
-          ['Same woman walking past Gran Vía architecture, full outfit and formal shoes visible', 'Tracking shot, gentle parallax'],
-          ['Consultation room with an ELEVAY-style advisor reviewing documents (no passports visible)', 'Static with subtle rack focus'],
-          ['Same woman on a balcony at sunset overlooking Madrid rooftops', 'Slow pull-back, warm light'],
+          ['Arab professional woman in a tailored navy blazer, trousers and polished loafers at a Madrid café terrace with a laptop, golden hour', 'Slow push-in, steam rising from coffee'],
+          ['Same Arab woman walking past Gran Vía architecture, full outfit and formal shoes visible', 'Tracking shot, steady and smooth'],
+          ['Consultation room with an Arab advisor in an elegant suit and polished oxfords reviewing plans (no passports visible)', 'Static with subtle rack focus'],
+          ['Same Arab woman in the same tailored outfit on a balcony at sunset overlooking Madrid rooftops', 'Slow pull-back, warm light'],
         ]),
         publish: { channel: 'both', datetime_cairo: '2026-10-12T21:00' },
       }),
@@ -115,7 +115,7 @@ ${DISC} تطبق الشروط والأحكام.
       brief(`${W}-04`, 'reel', 'What a premium advisory process looks like', 'Premium Service', 'Evergreen / multi-program', captions.family, {
         talent: { mode: 'influencer', influencer_id: 'higgsfield-influencer-default', voice_source: 'elevay_vip_module', speech_language: 'egyptian_arabic' },
         reel: reel([
-          ['ELEVAY AI influencer in a charcoal suit in a bright modern office', 'Medium shot, subtle push-in', 'كل قرار كبير محتاج خطة واضحة من الأول'],
+          ['Arab AI influencer in a charcoal suit and polished oxfords in a bright modern office', 'Medium shot, subtle push-in', 'كل قرار كبير محتاج خطة واضحة من الأول'],
           ['Influencer seated at a consultation table, notes in hand', 'Over-the-shoulder, slow arc', 'بنبدأ نسمعك ونفهم أهدافك وأهداف عيلتك كويس'],
           ['Influencer gesturing at a tablet with a map of Europe', 'Close-up on hands then face', 'وبعدين نقارن البرامج المتاحة بالمعلومة الرسمية المحدثة'],
           ['Influencer smiling at a window overlooking the city', 'Slow pull-back', 'وده كله بشفافية ومن غير وعود مش واقعية'],
@@ -131,9 +131,9 @@ ${DISC} تطبق الشروط والأحكام.
         talent: { mode: 'voiceover_elevay_vip', influencer_id: '', voice_source: 'elevay_vip_module', speech_language: 'egyptian_arabic' },
         reel: reel([
           ['Arab family having breakfast on a Lisbon balcony', 'Slow dolly in', 'تخيل صباحك على شاطئ الأطلسي مع عيلتك'],
-          ['Children in school uniforms walking to an international school', 'Tracking shot', 'تعليم دولي لأولادك في بيئة آمنة وهادية'],
+          ['Arab children in smart school uniforms walking to an international school', 'Tracking shot', 'تعليم دولي لأولادك في بيئة آمنة وهادية'],
           ['Parents reviewing plans with an advisor', 'Static, rack focus', 'الخطة الصح بتبدأ بمراجعة دخلك وأهدافك بدقة'],
-          ['Family walking along the Tagus riverfront at sunset', 'Wide pull-back', 'خلينا نرتب الخطوة الجاية سوا بهدوء ووضوح'],
+          ['Arab family in elegant casual clothing walking along the Tagus riverfront at sunset', 'Wide pull-back', 'خلينا نرتب الخطوة الجاية سوا بهدوء ووضوح'],
         ]),
         publish: { channel: 'both', datetime_cairo: '2026-10-16T21:00' },
       }),

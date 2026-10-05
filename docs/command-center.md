@@ -22,6 +22,56 @@ A separate section of elevay.vip where the marketing team approves the work Manu
 
 All Meta calls are GET. It reads `leads`, `lead_activities` and `lead_integrations` and writes nothing to them.
 
+## AI Studio (Claude ⇄ OpenAI ⇄ Higgsfield ⇄ Manus)
+
+The **AI Studio** tab (`server/commandCenter/ai.ts`) runs requests through the models. Claude is the conductor: it routes a free request, writes briefs, storyboards and plans, fixes brand blocks once, and checks the generated visuals. Every instruction and answer is kept in the run's "Conversation between the models".
+
+| Request | Steps |
+|---|---|
+| Static post | Claude brief → ELEVAY rules check → **OpenAI** design (approval: marketer/owner) → official logo composited → Claude visual QC → weekly plan |
+| Reel | Claude storyboard + Egyptian Arabic voice-over → rules check → **OpenAI** 4 keyframes → Claude QC → **Higgsfield** 4 × 5 s clips (owner approval until autopilot) → clip QC → **ELEVAY voice clone** → final 23 s edit with logo outro → final QC → weekly plan |
+| Monthly plan from data | Claude reads the live Meta + CRM report → monthly plan for owner approval |
+| Meta / Manus task | Claude writes Manus instructions → owner approval when it changes Meta → **Manus** job → Claude summary |
+| Question | Claude answers from the live data |
+
+Keys used on the server: `ANTHROPIC_API_KEY` (optional `ELEVAY_CLAUDE_MODEL`), `OPENAI_API_KEY`, `HF_API_KEY`; Manus through the existing job queue. Runs are stored in `ec_ai_runs`; waiting runs resume every 45 s, and a step interrupted by a restart is marked failed for a manual retry (paid work is never re-run silently). Manus can read runs (`GET /agent/ai/runs`) and start one (`POST /agent/ai/runs` with `kind` and `request`); paid steps still wait for a person.
+
+### Autopilot
+
+- **Weekly**: every Saturday from 09:00 Cairo, Claude plans next week's 7 posts (4 static + 3 reels) from the live Meta + CRM data, the approved monthly plan and verified news, then starts their production as items 01–07. **Monthly**: from the 25th, Claude drafts next month's plan. Buttons in AI Studio start either immediately.
+- **Approvals**: OpenAI never waits. During the first weeks the owner approves Higgsfield clips, Meta-changing Manus tasks, posts and plans. The first time the 6-week / 90% first-pass gate is reached, autopilot switches on by itself: clips, Meta tasks (inside the cap and max CPL), Friday action-plan items (cap-breaking ones are still refused), posts that pass QC and compliance, and monthly plans then go ahead automatically. Auto-approved posts don't count toward the human first-pass rate. Any rejection, compliance flag or rolling rate below 85% switches it off; the owner switches it back on in Settings.
+- **Runs started by Manus** are automatic. A reel limit per 7 days (default 6, Settings in AI Studio) caps Higgsfield spend.
+
+### Strict design rules
+
+Every design goes through three layers; nothing that fails reaches autopilot or publishing:
+
+1. **Rules check before any paid generation** (`rules.js`, shared with the dashboard and applied to Manus briefs too): sentence-case English design text; image and keyframe prompts with Arab/Middle Eastern people, complete outfits and formal shoes with suits; no passports, flags, seals, documents, portals, sculptures, QR/contact details, traditional headwear, handshakes or AI-drawn logos (negated phrases like "no passports" are allowed); reel motion prompts without on-screen text or flashy effects; voice-over names in English letters. Claude fixes blocks once, otherwise the run stops.
+2. **Server-side composition**: statics are 1080×1350 (4:5, default) or 1080×1080, full-bleed photograph, Apex Sans headline, official logo in the top-left corner; OpenAI never draws text or the logo.
+3. **Strict Claude review**: the finished static (or each reel keyframe) is checked against the delivery checklist; failing designs are redone with Claude's fix (only the failing keyframes), up to 2 times. Reel clips get a frame-by-frame review (start, middle, end of each clip) with one automatic re-generation of failing clips. Still failing → the item goes to the owner as **QC failed**, is never auto-approved, and a reel with failing keyframes never reaches the paid Higgsfield step.
+
+### Reel voice-over and final edit
+
+After the clips pass review: Claude's script must be natural Egyptian Arabic (checked on the whole script), with only country names and ELEVAY in English letters. The **ELEVAY voice clone configured on elevay.vip** (`ELEVAY_ARABIC_VOICE_DEFAULTS`, ElevenLabs `eleven_v3`, `[thoughtful]` delivery) records one take per scene. The final edit (`composeElevayReel`) is 1080×1920 at 30 fps, about 23 s: four 5-second clips with 0.3 s cross-dissolves, each scene's voice starting with its scene and finishing before the outro (a line longer than 5 s is sped up at most 12%, otherwise Claude shortens it once and that scene is re-recorded), then 3 s of the official logo static and centred on white with no narration. Optional licensed music: set `ELEVAY_REEL_MUSIC_URLS` (comma-separated MP3 links); it is ducked under the voice and fades over the outro. Claude reviews 6 frames of the final reel (one per scene plus the outro); a failure marks the reel QC failed. Under autopilot, a reel that passes every review is approved automatically like a static.
+
+### Approved sources
+
+`server/commandCenter/assets/` (copied to `dist/command-center-assets/` on build):
+- `knowledge/spain-digital-nomad.md`, `knowledge/malta-permanent-residence.md`: owner-approved program Q&A. `knowledge.ts` turns them into fact sheets for Claude; program figures may only come from these sources, and other programs are described without numbers.
+- `creative/*.md`: ELEVAY creative direction (brand identity, design, video and audio, delivery checklist), condensed into the rules every model receives; the checklist drives Claude's visual QC.
+- `elevay-logo.png` (official logo) and `ApexSansBook.ttf` (official font): statics are composed server-side (photo + Apex Sans headline + exact logo); OpenAI never draws text or the logo.
+
+## Meta tab (replies, publishing, campaigns)
+
+`server/commandCenter/meta.ts`. Every change is an action in `ec_meta_actions` and runs only after the **owner approves it** in the Meta tab, or automatically once autopilot is on (6-week / 90% gate).
+
+- **Replies**: every 10 minutes (or *Check comments & messages now*) new Facebook and Instagram comments on recent posts and Messenger / Instagram direct messages (24-hour window) are read; Claude drafts a reply in the person's language using the approved program facts. Public replies never include prices, personal details, phone numbers or links; private replies answer from approved facts and ask for a name and call time. Spam is skipped. Complaints, sensitive or unclear messages are marked *needs a person* and are never sent automatically. The owner can edit a reply before sending; edits are checked against the ELEVAY terminology rules.
+- **Publishing**: with *Publish approved posts directly* on, approved posts are published at their Cairo time to the Facebook Page (photo or video) and Instagram (image, or reel via a processed container). The item approval is the approval; Manus is no longer asked to schedule those posts.
+- **Campaigns**: pause/activate and daily-budget changes from the Campaigns table, new lead campaigns from an approved design and an active lead form (campaign, ad set, creative and ad are created **paused**), and campaign requests in AI Studio (Claude turns them into actions). Activations and budget increases are refused when projected month-end spend (month-to-date + active daily budgets × days left) would pass the cap; increases are refused on campaigns whose 30-day CPL is above the max.
+- **Manus** can propose campaign actions (`POST /agent/meta/actions`); they follow the same approval and guardrails.
+
+Meta permissions needed: Page token with `pages_manage_posts`, `pages_manage_engagement`, `pages_read_engagement`, `pages_read_user_content`, `pages_messaging`, `instagram_basic`, `instagram_content_publish`, `instagram_manage_comments`, `instagram_manage_messages`, `read_insights`; system-user token with `ads_management` and `ads_read`. *Check Meta connection* shows what works.
+
 ## Access
 
 People sign in with their elevay.vip accounts. Access comes from the Agentic Marketing roles:
@@ -64,6 +114,7 @@ Optional push mode: set the secret `ELEVAY_COMMAND_CENTER_MANUS_API_KEY` (and op
 ## Files
 
 - `server/commandCenter/routes.ts`: routes, storage, access
+- `server/commandCenter/ai.ts`: AI Studio orchestrator and provider adapters (`ai.test.ts`)
 - `server/commandCenter/live.ts`: live Meta + CRM report and 6-month analysis (`live.test.ts`)
 - `server/commandCenter/{rules,engine,demo-data,manus}.ts`: generated from `client/public/admin-cc/shared/*.js` and `manus.src.js` by `node scripts/build-command-center-modules.mjs`; the browser and the server run the same rules
 - `client/public/admin-cc/`: dashboard (plain JS + CSS)

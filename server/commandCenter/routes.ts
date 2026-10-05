@@ -28,6 +28,15 @@ import E from "./engine";
 import Manus from "./manus";
 import { PAGE_HTML } from "./page";
 import { buildLiveReport } from "./live";
+import { createOrchestrator, makeProviders, PIPELINES, planningWeek } from "./ai";
+import { PROGRAMS, assetPath, assetText } from "./knowledge";
+import { createMetaHub, META_KINDS, cleanMetaAction as cleanMeta } from "./meta";
+const cleanMetaAction = (b) => cleanMeta(b, R);
+function sourcesStatus() {
+  const has = (f) => { try { assetPath(f); return true; } catch { return false; } };
+  return { programs: PROGRAMS.map((p) => ({ name: p.name, loaded: !!assetText(p.file) })), creative: ["brand-identity", "brand-and-design", "video-and-audio", "delivery-checklist"].map((n) => ({ name: n, loaded: !!assetText(`creative/${n}.md`) })), logo: has("elevay-logo.png"), font: has("ApexSansBook.ttf") };
+}
+const isoWeekOf = (ms: number) => planningWeek(ms - 2 * 86400000); // ISO week containing ms
 import { sdk } from "../_core/sdk";
 import { COOKIE_NAME } from "@shared/const";
 import { isOwner } from "../permissionsRouter";
@@ -131,6 +140,10 @@ async function mutate(ctx, fn) {
     const r = await fn(state);
     if (r && r.ok === false) return r;
     E.killSwitchCheck(state);
+    if (state.settings.meta?.directPublish) {
+      // elevay.vip publishes approved posts itself, so Manus must not schedule them too.
+      for (const j of state.jobs) if (j.type === "schedule_post" && j.status === "pending") E.setJobStatus(state, j.id, "done", { result: { handled_by: "elevay.vip direct publishing" } }, "system");
+    }
     if (await saveState(state, snap)) { ctx.changed = true; return r; }
     await new Promise((res) => setTimeout(res, 40 + crypto.randomInt(120)));
   }
@@ -264,7 +277,9 @@ route("POST", "/jobs/:id/retry", "marketer", (ctx) => mutate(ctx, (st) => {
   return E.setJobStatus(st, job.id, "pending", {}, ctx.user.email);
 }).then(fromResult));
 route("PUT", "/settings", "owner", (ctx) => mutate(ctx, (st) => {
-  const allowed = ["monthlyAdCapEgp", "maxCplEgp", "targetCplEgp", "cplBreachDays", "cplBreachMinSpendEgp", "approvalThreshold", "killSwitchRollingThreshold", "manualWeeks", "approvalChannel", "targets"];
+  const allowed = ["monthlyAdCapEgp", "maxCplEgp", "targetCplEgp", "cplBreachDays", "cplBreachMinSpendEgp", "approvalThreshold", "killSwitchRollingThreshold", "manualWeeks", "approvalChannel", "targets", "studio", "meta"];
+  if ("meta" in ctx.body) ctx.body.meta = { directPublish: ctx.body.meta?.directPublish === true, inbox: ctx.body.meta?.inbox !== false };
+  if ("studio" in ctx.body) ctx.body.studio = { autoplan: ctx.body.studio?.autoplan !== false, reelLimitPerWeek: Math.max(0, Math.min(30, Math.round(Number(ctx.body.studio?.reelLimitPerWeek ?? 6)))) };
   if (Number(ctx.body.monthlyAdCapEgp) > R.DEFAULT_SETTINGS.monthlyAdCapEgp && !ctx.body.confirmRaiseCap) return { ok: false, error: "Raising the monthly cap above 200,000 EGP needs confirmRaiseCap: true." };
   for (const k of allowed) if (k in ctx.body) st.settings[k] = ctx.body[k];
   E.audit(st, ctx.user.email, "settings.updated", null, Object.keys(ctx.body).join(", "));
@@ -318,6 +333,83 @@ route("POST", "/live/replan", "marketer", async (ctx) => {
   }, ctx.user.email) })).then(fromResult);
 });
 route("GET", "/agent/live", "agent", async (ctx) => ok(await liveReport(ctx.query.refresh === "1")));
+
+// ------------------------------------------------------------------ AI Studio (Claude ⇄ OpenAI ⇄ Higgsfield ⇄ Manus)
+let studioPromise = null;
+function studio() {
+  if (!studioPromise) studioPromise = (async () => {
+    const o = createOrchestrator({ q, mutate, loadState, liveReport, providers: makeProviders(), E, R, meta: await metaHub() });
+    await o.ensureTable();
+    return o;
+  })().catch((e) => { studioPromise = null; throw e; });
+  return studioPromise;
+}
+const STUDIO_KINDS = Object.keys(PIPELINES);
+function providerStatus(lastAgentSeen) {
+  const has = (k) => !!process.env[k];
+  return {
+    claude: { role: "Conductor: routes requests, writes briefs, storyboards and plans, checks visuals", ready: has("ANTHROPIC_API_KEY"), key: "ANTHROPIC_API_KEY", model: process.env.ELEVAY_CLAUDE_MODEL || "claude-sonnet-4-6" },
+    openai: { role: "Static designs and reel keyframes", ready: has("OPENAI_API_KEY"), key: "OPENAI_API_KEY" },
+    higgsfield: { role: "4 × 5 s reel clips from the keyframes", ready: has("HF_API_KEY"), key: "HF_API_KEY" },
+    elevenlabs: { role: "ELEVAY voice clone for Egyptian Arabic voice-overs", ready: has("ELEVENLABS_API_KEY"), key: "ELEVENLABS_API_KEY" },
+    manus: { role: "Meta and other connected platforms, through the job queue", ready: !!lastAgentSeen || has("ELEVAY_COMMAND_CENTER_MANUS_API_KEY"), lastSeen: lastAgentSeen },
+  };
+}
+route("GET", "/ai/providers", "team", async () => ok({ ok: true, sources: sourcesStatus(), providers: providerStatus(await kvGet("last_agent_seen")), pipelines: Object.fromEntries(STUDIO_KINDS.map((k) => [k, { label: PIPELINES[k].label, steps: PIPELINES[k].steps().map((st) => ({ provider: st.provider, title: st.title, gate: st.gate || null })) }])) }));
+route("POST", "/ai/providers/test", "owner", async () => ok({ ok: true, results: await (await studio()).test() }));
+route("GET", "/ai/runs", "team", async () => ok({ ok: true, runs: await (await studio()).list(40) }));
+route("GET", "/ai/runs/:id", "team", async (ctx) => { const r = await (await studio()).get(Number(ctx.params.id)); return r ? ok({ ok: true, run: r }) : fail(404, "Run not found"); });
+route("POST", "/ai/runs", "marketer", async (ctx) => {
+  const kind = STUDIO_KINDS.includes(ctx.body.kind) ? ctx.body.kind : "request";
+  const options = { program: String(ctx.body.program || "").slice(0, 80), datetime_cairo: String(ctx.body.datetime_cairo || "").slice(0, 16), week: /^\d{4}-W\d{2}$/.test(ctx.body.week || "") ? ctx.body.week : undefined };
+  try { return ok({ ok: true, run: await (await studio()).create({ kind, request: ctx.body.request, options, user: ctx.user }) }); } catch (e) { return fail(400, e.message); }
+});
+const studioAct = (fn) => async (ctx) => { try { await fn(await studio(), ctx); return ok({ ok: true }); } catch (e) { return fail(400, e.message); } };
+route("POST", "/ai/runs/:id/steps/:n/approve", "marketer", studioAct((o, ctx) => o.approve(Number(ctx.params.id), ctx.params.n, ctx.user)));
+route("POST", "/ai/runs/:id/retry", "marketer", studioAct((o, ctx) => o.retry(Number(ctx.params.id), ctx.user)));
+route("POST", "/ai/runs/:id/cancel", "marketer", studioAct((o, ctx) => o.cancel(Number(ctx.params.id), ctx.user)));
+route("GET", "/ai/autopilot", "team", async () => {
+  const { state } = await loadState();
+  const a = R.approvalStats(state.items, state.settings);
+  return ok({ ok: true, autopublish: state.settings.autopublish, approval: { weeksDone: a.weeksDone, cumulative: a.cumulative, rolling4: a.rolling4, gateEligible: a.gateEligible, manualWeeks: state.settings.manualWeeks, threshold: state.settings.approvalThreshold }, studio: { autoplan: state.settings.studio?.autoplan !== false, reelLimitPerWeek: Number(state.settings.studio?.reelLimitPerWeek ?? 6) }, lastWeekly: await kvGet("autoplan_last_week") });
+});
+route("POST", "/ai/autoplan/weekly", "marketer", async (ctx) => {
+  const week = /^\d{4}-W\d{2}$/.test(ctx.body.week || "") ? ctx.body.week : ctx.body.which === "this" ? isoWeekOf(Date.now()) : ctx.body.which === "next" ? isoWeekOf(Date.now() + 7 * 86400000) : undefined;
+  try { const run = await (await studio()).startWeekly(week, ctx.user); return ok({ ok: true, run }); } catch (e) { return fail(400, e.message); }
+});
+route("POST", "/ai/autoplan/monthly", "marketer", async (ctx) => {
+  const d = new Date(); d.setUTCMonth(d.getUTCMonth() + 1, 1);
+  const month = /^\d{4}-\d{2}$/.test(ctx.body.month || "") ? ctx.body.month : d.toISOString().slice(0, 7);
+  try { const run = await (await studio()).startMonthly(month + (ctx.body.again ? "-" + Date.now() : ""), ctx.user); return ok({ ok: true, run }); } catch (e) { return fail(400, e.message); }
+});
+// Manus can ask the studio too (e.g. Claude analysis or a new design). Its runs are automatic (weekly reel limit still applies).
+route("GET", "/agent/ai/runs", "agent", async () => ok({ ok: true, runs: await (await studio()).list(40) }));
+route("POST", "/agent/ai/runs", "agent", async (ctx) => {
+  const kind = STUDIO_KINDS.includes(ctx.body.kind) ? ctx.body.kind : "request";
+  try { return ok({ ok: true, run: await (await studio()).create({ kind, request: ctx.body.request, options: { auto: true }, user: { email: "manus", role: "marketer" } }) }); } catch (e) { return fail(400, e.message); }
+});
+
+// ------------------------------------------------------------------ Meta actions (replies, publishing, campaigns)
+let metaPromise = null;
+function metaHub() {
+  if (!metaPromise) metaPromise = (async () => {
+    const m = createMetaHub({ q, mutate, loadState, E, R, providers: makeProviders() });
+    await m.ensureTables();
+    return m;
+  })().catch((e) => { metaPromise = null; throw e; });
+  return metaPromise;
+}
+const metaAct = (fn) => async (ctx) => { try { return ok({ ok: true, ...(await fn(await metaHub(), ctx)) }); } catch (e) { return fail(400, e.message); } };
+route("GET", "/meta/actions", "team", metaAct(async (m, ctx) => ({ actions: await m.list({ status: ctx.query.status || undefined, limit: 150 }), kinds: META_KINDS })));
+route("POST", "/meta/actions", "marketer", metaAct(async (m, ctx) => ({ action: await m.enqueue(cleanMetaAction(ctx.body), ctx.user.email) })));
+route("POST", "/meta/actions/:id/approve", "owner", metaAct(async (m, ctx) => ({ action: await m.approve(Number(ctx.params.id), ctx.user, { text: ctx.body.text, daily_budget_egp: ctx.body.daily_budget_egp }) })));
+route("POST", "/meta/actions/:id/reject", "owner", metaAct(async (m, ctx) => { await m.reject(Number(ctx.params.id), ctx.user, String(ctx.body.reason || "")); return {}; }));
+route("POST", "/meta/inbox/sync", "marketer", metaAct(async (m) => m.syncInbox()));
+route("GET", "/meta/connection", "owner", metaAct(async (m) => ({ checks: await m.checkConnection() })));
+route("GET", "/meta/forms", "team", metaAct(async (m) => ({ forms: await m.leadForms() })));
+route("GET", "/meta/campaigns", "team", metaAct(async (m) => { const s = await m.adsSnapshot(); return { campaigns: s.campaigns.map((c) => ({ ...c, cpl30: s.cpl[c.id] ?? null })), mtd: s.mtd, dailyTotal: s.dailyTotal }; }));
+route("GET", "/agent/meta/actions", "agent", metaAct(async (m, ctx) => ({ actions: await m.list({ status: ctx.query.status || undefined, limit: 100 }) })));
+route("POST", "/agent/meta/actions", "agent", metaAct(async (m, ctx) => ({ action: await m.enqueue(cleanMetaAction(ctx.body), "manus") })));
 
 route("GET", "/agent/ping", "agent", async () => ok({ ok: true, time: new Date().toISOString() }));
 route("GET", "/agent/summary", "agent", async () => { const { state } = await loadState(); return ok({ ok: true, settings: state.settings, summary: E.summary(state) }); });
@@ -418,6 +510,13 @@ export function registerCommandCenterRoutes(app: Express) {
     res.type("html").send(PAGE_HTML);
   });
   app.all(BASE + "/api/*", handle);
+  // Resume AI Studio runs that wait on Higgsfield clips or Manus jobs.
+  const t = setInterval(() => {
+    if (!process.env.DATABASE_URL) return;
+    studio().then((o) => o.tick()).catch(() => {});
+    metaHub().then((m) => m.tick()).catch(() => {});
+  }, 45000);
+  if (t.unref) t.unref();
 }
 
 // Exported for tests.
