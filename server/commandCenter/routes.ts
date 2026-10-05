@@ -15,8 +15,10 @@
  * Sign-in reuses elevay.vip accounts. Access is derived from the existing
  * Agentic Marketing System roles: CRM owner / marketing_system_admin → owner;
  * marketing_manager, creative_producer, researcher → marketer; analyst → viewer.
- * Everyone else gets 403. Data lives in its own ec_* tables in the same
- * database; nothing here reads or writes CRM, Lead, client or finance tables.
+ * Everyone else gets 403. Workflow data lives in its own ec_* tables. The live
+ * report (live.ts) READS leads, lead_activities and lead_integrations and calls
+ * the Meta Graph API with GET only; nothing here writes CRM, Lead, client,
+ * finance tables or Meta.
  */
 import crypto from "crypto";
 import mysql from "mysql2/promise";
@@ -25,6 +27,7 @@ import R from "./rules";
 import E from "./engine";
 import Manus from "./manus";
 import { PAGE_HTML } from "./page";
+import { buildLiveReport } from "./live";
 import { sdk } from "../_core/sdk";
 import { COOKIE_NAME } from "@shared/const";
 import { isOwner } from "../permissionsRouter";
@@ -52,6 +55,7 @@ async function pool(): Promise<mysql.Pool> {
         "CREATE TABLE IF NOT EXISTS ec_jobs (id VARCHAR(32) PRIMARY KEY, created_at VARCHAR(40), doc LONGTEXT NOT NULL, INDEX ec_jobs_created (created_at))",
         "CREATE TABLE IF NOT EXISTS ec_audit (seq BIGINT AUTO_INCREMENT PRIMARY KEY, at VARCHAR(40), doc TEXT NOT NULL)",
         "CREATE TABLE IF NOT EXISTS ec_kv (name VARCHAR(64) PRIMARY KEY, value TEXT)",
+        "CREATE TABLE IF NOT EXISTS ec_cache (name VARCHAR(64) PRIMARY KEY, at BIGINT NOT NULL, doc LONGTEXT NOT NULL)",
       ];
       for (const s of ddl) await p.query(s);
       return p;
@@ -288,6 +292,33 @@ route("POST", "/admin/seed-example", "owner", async (ctx) => {
 });
 
 // Manus agent API
+// ------------------------------------------------------------------ live Meta + CRM report (read-only)
+const LIVE_TTL_MS = 30 * 60 * 1000, LIVE_MIN_REFRESH_MS = 2 * 60 * 1000;
+let liveInflight: Promise<any> | null = null; // de-duplicates concurrent rebuilds
+async function liveReport(force: boolean) {
+  const row = (await q("SELECT at, doc FROM ec_cache WHERE name='live_report'"))[0];
+  const age = row ? Date.now() - Number(row.at) : Infinity;
+  if (row && (age < LIVE_TTL_MS && !force || age < LIVE_MIN_REFRESH_MS)) return { ...JSON.parse(row.doc), cached: true };
+  if (!liveInflight) liveInflight = (async () => {
+    const { state } = await loadState();
+    const rep = await buildLiveReport({ q, settings: state.settings });
+    await q("INSERT INTO ec_cache (name, at, doc) VALUES ('live_report', ?, ?) ON DUPLICATE KEY UPDATE at=VALUES(at), doc=VALUES(doc)", [Date.now(), JSON.stringify(rep)]);
+    return rep;
+  })().finally(() => { liveInflight = null; });
+  return { ...(await liveInflight), cached: false };
+}
+route("GET", "/live", "team", async (ctx) => ok(await liveReport(ctx.query.refresh === "1" && ctx.user.role !== "viewer")));
+route("POST", "/live/replan", "marketer", async (ctx) => {
+  const rep = await liveReport(false);
+  if (!rep.analysis) return fail(400, "The 6-month analysis is not available yet.", { errors: rep.errors });
+  const note = String(ctx.body.note || "").slice(0, 2000);
+  return mutate(ctx, (st) => ({ ok: true, job: E.enqueueJob(st, "custom", {
+    request: "Update next month's marketing plan using the 6-month Meta + CRM analysis. Read GET /agent/live for the full data, then POST /agent/plans with the revised plan (it goes to the owner for approval). Keep the 200,000 EGP cap and 100 EGP max CPL; propose Meta budget changes as actions, never apply them directly." + (note ? " Team note: " + note : ""),
+    requested_by: ctx.user.email, findings: rep.analysis.findings, recommendations: rep.analysis.recommendations, budget_split: rep.analysis.budgetSplit, data_as_of: rep.generatedAt,
+  }, ctx.user.email) })).then(fromResult);
+});
+route("GET", "/agent/live", "agent", async (ctx) => ok(await liveReport(ctx.query.refresh === "1")));
+
 route("GET", "/agent/ping", "agent", async () => ok({ ok: true, time: new Date().toISOString() }));
 route("GET", "/agent/summary", "agent", async () => { const { state } = await loadState(); return ok({ ok: true, settings: state.settings, summary: E.summary(state) }); });
 route("GET", "/agent/jobs", "agent", async (ctx) => {
