@@ -350,6 +350,13 @@ export function createMetaHub(deps) {
     const out = {};
     const page = await pageCredentials(q, deps.fetcher || fetch);
     const probe = async (name, fn) => { try { out[name] = { ok: true, detail: await fn() }; } catch (e) { out[name] = { ok: false, detail: e.message }; } };
+    await probe("key", async () => {
+      const need = ["ads_management", "ads_read", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", "pages_messaging", "read_insights", "leads_retrieval", "instagram_basic", "instagram_manage_insights", "instagram_manage_comments", "instagram_manage_messages", "instagram_content_publish"];
+      const granted = new Set(((await graph.get("me/permissions", adsToken(), {})).data || []).filter((x) => x.status === "granted").map((x) => x.permission));
+      const missing = need.filter((x) => !granted.has(x));
+      if (missing.length) throw new Error("Key is missing: " + missing.join(", "));
+      return "Key has every permission";
+    });
     await probe("page", async () => `${(await graph.get(page.pageId, page.token, { fields: "name" })).name} (${page.source === "system_user" ? "key from the system user" : "separate Page key"})`);
     await probe("insights", async () => { const p = await graph.get(page.pageId, page.token, { fields: "instagram_business_account{id}" }); const ig = p.instagram_business_account?.id; if (!ig) throw new Error("No Instagram account linked"); await graph.get(`${ig}/insights`, page.token, { metric: "reach", period: "day" }); return "Instagram insights allowed"; });
     await probe("comments", async () => { await graph.get(`${page.pageId}/published_posts`, page.token, { fields: "id", limit: "1" }); return "Can read posts and comments"; });

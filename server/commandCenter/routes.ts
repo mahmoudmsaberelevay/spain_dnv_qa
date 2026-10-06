@@ -467,7 +467,20 @@ async function handle(req: Request, res: Response) {
   const r = routes.find((x) => x.method === req.method && x.re.test(sub));
   if (!r) return res.status(404).json({ ok: false, error: "Not found" });
   const m = sub.match(r.re);
-  const origin = `${req.headers["x-forwarded-proto"] ? String(req.headers["x-forwarded-proto"]).split(",")[0] : req.protocol}://${req.get("host")}`;
+  // Behind the hosting proxy the Host header can be an internal name, so accept the browser's
+  // own same-origin signal, the forwarded host, or the site's public names.
+  const sameSite = (rq) => {
+    const o = rq.headers.origin;
+    if (!o) return true;
+    if (String(rq.headers["sec-fetch-site"] || "") === "same-origin") return true;
+    let host = "";
+    try { host = new URL(String(o)).host.toLowerCase(); } catch { return false; }
+    const allowed = new Set([String(rq.get("host") || "").toLowerCase(), "elevay.vip", "www.elevay.vip"]);
+    for (const h of String(rq.headers["x-forwarded-host"] || "").split(",")) if (h.trim()) allowed.add(h.trim().toLowerCase());
+    for (const u of String(process.env.ELEVAY_PUBLIC_ORIGINS || "").split(",")) { try { if (u.trim()) allowed.add(new URL(u.trim()).host.toLowerCase()); } catch { /* ignore */ } }
+    return allowed.has(host);
+  };
+  const origin = `${req.headers["x-forwarded-proto"] ? String(req.headers["x-forwarded-proto"]).split(",")[0] : req.protocol}://${String(req.headers["x-forwarded-host"] || "").split(",")[0].trim() || req.get("host")}`;
   const ctx = {
     origin, query: req.query || {}, body: req.body && typeof req.body === "object" ? req.body : {}, changed: false, user: null,
     params: Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])])),
@@ -484,8 +497,7 @@ async function handle(req: Request, res: Response) {
       if (!ctx.user) return res.status(401).json({ ok: false, error: "Sign in to elevay.vip first.", loginUrl });
       if (!ctx.user.role) return res.status(403).json({ ok: false, error: "Your account has no Agentic Marketing role. Ask the owner to assign one in Marketing settings." });
       if (req.method !== "GET") {
-        const o = req.headers.origin;
-        if (o && o !== origin) return res.status(403).json({ ok: false, error: "Cross-site request refused." });
+        if (!sameSite(req)) return res.status(403).json({ ok: false, error: "Cross-site request refused." });
       }
       if (r.auth === "owner" && ctx.user.role !== "owner") return res.status(403).json({ ok: false, error: "Owner only." });
       if (r.auth === "marketer" && ctx.user.role === "viewer") return res.status(403).json({ ok: false, error: "Viewers cannot change data." });
