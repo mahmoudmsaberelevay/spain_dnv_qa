@@ -897,7 +897,7 @@
     };
   }
   function metaChecks(c) {
-    const names = { page: 'Facebook Page', comments: 'Comments', messages: 'Messenger', instagram: 'Instagram', insights: 'Instagram insights', ads: 'Ad account', forms: 'Lead forms' };
+    const names = { key: 'Meta key permissions', page: 'Facebook Page', comments: 'Comments', messages: 'Messenger', instagram: 'Instagram', insights: 'Instagram insights', ads: 'Ad account', forms: 'Lead forms' };
     return `<div class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(c).map(([k, v]) => `<span class="pill ${v.ok ? 'ok' : 'bad'}" title="${esc(v.detail)}">${esc(names[k] || k)}: ${esc(String(v.detail).slice(0, 80))}</span>`).join('')}</div>`;
   }
   function metaCard(a) {
