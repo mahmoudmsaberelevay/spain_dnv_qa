@@ -258,6 +258,24 @@ export function campaignKeyResolver(metaCampaigns = []) {
   };
 }
 
+/** One name per program, however it was typed in the CRM ("Spain", "spain dnv", "Digital Nomad Spain"…). */
+export function canonicalProgram(v) {
+  const t = String(v || "").trim().toLowerCase();
+  if (!t) return null;
+  const rules = [
+    [/spain|españa|اسبانيا|إسبانيا|digital nomad|\bdnv\b/, "Spain Digital Nomad"],
+    [/malta|مالطا/, "Malta Permanent Residence"],
+    [/portugal.*(golden|gv)|golden.*portugal/, "Portugal Golden Visa"],
+    [/\bd8\b/, "Portugal D8"], [/\bd7\b|portugal/, "Portugal D7"], [/\bd2\b/, "Portugal D2"],
+    [/greece|greek|اليونان/, "Greece Golden Visa"],
+    [/caribbean|grenada|dominica|antigua|st\.? ?kitts|saint kitts|st\.? ?lucia|saint lucia|vanuatu|cbi|citizenship/, "Caribbean Citizenship"],
+    [/\buk\b|united kingdom|britain|expansion worker/, "UK Expansion Worker"],
+    [/canada|express entry/, "Canada Skilled Migration"],
+  ];
+  for (const [re, name] of rules) if (re.test(t)) return name;
+  return String(v).trim();
+}
+
 /** Leads grouped by key with current-stage outcomes (for campaign/program/month quality). */
 export function outcomesBy(rows, keyFn) {
   const map = new Map();
@@ -314,7 +332,12 @@ export function analyze({ meta, crm6, months, settings }) {
   if (recent?.cpl && pCpl) findings.push({ code: "cpl_trend", text: `CPL in ${recent.month} ${Math.round(recent.cpl)} EGP vs ${Math.round(pCpl)} EGP average of the previous 3 months (${recent.cpl > pCpl ? "+" : ""}${Math.round((recent.cpl / pCpl - 1) * 100)}%).` });
   if (recent?.qualifiedRate !== null && pQr) findings.push({ code: "qualified_trend", text: `Qualified rate in ${recent.month} ${(recent.qualifiedRate * 100).toFixed(1)}% vs ${(pQr * 100).toFixed(1)}% before.` });
 
-  const lead = campaigns.filter((c) => c.spend >= 2000 && c.metaLeads >= 10);
+  // Recommend only on campaigns that spent in the last 30 days; ended ones are history.
+  const running = new Set((meta?.last30?.campaigns || []).filter((c) => c.spend > 0).map((c) => c.campaignId));
+  const allLead = campaigns.filter((c) => c.spend >= 2000 && c.metaLeads >= 10);
+  const lead = running.size ? allLead.filter((c) => running.has(c.campaignId)) : allLead;
+  const endedOver = allLead.filter((c) => !lead.includes(c) && c.cpl > maxCpl);
+  if (endedOver.length) findings.push({ code: "ended_over_ceiling", text: `${endedOver.length} earlier campaign(s) that are no longer spending also ran above the ${maxCpl} EGP ceiling (6-month CPL ${Math.round(Math.min(...endedOver.map((c) => c.cpl)))}–${Math.round(Math.max(...endedOver.map((c) => c.cpl)))} EGP); don't relaunch them unchanged.` });
   const withQ = lead.filter((c) => c.costPerQualified);
   const medianCpq = withQ.length ? withQ.map((c) => c.costPerQualified).sort((a, b) => a - b)[Math.floor(withQ.length / 2)] : null;
   for (const c of lead) {
@@ -370,9 +393,10 @@ export async function buildLiveReport({ q, fetcher = fetch, settings, now = Date
   if (crm6raw) {
     const s6 = summarizeCrm(crm6raw);
     const crm6 = {
-      byMonth: outcomesBy(crm6raw.created, (l) => cairoDate(Number(l.ts)).slice(0, 7)),
+      // Meta-sourced CRM leads only, so the month table compares like with like (imports and other sources excluded).
+      byMonth: outcomesBy(crm6raw.created.filter((l) => l.isMeta), (l) => cairoDate(Number(l.ts)).slice(0, 7)),
       byCampaign: outcomesBy(crm6raw.created.filter((l) => l.isMeta), campKey),
-      byProgram: outcomesBy(crm6raw.created, (l) => (l.interestedProgram || "").trim() || null),
+      byProgram: outcomesBy(crm6raw.created, (l) => canonicalProgram(l.interestedProgram)),
       unqualifiedReasons: Object.fromEntries(Object.entries(s6.all.cohort.stages).filter(([k]) => isUnq(k)).map(([k, v]) => [k.replace("not_qualified_", ""), v])),
     };
     analysis = analyze({ meta, crm6, months: m6.months, settings });

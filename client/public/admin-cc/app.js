@@ -214,7 +214,7 @@
       plan: d.items.filter((i) => i.status === 'pending_approval').length,
       actions: s.actionsPending,
       manus: s.needsInput,
-      performance: s.guardrails.alerts.filter((a) => a.level === 'critical').length,
+      performance: s.guardrails.alerts.filter((a) => a.level === 'critical').length + liveCritical(),
       monthly: d.plans.filter((p) => p.status === 'pending_approval').length,
       studio: S.studio ? S.studio.runs.filter((r) => r.status === 'awaiting_approval').length : 0,
       meta: S.meta ? S.meta.actions.filter((a) => a.status === 'pending').length : 0,
@@ -285,10 +285,14 @@
 
   // ------------------------------------------------------------ overview
   function viewOverview(el) {
-    const d = S.data, s = d.summary, g = s.guardrails, rep = s.report, set = d.settings;
+    const d = S.data, s = d.summary, set = d.settings;
+    // Without a Manus Friday report, the funnel and pacing use this month's live Meta + CRM numbers.
+    const lr = !s.report ? liveMonthReport() : null;
+    const rep = s.report || lr, g = s.report ? s.guardrails : lr ? R.guardrails(lr, set) : s.guardrails;
+    const hadLive = !!S.live;
     const pending = d.items.filter((i) => i.status === 'pending_approval').length;
     const qcFail = d.items.filter((i) => i.status === 'qc_failed').length;
-    const crit = g.alerts.filter((a) => a.level === 'critical').length;
+    const crit = g.alerts.filter((a) => a.level === 'critical').length + liveCritical();
     el.innerHTML = `<div class="stack" style="gap:18px">
       <div class="attention">
         ${att('plan', pending, 'posts awaiting approval', qcFail ? `${qcFail} failed QC and are waiting on Manus` : 'This week’s content plan', pending ? 'hot' : 'calm')}
@@ -297,16 +301,28 @@
         ${att('manus', s.needsInput, 'questions from Manus', `${s.jobsOpen} open job${s.jobsOpen === 1 ? '' : 's'} in the bridge`, s.needsInput ? 'bad' : 'calm')}
       </div>
       <div id="liveStrip"></div>
-      <section class="panel"><div class="panel-h"><h2>Monthly funnel</h2><span class="muted small">${rep ? `Meta report for ${esc(rep.month)}, as of ${esc(rep.asOf)} · day ${g.day} of ${g.daysInMonth}` : 'No Meta report yet'}</span></div>
-        ${rep ? funnel(rep, set, g) : '<div class="empty">Manus posts the Meta report every Friday at 09:00 Cairo. The funnel fills in from it.</div>'}</section>
+      <section class="panel"><div class="panel-h"><h2>Monthly funnel</h2><span class="muted small">${rep ? `${lr ? 'Live Meta + CRM' : 'Meta report'} for ${esc(rep.month)}, as of ${esc(rep.asOf)} · day ${g.day} of ${g.daysInMonth}` : 'Loading live data…'}</span></div>
+        ${rep ? funnel(rep, set, g) : '<div class="empty">Loading this month’s Meta and CRM numbers…</div>'}</section>
       <div class="grid g2">
-        <section class="panel"><div class="panel-h"><h2>Ad spend pacing</h2><span class="muted small">Cap ${n0(set.monthlyAdCapEgp)} EGP · max CPL ${set.maxCplEgp} EGP</span></div>${rep ? pacing(rep, set, g) : '<div class="empty">Waiting for the first report.</div>'}</section>
+        <section class="panel"><div class="panel-h"><h2>Ad spend pacing</h2><span class="muted small">Cap ${n0(set.monthlyAdCapEgp)} EGP · max CPL ${set.maxCplEgp} EGP</span></div>${rep ? pacing(rep, set, g) : '<div class="empty">Loading…</div>'}</section>
         <section class="panel"><div class="panel-h"><h2>First-pass approval</h2>${autopubPill()}</div>${approvalChart(s.approval, set)}</section>
       </div>
       <section class="panel"><div class="panel-h"><h2>This week’s operating calendar</h2><span class="muted small">Sunday to Saturday, Cairo time</span></div><div class="table-wrap">${calendar()}</div></section>
     </div>`;
     el.querySelectorAll('[data-go]').forEach((b) => (b.onclick = () => go(b.dataset.go)));
-    liveInto(document.getElementById('liveStrip'), 'strip').then(() => el.querySelectorAll('#liveStrip [data-go]').forEach((b) => (b.onclick = (ev) => { ev.preventDefault(); go(b.dataset.go); })));
+    liveInto(document.getElementById('liveStrip'), 'strip').then(() => {
+      if (!hadLive && S.live && S.view === 'overview' && el.isConnected) return render(); // first load: fill funnel, pacing and alert count
+      el.querySelectorAll('#liveStrip [data-go]').forEach((b) => (b.onclick = (ev) => { ev.preventDefault(); go(b.dataset.go); }));
+    });
+  }
+  function liveCritical() { return S.live && S.live.alerts ? S.live.alerts.filter((a) => a.level === 'critical').length : 0; }
+  function liveMonthReport() {
+    const an = S.live && S.live.analysis;
+    const m = an && an.byMonth && an.byMonth[an.byMonth.length - 1];
+    if (!m) return null;
+    const until = S.live.sixMonths && S.live.sixMonths.until; // spend is through yesterday
+    const asOf = until && until.slice(0, 7) === m.month ? until : new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+    return { month: m.month, asOf, spendMtdEgp: m.spend, leads: m.metaLeads, qualifiedLeads: m.qualified, signedClients: m.clients, videoViews: null, pageLikes: null, adsets: [] };
   }
   const att = (view, n, what, sub, cls) => `<button class="att ${cls}" data-go="${view}"><span class="n">${n}</span><strong>${what}</strong><span class="small muted">${sub}</span></button>`;
 
@@ -370,16 +386,18 @@
   function calendar() {
     const nowCairo = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
     const start = new Date(nowCairo); start.setDate(nowCairo.getDate() - nowCairo.getDay()); start.setHours(0, 0, 0, 0);
-    const fixed = { 4: [['20:00', 'Deep news search starts', true]], 5: [['09:00', 'Meta report generated', true], ['09:30', 'Claude analysis'], ['10:00', 'Action plan for approval', true], ['11:00', 'Production and QC run']], 6: [['06:00', 'Production complete'], ['09:00', 'Weekly content plan for approval', true], ['20:00', 'Reminder if items are pending']] };
+    const fixed = { 4: [['20:00', 'News search (Manus)']], 5: [['09:00', 'Meta report and action plan', true]], 6: [['09:00', 'Autopilot plans next week and starts production', true]] };
+    const monthDay = Number(new Date().toLocaleDateString('en-CA', { timeZone: TZ }).slice(8, 10));
     const posts = S.data.items.filter((i) => i.publish && i.publish.datetime_cairo && ['approved', 'scheduled', 'published', 'pending_approval', 'changes_requested'].includes(i.status));
     let html = '<div class="timeline">';
     for (let i = 0; i < 7; i++) {
       const day = new Date(start); day.setDate(start.getDate() + i);
       const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
       const evs = (fixed[i] || []).map(([t, l, k]) => `<div class="ev ${k ? 'key' : ''}"><b>${t}</b> ${l}</div>`);
+      if (day.getDate() === 25 || (monthDay >= 25 && i === nowCairo.getDay())) evs.push('<div class="ev key"><b>From 25th</b> Next month’s plan drafted</div>');
       posts.filter((p) => p.publish.datetime_cairo.startsWith(key)).forEach((p) => evs.push(`<div class="ev"><b>${p.publish.datetime_cairo.slice(11, 16)}</b> ${esc(p.type)} ${esc(p.item_id.slice(-2))} · ${STATUS_PILL[p.status][1]}</div>`));
       const today = day.toDateString() === nowCairo.toDateString();
-      html += `<div class="day ${today ? 'today' : ''}"><span class="d">${day.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}${today ? ' · today' : ''}</span>${evs.join('') || '<span class="small muted">Approved posts publish</span>'}</div>`;
+      html += `<div class="day ${today ? 'today' : ''}"><span class="d">${day.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}${today ? ' · today' : ''}</span>${evs.join('') || '<span class="small muted">Approved posts publish · inbox every 10 min</span>'}</div>`;
     }
     return html + '</div>';
   }
@@ -584,8 +602,9 @@
     catch (e) { el.innerHTML = `<div class="empty">Could not load live data: ${esc(e.message)}</div>`; return; }
     const rb = el.querySelector('[data-live-refresh]');
     if (rb) rb.onclick = () => liveInto(el, mode, true);
+    el.querySelectorAll('[data-propose-pause]').forEach((b) => (b.onclick = () => act(async () => { await api.req('POST', 'meta/actions', { kind: 'campaign_status', target_id: b.dataset.proposePause, target_name: b.dataset.name, status_to: 'PAUSED', reason: 'From the 6-month analysis: CPL above the ceiling.' }); }, 'Pause proposed. Approve it in the Meta tab.')));
     const rp = el.querySelector('[data-replan]');
-    if (rp) rp.onclick = () => act(() => api.replan((el.querySelector('#replanNote') || {}).value || ''), 'Sent to Manus. The revised plan will come back here for approval.');
+    if (rp) rp.onclick = () => act(async () => { await api.req('POST', 'ai/runs', { kind: 'plan', request: (el.querySelector('#replanNote') || {}).value || '' }); }, 'Claude is drafting next month’s plan from this data. It appears below for approval; follow it in AI Studio.');
   }
   function liveErrors(d) {
     const e = d.errors || {}, names = { ads: 'Meta ads', page: 'Facebook Page', crm: 'CRM (30 days)', crm6: 'CRM (6 months)' };
@@ -600,7 +619,7 @@
   function liveStrip(d) {
     const a = d.ads && d.ads.total, c = d.crm && d.crm.meta, p = d.page;
     return `<section class="panel">${liveHead(d, 'Last 30 days (live)')}${liveErrors(d)}<div class="grid g5">
-      ${kpi('Ad spend', egp(a && a.spend), a && a.leads ? 'CPL ' + egp(a.spend / a.leads) : '')}
+      ${kpi('Ad spend', egp(a && a.spend), a && a.leadCampaignCpl ? 'CPL ' + egp(a.leadCampaignCpl) + ' on lead campaigns' : a && a.leads ? 'CPL ' + egp(a.spend / a.leads) : '')}
       ${kpi('Meta leads', n0(c && c.leads), a ? n0(a.leads) + ' reported by Meta' : '')}
       ${kpi('Qualified', n0(c && c.qualified), (c ? n0(c.unqualified) : '—') + ' unqualified')}
       ${kpi('Clients', n0(c && c.clients), '')}
@@ -662,10 +681,10 @@
       <div class="table-wrap"><table><thead><tr><th>Month</th><th class="r">Spend</th><th class="r">Meta leads</th><th class="r">CPL</th><th class="r">CRM leads</th><th class="r">Qualified</th><th class="r">Qualified rate</th><th class="r">Clients</th><th class="r">Cost / qualified</th></tr></thead>
       <tbody>${an.byMonth.map((m) => `<tr><td>${esc(m.month)}${m.partial ? ' <span class="small muted">(so far)</span>' : ''}</td><td class="r num">${n0(m.spend)}</td><td class="r num">${n0(m.metaLeads)}</td><td class="r num">${m.cpl ? n0(m.cpl) : '—'}</td><td class="r num">${n0(m.crmLeads)}</td><td class="r num">${n0(m.qualified)}</td><td class="r num">${pct(m.qualifiedRate, 1)}</td><td class="r num">${n0(m.clients)}</td><td class="r num">${m.costPerQualified ? n0(m.costPerQualified) : '—'}</td></tr>`).join('')}</tbody></table></div>
       ${an.findings.length ? `<h3 style="margin:14px 0 6px">What the data says</h3><ul class="small">${an.findings.map((f) => `<li>${esc(f.text)}</li>`).join('')}</ul>` : ''}
-      ${an.recommendations.length ? `<h3 style="margin:14px 0 6px">Suggested campaign changes</h3><ul class="small" style="list-style:none;padding:0">${an.recommendations.map((r) => { const [c, l] = REC[r.type] || ['', r.type]; return `<li style="margin-bottom:6px"><span class="pill ${c}">${l}</span> <strong>${esc(r.campaign || r.campaignId)}</strong> — ${esc(r.why)}</li>`; }).join('')}</ul>` : ''}
+      ${an.recommendations.length ? `<h3 style="margin:14px 0 6px">Suggested campaign changes</h3><ul class="small" style="list-style:none;padding:0">${an.recommendations.map((r) => { const [c, l] = REC[r.type] || ['', r.type]; return `<li style="margin-bottom:6px"><span class="pill ${c}">${l}</span> <strong>${esc(r.campaign || r.campaignId)}</strong> — ${esc(r.why)}${r.type === 'reduce' && canEdit() && r.campaignId ? ` <button class="btn sm" data-propose-pause="${esc(r.campaignId)}" data-name="${esc(r.campaign || '')}">Propose pause</button>` : ''}</li>`; }).join('')}</ul>` : ''}
       ${an.budgetSplit.length ? `<h3 style="margin:14px 0 6px">Suggested budget split (within the cap)</h3><div class="table-wrap"><table><thead><tr><th>Campaign</th><th class="r">Share</th><th class="r">Monthly EGP</th></tr></thead><tbody>${an.budgetSplit.map((b) => `<tr><td>${esc(b.campaign || b.campaignId)}</td><td class="r num">${pct(b.shareOfCap)}</td><td class="r num">${n0(b.monthlyEgp)}</td></tr>`).join('')}</tbody></table></div>` : ''}
       <p class="small muted" style="margin-top:8px">${esc(an.note)}</p>
-      ${canEdit() ? `<div class="row" style="margin-top:12px"><input class="input" id="replanNote" placeholder="Optional note for Manus" style="max-width:420px"><button class="btn primary" data-replan>Ask Manus to update the plan from this data</button></div>` : ''}
+      ${canEdit() ? `<div class="row" style="margin-top:12px"><input class="input" id="replanNote" placeholder="Optional note for the plan" style="max-width:420px"><button class="btn primary" data-replan>Draft next month’s plan from this data</button></div>` : ''}
     </section>`;
   }
   const list = (arr) => (arr && arr.length ? `<ol class="small" style="margin:0;padding-left:18px">${arr.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>` : '<p class="small muted">Not reported.</p>');
@@ -693,7 +712,7 @@
     el.innerHTML = '<div id="liveAnalysis" style="margin-bottom:16px"></div><div id="plans"></div>';
     liveInto(document.getElementById('liveAnalysis'), 'analysis');
     el = document.getElementById('plans');
-    if (!plans.length) { el.innerHTML = '<div class="empty">Manus delivers next month’s plan in the last week of each month.</div>'; return; }
+    if (!plans.length) { el.innerHTML = '<div class="empty">Claude drafts next month’s plan automatically from the 25th. Press “Draft next month’s plan from this data” above to do it now.</div>'; return; }
     el.innerHTML = `<div class="cards">${plans.map((p) => `<section class="panel"><div class="panel-h"><div><span class="small muted">${esc(p.id)} · ${esc(p.month)}</span><h2>${esc(p.title || 'Marketing plan ' + p.month)}</h2></div>${statusPill(p.status === 'pending_approval' ? 'pending_approval' : p.status === 'approved' ? 'approved' : 'changes_requested')}</div>
       <div style="white-space:pre-wrap;max-width:75ch">${esc(p.body)}</div>
       ${p.url ? `<p style="margin-top:8px"><a href="${esc(p.url)}" target="_blank" rel="noopener">Open the full plan</a></p>` : ''}
