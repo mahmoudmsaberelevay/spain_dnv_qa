@@ -96,3 +96,22 @@ describe("buildLiveReport", () => {
     expect(r.errors).toEqual({});
   });
 });
+
+describe("program names and running campaigns", () => {
+  it("groups the many spellings of a program under one name", async () => {
+    const { canonicalProgram } = await import("./live");
+    expect(canonicalProgram("Spain")).toBe("Spain Digital Nomad");
+    expect(canonicalProgram("spain dnv ")).toBe("Spain Digital Nomad");
+    expect(canonicalProgram("Digital Nomad")).toBe("Spain Digital Nomad");
+    expect(canonicalProgram("Portugal Golden Visa")).toBe("Portugal Golden Visa");
+    expect(canonicalProgram("D7")).toBe("Portugal D7");
+    expect(canonicalProgram("مالطا")).toBe("Malta Permanent Residence");
+    expect(canonicalProgram("")).toBe(null);
+  });
+  it("recommends changes only for campaigns that spent in the last 30 days", () => {
+    const meta = { last30: { campaigns: [{ campaignId: "live", spend: 5000 }] }, monthly: { total: [], campaigns: [{ campaignId: "live", campaign: "Live", spend: 20000, leads: 50 }, { campaignId: "old", campaign: "Old", spend: 30000, leads: 60 }] } };
+    const a = analyze({ meta, crm6: { byMonth: [], byCampaign: [], byProgram: [], unqualifiedReasons: {} }, months: ["2026-09"], settings: { maxCplEgp: 100 } });
+    expect(a.recommendations.map((r) => r.campaignId)).toEqual(["live"]);
+    expect(a.findings.some((f) => f.code === "ended_over_ceiling")).toBe(true);
+  });
+});
