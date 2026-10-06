@@ -754,7 +754,7 @@
     const open = new Set([...el.querySelectorAll('details[data-run][open]')].map((d) => d.dataset.run));
     el.innerHTML = `<div class="stack" style="gap:16px">
       <section class="panel"><div class="panel-h"><h2>Connected models</h2>${isOwner() ? '<button class="btn sm" id="provTest">Test connections</button>' : ''}</div>
-        <div class="grid g5">${['claude', 'openai', 'higgsfield', 'elevenlabs', 'manus'].filter((k) => pv[k]).map((k) => { const p = pv[k]; return `<div class="kpi">${provChip(k)}<span class="small">${esc(p.role)}</span><span class="t">${p.ready ? '<span class="pill ok">Connected</span>' : `<span class="pill bad">Not set up</span> ${p.key ? esc(p.key) + ' missing' : ''}`}${k === 'manus' && p.lastSeen ? ' · seen ' + ago(p.lastSeen) : ''}${p.model ? ' · ' + esc(p.model) : ''}</span><span class="t" id="pt-${k}"></span></div>`; }).join('')}</div></section>
+        <div class="grid g5">${['claude', 'openai', 'higgsfield', 'elevenlabs', 'manus'].filter((k) => pv[k]).map((k) => { const p = pv[k]; return `<div class="kpi">${provChip(k)}<span class="small">${esc(p.role)}</span><span class="t">${p.ready ? '<span class="pill ok">Connected</span>' : `<span class="pill bad">Not set up</span> ${p.key ? esc(p.key) + ' missing' : ''}`}${k === 'manus' && p.lastSeen ? ' · seen ' + ago(p.lastSeen) : ''}${p.model ? ' · ' + esc(p.model) : ''}</span><span class="t" id="pt-${k}">${S.provTest && S.provTest[k] ? `${S.provTest[k].ok ? '✓' : '✕'} ${esc(S.provTest[k].detail)}` : ''}</span></div>`; }).join('')}</div></section>
       ${autopilotPanel(st.autopilot)}
       ${st.sources ? `<section class="panel"><div class="panel-h"><h2>Approved sources the models use</h2></div><div class="row small" style="gap:8px;flex-wrap:wrap">${st.sources.programs.map((x) => `<span class="pill ${x.loaded ? 'ok' : 'bad'}">${esc(x.name)}</span>`).join('')}${st.sources.creative.map((x) => `<span class="pill ${x.loaded ? 'ok' : 'bad'}">Creative direction: ${esc(x.name.replace(/-/g, ' '))}</span>`).join('')}<span class="pill ${st.sources.logo ? 'ok' : 'bad'}">Official logo</span><span class="pill ${st.sources.font ? 'ok' : 'bad'}">Apex Sans font</span></div><p class="small muted" style="margin:8px 0 0">Program figures come only from these approved sources; other programs are described without numbers until their sources are added.</p></section>` : ''}
       ${canEdit() ? `<section class="panel"><div class="panel-h"><h2>Extra request</h2><span class="small muted">Claude plans the work and hands each part to the right model</span></div>
@@ -778,7 +778,7 @@
       await loadStudio();
     }, 'Started. Follow it in Runs.');
     const pt = el.querySelector('#provTest');
-    if (pt) pt.onclick = () => act(async () => { const r = await api.req('POST', 'ai/providers/test'); for (const [k, v] of Object.entries(r.results)) { const n = document.getElementById('pt-' + k); if (n) n.innerHTML = `${v.ok ? '✓' : '✕'} ${esc(v.detail)}`; } });
+    if (pt) pt.onclick = () => act(async () => { const r = await api.req('POST', 'ai/providers/test'); S.provTest = r.results; }, 'Connection tests finished');
     el.querySelectorAll('[data-autoplan]').forEach((b) => (b.onclick = () => act(async () => {
       const k = b.dataset.autoplan;
       await api.req('POST', k === 'monthly' ? 'ai/autoplan/monthly' : 'ai/autoplan/weekly', k === 'monthly' ? { again: true } : { which: k });
@@ -871,6 +871,8 @@
         <div id="mxChecks" class="small">${m.checks ? metaChecks(m.checks) : ''}</div>
         <div class="stack small" style="gap:6px;margin-top:10px"><label class="row"><input type="checkbox" id="mxDirect" ${mset.directPublish ? 'checked' : ''}> Publish approved posts directly to Facebook and Instagram (instead of Manus)</label>
         <label class="row"><input type="checkbox" id="mxInbox" ${mset.inbox !== false ? 'checked' : ''}> Check comments and messages every 10 minutes and draft replies</label>
+        <label class="row">ELEVAY WhatsApp number for message replies <input id="mxPhone" style="max-width:200px" placeholder="leave empty for none" value="${esc(mset.contactPhone || '')}"></label>
+        <span class="muted">Replies can only give this number. Empty: replies never include a phone number.</span>
         <div><button class="btn sm" id="mxSave">Save</button></div></div></section>` : ''}
       <section class="panel"><div class="panel-h"><h2>History</h2></div>${history.length ? `<div class="stack" style="gap:8px">${history.slice(0, 60).map(metaCard).join('')}</div>` : '<div class="empty">No actions yet.</div>'}</section>
     </div>`;
@@ -886,7 +888,7 @@
     const g = (id) => document.getElementById(id);
     if (g('mxSync')) g('mxSync').onclick = () => act(async () => { const r = await api.req('POST', 'meta/inbox/sync', {}); await reload(); if (r.errors && r.errors.length) toast(r.errors.join(' · '), true); }, 'Inbox checked.');
     if (g('mxCheck')) g('mxCheck').onclick = () => act(async () => { const r = await api.req('GET', 'meta/connection'); S.meta.checks = r.checks; g('mxChecks').innerHTML = metaChecks(r.checks); });
-    if (g('mxSave')) g('mxSave').onclick = () => act(() => api.saveSettings({ meta: { directPublish: g('mxDirect').checked, inbox: g('mxInbox').checked } }), 'Meta settings saved.');
+    if (g('mxSave')) g('mxSave').onclick = () => act(() => api.saveSettings({ meta: { directPublish: g('mxDirect').checked, inbox: g('mxInbox').checked, contactPhone: g('mxPhone').value.trim() } }), 'Meta settings saved.');
     if (g('ncGo')) g('ncGo').onclick = () => {
       const item = S.data.items.find((i) => i.item_id === g('ncItem').value);
       if (!item) return toast('Choose an approved design.', true);

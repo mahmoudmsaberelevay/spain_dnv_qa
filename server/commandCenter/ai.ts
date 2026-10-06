@@ -177,7 +177,7 @@ export function extractJson(text: string) {
 }
 
 export function makeProviders(fetcher = fetch) {
-  async function claude({ system, prompt, images = [], maxTokens = 4000, json = true }) {
+  async function claude({ system, prompt, images = [], maxTokens = 4000, json = true, repairing = false }) {
     const key = process.env.ANTHROPIC_API_KEY;
     if (!key) throw new Error("ANTHROPIC_API_KEY is not set on elevay.vip.");
     const content = [...images.map((im) => (typeof im === "string" ? { type: "image", source: { type: "url", url: im } } : { type: "image", source: { type: "base64", media_type: im.mediaType || "image/jpeg", data: im.base64 } })), { type: "text", text: prompt }];
@@ -190,7 +190,21 @@ export function makeProviders(fetcher = fetch) {
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(`Claude: ${body?.error?.message || `HTTP ${res.status}`}`);
     const text = (body.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
-    return { text, data: json ? extractJson(text) : null, usage: body.usage || null, model: body.model || CLAUDE_MODEL() };
+    if (!json) return { text, data: null, usage: body.usage || null, model: body.model || CLAUDE_MODEL() };
+    try {
+      return { text, data: extractJson(text), usage: body.usage || null, model: body.model || CLAUDE_MODEL() };
+    } catch (e) {
+      // One repair pass: the answer was cut off or had a broken quote. Ask again for valid JSON only.
+      if (repairing) throw e;
+      const cut = body.stop_reason === "max_tokens";
+      const fix = await claude({
+        system, maxTokens: Math.min(Math.round(maxTokens * (cut ? 1.6 : 1.2)), 12000), repairing: true,
+        prompt: cut
+          ? `${prompt}\n\nYour previous answer was cut off. Answer again, more concisely, as one valid JSON object only — no text before or after it.`
+          : `This should be one valid JSON object but it does not parse (likely an unescaped quote or a missing comma). Return the same content as valid JSON only, nothing else. Escape any double quotes inside strings.\n\n${text}`,
+      });
+      return { ...fix, usage: body.usage || fix.usage };
+    }
   }
 
   async function openaiImage({ prompt, purpose }) {
@@ -428,8 +442,10 @@ export function createOrchestrator(deps) {
     return { ...run, id };
   }
 
+  // Run a few at a time: seven runs at once (four images + three reels) is too much for the web server.
+  const MAX_ACTIVE = Math.max(1, Number(process.env.ELEVAY_STUDIO_CONCURRENCY) || 2);
   function kick(id) {
-    if (running.has(id)) return;
+    if (running.has(id) || running.size >= MAX_ACTIVE) return; // the 45-second tick starts it later
     running.add(id);
     advance(id).catch(() => { /* recorded on the run */ }).finally(() => running.delete(id));
   }
@@ -913,6 +929,14 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       if (Date.now() - Date.parse(doc.updated_at || doc.created_at) < 10 * 60 * 1000) continue;
       const g = await get(r.id);
       const step = g.run.steps.find((s) => s.status === "running");
+      // Claude, checks and OpenAI images are cheap and need no approval: resume them once automatically.
+      // Higgsfield clips (the expensive step) are never re-submitted without a person pressing Retry.
+      if (step && step.provider !== "higgsfield" && !step.auto_resumed) {
+        step.status = "pending"; step.auto_resumed = true; g.run.status = "queued";
+        log(g.run, "studio", "team", `Resumed automatically after a server restart: ${step.title}`);
+        await save(g.run, g.ver).catch(() => {});
+        continue;
+      }
       if (step) { step.status = "failed"; step.error = "Interrupted (server restart). Press Retry to run this step again."; }
       g.run.status = "failed";
       await save(g.run, g.ver).catch(() => {});

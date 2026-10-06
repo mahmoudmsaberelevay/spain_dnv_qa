@@ -137,3 +137,15 @@ describe("Meta actions", () => {
     expect(state.items[0]).toMatchObject({ status: "published", publish: { direct: { facebook: "111_post9", instagram: "igpost1", done: true } } });
   });
 });
+
+describe("contact details in message replies", () => {
+  it("only allows the saved ELEVAY number in private replies", () => {
+    const { h, state } = hub();
+    expect(h.replyProblems("راسلنا على الواتساب +20 12 84981717", false, "")).toContain("Reply contains a phone number that is not the saved ELEVAY contact number.");
+    expect(h.replyProblems("راسلنا على الواتساب +20 12 84981717", false, "+201284981717")).toEqual([]);
+    expect(h.replyProblems("راسلنا على 01099999999", false, "+201284981717").length).toBe(1);
+    expect(h.replyProblems("زور www.example.com", false, "+201284981717")).toContain("Reply contains a link or email address.");
+    expect(h.replyProblems("الإقامة متاحة بشروط", false, "")).toEqual([]);
+    expect(state).toBeTruthy();
+  });
+});

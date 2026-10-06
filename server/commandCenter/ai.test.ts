@@ -261,3 +261,17 @@ describe("provider adapters", () => {
     expect(r.data).toEqual({ pass: true });
   });
 });
+
+describe("Claude JSON repair", () => {
+  it("asks once more when the answer is not valid JSON", async () => {
+    const { makeProviders } = await import("./ai");
+    process.env.ANTHROPIC_API_KEY = "k";
+    const replies = ['{"line": "قال "مرحبا" لهم"', '{"line": "ok"}'];
+    let calls = 0;
+    const fetcher = async () => ({ ok: true, status: 200, json: async () => ({ content: [{ type: "text", text: replies[calls++] }], stop_reason: "end_turn" }) });
+    const p = makeProviders(fetcher);
+    const r = await p.claude({ system: "s", prompt: "p" });
+    expect(r.data).toEqual({ line: "ok" });
+    expect(calls).toBe(2);
+  });
+});
