@@ -442,8 +442,10 @@ export function createOrchestrator(deps) {
     return { ...run, id };
   }
 
+  // Run a few at a time: seven runs at once (four images + three reels) is too much for the web server.
+  const MAX_ACTIVE = Math.max(1, Number(process.env.ELEVAY_STUDIO_CONCURRENCY) || 2);
   function kick(id) {
-    if (running.has(id)) return;
+    if (running.has(id) || running.size >= MAX_ACTIVE) return; // the 45-second tick starts it later
     running.add(id);
     advance(id).catch(() => { /* recorded on the run */ }).finally(() => running.delete(id));
   }
@@ -927,6 +929,14 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       if (Date.now() - Date.parse(doc.updated_at || doc.created_at) < 10 * 60 * 1000) continue;
       const g = await get(r.id);
       const step = g.run.steps.find((s) => s.status === "running");
+      // Claude, checks and OpenAI images are cheap and need no approval: resume them once automatically.
+      // Higgsfield clips (the expensive step) are never re-submitted without a person pressing Retry.
+      if (step && step.provider !== "higgsfield" && !step.auto_resumed) {
+        step.status = "pending"; step.auto_resumed = true; g.run.status = "queued";
+        log(g.run, "studio", "team", `Resumed automatically after a server restart: ${step.title}`);
+        await save(g.run, g.ver).catch(() => {});
+        continue;
+      }
       if (step) { step.status = "failed"; step.error = "Interrupted (server restart). Press Retry to run this step again."; }
       g.run.status = "failed";
       await save(g.run, g.ver).catch(() => {});
