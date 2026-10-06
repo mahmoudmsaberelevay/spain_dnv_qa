@@ -871,6 +871,8 @@
         <div id="mxChecks" class="small">${m.checks ? metaChecks(m.checks) : ''}</div>
         <div class="stack small" style="gap:6px;margin-top:10px"><label class="row"><input type="checkbox" id="mxDirect" ${mset.directPublish ? 'checked' : ''}> Publish approved posts directly to Facebook and Instagram (instead of Manus)</label>
         <label class="row"><input type="checkbox" id="mxInbox" ${mset.inbox !== false ? 'checked' : ''}> Check comments and messages every 10 minutes and draft replies</label>
+        <label class="row">ELEVAY WhatsApp number for message replies <input id="mxPhone" style="max-width:200px" placeholder="leave empty for none" value="${esc(mset.contactPhone || '')}"></label>
+        <span class="muted">Replies can only give this number. Empty: replies never include a phone number.</span>
         <div><button class="btn sm" id="mxSave">Save</button></div></div></section>` : ''}
       <section class="panel"><div class="panel-h"><h2>History</h2></div>${history.length ? `<div class="stack" style="gap:8px">${history.slice(0, 60).map(metaCard).join('')}</div>` : '<div class="empty">No actions yet.</div>'}</section>
     </div>`;
@@ -886,7 +888,7 @@
     const g = (id) => document.getElementById(id);
     if (g('mxSync')) g('mxSync').onclick = () => act(async () => { const r = await api.req('POST', 'meta/inbox/sync', {}); await reload(); if (r.errors && r.errors.length) toast(r.errors.join(' · '), true); }, 'Inbox checked.');
     if (g('mxCheck')) g('mxCheck').onclick = () => act(async () => { const r = await api.req('GET', 'meta/connection'); S.meta.checks = r.checks; g('mxChecks').innerHTML = metaChecks(r.checks); });
-    if (g('mxSave')) g('mxSave').onclick = () => act(() => api.saveSettings({ meta: { directPublish: g('mxDirect').checked, inbox: g('mxInbox').checked } }), 'Meta settings saved.');
+    if (g('mxSave')) g('mxSave').onclick = () => act(() => api.saveSettings({ meta: { directPublish: g('mxDirect').checked, inbox: g('mxInbox').checked, contactPhone: g('mxPhone').value.trim() } }), 'Meta settings saved.');
     if (g('ncGo')) g('ncGo').onclick = () => {
       const item = S.data.items.find((i) => i.item_id === g('ncItem').value);
       if (!item) return toast('Choose an approved design.', true);

@@ -278,7 +278,7 @@ route("POST", "/jobs/:id/retry", "marketer", (ctx) => mutate(ctx, (st) => {
 }).then(fromResult));
 route("PUT", "/settings", "owner", (ctx) => mutate(ctx, (st) => {
   const allowed = ["monthlyAdCapEgp", "maxCplEgp", "targetCplEgp", "cplBreachDays", "cplBreachMinSpendEgp", "approvalThreshold", "killSwitchRollingThreshold", "manualWeeks", "approvalChannel", "targets", "studio", "meta"];
-  if ("meta" in ctx.body) ctx.body.meta = { directPublish: ctx.body.meta?.directPublish === true, inbox: ctx.body.meta?.inbox !== false };
+  if ("meta" in ctx.body) ctx.body.meta = { directPublish: ctx.body.meta?.directPublish === true, inbox: ctx.body.meta?.inbox !== false, contactPhone: String(ctx.body.meta?.contactPhone || "").replace(/[^\d+ ]/g, "").trim().slice(0, 20) };
   if ("studio" in ctx.body) ctx.body.studio = { autoplan: ctx.body.studio?.autoplan !== false, reelLimitPerWeek: Math.max(0, Math.min(30, Math.round(Number(ctx.body.studio?.reelLimitPerWeek ?? 6)))) };
   if (Number(ctx.body.monthlyAdCapEgp) > R.DEFAULT_SETTINGS.monthlyAdCapEgp && !ctx.body.confirmRaiseCap) return { ok: false, error: "Raising the monthly cap above 200,000 EGP needs confirmRaiseCap: true." };
   for (const k of allowed) if (k in ctx.body) st.settings[k] = ctx.body[k];

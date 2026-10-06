@@ -195,7 +195,7 @@ export function createMetaHub(deps) {
     if (typeof edits.text === "string" && ["reply_comment", "reply_message"].includes(a.kind)) {
       const t = edits.text.trim();
       if (!t) throw new Error("The reply is empty.");
-      const bad = replyProblems(t, a.kind === "reply_comment");
+      const bad = replyProblems(t, a.kind === "reply_comment", (await deps.loadState()).state.settings.meta?.contactPhone);
       if (bad.length) throw new Error("Reply breaks the ELEVAY rules: " + bad.join(" "));
       a.text = t; a.edited = true;
     }
@@ -219,18 +219,28 @@ export function createMetaHub(deps) {
   }
 
   // ---------------------------------------------------------------- replies (inbox)
-  function replyProblems(text, isPublic) {
+  function replyProblems(text, isPublic, contactPhone = "") {
     const c = R.checkBrief({ type: "static", caption_ar: text, disclaimer_used: "x" });
     const out = c.blocks.filter((b) => /^term_|^contact_/.test(b.id) && (isPublic || !/^contact_/.test(b.id))).map((b) => b.label);
+    // Private replies may only give the contact number the owner saved in Meta settings — never one Claude made up.
+    if (!isPublic) {
+      const allowed = String(contactPhone || "").replace(/\D/g, "");
+      const phones = (String(text).replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).match(/\+?\d[\d\s().-]{6,}\d/g) || []).map((x) => x.replace(/\D/g, ""));
+      if (phones.some((d) => !allowed || !(d.endsWith(allowed.slice(-9)) && allowed.endsWith(d.slice(-9))))) out.push("Reply contains a phone number that is not the saved ELEVAY contact number.");
+      if (/https?:\/\/|www\.|@[a-z0-9-]+\.[a-z]{2,}/i.test(text)) out.push("Reply contains a link or email address.");
+    }
     if (text.length > 900) out.push("Reply is too long.");
     return out;
   }
   async function seen(id) { const r = await q("INSERT IGNORE INTO ec_meta_seen (id, at) VALUES (?, ?)", [id, Date.now()]); return r.affectedRows === 0; }
 
-  async function draftReply({ platform, channel, text, from, context }) {
+  async function draftReply({ platform, channel, text, from, context, contactPhone = "" }) {
+    const contactRule = channel === "comment" ? "" : contactPhone
+      ? `\n- Never invent contact details. If a phone number helps, use exactly this ELEVAY WhatsApp number and no other: ${contactPhone}. No links or emails.`
+      : "\n- Never write any phone number, email or link: ELEVAY's consultant will contact them.";
     const r = await providers.claude({
       system: ELEVAY_RULES,
-      prompt: `${programFactsFor(text + " " + (context || ""))}\n\nA person wrote to ELEVAY on ${platform} (${channel === "comment" ? "a PUBLIC comment" : "a private message"}).\n${context ? "Post/context: " + clip(context, 600) + "\n" : ""}Their words: """${clip(text, 1500)}"""\n\nDraft ELEVAY's reply:\n- Same language as the person (Arabic → clear, warm Arabic that Egyptians read naturally; English → English). 1–3 short sentences.\n- Never use "تأشيرة"/Visa (say إقامة/Residency), never guarantee anything, no legal or tax advice.\n- ${channel === "comment" ? "Public comment: no prices, no personal details, no phone numbers or links; thank them and invite them to send a private message or book a consultation." : "Private message: answer from the approved facts only (with \"subject to approval and individual circumstances\" when giving conditions), then ask for their name and the best time for an ELEVAY consultant to call."}\n- Spam, ads or abuse: do not reply. Complaints, refunds, legal threats, personal/sensitive situations or anything unclear: set needs_human.\nReturn JSON: {"category": "lead"|"question"|"complaint"|"spam"|"thanks"|"other", "reply": "text or empty", "needs_human": true/false, "reason": "short"}`,
+      prompt: `${programFactsFor(text + " " + (context || ""))}\n\nA person wrote to ELEVAY on ${platform} (${channel === "comment" ? "a PUBLIC comment" : "a private message"}).\n${context ? "Post/context: " + clip(context, 600) + "\n" : ""}Their words: """${clip(text, 1500)}"""\n\nDraft ELEVAY's reply:\n- Same language as the person (Arabic → clear, warm Arabic that Egyptians read naturally; English → English). 1–3 short sentences.\n- Never use "تأشيرة"/Visa (say إقامة/Residency), never guarantee anything, no legal or tax advice.\n- ${channel === "comment" ? "Public comment: no prices, no personal details, no phone numbers or links; thank them and invite them to send a private message or book a consultation." : "Private message: answer from the approved facts only (with \"subject to approval and individual circumstances\" when giving conditions), then ask for their name and the best time for an ELEVAY consultant to call."}${contactRule}\n- Spam, ads or abuse: do not reply. Complaints, refunds, legal threats, personal/sensitive situations or anything unclear: set needs_human.\nReturn JSON: {"category": "lead"|"question"|"complaint"|"spam"|"thanks"|"other", "reply": "text or empty", "needs_human": true/false, "reason": "short"}`,
       maxTokens: 700,
     });
     return r.data || {};
@@ -242,11 +252,12 @@ export function createMetaHub(deps) {
     if (!page.token) throw new Error("No Meta Page access token.");
     const found = [], errors = [];
     const since = Date.now() - 7 * 86400000;
+    const contactPhone = (await deps.loadState()).state.settings.meta?.contactPhone || "";
     const consider = async (item) => {
       if (await seen(item.key)) return;
-      const d = await draftReply(item).catch((e) => ({ category: "other", needs_human: true, reason: "Claude could not draft: " + e.message }));
+      const d = await draftReply({ ...item, contactPhone }).catch((e) => ({ category: "other", needs_human: true, reason: "Claude could not draft: " + e.message }));
       if (d.category === "spam" || (!d.reply && !d.needs_human)) return;
-      const problems = d.reply ? replyProblems(d.reply, item.channel === "comment") : [];
+      const problems = d.reply ? replyProblems(d.reply, item.channel === "comment", contactPhone) : [];
       found.push(await enqueue({
         kind: item.channel === "comment" ? "reply_comment" : "reply_message", platform: item.platform, target_id: item.target_id, recipient_id: item.recipient_id,
         from: item.from, incoming: clip(item.text, 1500), context: clip(item.context || "", 300), permalink: item.permalink || null,
