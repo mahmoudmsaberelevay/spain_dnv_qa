@@ -177,7 +177,7 @@ export function extractJson(text: string) {
 }
 
 export function makeProviders(fetcher = fetch) {
-  async function claude({ system, prompt, images = [], maxTokens = 4000, json = true }) {
+  async function claude({ system, prompt, images = [], maxTokens = 4000, json = true, repairing = false }) {
     const key = process.env.ANTHROPIC_API_KEY;
     if (!key) throw new Error("ANTHROPIC_API_KEY is not set on elevay.vip.");
     const content = [...images.map((im) => (typeof im === "string" ? { type: "image", source: { type: "url", url: im } } : { type: "image", source: { type: "base64", media_type: im.mediaType || "image/jpeg", data: im.base64 } })), { type: "text", text: prompt }];
@@ -190,7 +190,21 @@ export function makeProviders(fetcher = fetch) {
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(`Claude: ${body?.error?.message || `HTTP ${res.status}`}`);
     const text = (body.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
-    return { text, data: json ? extractJson(text) : null, usage: body.usage || null, model: body.model || CLAUDE_MODEL() };
+    if (!json) return { text, data: null, usage: body.usage || null, model: body.model || CLAUDE_MODEL() };
+    try {
+      return { text, data: extractJson(text), usage: body.usage || null, model: body.model || CLAUDE_MODEL() };
+    } catch (e) {
+      // One repair pass: the answer was cut off or had a broken quote. Ask again for valid JSON only.
+      if (repairing) throw e;
+      const cut = body.stop_reason === "max_tokens";
+      const fix = await claude({
+        system, maxTokens: Math.min(Math.round(maxTokens * (cut ? 1.6 : 1.2)), 12000), repairing: true,
+        prompt: cut
+          ? `${prompt}\n\nYour previous answer was cut off. Answer again, more concisely, as one valid JSON object only — no text before or after it.`
+          : `This should be one valid JSON object but it does not parse (likely an unescaped quote or a missing comma). Return the same content as valid JSON only, nothing else. Escape any double quotes inside strings.\n\n${text}`,
+      });
+      return { ...fix, usage: body.usage || fix.usage };
+    }
   }
 
   async function openaiImage({ prompt, purpose }) {
