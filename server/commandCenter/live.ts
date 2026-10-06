@@ -135,16 +135,32 @@ export async function metaAds(graph, { token, account, d30, m6 }) {
 }
 
 /** Page token + id: META_PAGE_ACCESS_TOKEN / META_PAGE_ID first, then the active Meta lead integration. */
-export async function pageCredentials(q) {
+let derivedPage = { key: "", token: "", at: 0 };
+/**
+ * Page token + id. Preferred: a Page token derived from the system-user token
+ * (META_SYSTEM_USER_ACCESS_TOKEN), so it carries every permission granted to the system user,
+ * including Instagram insights, and one key covers ads, Page and Instagram. Falls back to
+ * META_PAGE_ACCESS_TOKEN / the active Meta lead integration.
+ */
+export async function pageCredentials(q, fetcher = fetch) {
   let cfg = {};
   try {
     const row = (await q("SELECT config FROM lead_integrations WHERE type='meta' AND isActive=1 ORDER BY updatedAt DESC LIMIT 1"))[0];
     if (row?.config) cfg = JSON.parse(row.config);
   } catch { cfg = {}; }
-  return {
-    token: process.env.META_PAGE_ACCESS_TOKEN || cfg.page_access_token || cfg.access_token || "",
-    pageId: process.env.META_PAGE_ID || cfg.page_id || "100123051604258",
-  };
+  const pageId = process.env.META_PAGE_ID || cfg.page_id || "100123051604258";
+  const fallback = process.env.META_PAGE_ACCESS_TOKEN || cfg.page_access_token || cfg.access_token || "";
+  const sys = process.env.META_SYSTEM_USER_ACCESS_TOKEN || "";
+  if (sys && process.env.ELEVAY_DERIVE_PAGE_TOKEN !== "false") {
+    const key = pageId + ":" + sys.slice(-12);
+    if (derivedPage.key === key && Date.now() - derivedPage.at < 3600000) return { token: derivedPage.token, pageId, source: "system_user" };
+    try {
+      const res = await fetcher(`https://graph.facebook.com/${graphVersion()}/${pageId}?fields=access_token`, { method: "GET", headers: { Authorization: `Bearer ${sys}` }, signal: AbortSignal.timeout(20000) });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && body.access_token) { derivedPage = { key, token: body.access_token, at: Date.now() }; return { token: body.access_token, pageId, source: "system_user" }; }
+    } catch { /* fall back */ }
+  }
+  return { token: fallback, pageId, source: "page_token" };
 }
 
 async function firstMetric(graph, path, token, candidates, extra) {
@@ -370,7 +386,7 @@ export async function buildLiveReport({ q, fetcher = fetch, settings, now = Date
   const d30 = lastDays(30, now), m6 = lastMonths(6, now);
   const errors = {};
   const adsToken = process.env.META_SYSTEM_USER_ACCESS_TOKEN || "", account = process.env.META_AD_ACCOUNT_ID || "";
-  const page = await pageCredentials(q);
+  const page = await pageCredentials(q, fetcher);
 
   const [meta, pageData, crm30raw, crm6raw] = await Promise.all([
     adsToken && account ? metaAds(graph, { token: adsToken, account, d30, m6 }).catch((e) => { errors.ads = e.message; return null; }) : (errors.ads = "META_SYSTEM_USER_ACCESS_TOKEN or META_AD_ACCOUNT_ID is not set", null),

@@ -148,7 +148,7 @@ export function createMetaHub(deps) {
 
   // ---------------------------------------------------------------- execution
   async function execute(a) {
-    const page = await pageCredentials(q);
+    const page = await pageCredentials(q, deps.fetcher || fetch);
     switch (a.kind) {
       case "reply_comment": {
         const r = a.platform === "instagram" ? await graph.post(`${a.target_id}/replies`, page.token, { message: a.text }) : await graph.post(`${a.target_id}/comments`, page.token, { message: a.text });
@@ -238,7 +238,7 @@ export function createMetaHub(deps) {
 
   /** Pull new comments (Facebook + Instagram) and messages, draft replies, queue them. */
   async function syncInbox({ maxPosts = 10 } = {}) {
-    const page = await pageCredentials(q);
+    const page = await pageCredentials(q, deps.fetcher || fetch);
     if (!page.token) throw new Error("No Meta Page access token.");
     const found = [], errors = [];
     const since = Date.now() - 7 * 86400000;
@@ -313,7 +313,7 @@ export function createMetaHub(deps) {
   }
 
   async function publishItem(item) {
-    const page = await pageCredentials(q);
+    const page = await pageCredentials(q, deps.fetcher || fetch);
     const m = item.media || {}, caption = item.caption_ar || "";
     const channel = item.publish?.channel || "both";
     const d = { ...(item.publish?.direct || {}) };
@@ -348,9 +348,10 @@ export function createMetaHub(deps) {
   // ---------------------------------------------------------------- connection check
   async function checkConnection() {
     const out = {};
-    const page = await pageCredentials(q);
+    const page = await pageCredentials(q, deps.fetcher || fetch);
     const probe = async (name, fn) => { try { out[name] = { ok: true, detail: await fn() }; } catch (e) { out[name] = { ok: false, detail: e.message }; } };
-    await probe("page", async () => (await graph.get(page.pageId, page.token, { fields: "name" })).name);
+    await probe("page", async () => `${(await graph.get(page.pageId, page.token, { fields: "name" })).name} (${page.source === "system_user" ? "key from the system user" : "separate Page key"})`);
+    await probe("insights", async () => { const p = await graph.get(page.pageId, page.token, { fields: "instagram_business_account{id}" }); const ig = p.instagram_business_account?.id; if (!ig) throw new Error("No Instagram account linked"); await graph.get(`${ig}/insights`, page.token, { metric: "reach", period: "day" }); return "Instagram insights allowed"; });
     await probe("comments", async () => { await graph.get(`${page.pageId}/published_posts`, page.token, { fields: "id", limit: "1" }); return "Can read posts and comments"; });
     await probe("messages", async () => { await graph.get(`${page.pageId}/conversations`, page.token, { platform: "messenger", limit: "1" }); return "Can read Messenger"; });
     await probe("instagram", async () => { const p = await graph.get(page.pageId, page.token, { fields: "instagram_business_account{username}" }); if (!p.instagram_business_account) throw new Error("No Instagram account linked"); return "@" + p.instagram_business_account.username; });
@@ -359,7 +360,7 @@ export function createMetaHub(deps) {
     return out;
   }
   async function leadForms() {
-    const page = await pageCredentials(q);
+    const page = await pageCredentials(q, deps.fetcher || fetch);
     return ((await graph.get(`${page.pageId}/leadgen_forms`, page.token, { fields: "id,name,status", limit: "100" })).data || []).filter((f) => f.status === "ACTIVE");
   }
 
