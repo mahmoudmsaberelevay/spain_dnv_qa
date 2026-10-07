@@ -336,7 +336,7 @@ export const PIPELINES = {
     S("claude", "reel_storyboard", "Claude writes the 4-scene storyboard, caption and Egyptian Arabic voice-over"),
     S("system", "check_brief", "Brand and compliance check (Claude fixes blocks once)"),
     S("openai", "reel_keyframes", "OpenAI creates the 4 keyframes (9:16)"),
-    S("claude", "qc_visual", "Claude checks the keyframes against the ELEVAY rules (redoes failing ones up to 2 times)"),
+    S("claude", "qc_visual", "Claude checks the keyframes against the ELEVAY rules (redoes failing ones up to 3 times)"),
     S("higgsfield", "clips", "Higgsfield animates 4 × 5 s clips", { gate: "owner" }),
     S("claude", "qc_clips", "Claude checks frames of every clip (wardrobe, footwear, anatomy, continuity)"),
     S("elevenlabs", "voice", "ELEVAY voice clone reads the Egyptian Arabic script, one take per scene"),
@@ -630,7 +630,7 @@ export function createOrchestrator(deps) {
         const reel = run.kind === "reel";
         const imgs = reel ? A.keyframes.map((k) => k.url) : A.images.map((i) => i.url);
         const r = await askClaude(run, step, strictQcPrompt(reel ? `${imgs.length} reel keyframes (no text or logo allowed anywhere)` : `one finished static post. The only text allowed is the English headline "${A.brief.design.headline_en}" in Apex Sans, and the only logo is the official origami-bird mark in a corner`), { images: imgs, note: `Strict design QC of ${imgs.length} image(s), attempt ${(A.qc_attempts || 0) + 1}`, maxTokens: 2000 });
-        return applyQc(run, step, r.data, imgs.length, reel ? "openai.reel_keyframes" : "openai.static_image", 2);
+        return applyQc(run, step, r.data, imgs.length, reel ? "openai.reel_keyframes" : "openai.static_image", reel ? 3 : 2);
       }
       case "claude.qc_clips": {
         const frames = [];
@@ -699,7 +699,7 @@ export function createOrchestrator(deps) {
         let itemId;
         let auto = false;
         const r = await deps.mutate({}, (st) => {
-          itemId = opts.item_id && !st.items.some((i) => i.item_id === opts.item_id) ? opts.item_id : nextItemId(st.items, opts.week || undefined, !!opts.planned);
+          itemId = A.item_id && st.items.some((i) => i.item_id === A.item_id) ? A.item_id : opts.item_id && !st.items.some((i) => i.item_id === opts.item_id) ? opts.item_id : nextItemId(st.items, opts.week || undefined, !!opts.planned);
           const up = E.upsertBrief(st, { ...A.brief, item_id: itemId, status: A.qc_blocked ? "qc_failed" : "pending_approval", media, produced_by: { studio_run: run.id, claude: true, openai: true, higgsfield: run.kind === "reel" }, qc: { reviewer: "claude", pass: A.qc_blocked ? false : (A.qc?.pass ?? null), issues: A.qc?.issues || [], blocked: !!A.qc_blocked } }, "ai-studio");
           if (up.ok === false) return up;
           // Autopilot approves clean items itself; they do not count toward the human first-pass rate.
@@ -878,6 +878,28 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
     kick(id);
   }
 
+  /** A reel stopped by keyframe QC: redo the failing keyframes and carry on to clips, voice and the edit. */
+  async function redo(id, user) {
+    const g = await get(id);
+    if (!g) throw new Error("Run not found.");
+    const run = g.run, A = run.artifacts;
+    if (run.kind !== "reel" || !A.qc_blocked || !run.steps.some((s2) => s2.status === "skipped")) throw new Error("Only a reel stopped by the design check can be made again.");
+    const per = Array.isArray(A.qc?.per_image) ? A.qc.per_image : [];
+    A.fixByIndex = A.fixByIndex || {};
+    for (const p of per) if (p && p.pass === false && p.index >= 1 && p.index <= 4) { A.keyframes[p.index - 1] = null; A.fixByIndex[p.index - 1] = p.fix || (p.issues || []).join("; "); }
+    if (!per.some((p) => p && p.pass === false)) A.keyframes = [];
+    A.qc_blocked = false; A.qc = null; A.qc_visual_attempts = 0;
+    let from = false;
+    for (const s2 of run.steps) {
+      if (s2.action === "reel_keyframes") from = true;
+      if (from) { s2.status = "pending"; s2.error = null; s2.output = null; delete s2.approved_by; delete s2.approved_at; }
+    }
+    run.status = "queued";
+    log(run, user.email, "studio", "Make the reel again: redoing the failing keyframes, then clips, voice and the edit.");
+    await save(run, g.ver);
+    kick(id);
+  }
+
   async function cancel(id, user) {
     const g = await get(id);
     if (!g) throw new Error("Run not found.");
@@ -948,5 +970,5 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
     }
   }
 
-  return { ensureTable, create, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, approve, retry, cancel, tick, test: () => providers.test() };
+  return { ensureTable, create, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, approve, retry, redo, cancel, tick, test: () => providers.test() };
 }
