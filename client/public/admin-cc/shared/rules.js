@@ -97,7 +97,7 @@
     { id: 'logo_ai', re: /\b(draw|draws|drawn|render|renders|rendered|include|includes|add|adds|show|shows|place|places|with|featuring|feature)\s+(the\s+|an?\s+|its\s+)?(elevay\s+|official\s+|company\s+)?(logo|brand mark|wordmark|watermark)\b|\blogo (on|printed|engraved)\b/, label: 'Asks the image model to draw a logo (the official logo is composited afterwards)' },
   ];
   const SUIT_RE = /\b(suits?|suited|blazers?|tuxedos?|business attire|formal wear|businessman|businesswoman|executive)\b/;
-  const SHOES_RE = /\b(shoes|loafers|oxfords|brogues|derbies|heels|pumps|footwear|boots)\b/;
+  const SHOES_RE = /\b(shoes?|loafers?|oxfords?|brogues?|derbys?|derbies|heels|pumps|footwear|boots?|monk[- ]straps?)\b/;
   const BAD_SHOES_RE = /\b(slippers|flip[- ]?flops|sandals|sneakers|trainers|house shoes)\b/;
   const PEOPLE_RE = /\b(man|men|woman|women|person|people|family|couple|professional|child|children|kids?|father|mother|son|daughter|businessman|businesswoman|executive|entrepreneur|retiree|investor|traveller|traveler)\b/;
   const ARAB_RE = /\b(arab|middle[- ]eastern|egyptian|gulf|emirati|saudi|levantine)\b/;
@@ -112,8 +112,16 @@
       add(`${prefix}_arab`, `${labelPrefix}: people are Arab / Middle Eastern`, ARAB_RE.test(raw));
       add(`${prefix}_wardrobe`, `${labelPrefix}: complete elegant outfit described`, /\b(cloth|outfit|wear|dressed|attire|suit|dress|shirt|linen|tailored|elegant)\w*/.test(raw), 'warn');
     }
-    if (SUIT_RE.test(yes)) add(`${prefix}_footwear`, `${labelPrefix}: suits/business wear come with polished formal shoes or loafers`, SHOES_RE.test(yes) && !BAD_SHOES_RE.test(yes));
+    // Shoes may be named anywhere (even after "no tie, …"); casual footwear counts only when affirmed.
+    if (SUIT_RE.test(yes)) add(`${prefix}_footwear`, `${labelPrefix}: suits/business wear come with polished formal shoes or loafers`, SHOES_RE.test(raw) && !BAD_SHOES_RE.test(yes));
     else if (BAD_SHOES_RE.test(yes) && /\b(formal|office|meeting|consultation)\b/.test(yes)) add(`${prefix}_footwear`, `${labelPrefix}: no casual footwear in formal scenes`, false);
+  }
+
+  /** Adds the footwear sentence to a visual prompt that dresses someone in a suit without naming shoes. */
+  function withFootwear(prompt) {
+    const p = String(prompt || '');
+    if (!SUIT_RE.test(affirmative(p)) || SHOES_RE.test(p.toLowerCase())) return p;
+    return p.replace(/\s*$/, '') + ' Everyone in a suit or business wear wears polished formal leather shoes or elegant loafers, clearly visible and consistent.';
   }
 
   /** English design text must be sentence case (not ALL CAPS, not Title Case). */
@@ -280,7 +288,7 @@
   function fmt(n) { return Math.round(Number(n || 0)).toLocaleString('en-US'); }
 
   return {
-    affirmative, isSentenceCase,
+    affirmative, isSentenceCase, withFootwear,
     DEFAULT_SETTINGS, TERM_RULES, CONTACT_RULES, DISCLAIMERS, PILLARS, PROGRAMS, STATUSES, CHANGE_SCOPES,
     checkBrief, classifyChange, approvalStats, guardrails, countWords, hasArabic, weekOf,
   };

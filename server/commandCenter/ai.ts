@@ -581,11 +581,16 @@ export function createOrchestrator(deps) {
         return;
       }
       case "system.check_brief": {
+        // Mechanical fixes first, so a missing detail never costs a Claude round or fails the run.
+        if (A.brief.design?.image_prompt) A.brief.design.image_prompt = R.withFootwear(A.brief.design.image_prompt);
+        for (const sc of A.brief.reel?.storyboard || []) sc.keyframe_prompt = R.withFootwear(sc.keyframe_prompt);
         let check = R.checkBrief(A.brief);
         log(run, "studio", "studio", check.pass ? `Compliance check passed (${check.warnings.length} warning(s)).` : `Compliance check blocked: ${check.blocks.map((b) => b.label).join(" ")}`);
         if (!check.pass) {
           const r = await askClaude(run, step, `Your ELEVAY brief failed these blocking checks:\n${check.blocks.map((b) => "- " + b.label).join("\n")}\nWarnings:\n${check.warnings.map((b) => "- " + b.label).join("\n")}\n\nBrief:\n${JSON.stringify(A.brief)}\n\nReturn the corrected brief as JSON with exactly the same structure.`, { maxTokens: 5000 });
           A.brief = { ...A.brief, ...r.data, type: A.brief.type };
+          if (A.brief.design?.image_prompt) A.brief.design.image_prompt = R.withFootwear(A.brief.design.image_prompt);
+          for (const sc of A.brief.reel?.storyboard || []) sc.keyframe_prompt = R.withFootwear(sc.keyframe_prompt);
           check = R.checkBrief(A.brief);
           if (!check.pass) throw new Error("Still blocked after one fix: " + check.blocks.map((b) => b.label).join(" "));
         }

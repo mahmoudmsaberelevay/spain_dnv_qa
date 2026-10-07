@@ -79,3 +79,16 @@ describe("Command Center workflow engine", () => {
     expect(job.status).toBe("needs_input");
   });
 });
+
+describe("footwear rule", () => {
+  it("accepts shoes named after a negation and fixes prompts that forget them", async () => {
+    const R = (await import("./rules")).default;
+    const add = [];
+    const brief = (kp) => ({ type: "reel", topic: "t", pillar: "Global Mobility", program: "Malta", caption_ar: "", reel: { storyboard: [{ keyframe_prompt: kp }] } });
+    const footFail = (kp) => R.checkBrief(brief(kp)).blocks.some((b) => /footwear/.test(b.id));
+    expect(footFail("An Arab man in a navy suit, no tie, polished oxford shoes, elegant office.")).toBe(false);
+    expect(footFail("An Arab man in a navy suit in an elegant office.")).toBe(true);
+    expect(footFail(R.withFootwear("An Arab man in a navy suit in an elegant office."))).toBe(false);
+    expect(R.withFootwear("Arab family on a beach in linen clothes.")).toBe("Arab family on a beach in linen clothes.");
+  });
+});
