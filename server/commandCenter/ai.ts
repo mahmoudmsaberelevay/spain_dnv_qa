@@ -989,10 +989,12 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       if (Date.now() - Date.parse(doc.updated_at || doc.created_at) < 10 * 60 * 1000) continue;
       const g = await get(r.id);
       const step = g.run.steps.find((s) => s.status === "running");
-      // Claude, checks and OpenAI images are cheap and need no approval: resume them once automatically.
+      // Claude, checks, OpenAI images, voice and the FFmpeg edit need no approval: resume them automatically,
+      // up to 3 times (back-to-back publishes restart the server more than once).
       // Higgsfield clips (the expensive step) are never re-submitted without a person pressing Retry.
-      if (step && step.provider !== "higgsfield" && !step.auto_resumed) {
-        step.status = "pending"; step.auto_resumed = true; g.run.status = "queued";
+      const resumes = Number(step?.auto_resumes || (step?.auto_resumed ? 1 : 0));
+      if (step && step.provider !== "higgsfield" && resumes < 3) {
+        step.status = "pending"; step.auto_resumes = resumes + 1; step.auto_resumed = true; g.run.status = "queued";
         log(g.run, "studio", "team", `Resumed automatically after a server restart: ${step.title}`);
         await save(g.run, g.ver).catch(() => {});
         continue;
