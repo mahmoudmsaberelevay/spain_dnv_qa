@@ -85,6 +85,7 @@ describe("AI Studio orchestrator", () => {
 
   it("reel: Higgsfield needs the owner, waits for clips, then lands in the plan", async () => {
     const { o, state, calls, finishClips } = setup([{ topic: "Lisbon", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: true }, { pass: true }, { pass: true }]);
+    state.settings.studio = { autoClips: false };
     const run = await o.create({ kind: "reel", request: "Reel for retirees", user: marketer });
     let r = await settle(o, run.id);
     expect(calls.openai).toBe(4);
@@ -144,7 +145,8 @@ describe("Strict design QC", () => {
   });
 
   it("redoes only the failing keyframe and passes the fix to OpenAI", async () => {
-    const { o, calls } = setup([{ topic: "Malta", pillar: "Family Security", program: "Malta Permanent Residence", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: false, per_image: [{ index: 1, pass: true }, { index: 2, pass: false, issues: ["passport on table"], fix: "Remove the passport" }, { index: 3, pass: true }, { index: 4, pass: true }] }, { pass: true }]);
+    const { o, calls, state } = setup([{ topic: "Malta", pillar: "Family Security", program: "Malta Permanent Residence", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: false, per_image: [{ index: 1, pass: true }, { index: 2, pass: false, issues: ["passport on table"], fix: "Remove the passport" }, { index: 3, pass: true }, { index: 4, pass: true }] }, { pass: true }]);
+    state.settings.studio = { autoClips: false };
     const run = await o.create({ kind: "reel", request: "Malta", user: marketer });
     const r = await settle(o, run.id);
     expect(calls.openai).toBe(5); // 4 + 1 redo
@@ -199,6 +201,15 @@ describe("Autopilot", () => {
     expect(item).toMatchObject({ status: "approved", auto_approved: true, first_pass: null, presented_at: null });
     expect(state.jobs.some((j) => j.type === "schedule_post" && j.payload.item_id === item.item_id && j.payload.autopublish === true)).toBe(true);
     expect(calls.claude[0].prompt).toMatch(/€35,000/); // Spain approved facts
+  });
+
+  it("owner setting makes Higgsfield clips start by themselves after keyframe QC passes", async () => {
+    const { o, state } = setup([{ topic: "Madrid", pillar: "Family Security", program: "Spain Digital Nomad Residence", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: true }]);
+    state.settings.studio = { reelLimitPerWeek: 6 }; // autoClips defaults to on
+    const run = await o.create({ kind: "reel", request: "Madrid freelancer reel", user: marketer });
+    const r = await settle(o, run.id);
+    expect(r.status).toBe("waiting");
+    expect(r.steps.find((x) => x.provider === "higgsfield").approved_by).toMatch(/make clips automatically/);
   });
 
   it("Manus requests run Higgsfield without waiting, within the weekly reel limit", async () => {
@@ -280,6 +291,7 @@ describe("Make the reel again", () => {
   it("redoes the failing keyframes of a QC-stopped reel and keeps the same weekly-plan item", async () => {
     const bad = { pass: false, per_image: [{ index: 4, pass: false, fix: "polished loafers" }] };
     const { o, calls, state } = setup([{ topic: "t", pillar: "Family Security", program: "p", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, bad, bad, bad, bad, { pass: true }]);
+    state.settings.studio = { autoClips: false };
     const run = await o.create({ kind: "reel", request: "x", user: marketer });
     let r = await settle(o, run.id);
     const itemId = r.artifacts.item_id;

@@ -532,7 +532,8 @@ export function createOrchestrator(deps) {
   /** Returns who approved automatically, or null when a person must approve. */
   async function autoApproval(run, step) {
     const { on, state } = await autopilotOn();
-    const why = run.options?.auto ? "Manus request" : on ? "autopilot: 6-week 90% gate reached" : null;
+    const autoClips = step.provider === "higgsfield" && state.settings.studio?.autoClips !== false;
+    const why = run.options?.auto ? "Manus request" : on ? "autopilot: 6-week 90% gate reached" : autoClips ? "owner setting: make clips automatically" : null;
     if (!why) return null;
     if (step.provider === "higgsfield") {
       const limit = Number(state.settings.studio?.reelLimitPerWeek ?? 6);

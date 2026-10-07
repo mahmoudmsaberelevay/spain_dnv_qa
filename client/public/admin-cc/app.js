@@ -808,7 +808,7 @@
     }, 'Started. Claude is planning; production starts automatically.')));
     const aps = el.querySelector('#apSave');
     if (aps) aps.onclick = () => act(async () => {
-      await api.saveSettings({ studio: { autoplan: el.querySelector('#apAuto').checked, reelLimitPerWeek: Number(el.querySelector('#apReels').value) } });
+      await api.saveSettings({ studio: { autoplan: el.querySelector('#apAuto').checked, autoClips: el.querySelector('#apClips').checked, reelLimitPerWeek: Number(el.querySelector('#apReels').value) } });
       S.studio.autopilot = await api.req('GET', 'ai/autopilot');
     }, 'Autopilot settings saved.');
     el.querySelectorAll('[data-run-act]').forEach((b) => (b.onclick = () => {
@@ -828,9 +828,9 @@
         : `<span class="pill warn">Learning phase</span> Week ${Math.min(a.weeksDone, a.manualWeeks)} of ${a.manualWeeks} · first-pass approval ${pct(a.cumulative)} (needs ${pct(a.threshold)}). Until then the owner approves Higgsfield clips, Meta changes, posts and plans. It switches to automatic by itself when the gate is reached.`;
     return `<section class="panel"><div class="panel-h"><h2>Autopilot</h2><span class="small muted">${ap.studio.autoplan ? 'Plans itself every Saturday 09:00 Cairo (next week) and from the 25th (next month)' : 'Automatic planning is paused'}</span></div>
       <p style="margin:0 0 10px">${status}</p>
-      <p class="small muted" style="margin:0 0 12px">OpenAI designs never wait for approval. Requests from Manus run automatically. Higgsfield is limited to ${ap.studio.reelLimitPerWeek} reels per 7 days; Meta work stays inside the 200,000 EGP cap and 100 EGP max CPL.</p>
+      <p class="small muted" style="margin:0 0 12px">OpenAI designs never wait for approval. Requests from Manus run automatically. ${ap.studio.autoClips ? 'Higgsfield clips start by themselves once the keyframes pass QC' : 'Higgsfield clips wait for your approval'}, limited to ${ap.studio.reelLimitPerWeek} reels per 7 days; Meta work stays inside the 200,000 EGP cap and 100 EGP max CPL.</p>
       ${canEdit() ? `<div class="row"><button class="btn primary" data-autoplan="this">Plan this week now</button><button class="btn" data-autoplan="next">Plan next week now</button><button class="btn" data-autoplan="monthly">Draft next month's plan now</button></div>` : ''}
-      ${isOwner() ? `<div class="row small" style="margin-top:12px"><label class="row"><input type="checkbox" id="apAuto" ${ap.studio.autoplan ? 'checked' : ''}> Plan automatically</label><label class="row">Reel limit per 7 days <input class="input" id="apReels" type="number" min="0" max="30" value="${ap.studio.reelLimitPerWeek}" style="width:70px"></label><button class="btn sm" id="apSave">Save</button></div>` : ''}
+      ${isOwner() ? `<div class="row small" style="margin-top:12px"><label class="row"><input type="checkbox" id="apAuto" ${ap.studio.autoplan ? 'checked' : ''}> Plan automatically</label><label class="row"><input type="checkbox" id="apClips" ${ap.studio.autoClips ? 'checked' : ''}> Make Higgsfield clips automatically</label><label class="row">Reel limit per 7 days <input class="input" id="apReels" type="number" min="0" max="30" value="${ap.studio.reelLimitPerWeek}" style="width:70px"></label><button class="btn sm" id="apSave">Save</button></div>` : ''}
     </section>`;
   }
   const COST = { higgsfield: 'This submits 4 paid Higgsfield Pro clips. Continue?', manus: 'Manus will act on Meta with these instructions. Continue?' };

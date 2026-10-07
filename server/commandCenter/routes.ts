@@ -279,7 +279,7 @@ route("POST", "/jobs/:id/retry", "marketer", (ctx) => mutate(ctx, (st) => {
 route("PUT", "/settings", "owner", (ctx) => mutate(ctx, (st) => {
   const allowed = ["monthlyAdCapEgp", "maxCplEgp", "targetCplEgp", "cplBreachDays", "cplBreachMinSpendEgp", "approvalThreshold", "killSwitchRollingThreshold", "manualWeeks", "approvalChannel", "targets", "studio", "meta"];
   if ("meta" in ctx.body) ctx.body.meta = { directPublish: ctx.body.meta?.directPublish === true, inbox: ctx.body.meta?.inbox !== false, contactPhone: String(ctx.body.meta?.contactPhone || "").replace(/[^\d+ ]/g, "").trim().slice(0, 20) };
-  if ("studio" in ctx.body) ctx.body.studio = { autoplan: ctx.body.studio?.autoplan !== false, reelLimitPerWeek: Math.max(0, Math.min(30, Math.round(Number(ctx.body.studio?.reelLimitPerWeek ?? 6)))) };
+  if ("studio" in ctx.body) ctx.body.studio = { autoplan: ctx.body.studio?.autoplan !== false, autoClips: ctx.body.studio?.autoClips !== false, reelLimitPerWeek: Math.max(0, Math.min(30, Math.round(Number(ctx.body.studio?.reelLimitPerWeek ?? 6)))) };
   if (Number(ctx.body.monthlyAdCapEgp) > R.DEFAULT_SETTINGS.monthlyAdCapEgp && !ctx.body.confirmRaiseCap) return { ok: false, error: "Raising the monthly cap above 200,000 EGP needs confirmRaiseCap: true." };
   for (const k of allowed) if (k in ctx.body) st.settings[k] = ctx.body[k];
   E.audit(st, ctx.user.email, "settings.updated", null, Object.keys(ctx.body).join(", "));
@@ -372,7 +372,7 @@ route("POST", "/ai/runs/:id/cancel", "marketer", studioAct((o, ctx) => o.cancel(
 route("GET", "/ai/autopilot", "team", async () => {
   const { state } = await loadState();
   const a = R.approvalStats(state.items, state.settings);
-  return ok({ ok: true, autopublish: state.settings.autopublish, approval: { weeksDone: a.weeksDone, cumulative: a.cumulative, rolling4: a.rolling4, gateEligible: a.gateEligible, manualWeeks: state.settings.manualWeeks, threshold: state.settings.approvalThreshold }, studio: { autoplan: state.settings.studio?.autoplan !== false, reelLimitPerWeek: Number(state.settings.studio?.reelLimitPerWeek ?? 6) }, lastWeekly: await kvGet("autoplan_last_week") });
+  return ok({ ok: true, autopublish: state.settings.autopublish, approval: { weeksDone: a.weeksDone, cumulative: a.cumulative, rolling4: a.rolling4, gateEligible: a.gateEligible, manualWeeks: state.settings.manualWeeks, threshold: state.settings.approvalThreshold }, studio: { autoplan: state.settings.studio?.autoplan !== false, autoClips: state.settings.studio?.autoClips !== false, reelLimitPerWeek: Number(state.settings.studio?.reelLimitPerWeek ?? 6) }, lastWeekly: await kvGet("autoplan_last_week") });
 });
 route("POST", "/ai/autoplan/weekly", "marketer", async (ctx) => {
   const week = /^\d{4}-W\d{2}$/.test(ctx.body.week || "") ? ctx.body.week : ctx.body.which === "this" ? isoWeekOf(Date.now()) : ctx.body.which === "next" ? isoWeekOf(Date.now() + 7 * 86400000) : undefined;
