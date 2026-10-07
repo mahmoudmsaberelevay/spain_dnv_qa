@@ -154,7 +154,7 @@ describe("Strict design QC", () => {
 
   it("skips paid clips when keyframes keep failing", async () => {
     const bad = { pass: false, per_image: [{ index: 3, pass: false, fix: "x" }] };
-    const { o, calls, state } = setup([{ topic: "t", pillar: "Family Security", program: "p", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, bad, bad, bad]);
+    const { o, calls, state } = setup([{ topic: "t", pillar: "Family Security", program: "p", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, bad, bad, bad, bad]);
     const run = await o.create({ kind: "reel", request: "x", user: marketer });
     const r = await settle(o, run.id);
     expect(calls.hfSubmit).toBe(0);
@@ -273,5 +273,22 @@ describe("Claude JSON repair", () => {
     const r = await p.claude({ system: "s", prompt: "p" });
     expect(r.data).toEqual({ line: "ok" });
     expect(calls).toBe(2);
+  });
+});
+
+describe("Make the reel again", () => {
+  it("redoes the failing keyframes of a QC-stopped reel and keeps the same weekly-plan item", async () => {
+    const bad = { pass: false, per_image: [{ index: 4, pass: false, fix: "polished loafers" }] };
+    const { o, calls, state } = setup([{ topic: "t", pillar: "Family Security", program: "p", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, bad, bad, bad, bad, { pass: true }]);
+    const run = await o.create({ kind: "reel", request: "x", user: marketer });
+    let r = await settle(o, run.id);
+    const itemId = r.artifacts.item_id;
+    expect(r.steps.find((s) => s.action === "clips").status).toBe("skipped");
+    await o.redo(run.id, marketer);
+    r = await settle(o, run.id, ["running", "queued"]);
+    expect(r.steps.find((s) => s.action === "qc_visual").status).toBe("done");
+    expect(["needs_approval", "waiting", "pending"]).toContain(r.steps.find((s) => s.action === "clips").status);
+    expect(calls.hfSubmit).toBe(0); // the owner still approves paid clips
+    expect(state.items.filter((i) => i.item_id === itemId)).toHaveLength(1);
   });
 });

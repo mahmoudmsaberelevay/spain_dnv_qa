@@ -136,7 +136,21 @@
   async function poll() {
     if (!S.data || document.hidden || S.busy) return;
     if (document.activeElement && /TEXTAREA|INPUT|SELECT/.test(document.activeElement.tagName)) return; // never clobber typing
-    try { await refresh(); render(); } catch { /* handled */ }
+    // Background sync: redraw only when something actually changed, keep the scroll position,
+    // and leave AI Studio alone (it refreshes its own run list without the loading flash).
+    const sig = () => { try { return JSON.stringify({ ...S.data, server_time: 0 }); } catch { return Math.random(); } };
+    try {
+      const before = sig();
+      await refresh();
+      const synced = document.querySelector('.rail-foot > div:last-child');
+      if (sig() === before) { if (synced && S.mode === 'server') synced.textContent = `Synced ${ago(S.data.server_time)} · Cairo time`; return; }
+      if (S.view === 'studio') return;
+      const y = window.scrollY;
+      const open = new Set([...document.querySelectorAll('details[open]')].map((d, i) => d.dataset.key || d.dataset.run || i));
+      render();
+      document.querySelectorAll('details').forEach((d, i) => { if (open.has(d.dataset.key || d.dataset.run || i)) d.open = true; });
+      window.scrollTo(0, y);
+    } catch { /* handled */ }
   }
 
   function renderLogin(msg) {
@@ -444,6 +458,7 @@
     const fmt = i.design && i.design.format === '1080x1350' ? 'p45' : 'sq';
     if (i.type === 'reel') {
       if (m.video_url) return `<div class="frame v916"><video src="${esc(m.video_url)}" controls playsinline preload="metadata"></video></div>`;
+      if ((m.keyframes || []).length) return `<div class="stack" style="gap:6px"><div class="thumbs">${m.keyframes.map((u) => `<img src="${esc(u)}" alt="Keyframe" loading="lazy">`).join('')}</div><span class="small muted">Keyframes only: the reel itself was not made because these failed the design check. Make it again from AI Studio.</span></div>`;
       return `<div class="frame v916" style="max-width:230px"><div class="ph reel"><span class="note">Final reel pending</span><div><div class="hl">${esc(i.topic)}</div><div class="small" style="opacity:.8;margin-top:6px">4 × 5 s clips + 3 s white logo outro</div></div><div class="clips">${[1, 2, 3, 4].map((c) => `<span>Clip ${c}</span>`).join('')}</div></div></div>`;
     }
     if (m.image_url) return `<div class="frame ${fmt}"><img src="${esc(m.image_url)}" alt="Design for ${esc(i.item_id)}" loading="lazy"></div>`;
@@ -746,7 +761,12 @@
       if (S.view !== 'studio' || !el.isConnected) return clearInterval(studioTimer);
       if (document.hidden || (document.activeElement && /TEXTAREA|INPUT|SELECT/.test(document.activeElement.tagName))) return;
       if (!S.studio || !S.studio.runs.some((r) => ['queued', 'running', 'waiting'].includes(r.status))) return;
-      try { await loadStudio(); drawStudio(el); } catch { /* keep last */ }
+      try {
+        const before = JSON.stringify(S.studio.runs);
+        await loadStudio();
+        if (JSON.stringify(S.studio.runs) === before) return;
+        const y = window.scrollY; drawStudio(el); window.scrollTo(0, y);
+      } catch { /* keep last */ }
     }, 6000);
   }
   function drawStudio(el) {
@@ -792,7 +812,7 @@
     el.querySelectorAll('[data-run-act]').forEach((b) => (b.onclick = () => {
       const [a, id, n] = b.dataset.runAct.split(':');
       if (a === 'approve' && b.dataset.cost && !confirm(b.dataset.cost)) return;
-      act(async () => { await api.req('POST', a === 'approve' ? `ai/runs/${id}/steps/${n}/approve` : `ai/runs/${id}/${a}`); await loadStudio(); }, a === 'approve' ? 'Approved. The models continue.' : a === 'retry' ? 'Retrying.' : 'Cancelled.');
+      act(async () => { await api.req('POST', a === 'approve' ? `ai/runs/${id}/steps/${n}/approve` : `ai/runs/${id}/${a}`); await loadStudio(); }, a === 'approve' ? 'Approved. The models continue.' : a === 'retry' ? 'Retrying.' : a === 'redo' ? 'Making the reel again.' : 'Cancelled.');
     }));
     el.querySelectorAll('[data-goview]').forEach((b) => (b.onclick = (ev) => { ev.preventDefault(); go(b.dataset.goview); }));
   }
@@ -818,20 +838,23 @@
     const steps = r.steps.map((s) => `<li class="step ${s.status}"><span class="ico">${STEP_ICON[s.status] || '○'}</span>${provChip(s.provider)} <span>${esc(s.title)}</span>
       ${s.status === 'needs_approval' ? ((s.gate === 'owner' && !isOwner()) || !canEdit() ? `<span class="pill warn">Waiting for ${s.gate === 'owner' ? 'owner' : 'approval'}</span>` : `<button class="btn sm primary" data-run-act="approve:${r.id}:${s.n}" data-cost="${esc(COST[s.provider] || '')}">Approve</button>`) : ''}
       ${s.error ? `<div class="small" style="color:var(--bad)">${esc(s.error)}</div>` : ''}${s.approved_by ? `<span class="small muted"> · approved by ${esc(s.approved_by)}</span>` : ''}</li>`).join('');
-    const imgs = (A.images || []).map((i) => i.url).concat(A.keyframes ? A.keyframes.map((k) => k.url) : []);
+    const imgs = (A.images || []).map((i) => i.url).concat(A.keyframes ? A.keyframes.filter(Boolean).map((k) => k.url) : []);
     const clips = (A.clips || []).filter((c) => c.url);
     const brief = A.brief;
+    const stoppedReel = r.kind === 'reel' && A.qc_blocked && (r.steps || []).some((s2) => s2.status === 'skipped');
     return `<details class="run" data-run="${r.id}" ${isOpen || ['awaiting_approval', 'failed'].includes(r.status) ? 'open' : ''}><summary><span class="pill ${pc}">${pl}</span> <strong>${esc(r.title)}</strong> <span class="small muted">· ${esc((S.studio.pipelines[r.kind] || {}).label || r.kind)} · #${r.id} · ${esc(r.created_by)} · ${ago(r.created_at)}</span></summary>
       <div class="run-body"><ol class="steps">${steps}</ol>
         ${A.answer ? `<div class="answer">${esc(A.answer)}</div>` : ''}
         ${A.qc && A.qc.pass === false ? `<div class="alert"><span class="tag">Claude QC</span><span>${esc((A.qc.issues || []).join(' · '))}</span></div>` : A.qc ? '<div class="small" style="color:var(--ok)">Claude visual check passed.</div>' : ''}
         ${brief ? `<div class="grid g2" style="margin-top:8px"><div><div class="small muted">Caption (Arabic)</div><div dir="rtl" class="small" style="white-space:pre-wrap">${esc(brief.caption_ar || '')}</div></div><div>${brief.design ? `<div class="small muted">Design text</div><div>${esc(brief.design.headline_en || '')}</div>` : ''}${brief.reel ? `<div class="small muted">Voice-over (Egyptian Arabic)</div><ol class="small" dir="rtl">${brief.reel.storyboard.map((c) => `<li>${esc(c.spoken_text_ar || '')}</li>`).join('')}</ol>` : ''}</div></div>` : ''}
         ${imgs.length ? `<div class="thumbs">${imgs.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Generated design" loading="lazy"></a>`).join('')}</div>` : ''}
+        ${A.final && A.final.url ? `<div class="small muted" style="margin-top:8px">Finished reel</div><video src="${esc(A.final.url)}" controls playsinline preload="metadata" style="max-width:280px;border-radius:8px"></video>` : ''}
+        ${stoppedReel ? `<div class="alert"><span class="tag">No reel yet</span><span>The keyframes above failed the design check, so the paid clips, voice-over and edit were not made. Only the keyframes went to the weekly plan.${canEdit() ? ' Press <strong>Make the reel again</strong> to redo the failing keyframes and finish the reel.' : ''}</span></div>` : ''}
         ${clips.length ? `<div class="thumbs">${clips.map((c) => `<video src="${esc(c.url)}" controls playsinline preload="metadata"></video>`).join('')}</div>` : ''}
         ${A.item_id ? `<p class="small">In the weekly plan as <a href="#plan" data-goview="plan">${esc(A.item_id)}</a>.</p>` : ''}
         ${A.plan ? '<p class="small">Plan sent to the <a href="#monthly" data-goview="monthly">Monthly plan</a> tab.</p>' : ''}
         <details class="small"><summary>Conversation between the models (${(r.messages || []).length})</summary><ul class="msgs">${(r.messages || []).map((m) => `<li><span class="muted">${fmtDT(m.at)}</span> ${provChip(m.from)} → ${provChip(m.to)}<pre>${esc(m.text)}</pre></li>`).join('')}</ul></details>
-        ${canEdit() ? `<div class="row" style="margin-top:8px">${r.status === 'failed' ? `<button class="btn sm" data-run-act="retry:${r.id}">Retry failed step</button>` : ''}${!['done', 'failed', 'cancelled'].includes(r.status) ? `<button class="btn ghost sm" data-run-act="cancel:${r.id}">Cancel</button>` : ''}</div>` : ''}
+        ${canEdit() ? `<div class="row" style="margin-top:8px">${r.status === 'failed' ? `<button class="btn sm" data-run-act="retry:${r.id}">Retry failed step</button>` : ''}${stoppedReel ? `<button class="btn sm primary" data-run-act="redo:${r.id}">Make the reel again</button>` : ''}${!['done', 'failed', 'cancelled'].includes(r.status) ? `<button class="btn ghost sm" data-run-act="cancel:${r.id}">Cancel</button>` : ''}</div>` : ''}
       </div></details>`;
   }
   // ------------------------------------------------------------ Meta (replies, publishing, campaigns)
