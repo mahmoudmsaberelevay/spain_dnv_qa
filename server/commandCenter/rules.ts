@@ -128,6 +128,15 @@ const module = { exports: {} };
     return p.replace(/\s*$/, '') + ' Everyone in a suit or business wear wears polished formal leather shoes or elegant loafers, clearly visible and consistent.';
   }
 
+  /** Drops sentences of a clip motion prompt that ask for text, titles or a logo (the outro carries the logo). */
+  function cleanMotion(prompt) {
+    const p = String(prompt || '');
+    const bad = /\b(text|caption|captions|title|titles|subtitle|subtitles|logo|lettering|typography|sign reading)\b/;
+    if (!bad.test(affirmative(p))) return p;
+    const kept = p.split(/(?<=[.;!?])\s+/).filter((sent) => !bad.test(affirmative(sent)));
+    return (kept.join(' ').trim() || 'Slow, subtle cinematic camera movement.') ;
+  }
+
   /** English design text must be sentence case (not ALL CAPS, not Title Case). */
   function isSentenceCase(text) {
     const words = String(text || '').trim().split(/\s+/).filter((w) => /[A-Za-z]/.test(w));
@@ -292,7 +301,7 @@ const module = { exports: {} };
   function fmt(n) { return Math.round(Number(n || 0)).toLocaleString('en-US'); }
 
   return {
-    affirmative, isSentenceCase, withFootwear,
+    affirmative, isSentenceCase, withFootwear, cleanMotion,
     DEFAULT_SETTINGS, TERM_RULES, CONTACT_RULES, DISCLAIMERS, PILLARS, PROGRAMS, STATUSES, CHANGE_SCOPES,
     checkBrief, classifyChange, approvalStats, guardrails, countWords, hasArabic, weekOf,
   };

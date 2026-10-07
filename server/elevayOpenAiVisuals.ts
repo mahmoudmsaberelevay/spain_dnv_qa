@@ -39,7 +39,7 @@ export async function createElevayOpenAiKeyframe(input: { prompt: string; purpos
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: ELEVAY_OPENAI_VISUAL_MODEL, prompt, n: 1, size, quality: ELEVAY_OPENAI_VISUAL_QUALITY, output_format: "png" }),
-    signal: AbortSignal.timeout(150_000),
+    signal: AbortSignal.timeout(300_000),
   });
   if (!response.ok) throw new Error(`OpenAI image request returned HTTP ${response.status}; no provider error body is exposed.`);
   const result = await response.json() as { data?: Array<{ b64_json?: unknown }>; usage?: { input_tokens?: unknown; output_tokens?: unknown; total_tokens?: unknown } };

@@ -154,7 +154,24 @@ export async function composeElevayStatic(source: Buffer, headline: string, form
       "[1:v]scale=118:-1:flags=lanczos[logo]",
       "[texted][logo]overlay=x=56:y=52:format=auto[out]",
     ].join(";");
-    await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", "-i", src, "-i", assetPath("elevay-logo.png"), "-filter_complex", filter, "-map", "[out]", "-frames:v", "1", out]);
+    try {
+      if (process.env.ELEVAY_TEXT_RASTER === "1") throw new Error("Filter not found (forced)");
+      await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", "-i", src, "-i", assetPath("elevay-logo.png"), "-filter_complex", filter, "-map", "[out]", "-frames:v", "1", out]);
+    } catch (e) {
+      // This server's FFmpeg has no drawtext filter: set the headline with the same font file in JavaScript instead.
+      if (!/filter not found|no such filter/i.test(String(e?.message || e))) throw e;
+      const { renderTextRGBA } = await import("./textRaster");
+      const lines = wrapHeadline(headline).split("\n");
+      const t = renderTextRGBA(await fsp.readFile(assetPath("ApexSansBook.ttf")), lines, 66, 16, W - 160);
+      const raw = path.join(dir, "headline.rgba");
+      await fsp.writeFile(raw, t.rgba);
+      const rasterFilter = [
+        filter.split(";")[0], filter.split(";")[1], "[base][shade]overlay=0:0[toned]",
+        "[2:v]format=rgba[txt]", "[toned][txt]overlay=x=80:y=H-h-96:format=auto[texted]",
+        "[1:v]scale=118:-1:flags=lanczos[logo]", "[texted][logo]overlay=x=56:y=52:format=auto[out]",
+      ].join(";");
+      await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", "-i", src, "-i", assetPath("elevay-logo.png"), "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${t.width}x${t.height}`, "-i", raw, "-filter_complex", rasterFilter, "-map", "[out]", "-frames:v", "1", out]);
+    }
     return await fsp.readFile(out);
   } finally { await fsp.rm(dir, { recursive: true, force: true }); }
 }
@@ -217,7 +234,7 @@ export function makeProviders(fetcher = fetch) {
     const key = process.env.OPENAI_API_KEY;
     if (!key) throw new Error("OPENAI_API_KEY is not set on elevay.vip.");
     const { ELEVAY_OPENAI_VISUAL_MODEL, ELEVAY_OPENAI_VISUAL_QUALITY } = await import("../elevayOpenAiVisuals");
-    const res = await fetcher("https://api.openai.com/v1/images/generations", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: ELEVAY_OPENAI_VISUAL_MODEL, prompt, n: 1, size: "1024x1536", quality: ELEVAY_OPENAI_VISUAL_QUALITY, output_format: "png" }), signal: AbortSignal.timeout(150000) });
+    const res = await fetcher("https://api.openai.com/v1/images/generations", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: ELEVAY_OPENAI_VISUAL_MODEL, prompt, n: 1, size: "1024x1536", quality: ELEVAY_OPENAI_VISUAL_QUALITY, output_format: "png" }), signal: AbortSignal.timeout(300000) });
     if (!res.ok) throw new Error(`OpenAI image request returned HTTP ${res.status}.`);
     const body = await res.json();
     const b64 = body.data?.[0]?.b64_json;
@@ -315,6 +332,14 @@ export function makeProviders(fetcher = fetch) {
     out.claude = k("ANTHROPIC_API_KEY") ? await claude({ system: "Reply with OK.", prompt: "ping", maxTokens: 5, json: false }).then((r) => ({ ok: true, detail: r.model }), (e) => ({ ok: false, detail: e.message })) : { ok: false, detail: "ANTHROPIC_API_KEY is not set" };
     out.openai = k("OPENAI_API_KEY") ? await fetcher("https://api.openai.com/v1/models?limit=1", { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, signal: AbortSignal.timeout(20000) }).then((r) => ({ ok: r.ok, detail: r.ok ? "Key accepted" : `HTTP ${r.status}` }), (e) => ({ ok: false, detail: e.message })) : { ok: false, detail: "OPENAI_API_KEY is not set" };
     out.elevenlabs = k("ELEVENLABS_API_KEY") ? { ok: true, detail: "Key is set; ELEVAY voice clone checked on the first voice-over" } : { ok: false, detail: "ELEVENLABS_API_KEY is not set" };
+    out.media = await new Promise(async (resolve) => {
+      let bin = "ffmpeg";
+      try { bin = (await import("../mediaExecutables")).FFMPEG_BIN || bin; } catch { /* system ffmpeg */ }
+      const child = spawn(bin, ["-hide_banner", "-filters"], { stdio: ["ignore", "pipe", "ignore"] });
+      let txt = ""; child.stdout.on("data", (d) => (txt += d));
+      child.on("error", (e) => resolve({ ok: false, detail: "FFmpeg not available: " + e.message }));
+      child.on("close", () => resolve({ ok: true, detail: / drawtext /.test(txt) ? "FFmpeg ready (headline text: built-in)" : "FFmpeg ready (headline text: JavaScript fallback, same font)" }));
+    });
     out.higgsfield = k("HF_API_KEY") ? { ok: true, detail: "Key is set (checked when the first clip is submitted)" } : { ok: false, detail: "HF_API_KEY is not set" };
     return out;
   }
@@ -478,7 +503,15 @@ export function createOrchestrator(deps) {
         step.status = r === "waiting" ? "waiting" : r === "rewind" ? "pending" : "done";
         if (step.status === "done") step.ended_at = nowIso();
       } catch (e) {
-        step.status = "failed"; step.error = String(e?.message || e); step.ended_at = nowIso();
+        const msg = String(e?.message || e);
+        // An image or Claude call that timed out is retried once by itself before the run is marked failed.
+        if (/timed? ?out|aborted|ETIMEDOUT|ECONNRESET|socket hang up|HTTP 5\d\d/i.test(msg) && step.provider !== "higgsfield" && !step.timeout_retried) {
+          step.timeout_retried = true; step.status = "pending"; step.error = null;
+          log(run, step.provider, "studio", `Timed out (${msg}); trying once more.`);
+          ver = await save(run, ver);
+          continue;
+        }
+        step.status = "failed"; step.error = msg; step.ended_at = nowIso();
         log(run, step.provider, "studio", "Failed: " + step.error);
         run.status = "failed";
       }
@@ -583,14 +616,14 @@ export function createOrchestrator(deps) {
       case "system.check_brief": {
         // Mechanical fixes first, so a missing detail never costs a Claude round or fails the run.
         if (A.brief.design?.image_prompt) A.brief.design.image_prompt = R.withFootwear(A.brief.design.image_prompt);
-        for (const sc of A.brief.reel?.storyboard || []) sc.keyframe_prompt = R.withFootwear(sc.keyframe_prompt);
+        for (const sc of A.brief.reel?.storyboard || []) { sc.keyframe_prompt = R.withFootwear(sc.keyframe_prompt); if (sc.motion_prompt) sc.motion_prompt = R.cleanMotion(sc.motion_prompt); }
         let check = R.checkBrief(A.brief);
         log(run, "studio", "studio", check.pass ? `Compliance check passed (${check.warnings.length} warning(s)).` : `Compliance check blocked: ${check.blocks.map((b) => b.label).join(" ")}`);
         if (!check.pass) {
           const r = await askClaude(run, step, `Your ELEVAY brief failed these blocking checks:\n${check.blocks.map((b) => "- " + b.label).join("\n")}\nWarnings:\n${check.warnings.map((b) => "- " + b.label).join("\n")}\n\nBrief:\n${JSON.stringify(A.brief)}\n\nReturn the corrected brief as JSON with exactly the same structure.`, { maxTokens: 5000 });
           A.brief = { ...A.brief, ...r.data, type: A.brief.type };
           if (A.brief.design?.image_prompt) A.brief.design.image_prompt = R.withFootwear(A.brief.design.image_prompt);
-          for (const sc of A.brief.reel?.storyboard || []) sc.keyframe_prompt = R.withFootwear(sc.keyframe_prompt);
+          for (const sc of A.brief.reel?.storyboard || []) { sc.keyframe_prompt = R.withFootwear(sc.keyframe_prompt); if (sc.motion_prompt) sc.motion_prompt = R.cleanMotion(sc.motion_prompt); }
           check = R.checkBrief(A.brief);
           if (!check.pass) throw new Error("Still blocked after one fix: " + check.blocks.map((b) => b.label).join(" "));
         }

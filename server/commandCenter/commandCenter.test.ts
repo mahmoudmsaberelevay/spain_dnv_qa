@@ -92,3 +92,20 @@ describe("footwear rule", () => {
     expect(R.withFootwear("Arab family on a beach in linen clothes.")).toBe("Arab family on a beach in linen clothes.");
   });
 });
+
+describe("headline text without drawtext", () => {
+  it("renders Apex Sans lines to an RGBA raster", async () => {
+    const fs = await import("node:fs");
+    const { renderTextRGBA } = await import("./textRaster");
+    const font = fs.readFileSync(new URL("./assets/ApexSansBook.ttf", import.meta.url));
+    const t = renderTextRGBA(font, ["One advisory, every", "path forward"], 66, 16, 920);
+    expect(t.width).toBeGreaterThan(300);
+    expect(t.height).toBeGreaterThan(120);
+    let ink = 0; for (let i = 3; i < t.rgba.length; i += 4) if (t.rgba[i] > 128) ink++;
+    expect(ink).toBeGreaterThan(5000);
+  });
+  it("cleans text and logo requests out of clip motion", async () => {
+    const R = (await import("./rules")).default;
+    expect(R.cleanMotion("Slow push-in. The ELEVAY logo appears.")).toBe("Slow push-in.");
+  });
+});

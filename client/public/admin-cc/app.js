@@ -762,9 +762,11 @@
       if (document.hidden || (document.activeElement && /TEXTAREA|INPUT|SELECT/.test(document.activeElement.tagName))) return;
       if (!S.studio || !S.studio.runs.some((r) => ['queued', 'running', 'waiting'].includes(r.status))) return;
       try {
-        const before = JSON.stringify(S.studio.runs);
+        // Redraw only when a run visibly moves (status, a step, a new picture or video), not on every log line.
+        const sig = () => JSON.stringify((S.studio.runs || []).map((r) => [r.id, r.status, (r.steps || []).map((x) => x.status + (x.error || '')), r.artifacts && [r.artifacts.item_id, (r.artifacts.images || []).length, (r.artifacts.keyframes || []).filter(Boolean).length, (r.artifacts.clips || []).filter((c) => c && c.url).length, r.artifacts.final && r.artifacts.final.url, r.artifacts.qc && r.artifacts.qc.pass]]));
+        const before = sig();
         await loadStudio();
-        if (JSON.stringify(S.studio.runs) === before) return;
+        if (sig() === before) return;
         const y = window.scrollY; drawStudio(el); window.scrollTo(0, y);
       } catch { /* keep last */ }
     }, 6000);
@@ -774,7 +776,7 @@
     const open = new Set([...el.querySelectorAll('details[data-run][open]')].map((d) => d.dataset.run));
     el.innerHTML = `<div class="stack" style="gap:16px">
       <section class="panel"><div class="panel-h"><h2>Connected models</h2>${isOwner() ? '<button class="btn sm" id="provTest">Test connections</button>' : ''}</div>
-        <div class="grid g5">${['claude', 'openai', 'higgsfield', 'elevenlabs', 'manus'].filter((k) => pv[k]).map((k) => { const p = pv[k]; return `<div class="kpi">${provChip(k)}<span class="small">${esc(p.role)}</span><span class="t">${p.ready ? '<span class="pill ok">Connected</span>' : `<span class="pill bad">Not set up</span> ${p.key ? esc(p.key) + ' missing' : ''}`}${k === 'manus' && p.lastSeen ? ' · seen ' + ago(p.lastSeen) : ''}${p.model ? ' · ' + esc(p.model) : ''}</span><span class="t" id="pt-${k}">${S.provTest && S.provTest[k] ? `${S.provTest[k].ok ? '✓' : '✕'} ${esc(S.provTest[k].detail)}` : ''}</span></div>`; }).join('')}</div></section>
+        <div class="grid g5">${['claude', 'openai', 'higgsfield', 'elevenlabs', 'manus'].filter((k) => pv[k]).map((k) => { const p = pv[k]; return `<div class="kpi">${provChip(k)}<span class="small">${esc(p.role)}</span><span class="t">${p.ready ? '<span class="pill ok">Connected</span>' : `<span class="pill bad">Not set up</span> ${p.key ? esc(p.key) + ' missing' : ''}`}${k === 'manus' && p.lastSeen ? ' · seen ' + ago(p.lastSeen) : ''}${p.model ? ' · ' + esc(p.model) : ''}</span><span class="t" id="pt-${k}">${S.provTest && S.provTest[k] ? `${S.provTest[k].ok ? '✓' : '✕'} ${esc(S.provTest[k].detail)}` : ''}</span></div>`; }).join('')}</div>${S.provTest && S.provTest.media ? `<p class="small muted" style="margin:8px 0 0">${S.provTest.media.ok ? '✓' : '✕'} ${esc(S.provTest.media.detail)}</p>` : ''}</section>
       ${autopilotPanel(st.autopilot)}
       ${st.sources ? `<section class="panel"><div class="panel-h"><h2>Approved sources the models use</h2></div><div class="row small" style="gap:8px;flex-wrap:wrap">${st.sources.programs.map((x) => `<span class="pill ${x.loaded ? 'ok' : 'bad'}">${esc(x.name)}</span>`).join('')}${st.sources.creative.map((x) => `<span class="pill ${x.loaded ? 'ok' : 'bad'}">Creative direction: ${esc(x.name.replace(/-/g, ' '))}</span>`).join('')}<span class="pill ${st.sources.logo ? 'ok' : 'bad'}">Official logo</span><span class="pill ${st.sources.font ? 'ok' : 'bad'}">Apex Sans font</span></div><p class="small muted" style="margin:8px 0 0">Program figures come only from these approved sources; other programs are described without numbers until their sources are added.</p></section>` : ''}
       ${canEdit() ? `<section class="panel"><div class="panel-h"><h2>Extra request</h2><span class="small muted">Claude plans the work and hands each part to the right model</span></div>

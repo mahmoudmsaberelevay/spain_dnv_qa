@@ -512,6 +512,11 @@ async function handle(req: Request, res: Response) {
   }
 }
 
+// Each server start gets its own asset version, so browsers load the new dashboard right after a publish
+// instead of a cached copy of yesterday's script.
+const ASSET_VERSION = Date.now().toString(36);
+const PAGE_WITH_VERSION = PAGE_HTML.replace(/(\/admin-cc\/[\w./-]+\.(?:js|css))"/g, `$1?v=${ASSET_VERSION}"`);
+
 export function registerCommandCenterRoutes(app: Express) {
   // Express matches /admin and /admin/ with the same route (non-strict routing),
   // so decide on the raw URL: the page must load at /admin/ for its relative API calls.
@@ -520,7 +525,7 @@ export function registerCommandCenterRoutes(app: Express) {
     if (!rawPath.endsWith("/")) return res.redirect(302, BASE + "/");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("X-Robots-Tag", "noindex, nofollow");
-    res.type("html").send(PAGE_HTML);
+    res.type("html").send(PAGE_WITH_VERSION);
   });
   app.all(BASE + "/api/*", handle);
   // Resume AI Studio runs that wait on Higgsfield clips or Manus jobs.
