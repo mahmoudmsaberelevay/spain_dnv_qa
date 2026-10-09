@@ -30,6 +30,8 @@ import { PAGE_HTML } from "./page";
 import { buildLiveReport } from "./live";
 import { createOrchestrator, makeProviders, PIPELINES, planningWeek } from "./ai";
 import { PROGRAMS, assetPath, assetText } from "./knowledge";
+import { createRenderQueue } from "./renderQueue";
+import { notifyAiFailure } from "./alerts";
 import { createMetaHub, META_KINDS, cleanMetaAction as cleanMeta } from "./meta";
 const cleanMetaAction = (b) => cleanMeta(b, R);
 function sourcesStatus() {
@@ -338,7 +340,9 @@ route("GET", "/agent/live", "agent", async (ctx) => ok(await liveReport(ctx.quer
 let studioPromise = null;
 function studio() {
   if (!studioPromise) studioPromise = (async () => {
-    const o = createOrchestrator({ q, mutate, loadState, liveReport, providers: makeProviders(), E, R, meta: await metaHub() });
+    const renderQueue = createRenderQueue(q);
+    await renderQueue.ensure();
+    const o = createOrchestrator({ q, mutate, loadState, liveReport, providers: makeProviders(fetch, renderQueue), E, R, meta: await metaHub(), notifyFailure: notifyAiFailure });
     await o.ensureTable();
     return o;
   })().catch((e) => { studioPromise = null; throw e; });

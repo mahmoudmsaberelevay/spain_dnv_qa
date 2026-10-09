@@ -13,5 +13,6 @@ RUN npm install -g corepack@latest \
     && /usr/bin/ffprobe -version >/dev/null
 ENV NODE_ENV=production \
     ELEVAY_FFMPEG_BIN=/usr/bin/ffmpeg \
-    ELEVAY_FFPROBE_BIN=/usr/bin/ffprobe
+    ELEVAY_FFPROBE_BIN=/usr/bin/ffprobe \
+    ELEVAY_REEL_THREADS=1
 CMD ["node", "dist/index.js"]

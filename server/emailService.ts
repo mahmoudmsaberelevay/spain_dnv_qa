@@ -80,6 +80,14 @@ export async function sendClientPortalActivityEmail(
   return sendEmail(recipients, subject, html);
 }
 
+/** AI Studio failure/review alert; no source media, tokens or client records. */
+export async function sendAiStudioFailureAlert(input: { runId: number; stepName: string; error: string }) {
+  const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return sendEmail(MAHMOUD_EMAILS, `[ELEVAY Alert] AI Studio run #${input.runId} needs attention`,
+    `<h2>AI Studio needs attention</h2><p>Run #${input.runId}</p><p>Step: ${escape(input.stepName)}</p><p>${escape(input.error.slice(0, 1800))}</p><p><a href="https://elevay.vip/admin/#studio">Open Command Center Runs</a></p>`,
+    { eventType: "ai_studio_failed" });
+}
+
 /** Alert system administrators when the scheduled News importer fails. */
 export async function sendNewsDigestFailureAlert(input: {
   attemptedAt: Date;

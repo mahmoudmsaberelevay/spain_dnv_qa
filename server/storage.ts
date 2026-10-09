@@ -92,6 +92,19 @@ export async function storagePut(
   return { key, url };
 }
 
+/** File-backed Blob: only the isolated worker uses this, never buffer an MP4. */
+export async function storagePutFile(relKey: string, file: string, contentType = "application/octet-stream"): Promise<{ key: string; url: string }> {
+  const { openAsBlob } = await import("node:fs");
+  const { baseUrl, apiKey } = getStorageConfig();
+  const key = normalizeKey(relKey);
+  const form = new FormData();
+  form.append("file", await openAsBlob(file, { type: contentType }), key.split("/").pop() || "file");
+  const response = await fetch(buildUploadUrl(baseUrl, key), { method: "POST", headers: buildAuthHeaders(apiKey), body: form, signal: AbortSignal.timeout(120000) });
+  if (!response.ok) throw new Error(`Storage file upload failed (HTTP ${response.status}).`);
+  const url = (await response.json()).url;
+  return { key, url };
+}
+
 export async function storageGet(relKey: string): Promise<{ key: string; url: string; }> {
   const { baseUrl, apiKey } = getStorageConfig();
   const key = normalizeKey(relKey);

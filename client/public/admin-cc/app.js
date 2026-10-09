@@ -744,7 +744,7 @@
   // ------------------------------------------------------------ AI Studio
   const PROV = { claude: ['Claude', '#C9A84C'], openai: ['OpenAI', '#5BA3B8'], higgsfield: ['Higgsfield', '#7a6fb0'], elevenlabs: ['ELEVAY voice', '#4B6475'], manus: ['Manus', '#2f8a74'], system: ['ELEVAY rules', '#5E6A71'], studio: ['Studio', '#5E6A71'], team: ['Team', '#1A3A5C'] };
   const provChip = (p) => { const [l, c] = PROV[p] || [p, '#5E6A71']; return `<span class="pchip" style="--c:${c}">${esc(l)}</span>`; };
-  const RUN_PILL = { queued: ['info', 'Queued'], running: ['info', 'Working'], waiting: ['info', 'Waiting on provider'], awaiting_approval: ['warn', 'Needs approval'], done: ['ok', 'Done'], failed: ['bad', 'Failed'], cancelled: ['', 'Cancelled'] };
+  const RUN_PILL = { needs_review: ['warn', 'Needs review'], queued: ['info', 'Queued'], running: ['info', 'Working'], waiting: ['info', 'Waiting on provider'], awaiting_approval: ['warn', 'Needs approval'], done: ['ok', 'Done'], failed: ['bad', 'Failed'], cancelled: ['', 'Cancelled'] };
   const STEP_ICON = { pending: '○', running: '◐', waiting: '◔', needs_approval: '!', done: '●', failed: '✕', skipped: '–' };
   let studioTimer = null;
   async function loadStudio() {
@@ -838,18 +838,20 @@
     const [pc, pl] = RUN_PILL[r.status] || ['', r.status];
     const A = r.artifacts || {};
     const steps = r.steps.map((s) => `<li class="step ${s.status}"><span class="ico">${STEP_ICON[s.status] || '○'}</span>${provChip(s.provider)} <span>${esc(s.title)}</span>
+      ${s.action === 'compose_reel' && s.status === 'waiting' ? `<span class="pill warn">${esc(A.compose?.waitReason || 'Waiting for render worker')}</span>` : ''}
       ${s.status === 'needs_approval' ? ((s.gate === 'owner' && !isOwner()) || !canEdit() ? `<span class="pill warn">Waiting for ${s.gate === 'owner' ? 'owner' : 'approval'}</span>` : `<button class="btn sm primary" data-run-act="approve:${r.id}:${s.n}" data-cost="${esc(COST[s.provider] || '')}">Approve</button>`) : ''}
       ${s.error ? `<div class="small" style="color:var(--bad)">${esc(s.error)}</div>` : ''}${s.approved_by ? `<span class="small muted"> · approved by ${esc(s.approved_by)}</span>` : ''}</li>`).join('');
     const imgs = (A.images || []).map((i) => i.url).concat(A.keyframes ? A.keyframes.filter(Boolean).map((k) => k.url) : []);
-    const clips = (A.clips || []).filter((c) => c.url);
+    const clips = (A.clips || []).filter((c) => c && c.url);
     const brief = A.brief;
     const stoppedReel = r.kind === 'reel' && A.qc_blocked && (r.steps || []).some((s2) => s2.status === 'skipped');
-    return `<details class="run" data-run="${r.id}" ${isOpen || ['awaiting_approval', 'failed'].includes(r.status) ? 'open' : ''}><summary><span class="pill ${pc}">${pl}</span> <strong>${esc(r.title)}</strong> <span class="small muted">· ${esc((S.studio.pipelines[r.kind] || {}).label || r.kind)} · #${r.id} · ${esc(r.created_by)} · ${ago(r.created_at)}</span></summary>
+    return `<details class="run" data-run="${r.id}" ${isOpen || ['awaiting_approval', 'failed', 'needs_review'].includes(r.status) ? 'open' : ''}><summary><span class="pill ${pc}">${pl}</span> <strong>${esc(r.title)}</strong> <span class="small muted">· ${esc((S.studio.pipelines[r.kind] || {}).label || r.kind)} · #${r.id} · ${esc(r.created_by)} · ${ago(r.created_at)}</span></summary>
       <div class="run-body"><ol class="steps">${steps}</ol>
         ${A.answer ? `<div class="answer">${esc(A.answer)}</div>` : ''}
         ${A.qc && A.qc.pass === false ? `<div class="alert"><span class="tag">Claude QC</span><span>${esc((A.qc.issues || []).join(' · '))}</span></div>` : A.qc ? '<div class="small" style="color:var(--ok)">Claude visual check passed.</div>' : ''}
         ${brief ? `<div class="grid g2" style="margin-top:8px"><div><div class="small muted">Caption (Arabic)</div><div dir="rtl" class="small" style="white-space:pre-wrap">${esc(brief.caption_ar || '')}</div></div><div>${brief.design ? `<div class="small muted">Design text</div><div>${esc(brief.design.headline_en || '')}</div>` : ''}${brief.reel ? `<div class="small muted">Voice-over (Egyptian Arabic)</div><ol class="small" dir="rtl">${brief.reel.storyboard.map((c) => `<li>${esc(c.spoken_text_ar || '')}</li>`).join('')}</ol>` : ''}</div></div>` : ''}
         ${imgs.length ? `<div class="thumbs">${imgs.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Generated design" loading="lazy"></a>`).join('')}</div>` : ''}
+        ${A.final?.peakRssBytes ? `<p class="small muted">Isolated render peak RSS: ${(A.final.peakRssBytes / 1048576).toFixed(1)} MiB · FFmpeg threads: 1 · video join: stream copy</p>` : ''}
         ${A.final && A.final.url ? `<div class="small muted" style="margin-top:8px">Finished reel</div><video src="${esc(A.final.url)}" controls playsinline preload="metadata" style="max-width:280px;border-radius:8px"></video>` : ''}
         ${stoppedReel ? `<div class="alert"><span class="tag">No reel yet</span><span>The keyframes above failed the design check, so the paid clips, voice-over and edit were not made. Only the keyframes went to the weekly plan.${canEdit() ? ' Press <strong>Make the reel again</strong> to redo the failing keyframes and finish the reel.' : ''}</span></div>` : ''}
         ${clips.length ? `<div class="thumbs">${clips.map((c) => `<video src="${esc(c.url)}" controls playsinline preload="metadata"></video>`).join('')}</div>` : ''}
