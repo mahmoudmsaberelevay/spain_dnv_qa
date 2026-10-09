@@ -66,15 +66,30 @@ export const REEL = { scene: 5, fade: 0.3, outro: 3, maxVoice: 4.85, maxTempo: 1
  * the outro), optional licensed music ducked under the voice, then 3 s of the exact official
  * logo static and centred on pure white, with no narration over it.
  */
-export async function composeElevayReel({ clips, voices, music }: { clips: Buffer[]; voices: Buffer[]; music?: Buffer | null }) {
+export async function composeElevayReel(input: { clips: Buffer[]; voices: Buffer[]; music?: Buffer | null }) {
+  try { return await composeElevayReelOnce(input); }
+  catch (e) {
+    // A bad music bed is the usual cause of an audio-encoder failure: finish the reel without it.
+    if (input.music && !e?.tooLong) { const r = await composeElevayReelOnce({ ...input, music: null }); return { ...r, musicDropped: String(e?.message || e) }; }
+    throw e;
+  }
+}
+const AUDIO_FMT = "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo";
+async function composeElevayReelOnce({ clips, voices, music }: { clips: Buffer[]; voices: Buffer[]; music?: Buffer | null }) {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "elevay-cc-reel-"));
   try {
     const { scene, fade, outro } = REEL;
     const clipFiles = [], voiceFiles = [], tempos = [];
     for (let i = 0; i < 4; i++) {
       const c = path.join(dir, `clip${i}.mp4`); await fsp.writeFile(c, clips[i]); clipFiles.push(c);
-      const v = path.join(dir, `voice${i}.mp3`); await fsp.writeFile(v, voices[i]); voiceFiles.push(v);
+      const raw = path.join(dir, `voice${i}.src`); await fsp.writeFile(raw, voices[i]);
+      // Decode each voice-over to clean 44.1 kHz stereo WAV first, so a damaged file is named clearly.
+      const v = path.join(dir, `voice${i}.wav`);
+      try { await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", "-i", raw, "-vn", "-af", AUDIO_FMT, "-c:a", "pcm_s16le", v]); }
+      catch (e) { throw new Error(`Scene ${i + 1} voice-over file could not be read (${String(e?.message || e).slice(-160)}). Retry the voice-over step.`); }
       const d = await mediaSeconds(v);
+      if (!(d > 0.2)) throw new Error(`Scene ${i + 1} voice-over is empty. Retry the voice-over step.`);
+      voiceFiles.push(v);
       const tempo = d > REEL.maxVoice ? d / REEL.maxVoice : 1;
       if (tempo > REEL.maxTempo) throw Object.assign(new Error(`Scene ${i + 1} narration is ${d.toFixed(1)} s; it must fit in 5 s.`), { tooLong: i });
       tempos.push(tempo);
@@ -94,14 +109,14 @@ export async function composeElevayReel({ clips, voices, music }: { clips: Buffe
     const vo = [];
     for (let i = 0; i < 4; i++) {
       const delay = Math.round((i * scene + 0.15) * 1000);
-      f.push(`[${5 + i}:a]aresample=44100,${tempos[i] > 1 ? `atempo=${tempos[i].toFixed(3)},` : ""}atrim=duration=${REEL.maxVoice},adelay=${delay}|${delay},apad=whole_dur=${total}[n${i}]`);
+      f.push(`[${5 + i}:a]${AUDIO_FMT},${tempos[i] > 1 ? `atempo=${tempos[i].toFixed(3)},` : ""}atrim=duration=${REEL.maxVoice},adelay=${delay}|${delay},apad=whole_dur=${total}[n${i}]`);
       vo.push(`[n${i}]`);
     }
     f.push(`${vo.join("")}amix=inputs=4:duration=longest:normalize=0[voice]`);
     if (music) {
       // Music about 28% lower under the narration and fading out over the logo outro.
-      f.push(`[9:a]aresample=44100,atrim=duration=${total},volume=0.22,afade=t=in:d=0.8,afade=t=out:st=${4 * scene}:d=${outro}[bed]`, `[voice]asplit=2[vmain][vkey]`, `[bed][vkey]sidechaincompress=threshold=0.05:ratio=4:attack=20:release=400[ducked]`, `[ducked][vmain]amix=inputs=2:duration=longest:normalize=0,atrim=duration=${total}[a]`);
-    } else f.push(`[voice]atrim=duration=${total}[a]`);
+      f.push(`[9:a]${AUDIO_FMT},atrim=duration=${total},volume=0.22,afade=t=in:d=0.8,afade=t=out:st=${4 * scene}:d=${outro}[bed]`, `[voice]asplit=2[vmain][vkey]`, `[bed][vkey]sidechaincompress=threshold=0.05:ratio=4:attack=20:release=400[ducked]`, `[ducked][vmain]amix=inputs=2:duration=longest:normalize=0,atrim=duration=${total},alimiter=limit=0.95,aformat=sample_fmts=s16:channel_layouts=stereo[a]`);
+    } else f.push(`[voice]atrim=duration=${total},alimiter=limit=0.95,aformat=sample_fmts=s16:channel_layouts=stereo[a]`);
     const out = path.join(dir, "reel.mp4");
     await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", ...inputs, "-filter_complex", f.join(";"), "-map", "[v]", "-map", "[a]", "-t", String(total), "-r", "30", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out]);
     const seconds = await mediaSeconds(out);
@@ -122,6 +137,12 @@ export function wrapHeadline(text: string, max = 22) {
   return lines.join("\n");
 }
 
+/** The first real FFmpeg error line (the last lines are usually generic "nothing was written"). */
+export function ffmpegReason(err: string) {
+  const lines = String(err).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const real = lines.find((l) => !/Terminating thread|Nothing was written|Conversion failed|Error while (?:filtering|processing)|Task finished with error/i.test(l));
+  return (real ? real + (lines.length > 1 ? " … " + lines[lines.length - 1] : "") : lines.slice(-2).join(" ")).slice(0, 400);
+}
 function runFfmpeg(args) {
   return new Promise(async (resolve, reject) => {
     let bin = "ffmpeg";
@@ -129,9 +150,9 @@ function runFfmpeg(args) {
     const child = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
     const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Media composition timed out.")); }, 240000);
-    child.stderr.on("data", (d) => { err = (err + d).slice(-600); });
+    child.stderr.on("data", (d) => { err = (err + d).slice(-3000); });
     child.on("error", (e) => { clearTimeout(timer); reject(e); });
-    child.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error("Media composition failed: " + err.slice(-200))); });
+    child.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error("Media composition failed: " + ffmpegReason(err))); });
   });
 }
 
@@ -284,10 +305,10 @@ export function makeProviders(fetcher = fetch) {
   async function composeReel({ clipUrls, voiceUrls, musicUrl }) {
     const get = async (u) => Buffer.from(await (await fetcher(u)).arrayBuffer());
     const [clips, voices, music] = await Promise.all([Promise.all(clipUrls.map(get)), Promise.all(voiceUrls.map(get)), musicUrl ? get(musicUrl) : null]);
-    const { bytes, seconds } = await composeElevayReel({ clips, voices, music });
+    const { bytes, seconds, musicDropped } = await composeElevayReel({ clips, voices, music });
     const sha = crypto.createHash("sha256").update(bytes).digest("hex");
     const { storagePut } = await import("../storage");
-    return { url: (await storagePut(`marketing/command-center/reels/${sha.slice(0, 24)}.mp4`, bytes, "video/mp4")).url, seconds, sha256: sha };
+    return { url: (await storagePut(`marketing/command-center/reels/${sha.slice(0, 24)}.mp4`, bytes, "video/mp4")).url, seconds, sha256: sha, musicDropped };
   }
   async function videoFrames(url, times) {
     const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "elevay-cc-vf-"));
@@ -532,7 +553,8 @@ export function createOrchestrator(deps) {
   /** Returns who approved automatically, or null when a person must approve. */
   async function autoApproval(run, step) {
     const { on, state } = await autopilotOn();
-    const why = run.options?.auto ? "Manus request" : on ? "autopilot: 6-week 90% gate reached" : null;
+    const autoClips = step.provider === "higgsfield" && state.settings.studio?.autoClips !== false;
+    const why = run.options?.auto ? "Manus request" : on ? "autopilot: 6-week 90% gate reached" : autoClips ? "owner setting: make clips automatically" : null;
     if (!why) return null;
     if (step.provider === "higgsfield") {
       const limit = Number(state.settings.studio?.reelLimitPerWeek ?? 6);
@@ -702,8 +724,10 @@ export function createOrchestrator(deps) {
         const musicUrl = music.length ? music[run.id % music.length] : null;
         try {
           const r = await providers.composeReel({ clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl });
-          A.final = { url: r.url, seconds: r.seconds, sha256: r.sha256, music: !!musicUrl };
-          log(run, "studio", "team", `Final reel ready: ${r.seconds.toFixed(1)} s, 1080×1920, ELEVAY voice${musicUrl ? " + licensed music" : ""}, white logo outro.`);
+          const withMusic = !!musicUrl && !r.musicDropped;
+          A.final = { url: r.url, seconds: r.seconds, sha256: r.sha256, music: withMusic };
+          if (r.musicDropped) log(run, "studio", "team", `The music track could not be mixed (${r.musicDropped.slice(0, 160)}), so the reel was finished with the voice-over only.`);
+          log(run, "studio", "team", `Final reel ready: ${r.seconds.toFixed(1)} s, 1080×1920, ELEVAY voice${withMusic ? " + licensed music" : ""}, white logo outro.`);
           return;
         } catch (e) {
           if (e?.tooLong === undefined || A.voice_fixed) throw e;
