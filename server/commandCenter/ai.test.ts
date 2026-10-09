@@ -30,7 +30,7 @@ function memoryDb() {
   return q;
 }
 
-function setup(claudeAnswers, { autopilot = false, composeTooLong = false } = {}) {
+function setup(claudeAnswers, { autopilot = false, composeTooLong = false, staged = false } = {}) {
   const state = E.emptyState();
   if (autopilot) state.settings.autopublish = { enabled: true, enabledAt: "2026-11-20T00:00:00Z", enabledBy: "autopilot", disabledReason: null };
   const calls = { claude: [], openai: 0, hfSubmit: 0, hfPoll: 0 };
@@ -48,6 +48,12 @@ function setup(claudeAnswers, { autopilot = false, composeTooLong = false } = {}
     higgsfieldSubmit: async ({ idempotencyKey }) => { calls.hfSubmit++; return { requestId: `00000000-0000-0000-0000-00000000000${calls.hfSubmit}`, statusUrl: `https://api.higgsfield.ai/requests/x/status`, key: idempotencyKey }; },
     higgsfieldStatus: async (c) => { calls.hfPoll++; return hfDone ? { state: "completed", videoUrl: `https://cdn.hf/${c.requestId}.mp4` } : { state: "in_progress", videoUrl: null }; },
     test: async () => ({}),
+  };
+  if (staged) providers.composeReelStep = async ({ parts, mode }) => {
+    calls.stages = (calls.stages || []).concat(mode);
+    const order = ["seg0", "seg1", "seg2", "seg3", "outro", "audio", "final"], next = order.find((k) => !parts[k]);
+    const out = { ...parts, [next]: `https://cdn.example/${next}` };
+    return next === "final" ? { parts: out, stage: next, final: { url: "https://cdn.example/final.mp4", seconds: 23.3, sha256: "d".repeat(64), music: false, mode } } : { parts: out, stage: next };
   };
   const mutate = async (_ctx, fn) => fn(state);
   const o = createOrchestrator({ q: memoryDb(), mutate, loadState: async () => ({ state }), liveReport: async () => ({ window: {}, ads: { total: { spend: 1000 } } }), providers, E, R });
@@ -210,6 +216,19 @@ describe("Autopilot", () => {
     const r = await settle(o, run.id);
     expect(r.status).toBe("waiting");
     expect(r.steps.find((x) => x.provider === "higgsfield").approved_by).toMatch(/make clips automatically/);
+  });
+
+  it("final edit runs as saved pieces (4 scenes, outro, audio, join)", async () => {
+    const { o, state, calls, finishClips } = setup([{ topic: "Madrid", pillar: "Family Security", program: "Spain Digital Nomad Residence", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }, { pass: true }, { pass: true }, { pass: true }], { staged: true });
+    const run = await o.create({ kind: "reel", request: "Madrid reel", user: marketer });
+    await settle(o, run.id);
+    finishClips();
+    await o.tick();
+    const r = await settle(o, run.id, ["running", "queued", "waiting"]);
+    expect(r.status).toBe("done");
+    expect(calls.stages).toHaveLength(7);
+    expect(Object.keys(r.artifacts.compose.parts)).toEqual(["seg0", "seg1", "seg2", "seg3", "outro", "audio", "final"]);
+    expect(r.artifacts.final.url).toBe("https://cdn.example/final.mp4");
   });
 
   it("Manus requests run Higgsfield without waiting, within the weekly reel limit", async () => {
