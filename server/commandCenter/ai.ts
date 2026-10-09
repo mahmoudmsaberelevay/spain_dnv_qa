@@ -134,6 +134,97 @@ async function composeElevayReelOnce({ clips, voices, music }: { clips: Buffer[]
   } finally { await fsp.rm(dir, { recursive: true, force: true }); }
 }
 
+// ---------------------------------------------------------------- staged final edit
+// The final edit runs as small, separate steps so a restart only loses one piece, and each piece needs
+// little memory: 4 scene segments, the logo outro, the audio mix, then the join. Every piece is saved to
+// storage before the next starts. If the join itself keeps crashing the server, the reel is joined with
+// straight cuts instead (no re-encoding at all), which needs almost no memory.
+export const REEL_STAGES = ["seg0", "seg1", "seg2", "seg3", "outro", "audio", "final"] as const;
+const SEG_ENCODE = (threads = REEL_THREADS) => ["-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-g", "15", "-pix_fmt", "yuv420p", "-threads", String(threads), "-x264-params", "rc-lookahead=10", "-movflags", "+faststart"];
+async function inTmp<T>(fn: (dir: string) => Promise<T>) {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "elevay-cc-part-"));
+  try { return await fn(dir); } finally { await fsp.rm(dir, { recursive: true, force: true }); }
+}
+/** One scene: 1080×1920, 30 fps, 5 s plus 0.3 s held for the cross-dissolve, keyframe every 0.5 s. */
+export function reelSegment(clip: Buffer) {
+  const { scene, fade } = REEL;
+  return inTmp(async (dir) => {
+    const src = path.join(dir, "in.mp4"), out = path.join(dir, "seg.mp4");
+    await fsp.writeFile(src, clip);
+    await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", "-threads", "1", "-i", src, "-vf", `scale=1080:1920:force_original_aspect_ratio=increase:flags=bicubic,crop=1080:1920,setsar=1,fps=30,trim=duration=${scene},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${fade},format=yuv420p`, "-t", String(scene + fade), ...SEG_ENCODE(), out], 300000);
+    return fsp.readFile(out);
+  });
+}
+/** 3 s (+0.3 s dissolve) of the exact official logo, static and centred on pure white. */
+export function reelOutro() {
+  const { outro, fade } = REEL;
+  return inTmp(async (dir) => {
+    const out = path.join(dir, "outro.mp4");
+    await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", `color=c=white:s=1080x1920:r=30:d=${outro + fade}`, "-loop", "1", "-framerate", "30", "-t", String(outro + fade + 0.2), "-i", assetPath("elevay-logo.png"), "-filter_complex", "[1:v]scale=300:-1:flags=lanczos[lg];[0:v][lg]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,setsar=1", "-t", String(outro + fade), ...SEG_ENCODE(), out], 180000);
+    return fsp.readFile(out);
+  });
+}
+/** Voice-over (one take per scene, each starting with its scene) plus optional music, as AAC. */
+export async function reelAudio(voices: Buffer[], music?: Buffer | null): Promise<{ bytes: Buffer; musicDropped?: string }> {
+  const once = (withMusic: Buffer | null) => inTmp(async (dir) => {
+    const { scene, fade, outro } = REEL, total = 4 * scene + outro + fade;
+    const files = [], tempos = [];
+    for (let i = 0; i < 4; i++) {
+      const raw = path.join(dir, `v${i}.src`), v = path.join(dir, `v${i}.wav`);
+      await fsp.writeFile(raw, voices[i]);
+      try { await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", "-i", raw, "-vn", "-af", AUDIO_FMT, "-c:a", "pcm_s16le", v]); }
+      catch (e) { throw new Error(`Scene ${i + 1} voice-over file could not be read (${String(e?.message || e).slice(-160)}). Retry the voice-over step.`); }
+      const d = await mediaSeconds(v);
+      if (!(d > 0.2)) throw new Error(`Scene ${i + 1} voice-over is empty. Retry the voice-over step.`);
+      const tempo = d > REEL.maxVoice ? d / REEL.maxVoice : 1;
+      if (tempo > REEL.maxTempo) throw Object.assign(new Error(`Scene ${i + 1} narration is ${d.toFixed(1)} s; it must fit in 5 s.`), { tooLong: i });
+      files.push(v); tempos.push(tempo);
+    }
+    const inputs = files.flatMap((f) => ["-i", f]);
+    if (withMusic) { const m = path.join(dir, "music.src"); await fsp.writeFile(m, withMusic); inputs.push("-stream_loop", "-1", "-i", m); }
+    const f = [];
+    for (let i = 0; i < 4; i++) {
+      const delay = Math.round((i * scene + 0.15) * 1000);
+      f.push(`[${i}:a]${AUDIO_FMT},${tempos[i] > 1 ? `atempo=${tempos[i].toFixed(3)},` : ""}atrim=duration=${REEL.maxVoice},adelay=${delay}|${delay},apad=whole_dur=${total}[n${i}]`);
+    }
+    f.push(`[n0][n1][n2][n3]amix=inputs=4:duration=longest:normalize=0[voice]`);
+    if (withMusic) f.push(`[4:a]${AUDIO_FMT},atrim=duration=${total},volume=0.22,afade=t=in:d=0.8,afade=t=out:st=${4 * scene}:d=${outro}[bed]`, `[voice]asplit=2[vmain][vkey]`, `[bed][vkey]sidechaincompress=threshold=0.05:ratio=4:attack=20:release=400[ducked]`, `[ducked][vmain]amix=inputs=2:duration=longest:normalize=0,atrim=duration=${total},alimiter=limit=0.95,aformat=sample_fmts=s16:channel_layouts=stereo[a]`);
+    else f.push(`[voice]atrim=duration=${total},alimiter=limit=0.95,aformat=sample_fmts=s16:channel_layouts=stereo[a]`);
+    const out = path.join(dir, "audio.m4a");
+    await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", ...inputs, "-filter_complex", f.join(";"), "-map", "[a]", "-t", String(total), "-c:a", "aac", "-b:a", "192k", out]);
+    return fsp.readFile(out);
+  });
+  if (music) {
+    try { return { bytes: await once(music) }; }
+    catch (e) { if (e?.tooLong !== undefined) throw e; return { bytes: await once(null), musicDropped: String(e?.message || e) }; }
+  }
+  return { bytes: await once(null) };
+}
+/** Joins the 4 scenes + outro with the audio. "dissolve": 0.3 s cross-dissolves (re-encode). "cuts": straight cuts, no re-encode. */
+export function reelJoin(segs: Buffer[], outroBytes: Buffer, audio: Buffer, mode: "dissolve" | "cuts" = "dissolve") {
+  const { scene, fade, outro } = REEL;
+  return inTmp(async (dir) => {
+    const files = [];
+    for (const [i, b] of [...segs, outroBytes].entries()) { const f = path.join(dir, `p${i}.mp4`); await fsp.writeFile(f, b); files.push(f); }
+    const a = path.join(dir, "a.m4a"); await fsp.writeFile(a, audio);
+    const out = path.join(dir, "reel.mp4");
+    let total;
+    if (mode === "cuts") {
+      total = 4 * scene + outro;
+      const list = path.join(dir, "list.txt");
+      await fsp.writeFile(list, files.map((f, i) => `file '${f}'\n` + (i < 4 ? `outpoint ${scene}\n` : `outpoint ${outro}\n`)).join(""));
+      await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", list, "-i", a, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "copy", "-t", String(total), "-movflags", "+faststart", out], 180000);
+    } else {
+      total = 4 * scene + outro + fade;
+      const f = [`[0:v][1:v]xfade=transition=fade:duration=${fade}:offset=${scene}[x1]`, `[x1][2:v]xfade=transition=fade:duration=${fade}:offset=${2 * scene}[x2]`, `[x2][3:v]xfade=transition=fade:duration=${fade}:offset=${3 * scene}[x3]`, `[x3][4:v]xfade=transition=fade:duration=${fade}:offset=${4 * scene},format=yuv420p[v]`];
+      await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", ...files.flatMap((x) => ["-threads", "1", "-i", x]), "-i", a, "-filter_complex_threads", "1", "-filter_complex", f.join(";"), "-map", "[v]", "-map", "5:a", "-t", String(total), "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-threads", String(REEL_THREADS), "-x264-params", "rc-lookahead=10", "-c:a", "copy", "-movflags", "+faststart", out], 600000);
+    }
+    const seconds = await mediaSeconds(out);
+    if (Math.abs(seconds - total) > 0.6) throw new Error(`Final reel is ${seconds.toFixed(1)} s instead of ${total} s.`);
+    return { bytes: await fsp.readFile(out), seconds };
+  });
+}
+
 /** Wrap an English headline into at most 3 lines for the static design. */
 export function wrapHeadline(text: string, max = 22) {
   const words = String(text || "").trim().split(/\s+/).filter(Boolean);
@@ -319,6 +410,28 @@ export function makeProviders(fetcher = fetch) {
     const { storagePut } = await import("../storage");
     return { url: (await storagePut(`marketing/command-center/reels/${sha.slice(0, 24)}.mp4`, bytes, "video/mp4")).url, seconds, sha256: sha, musicDropped };
   }
+  /** Runs the next missing piece of the staged final edit and returns the updated parts. */
+  async function composeReelStep({ clipUrls, voiceUrls, musicUrl, parts = {}, mode = "dissolve" }) {
+    const get = async (u) => Buffer.from(await (await fetcher(u)).arrayBuffer());
+    const { storagePut } = await import("../storage");
+    const put = async (name, bytes, type) => (await storagePut(`marketing/command-center/reels/parts/${crypto.createHash("sha256").update(bytes).digest("hex").slice(0, 24)}-${name}`, bytes, type)).url;
+    const next = REEL_STAGES.find((st) => !parts[st]);
+    const out = { ...parts };
+    if (next?.startsWith("seg")) { const i = Number(next.slice(3)); out[next] = await put(`seg${i}.mp4`, await reelSegment(await get(clipUrls[i])), "video/mp4"); return { parts: out, stage: next }; }
+    if (next === "outro") { out.outro = await put("outro.mp4", await reelOutro(), "video/mp4"); return { parts: out, stage: next }; }
+    if (next === "audio") {
+      const voices = await Promise.all(voiceUrls.map(get));
+      const r = await reelAudio(voices, musicUrl ? await get(musicUrl) : null);
+      out.audio = await put("audio.m4a", r.bytes, "audio/mp4"); out.music = !!musicUrl && !r.musicDropped; if (r.musicDropped) out.musicDropped = r.musicDropped;
+      return { parts: out, stage: next };
+    }
+    const segs = await Promise.all(["seg0", "seg1", "seg2", "seg3"].map((k) => get(parts[k])));
+    const { bytes, seconds } = await reelJoin(segs, await get(parts.outro), await get(parts.audio), mode);
+    const sha = crypto.createHash("sha256").update(bytes).digest("hex");
+    const url = (await storagePut(`marketing/command-center/reels/${sha.slice(0, 24)}.mp4`, bytes, "video/mp4")).url;
+    out.final = url;
+    return { parts: out, stage: "final", final: { url, seconds, sha256: sha, musicDropped: parts.musicDropped, music: !!parts.music, mode } };
+  }
   async function videoFrames(url, times) {
     const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "elevay-cc-vf-"));
     try {
@@ -374,7 +487,7 @@ export function makeProviders(fetcher = fetch) {
     return out;
   }
 
-  return { claude, openaiImage, openaiPortrait, brandStatic, clipFrames, voiceScene, checkEgyptianScript, composeReel, videoFrames, higgsfieldSubmit, higgsfieldStatus, test };
+  return { claude, openaiImage, openaiPortrait, brandStatic, clipFrames, voiceScene, checkEgyptianScript, composeReel, composeReelStep, videoFrames, higgsfieldSubmit, higgsfieldStatus, test };
 }
 
 // ------------------------------------------------------------------ pipelines
@@ -732,6 +845,18 @@ export function createOrchestrator(deps) {
         const music = (process.env.ELEVAY_REEL_MUSIC_URLS || "").split(",").map((x) => x.trim()).filter(Boolean);
         const musicUrl = music.length ? music[run.id % music.length] : null;
         try {
+          if (providers.composeReelStep) {
+            A.compose = A.compose || { parts: {}, mode: "dissolve" };
+            const s = await providers.composeReelStep({ clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: A.compose.parts, mode: A.compose.mode });
+            A.compose.parts = s.parts;
+            if (!s.final) return "rewind"; // piece saved; the next piece runs right after
+            const fin = s.final;
+            A.final = { url: fin.url, seconds: fin.seconds, sha256: fin.sha256, music: fin.music, joined: fin.mode };
+            if (fin.musicDropped) log(run, "studio", "team", `The music track could not be mixed (${fin.musicDropped.slice(0, 160)}), so the reel was finished with the voice-over only.`);
+            if (fin.mode === "cuts") log(run, "studio", "team", "The server could not finish the cross-dissolve version, so the scenes were joined with straight cuts.");
+            log(run, "studio", "team", `Final reel ready: ${fin.seconds.toFixed(1)} s, 1080×1920, ELEVAY voice${fin.music ? " + licensed music" : ""}, white logo outro.`);
+            return;
+          }
           const r = await providers.composeReel({ clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl });
           const withMusic = !!musicUrl && !r.musicDropped;
           A.final = { url: r.url, seconds: r.seconds, sha256: r.sha256, music: withMusic };
@@ -745,6 +870,7 @@ export function createOrchestrator(deps) {
           const r = await askClaude(run, step, `This Egyptian Arabic voice-over line for scene ${i + 1} is too long to fit in 5 seconds: "${A.brief.reel.storyboard[i].spoken_text_ar}". Rewrite it in 7–10 words, natural Egyptian Arabic, same idea, country names and ELEVAY in English letters only, everything else in Arabic. Return JSON: {"line": "..."}`, { maxTokens: 300 });
           A.brief.reel.storyboard[i].spoken_text_ar = String(r.data.line || "").trim();
           A.voices[i] = null;
+          if (A.compose?.parts) { delete A.compose.parts.audio; delete A.compose.parts.final; }
           run.steps.find((s2) => s2.action === "voice").status = "pending";
           log(run, "studio", "team", `Scene ${i + 1} narration shortened; recording it again.`);
           return "rewind";
@@ -1019,13 +1145,21 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       if (running.has(r.id)) continue;
       // A step that was running when the server restarted: never re-run paid work silently.
       const doc = JSON.parse(r.doc);
-      if (Date.now() - Date.parse(doc.updated_at || doc.created_at) < 15 * 60 * 1000) continue;
+      const composing = doc.steps?.some((s) => s.status === "running" && s.action === "compose_reel");
+      if (Date.now() - Date.parse(doc.updated_at || doc.created_at) < (composing ? 6 : 15) * 60 * 1000) continue;
       const g = await get(r.id);
       const step = g.run.steps.find((s) => s.status === "running");
       // Claude, checks, OpenAI images, voice and the FFmpeg edit need no approval: resume them automatically,
       // up to 3 times (back-to-back publishes restart the server more than once).
       // Higgsfield clips (the expensive step) are never re-submitted without a person pressing Retry.
-      const resumes = Number(step?.auto_resumes || (step?.auto_resumed ? 1 : 0));
+      let resumes = Number(step?.auto_resumes || (step?.auto_resumed ? 1 : 0));
+      if (step?.action === "compose_reel" && g.run.artifacts.compose) {
+        const C = g.run.artifacts.compose, done = Object.keys(C.parts || {}).length;
+        if (done > Number(C.done_at_resume ?? -1)) resumes = 0; // it made progress since the last restart
+        C.done_at_resume = done;
+        // The join is the only heavy piece: if it brought the server down, join with straight cuts instead.
+        if (REEL_STAGES.every((k) => k === "final" || C.parts?.[k]) && C.mode !== "cuts") { C.join_crashes = Number(C.join_crashes || 0) + 1; if (C.join_crashes >= 1) C.mode = "cuts"; }
+      }
       if (step && step.provider !== "higgsfield" && resumes < 3) {
         step.status = "pending"; step.auto_resumes = resumes + 1; step.auto_resumed = true; g.run.status = "queued";
         log(g.run, "studio", "team", `Resumed automatically after a server restart: ${step.title}`);
