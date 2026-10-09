@@ -66,7 +66,14 @@ export const REEL = { scene: 5, fade: 0.3, outro: 3, maxVoice: 4.85, maxTempo: 1
  * the outro), optional licensed music ducked under the voice, then 3 s of the exact official
  * logo static and centred on pure white, with no narration over it.
  */
-export async function composeElevayReel(input: { clips: Buffer[]; voices: Buffer[]; music?: Buffer | null }) {
+let reelQueue: Promise<unknown> = Promise.resolve();
+export function composeElevayReel(input: { clips: Buffer[]; voices: Buffer[]; music?: Buffer | null }) {
+  // Only one final edit renders at a time, so two reels never compete for the server's memory.
+  const job = reelQueue.then(() => composeElevayReelSafe(input));
+  reelQueue = job.catch(() => {});
+  return job;
+}
+async function composeElevayReelSafe(input: { clips: Buffer[]; voices: Buffer[]; music?: Buffer | null }) {
   try { return await composeElevayReelOnce(input); }
   catch (e) {
     // A bad music bed is the usual cause of an audio-encoder failure: finish the reel without it.
@@ -74,6 +81,8 @@ export async function composeElevayReel(input: { clips: Buffer[]; voices: Buffer
     throw e;
   }
 }
+// Low-memory encode: the final edit must never take the whole server down (a crash shows as "server restart").
+const REEL_THREADS = Math.max(1, Math.min(4, Number(process.env.ELEVAY_REEL_THREADS) || 2));
 const AUDIO_FMT = "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo";
 async function composeElevayReelOnce({ clips, voices, music }: { clips: Buffer[]; voices: Buffer[]; music?: Buffer | null }) {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "elevay-cc-reel-"));
@@ -96,7 +105,7 @@ async function composeElevayReelOnce({ clips, voices, music }: { clips: Buffer[]
     }
     const logo = assetPath("elevay-logo.png");
     const inputs = [];
-    for (const c of clipFiles) inputs.push("-i", c);
+    for (const c of clipFiles) inputs.push("-threads", "1", "-i", c);
     inputs.push("-loop", "1", "-framerate", "30", "-t", String(outro + fade + 0.2), "-i", logo);
     for (const v of voiceFiles) inputs.push("-i", v);
     if (music) { const m = path.join(dir, "music.mp3"); await fsp.writeFile(m, music); inputs.push("-stream_loop", "-1", "-i", m); }
@@ -118,7 +127,7 @@ async function composeElevayReelOnce({ clips, voices, music }: { clips: Buffer[]
       f.push(`[9:a]${AUDIO_FMT},atrim=duration=${total},volume=0.22,afade=t=in:d=0.8,afade=t=out:st=${4 * scene}:d=${outro}[bed]`, `[voice]asplit=2[vmain][vkey]`, `[bed][vkey]sidechaincompress=threshold=0.05:ratio=4:attack=20:release=400[ducked]`, `[ducked][vmain]amix=inputs=2:duration=longest:normalize=0,atrim=duration=${total},alimiter=limit=0.95,aformat=sample_fmts=s16:channel_layouts=stereo[a]`);
     } else f.push(`[voice]atrim=duration=${total},alimiter=limit=0.95,aformat=sample_fmts=s16:channel_layouts=stereo[a]`);
     const out = path.join(dir, "reel.mp4");
-    await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", ...inputs, "-filter_complex", f.join(";"), "-map", "[v]", "-map", "[a]", "-t", String(total), "-r", "30", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out]);
+    await runFfmpeg(["-y", "-hide_banner", "-loglevel", "error", ...inputs, "-filter_complex_threads", String(REEL_THREADS), "-filter_complex", f.join(";"), "-map", "[v]", "-map", "[a]", "-t", String(total), "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-threads", String(REEL_THREADS), "-x264-params", "rc-lookahead=15", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out], 600000);
     const seconds = await mediaSeconds(out);
     if (Math.abs(seconds - total) > 0.6) throw new Error(`Final reel is ${seconds.toFixed(1)} s instead of ${total} s.`);
     return { bytes: await fsp.readFile(out), seconds };
@@ -143,13 +152,13 @@ export function ffmpegReason(err: string) {
   const real = lines.find((l) => !/Terminating thread|Nothing was written|Conversion failed|Error while (?:filtering|processing)|Task finished with error/i.test(l));
   return (real ? real + (lines.length > 1 ? " … " + lines[lines.length - 1] : "") : lines.slice(-2).join(" ")).slice(0, 400);
 }
-function runFfmpeg(args) {
+function runFfmpeg(args, timeoutMs = 240000) {
   return new Promise(async (resolve, reject) => {
     let bin = "ffmpeg";
     try { bin = (await import("../mediaExecutables")).FFMPEG_BIN || bin; } catch { /* system ffmpeg */ }
     const child = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
-    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Media composition timed out.")); }, 240000);
+    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Media composition timed out.")); }, timeoutMs);
     child.stderr.on("data", (d) => { err = (err + d).slice(-3000); });
     child.on("error", (e) => { clearTimeout(timer); reject(e); });
     child.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error("Media composition failed: " + ffmpegReason(err))); });
@@ -1010,7 +1019,7 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       if (running.has(r.id)) continue;
       // A step that was running when the server restarted: never re-run paid work silently.
       const doc = JSON.parse(r.doc);
-      if (Date.now() - Date.parse(doc.updated_at || doc.created_at) < 10 * 60 * 1000) continue;
+      if (Date.now() - Date.parse(doc.updated_at || doc.created_at) < 15 * 60 * 1000) continue;
       const g = await get(r.id);
       const step = g.run.steps.find((s) => s.status === "running");
       // Claude, checks, OpenAI images, voice and the FFmpeg edit need no approval: resume them automatically,
@@ -1023,7 +1032,12 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
         await save(g.run, g.ver).catch(() => {});
         continue;
       }
-      if (step) { step.status = "failed"; step.error = "Interrupted (server restart). Press Retry to run this step again."; }
+      if (step) {
+        step.status = "failed";
+        step.error = step.action === "compose_reel" && resumes >= 3
+          ? "The server restarted every time it tried this final edit, so it is most likely running out of memory while rendering the reel. Ask Manus to give the server more memory (or set ELEVAY_REEL_THREADS=1), then press Retry."
+          : "Interrupted (server restart). Press Retry to run this step again.";
+      }
       g.run.status = "failed";
       await save(g.run, g.ver).catch(() => {});
     }
