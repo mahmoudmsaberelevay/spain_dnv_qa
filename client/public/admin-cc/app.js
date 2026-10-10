@@ -33,8 +33,8 @@
   }
 
   const STATUS_PILL = {
-    draft: ['', 'Draft'], qc_failed: ['bad', 'QC failed'], pending_approval: ['warn', 'Awaiting approval'], changes_requested: ['info', 'Changes requested'],
-    approved: ['ok', 'Approved'], scheduled: ['ok', 'Scheduled'], published: ['ok', 'Published'], rejected: ['bad', 'Rejected'],
+    draft: ['', 'Draft'], qc_failed: ['bad', 'QC failed'], pending_approval: ['warn', 'Awaiting approval'], changes_requested: ['info', 'Changes requested'], revision_pending: ['info', 'Owner revision in progress'],
+    approved: ['ok', 'Approved'], revision_approved: ['ok', 'Revision approved'], scheduled: ['ok', 'Scheduled'], published: ['ok', 'Published'], rejected: ['bad', 'Rejected'],
   };
   const statusPill = (s) => { const [c, l] = STATUS_PILL[s] || ['', s]; return `<span class="pill ${c}">${esc(l)}</span>`; };
   const JOB_PILL = { pending: ['warn', 'Waiting for Manus'], sent: ['info', 'Sent to Manus'], in_progress: ['info', 'Manus working'], needs_input: ['bad', 'Manus has a question'], done: ['ok', 'Done'], failed: ['bad', 'Failed'] };
@@ -78,6 +78,8 @@
       return r;
     },
     decideItem: (id, body) => api.run(() => api.req('POST', `items/${encodeURIComponent(id)}/decision`, body), () => E.decideItem(demoState, id, body.decision, body, who(), role())),
+    reviseItem: (id, body) => api.run(() => api.req('POST', `items/${encodeURIComponent(id)}/revision`, body), () => E.decideItem(demoState, id, 'request_changes', body, who(), role())),
+    restoreItemVersion: (id, version, body) => api.run(() => api.req('POST', `items/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/restore`, body), () => E.restoreItemVersion(demoState, id, version, { actor: who(), role: role(), baseVersion: body.baseVersion, request: body.note })),
     approveAll: (week) => api.run(() => api.req('POST', `weeks/${week}/approve-all`), () => E.approveAllWeek(demoState, week, who(), role())),
     decideAction: (id, body) => api.run(() => api.req('POST', `actions/${id}/decision`, body), () => E.decideAction(demoState, id, body.decision, body, who(), role())),
     proposePause: (adset) => api.run(() => api.req('POST', 'guardrails/pause', { adset }), () => (isOwner() ? E.proposePause(demoState, adset, who()) : { ok: false, error: 'Owner only.' })),
@@ -450,12 +452,14 @@
     const aa = document.getElementById('approveAll');
     if (aa) aa.onclick = () => act(async () => { const r = await api.approveAll(S.week); toast(`Approved ${r.approved.length}${r.skipped.length ? `, skipped ${r.skipped.length} with compliance blocks` : ''}. Manus will schedule them.`); });
     wireItems(el);
+    wireRevisionHistory(el);
     if (S.openItem) { const n = document.getElementById('item-' + S.openItem); if (n) { n.classList.add('focus'); n.scrollIntoView({ block: 'start' }); } S.openItem = null; }
   }
 
   function mediaBlock(i) {
     const m = i.media || {};
     const fmt = i.design && i.design.format === '1080x1350' ? 'p45' : 'sq';
+    if (i.type === 'carousel' && Array.isArray(m.image_urls)) return `<div class="thumbs">${m.image_urls.map((url,n)=>`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="Carousel slide ${n+1}" loading="lazy"></a>`).join('')}</div>`;
     if (i.type === 'reel') {
       if (m.video_url) return `<div class="frame v916"><video src="${esc(m.video_url)}" controls playsinline preload="metadata"></video></div>`;
       if ((m.keyframes || []).length) return `<div class="stack" style="gap:6px"><div class="thumbs">${m.keyframes.map((u) => `<img src="${esc(u)}" alt="Keyframe" loading="lazy">`).join('')}</div><span class="small muted">Keyframes only: the reel itself was not made because these failed the design check. Make it again from AI Studio.</span></div>`;
@@ -468,9 +472,10 @@
   function itemCard(i) {
     const c = i.compliance || { blocks: [], warnings: [], checks: [] };
     const passed = c.checks.filter((x) => x.ok).length;
-    const decidable = ['pending_approval', 'qc_failed'].includes(i.status);
+    const decidable = ['pending_approval', 'qc_failed'].includes(i.status) && i.revision_status !== 'owner_approved';
     const talent = i.talent && i.talent.mode && i.talent.mode !== 'none' ? (i.talent.mode === 'influencer' ? 'AI influencer + Elevay.vip voice' : 'Elevay.vip voice-over') : 'Music only';
     const lastReq = (i.owner_comments || []).filter((x) => x.kind === 'change_request').slice(-1)[0];
+    const revisionPending = i.revision_status === 'revision_pending' && i.revision;
     return `<article class="item" id="item-${esc(i.item_id)}">
       <div class="media">${mediaBlock(i)}
         <dl class="meta-list">
@@ -484,7 +489,9 @@
       </div>
       <div class="content">
         <div class="item-h"><div><span class="id">${esc(i.item_id)} · v${i.version} · ${esc(i.type)}</span><h3>${esc(i.topic || 'Untitled')}</h3></div><div class="row">${statusPill(i.status)}${c.pass ? `<span class="pill ok">Compliance ${passed}/${c.checks.length}</span>` : `<span class="pill bad">${c.blocks.length} compliance block${c.blocks.length === 1 ? '' : 's'}</span>`}</div></div>
-        ${i.status === 'changes_requested' && lastReq ? `<div class="comment change_request"><strong>Sent to Manus (${esc(scopeLabel(lastReq.scope))}${lastReq.clip ? ' ' + lastReq.clip : ''}):</strong> ${esc(lastReq.text)}</div>` : ''}
+        ${i.status === 'changes_requested' && lastReq && i.revision_status !== 'owner_approved' ? `<div class="comment change_request"><strong>Sent to Manus (${esc(scopeLabel(lastReq.scope))}${lastReq.clip ? ' ' + lastReq.clip : ''}):</strong> ${esc(lastReq.text)}</div>` : ''}
+        ${i.revision_status === 'owner_approved' ? `<div class="comment"><strong>v${esc(i.version)} · Change applied and content approved:</strong> ${esc(i.revision?.change_note || '')}<div class="small muted">Previous versions are retained below. Meta publishing is held separately.</div></div>` : ''}
+        ${revisionPending ? `<div class="comment change_request"><strong>Owner-authorized revision in progress (${esc(scopeLabel(i.revision.scope))}${i.revision.clip ? ' ' + esc(i.revision.clip) : ''}):</strong> ${esc(i.revision.request || '')}<div class="small muted">Active v${esc(i.version)} remains unchanged until the final Claude check passes.${i.revision.run_id ? ` Sandbox run #${esc(i.revision.run_id)}.` : ''}</div></div>` : ''}
         <div><div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="label">Arabic caption</span><span class="small muted num">${c.words || 0} words · target 100–150</span></div>
           <div class="caption ar" dir="rtl" lang="ar">${esc(i.caption_ar || '')}</div></div>
         ${i.qc && i.qc.blocked ? `<div class="alert critical"><span class="tag">Design QC failed</span><span>${esc((i.qc.issues || []).join(' · ') || 'Claude found design-rule problems after 2 redesigns.')}</span></div>` : ''}
@@ -495,29 +502,77 @@
           <div><span class="label">Claude QC</span><p class="small">${i.qc && i.qc.reviewer === 'claude' && 'pass' in i.qc ? (i.qc.pass ? 'Passed the strict ELEVAY design review.' : `Failed: ${esc((i.qc.issues || []).join('; '))}`) : i.qc ? `Passed: ${esc((i.qc.checks_passed || []).join(', ') || '—')}${(i.qc.checks_failed || []).length ? ` · Failed: ${esc(i.qc.checks_failed.join(', '))}` : ''}` : 'Not reported'}</p></div>
           <div><span class="label">Compliance checks</span><div class="small">${c.checks.map((x) => `<div>${x.ok ? '✓' : x.severity === 'block' ? '✕' : '!'} ${esc(x.label)}</div>`).join('')}</div></div>
           ${(i.owner_comments || []).length ? `<div><span class="label">Comments</span><div class="comments">${i.owner_comments.map((x) => `<div class="comment ${x.kind}"><span class="muted small">${fmtDT(x.at)} · ${esc(x.by)} · v${x.version}${x.scope ? ' · ' + esc(scopeLabel(x.scope)) : ''}</span><div>${esc(x.text)}</div></div>`).join('')}</div></div>` : ''}
-          ${(i.history || []).length ? `<div><span class="label">Versions</span><div class="small">${i.history.map((h) => `<div>v${h.version} replaced ${fmtDT(h.at)} by ${esc(h.by)}</div>`).join('')}</div></div>` : ''}
+          ${revisionHistory(i)}
         </div></details>
-        ${decidable && canEdit() ? decideBlock(i) : ''}
+        ${canEdit() && (decidable || isOwner()) ? decideBlock(i) : ''}
       </div></article>`;
   }
   const scopeLabel = (s) => (R.CHANGE_SCOPES.find((x) => x.id === s) || { label: s }).label;
 
+
+  function revisionHistory(i) {
+    const history = (i.history || []).filter((h) => h && h.snapshot).slice().sort((a, b) => Number(b.version) - Number(a.version));
+    const current = { version: i.version, snapshot: i, at: i.updated_at, by: i.revision?.approved_by || i.approved_by || 'current', change_note: i.revision?.change_note || '' };
+    const versions = [current, ...history];
+    if (!history.length) return '<div><span class="label">Versions</span><p class="small muted">v' + esc(i.version) + ' is the first saved version. Future revisions retain every full snapshot here.</p></div>';
+    return `<div class="revision-history" data-history="${esc(i.item_id)}"><span class="label">Versions · full snapshots</span>
+      <div class="row" style="gap:8px;flex-wrap:wrap;margin:6px 0">${versions.map((v) => `<button class="btn sm ${Number(v.version) === Number(i.version) ? 'primary' : ''}" data-version-preview="${esc(v.version)}">v${esc(v.version)}${Number(v.version) === Number(i.version) ? ' · active' : ''}</button>`).join('')}</div>
+      <div class="small muted" data-version-meta>Choose a version to preview its complete saved content.</div>
+      <pre class="code" data-version-preview-output style="max-height:240px;white-space:pre-wrap"></pre>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><label class="field small" style="min-width:170px"><span>Compare active with</span><select class="input" data-version-compare><option value="">Choose prior version…</option>${history.map((v) => `<option value="${esc(v.version)}">v${esc(v.version)}</option>`).join('')}</select></label>${isOwner() ? `<label class="field small grow"><span>Restore note</span><input class="input" data-restore-note placeholder="Why restore this version?"></label><button class="btn sm" data-version-restore disabled>Restore selected version</button>` : ''}</div>
+      <pre class="code" data-version-diff hidden style="max-height:300px;white-space:pre-wrap"></pre>
+    </div>`;
+  }
+
+  function snapshotPreview(snapshot) {
+    if (!snapshot) return '';
+    const out = {
+      item_id: snapshot.item_id, version: snapshot.version, type: snapshot.type, topic: snapshot.topic,
+      status: snapshot.status, caption_ar: snapshot.caption_ar, design: snapshot.design, reel: snapshot.reel,
+      media: snapshot.media, publish: snapshot.publish, qc: snapshot.qc, revision: snapshot.revision,
+    };
+    return JSON.stringify(out, null, 2);
+  }
+
+  function simpleSnapshotDiff(current, prior) {
+    const ignored = new Set(['history', 'owner_comments', 'created_at', 'updated_at', 'version', 'revision']);
+    const keys = [...new Set([...Object.keys(current || {}), ...Object.keys(prior || {})])].filter((k) => !ignored.has(k)).sort();
+    const changes = keys.filter((k) => JSON.stringify(current?.[k]) !== JSON.stringify(prior?.[k]));
+    return changes.length ? changes.map((k) => `Changed ${k}:\n− ${JSON.stringify(prior?.[k], null, 2)}\n+ ${JSON.stringify(current?.[k], null, 2)}`).join('\n\n') : 'No content-field differences.';
+  }
+
+  function wireRevisionHistory(root) {
+    root.querySelectorAll('[data-history]').forEach((box) => {
+      const item = S.data.items.find((x) => x.item_id === box.dataset.history); if (!item) return;
+      const past = (item.history || []).filter((h) => h && h.snapshot);
+      const find = (version) => Number(version) === Number(item.version) ? { version: item.version, snapshot: item, at: item.updated_at, by: item.revision?.approved_by || item.approved_by || 'current', change_note: item.revision?.change_note || '' } : past.find((h) => Number(h.version) === Number(version));
+      const preview = box.querySelector('[data-version-preview-output]'); const meta = box.querySelector('[data-version-meta]'); const diff = box.querySelector('[data-version-diff]'); const compare = box.querySelector('[data-version-compare]'); const restore = box.querySelector('[data-version-restore]');
+      let selected = String(item.version);
+      const show = (version) => { const v = find(version); if (!v) return; selected = String(v.version); preview.textContent = snapshotPreview(v.snapshot); const lifecycle = Number(v.version) === Number(item.version) ? ' · active' : ` · replaced ${fmtDT(v.at)} by ${v.by || 'system'}`; meta.textContent = `v${v.version}${lifecycle}${v.change_note ? ` · ${v.change_note}` : ''}`; if (restore) restore.disabled = Number(v.version) === Number(item.version); };
+      box.querySelectorAll('[data-version-preview]').forEach((b) => b.onclick = () => show(b.dataset.version));
+      if (compare) compare.onchange = () => { const v = find(compare.value); if (!v) { diff.hidden = true; return; } diff.textContent = `Active v${item.version} compared with v${v.version}\n\n${simpleSnapshotDiff(item, v.snapshot)}`; diff.hidden = false; show(v.version); };
+      if (restore) restore.onclick = () => { const v = find(selected); if (!v || Number(v.version) === Number(item.version)) return; const note = (box.querySelector('[data-restore-note]') || {}).value || `Restore v${v.version}`; act(() => api.restoreItemVersion(item.item_id, v.version, { baseVersion: item.version, note }), `Restored v${v.version} as a new active version. Nothing was scheduled or published.`); };
+      show(selected);
+    });
+  }
+
   function decideBlock(i) {
     const blocked = i.compliance && !i.compliance.pass;
     const id = esc(i.item_id);
+    const canApprove = ['pending_approval','qc_failed','draft','changes_requested'].includes(i.status) && i.revision_status !== 'owner_approved';
     return `<div class="decide" data-item="${id}">
       <div class="row">
-        ${isOwner() ? `<button class="btn primary" data-do="approve" ${blocked ? 'disabled title="Fix compliance blocks first"' : ''}>Approve</button>` : ''}
+        ${isOwner() && canApprove ? `<button class="btn primary" data-do="approve" ${blocked ? 'disabled title="Fix compliance blocks first"' : ''}>Approve</button>` : ''}
         <button class="btn" data-do="toggle-changes">Request changes</button>
         ${isOwner() ? '<button class="btn danger" data-do="toggle-reject">Reject</button>' : ''}
-        ${isOwner() && blocked ? '<button class="btn ghost sm" data-do="toggle-override">Approve with override…</button>' : ''}
+        ${isOwner() && canApprove && blocked ? '<button class="btn ghost sm" data-do="toggle-override">Approve with override…</button>' : ''}
       </div>
       <div class="stack" data-panel="changes" hidden>
-        <label class="field"><span>What should change? Manus regenerates only the scope below.</span><textarea class="input" id="cr-${id}" placeholder="e.g. Shorten the hook and mention that family members can be included."></textarea></label>
+        <label class="field"><span>What should change? Only the affected scope regenerates; your request approves the checked revision.</span><textarea class="input" id="cr-${id}" placeholder="e.g. Shorten the hook and mention that family members can be included."></textarea></label>
         <div class="row"><label class="field" style="min-width:200px"><span>Scope (suggested from your comment)</span><select class="input" id="sc-${id}">${R.CHANGE_SCOPES.map((s) => `<option value="${s.id}">${s.label}</option>`).join('')}</select></label>
-          ${i.type === 'reel' ? `<label class="field" style="width:110px"><span>Clip</span><select class="input" id="cl-${id}"><option value="">—</option>${[1, 2, 3, 4].map((n) => `<option>${n}</option>`).join('')}</select></label>` : ''}
+          ${['reel','carousel'].includes(i.type) ? `<label class="field" style="width:110px"><span>${i.type==='carousel'?'Slide':'Clip'}</span><select class="input" id="cl-${id}"><option value="">All affected</option>${Array.from({length:i.type==='carousel'?(i.carousel?.slides?.length||i.media?.image_urls?.length||1):4},(_,n)=>n+1).map((n) => `<option>${n}</option>`).join('')}</select></label>` : ''}
           <span class="small muted grow" id="rg-${id}"></span></div>
-        <div class="row"><button class="btn primary" data-do="send-changes">Send to Manus</button><button class="btn ghost" data-do="toggle-changes">Cancel</button></div>
+        <div class="row"><button class="btn primary" data-do="send-changes">${isOwner()?'Apply change':'Send to Manus'}</button><button class="btn ghost" data-do="toggle-changes">Cancel</button></div>
       </div>
       <div class="stack" data-panel="reject" hidden><label class="field"><span>Reason (shared with Manus)</span><textarea class="input" id="rj-${id}"></textarea></label><div class="row"><button class="btn danger" data-do="send-reject">Reject item</button><button class="btn ghost" data-do="toggle-reject">Cancel</button></div></div>
       <div class="stack" data-panel="override" hidden><label class="field"><span>Override reason (logged). Use only when a flagged term is an official program name or a false positive.</span><textarea class="input" id="ov-${id}"></textarea></label><div class="row"><button class="btn primary" data-do="send-override">Approve with override</button><button class="btn ghost" data-do="toggle-override">Cancel</button></div></div>
@@ -541,7 +596,7 @@
         const d = b.dataset.do;
         if (d.startsWith('toggle-')) { const p = panel(d.slice(7)); const open = p.hidden; ['changes', 'reject', 'override'].forEach((k) => panel(k) && (panel(k).hidden = true)); p.hidden = !open; if (open) p.querySelector('textarea').focus(); return; }
         if (d === 'approve') return act(() => api.decideItem(id, { decision: 'approve' }), 'Approved. Manus will schedule it.');
-        if (d === 'send-changes') return act(() => api.decideItem(id, { decision: 'request_changes', comment: ta.value, scope: sc.value, clip: cl && cl.value ? Number(cl.value) : null }), 'Change request sent to Manus.');
+        if (d === 'send-changes') { const body = { decision: 'request_changes', comment: ta.value, scope: sc.value, clip: cl && cl.value ? Number(cl.value) : null }; return act(() => isOwner() ? api.reviseItem(id, body) : api.decideItem(id, body), isOwner() ? 'Owner-authorized revision started. The current active version stays in place until final Claude QC passes.' : 'Change request sent to Manus.'); }
         if (d === 'send-reject') return act(() => api.decideItem(id, { decision: 'reject', comment: box.querySelector(`#rj-${CSS.escape(id)}`).value }), 'Rejected.');
         if (d === 'send-override') return act(() => api.decideItem(id, { decision: 'approve', override: true, reason: box.querySelector(`#ov-${CSS.escape(id)}`).value }), 'Approved with override. Logged in the audit trail.');
       });
@@ -744,7 +799,7 @@
   // ------------------------------------------------------------ AI Studio
   const PROV = { claude: ['Claude', '#C9A84C'], openai: ['OpenAI', '#5BA3B8'], higgsfield: ['Higgsfield', '#7a6fb0'], elevenlabs: ['ELEVAY voice', '#4B6475'], manus: ['Manus', '#2f8a74'], system: ['ELEVAY rules', '#5E6A71'], studio: ['Studio', '#5E6A71'], team: ['Team', '#1A3A5C'] };
   const provChip = (p) => { const [l, c] = PROV[p] || [p, '#5E6A71']; return `<span class="pchip" style="--c:${c}">${esc(l)}</span>`; };
-  const RUN_PILL = { needs_review: ['warn', 'Needs review'], queued: ['info', 'Queued'], running: ['info', 'Working'], waiting: ['info', 'Waiting on provider'], awaiting_approval: ['warn', 'Needs approval'], done: ['ok', 'Done'], failed: ['bad', 'Failed'], cancelled: ['', 'Cancelled'] };
+  const RUN_PILL = { needs_review: ['warn', 'Needs review'], queued: ['info', 'Queued'], running: ['info', 'Working'], waiting: ['info', 'Waiting on provider'], sandbox_queued: ['info', 'Sandbox rebuild queued'], sandbox_running: ['info', 'Sandbox rebuild running'], sandbox_waiting: ['info', 'Sandbox rebuild waiting'], awaiting_approval: ['warn', 'Needs approval'], done: ['ok', 'Done'], failed: ['bad', 'Failed'], cancelled: ['', 'Cancelled'] };
   const STEP_ICON = { pending: '○', running: '◐', waiting: '◔', needs_approval: '!', done: '●', failed: '✕', skipped: '–' };
   let studioTimer = null;
   async function loadStudio() {
@@ -864,9 +919,15 @@
   // ------------------------------------------------------------ Meta (replies, publishing, campaigns)
   const META_PILL = { pending: ['warn', 'Needs approval'], running: ['info', 'Running'], done: ['ok', 'Done'], failed: ['bad', 'Failed'], blocked: ['bad', 'Refused by guardrail'], rejected: ['', 'Rejected'] };
   async function loadMeta() {
-    const [a, c, f] = await Promise.all([api.req('GET', 'meta/actions'), api.req('GET', 'meta/campaigns').catch((e) => ({ error: e.message })), S.meta && S.meta.forms ? Promise.resolve({ forms: S.meta.forms }) : api.req('GET', 'meta/forms').catch(() => ({ forms: [] }))]);
-    S.meta = { actions: a.actions, campaigns: c, forms: f.forms || [], checks: S.meta && S.meta.checks };
+    const [a, c, f, w] = await Promise.all([api.req('GET', 'meta/actions'), api.req('GET', 'meta/campaigns').catch((e) => ({ error: e.message })), S.meta && S.meta.forms ? Promise.resolve({ forms: S.meta.forms }) : api.req('GET', 'meta/forms').catch(() => ({ forms: [] })), api.req('GET', 'meta/webhooks').catch((e) => ({ error: e.message }))]);
+    S.meta = { actions: a.actions, campaigns: c, forms: f.forms || [], webhookHealth: w.health || null, webhookError: w.error || null, checks: S.meta && S.meta.checks };
     return S.meta;
+  }
+  function webhookHealthCard(h, err) {
+    if (!h) return `<section class="panel"><div class="panel-h"><h2>Page & Instagram webhooks</h2></div><div class="empty">${esc(err || 'Webhook health is unavailable.')}</div></section>`;
+    const latest = h.latest ? `${esc(h.latest.field)} · ${esc(h.latest.eventType)} · ${fmtDT(h.latest.receivedAt)}` : 'No signed platform events yet';
+    const rows = (h.counts || []).map((x) => `<tr><td>${esc(x.objectType)}</td><td>${esc(x.field)}</td><td>${esc(x.status)}</td><td class="r num">${n0(x.total)}</td></tr>`).join('');
+    return `<section class="panel"><div class="panel-h"><h2>Page & Instagram webhooks</h2><span class="small muted">Last ${n0(h.windowDays)} days · signed metadata only</span></div><div class="grid g2"><div class="kpi"><span class="label">Latest event</span><span class="small">${latest}</span></div><div class="kpi"><span class="label">Data deletion requests waiting</span><span class="v">${n0(h.pendingDeletionRequests)}</span></div></div>${rows ? `<div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Object</th><th>Field</th><th>Status</th><th class="r">Events</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="small muted" style="margin-top:10px">Configure subscriptions in Meta after this endpoint is live. Lead Ads deliveries continue in the dedicated Lead inbox.</p>'}</section>`;
   }
   function viewMeta(el) {
     if (S.mode === 'demo') { el.innerHTML = '<div class="empty">Meta actions run on elevay.vip/admin.</div>'; return; }
@@ -882,6 +943,7 @@
     el.innerHTML = `<div class="stack" style="gap:16px">
       <section class="panel"><div class="panel-h"><h2>Needs your approval</h2><span class="row small muted">${pending.length} waiting ${canEdit() ? '<button class="btn sm" id="mxSync">Check comments & messages now</button>' : ''}</span></div>
         ${pending.length ? `<div class="stack" style="gap:10px">${pending.map(metaCard).join('')}</div>` : '<div class="empty">Nothing waiting. New comments and messages are checked every 10 minutes; Claude drafts each reply.</div>'}</section>
+      ${webhookHealthCard(m.webhookHealth, m.webhookError)}
       <section class="panel"><div class="panel-h"><h2>Campaigns</h2><span class="small muted">${m.campaigns && m.campaigns.mtd !== undefined ? `Month to date ${n0(m.campaigns.mtd)} EGP · active budgets ${n0(m.campaigns.dailyTotal)} EGP/day · cap ${n0(set.monthlyAdCapEgp)} EGP` : esc((m.campaigns && m.campaigns.error) || '')}</span></div>
         ${camps.length ? `<div class="table-wrap"><table><thead><tr><th>Campaign</th><th>Status</th><th class="r">Daily budget</th><th class="r">30-day CPL</th><th></th></tr></thead><tbody>${camps.map((c) => `<tr><td>${esc(c.name)}</td><td class="small">${esc(c.status)}</td><td class="r num">${c.daily ? n0(c.daily) : '—'}</td><td class="r num" style="color:${c.cpl30 > set.maxCplEgp ? 'var(--bad)' : 'inherit'}">${c.cpl30 ? n0(c.cpl30) : '—'}</td><td class="r">${canEdit() ? `<button class="btn sm" data-mx-status="${c.id}" data-to="${c.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'}" data-name="${esc(c.name)}">${c.status === 'ACTIVE' ? 'Pause' : 'Activate'}</button> ${c.daily ? `<button class="btn sm" data-mx-budget="${c.id}" data-name="${esc(c.name)}" data-cur="${c.daily}">Budget</button>` : ''}` : ''}</td></tr>`).join('')}</tbody></table></div>
         <p class="small muted" style="margin-top:8px">Buttons create an action for owner approval. Activations and budget increases are refused when they would break the monthly cap, and increases are refused on campaigns above the max CPL.</p>` : '<div class="empty">No campaigns loaded.</div>'}

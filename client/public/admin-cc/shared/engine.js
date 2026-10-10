@@ -108,7 +108,6 @@
       const pv = Number(prev.version || 1);
       item.version = Number(input.version) > pv ? Number(input.version) : pv + 1;
       item.history.unshift({ at: now(), by: actor, version: prev.version, snapshot: prev });
-      if (item.history.length > 20) item.history.length = 20;
     } else {
       item = Object.assign({ version: 1, owner_comments: [], history: [], created_at: now() }, input);
       item.version = Number(input.version || 1);
@@ -127,12 +126,241 @@
     return { ok: true, item };
   }
 
+  // ---------------- Reviewed revisions ----------------
+  // A history snapshot contains every item field at that version except the history
+  // collection itself. Excluding that self-referential collection keeps snapshots
+  // immutable and unbounded without recursively duplicating every older version.
+  function snapshotForHistory(item) {
+    const snapshot = clone(item);
+    delete snapshot.history;
+    return snapshot;
+  }
+
+  function normaliseRevisionScopes(scope) {
+    const raw = Array.isArray(scope) ? scope : [scope];
+    const values = raw.flatMap((value) => String(value || '').split(','))
+      .map((value) => value.trim()).filter(Boolean)
+      .map((value) => value === 'all' ? 'whole_concept' : value);
+    const scopes = [...new Set(values)];
+    if (!scopes.length || !scopes.every((value) => (R.CHANGE_SCOPES || []).some((x) => x.id === value))) return [];
+    return scopes.includes('whole_concept') ? ['whole_concept'] : scopes;
+  }
+
+  function normaliseRevisionScope(scope) {
+    const scopes = normaliseRevisionScopes(scope);
+    return scopes.length === 1 ? scopes[0] : null;
+  }
+
+  function copyPatchFields(target, source, keys) {
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) target[key] = clone(source[key]);
+    }
+  }
+
+  function mergeReelPatch(existing, incoming, clip, voiceOnly) {
+    const reel = clone(existing || {});
+    const patch = incoming || {};
+    for (const key of Object.keys(patch)) if (key !== 'storyboard') reel[key] = clone(patch[key]);
+    if (!Array.isArray(patch.storyboard)) return reel;
+    const current = Array.isArray(reel.storyboard) ? reel.storyboard.map(clone) : [];
+    // A named clip permits that scene only. Without one, only scenes expressly
+    // supplied in the final-QC-passed patch may change; all other scenes remain.
+    for (const revised of patch.storyboard) {
+      const sceneClip = Number(revised && revised.clip);
+      if (!Number.isInteger(sceneClip) || sceneClip < 1 || (clip && sceneClip !== Number(clip))) continue;
+      const at = current.findIndex((scene) => Number(scene && scene.clip) === sceneClip);
+      if (at < 0) continue;
+      current[at] = voiceOnly
+        ? Object.assign({}, current[at], Object.prototype.hasOwnProperty.call(revised, 'spoken_text_ar') ? { spoken_text_ar: revised.spoken_text_ar } : {})
+        : Object.assign({}, current[at], clone(revised));
+    }
+    reel.storyboard = current;
+    return reel;
+  }
+
+  function carouselSlides(item) {
+    const slides = item?.carousel?.slides || item?.design?.slides;
+    if (!Array.isArray(slides) || !slides.length) return null;
+    const normalised = slides.map((slide, index) => Object.assign({}, clone(slide), { slide: Number(slide?.slide || index + 1) }));
+    if (normalised.some((slide) => !Number.isInteger(slide.slide) || slide.slide < 1 || !String(slide.headline_en || '').trim() || !String(slide.image_prompt || '').trim())) return null;
+    return normalised;
+  }
+
+  function carouselImageUrls(item, slides) {
+    const urls = Array.isArray(item?.media?.image_urls) ? item.media.image_urls.slice() : slides.map((slide) => slide.image_url || null);
+    return urls.length === slides.length && urls.every((url) => typeof url === 'string' && url.trim()) ? urls : null;
+  }
+
+  function carouselPatch(item, patch, clip) {
+    const existing = carouselSlides(item);
+    const previousUrls = existing && carouselImageUrls(item, existing);
+    if (!existing || !previousUrls) return { ok: false, error: 'Carousel visual revisions require complete durable carousel.slides (or legacy design.slides) with headline_en, image_prompt, and media.image_urls.' };
+    const incoming = patch?.carousel?.slides || patch?.design?.slides;
+    if (!Array.isArray(incoming) || !incoming.length) return { ok: false, error: 'Carousel revision must include the reviewed slide descriptions.' };
+    const updated = existing.map(clone), urls = previousUrls.slice();
+    const indexes = clip ? [Number(clip)] : existing.map((slide) => slide.slide);
+    if (clip && (!Number.isInteger(Number(clip)) || Number(clip) < 1 || !existing.some((slide) => slide.slide === Number(clip)))) return { ok: false, error: 'Choose an existing carousel slide.' };
+    if (!clip && incoming.length !== existing.length) return { ok: false, error: 'An all-carousel visual revision must provide every slide; no missing slide may be invented.' };
+    const patchUrls = Array.isArray(patch?.media?.image_urls) ? patch.media.image_urls : [];
+    for (const slideNo of indexes) {
+      const at = existing.findIndex((slide) => slide.slide === slideNo);
+      const revised = incoming.find((slide, index) => Number(slide?.slide || (clip ? slideNo : index + 1)) === slideNo);
+      if (!revised || !String(revised.headline_en || '').trim() || !String(revised.image_prompt || '').trim()) return { ok: false, error: `Carousel slide ${slideNo} needs headline_en and image_prompt.` };
+      const imageUrl = revised.image_url || patchUrls[at];
+      if (typeof imageUrl !== 'string' || !imageUrl.trim()) return { ok: false, error: `Carousel slide ${slideNo} needs its reviewed image URL.` };
+      updated[at] = Object.assign({}, updated[at], clone(revised), { slide: slideNo, image_url: imageUrl });
+      urls[at] = imageUrl;
+    }
+    return { ok: true, slides: updated, image_urls: urls };
+  }
+
+  function scopedRevisionPatch(item, patch, scope, clip) {
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return { ok: false, error: 'A revision patch is required.' };
+    const next = clone(item);
+    const apply = (keys) => copyPatchFields(next, patch, keys);
+    if (scope === 'caption') apply(['caption_ar', 'caption_en', 'caption', 'cta', 'hashtags']);
+    else if (scope === 'static_design') {
+      if (item.type === 'carousel') {
+        const carousel = carouselPatch(item, patch, clip);
+        if (!carousel.ok) return carousel;
+        next.carousel = Object.assign({}, next.carousel || {}, { slides: carousel.slides });
+        next.media = Object.assign({}, next.media || {}, { image_urls: carousel.image_urls });
+        if (next.design && next.design.slides) delete next.design.slides; // canonical source is carousel.slides
+        apply(['qc', 'produced_by']);
+      } else apply(['design', 'media', 'qc', 'produced_by']);
+    } else if (scope === 'reel_clip') {
+      next.reel = mergeReelPatch(item.reel, patch.reel, clip, false);
+      apply(['media', 'qc', 'produced_by']);
+    } else if (scope === 'voice') {
+      next.reel = mergeReelPatch(item.reel, patch.reel, clip, true);
+      apply(['media', 'qc', 'produced_by']);
+    } else if (scope === 'schedule') {
+      if (!patch.publish || typeof patch.publish !== 'object' || Array.isArray(patch.publish)) return { ok: false, error: 'A schedule revision needs a publish patch.' };
+      next.publish = Object.assign({}, clone(item.publish || {}), clone(patch.publish));
+    }
+    else if (scope === 'whole_concept') {
+      const immutable = new Set(['item_id', 'version', 'history', 'owner_comments', 'created_at', 'updated_at', 'presented_at', 'first_pass', 'approved_at', 'approved_by', 'status', 'revision', 'revision_status']);
+      for (const key of Object.keys(patch)) if (!immutable.has(key)) next[key] = clone(patch[key]);
+    } else return { ok: false, error: 'Unknown revision scope.' };
+    // Content versions never modify the active posting lifecycle. A reviewed edit is
+    // an internal content swap only; no publish, scheduling or Meta configuration is touched.
+    next.item_id = item.item_id;
+    next.status = item.status;
+    // A schedule-only revision changes the stored intended time but deliberately
+    // creates no schedule_post/publish job. All other revisions retain it exactly.
+    if (scope !== 'schedule') next.publish = clone(item.publish);
+    return { ok: true, item: next };
+  }
+
+  function ownerRevisionJob(state, itemId, baseVersion, runId) {
+    const candidates = state.jobs.filter((job) => job.type === 'revise_item' && job.payload && job.payload.item_id === itemId && job.payload.owner_authorized === true && Number(job.payload.base_version) === Number(baseVersion));
+    const exact = candidates.find((job) => job.payload.run_id && String(job.payload.run_id) === String(runId));
+    if (exact) return exact;
+    // The owner job is created before the AI run. It is still durable authority; bind
+    // it to this run during the final, checked commit. A pre-bound different run fails closed.
+    return candidates.find((job) => !job.payload.run_id) || null;
+  }
+
+  /**
+   * Atomically swaps in a scope-limited, Claude-final-QC-passed revision.
+   * This deliberately does not enqueue publishing/scheduling work or change Meta settings.
+   */
+  function applyReviewedRevision(state, itemId, patch, opts) {
+    opts = opts || {};
+    const item = state.items.find((i) => i.item_id === itemId);
+    if (!item) return { ok: false, error: 'Item not found' };
+    if (!opts.finalQc || opts.finalQc.pass !== true) return { ok: false, error: 'Final Claude QC must pass before a revision can replace the active version.' };
+    if (!opts.runId) return { ok: false, error: 'A durable revision run id is required.' };
+    if (!Number.isFinite(Number(opts.baseVersion)) || Number(opts.baseVersion) !== Number(item.version)) return { ok: false, error: `Stale revision: active version is v${item.version}.` };
+    const scope = normaliseRevisionScope(opts.scope);
+    if (!scope) return { ok: false, error: 'An explicit valid revision scope is required.' };
+    const job = ownerRevisionJob(state, itemId, opts.baseVersion, opts.runId);
+    if (!job) return { ok: false, error: 'A revised item may only commit against its durable owner-authorized revision job.' };
+    const clip = opts.clip || job.payload?.clip || null;
+    const scoped = scopedRevisionPatch(item, patch, scope, clip);
+    if (!scoped.ok) return scoped;
+    const previous = snapshotForHistory(item);
+    const history = item.history || [];
+    const comments = item.owner_comments || [];
+    Object.assign(item, scoped.item);
+    item.history = history;
+    item.owner_comments = comments;
+    item.version = Number(previous.version || 1) + 1;
+    item.updated_at = now();
+    if (!['scheduled', 'published'].includes(item.status)) item.status = 'revision_approved';
+    item.approved_by = opts.actor || 'owner';
+    item.approved_at = now();
+    // A checked content swap is not a new external publishing authorization. The
+    // active item remains visible internally, but every publishing path must stop
+    // until a separately implemented owner release removes this versioned hold.
+    item.publish = Object.assign({}, item.publish || {}, { revision_hold: { active: true, version: item.version, set_at: now(), set_by: opts.actor || 'owner', reason: 'Reviewed content revision requires separate publishing authorization.' } });
+    item.revision_status = 'owner_approved';
+    item.revision = {
+      status: 'owner_approved', owner_authorized: true, approved_by: opts.actor || 'owner', approved_at: now(),
+      scope, clip, change_note: String(opts.request || '').trim(), run_id: String(opts.runId),
+      job_id: job.id, base_version: Number(opts.baseVersion), final_qc: clone(opts.finalQc),
+    };
+    item.history.unshift({
+      at: now(), by: opts.actor || 'owner', kind: 'reviewed_revision', version: previous.version, snapshot: previous,
+      scope, clip, change_note: item.revision.change_note, run_id: String(opts.runId), final_qc: clone(opts.finalQc),
+    });
+    job.payload.run_id = String(opts.runId);
+    job.payload.committed_version = item.version;
+    job.result = { revision_applied: true, item_id: itemId, version: item.version, scope, run_id: String(opts.runId) };
+    if (job.status !== 'done') setJobStatus(state, job.id, 'done', {}, opts.actor || 'studio');
+    audit(state, opts.actor || 'owner', 'item.revision.approved', itemId, `v${previous.version} → v${item.version}; ${scope}; ${item.revision.change_note}`);
+    return { ok: true, item, job };
+  }
+
+  /** Owner-only version restore. It creates a new active version and never schedules/publishes it. */
+  function restoreItemVersion(state, itemId, version, opts) {
+    opts = opts || {};
+    if (opts.role !== 'owner') return { ok: false, error: 'Only the owner can restore a content version.' };
+    const item = state.items.find((i) => i.item_id === itemId);
+    if (!item) return { ok: false, error: 'Item not found' };
+    if (!Number.isFinite(Number(opts.baseVersion)) || Number(opts.baseVersion) !== Number(item.version)) return { ok: false, error: `Stale restore: active version is v${item.version}.` };
+    const targetVersion = Number(version);
+    if (!Number.isFinite(targetVersion) || targetVersion === Number(item.version)) return { ok: false, error: 'Choose a prior version to restore.' };
+    const entry = (item.history || []).find((h) => Number(h.version) === targetVersion && h.snapshot);
+    if (!entry) return { ok: false, error: `Version v${version} is not available.` };
+    const previous = snapshotForHistory(item);
+    const restored = clone(entry.snapshot);
+    const history = item.history || [];
+    const comments = item.owner_comments || [];
+    Object.assign(item, restored);
+    item.item_id = previous.item_id;
+    item.version = Number(previous.version || 1) + 1;
+    item.status = previous.status;
+    item.publish = clone(previous.publish);
+    item.history = history;
+    item.owner_comments = comments;
+    item.updated_at = now();
+    if (!['scheduled', 'published'].includes(item.status)) item.status = 'revision_approved';
+    item.approved_by = opts.actor || 'owner';
+    item.approved_at = now();
+    item.publish = Object.assign({}, item.publish || {}, { revision_hold: { active: true, version: item.version, set_at: now(), set_by: opts.actor || 'owner', reason: 'Restored content version requires separate publishing authorization.' } });
+    item.revision_status = 'owner_approved';
+    item.revision = {
+      status: 'owner_approved', owner_authorized: true, approved_by: opts.actor || 'owner', approved_at: now(),
+      scope: 'restore', restored_from_version: targetVersion, change_note: String(opts.request || `Restored v${targetVersion}`).trim(),
+      base_version: Number(opts.baseVersion), final_qc: entry.final_qc ? clone(entry.final_qc) : null,
+    };
+    comments.push({ at: now(), by: opts.actor || 'owner', kind: 'version_restore', text: item.revision.change_note, version: item.version, restored_from_version: targetVersion });
+    item.history.unshift({
+      at: now(), by: opts.actor || 'owner', kind: 'version_restore', version: previous.version, snapshot: previous,
+      restored_from_version: targetVersion, change_note: item.revision.change_note,
+    });
+    audit(state, opts.actor || 'owner', 'item.version.restored', itemId, `v${targetVersion} restored as v${item.version}; ${item.revision.change_note}`);
+    return { ok: true, item, restored_from_version: targetVersion };
+  }
+
   /** Owner / marketer decision on one item. decision: approve | request_changes | reject */
   function decideItem(state, itemId, decision, opts, actor, role) {
     opts = opts || {};
     const item = state.items.find((i) => i.item_id === itemId);
     if (!item) return { ok: false, error: 'Item not found' };
-    if (!['pending_approval', 'qc_failed', 'changes_requested', 'draft'].includes(item.status) && decision !== 'reject')
+    const ownerRevision = decision === 'request_changes' && role === 'owner';
+    if (!ownerRevision && !['pending_approval', 'qc_failed', 'changes_requested', 'draft'].includes(item.status) && decision !== 'reject')
       return { ok: false, error: `Item is ${item.status}; nothing to decide.` };
 
     if (decision === 'approve') {
@@ -155,14 +383,28 @@
       const text = String(opts.comment || '').trim();
       if (!text) return { ok: false, error: 'Write what should change.' };
       const guess = R.classifyChange(text, item);
-      const scope = opts.scope || guess.scope;
-      const clip = opts.clip || guess.clip || null;
+      const scope = ownerRevision ? normaliseRevisionScope(opts.scope) : normaliseRevisionScope(opts.scope || guess.scope);
+      if (!scope) return { ok: false, error: ownerRevision ? 'The owner must choose one explicit valid revision scope.' : 'Choose one valid revision scope.' };
+      const requestedClip = opts.clip === undefined || opts.clip === null || opts.clip === '' ? null : Number(opts.clip);
+      const clip = requestedClip || guess.clip || null;
+      if (clip && (!Number.isInteger(Number(clip)) || Number(clip) < 1 || Number(clip) > 4)) return { ok: false, error: 'Choose a clip or slide from 1 to 4.' };
       if (item.first_pass === null) item.first_pass = false;
-      item.owner_comments.push({ at: now(), by: actor, kind: 'change_request', text, scope, clip, version: item.version });
+      item.owner_comments.push({ at: now(), by: actor, kind: 'change_request', text, scope, clip, version: item.version, owner_authorized: ownerRevision });
+      if (ownerRevision) {
+        const job = enqueueJob(state, 'revise_item', {
+          item_id: itemId, from_version: item.version, base_version: item.version, scope, clip, comment: text, request: text,
+          type: item.type, owner_authorized: true, revision_status: 'revision_pending', run_id: null,
+        }, actor);
+        // Keep the current content lifecycle (including any existing schedule/publish state) intact.
+        item.revision_status = 'revision_pending';
+        item.revision = { status: 'revision_pending', owner_authorized: true, requested_by: actor, requested_at: now(), request: text, scope, clip, base_version: item.version, job_id: job.id, run_id: null };
+        audit(state, actor, 'item.revision.requested', itemId, `${scope}${clip ? ' clip ' + clip : ''}: ${text}`);
+        return { ok: true, item, scope, clip, job };
+      }
       item.status = 'changes_requested';
       audit(state, actor, 'item.changes_requested', itemId, `${scope}${clip ? ' clip ' + clip : ''}: ${text}`);
-      enqueueJob(state, 'revise_item', { item_id: itemId, from_version: item.version, scope, clip, comment: text, type: item.type }, actor);
-      return { ok: true, item, scope, clip };
+      const job = enqueueJob(state, 'revise_item', { item_id: itemId, from_version: item.version, scope, clip, comment: text, type: item.type, owner_authorized: false }, actor);
+      return { ok: true, item, scope, clip, job };
     }
 
     if (decision === 'reject') {
@@ -193,6 +435,7 @@
   function markPublished(state, itemId, status, info, actor) {
     const item = state.items.find((i) => i.item_id === itemId);
     if (!item) return { ok: false, error: 'Item not found' };
+    if (item.publish?.revision_hold?.active) return { ok: false, error: `Item v${item.version} is a reviewed revision held for separate owner publishing authorization.` };
     if (!['scheduled', 'published'].includes(status)) return { ok: false, error: 'status must be scheduled or published' };
     if (!['approved', 'scheduled'].includes(item.status)) return { ok: false, error: `Item is ${item.status}; only approved items can be scheduled or published.` };
     item.status = status;
@@ -364,7 +607,7 @@
   }
 
   return {
-    emptyState, enqueueJob, setJobStatus, applyManusWebhook, upsertBrief, decideItem, approveAllWeek, markPublished,
+    emptyState, enqueueJob, setJobStatus, applyManusWebhook, upsertBrief, normaliseRevisionScopes, applyReviewedRevision, restoreItemVersion, decideItem, approveAllWeek, markPublished,
     upsertActions, decideAction, actionResult, proposePause, addReport, addNews, addPlan, decidePlan,
     enableAutopublish, disableAutopublish, killSwitchCheck, summary, latestReport, audit,
   };

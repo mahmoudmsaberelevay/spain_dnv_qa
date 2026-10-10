@@ -144,6 +144,7 @@ const privacyContent = `
 <h2>6. Third-Party Services</h2>
 <p>We use the following third-party services in the operation of our platform:</p>
 <ul>
+  <li><strong>Meta Platforms (Facebook and Instagram)</strong> — to receive Lead Ads notifications, support approved business Page and Instagram interactions, measure marketing results, and maintain privacy-safe delivery and security records. We store only the data needed for these purposes and use Meta-provided identifiers and access tokens only on the server.</li>
   <li><strong>Google Drive</strong> — for document storage and synchronization</li>
   <li><strong>Amazon S3</strong> — for secure file storage</li>
   <li><strong>Email services (Gmail SMTP)</strong> — for sending notifications and reminders</li>
@@ -448,11 +449,13 @@ function submitDeletion(e) {
 
 export function registerPublicPages(app: Express) {
   // These routes return full server-rendered HTML — no JS bundle needed
-  app.get("/privacy-policy", (_req: Request, res: Response) => {
+  const renderPrivacy = (_req: Request, res: Response) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.send(pageShell("Privacy Policy", privacyContent));
-  });
+  };
+  app.get("/privacy-policy", renderPrivacy);
+  app.get("/privacy", renderPrivacy);
 
   app.get("/terms", (_req: Request, res: Response) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");

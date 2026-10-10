@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   verifyToken: vi.fn(),
   verifySignature: vi.fn(),
   storeNotifications: vi.fn(),
+  storePlatformEvents: vi.fn(),
   processInbox: vi.fn(),
 }));
 
@@ -14,6 +15,10 @@ vi.mock("./metaLeadsService", () => ({
   verifyMetaWebhookSignature: mocks.verifySignature,
   storeMetaWebhookNotifications: mocks.storeNotifications,
   processMetaWebhookInboxBatch: mocks.processInbox,
+}));
+
+vi.mock("./metaPlatformEvents", () => ({
+  storeMetaPlatformWebhookEvents: mocks.storePlatformEvents,
 }));
 
 import {
@@ -57,6 +62,7 @@ describe("Meta Lead Ads webhook transport", () => {
     mocks.verifyToken.mockImplementation(async (value: string) => value === "verify-me");
     mocks.verifySignature.mockReturnValue(true);
     mocks.storeNotifications.mockResolvedValue({ accepted: 1, ignored: 0 });
+    mocks.storePlatformEvents.mockResolvedValue({ accepted: 1, ignored: 0 });
     mocks.processInbox.mockResolvedValue({ selected: 1, processed: 1, failed: 0 });
   });
 
@@ -97,6 +103,7 @@ describe("Meta Lead Ads webhook transport", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ received: true, accepted: 1, ignored: 0 });
+    expect(mocks.storePlatformEvents).toHaveBeenCalledWith({ object: "page", entry: [] }, true);
     expect(order.slice(0, 3)).toEqual(["store", "respond", "process"]);
   });
 

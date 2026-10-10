@@ -1319,6 +1319,48 @@ export const metaWebhookSecurityEvents = mysqlTable("meta_webhook_security_event
 });
 export type MetaWebhookSecurityEvent = typeof metaWebhookSecurityEvents.$inferSelect;
 
+/**
+ * Privacy-safe audit inbox for Page and Instagram webhook events that are not
+ * Lead Ads notifications. Payload contents such as messages and comments are
+ * deliberately excluded; only event metadata and irreversible hashes remain.
+ */
+export const metaPlatformWebhookEvents = mysqlTable("meta_platform_webhook_events", {
+  id: int("id").autoincrement().primaryKey(),
+  eventKey: varchar("eventKey", { length: 64 }).notNull().unique(),
+  payloadHash: varchar("payloadHash", { length: 64 }).notNull(),
+  objectType: varchar("objectType", { length: 40 }).notNull(),
+  resourceId: varchar("resourceId", { length: 100 }),
+  field: varchar("field", { length: 100 }).notNull(),
+  eventType: varchar("eventType", { length: 100 }).notNull(),
+  eventTimestamp: bigint("eventTimestamp", { mode: "number" }),
+  actorHash: varchar("actorHash", { length: 64 }),
+  signatureValidated: boolean("signatureValidated").default(false).notNull(),
+  status: mysqlEnum("status", ["received", "processed", "ignored", "manual_review", "failed"]).default("received").notNull(),
+  errorCode: varchar("errorCode", { length: 100 }),
+  receivedAt: bigint("receivedAt", { mode: "number" }).notNull(),
+  processedAt: bigint("processedAt", { mode: "number" }),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, (table) => [
+  index("meta_platform_events_received_idx").on(table.receivedAt),
+  index("meta_platform_events_status_idx").on(table.status, table.receivedAt),
+]);
+export type MetaPlatformWebhookEvent = typeof metaPlatformWebhookEvents.$inferSelect;
+
+/** Meta user data deletion callbacks: signed identity is stored only as a hash. */
+export const metaDataDeletionRequests = mysqlTable("meta_data_deletion_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  confirmationCode: varchar("confirmationCode", { length: 80 }).notNull().unique(),
+  metaUserHash: varchar("metaUserHash", { length: 64 }).notNull(),
+  issuedAt: bigint("issuedAt", { mode: "number" }),
+  status: mysqlEnum("status", ["received", "processing", "completed", "rejected"]).default("received").notNull(),
+  receivedAt: bigint("receivedAt", { mode: "number" }).notNull(),
+  completedAt: bigint("completedAt", { mode: "number" }),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, (table) => [
+  index("meta_deletion_status_received_idx").on(table.status, table.receivedAt),
+]);
+export type MetaDataDeletionRequest = typeof metaDataDeletionRequests.$inferSelect;
+
 /** Heartbeat-produced operational evidence for the 24-hour Meta monitoring window. */
 export const metaMonitoringSnapshots = mysqlTable("meta_monitoring_snapshots", {
   id: int("id").autoincrement().primaryKey(),

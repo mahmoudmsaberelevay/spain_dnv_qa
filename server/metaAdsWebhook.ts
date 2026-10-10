@@ -16,8 +16,10 @@ import {
   verifyMetaWebhookVerifyToken,
 } from "./metaLeadsService";
 import { recordMetaWebhookSecurityEvent } from "./metaAssignmentMonitoring";
+import { storeMetaPlatformWebhookEvents } from "./metaPlatformEvents";
 
 export const META_WEBHOOK_PATHS = [
+  "/api/meta/webhook",
   "/api/webhook/meta-leads",
   "/api/webhook/meta-leads/v2",
   "/api/webhooks/meta-leads-v2",
@@ -62,17 +64,24 @@ export async function processMetaLeadEvent(req: Request, res: Response) {
   }
 
   try {
-    const stored = await storeMetaWebhookNotifications(payload, true);
+    // Persist non-Lead Page/Instagram event metadata first. The dedicated Lead
+    // inbox remains the only pathway that can create or update CRM Leads.
+    await storeMetaPlatformWebhookEvents(payload, true);
+    const stored = payload.object === "page"
+      ? await storeMetaWebhookNotifications(payload, true)
+      : { accepted: 0, ignored: 0 };
     void recordMetaWebhookSecurityEvent("signed_accepted", "META_WEBHOOK_SIGNED_ACCEPTED");
     res.status(200).json({ received: true, accepted: stored.accepted, ignored: stored.ignored });
 
     // Best-effort low-latency processing. The inbox row is durable, so the
     // scheduled reconciliation handler can safely complete it after restarts.
-    setImmediate(() => {
-      void processMetaWebhookInboxBatch(10).catch(error => {
-        console.error("[MetaWebhook] Deferred inbox processing failed:", error instanceof Error ? error.message : error);
+    if (stored.accepted > 0) {
+      setImmediate(() => {
+        void processMetaWebhookInboxBatch(10).catch(error => {
+          console.error("[MetaWebhook] Deferred inbox processing failed:", error instanceof Error ? error.message : error);
+        });
       });
-    });
+    }
   } catch (error) {
     console.error("[MetaWebhook] Durable inbox write failed:", error instanceof Error ? error.message : error);
     return res.status(500).send("Webhook persistence failed");

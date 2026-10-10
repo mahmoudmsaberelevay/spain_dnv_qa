@@ -204,6 +204,8 @@ async function startServer() {
   // static assets, and the SPA fallback.
   const { registerMetaAdsWebhookRoutes } = await import("../metaAdsWebhook");
   registerMetaAdsWebhookRoutes(app);
+  const { registerMetaDataDeletionRoutes } = await import("../metaDataDeletionRoutes");
+  registerMetaDataDeletionRoutes(app);
 
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));

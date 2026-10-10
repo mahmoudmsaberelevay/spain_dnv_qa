@@ -109,3 +109,67 @@ describe("headline text without drawtext", () => {
     expect(R.cleanMotion("Slow push-in. The ELEVAY logo appears.")).toBe("Slow push-in.");
   });
 });
+
+describe("owner-reviewed content revisions", () => {
+  function approvedItemState() {
+    const st = E.emptyState();
+    st.items.push({
+      item_id: "2026-W41-01", version: 1, type: "static", topic: "Original topic", status: "approved",
+      caption_ar: "النص الأصلي", design: { headline_en: "Original", image_prompt: "original prompt" },
+      media: { image_url: "https://cdn.example/original.png" }, publish: { datetime_cairo: "2026-10-11T20:00", channel: "both" },
+      owner_comments: [], history: [], first_pass: true, created_at: "2026-10-01T00:00:00.000Z",
+    });
+    return st;
+  }
+
+  it("commits only a final-QC-passed, owner-authorized scoped revision without scheduling", () => {
+    const st = approvedItemState();
+    const beforeSettings = JSON.stringify(st.settings);
+    const requested = E.decideItem(st, "2026-W41-01", "request_changes", { comment: "Shorten the Arabic caption", scope: "caption" }, "owner@elevay.com", "owner");
+    expect(requested.ok).toBe(true);
+    expect(requested.item.status).toBe("approved");
+    expect(requested.item.revision_status).toBe("revision_pending");
+    expect(requested.job.payload).toMatchObject({ owner_authorized: true, item_id: "2026-W41-01", base_version: 1, scope: "caption" });
+
+    expect(E.applyReviewedRevision(st, "2026-W41-01", { caption_ar: "النص المُراجع" }, {
+      actor: "owner@elevay.com", request: "Shorten the Arabic caption", scope: "caption", runId: "30001", baseVersion: 1, finalQc: { pass: false },
+    }).ok).toBe(false);
+    expect(st.items[0].version).toBe(1);
+
+    const committed = E.applyReviewedRevision(st, "2026-W41-01", { caption_ar: "النص المُراجع", design: { headline_en: "MUST NOT CHANGE" } }, {
+      actor: "owner@elevay.com", request: "Shorten the Arabic caption", scope: "caption", runId: "30001", baseVersion: 1, finalQc: { pass: true, issues: [] },
+    });
+    expect(committed.ok).toBe(true);
+    expect(st.items[0]).toMatchObject({ version: 2, status: "revision_approved", caption_ar: "النص المُراجع", design: { headline_en: "Original" }, publish: { datetime_cairo: "2026-10-11T20:00" }, revision_status: "owner_approved" });
+    expect(st.items[0].history).toHaveLength(1);
+    expect(st.items[0].history[0].snapshot).toMatchObject({ version: 1, caption_ar: "النص الأصلي", media: { image_url: "https://cdn.example/original.png" } });
+    expect(st.jobs.filter((j) => j.type === "schedule_post")).toHaveLength(0);
+    expect(st.items[0].publish.revision_hold).toMatchObject({ active: true, version: 2 });
+    expect(E.markPublished(st, "2026-W41-01", "scheduled", {}, "manus").error).toMatch(/held for separate owner publishing authorization/);
+    expect(JSON.stringify(st.settings)).toBe(beforeSettings);
+    expect(E.applyReviewedRevision(st, "2026-W41-01", { caption_ar: "stale" }, {
+      actor: "owner@elevay.com", request: "stale", scope: "caption", runId: "30002", baseVersion: 1, finalQc: { pass: true },
+    }).error).toMatch(/Stale revision/);
+  });
+
+  it("keeps every snapshot and restores a prior version as a new unscheduled active version", () => {
+    const st = approvedItemState();
+    for (let version = 1; version <= 22; version++) {
+      const r = E.decideItem(st, "2026-W41-01", "request_changes", { comment: `Caption ${version}`, scope: "caption" }, "owner@elevay.com", "owner");
+      expect(r.ok).toBe(true);
+      const applied = E.applyReviewedRevision(st, "2026-W41-01", { caption_ar: `نسخة ${version}` }, {
+        actor: "owner@elevay.com", request: `Caption ${version}`, scope: "caption", runId: `run-${version}`, baseVersion: version, finalQc: { pass: true },
+      });
+      expect(applied.ok).toBe(true);
+    }
+    const item = st.items[0];
+    expect(item.version).toBe(23);
+    expect(item.history).toHaveLength(22); // no legacy 8/20-version history trim
+    const restored = E.restoreItemVersion(st, item.item_id, 1, { actor: "owner@elevay.com", role: "owner", baseVersion: 23, request: "Restore original" });
+    expect(restored.ok).toBe(true);
+    expect(item).toMatchObject({ version: 24, status: "revision_approved", caption_ar: "النص الأصلي", revision_status: "owner_approved" });
+    expect(item.history).toHaveLength(23);
+    expect(st.jobs.filter((j) => j.type === "schedule_post")).toHaveLength(0);
+    expect(E.restoreItemVersion(st, item.item_id, 1, { actor: "marketer@elevay.com", role: "marketer", baseVersion: 24 }).ok).toBe(false);
+  });
+});

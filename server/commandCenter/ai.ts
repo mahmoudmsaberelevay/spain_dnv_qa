@@ -271,6 +271,28 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
     return pollElevayHiggsfieldProClipStatus({ requestId, statusUrl });
   }
 
+  async function persistClip(url) {
+    const { createWriteStream, createReadStream } = await import("node:fs");
+    const { Readable, Transform } = await import("node:stream");
+    const { pipeline } = await import("node:stream/promises");
+    const { storagePutFile } = await import("../storage");
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "elevay-clip-store-"));
+    try {
+      const file = path.join(dir, "clip.mp4");
+      const source = new URL(url);
+      if (source.protocol !== "https:" || source.username || source.password || /^(localhost|127\.|10\.|192\.168\.|169\.254\.|\[|172\.(1[6-9]|2\d|3[01])\.)/i.test(source.hostname)) throw new Error("Clip persistence requires a public HTTPS provider asset.");
+      const response = await fetcher(url, { signal: AbortSignal.timeout(120000), redirect: "error" });
+      if (!response.ok || !response.body) throw new Error("Completed clip could not be saved; no regeneration was started.");
+      let size = 0;
+      await pipeline(Readable.fromWeb(response.body), new Transform({transform(chunk, _, cb) { size += chunk.length; cb(size > 100 * 1024 * 1024 ? new Error("Clip exceeds storage size limit.") : null, chunk); }}), createWriteStream(file));
+      const hash = crypto.createHash("sha256");
+      for await (const chunk of createReadStream(file)) hash.update(chunk);
+      const sha256 = hash.digest("hex");
+      const stored = await storagePutFile(`marketing/command-center/clips/${sha256}.mp4`, file, "video/mp4");
+      return { url: stored.url, sha256 };
+    } finally { await fsp.rm(dir, { recursive: true, force: true }); }
+  }
+
   async function test() {
     const out = {};
     const k = (name) => !!process.env[name];
@@ -289,12 +311,18 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
     return out;
   }
 
-  return { claude, openaiImage, openaiPortrait, brandStatic, clipFrames, voiceScene, checkEgyptianScript, composeReel, composeReelStep, videoFrames, higgsfieldSubmit, higgsfieldStatus, test };
+  return { claude, openaiImage, openaiPortrait, brandStatic, clipFrames, voiceScene, checkEgyptianScript, composeReel, composeReelStep, videoFrames, higgsfieldSubmit, higgsfieldStatus, persistClip, test };
 }
 
 // ------------------------------------------------------------------ pipelines
 const S = (provider, action, title, extra = {}) => ({ provider, action, title, status: "pending", ...extra });
 export const PIPELINES = {
+  carousel: { label: "Carousel revision", steps: () => [
+    S("claude", "revise_content", "Apply owner-authorized carousel change"),
+    S("openai", "carousel_slides", "Regenerate only affected carousel slides"),
+    S("claude", "qc_carousel", "Claude checks the revised carousel and caption"),
+    S("system", "to_weekly_plan", "Apply reviewed version to weekly plan"),
+  ] },
   static: { label: "Static post", steps: () => [
     S("claude", "static_brief", "Claude writes the brief, caption and image direction"),
     S("system", "check_brief", "Brand and compliance check (Claude fixes blocks once)"),
@@ -378,7 +406,8 @@ const FINISHED_STEP_STATUSES = new Set(["done", "skipped", "needs_review"]);
  */
 function migrateReelPipeline(run) {
   if (run?.kind !== "reel" || !Array.isArray(run.steps)) return false;
-  const wanted = PIPELINES.reel.steps();
+  const revisionStep = run.steps.find(s => s.action === "revise_content");
+  const wanted = revisionStep ? [revisionStep, ...PIPELINES.reel.steps()] : PIPELINES.reel.steps();
   const oldActions = run.steps.map((s) => s?.action);
   const current = wanted.length === run.steps.length && wanted.every((s, i) => oldActions[i] === s.action);
   if (current) return false;
@@ -423,6 +452,7 @@ export function createOrchestrator(deps) {
   }
   async function save(run, ver) {
     run.updated_at = nowIso();
+    if (run.options?.sandboxOnly && ["running", "queued", "waiting"].includes(run.status)) run.status = `sandbox_${run.status}`;
     const res = await q("UPDATE ec_ai_runs SET doc=?, status=?, ver=ver+1 WHERE id=? AND ver=?", [JSON.stringify(run), run.status, run.id, ver]);
     if (res.affectedRows !== 1) throw new Error("The run changed while saving.");
     return ver + 1;
@@ -449,14 +479,30 @@ export function createOrchestrator(deps) {
     return save(run, ver);
   }
 
-  async function create({ kind, request, options = {}, user }) {
+  async function create({ kind, request, options = {}, user, initialArtifacts, initialSteps }) {
     if (!PIPELINES[kind]) throw new Error("Unknown run type.");
     const text = String(request || "").trim().slice(0, 4000);
     if (!text && kind !== "plan") throw new Error("Describe what you need.");
+    if (options.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox-only runs require an explicitly authorized finite worker.");
+    if (options.revision && user.role !== "owner") throw new Error("Only the owner can authorize an automatic content revision.");
+    if (options.revision) options = { ...options, revision: { ...options.revision, authorizedBy: user.email } };
     const run = { kind, title: (text || PIPELINES[kind].label).slice(0, 120), request: text, options, status: "queued", steps: PIPELINES[kind].steps(), messages: [], artifacts: {}, created_by: user.email, created_at: nowIso() };
+    if (initialArtifacts) run.artifacts = structuredClone(initialArtifacts);
+    if (initialSteps) run.steps = structuredClone(initialSteps);
     run.steps.forEach((s, i) => (s.n = i + 1));
+    if (options.revision) for (const s of run.steps) if (s.gate === "owner") { s.approved_by = user.email; s.approved_at = nowIso(); }
+    if (options.sandboxOnly) run.status = "sandbox_queued";
     const res = await q("INSERT INTO ec_ai_runs (created_at, status, doc) VALUES (?, ?, ?)", [Date.now(), run.status, JSON.stringify(run)]);
     const id = res.insertId;
+    if (options.revision?.jobId) {
+      const bound = await deps.mutate({}, st => {
+        const job = st.jobs.find(j=>j.id === options.revision.jobId && j.type === "revise_item" && j.payload?.owner_authorized === true && j.payload.item_id === options.revision.itemId && Number(j.payload.base_version) === Number(options.revision.baseVersion));
+        if (!job || (job.payload.run_id && String(job.payload.run_id) !== String(id))) return {ok:false,error:"Durable revision job could not be bound."};
+        job.payload.run_id = String(id); job.status = "in_progress"; job.manus = {...job.manus,push_attempted:true};
+        return {ok:true};
+      });
+      if (bound?.ok === false) { const saved = await get(id); saved.run.status = "failed"; saved.run.steps[0].status="failed"; saved.run.steps[0].error=bound.error; await save(saved.run,saved.ver); throw new Error(bound.error); }
+    }
     kick(id);
     return { ...run, id };
   }
@@ -475,6 +521,7 @@ export function createOrchestrator(deps) {
     let g = await get(id);
     if (!g) return;
     let { run, ver } = g;
+    if (run.options?.sandboxOnly && !deps.allowSandboxRuns) return;
     if (g.migrated) ver = await save(run, ver);
     for (let guard = 0; guard < 40; guard++) {
       if (["done", "failed", "cancelled", "needs_review"].includes(run.status)) return;
@@ -482,7 +529,7 @@ export function createOrchestrator(deps) {
       if (!step) { run.status = "done"; run.finished_at = nowIso(); await save(run, ver); return; }
       if (step.status === "failed") { run.status = "failed"; await notifyFailureOnce(run, step.error || `${step.title} failed.`); await save(run, ver); return; }
       if (step.gate && !step.approved_by) {
-        const auto = await autoApproval(run, step);
+        const auto = run.options?.revision?.authorizedBy || await autoApproval(run, step);
         if (auto) { step.approved_by = auto; step.approved_at = nowIso(); log(run, "studio", "team", `Approved automatically (${auto}): ${step.title}`); }
         else { step.status = "needs_approval"; run.status = "awaiting_approval"; await save(run, ver); return; }
       }
@@ -625,7 +672,61 @@ export function createOrchestrator(deps) {
         const r = await askClaude(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "scenes": [4 scenes in order hook → explanation → trust → realistic outcome, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic voice-over for this scene, 8–13 words; ONLY country names and ELEVAY in English letters, everything else in Arabic"}]}`, { maxTokens: 5000 });
         const scenes = (r.data.scenes || []).slice(0, 4);
         if (scenes.length !== 4) throw new Error("Claude did not return 4 scenes.");
+        const invalid = [];
+        for (let i = 0; i < 4; i++) { try { if (!scenes[i].spoken_text_ar) throw new Error("Missing spoken line"); await providers.checkEgyptianScript(scenes[i].spoken_text_ar); } catch { invalid.push(i); } }
+        if (invalid.length) {
+          const fixed = await askClaude(run, step, `Your storyboard is accepted visually, but scene(s) ${invalid.map(i=>i+1).join(",")} have missing or non-Egyptian spoken scripts. Rewrite ONLY these scripts, 7–10 words each, natural Egyptian Arabic, with a clear Egyptian marker such as خلينا، تقدر، بنراجع، معاك، علشان، دلوقتي. Country names and ELEVAY English only, no guarantees or تأشيرة. Leave all visuals unchanged. Current scenes:\n${JSON.stringify(scenes)}\nReturn JSON {"scenes":[{"scene":1,"spoken_text_ar":"..."}]} for ONLY the specified scenes.`, { maxTokens: 1000 });
+          for (const s of fixed.data?.scenes || []) if (invalid.includes(s.scene - 1)) scenes[s.scene - 1].spoken_text_ar = s.spoken_text_ar;
+        }
+        for (const s of scenes) { if (!s.keyframe_prompt || !s.motion_prompt || !s.spoken_text_ar) throw new Error("Storyboard is incomplete; no generation started."); await providers.checkEgyptianScript(s.spoken_text_ar); }
         A.brief = { type: "reel", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", talent: { mode: "voiceover_elevay_vip", voice_source: "elevay_vip_module", speech_language: "egyptian_arabic" }, reel: { storyboard: scenes.map((s, i) => ({ clip: i + 1, keyframe_prompt: s.keyframe_prompt, motion_prompt: s.motion_prompt, spoken_text_ar: s.spoken_text_ar, delivery_direction_en: "Calm, warm, premium advisory tone" })), music_direction: r.data.music_direction || "Soft cinematic, royalty-free", duration_s: 23 }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
+        return;
+      }
+      case "claude.revise_content": {
+        const rev = opts.revision;
+        if (!rev?.authorizedBy) throw new Error("Revision authorization is missing.");
+        const scope = rev.scope;
+        const selected = rev.clip ? [Number(rev.clip) - 1] : Array.from({length:run.kind === "carousel" ? A.brief.carousel.slides.length : 4}, (_, i)=>i);
+        const instructions = scope === "caption" ? 'Return {"caption_ar":"revised MSA caption"} only.' : scope === "schedule" ? 'Return {"datetime_cairo":"YYYY-MM-DDTHH:mm"} only. Preserve the original channel; timezone Africa/Cairo.' : scope === "voice" ? `Return {"scenes":[{"scene":1,"spoken_text_ar":"Egyptian Arabic revised line"}]} for exactly scenes ${selected.map(i=>i+1).join(",")}. Preserve every visual description.` : scope === "reel_clip" ? `Return {"scenes":[{"scene":1,"keyframe_prompt":"complete corrected frame prompt","motion_prompt":"complete corrected motion prompt"}]} for exactly scenes ${selected.map(i=>i+1).join(",")}. Preserve spoken lines.` : run.kind === "carousel" ? `Return {"slides":[{"slide":1,"image_prompt":"revised complete photograph prompt","headline_en":"English headline"}]} for exactly slides ${selected.map(i=>i+1).join(",")}. Preserve all other slides and caption.` : 'Return {"design":{"image_prompt":"complete revised image prompt","headline_en":"revised English headline"}} only. Preserve caption, schedule and other fields.';
+        const r = await askClaude(run, step, `Owner-authorized targeted change. Scope: ${scope}. Request: ${rev.request}. Current brief:\n${JSON.stringify(A.brief)}\nChange ONLY the stated scope. ${instructions}`, { maxTokens: 4000 });
+        const d = r.data;
+        if (scope === "caption") { if (typeof d?.caption_ar !== "string" || !d.caption_ar.trim()) throw new Error("Revised caption missing."); A.brief.caption_ar = d.caption_ar; }
+        else if (scope === "schedule") { if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(d?.datetime_cairo || "")) throw new Error("Revised Cairo schedule is invalid."); A.brief.publish = { ...A.brief.publish, datetime_cairo: d.datetime_cairo }; }
+        else if (["voice", "reel_clip"].includes(scope)) {
+          if (!Array.isArray(d?.scenes) || d.scenes.length !== selected.length || new Set(d.scenes.map(s=>s.scene)).size !== selected.length || d.scenes.some(s=>!selected.includes(s.scene-1))) throw new Error("Revision did not identify exactly the requested scene slots.");
+          for (const sc of d.scenes) { const i = sc.scene - 1;
+            if (scope === "voice") { if (!sc.spoken_text_ar) throw new Error("Revised voice script missing."); A.brief.reel.storyboard[i].spoken_text_ar = sc.spoken_text_ar; A.voices[i] = null; }
+            else { if (!sc.keyframe_prompt || !sc.motion_prompt) throw new Error("Revised scene prompts missing."); Object.assign(A.brief.reel.storyboard[i], { keyframe_prompt: sc.keyframe_prompt, motion_prompt: sc.motion_prompt }); A.keyframes[i] = null; A.clips[i] = null; if (A.compose?.parts) delete A.compose.parts[`seg${i}`]; }
+          }
+          if (A.compose?.parts) { delete A.compose.parts.final; if (scope === "voice") delete A.compose.parts.audio; }
+          delete A.final;
+        } else if (run.kind === "carousel") {
+          if (!Array.isArray(d?.slides) || d.slides.length !== selected.length || new Set(d.slides.map(s=>s.slide)).size !== selected.length || d.slides.some(s=>!selected.includes(s.slide-1))) throw new Error("Carousel revision must name exactly the selected slide(s).");
+          A.slideTargets = selected;
+          for (const slide of d.slides) { if (!slide.image_prompt || !slide.headline_en) throw new Error("Revised slide fields missing."); Object.assign(A.brief.carousel.slides[slide.slide-1], { image_prompt:slide.image_prompt, headline_en:slide.headline_en }); }
+        } else { if (!d?.design?.image_prompt || !d?.design?.headline_en) throw new Error("Revised static design missing."); A.brief.design = { ...A.brief.design, ...d.design }; A.images = []; }
+        step.output = { scope, changed: rev.request };
+        return;
+      }
+      case "openai.carousel_slides": {
+        A.images = A.images || [];
+        for (const i of A.slideTargets || []) {
+          const slide = A.brief.carousel.slides[i];
+          const prompt = `${slide.image_prompt}\n\nPremium Arab/Middle Eastern modern elegant subjects, no traditional headwear, complete formal footwear. No text, logos, passports, flags, contacts or guarantees. Preserve the requested carousel's visual identity and composition.`;
+          const img = A.brief.carousel.format === "1080x1080" ? await providers.openaiImage({prompt,purpose:"static_post"}) : await providers.openaiPortrait({prompt});
+          const url = await providers.brandStatic(img.url,slide.headline_en,A.brief.carousel.format || "1080x1350");
+          slide.image_url = url; A.images[i] = {url,sha256:img.sha256,cost_usd:img.measuredCostUsd};
+          await checkpoint(`Saved revised carousel slide ${i+1}; unaffected slides reused.`);
+        }
+        return;
+      }
+      case "claude.qc_carousel": {
+        const urls = A.images.map(i=>i?.url);
+        if (!urls.length || urls.some(u=>!u)) throw new Error("Complete carousel slide media is required for final QC.");
+        const r = await askClaude(run,step,`Final ELEVAY review of the COMPLETE updated carousel. Inspect every slide for approved exact logo, English-only design text, modern elegant Arab people, uncovered hair, polished appropriate footwear, anatomy, visual consistency, no passports, contact details, flags or guarantees. Caption must be MSA and compliant. Current full brief:\n${JSON.stringify(A.brief)}\nReturn JSON {"pass":true|false,"issues":["..."],"verdict":"..."}. Fail closed on uncertainty.`,{images:urls,maxTokens:2000});
+        const check = R.checkBrief(A.brief);
+        A.qc = {...r.data,pass:r.data?.pass === true && check.pass,issues:[...(r.data?.issues||[]),...check.blocks.map(b=>b.label)]};
+        if (!A.qc.pass) { step.error = A.qc.issues.join("; ") || "Carousel needs review."; return "needs_review"; }
         return;
       }
       case "system.check_brief": {
@@ -665,7 +766,7 @@ export function createOrchestrator(deps) {
         for (let i = 0; i < 4; i++) {
           if (A.keyframes[i]) continue;
           const fix = A.fixByIndex?.[i] ? `\n\nCorrections from the ELEVAY design review (must be fixed): ${A.fixByIndex[i]}` : "";
-          const prompt = `${sb[i].keyframe_prompt}${fix}\n\nComplete realistic outfits; Arab/Middle Eastern people only. Footwear for everyone in frame, clearly visible: men in polished dark-brown or black leather loafers or oxfords (never white or canvas shoes); women in closed elegant leather flats, pumps or block heels (no mules or sandals); children in clean leather shoes or simple dark trainers.\n\nVertical 9:16 cinematic premium photograph, first frame of a 5-second clip. No text, no logo, no passports, no flags.\n\nDesign rules: ${ELEVAY_AGENTIC_DESIGN_STANDARD.replace(/\s+/g, " ").slice(0, 2000)}`.slice(0, 3990);
+          const prompt = `${sb[i].keyframe_prompt}${fix}\n\nComplete realistic outfits; Arab/Middle Eastern people only. All hair uncovered: no hijabs, scarves, turbans, keffiyeh, ghutra, shemagh, headwear or traditional accessories. Modern Western elegant clothing only. Footwear for everyone in frame, clearly visible: men in polished dark-brown or black leather loafers or oxfords (never white or canvas shoes); women in closed elegant leather flats, pumps or block heels (no mules or sandals); children in clean leather shoes or simple dark trainers.\n\nVertical 9:16 cinematic premium photograph, first frame of a 5-second clip. No text, no logo, no passports, no flags.\n\nDesign rules: ${ELEVAY_AGENTIC_DESIGN_STANDARD.replace(/\s+/g, " ").slice(0, 1800)}`.slice(0, 3990);
           log(run, "studio", "openai", `Keyframe ${i + 1}: ${sb[i].keyframe_prompt}`);
           const img = await providers.openaiImage({ prompt, purpose: "reel_keyframe" });
           A.keyframes[i] = { url: img.url, sha256: img.sha256, cost_usd: img.measuredCostUsd };
@@ -678,7 +779,12 @@ export function createOrchestrator(deps) {
       case "claude.qc_visual": {
         const reel = run.kind === "reel";
         const imgs = reel ? A.keyframes.map((k) => k.url) : A.images.map((i) => i.url);
-        const r = await askClaude(run, step, strictQcPrompt(reel ? `${imgs.length} reel keyframes (no text or logo allowed anywhere)` : `one finished static post. The only text allowed is the English headline "${A.brief.design.headline_en}" in Apex Sans, and the only logo is the official origami-bird mark in a corner`), { images: imgs, note: `Strict design QC of ${imgs.length} image(s), attempt ${(A.qc_attempts || 0) + 1}`, maxTokens: 2000 });
+        const r = await askClaude(run, step, strictQcPrompt(reel ? `${imgs.length} reel keyframes (no text or logo allowed anywhere)` : `one finished static post. The only text allowed is the English headline "${A.brief.design.headline_en}" in Apex Sans, and the only logo is the official origami-bird mark in a corner`) + (opts.revision ? `\nThis is the FINAL review of an owner-authorized ${opts.revision.scope} revision. Also check the revised MSA caption, country names, disclaimer, no banned words or guarantees, and intended Cairo schedule. Complete revised brief:\n${JSON.stringify(A.brief)}` : ""), { images: imgs, note: `Strict design QC of ${imgs.length} image(s), attempt ${(A.qc_attempts || 0) + 1}`, maxTokens: 2000 });
+        if (opts.revision) {
+          const check = R.checkBrief(A.brief);
+          if (!check.pass) { A.qc = { ...r.data, pass:false, issues:[...(r.data?.issues||[]),...check.blocks.map(b=>b.label)] }; step.error=A.qc.issues.join("; "); return "needs_review"; }
+          if (opts.noSceneRegeneration && r.data?.pass !== true) { A.qc = { ...r.data, pass:false }; step.error=(A.qc.issues||[]).join("; ")||"Final review requires attention; no unaffected media regenerated."; return "needs_review"; }
+        }
         return applyQc(run, step, r.data, imgs.length, reel ? "openai.reel_keyframes" : "openai.static_image", reel ? 3 : 2);
       }
       case "claude.qc_clips": {
@@ -767,7 +873,9 @@ export function createOrchestrator(deps) {
       case "claude.qc_final": {
         if (!A.final?.url) throw new Error("Final reel URL is missing.");
         const storyboard = A.brief?.reel?.storyboard || [];
-        const captionCheck = R.checkBrief(A.brief);
+        // Final footage is inspected by the sole Claude check below. Retired prompt-only
+        // wardrobe/motion checks must not block a finished compliant video based on text.
+        const captionCheck = R.checkBrief({ ...A.brief, reel: { ...A.brief.reel, storyboard: storyboard.map(s=>({clip:s.clip,spoken_text_ar:s.spoken_text_ar})) } });
         const deterministicBlocks = (captionCheck.blocks || []).map((b) => b.label);
         let preparedScript;
         const actualVoiceScript = (A.voices || []).map((v, i) => v?.script || storyboard[i]?.spoken_text_ar || "").join(" ");
@@ -822,12 +930,18 @@ export function createOrchestrator(deps) {
         return "rewind";
       }
       case "system.to_weekly_plan": {
-        const media = run.kind === "reel" ? { video_url: A.final?.url || null, clips: (A.clips || []).filter(Boolean).map((c) => c.url).filter(Boolean), keyframes: A.keyframes.filter(Boolean).map((k) => k.url), voice: (A.voices || []).filter(Boolean).map((v) => v.url), duration_s: A.final?.seconds || null } : { image_url: A.images[0].url };
+        const media = run.kind === "reel" ? { video_url: A.final?.url || null, clips: (A.clips || []).filter(Boolean).map((c) => c.url).filter(Boolean), keyframes: A.keyframes.filter(Boolean).map((k) => k.url), voice: (A.voices || []).filter(Boolean).map((v) => v.url), duration_s: A.final?.seconds || null } : run.kind === "carousel" ? { image_urls:A.images.map(i=>i.url) } : { image_url: A.images[0].url };
         let itemId;
         let auto = false;
         const r = await deps.mutate({}, (st) => {
+          if (opts.revision) {
+            itemId = opts.revision.itemId;
+            const finalQc = run.kind === "reel" ? A.final_qc : A.qc;
+            if (!finalQc?.pass) return { ok: false, error: "A revised item cannot replace the current version without final Claude QC." };
+            return E.applyReviewedRevision(st, itemId, { ...A.brief, media, produced_by: { studio_run: run.id, claude: true, openai: true, higgsfield: run.kind === "reel" }, qc: { ...finalQc, reviewer: "claude" } }, { actor: opts.revision.authorizedBy, request: opts.revision.request || run.request, scope: opts.revision.scope, clip:opts.revision.clip, runId: run.id, baseVersion: opts.revision.baseVersion, finalQc });
+          }
           itemId = A.item_id && st.items.some((i) => i.item_id === A.item_id) ? A.item_id : opts.item_id && !st.items.some((i) => i.item_id === opts.item_id) ? opts.item_id : nextItemId(st.items, opts.week || undefined, !!opts.planned);
-          const up = E.upsertBrief(st, { ...A.brief, item_id: itemId, status: A.qc_blocked ? "qc_failed" : "pending_approval", media, produced_by: { studio_run: run.id, claude: true, openai: true, higgsfield: run.kind === "reel" }, qc: { reviewer: "claude", pass: A.qc_blocked ? false : (A.qc?.pass ?? null), issues: A.qc?.issues || [], blocked: !!A.qc_blocked } }, "ai-studio");
+          const up = E.upsertBrief(st, { ...A.brief, item_id: itemId, status: A.qc_blocked ? "qc_failed" : "pending_approval", media, produced_by: { studio_run: run.id, claude: true, openai: true, higgsfield: run.kind === "reel" }, qc: { reviewer: "claude", pass: A.qc_blocked ? false : (A.final_qc?.pass ?? A.qc?.pass ?? null), issues: A.final_qc?.issues || A.qc?.issues || [], blocked: !!A.qc_blocked } }, "ai-studio");
           if (up.ok === false) return up;
           // Autopilot approves clean items itself; they do not count toward the human first-pass rate.
           auto = false;
@@ -839,7 +953,7 @@ export function createOrchestrator(deps) {
         });
         if (r && r.ok === false) throw new Error(r.error);
         A.item_id = itemId;
-        log(run, "studio", "team", A.qc_blocked ? `Added as ${itemId} marked QC failed; the owner decides.` : auto ? `Added as ${itemId} and approved by autopilot; Manus schedules it.` : `Added to the weekly plan as ${itemId} for approval.`);
+        log(run, "studio", "team", opts.revision ? `Replaced ${itemId} with an owner-authorized reviewed revision. All previous versions retained; no Meta scheduling or publishing triggered.` : A.qc_blocked ? `Added as ${itemId} marked QC failed; the owner decides.` : auto ? `Added as ${itemId} and approved by autopilot; Manus schedules it.` : `Added to the weekly plan as ${itemId} for approval.`);
         return;
       }
       case "claude.weekly_plan": {
@@ -984,10 +1098,11 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
     if (step.provider === "higgsfield") {
       for (const c of A.clips || []) {
         if (!c) continue;
-        if (c.state === "completed") continue;
+        if (c.state === "completed" && c.permanent) continue;
         const s = await providers.higgsfieldStatus(c).catch((e) => ({ state: c.state, error: e.message }));
         if (s.state !== c.state) log(run, "higgsfield", "studio", `Clip ${A.clips.indexOf(c) + 1}: ${s.state}`);
         c.state = s.state; if (s.videoUrl) c.url = s.videoUrl;
+        if (c.state === "completed" && c.url && providers.persistClip && !c.permanent) { const stored = await providers.persistClip(c.url); c.provider_url = c.url; c.url = stored.url; c.sha256 = stored.sha256; c.permanent = true; }
         await checkpoint(`Checkpoint saved: clip ${A.clips.indexOf(c) + 1} ${c.state}.`);
         if (["failed", "nsfw", "canceled"].includes(s.state)) { step.status = "failed"; step.error = `Clip ${A.clips.indexOf(c) + 1} ${s.state}. Retry creates a new clip.`; return false; }
       }
@@ -1071,6 +1186,59 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
     await save(g.run, g.ver);
   }
 
+  async function reviseItem(itemId, body, user) {
+    if (user.role !== "owner") throw new Error("Only the owner can directly authorize a content revision.");
+    const { state } = await deps.loadState();
+    const item = state.items.find(i => i.item_id === itemId);
+    if (!item) throw new Error("Content item not found.");
+    const request = String(body.comment || body.request || "").trim();
+    if (!request) throw new Error("Describe the requested change.");
+    const guessed = R.classifyChange(request, item);
+    const scope = body.scope || guessed.scope;
+    const valid = ["all", "whole_concept", "caption", "schedule", "voice", "reel_clip", "static_design"];
+    if (!valid.includes(scope)) throw new Error("Unsupported revision scope.");
+    const clipNumber = Number(body.clip || guessed.clip || 0) || null;
+    if (clipNumber && (!Number.isInteger(clipNumber) || clipNumber < 1 || (item.type !== "carousel" && clipNumber > 4))) throw new Error("Scene number must be 1..4 (or an existing carousel slide).");
+    if (item.type === "carousel" && ["all","whole_concept","voice","reel_clip"].includes(scope)) throw new Error("Carousel changes must identify caption, schedule or design/slide scope.");
+    if (item.type !== "reel" && ["voice", "reel_clip"].includes(scope)) throw new Error("Scene/voice scope requires a reel.");
+    const revision = { itemId, baseVersion: item.version, scope, request, clip: clipNumber, authorizedBy: user.email };
+    const options = { week: itemId.slice(0, 8), program: item.program, datetime_cairo: item.publish?.datetime_cairo || "", revision, manualReviewOnly: true, noSceneRegeneration: ["caption", "schedule", "voice"].includes(scope) };
+    const persistAuthority = async () => {
+      const result = await deps.mutate({}, st => E.decideItem(st,itemId,"request_changes",{comment:request,scope:scope === "all" ? "whole_concept" : scope,clip:clipNumber},user.email,"owner"));
+      if (result?.ok === false) throw new Error(result.error);
+      const job = result?.job || result?.item?.revision?.job_id && (await deps.loadState()).state.jobs.find(j=>j.id===result.item.revision.job_id);
+      const fallback = job || (await deps.loadState()).state.jobs.find(j=>j.type==="revise_item" && j.payload?.item_id===itemId && j.payload?.owner_authorized && Number(j.payload.base_version)===Number(revision.baseVersion) && !j.payload.run_id);
+      if (!fallback) throw new Error("The owner revision job was not persisted.");
+      revision.jobId = fallback.id;
+    };
+    if (["all", "whole_concept"].includes(scope)) { await persistAuthority(); return create({kind:item.type,request,options,user}); }
+    const sourceId = item.produced_by?.studio_run;
+    const source = sourceId && await get(sourceId);
+    if (!source?.run?.artifacts?.brief && item.type !== "carousel") throw new Error("Saved production artifacts are unavailable; targeted revision stopped without full regeneration.");
+    const A = structuredClone(source?.run?.artifacts || {});
+    A.brief = structuredClone(item); delete A.brief.history; delete A.brief.owner_comments;
+    A.item_id = itemId; delete A.qc; delete A.final_qc; delete A.qc_blocked; delete A.fix; delete A.fixByIndex;
+    if (item.type === "carousel") {
+      const slides = item.carousel?.slides || item.design?.slides;
+      const urls = item.media?.image_urls || (Array.isArray(item.media?.slides) ? item.media.slides.map(s=>typeof s==="string"?s:s.image_url) : []);
+      if (!Array.isArray(slides) || !slides.length || slides.some((s,i)=>!s.image_prompt||!s.headline_en||!(s.image_url||urls[i]))) throw new Error("Legacy carousel lacks durable per-slide prompts/media; no unrelated regeneration was started.");
+      if (clipNumber && clipNumber>slides.length) throw new Error("Slide index exceeds the carousel length.");
+      A.brief.carousel = {...(item.carousel||{}),format:item.carousel?.format||item.design?.format||"1080x1350",slides:slides.map((s,i)=>({...s,slide:i+1,image_url:s.image_url||urls[i]}))};
+      A.images = A.brief.carousel.slides.map(s=>({url:s.image_url}));
+      const steps = PIPELINES.carousel.steps().map(s=>({...s,status:s.action==="carousel_slides"&&scope!=="static_design"?"done":"pending"}));
+      await persistAuthority();
+      return create({kind:"carousel",request,options,user,initialArtifacts:A,initialSteps:steps});
+    }
+    const full = PIPELINES[item.type].steps();
+    const active = new Set(item.type === "reel" ? ["qc_final", "to_weekly_plan"] : ["qc_visual", "to_weekly_plan"]);
+    if (scope === "reel_clip") for (const action of ["reel_keyframes", "clips", "compose_reel"]) active.add(action);
+    if (scope === "voice") for (const action of ["voice", "compose_reel"]) active.add(action);
+    if (scope === "static_design") for (const action of ["static_image", "check_brief"]) active.add(action);
+    const steps = [S("claude", "revise_content", "Apply owner-authorized targeted change"), ...full.map(s=>({...s,status:active.has(s.action)?"pending":"done"}))];
+    await persistAuthority();
+    return create({kind:item.type,request,options,user,initialArtifacts:A,initialSteps:steps});
+  }
+
   /**
    * Autopilot schedule (Cairo): Saturday from 09:00 → next week's plan; from the 25th → next
    * month's plan. Also opens the autopublish gate the first time it is reached.
@@ -1150,5 +1318,5 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
     }
   }
 
-  return { ensureTable, create, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, approve, retry, redo, cancel, tick, test: () => providers.test() };
+  return { ensureTable, create, reviseItem, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, redo, cancel, tick, test: () => providers.test() };
 }

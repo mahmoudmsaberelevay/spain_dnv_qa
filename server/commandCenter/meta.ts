@@ -313,7 +313,10 @@ export function createMetaHub(deps) {
     const { state } = await deps.loadState();
     if (!state.settings.meta?.directPublish) return { published: 0 };
     const now = cairoNowLocal();
-    const due = state.items.filter((i) => i.status === "approved" && i.publish?.datetime_cairo && i.publish.datetime_cairo <= now && !(i.publish.direct?.done));
+    // A final-QC-reviewed content replacement is intentionally not a fresh Meta
+    // authorization. Never direct-publish an item while its per-version revision
+    // hold is active; an explicit future owner publishing release is required.
+    const due = state.items.filter((i) => i.status === "approved" && i.publish?.datetime_cairo && i.publish.datetime_cairo <= now && !(i.publish.direct?.done) && !i.publish?.revision_hold?.active);
     let n = 0;
     for (const item of due.slice(0, 3)) {
       try { const r = await publishItem(item); if (r) n++; } catch (e) {

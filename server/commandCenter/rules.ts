@@ -69,7 +69,7 @@ const module = { exports: {} };
     'Greece Golden Residency', 'Malta Permanent Residency', 'UK Expansion Worker', 'Canada Skilled Migration',
     'Caribbean Citizenship by Investment', 'Vanuatu Citizenship', 'Evergreen / multi-program',
   ];
-  const STATUSES = ['draft', 'qc_failed', 'pending_approval', 'changes_requested', 'approved', 'scheduled', 'published', 'rejected'];
+  const STATUSES = ['draft', 'qc_failed', 'pending_approval', 'changes_requested', 'revision_approved', 'approved', 'scheduled', 'published', 'rejected'];
   const CHANGE_SCOPES = [
     { id: 'caption', label: 'Caption only', regenerates: 'Caption text (no media)' },
     { id: 'schedule', label: 'Schedule only', regenerates: 'Nothing; reschedule' },

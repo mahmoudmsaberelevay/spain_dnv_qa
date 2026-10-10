@@ -44,7 +44,9 @@ function memoryDb() {
 
 function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = null } = {}) {
   const state = E.emptyState();
-  state.settings.studio = { autoClips };
+  // Unit fixtures drive one explicit run. The live scheduler covers calendar
+  // autoplan separately; it must not consume mocked Claude responses here.
+  state.settings.studio = { autoClips, autoplan: false };
   const calls = { claude: [], openai: [], hfSubmit: [], hfPoll: 0, voice: 0, render: [], notify: [] };
   let clipsDone = false, failedRequestId = null;
   const providers = {
@@ -258,5 +260,60 @@ describe("helpers", () => {
   it("parses JSON embedded in prose or a fence", () => {
     expect(extractJson('Sure:\n```json\n{"a":1}\n```')).toEqual({ a: 1 });
     expect(extractJson('Here {"b":[1,2]} done')).toEqual({ b: [1, 2] });
+  });
+});
+
+describe("owner-authorized targeted content revisions", () => {
+  async function finishedBase(ctx) {
+    const run = await ctx.o.create({kind:"reel",request:"Original approved content",user:marketer});
+    return approveAndFinish(ctx,run.id);
+  }
+  function authority(ctx,item,scope,clip=null) {
+    const job=E.enqueueJob(ctx.state,"revise_item",{item_id:item.item_id,base_version:item.version,from_version:item.version,scope,clip,owner_authorized:true},owner.email);
+    return job;
+  }
+  it("updates only caption after final Claude check, keeping all rendered media and no reapproval or publish job", async()=>{
+    const ctx=setup([STORYBOARD,PASS,{caption_ar:CAPTION.replace("هل تفكر","هل تخطط")},PASS]);
+    const base=await finishedBase(ctx);const item=ctx.state.items.find(i=>i.item_id===base.artifacts.item_id);
+    authority(ctx,item,"caption");
+    const renderCalls=ctx.calls.render.length;
+    const rev=await ctx.o.reviseItem(item.item_id,{comment:"Change caption hook",scope:"caption"},owner);
+    const result=await settle(ctx.o,rev.id);
+    expect(result.status).toBe("done");expect(ctx.calls.openai).toHaveLength(4);expect(ctx.calls.hfSubmit).toHaveLength(4);expect(ctx.calls.voice).toBe(4);expect(ctx.calls.render).toHaveLength(renderCalls);
+    expect(item.version).toBe(2);expect(item.caption_ar).toContain("هل تخطط");expect(item.revision_status).toBe("owner_approved");expect(item.history[0].snapshot.caption_ar).toBe(CAPTION);expect(ctx.state.jobs.some(j=>j.type==='schedule_post')).toBe(false);
+  });
+  it("regenerates only scene 2 keyframe and clip while reusing every narration take", async()=>{
+    const revised={scenes:[{scene:2,keyframe_prompt:scene(2).keyframe_prompt+' with a clean desk',motion_prompt:scene(2).motion_prompt}]};
+    const ctx=setup([STORYBOARD,PASS,revised,PASS]);const base=await finishedBase(ctx);const item=ctx.state.items.find(i=>i.item_id===base.artifacts.item_id);
+    authority(ctx,item,"reel_clip",2);
+    const rev=await ctx.o.reviseItem(item.item_id,{comment:"Change scene 2 desk",scope:"reel_clip",clip:2},owner);
+    let r=await settle(ctx.o,rev.id);if(r.status==='waiting'){await ctx.o.tick();r=await settle(ctx.o,rev.id,['running','queued','waiting']);}
+    expect(r.status).toBe("done");expect(ctx.calls.openai).toHaveLength(5);expect(ctx.calls.hfSubmit).toHaveLength(5);expect(ctx.calls.voice).toBe(4);expect(item.reel.storyboard[0]).toEqual(base.artifacts.brief.reel.storyboard[0]);expect(item.reel.storyboard[1].keyframe_prompt).toContain('clean desk');
+  });
+  it("does not let a marketer use owner revision options or the direct revision API", async()=>{
+    const ctx=setup([]);
+    await expect(ctx.o.create({kind:'reel',request:'unsafe',options:{revision:{authorizedBy:owner.email}},user:marketer})).rejects.toThrow(/Only the owner/);
+    await expect(ctx.o.reviseItem('2026-W41-02',{comment:'edit'},marketer)).rejects.toThrow(/Only the owner/);
+    await expect(ctx.o.create({kind:'reel',request:'sandbox',options:{sandboxOnly:true},user:owner})).rejects.toThrow(/finite worker/);
+  });
+  it("changes only scene 3 narration and rerenders without regenerating a keyframe or clip", async()=>{
+    const ctx=setup([STORYBOARD,PASS,{scenes:[{scene:3,spoken_text_ar:'خلينا نراجع ملفك في Portugal مع ELEVAY خطوة خطوة'}]},PASS]);
+    const base=await finishedBase(ctx);const item=ctx.state.items.find(i=>i.item_id===base.artifacts.item_id);
+    const unchanged=base.artifacts.voices.map(v=>v.url);
+    const rev=await ctx.o.reviseItem(item.item_id,{comment:'Change voice scene 3',scope:'voice',clip:3},owner);
+    const r=await settle(ctx.o,rev.id);
+    expect(r.status).toBe('done');expect(ctx.calls.openai).toHaveLength(4);expect(ctx.calls.hfSubmit).toHaveLength(4);expect(ctx.calls.voice).toBe(5);expect(ctx.calls.render).toHaveLength(2);
+    expect(r.artifacts.voices[0].url).toBe(unchanged[0]);expect(r.artifacts.voices[1].url).toBe(unchanged[1]);expect(r.artifacts.voices[3].url).toBe(unchanged[3]);expect(r.artifacts.voices[2].url).not.toBe(unchanged[2]);
+  });
+  it("changes intended Cairo schedule after final review without regenerating or scheduling media", async()=>{
+    const ctx=setup([STORYBOARD,PASS,{datetime_cairo:'2026-10-11T19:45'},PASS]);const base=await finishedBase(ctx);const item=ctx.state.items.find(i=>i.item_id===base.artifacts.item_id);
+    const rev=await ctx.o.reviseItem(item.item_id,{comment:'Move schedule to Sunday at 19:45',scope:'schedule'},owner);const r=await settle(ctx.o,rev.id);
+    expect(r.status).toBe('done');expect(item.publish.datetime_cairo).toBe('2026-10-11T19:45');expect(ctx.calls.openai).toHaveLength(4);expect(ctx.calls.hfSubmit).toHaveLength(4);expect(ctx.calls.voice).toBe(4);expect(ctx.calls.render).toHaveLength(1);expect(ctx.state.jobs.every(j=>j.type==='revise_item')).toBe(true);
+  });
+  it("replaces only the requested carousel slide and runs one final complete-carousel check",async()=>{
+    const ctx=setup([{slides:[{slide:2,image_prompt:'Arab family in modern elegant clothing, no logo',headline_en:'Plan your next chapter'}]},{pass:true,issues:[],verdict:'Updated carousel compliant'}]);
+    const item={item_id:'2026-W41-01',type:'carousel',version:1,status:'approved',caption_ar:CAPTION,topic:'Family mobility',pillar:'Family Security',program:'Portugal D7',carousel:{format:'1080x1080',slides:[1,2,3].map(i=>({slide:i,headline_en:'Family planning',image_prompt:'Modern Arab family, no logo',image_url:`https://cdn.example/slide-${i}.png`}))},media:{image_urls:[1,2,3].map(i=>`https://cdn.example/slide-${i}.png`)},publish:{channel:'both',datetime_cairo:'2026-10-10T20:00'},history:[],owner_comments:[],first_pass:null};ctx.state.items.push(item);
+    const rev=await ctx.o.reviseItem(item.item_id,{comment:'Change slide 2 photograph',scope:'static_design',clip:2},owner);const r=await settle(ctx.o,rev.id);
+    expect(r.status).toBe('done');expect(ctx.calls.openai).toHaveLength(1);expect(ctx.calls.claude).toHaveLength(2);expect(item.media.image_urls[0]).toBe('https://cdn.example/slide-1.png');expect(item.media.image_urls[2]).toBe('https://cdn.example/slide-3.png');expect(item.media.image_urls[1]).not.toBe('https://cdn.example/slide-2.png');expect(item.history[0].snapshot.media.image_urls[1]).toBe('https://cdn.example/slide-2.png');expect(item.status).toBe('revision_approved');
   });
 });

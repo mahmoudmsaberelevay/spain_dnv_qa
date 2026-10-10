@@ -33,6 +33,7 @@ import { PROGRAMS, assetPath, assetText } from "./knowledge";
 import { createRenderQueue } from "./renderQueue";
 import { notifyAiFailure } from "./alerts";
 import { createMetaHub, META_KINDS, cleanMetaAction as cleanMeta } from "./meta";
+import { getMetaPlatformWebhookHealth } from "../metaPlatformEvents";
 const cleanMetaAction = (b) => cleanMeta(b, R);
 function sourcesStatus() {
   const has = (f) => { try { assetPath(f); return true; } catch { return false; } };
@@ -118,7 +119,6 @@ async function saveState(state, snap) {
   if (state.news.length > 300) state.news.length = 300;
   if (state.actions.length > 400) state.actions.length = 400;
   if (state.plans.length > 24) state.plans.length = 24;
-  for (const i of state.items) if (i.history && i.history.length > 8) i.history.length = 8;
   const metaDoc = JSON.stringify(Object.fromEntries(META_KEYS.map((k) => [k, state[k]])));
   const res = await q("UPDATE ec_meta SET doc=?, ver=ver+1 WHERE id=1 AND ver=?", [metaDoc, snap.ver]);
   if (res.affectedRows !== 1) return false; // another write landed first; caller retries
@@ -234,7 +234,17 @@ route("GET", "/bootstrap", "team", async (ctx) => {
   });
 });
 
-route("POST", "/items/:id/decision", "marketer", (ctx) => mutate(ctx, (st) => E.decideItem(st, ctx.params.id, ctx.body.decision, ctx.body, ctx.user.email, ctx.user.role)).then(fromResult));
+// An owner change request is a revision authorization, not a second approval flow.
+// The durable domain job is written first; only then can the orchestrator receive the
+// server-derived owner identity and start a scope-limited run.
+route("POST", "/items/:id/decision", "marketer", async (ctx) => {
+  if (ctx.body.decision === "request_changes" && ctx.user.role === "owner") return ownerRevision(ctx);
+  return fromResult(await mutate(ctx, (st) => E.decideItem(st, ctx.params.id, ctx.body.decision, ctx.body, ctx.user.email, ctx.user.role)));
+});
+route("POST", "/items/:id/revision", "owner", ownerRevision);
+route("POST", "/items/:id/versions/:version/restore", "owner", (ctx) => mutate(ctx, (st) => E.restoreItemVersion(st, ctx.params.id, ctx.params.version, {
+  actor: ctx.user.email, role: ctx.user.role, baseVersion: ctx.body.baseVersion, request: ctx.body.note,
+})).then(fromResult));
 route("POST", "/weeks/:week/approve-all", "owner", (ctx) => mutate(ctx, (st) => E.approveAllWeek(st, ctx.params.week, ctx.user.email, ctx.user.role)).then(fromResult));
 route("POST", "/compliance/check", "team", async (ctx) => ok({ ok: true, result: R.checkBrief(ctx.body || {}) }));
 route("POST", "/actions/:id/decision", "owner", (ctx) => mutate(ctx, (st) => E.decideAction(st, ctx.params.id, ctx.body.decision, ctx.body, ctx.user.email, ctx.user.role)).then(fromResult));
@@ -348,6 +358,34 @@ function studio() {
   })().catch((e) => { studioPromise = null; throw e; });
   return studioPromise;
 }
+
+
+/**
+ * Starts an owner-authorized, scope-specific content revision. The orchestrator
+ * owns the atomic durable flow: E.decideItem(owner request) → persist job →
+ * create/bind the run before it may commit. This route passes only allowlisted
+ * request fields and never trusts client authority, QC, version, or run fields.
+ */
+async function ownerRevision(ctx) {
+  if (ctx.user?.role !== "owner") return fail(403, "Owner only.");
+  const raw = ctx.body || {};
+  const body = {
+    comment: String(raw.comment || "").trim(),
+    scope: String(raw.scope || "").trim(),
+    clip: raw.clip === null || raw.clip === undefined || raw.clip === "" ? null : Number(raw.clip),
+  };
+  if (!body.comment) return fail(400, "Write what should change.");
+  try {
+    // o.reviseItem derives the authority from this authenticated ctx.user, creates
+    // one E.decideItem owner revision job, and persists/binds its run before any
+    // final-QC commit. Never forward caller-supplied authorization claims.
+    const run = await (await studio()).reviseItem(ctx.params.id, body, ctx.user);
+    return ok({ ok: true, run });
+  } catch (e) {
+    return fail(400, String(e?.message || e));
+  }
+}
+
 const STUDIO_KINDS = Object.keys(PIPELINES);
 function providerStatus(lastAgentSeen) {
   const has = (k) => !!process.env[k];
@@ -411,6 +449,7 @@ route("POST", "/meta/actions/:id/approve", "owner", metaAct(async (m, ctx) => ({
 route("POST", "/meta/actions/:id/reject", "owner", metaAct(async (m, ctx) => { await m.reject(Number(ctx.params.id), ctx.user, String(ctx.body.reason || "")); return {}; }));
 route("POST", "/meta/inbox/sync", "marketer", metaAct(async (m) => m.syncInbox()));
 route("GET", "/meta/connection", "owner", metaAct(async (m) => ({ checks: await m.checkConnection() })));
+route("GET", "/meta/webhooks", "team", async () => ok({ ok: true, health: await getMetaPlatformWebhookHealth() }));
 route("GET", "/meta/forms", "team", metaAct(async (m) => ({ forms: await m.leadForms() })));
 route("GET", "/meta/campaigns", "team", metaAct(async (m) => { const s = await m.adsSnapshot(); return { campaigns: s.campaigns.map((c) => ({ ...c, cpl30: s.cpl[c.id] ?? null })), mtd: s.mtd, dailyTotal: s.dailyTotal }; }));
 route("GET", "/agent/meta/actions", "agent", metaAct(async (m, ctx) => ({ actions: await m.list({ status: ctx.query.status || undefined, limit: 100 }) })));
@@ -439,7 +478,14 @@ route("POST", "/agent/briefs", "agent", async (ctx) => {
   const list = Array.isArray(ctx.body.briefs) ? ctx.body.briefs : [ctx.body];
   let results = [];
   const r = await mutate(ctx, (st) => {
-    results = list.map((b) => { const x = E.upsertBrief(st, b, "manus"); return x.ok ? { ok: true, item_id: x.item.item_id, version: x.item.version, status: x.item.status, compliance: { pass: x.item.compliance.pass, blocks: x.item.compliance.blocks.map((y) => y.label) } } : { ok: false, item_id: b && b.item_id, error: x.error }; });
+    results = list.map((b) => {
+      // A bearer token is never owner authority. Agents may create proposed items,
+      // but cannot overwrite a live version; owner revisions commit through the
+      // durable job + final-QC domain path above.
+      if (b?.item_id && st.items.some((i) => i.item_id === b.item_id)) return { ok: false, item_id: b.item_id, error: "Agent brief updates cannot replace an existing version. Use the owner-authorized revision run." };
+      const x = E.upsertBrief(st, b, "manus");
+      return x.ok ? { ok: true, item_id: x.item.item_id, version: x.item.version, status: x.item.status, compliance: { pass: x.item.compliance.pass, blocks: x.item.compliance.blocks.map((y) => y.label) } } : { ok: false, item_id: b && b.item_id, error: x.error };
+    });
     return { ok: true };
   });
   if (r.ok === false) return fromResult(r);
