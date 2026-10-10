@@ -40,6 +40,7 @@ Hard rules:
 - Text inside images is English only. People shown are Arab / Middle Eastern in modern elegant clothing. Never show passports, flags as hero objects, or an AI-drawn logo (the official logo is added afterwards).
 - Reels: 4 clips × 5 s + 3 s white logo outro (23 s), no text inside the video.
 - Voice-over scripts: natural Egyptian Arabic (عامية مصرية: بنبدأ، معاك، علشان، محتاج، خلينا، تقدر), 8–13 words per 5-second scene, one idea per scene. Country names (Spain, Malta, Portugal, Greece, Canada, United Kingdom…) and the company name ELEVAY are written in English letters for correct pronunciation; everything else, including city names and program types, is written in Arabic. No other English words.
+- In spoken Egyptian Arabic, write Schengen as "شينغن". It is not a country name and must never appear in English letters. The same rule applies to every non-country, non-ELEVAY word.
 - Instagram/Facebook caption_ar is Modern Standard Arabic (العربية الفصحى), NOT Egyptian dialect. This is independent of the spoken Egyptian Arabic scene script.
 - Positioning: a strategic global mobility advisory firm, never an immigration broker or "visa agent". Messaging pillars: Family Security, Global Mobility, Long-term Planning, Premium Service, Ethical Advisory.
 ${CREATIVE_DIRECTION}
@@ -192,7 +193,7 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
    * separate from image generation so a writing request can never switch voice,
    * language, or turn into a render request.
    */
-  async function openaiText({ system, prompt, maxTokens = 4000, json = true }) {
+  async function openaiText({ system, prompt, maxTokens = 4000, json = true, retried = false }) {
     const key = process.env.OPENAI_API_KEY;
     if (!key) throw new Error("OPENAI_API_KEY is not set on elevay.vip.");
     const model = process.env.ELEVAY_OPENAI_TEXT_MODEL || "gpt-5-mini";
@@ -210,8 +211,14 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
     });
     const response = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(`OpenAI writing: ${response?.error?.message || `HTTP ${res.status}`}`);
-    const text = String(response?.choices?.[0]?.message?.content || "");
-    if (!text) throw new Error("OpenAI returned no reel direction.");
+    const text = String(response?.choices?.[0]?.message?.content || "").trim();
+    if (!text) {
+      const exhausted = response?.choices?.[0]?.finish_reason === "length" || Number(response?.usage?.completion_tokens_details?.reasoning_tokens || 0) >= Math.max(1, maxTokens - 64);
+      if (!retried && exhausted) {
+        return openaiText({ system, prompt: `${prompt}\n\nReturn the requested JSON now. Keep fields concise and do not include any explanation outside the JSON object.`, maxTokens: Math.min(Math.max(maxTokens * 2, 9000), 12000), json, retried: true });
+      }
+      throw new Error(exhausted ? "OpenAI exhausted its writing budget before returning reel direction." : "OpenAI returned no reel direction.");
+    }
     return { text, data: json ? extractJson(text) : null, usage: response.usage || null, model: response.model || model };
   }
 
@@ -706,15 +713,21 @@ export function createOrchestrator(deps) {
         return;
       }
       case "openai.reel_storyboard": {
-        const r = await askOpenAi(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "final_edit_direction": "one concise editing direction for the external renderer: pacing, clean scene joins and narration placement only; never request text, logo changes or outro changes", "scenes": [4 scenes in order hook → explanation → trust → realistic outcome, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic voice-over for this scene, 8–13 words; ONLY country names and ELEVAY in English letters, everything else in Arabic"}]}`, { maxTokens: 5000 });
+        const r = await askOpenAi(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "final_edit_direction": "one concise editing direction for the external renderer: pacing, clean scene joins and narration placement only; never request text, logo changes or outro changes", "scenes": [4 scenes in order hook → explanation → trust → realistic outcome, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic voice-over for this scene, 7–10 words; ONLY country names and ELEVAY in English letters, everything else in Arabic; write شينغن rather than Schengen"}]}`, { maxTokens: 5000 });
         const scenes = (r.data.scenes || []).slice(0, 4);
         if (scenes.length !== 4) throw new Error("OpenAI did not return 4 scenes.");
-        const invalid = [];
-        for (let i = 0; i < 4; i++) { try { if (!scenes[i].spoken_text_ar) throw new Error("Missing spoken line"); await providers.checkEgyptianScript(scenes[i].spoken_text_ar); } catch { invalid.push(i); } }
-        if (invalid.length) {
-          const fixed = await askOpenAi(run, step, `Your storyboard is accepted visually, but scene(s) ${invalid.map(i=>i+1).join(",")} have missing or non-Egyptian spoken scripts. Rewrite ONLY these scripts, 7–10 words each, natural Egyptian Arabic, with a clear Egyptian marker such as خلينا، تقدر، بنراجع، معاك، علشان، دلوقتي. Country names and ELEVAY English only, no guarantees or تأشيرة. Leave all visuals unchanged. Current scenes:\n${JSON.stringify(scenes)}\nReturn JSON {"scenes":[{"scene":1,"spoken_text_ar":"..."}]} for ONLY the specified scenes.`, { maxTokens: 1000 });
+        const invalidScripts = async () => {
+          const invalid = [];
+          for (let i = 0; i < 4; i++) { try { if (!scenes[i].spoken_text_ar) throw new Error("Missing spoken line"); await providers.checkEgyptianScript(scenes[i].spoken_text_ar); } catch { invalid.push(i); } }
+          return invalid;
+        };
+        let invalid = await invalidScripts();
+        for (let repair = 0; invalid.length && repair < 2; repair++) {
+          const fixed = await askOpenAi(run, step, `Your storyboard is accepted visually, but scene(s) ${invalid.map(i=>i+1).join(",")} have missing or non-Egyptian spoken scripts. Rewrite ONLY these scripts, 7–10 words each, natural Egyptian Arabic, with a clear Egyptian marker such as خلينا، تقدر، بنراجع، معاك، علشان، دلوقتي. Country names and ELEVAY English only; write شينغن in Arabic, never Schengen. No guarantees or تأشيرة. Leave all visuals unchanged. Current scenes:\n${JSON.stringify(scenes)}\nReturn JSON {"scenes":[{"scene":1,"spoken_text_ar":"..."}]} for ONLY the specified scenes.`, { maxTokens: 1000 });
           for (const s of fixed.data?.scenes || []) if (invalid.includes(s.scene - 1)) scenes[s.scene - 1].spoken_text_ar = s.spoken_text_ar;
+          invalid = await invalidScripts();
         }
+        if (invalid.length) throw new Error(`OpenAI could not produce valid Egyptian Arabic for scene(s) ${invalid.map((i) => i + 1).join(", ")}. No media generation started.`);
         for (const s of scenes) { if (!s.keyframe_prompt || !s.motion_prompt || !s.spoken_text_ar) throw new Error("Storyboard is incomplete; no generation started."); await providers.checkEgyptianScript(s.spoken_text_ar); }
         A.brief = { type: "reel", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", talent: { mode: "voiceover_elevay_vip", voice_source: "elevay_vip_module", speech_language: "egyptian_arabic" }, reel: { storyboard: scenes.map((s, i) => ({ clip: i + 1, keyframe_prompt: s.keyframe_prompt, motion_prompt: s.motion_prompt, spoken_text_ar: s.spoken_text_ar, delivery_direction_en: "Calm, warm, premium advisory tone" })), music_direction: r.data.music_direction || "Soft cinematic, royalty-free", final_edit_direction: String(r.data.final_edit_direction || "Clean direct joins, narration starts with each scene, and a quiet white logo outro.").slice(0, 600), duration_s: 23 }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
         return;
@@ -1116,7 +1129,7 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       const music = (process.env.ELEVAY_REEL_MUSIC_URLS || "").split(",").map((x) => x.trim()).filter(Boolean);
       const musicUrl = music.length ? music[run.id % music.length] : null;
       const C = A.compose || (A.compose = { parts: {}, mode: "cuts" });
-      const s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: C.parts || {}, mode: C.mode || "cuts", jobId: C.jobId });
+      const s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: C.parts || {}, mode: C.mode || "cuts", jobId: C.jobId, editDirection: A.brief?.reel?.final_edit_direction });
       C.parts = s.parts || C.parts;
       if (s.pending) {
         C.jobId = s.jobId || C.jobId || null;

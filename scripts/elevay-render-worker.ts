@@ -15,7 +15,8 @@ const worker=createRenderWorker({q,root,renderReel});
 async function main(){
   do{
     const did=await worker.runNext(allowed);
-    if(!did){if(once)break;await new Promise(r=>setTimeout(r,5000));}
+    if(once) break;
+    if(!did) await new Promise(r=>setTimeout(r,5000));
   }while(true);
 }
 main().catch(e=>{console.error('Worker failed: '+String(e.code||e.message).slice(0,200));process.exitCode=1;}).finally(()=>pool.end());
