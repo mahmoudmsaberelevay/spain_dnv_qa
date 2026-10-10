@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
+import { ELEVAY_LOCKED_VOICE_POLICY } from "@shared/elevayVoicePolicy";
 
 type VoiceOverResult = {
   url: string;
@@ -17,7 +18,7 @@ type VoiceOverResult = {
   };
 };
 
-const MAX_CHARACTERS = 4800;
+const MAX_CHARACTERS = ELEVAY_LOCKED_VOICE_POLICY.maxScriptCharacters;
 
 export default function ArabicVoiceOver() {
   const [script, setScript] = useState("");
@@ -132,7 +133,7 @@ export default function ArabicVoiceOver() {
             <dl className="space-y-3 text-sm">
               <div className="flex items-start justify-between gap-4 border-b border-white/5 pb-3">
                 <dt className="text-gray-500">Model</dt>
-                <dd className="text-right font-medium text-white">Eleven v3</dd>
+                <dd className="text-right font-medium text-white">Eleven v4</dd>
               </div>
               <div className="flex items-start justify-between gap-4 border-b border-white/5 pb-3">
                 <dt className="text-gray-500">Language</dt>
@@ -140,7 +141,7 @@ export default function ArabicVoiceOver() {
               </div>
               <div className="border-b border-white/5 pb-3">
                 <dt className="text-gray-500">Voice ID</dt>
-                <dd className="mt-1 break-all text-xs font-medium text-white">nc8XQG8lRYRZDnjvKW0H</dd>
+                <dd className="mt-1 break-all text-xs font-medium text-white">{ELEVAY_LOCKED_VOICE_POLICY.voiceId}</dd>
               </div>
               <div className="flex items-start justify-between gap-4 border-b border-white/5 pb-3">
                 <dt className="text-gray-500">Stability</dt>

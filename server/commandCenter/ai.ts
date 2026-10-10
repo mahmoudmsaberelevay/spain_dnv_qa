@@ -18,6 +18,7 @@
  * 85%) returns them to manual. Runs Manus starts are automatic. A weekly reel limit caps
  * Higgsfield spend, and Meta work stays inside the 200,000 EGP cap and 100 EGP max CPL.
  */
+import { ELEVAY_LOCKED_VOICE_POLICY as ELEVAY_ARABIC_VOICE_DEFAULTS } from "../../shared/elevayVoicePolicy";
 import crypto from "crypto";
 import { ELEVAY_AGENTIC_DESIGN_STANDARD } from "@shared/elevayAgenticDesignStandard";
 import { spawn } from "child_process";
@@ -39,6 +40,7 @@ Hard rules:
 - Text inside images is English only. People shown are Arab / Middle Eastern in modern elegant clothing. Never show passports, flags as hero objects, or an AI-drawn logo (the official logo is added afterwards).
 - Reels: 4 clips × 5 s + 3 s white logo outro (23 s), no text inside the video.
 - Voice-over scripts: natural Egyptian Arabic (عامية مصرية: بنبدأ، معاك، علشان، محتاج، خلينا، تقدر), 8–13 words per 5-second scene, one idea per scene. Country names (Spain, Malta, Portugal, Greece, Canada, United Kingdom…) and the company name ELEVAY are written in English letters for correct pronunciation; everything else, including city names and program types, is written in Arabic. No other English words.
+- Instagram/Facebook caption_ar is Modern Standard Arabic (العربية الفصحى), NOT Egyptian dialect. This is independent of the spoken Egyptian Arabic scene script.
 - Positioning: a strategic global mobility advisory firm, never an immigration broker or "visa agent". Messaging pillars: Family Security, Global Mobility, Long-term Planning, Premium Service, Ethical Advisory.
 ${CREATIVE_DIRECTION}
 ${ELEVAY_AGENTIC_DESIGN_STANDARD}`;
@@ -230,7 +232,7 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
     const tts = await import("../elevenLabsTts");
     const r = await tts.generateElevayVideoVoiceOver(text);
     const bytes = Buffer.from(await (await fetcher(r.url)).arrayBuffer());
-    return { url: r.url, sha256: r.sha256, bytes, script: r.script, voiceId: r.voiceId, languageCode: r.languageCode, dialect: r.dialect };
+    return { url: r.url, sha256: r.sha256, bytes, script: r.script, voiceId: r.voiceId, model: r.model, languageCode: r.languageCode, dialect: r.dialect, requestId: r.requestId };
   }
   async function checkEgyptianScript(text) {
     const { prepareEgyptianReelNarration } = await import("@shared/elevayVideoNarration");
@@ -516,7 +518,7 @@ export function createOrchestrator(deps) {
         // overwrite it or report a false failure; the regular tick resumes from that state.
         if (msg === "The run changed while saving.") return;
         // An image or Claude call that timed out is retried once by itself before the run is marked failed.
-        if (/timed? ?out|aborted|ETIMEDOUT|ECONNRESET|socket hang up|HTTP 5\d\d/i.test(msg) && step.provider !== "higgsfield" && !step.timeout_retried) {
+        if (/timed? ?out|aborted|ETIMEDOUT|ECONNRESET|socket hang up|HTTP 5\d\d/i.test(msg) && !["higgsfield", "elevenlabs"].includes(step.provider) && !step.timeout_retried) {
           step.timeout_retried = true; step.status = "pending"; step.error = null;
           log(run, step.provider, "studio", `Timed out (${msg}); trying once more.`);
           ver = await save(run, ver);
@@ -705,16 +707,23 @@ export function createOrchestrator(deps) {
         await providers.checkEgyptianScript(sb.map((c) => c.spoken_text_ar).join(" ")); // whole script must be natural Egyptian Arabic
         A.voices = A.voices || [];
         for (let i = 0; i < 4; i++) {
-          if (A.voices[i]) continue;
+          if (A.voices[i]) {
+            if (A.voices[i].voiceId !== ELEVAY_ARABIC_VOICE_DEFAULTS.voiceId || A.voices[i].languageCode !== "ar") throw new Error(`Scene ${i + 1} saved voice provenance is missing or mismatched. Owner attention is required; no fallback or automatic replacement.`);
+            continue;
+          }
           log(run, "studio", "elevenlabs", `Scene ${i + 1}: ${sb[i].spoken_text_ar}`);
           const v = await providers.voiceScene(sb[i].spoken_text_ar);
-          A.voices[i] = { url: v.url, sha256: v.sha256, script: v.script || sb[i].spoken_text_ar };
+          if (v.voiceId !== ELEVAY_ARABIC_VOICE_DEFAULTS.voiceId || v.languageCode !== "ar") throw new Error("The voice provider returned unexpected voice/language provenance. Step stopped; no alternate voice accepted.");
+          A.voices[i] = { url: v.url, sha256: v.sha256, script: v.script || sb[i].spoken_text_ar, voiceId: v.voiceId, model: v.model, languageCode: v.languageCode, dialect: v.dialect, requestId: v.requestId };
           await checkpoint(`Checkpoint saved: ELEVAY voice take ${i + 1}.`);
         }
         log(run, "elevenlabs", "studio", "4 voice takes ready (ELEVAY voice clone).");
         return;
       }
       case "system.compose_reel": {
+        if (!A.voices || A.voices.length !== 4 || A.voices.some(v => v?.voiceId !== ELEVAY_ARABIC_VOICE_DEFAULTS.voiceId || v?.languageCode !== "ar")) {
+          throw new Error("Voice provenance needs owner attention: all four saved takes must verify the approved ELEVAY_VOICE_ID and Arabic language. No render or automatic regeneration was started.");
+        }
         const music = (process.env.ELEVAY_REEL_MUSIC_URLS || "").split(",").map((x) => x.trim()).filter(Boolean);
         const musicUrl = music.length ? music[run.id % music.length] : null;
         try {
@@ -946,6 +955,11 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
   async function poll(run, step, checkpoint = async () => {}) {
     const A = run.artifacts;
     if (step.action === "compose_reel") {
+      if (!A.voices || A.voices.length !== 4 || A.voices.some(v => v?.voiceId !== ELEVAY_ARABIC_VOICE_DEFAULTS.voiceId || v?.languageCode !== "ar")) {
+        step.status = "failed";
+        step.error = "Saved voice provenance is missing or mismatched. Render polling stopped; no automatic replacement voice was used.";
+        return false;
+      }
       if (!providers.composeReelStep) { step.status = "failed"; step.error = "Reel render adapter is not configured; no local renderer will be used."; return false; }
       const music = (process.env.ELEVAY_REEL_MUSIC_URLS || "").split(",").map((x) => x.trim()).filter(Boolean);
       const musicUrl = music.length ? music[run.id % music.length] : null;
@@ -1107,7 +1121,7 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       if (Date.now() - Date.parse(doc.updated_at || doc.created_at) < (composing ? 6 : 15) * 60 * 1000) continue;
       const g = await get(r.id);
       const step = g.run.steps.find((s) => s.status === "running");
-      // Claude, checks, OpenAI images, voice and the FFmpeg edit need no approval: resume them automatically,
+      // Cheap planning/image steps and external render polling can resume automatically.
       // up to 3 times (back-to-back publishes restart the server more than once).
       // Higgsfield clips (the expensive step) are never re-submitted without a person pressing Retry.
       let resumes = Number(step?.auto_resumes || (step?.auto_resumed ? 1 : 0));
@@ -1118,7 +1132,7 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
         // The join is the only heavy piece: if it brought the server down, join with straight cuts instead.
         if (REEL_STAGES.every((k) => k === "final" || C.parts?.[k]) && C.mode !== "cuts") { C.join_crashes = Number(C.join_crashes || 0) + 1; if (C.join_crashes >= 1) C.mode = "cuts"; }
       }
-      if (step && step.provider !== "higgsfield" && resumes < 3) {
+      if (step && !["higgsfield", "elevenlabs"].includes(step.provider) && resumes < 3) {
         step.status = "pending"; step.auto_resumes = resumes + 1; step.auto_resumed = true; g.run.status = "queued";
         log(g.run, "studio", "team", `Resumed automatically after a server restart: ${step.title}`);
         await save(g.run, g.ver).catch(() => {});

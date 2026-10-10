@@ -9,7 +9,7 @@ import {
 
 describe("mandatory ELEVAY Egyptian voice policy", () => {
   it("pins the owner-selected voice, model, Arabic language and Egyptian dialect", () => {
-    expect(ELEVAY_ARABIC_VOICE_DEFAULTS).toMatchObject({ voiceId: "nc8XQG8lRYRZDnjvKW0H", modelId: "eleven_v3", languageCode: "ar", dialect: "Egyptian Arabic", stability: 0.5, outputFormat: "mp3_44100_128" });
+    expect(ELEVAY_ARABIC_VOICE_DEFAULTS).toMatchObject({ voiceId: "nc8XQG8lRYRZDnjvKW0H", modelId: "eleven_v4", languageCode: "ar", dialect: "Egyptian Arabic", stability: 0.5, outputFormat: "mp3_44100_128" });
   });
   it("prepares Egyptian speech and retains English country/company names", () => {
     expect(prepareElevayEgyptianSpeechScript("دلوقتي في Spain، الشغل عن بُعد بقى طريق إقامة رسمي")).toBe("[thoughtful] دلوقتي في Spain، الشغل عن بُعد بقى طريق إقامة رسمي");

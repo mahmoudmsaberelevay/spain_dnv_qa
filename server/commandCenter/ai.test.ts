@@ -42,7 +42,7 @@ function memoryDb() {
   return q;
 }
 
-function setup(claudeAnswers, { autoClips = false, notify = true } = {}) {
+function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = null } = {}) {
   const state = E.emptyState();
   state.settings.studio = { autoClips };
   const calls = { claude: [], openai: [], hfSubmit: [], hfPoll: 0, voice: 0, render: [], notify: [] };
@@ -62,7 +62,7 @@ function setup(claudeAnswers, { autoClips = false, notify = true } = {}) {
     openaiPortrait: async () => { throw new Error("not used by reel tests"); },
     brandStatic: async (url) => url,
     checkEgyptianScript: async (text) => text,
-    voiceScene: async (text) => ({ url: `https://cdn.example/voice-${++calls.voice}.mp3`, sha256: "v".repeat(64), script: text }),
+    voiceScene: async (text) => { calls.voice++; if (voiceError) throw new Error(voiceError); return { url: `https://cdn.example/voice-${calls.voice}.mp3`, sha256: "v".repeat(64), script: text, voiceId: "nc8XQG8lRYRZDnjvKW0H", model: "eleven_v4", languageCode: "ar", dialect: "Egyptian Arabic" }; },
     higgsfieldSubmit: async ({ idempotencyKey }) => {
       const n = calls.hfSubmit.length + 1;
       const requestId = `request-${n}`;
@@ -109,6 +109,16 @@ async function approveAndFinish({ o, finishClips }, runId) {
 }
 
 describe("seven-step ELEVAY reel flow", () => {
+  it("stops a failed voice step without a timeout retry, render or replacement and notifies once", async () => {
+    const ctx = setup([STORYBOARD], { voiceError: "HTTP 503: approved voice unavailable" });
+    const run = await ctx.o.create({kind:"reel",request:"Voice failure test",user:marketer});
+    const r = await approveAndFinish(ctx, run.id);
+    expect(r.status).toBe("failed");
+    expect(r.steps.find(s=>s.action==="voice").status).toBe("failed");
+    expect(ctx.calls.voice).toBe(1);
+    expect(ctx.calls.render).toHaveLength(0);
+    expect(ctx.calls.notify).toHaveLength(1);
+  });
   it("uses exactly storyboard, keyframes, clips, voice, compose, one final Claude check, and weekly plan", async () => {
     expect(PIPELINES.reel.steps().map((s) => s.action)).toEqual(["reel_storyboard", "reel_keyframes", "clips", "voice", "compose_reel", "qc_final", "to_weekly_plan"]);
     expect(PIPELINES.static.steps().map((s) => s.action)).toContain("check_brief");

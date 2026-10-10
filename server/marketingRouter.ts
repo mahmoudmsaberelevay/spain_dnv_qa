@@ -363,7 +363,7 @@ export const marketingRouter = router({
   // Arabic voice-over generation using the shared ELEVAY ElevenLabs configuration
   generateArabicVoiceOver: protectedProcedure
     .input(z.object({
-      text: z.string().trim().min(1, "Enter an Arabic script before generating audio.").max(4800, "Eleven v3 supports up to 5,000 characters per generation."),
+      text: z.string().trim().min(1, "Enter an Arabic script before generating audio.").max(ELEVAY_ARABIC_VOICE_DEFAULTS.maxScriptCharacters, "Split long narration into takes of at most 1,900 characters."),
     }))
     .mutation(async ({ input }) => {
       try {
@@ -371,7 +371,7 @@ export const marketingRouter = router({
         return {
           ...result,
           settings: {
-            model: "Eleven v3",
+            model: "Eleven v4",
             language: "Arabic — Egyptian",
             voiceId: ELEVAY_ARABIC_VOICE_DEFAULTS.voiceId,
             stability: ELEVAY_ARABIC_VOICE_DEFAULTS.stability,
@@ -385,7 +385,7 @@ export const marketingRouter = router({
             message: "The ElevenLabs credential has not been configured for this application. Please contact an administrator.",
           });
         }
-        if (error instanceof ElevenLabsVoiceUnavailableError) {
+        if (error instanceof ElevenLabsVoiceUnavailableError || (error instanceof Error && error.name === "ElevenLabsVoiceConfigurationError")) {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
             message: error.message,

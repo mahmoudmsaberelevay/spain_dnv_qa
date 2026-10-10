@@ -4,18 +4,13 @@ import { ENV } from "./_core/env";
 import { storagePut } from "./storage";
 import { validateElevayArabicVoiceOverScript } from "../shared/marketingCreativeLanguagePolicy";
 import { prepareEgyptianReelNarration } from "../shared/elevayVideoNarration";
+import { ELEVAY_LOCKED_VOICE_POLICY, requireElevayVoiceId } from "../shared/elevayVoicePolicy";
+import { notifyOwner } from "./_core/notification";
 
-const ELEVENLABS_TTS_ENDPOINT = "https://api.elevenlabs.io/v1/text-to-speech";
+const ELEVENLABS_TTS_ENDPOINT = "https://api.elevenlabs.io/v1/text-to-dialogue";
 const ELEVENLABS_TIMEOUT_MS = 60_000;
 
-export const ELEVAY_ARABIC_VOICE_DEFAULTS = {
-  voiceId: "nc8XQG8lRYRZDnjvKW0H",
-  modelId: "eleven_v3",
-  languageCode: "ar",
-  dialect: "Egyptian Arabic",
-  outputFormat: "mp3_44100_128",
-  stability: 0.5,
-} as const;
+export const ELEVAY_ARABIC_VOICE_DEFAULTS = ELEVAY_LOCKED_VOICE_POLICY;
 
 /**
  * Raised only when the connected ElevenLabs workspace cannot access the
@@ -52,19 +47,21 @@ export function isValidMp3Buffer(buffer: Buffer): boolean {
   return buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0;
 }
 
-function parseElevenLabsErrorCode(details: string): string | null {
+export function parseElevenLabsErrorCode(details: string): string | null {
   try {
-    const payload = JSON.parse(details) as { detail?: { code?: unknown } };
-    return typeof payload.detail?.code === "string" ? payload.detail.code : null;
+    const payload = JSON.parse(details) as { detail?: { code?: unknown; status?: unknown } };
+    const code = payload.detail?.status ?? payload.detail?.code;
+    return typeof code === "string" && /^[a-z0-9_]{1,80}$/.test(code) ? code : null;
   } catch {
     return null;
   }
 }
 
 function getUserSafeErrorMessage(status: number, providerCode: string | null): string {
-  if (status === 404 && providerCode === "voice_not_found") {
+  if (providerCode === "voice_not_found") {
     return "The approved ELEVAY voice is not available to the current ElevenLabs workspace. An administrator must reconnect an API key from the workspace that owns or is authorized for this voice.";
   }
+  if (providerCode === "quota_exceeded") return "ElevenLabs rejected the request because its quota is exhausted. Voice generation is stopped; no replacement voice will be used.";
   if (status === 401 || status === 403) {
     return "The voice service could not be authorized. Please contact an administrator.";
   }
@@ -89,8 +86,19 @@ export async function generateElevayArabicVoiceOver(text: string) {
     throw error;
   }
 
+  let voiceId: typeof ELEVAY_ARABIC_VOICE_DEFAULTS.voiceId;
+  try { voiceId = requireElevayVoiceId(process.env.ELEVAY_VOICE_ID); }
+  catch (error) {
+    await notifyOwner({title:"ELEVAY voice configuration blocked",content:"ELEVAY_VOICE_ID is missing or differs from the approved voice. No speech was generated and no fallback was used."}).catch(()=>false);
+    throw error;
+  }
   const script = prepareElevayEgyptianSpeechScript(text);
-  const endpoint = `${ELEVENLABS_TTS_ENDPOINT}/${ELEVAY_ARABIC_VOICE_DEFAULTS.voiceId}?output_format=${ELEVAY_ARABIC_VOICE_DEFAULTS.outputFormat}`;
+  if (script.length > ELEVAY_ARABIC_VOICE_DEFAULTS.maxScriptCharacters) {
+    const error = new Error("Keep each Egyptian Arabic speech request within 1,900 characters. Split longer narration into separate takes.");
+    error.name = "ElevenLabsLanguagePolicyError";
+    throw error;
+  }
+  const endpoint = `${ELEVENLABS_TTS_ENDPOINT}?output_format=${ELEVAY_ARABIC_VOICE_DEFAULTS.outputFormat}`;
 
   let response: Response;
   try {
@@ -102,10 +110,10 @@ export async function generateElevayArabicVoiceOver(text: string) {
         Accept: "audio/mpeg",
       },
       body: JSON.stringify({
-        text: script,
+        inputs: [{ text: script, voice_id: voiceId }],
         model_id: ELEVAY_ARABIC_VOICE_DEFAULTS.modelId,
         language_code: ELEVAY_ARABIC_VOICE_DEFAULTS.languageCode,
-        voice_settings: {
+        settings: {
           stability: ELEVAY_ARABIC_VOICE_DEFAULTS.stability,
         },
       }),
@@ -121,7 +129,8 @@ export async function generateElevayArabicVoiceOver(text: string) {
     const details = await response.text().catch(() => "");
     const providerCode = parseElevenLabsErrorCode(details);
     console.error("[ElevenLabs] Speech generation failed", { status: response.status, providerCode });
-    if (response.status === 404 && providerCode === "voice_not_found") {
+    await notifyOwner({title:"ELEVAY voice generation stopped",content:`ElevenLabs rejected the approved voice request (HTTP ${response.status}, ${providerCode || "provider_error"}). No alternate voice/model/language was used.`}).catch(()=>false);
+    if (providerCode === "voice_not_found") {
       throw new ElevenLabsVoiceUnavailableError();
     }
     const error = new Error(getUserSafeErrorMessage(response.status, providerCode));
@@ -152,6 +161,7 @@ export async function generateElevayArabicVoiceOver(text: string) {
     voiceId: ELEVAY_ARABIC_VOICE_DEFAULTS.voiceId,
     languageCode: ELEVAY_ARABIC_VOICE_DEFAULTS.languageCode,
     dialect: ELEVAY_ARABIC_VOICE_DEFAULTS.dialect,
+    requestId: response.headers.get("request-id") || response.headers.get("x-request-id") || null,
     outputFormat: ELEVAY_ARABIC_VOICE_DEFAULTS.outputFormat,
     bytes: audioBuffer.length,
     sha256,
