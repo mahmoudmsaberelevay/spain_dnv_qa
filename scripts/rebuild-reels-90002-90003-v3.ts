@@ -88,7 +88,8 @@ async function main() {
     let entry = manifest.items.find((item) => item.itemId === itemId);
     if (!entry) {
       const item = JSON.parse((await q("SELECT doc FROM ec_items WHERE item_id=?", [itemId]))[0].doc);
-      const jobId = `REV-TWO-REELS-V3-${itemId.slice(-2)}-${Date.now()}`;
+      // ec_jobs.id is intentionally compact; keep the owner revision identifier below its column limit.
+      const jobId = `R3-${itemId.slice(-2)}-${Date.now().toString(36)}`;
       const job = { id: jobId, type: "revise_item", status: "in_progress", created_at: new Date().toISOString(), updated_at: new Date().toISOString(), created_by: owner.email, payload: { item_id: itemId, base_version: item.version, from_version: item.version, scope: "whole_concept", owner_authorized: true, comment: "Owner requested a complete fresh version from plan, bilingual caption and Egyptian Arabic ELEVAY CRM voice-over through final Claude review. Prior versions retained; Meta hold stays active." }, manus: { task_id: null, push_attempted: true }, history: [], result: null };
       await q("INSERT INTO ec_jobs (id,created_at,doc) VALUES (?,?,?)", [jobId, job.created_at, JSON.stringify(job)]);
       const run = await orchestrator.create({ kind: "reel", request: freshRequest(item), options: { sandboxOnly: true, week: itemId.slice(0, 8), program: item.program, datetime_cairo: item.publish?.datetime_cairo || "", revision: { itemId, baseVersion: item.version, scope: "whole_concept", request: job.payload.comment, jobId, authorizedBy: owner.email } }, user: owner });
