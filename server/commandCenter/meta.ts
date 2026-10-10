@@ -30,6 +30,32 @@ export const META_KINDS = {
   create_campaign: "Create a lead campaign (paused)",
 };
 
+const SPECIAL_AD_CATEGORIES = new Set(["HOUSING", "EMPLOYMENT", "CREDIT", "ISSUES_ELECTIONS_POLITICS"]);
+
+/**
+ * Meta treats Housing, Employment, Credit and social issues/politics as special
+ * categories. Residency and citizenship marketing is deliberately not inferred
+ * into one of those categories; the actual brief/copy is evaluated instead.
+ * A matching campaign cannot be proposed unless the owner-selected category is
+ * explicit, so the creation call never makes that compliance decision silently.
+ */
+export function resolveSpecialAdCategories(campaign) {
+  const text = [campaign?.name, campaign?.headline, campaign?.message].filter(Boolean).join(" ").toLowerCase();
+  const inferred = /\b(job|jobs|career|hiring|employment|recruit(?:ment|ing)?)\b|وظيف|توظيف/.test(text) ? "EMPLOYMENT"
+    : /\b(house|housing|home loan|mortgage|real estate|property)\b|عقار|سكن|تمويل عقاري/.test(text) ? "HOUSING"
+    : /\b(credit|loan|lending|finance offer)\b|قرض|ائتمان/.test(text) ? "CREDIT"
+    : /\b(election|politic|political|referendum|social issue)\b|انتخاب|سياس/.test(text) ? "ISSUES_ELECTIONS_POLITICS"
+    : null;
+  const requested = Array.isArray(campaign?.special_ad_categories)
+    ? campaign.special_ad_categories.map((x) => String(x).trim().toUpperCase()).filter(Boolean)
+    : campaign?.special_ad_category ? [String(campaign.special_ad_category).trim().toUpperCase()] : [];
+  if (requested.some((x) => x !== "NONE" && !SPECIAL_AD_CATEGORIES.has(x))) throw new Error("Unknown Meta Special Ad Category.");
+  if (requested.includes("NONE") && requested.length > 1) throw new Error("NONE cannot be combined with a Meta Special Ad Category.");
+  if (inferred && !requested.includes(inferred)) throw new Error(`This campaign appears to require Meta's ${inferred} Special Ad Category. Select it explicitly before proposing the campaign.`);
+  if (!inferred && requested.some((x) => x !== "NONE")) throw new Error("The selected Meta Special Ad Category does not match the proposed campaign copy.");
+  return inferred ? [inferred] : [];
+}
+
 /** Validates a campaign action proposed by the team, Claude or Manus. */
 export function cleanMetaAction(b, R) {
   const kind = String(b.kind || "");
@@ -41,7 +67,8 @@ export function cleanMetaAction(b, R) {
   if (!c.name || !(daily >= 100 && daily <= 50000) || !/^\d+$/.test(String(c.form_id || "")) || !/^https:\/\//.test(String(c.image_url || "")) || !c.message) throw new Error("A new campaign needs a name, a daily budget (100–50,000 EGP), a lead form, an approved design and ad text.");
   const bad = R.checkBrief({ type: "static", caption_ar: String(c.message), disclaimer_used: "x", design: { headline_en: String(c.headline || "") } }).blocks.filter((x) => /^term_|^contact_|^headline_/.test(x.id));
   if (bad.length) throw new Error("Ad text breaks the ELEVAY rules: " + bad.map((x) => x.label).join(" "));
-  return { kind, campaign: { name: String(c.name).slice(0, 120), daily_budget_egp: daily, countries: (Array.isArray(c.countries) ? c.countries : ["EG"]).map((x) => String(x).toUpperCase().slice(0, 2)), age_min: Math.max(18, Number(c.age_min || 28)), age_max: Math.min(65, Number(c.age_max || 60)), form_id: String(c.form_id), image_url: String(c.image_url), message: String(c.message).slice(0, 2000), headline: String(c.headline || "").slice(0, 80), item_id: c.item_id || null }, preview: `Create lead campaign "${c.name}" (paused) at ${daily.toLocaleString("en-US")} EGP/day`, reason: String(b.reason || "").slice(0, 500) };
+  const special_ad_categories = resolveSpecialAdCategories(c);
+  return { kind, campaign: { name: String(c.name).slice(0, 120), daily_budget_egp: daily, countries: (Array.isArray(c.countries) ? c.countries : ["EG"]).map((x) => String(x).toUpperCase().slice(0, 2)), age_min: Math.max(18, Number(c.age_min || 28)), age_max: Math.min(65, Number(c.age_max || 60)), form_id: String(c.form_id), image_url: String(c.image_url), message: String(c.message).slice(0, 2000), headline: String(c.headline || "").slice(0, 80), special_ad_categories, item_id: c.item_id || null }, preview: `Create lead campaign "${c.name}" (paused) at ${daily.toLocaleString("en-US")} EGP/day`, reason: String(b.reason || "").slice(0, 500) };
 }
 
 export function makeMetaGraph(fetcher = fetch) {
@@ -168,7 +195,7 @@ export function createMetaHub(deps) {
       }
       case "create_campaign": {
         const t = adsToken(), acct = account(), c = a.campaign;
-        const camp = await graph.post(`${acct}/campaigns`, t, { name: c.name, objective: "OUTCOME_LEADS", status: "PAUSED", special_ad_categories: [], buying_type: "AUCTION" });
+        const camp = await graph.post(`${acct}/campaigns`, t, { name: c.name, objective: "OUTCOME_LEADS", status: "PAUSED", special_ad_categories: c.special_ad_categories || [], buying_type: "AUCTION" });
         const set = await graph.post(`${acct}/adsets`, t, {
           name: `${c.name} | ad set`, campaign_id: camp.id, status: "PAUSED", daily_budget: Math.round(Number(c.daily_budget_egp) * 100),
           billing_event: "IMPRESSIONS", optimization_goal: "LEAD_GENERATION", bid_strategy: "LOWEST_COST_WITHOUT_CAP", destination_type: "ON_AD",

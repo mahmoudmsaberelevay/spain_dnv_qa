@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import E from "./engine";
 import R from "./rules";
-import { createMetaHub, cleanMetaAction } from "./meta";
+import { createMetaHub, cleanMetaAction, resolveSpecialAdCategories } from "./meta";
 
 process.env.META_PAGE_ACCESS_TOKEN = "page-token";
 process.env.META_PAGE_ID = "111";
@@ -125,6 +125,13 @@ describe("Meta actions", () => {
 
   it("rejects campaign ad text that breaks the ELEVAY rules", () => {
     expect(() => cleanMetaAction({ kind: "create_campaign", campaign: { name: "x", daily_budget_egp: 500, form_id: "1", image_url: "https://a/b.png", message: "تأشيرة مضمونة" } }, R)).toThrow(/rules/);
+  });
+
+  it("requires an explicit matching Meta Special Ad Category before campaign creation", () => {
+    expect(resolveSpecialAdCategories({ name: "ELEVAY residency consultation", message: "إقامة أوروبية مع ELEVAY" })).toEqual([]);
+    expect(() => resolveSpecialAdCategories({ name: "Hiring campaign", message: "Join our team" })).toThrow(/EMPLOYMENT/);
+    expect(resolveSpecialAdCategories({ name: "Hiring campaign", message: "Join our team", special_ad_category: "EMPLOYMENT" })).toEqual(["EMPLOYMENT"]);
+    expect(() => resolveSpecialAdCategories({ name: "ELEVAY residency", message: "إقامة أوروبية", special_ad_category: "CREDIT" })).toThrow(/does not match/);
   });
 
   it("publishes approved posts at their time on Facebook and Instagram when direct publishing is on", async () => {
