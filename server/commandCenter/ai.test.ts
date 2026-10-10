@@ -47,7 +47,7 @@ function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = n
   // Unit fixtures drive one explicit run. The live scheduler covers calendar
   // autoplan separately; it must not consume mocked Claude responses here.
   state.settings.studio = { autoClips, autoplan: false };
-  const calls = { claude: [], openai: [], hfSubmit: [], hfPoll: 0, voice: 0, render: [], notify: [] };
+  const calls = { claude: [], openaiText: [], openai: [], hfSubmit: [], hfPoll: 0, voice: 0, render: [], notify: [] };
   let clipsDone = false, failedRequestId = null;
   const providers = {
     claude: async ({ prompt, images }) => {
@@ -55,6 +55,12 @@ function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = n
       const next = claudeAnswers.shift();
       const data = typeof next === "function" ? next(prompt) : next;
       return { text: JSON.stringify(data), data };
+    },
+    openaiText: async ({ prompt }) => {
+      calls.openaiText.push({ prompt });
+      const next = claudeAnswers.shift();
+      const data = typeof next === "function" ? next(prompt) : next;
+      return { text: JSON.stringify(data), data, model: "gpt-5-mini" };
     },
     openaiImage: async ({ prompt, purpose }) => {
       const n = calls.openai.length + 1;
@@ -133,11 +139,13 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.openai).toHaveLength(4);
     expect(ctx.calls.hfSubmit).toHaveLength(4);
     expect(ctx.calls.voice).toBe(4);
-    expect(ctx.calls.claude).toHaveLength(2); // storyboard + sole final QC
-    expect(ctx.calls.claude[1].prompt).toMatch(/ALL supplied visual evidence/);
-    expect(ctx.calls.claude[1].prompt).toMatch(/all 600 narrative frames/i);
-    expect(ctx.calls.claude[1].prompt).toMatch(/Actual script sent/);
-    expect(ctx.calls.claude[1].prompt).toMatch(/تأشيرة/);
+    expect(ctx.calls.openaiText).toHaveLength(1); // storyboard and Egyptian Arabic narration
+    expect(ctx.calls.openaiText[0].prompt).toMatch(/Egyptian Arabic voice-over/);
+    expect(ctx.calls.claude).toHaveLength(1); // sole final QC
+    expect(ctx.calls.claude[0].prompt).toMatch(/ALL supplied visual evidence/);
+    expect(ctx.calls.claude[0].prompt).toMatch(/all 600 narrative frames/i);
+    expect(ctx.calls.claude[0].prompt).toMatch(/Actual script sent/);
+    expect(ctx.calls.claude[0].prompt).toMatch(/تأشيرة/);
     expect(result.artifacts.final).toMatchObject({ renderJobId: "render-1", peakRssBytes: 240_000_000 });
     expect(ctx.state.items.find((x) => x.item_id === result.artifacts.item_id)).toMatchObject({ status: "pending_approval" });
   });

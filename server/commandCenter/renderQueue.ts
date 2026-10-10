@@ -14,7 +14,7 @@ export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<
     for (const [label, urls] of [["clips", input.clipUrls], ["voices", input.voiceUrls]] as const) {
       if (!Array.isArray(urls) || urls.length !== 4 || urls.some((u: unknown) => typeof u !== "string" || !/^https:\/\//.test(u))) throw new Error(`Four saved HTTPS ${label} are required; nothing will be regenerated.`);
     }
-    const manifest = { version: "disk-concat-v1-full-logo", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: 3 };
+    const manifest = { version: "disk-concat-v1-full-logo", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: 3 };
     const id = "reel-" + crypto.createHash("sha256").update(JSON.stringify(manifest)).digest("hex").slice(0, 40);
     const now = Date.now();
     const reusable = input.parts?._version === manifest.version ? Object.fromEntries(Object.entries(input.parts).filter(([k]) => ["seg0", "seg1", "seg2", "seg3", "outro", "audio", "music", "musicDropped"].includes(k))) : {};

@@ -2,8 +2,8 @@
 /*
  * AI Studio: the orchestrator that links Claude, OpenAI, Higgsfield and Manus.
  *
- *   Claude      → the conductor: routes requests, writes briefs/storyboards/plans, checks visuals
- *   OpenAI      → static designs and reel keyframes (gpt-image, server key OPENAI_API_KEY)
+ *   Claude      → the conductor: routes requests, writes briefs/plans, and performs final visual checks
+ *   OpenAI      → reel storyboards and Egyptian-Arabic narration, plus static designs and reel keyframes
  *   Higgsfield  → 4 × 5 s reel clips from the OpenAI keyframes (HF_API_KEY)
  *   Manus       → Meta and anything that needs its connectors, through the existing job queue
  *
@@ -187,6 +187,34 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
     }
   }
 
+  /**
+   * OpenAI owns reel direction and every Egyptian-Arabic spoken script. This is
+   * separate from image generation so a writing request can never switch voice,
+   * language, or turn into a render request.
+   */
+  async function openaiText({ system, prompt, maxTokens = 4000, json = true }) {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) throw new Error("OPENAI_API_KEY is not set on elevay.vip.");
+    const model = process.env.ELEVAY_OPENAI_TEXT_MODEL || "gpt-5-mini";
+    const body: Record<string, unknown> = {
+      model,
+      messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
+      max_completion_tokens: maxTokens,
+    };
+    if (json) body.response_format = { type: "json_object" };
+    const res = await fetcher("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(180000),
+    });
+    const response = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`OpenAI writing: ${response?.error?.message || `HTTP ${res.status}`}`);
+    const text = String(response?.choices?.[0]?.message?.content || "");
+    if (!text) throw new Error("OpenAI returned no reel direction.");
+    return { text, data: json ? extractJson(text) : null, usage: response.usage || null, model: response.model || model };
+  }
+
   async function openaiImage({ prompt, purpose }) {
     const { createElevayOpenAiKeyframe } = await import("../elevayOpenAiVisuals");
     return createElevayOpenAiKeyframe({ prompt, purpose });
@@ -311,7 +339,7 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
     return out;
   }
 
-  return { claude, openaiImage, openaiPortrait, brandStatic, clipFrames, voiceScene, checkEgyptianScript, composeReel, composeReelStep, videoFrames, higgsfieldSubmit, higgsfieldStatus, persistClip, test };
+  return { claude, openaiText, openaiImage, openaiPortrait, brandStatic, clipFrames, voiceScene, checkEgyptianScript, composeReel, composeReelStep, videoFrames, higgsfieldSubmit, higgsfieldStatus, persistClip, test };
 }
 
 // ------------------------------------------------------------------ pipelines
@@ -331,11 +359,11 @@ export const PIPELINES = {
     S("system", "to_weekly_plan", "Send to the weekly plan for owner approval"),
   ] },
   reel: { label: "Reel", steps: () => [
-    S("claude", "reel_storyboard", "Claude writes the 4-scene storyboard, caption and Egyptian Arabic voice-over"),
+    S("openai", "reel_storyboard", "OpenAI writes the 4-scene storyboard, MSA caption and Egyptian Arabic voice-over"),
     S("openai", "reel_keyframes", "OpenAI creates the 4 keyframes (9:16)"),
     S("higgsfield", "clips", "Higgsfield animates 4 × 5 s clips", { gate: "owner" }),
     S("elevenlabs", "voice", "ELEVAY voice clone reads the Egyptian Arabic script, one take per scene"),
-    S("system", "compose_reel", "Final edit: 4 clips + voice-over + 3 s white logo outro (1080×1920)"),
+    S("system", "compose_reel", "External render worker combines clips, ELEVAY voice and 3 s white logo outro under OpenAI edit direction"),
     S("claude", "qc_final", "Claude performs the comprehensive finished-reel check"),
     S("system", "to_weekly_plan", "Send the finished reel to the weekly plan"),
   ] },
@@ -409,7 +437,7 @@ function migrateReelPipeline(run) {
   const revisionStep = run.steps.find(s => s.action === "revise_content");
   const wanted = revisionStep ? [revisionStep, ...PIPELINES.reel.steps()] : PIPELINES.reel.steps();
   const oldActions = run.steps.map((s) => s?.action);
-  const current = wanted.length === run.steps.length && wanted.every((s, i) => oldActions[i] === s.action);
+  const current = wanted.length === run.steps.length && wanted.every((s, i) => oldActions[i] === s.action && run.steps[i]?.provider === s.provider && run.steps[i]?.title === s.title);
   if (current) return false;
 
   const byAction = new Map(run.steps.filter(Boolean).map((s) => [s.action, s]));
@@ -643,6 +671,15 @@ export function createOrchestrator(deps) {
     return r;
   }
 
+  async function askOpenAi(run, step, prompt, opts = {}) {
+    if (typeof providers.openaiText !== "function") throw new Error("OpenAI reel-writing provider is not configured.");
+    log(run, "studio", "openai", opts.note || prompt);
+    const r = await providers.openaiText({ system: ELEVAY_RULES, prompt, ...opts });
+    log(run, "openai", "studio", r.data ? clip(r.data) : r.text);
+    step.output = r.data ?? r.text;
+    return r;
+  }
+
   async function execute(run, step, checkpoint = async () => {}) {
     const A = run.artifacts, opts = run.options || {};
     switch (`${step.provider}.${step.action}`) {
@@ -668,18 +705,18 @@ export function createOrchestrator(deps) {
         A.brief = { type: "static", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", design: { format: /1080x1080/.test(String(r.data.format)) && !/1350/.test(String(r.data.format)) ? "1080x1080" : "1080x1350", headline_en: r.data.headline_en, image_prompt: r.data.image_prompt }, talent: { mode: "none" }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
         return;
       }
-      case "claude.reel_storyboard": {
-        const r = await askClaude(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "scenes": [4 scenes in order hook → explanation → trust → realistic outcome, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic voice-over for this scene, 8–13 words; ONLY country names and ELEVAY in English letters, everything else in Arabic"}]}`, { maxTokens: 5000 });
+      case "openai.reel_storyboard": {
+        const r = await askOpenAi(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "final_edit_direction": "one concise editing direction for the external renderer: pacing, clean scene joins and narration placement only; never request text, logo changes or outro changes", "scenes": [4 scenes in order hook → explanation → trust → realistic outcome, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic voice-over for this scene, 8–13 words; ONLY country names and ELEVAY in English letters, everything else in Arabic"}]}`, { maxTokens: 5000 });
         const scenes = (r.data.scenes || []).slice(0, 4);
-        if (scenes.length !== 4) throw new Error("Claude did not return 4 scenes.");
+        if (scenes.length !== 4) throw new Error("OpenAI did not return 4 scenes.");
         const invalid = [];
         for (let i = 0; i < 4; i++) { try { if (!scenes[i].spoken_text_ar) throw new Error("Missing spoken line"); await providers.checkEgyptianScript(scenes[i].spoken_text_ar); } catch { invalid.push(i); } }
         if (invalid.length) {
-          const fixed = await askClaude(run, step, `Your storyboard is accepted visually, but scene(s) ${invalid.map(i=>i+1).join(",")} have missing or non-Egyptian spoken scripts. Rewrite ONLY these scripts, 7–10 words each, natural Egyptian Arabic, with a clear Egyptian marker such as خلينا، تقدر، بنراجع، معاك، علشان، دلوقتي. Country names and ELEVAY English only, no guarantees or تأشيرة. Leave all visuals unchanged. Current scenes:\n${JSON.stringify(scenes)}\nReturn JSON {"scenes":[{"scene":1,"spoken_text_ar":"..."}]} for ONLY the specified scenes.`, { maxTokens: 1000 });
+          const fixed = await askOpenAi(run, step, `Your storyboard is accepted visually, but scene(s) ${invalid.map(i=>i+1).join(",")} have missing or non-Egyptian spoken scripts. Rewrite ONLY these scripts, 7–10 words each, natural Egyptian Arabic, with a clear Egyptian marker such as خلينا، تقدر، بنراجع، معاك، علشان، دلوقتي. Country names and ELEVAY English only, no guarantees or تأشيرة. Leave all visuals unchanged. Current scenes:\n${JSON.stringify(scenes)}\nReturn JSON {"scenes":[{"scene":1,"spoken_text_ar":"..."}]} for ONLY the specified scenes.`, { maxTokens: 1000 });
           for (const s of fixed.data?.scenes || []) if (invalid.includes(s.scene - 1)) scenes[s.scene - 1].spoken_text_ar = s.spoken_text_ar;
         }
         for (const s of scenes) { if (!s.keyframe_prompt || !s.motion_prompt || !s.spoken_text_ar) throw new Error("Storyboard is incomplete; no generation started."); await providers.checkEgyptianScript(s.spoken_text_ar); }
-        A.brief = { type: "reel", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", talent: { mode: "voiceover_elevay_vip", voice_source: "elevay_vip_module", speech_language: "egyptian_arabic" }, reel: { storyboard: scenes.map((s, i) => ({ clip: i + 1, keyframe_prompt: s.keyframe_prompt, motion_prompt: s.motion_prompt, spoken_text_ar: s.spoken_text_ar, delivery_direction_en: "Calm, warm, premium advisory tone" })), music_direction: r.data.music_direction || "Soft cinematic, royalty-free", duration_s: 23 }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
+        A.brief = { type: "reel", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", talent: { mode: "voiceover_elevay_vip", voice_source: "elevay_vip_module", speech_language: "egyptian_arabic" }, reel: { storyboard: scenes.map((s, i) => ({ clip: i + 1, keyframe_prompt: s.keyframe_prompt, motion_prompt: s.motion_prompt, spoken_text_ar: s.spoken_text_ar, delivery_direction_en: "Calm, warm, premium advisory tone" })), music_direction: r.data.music_direction || "Soft cinematic, royalty-free", final_edit_direction: String(r.data.final_edit_direction || "Clean direct joins, narration starts with each scene, and a quiet white logo outro.").slice(0, 600), duration_s: 23 }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
         return;
       }
       case "claude.revise_content": {
@@ -688,7 +725,8 @@ export function createOrchestrator(deps) {
         const scope = rev.scope;
         const selected = rev.clip ? [Number(rev.clip) - 1] : Array.from({length:run.kind === "carousel" ? A.brief.carousel.slides.length : 4}, (_, i)=>i);
         const instructions = scope === "caption" ? 'Return {"caption_ar":"revised MSA caption"} only.' : scope === "schedule" ? 'Return {"datetime_cairo":"YYYY-MM-DDTHH:mm"} only. Preserve the original channel; timezone Africa/Cairo.' : scope === "voice" ? `Return {"scenes":[{"scene":1,"spoken_text_ar":"Egyptian Arabic revised line"}]} for exactly scenes ${selected.map(i=>i+1).join(",")}. Preserve every visual description.` : scope === "reel_clip" ? `Return {"scenes":[{"scene":1,"keyframe_prompt":"complete corrected frame prompt","motion_prompt":"complete corrected motion prompt"}]} for exactly scenes ${selected.map(i=>i+1).join(",")}. Preserve spoken lines.` : run.kind === "carousel" ? `Return {"slides":[{"slide":1,"image_prompt":"revised complete photograph prompt","headline_en":"English headline"}]} for exactly slides ${selected.map(i=>i+1).join(",")}. Preserve all other slides and caption.` : 'Return {"design":{"image_prompt":"complete revised image prompt","headline_en":"revised English headline"}} only. Preserve caption, schedule and other fields.';
-        const r = await askClaude(run, step, `Owner-authorized targeted change. Scope: ${scope}. Request: ${rev.request}. Current brief:\n${JSON.stringify(A.brief)}\nChange ONLY the stated scope. ${instructions}`, { maxTokens: 4000 });
+        const writer = scope === "voice" ? askOpenAi : askClaude;
+        const r = await writer(run, step, `Owner-authorized targeted change. Scope: ${scope}. Request: ${rev.request}. Current brief:\n${JSON.stringify(A.brief)}\nChange ONLY the stated scope. ${instructions}`, { maxTokens: 4000 });
         const d = r.data;
         if (scope === "caption") { if (typeof d?.caption_ar !== "string" || !d.caption_ar.trim()) throw new Error("Revised caption missing."); A.brief.caption_ar = d.caption_ar; }
         else if (scope === "schedule") { if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(d?.datetime_cairo || "")) throw new Error("Revised Cairo schedule is invalid."); A.brief.publish = { ...A.brief.publish, datetime_cairo: d.datetime_cairo }; }
@@ -835,7 +873,7 @@ export function createOrchestrator(deps) {
         try {
           if (!providers.composeReelStep) throw new Error("Reel render adapter is not configured. Waiting for render worker is required; in-process rendering is disabled.");
           A.compose = A.compose || { parts: {}, mode: "cuts" };
-          const s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: A.compose.parts, mode: A.compose.mode });
+          const s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: A.compose.parts, mode: A.compose.mode, editDirection: A.brief.reel.final_edit_direction });
           A.compose.parts = s.parts || A.compose.parts;
           if (s.pending) {
             A.compose.jobId = s.jobId || A.compose.jobId || null;
@@ -861,7 +899,7 @@ export function createOrchestrator(deps) {
           }
           // A scene's narration is too long for 5 s: Claude shortens that line once, then the voice is redone.
           const i = e.tooLong; A.voice_fixed = true;
-          const r = await askClaude(run, step, `This Egyptian Arabic voice-over line for scene ${i + 1} is too long to fit in 5 seconds: "${A.brief.reel.storyboard[i].spoken_text_ar}". Rewrite it in 7–10 words, natural Egyptian Arabic, same idea, country names and ELEVAY in English letters only, everything else in Arabic. Return JSON: {"line": "..."}`, { maxTokens: 300 });
+          const r = await askOpenAi(run, step, `This Egyptian Arabic voice-over line for scene ${i + 1} is too long to fit in 5 seconds: "${A.brief.reel.storyboard[i].spoken_text_ar}". Rewrite it in 7–10 words, natural Egyptian Arabic, same idea, country names and ELEVAY in English letters only, everything else in Arabic. Return JSON: {"line": "..."}`, { maxTokens: 300 });
           A.brief.reel.storyboard[i].spoken_text_ar = String(r.data.line || "").trim();
           A.voices[i] = null;
           if (A.compose?.parts) { delete A.compose.parts.audio; delete A.compose.parts.final; }
