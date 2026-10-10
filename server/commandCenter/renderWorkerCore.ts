@@ -9,7 +9,6 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { storagePutFile } from '../storage';
-import { assetPath } from './knowledge';
 import { notifyAiFailure } from './alerts';
 
 export function createRenderWorker({ q, root, renderReel, owner = crypto.randomUUID(), log = console.log, logError = console.error }) {
@@ -46,7 +45,8 @@ export function createRenderWorker({ q, root, renderReel, owner = crypto.randomU
     const heartbeat=setInterval(()=>persist().catch(()=>{}),30000);
     try{
       console.log(`Render #${row.run_id}: saved inputs only, threads=1, disk directory=${dir}`);
-      const result=await renderReel({manifest:doc.manifest,directory:dir,logoFile:assetPath('elevay-full-logo.png'),savedParts:doc.parts,
+      if (!doc.manifest?.outroUrl) throw new Error('Waiting for the required fixed ELEVAYEXTRO.mov; no logo-image fallback is permitted.');
+      const result=await renderReel({manifest:doc.manifest,directory:dir,savedParts:doc.parts,
         onPart:async({name,file,type,sha256,metrics})=>{
           const stored=await storagePutFile(`marketing/command-center/render-worker/${row.id}/${sha256.slice(0,24)}-${name}`,file,type);
           doc.parts={...doc.parts,[name]:stored.url};doc.metrics=metrics;doc.stage=name;await persist();console.log(`Render #${row.run_id}: ${name} stored`);return stored;

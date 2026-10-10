@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 /** The web process only persists jobs. Rendering is deliberately external. */
-export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<any>, opts: { pendingReason?: () => string } = {}) {
+export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<any>, opts: { pendingReason?: () => string, fixedOutroUrl?: string } = {}) {
   let ready: Promise<any> | undefined;
   const ensure = () => ready ??= q(`CREATE TABLE IF NOT EXISTS ec_render_jobs (
     id VARCHAR(64) PRIMARY KEY, run_id INT NOT NULL, status VARCHAR(24) NOT NULL,
@@ -14,7 +14,10 @@ export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<
     for (const [label, urls] of [["clips", input.clipUrls], ["voices", input.voiceUrls]] as const) {
       if (!Array.isArray(urls) || urls.length !== 4 || urls.some((u: unknown) => typeof u !== "string" || !/^https:\/\//.test(u))) throw new Error(`Four saved HTTPS ${label} are required; nothing will be regenerated.`);
     }
-    const manifest = { version: "disk-concat-v1-full-logo", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: 3 };
+    const outroUrl = String(opts.fixedOutroUrl || process.env.ELEVAY_FIXED_OUTRO_URL || "").trim();
+    if (!outroUrl) return { pending: true, jobId: null, parts: input.parts || {}, stage: "waiting_for_fixed_outro", waitReason: "Waiting for the required fixed ELEVAYEXTRO.mov; no fallback outro will be created.", metrics: {} };
+    if (!/^https:\/\//.test(outroUrl)) throw new Error("ELEVAY_FIXED_OUTRO_URL must be a public HTTPS stored ELEVAYEXTRO.mov URL.");
+    const manifest = { version: "disk-concat-v2-fixed-elevayoutro", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, outroUrl, editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: 3 };
     const id = "reel-" + crypto.createHash("sha256").update(JSON.stringify(manifest)).digest("hex").slice(0, 40);
     const now = Date.now();
     const reusable = input.parts?._version === manifest.version ? Object.fromEntries(Object.entries(input.parts).filter(([k]) => ["seg0", "seg1", "seg2", "seg3", "outro", "audio", "music", "musicDropped"].includes(k))) : {};

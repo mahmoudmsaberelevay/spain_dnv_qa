@@ -39,7 +39,7 @@ function descendants(pid) {
 }
 function memoryTree(pid) { return [pid, ...descendants(pid)].reduce((n, p) => n + rss(p), 0); }
 
-export async function renderReel({ manifest, directory, logoFile, savedParts = {}, onPart = async () => {}, onProgress = async () => {} }) {
+export async function renderReel({ manifest, directory, savedParts = {}, onPart = async () => {}, onProgress = async () => {} }) {
   await fsp.mkdir(directory, { recursive: true });
   const metrics = { method: 'Linux /proc RSS sampled every 25 ms; isolated worker and all child processes', peakRssBytes: 0, peakFfmpegRssBytes: 0, threads: THREADS, stages: [] };
   const sample = () => { metrics.peakRssBytes = Math.max(metrics.peakRssBytes, memoryTree(process.pid)); };
@@ -92,11 +92,16 @@ export async function renderReel({ manifest, directory, logoFile, savedParts = {
       await publish(`seg${i}`, out, 'video/mp4');
       await fsp.rm(source, { force: true });
     }
-    stage = 'white logo outro';
+    stage = 'fixed ELEVAYEXTRO.mov outro';
     if (!(await restore('outro', 'mp4'))) {
-      const out = path.join(directory, 'outro.mp4');
-      await ff(['-f','lavfi','-i','color=c=white:s=1080x1920:r=30:d=3','-threads','1','-loop','1','-framerate','30','-i',logoFile,'-filter_complex','[1:v]scale=300:-1:flags=lanczos[lg];[0:v][lg]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,setsar=1[v]','-map','[v]','-t','3',...encode,out]);
+      if (!manifest.outroUrl) throw new Error('Fixed ELEVAYEXTRO.mov is missing from the render manifest; no generated logo fallback is permitted.');
+      const source = path.join(directory, 'ELEVAYEXTRO.mov'), out = path.join(directory, 'outro.mp4');
+      await downloadFile(manifest.outroUrl, source, 100 * 1024 * 1024);
+      await ff(['-threads','1','-i',source,'-vf','scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=white,setsar=1,fps=30,trim=duration=3,setpts=PTS-STARTPTS,format=yuv420p','-map','0:v:0','-an','-t','3',...encode,out]);
+      const p = await probe(out), v = p.streams.find(s => s.codec_type === 'video');
+      if (v?.width !== 1080 || v?.height !== 1920 || v.r_frame_rate !== '30/1' || Math.abs(Number(p.format.duration)-3) > 0.05) throw new Error('Fixed ELEVAYEXTRO.mov did not normalize to 1080x1920 / 30fps / 3 seconds.');
       await publish('outro', out, 'video/mp4');
+      await fsp.rm(source, { force: true });
     }
     stage = 'voice and music audio mix';
     let musicDropped = null;

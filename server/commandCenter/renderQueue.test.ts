@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createRenderQueue } from './renderQueue';
-function setup() {
+function setup(options: { fixedOutroUrl?: string } = {}) {
   const rows = new Map<string, any>();
   let inserts = 0;
   const q = async (sql: string, args: any[] = []) => {
@@ -9,7 +9,7 @@ function setup() {
     if (sql.startsWith('SELECT')) return rows.has(args[0]) ? [rows.get(args[0])] : [];
     throw new Error('Unexpected SQL');
   };
-  return { queue: createRenderQueue(q), rows, insertCount: () => inserts };
+  return { queue: createRenderQueue(q, { fixedOutroUrl: "https://cdn.example/ELEVAYEXTRO.mov", ...options }), rows, insertCount: () => inserts };
 }
 const input = { runId: 8, clipUrls: [1, 2, 3, 4].map(i => `https://cdn.example/clip${i}.mp4`), voiceUrls: [1, 2, 3, 4].map(i => `https://cdn.example/voice${i}.mp3`) };
 describe('external render queue', () => {
@@ -19,6 +19,12 @@ describe('external render queue', () => {
     expect(a).toMatchObject({ pending: true, waitReason: 'Waiting for render worker' });
     expect(a.jobId).toBe(b.jobId); expect(rows.size).toBe(1);
     const d = JSON.parse(rows.get(a.jobId).doc); expect(d.manifest.threads).toBe(1);
+    expect(d.manifest.outroUrl).toBe('https://cdn.example/ELEVAYEXTRO.mov');
+  });
+  it('waits fail-closed for ELEVAYEXTRO.mov rather than generating a logo substitute', async () => {
+    const { queue, rows } = setup({ fixedOutroUrl: "" });
+    await expect(queue.compose(input)).resolves.toMatchObject({ stage: 'waiting_for_fixed_outro', jobId: null });
+    expect(rows.size).toBe(0);
   });
   it('returns existing completed output instead of regenerating or rendering it again', async () => {
     const { queue, rows } = setup(); const a = await queue.compose(input);
