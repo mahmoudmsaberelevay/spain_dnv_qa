@@ -31,6 +31,7 @@ import { buildLiveReport } from "./live";
 import { createOrchestrator, makeProviders, PIPELINES, planningWeek } from "./ai";
 import { PROGRAMS, assetPath, assetText } from "./knowledge";
 import { createRenderQueue } from "./renderQueue";
+import { startEmbeddedRenderWorker, embeddedRenderStatus } from "./embeddedRenderWorker";
 import { notifyAiFailure } from "./alerts";
 import { createMetaHub, META_KINDS, cleanMetaAction as cleanMeta } from "./meta";
 import { getMetaPlatformWebhookHealth } from "../metaPlatformEvents";
@@ -350,8 +351,10 @@ route("GET", "/agent/live", "agent", async (ctx) => ok(await liveReport(ctx.quer
 let studioPromise = null;
 function studio() {
   if (!studioPromise) studioPromise = (async () => {
-    const renderQueue = createRenderQueue(q);
+    const renderQueue = createRenderQueue(q, { pendingReason: embeddedRenderStatus });
     await renderQueue.ensure();
+    // Renders reels inside the website only when ELEVAY_EMBEDDED_RENDER=1 and the server has enough memory.
+    startEmbeddedRenderWorker(q).catch((e) => console.error("[render] " + String(e?.message || e).slice(0, 200)));
     const o = createOrchestrator({ q, mutate, loadState, liveReport, providers: makeProviders(fetch, renderQueue), E, R, meta: await metaHub(), notifyFailure: notifyAiFailure });
     await o.ensureTable();
     return o;
