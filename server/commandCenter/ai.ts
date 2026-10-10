@@ -228,15 +228,9 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
   /** One take per scene with the ELEVAY voice clone configured on elevay.vip. */
   async function voiceScene(text) {
     const tts = await import("../elevenLabsTts");
-    let r;
-    try { r = await tts.generateElevayVideoVoiceOver(text); }
-    catch (e) {
-      // The Egyptian-dialect gate is checked on the whole script; a short scene may lack its marker words.
-      if (/natural Egyptian Arabic/.test(String(e?.message))) r = await tts.generateElevayArabicVoiceOver(text);
-      else throw e;
-    }
+    const r = await tts.generateElevayVideoVoiceOver(text);
     const bytes = Buffer.from(await (await fetcher(r.url)).arrayBuffer());
-    return { url: r.url, sha256: r.sha256, bytes, script: r.script };
+    return { url: r.url, sha256: r.sha256, bytes, script: r.script, voiceId: r.voiceId, languageCode: r.languageCode, dialect: r.dialect };
   }
   async function checkEgyptianScript(text) {
     const { prepareEgyptianReelNarration } = await import("@shared/elevayVideoNarration");

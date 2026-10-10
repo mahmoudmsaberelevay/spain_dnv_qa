@@ -44,8 +44,9 @@ export function prepareEgyptianReelNarration(value: string): string {
   if (error) throw new Error(error);
   // Do not silently send unconverted formal scripts to ElevenLabs. The owner
   // can edit unusual phrasing rather than synthesizing the wrong dialect.
-  if (/(?:^|[\s،.!؟])(?:هل|سوف|إنه|إنها|يمكنك|يمكن أن|من دون)(?=[\s،.!؟]|$)/.test(text)
-    || !/(?:بنبدأ|بنراجع|بنتكلم|بتفكر|بتشتغل|بتخطط|بنبص|بنرتب|بنوضح|بنقولك|بيبدأ|إيه|اسأل|معاك|ليك|علشان|عشان|خلينا|من غير|محتاج|تقدر|خد قرارك)/.test(text)) {
+  const nonEgyptian = /(?:^|[\s،.!؟])(?:هل|سوف|إنه|إنها|يمكنك|يمكن أن|من دون|بدك|بدي|شو|كتير|هلق|وايد|شلون)(?=[\s،.!؟]|$)/;
+  const egyptian = /(?:بنبدأ|بنراجع|بنتكلم|بتفكر|بتشتغل|بتخطط|بنبص|بنرتب|بنوضح|بنقولك|بيبدأ|إيه|اسأل|معاك|ليك|علشان|عشان|خلينا|من غير|محتاج|تقدر|خد قرارك|دلوقتي|بقى|عايز|عايزة|إحنا|احنا|مش|بترافقك|بيرافق|عيلتك|عيلتنا|شغلك)/;
+  if (nonEgyptian.test(text) || !egyptian.test(text)) {
     throw new Error("Narration must be natural Egyptian Arabic before ElevenLabs; edit the script or request a revised plan.");
   }
   return text;

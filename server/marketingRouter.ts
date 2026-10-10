@@ -372,7 +372,8 @@ export const marketingRouter = router({
           ...result,
           settings: {
             model: "Eleven v3",
-            language: "Arabic",
+            language: "Arabic — Egyptian",
+            voiceId: ELEVAY_ARABIC_VOICE_DEFAULTS.voiceId,
             stability: ELEVAY_ARABIC_VOICE_DEFAULTS.stability,
             output: "MP3 44.1 kHz / 128 kbps",
           },

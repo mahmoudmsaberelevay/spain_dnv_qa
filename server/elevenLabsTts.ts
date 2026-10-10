@@ -12,6 +12,7 @@ export const ELEVAY_ARABIC_VOICE_DEFAULTS = {
   voiceId: "nc8XQG8lRYRZDnjvKW0H",
   modelId: "eleven_v3",
   languageCode: "ar",
+  dialect: "Egyptian Arabic",
   outputFormat: "mp3_44100_128",
   stability: 0.5,
 } as const;
@@ -31,6 +32,17 @@ export class ElevenLabsVoiceUnavailableError extends Error {
 export function prepareThoughtfulArabicScript(text: string): string {
   const normalized = text.trim();
   return /^\[thoughtful\]/i.test(normalized) ? normalized : `[thoughtful] ${normalized}`;
+}
+
+/** All CRM TTS paths use the same Egyptian preflight; never fall back to generic Arabic. */
+export function prepareElevayEgyptianSpeechScript(text: string): string {
+  try {
+    return prepareThoughtfulArabicScript(prepareEgyptianReelNarration(text));
+  } catch (caught) {
+    const error = new Error(caught instanceof Error ? caught.message : "Narration must be natural Egyptian Arabic.");
+    error.name = "ElevenLabsLanguagePolicyError";
+    throw error;
+  }
 }
 
 export function isValidMp3Buffer(buffer: Buffer): boolean {
@@ -77,7 +89,7 @@ export async function generateElevayArabicVoiceOver(text: string) {
     throw error;
   }
 
-  const script = prepareThoughtfulArabicScript(text);
+  const script = prepareElevayEgyptianSpeechScript(text);
   const endpoint = `${ELEVENLABS_TTS_ENDPOINT}/${ELEVAY_ARABIC_VOICE_DEFAULTS.voiceId}?output_format=${ELEVAY_ARABIC_VOICE_DEFAULTS.outputFormat}`;
 
   let response: Response;
@@ -137,6 +149,9 @@ export async function generateElevayArabicVoiceOver(text: string) {
     fileName,
     script,
     model: ELEVAY_ARABIC_VOICE_DEFAULTS.modelId,
+    voiceId: ELEVAY_ARABIC_VOICE_DEFAULTS.voiceId,
+    languageCode: ELEVAY_ARABIC_VOICE_DEFAULTS.languageCode,
+    dialect: ELEVAY_ARABIC_VOICE_DEFAULTS.dialect,
     outputFormat: ELEVAY_ARABIC_VOICE_DEFAULTS.outputFormat,
     bytes: audioBuffer.length,
     sha256,
@@ -146,6 +161,5 @@ export async function generateElevayArabicVoiceOver(text: string) {
 /** Video/reel-only entry point: prepare spoken Egyptian Arabic before TTS.
  * Never send unconverted MSA or Arabic spellings of country/company names. */
 export async function generateElevayVideoVoiceOver(text: string) {
-  const egyptianScript = prepareEgyptianReelNarration(text);
-  return generateElevayArabicVoiceOver(egyptianScript);
+  return generateElevayArabicVoiceOver(text);
 }

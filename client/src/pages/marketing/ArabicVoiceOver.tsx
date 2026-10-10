@@ -91,7 +91,7 @@ export default function ArabicVoiceOver() {
           <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-white">Arabic script</h2>
-              <p className="mt-1 text-sm text-gray-400">Use Arabic only. Country names may be written in English (for example: Spain, Malta, Portugal, Greece, Canada or Caribbean).</p>
+              <p className="mt-1 text-sm text-gray-400">Use natural Egyptian Arabic. Country and company names stay in English (for example: Spain, Malta and ELEVAY).</p>
             </div>
             <span className={`text-xs font-medium ${remainingCharacters < 0 ? "text-red-400" : "text-gray-500"}`}>
               {script.length.toLocaleString()} / {MAX_CHARACTERS.toLocaleString()} characters
@@ -102,15 +102,15 @@ export default function ArabicVoiceOver() {
             value={script}
             onChange={(event) => setScript(event.target.value)}
             dir="rtl"
-            lang="ar"
+            lang="ar-EG"
             aria-label="Arabic voice-over script"
-            placeholder="اكتب النص العربي هنا… مثال: اكتشف الإقامة في Spain معنا اليوم"
+            placeholder="اكتب النص بالعامية المصرية هنا… مثال: بتفكر في الإقامة في Spain؟ خلينا نرتب خطوتك الجاية مع ELEVAY"
             className="min-h-[270px] resize-y border-white/10 bg-[#0f1623] p-4 text-right text-lg leading-9 text-white placeholder:text-gray-600 focus-visible:ring-[#5BA3B8]"
           />
 
           <div className="mt-4 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs leading-relaxed text-gray-500">
-              Expressive <span className="font-medium text-[#A1C6CF]">[thoughtful]</span> delivery is applied automatically. The server rejects English words except approved country names.
+              Expressive <span className="font-medium text-[#A1C6CF]">[thoughtful]</span> delivery is applied automatically. Every take uses Egyptian Arabic; only approved country and company names may be English.
             </p>
             <Button
               onClick={handleGenerate}
@@ -136,7 +136,11 @@ export default function ArabicVoiceOver() {
               </div>
               <div className="flex items-start justify-between gap-4 border-b border-white/5 pb-3">
                 <dt className="text-gray-500">Language</dt>
-                <dd className="text-right font-medium text-white">Arabic</dd>
+                <dd className="text-right font-medium text-white">Arabic — Egyptian</dd>
+              </div>
+              <div className="border-b border-white/5 pb-3">
+                <dt className="text-gray-500">Voice ID</dt>
+                <dd className="mt-1 break-all text-xs font-medium text-white">nc8XQG8lRYRZDnjvKW0H</dd>
               </div>
               <div className="flex items-start justify-between gap-4 border-b border-white/5 pb-3">
                 <dt className="text-gray-500">Stability</dt>
@@ -152,7 +156,7 @@ export default function ArabicVoiceOver() {
           <div className="rounded-2xl border border-[#5BA3B8]/20 bg-gradient-to-br from-[#1A3A5C]/60 to-[#111a2a] p-5">
             <p className="text-sm font-semibold text-white">Consistent ELEVAY delivery</p>
             <p className="mt-2 text-xs leading-relaxed text-gray-400">
-              The configured ELEVAY voice and Arabic delivery configuration are used only after the server verifies a real MP3 response.
+              The approved ELEVAY voice always uses Egyptian Arabic. Audio becomes available only after the server verifies a real MP3 response; no substitute voice is used.
             </p>
           </div>
         </aside>
