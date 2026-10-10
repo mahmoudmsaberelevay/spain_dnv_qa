@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 /** The web process only persists jobs. Rendering is deliberately external. */
-export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<any>) {
+export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<any>, opts: { pendingReason?: () => string } = {}) {
   let ready: Promise<any> | undefined;
   const ensure = () => ready ??= q(`CREATE TABLE IF NOT EXISTS ec_render_jobs (
     id VARCHAR(64) PRIMARY KEY, run_id INT NOT NULL, status VARCHAR(24) NOT NULL,
@@ -25,7 +25,7 @@ export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<
     const job = JSON.parse(row.doc);
     if (row.status === "failed") throw new Error("External render failed: " + (job.error || "unknown worker error"));
     if (row.status === "done" && job.final) return { parts: job.parts, final: { ...job.final, renderJobId: id }, stage: "final" };
-    return { pending: true, jobId: id, parts: job.parts || {}, stage: job.stage, waitReason: row.status === "running" ? "External render worker is rendering" : "Waiting for render worker", metrics: job.metrics || {} };
+    return { pending: true, jobId: id, parts: job.parts || {}, stage: job.stage, waitReason: row.status === "running" ? "Rendering the final edit" : (opts.pendingReason?.() || "Waiting for render worker"), metrics: job.metrics || {} };
   }
   return { ensure, compose };
 }
