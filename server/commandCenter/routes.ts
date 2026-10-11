@@ -31,6 +31,7 @@ import { buildLiveReport } from "./live";
 import { createOrchestrator, makeProviders, PIPELINES, planningWeek } from "./ai";
 import { PROGRAMS, assetPath, assetText } from "./knowledge";
 import { createRenderQueue } from "./renderQueue";
+import { creditsReport, cleanManualCredit, clearCreditsCache, CREDIT_IDS } from "./credits";
 import { startEmbeddedRenderWorker, embeddedRenderStatus } from "./embeddedRenderWorker";
 import { notifyAiFailure } from "./alerts";
 import { createMetaHub, META_KINDS, cleanMetaAction as cleanMeta } from "./meta";
@@ -223,6 +224,22 @@ const fromResult = (r) => (r && r.ok === false ? fail(400, r.error, r) : ok(r ||
 const loginUrl = `/login?returnTo=${encodeURIComponent(BASE + "/")}`;
 
 route("GET", "/health", "public", async () => ok({ ok: true, service: "elevay-command-center", externalAuth: true, loginUrl, needsSetup: false, time: new Date().toISOString() }));
+
+// ------------------------------------------------------------------ Credits (what each AI platform has left)
+route("GET", "/credits", "owner", async (ctx) => {
+  const { state } = await loadState();
+  return ok(await creditsReport({ q, manual: state.settings.credits || {}, refresh: ctx.query.refresh === "1" }));
+});
+route("POST", "/credits/:id", "owner", (ctx) => {
+  if (!CREDIT_IDS.includes(ctx.params.id)) return fail(404, "Unknown platform.");
+  clearCreditsCache();
+  return mutate(ctx, (st) => {
+    st.settings.credits = st.settings.credits || {};
+    st.settings.credits[ctx.params.id] = cleanManualCredit(ctx.body || {});
+    E.audit(st, ctx.user.email, "credits.updated", ctx.params.id, "Balance/plan entered");
+    return { ok: true, credit: st.settings.credits[ctx.params.id] };
+  }).then(fromResult);
+});
 
 route("GET", "/bootstrap", "team", async (ctx) => {
   const { state } = await loadState();
