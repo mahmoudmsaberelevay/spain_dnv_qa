@@ -17,10 +17,15 @@ export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<
     const outroUrl = String(opts.fixedOutroUrl || process.env.ELEVAY_FIXED_OUTRO_URL || "").trim();
     if (!outroUrl) return { pending: true, jobId: null, parts: input.parts || {}, stage: "waiting_for_fixed_outro", waitReason: "Waiting for the required fixed ELEVAYEXTRO.mov; no fallback outro will be created.", metrics: {} };
     if (!/^https:\/\//.test(outroUrl)) throw new Error("ELEVAY_FIXED_OUTRO_URL must be a public HTTPS stored ELEVAYEXTRO.mov URL.");
-    const manifest = { version: "disk-concat-v2-fixed-elevayoutro", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, outroUrl, editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: 3 };
+    const narrationTargetSeconds = Number(input.narrationTargetSeconds);
+    const narrationSceneSeconds = Number(input.narrationSceneSeconds);
+    if (narrationTargetSeconds !== 18 || narrationSceneSeconds !== 4.5) {
+      throw new Error("ELEVAY reels require the locked 18-second narration target: four 4.5-second voice takes.");
+    }
+    const manifest = { version: "disk-concat-v3-18s-narration-fixed-elevayoutro", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, outroUrl, editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: 3, narrationTargetSeconds, narrationSceneSeconds };
     const id = "reel-" + crypto.createHash("sha256").update(JSON.stringify(manifest)).digest("hex").slice(0, 40);
     const now = Date.now();
-    const reusable = input.parts?._version === manifest.version ? Object.fromEntries(Object.entries(input.parts).filter(([k]) => ["seg0", "seg1", "seg2", "seg3", "outro", "audio", "music", "musicDropped"].includes(k))) : {};
+    const reusable = input.parts?._version === manifest.version ? Object.fromEntries(Object.entries(input.parts).filter(([k]) => ["seg0", "seg1", "seg2", "seg3", "outro", "audio", "music", "musicDropped", "narrationTargetSeconds", "narrationSceneSeconds", "rawVoiceSeconds"].includes(k))) : {};
     const doc = JSON.stringify({ manifest, parts: { ...reusable, _version: manifest.version }, stage: "queued", waitReason: "Waiting for render worker", metrics: {} });
     await q("INSERT IGNORE INTO ec_render_jobs (id,run_id,status,created_at,updated_at,doc) VALUES (?,?,'pending',?,?,?)", [id, input.runId, now, now, doc]);
     const row = (await q("SELECT id,status,doc FROM ec_render_jobs WHERE id=?", [id]))[0];

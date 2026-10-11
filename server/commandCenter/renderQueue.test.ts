@@ -11,7 +11,7 @@ function setup(options: { fixedOutroUrl?: string } = {}) {
   };
   return { queue: createRenderQueue(q, { fixedOutroUrl: "https://cdn.example/ELEVAYEXTRO.mov", ...options }), rows, insertCount: () => inserts };
 }
-const input = { runId: 8, clipUrls: [1, 2, 3, 4].map(i => `https://cdn.example/clip${i}.mp4`), voiceUrls: [1, 2, 3, 4].map(i => `https://cdn.example/voice${i}.mp3`) };
+const input = { runId: 8, clipUrls: [1, 2, 3, 4].map(i => `https://cdn.example/clip${i}.mp4`), voiceUrls: [1, 2, 3, 4].map(i => `https://cdn.example/voice${i}.mp3`), narrationTargetSeconds: 18, narrationSceneSeconds: 4.5 };
 describe('external render queue', () => {
   it('waits for an external worker and deduplicates identical saved inputs', async () => {
     const { queue, rows } = setup();
@@ -20,6 +20,7 @@ describe('external render queue', () => {
     expect(a.jobId).toBe(b.jobId); expect(rows.size).toBe(1);
     const d = JSON.parse(rows.get(a.jobId).doc); expect(d.manifest.threads).toBe(1);
     expect(d.manifest.outroUrl).toBe('https://cdn.example/ELEVAYEXTRO.mov');
+    expect(d.manifest).toMatchObject({ narrationTargetSeconds: 18, narrationSceneSeconds: 4.5 });
   });
   it('waits fail-closed for ELEVAYEXTRO.mov rather than generating a logo substitute', async () => {
     const { queue, rows } = setup({ fixedOutroUrl: "" });
@@ -41,5 +42,9 @@ describe('external render queue', () => {
     await expect(queue.compose({ ...input, voiceUrls: [null] })).rejects.toThrow(/saved HTTPS/);
     const a = await queue.compose(input); rows.set(a.jobId, { status: 'failed', doc: JSON.stringify({ error: 'Encoder failed' }) });
     await expect(queue.compose(input)).rejects.toThrow(/Encoder failed/);
+  });
+  it('fails closed when a caller tries to change the locked narration target', async () => {
+    const { queue } = setup();
+    await expect(queue.compose({ ...input, narrationTargetSeconds: 20 })).rejects.toThrow(/18-second narration target/);
   });
 });

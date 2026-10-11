@@ -41,6 +41,11 @@ function memoryTree(pid) { return [pid, ...descendants(pid)].reduce((n, p) => n 
 
 export async function renderReel({ manifest, directory, savedParts = {}, onPart = async () => {}, onProgress = async () => {} }) {
   await fsp.mkdir(directory, { recursive: true });
+  const narrationTargetSeconds = Number(manifest?.narrationTargetSeconds);
+  const narrationSceneSeconds = Number(manifest?.narrationSceneSeconds);
+  if (narrationTargetSeconds !== 18 || narrationSceneSeconds !== 4.5) {
+    throw new Error('Render manifest must use the locked 18-second narration target and four 4.5-second voice takes.');
+  }
   const metrics = { method: 'Linux /proc RSS sampled every 25 ms; isolated worker and all child processes', peakRssBytes: 0, peakFfmpegRssBytes: 0, threads: THREADS, stages: [] };
   const sample = () => { metrics.peakRssBytes = Math.max(metrics.peakRssBytes, memoryTree(process.pid)); };
   const timer = setInterval(sample, 25); sample();
@@ -105,6 +110,7 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
     }
     stage = 'voice and music audio mix';
     let musicDropped = null;
+    let rawVoiceSeconds = Array.isArray(parts.rawVoiceSeconds) ? parts.rawVoiceSeconds : [];
     if (!(await restore('audio', 'm4a'))) {
       const voices = [], tempos = [];
       for (let i=0;i<4;i++) {
@@ -113,9 +119,9 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
         await ff(['-threads','1','-i',src,'-vn','-af',audioFormat,'-c:a','pcm_s16le',wav]);
         const d=Number((await probe(wav)).format.duration);
         if (!(d>0.2)) throw new Error(`Scene ${i+1} saved voice take is empty.`);
-        const tempo=d>4.85?d/4.85:1;
-        if (tempo>1.12) throw new Error(`Scene ${i+1} saved narration is ${d.toFixed(2)}s and cannot fit naturally; needs owner review, no regeneration performed.`);
-        voices.push(wav);tempos.push(tempo);
+        const tempo=d/narrationSceneSeconds;
+        if (tempo<0.80 || tempo>1.12) throw new Error(`Scene ${i+1} saved narration is ${d.toFixed(2)}s and cannot be naturally timed to its ${narrationSceneSeconds.toFixed(1)}-second share of the 18-second voice-over; saved take retained for review.`);
+        voices.push(wav);tempos.push(tempo);rawVoiceSeconds.push(d);
         await fsp.rm(src,{force:true});
       }
       let musicFile=null;
@@ -123,7 +129,7 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       const mix=async withMusic => {
         const args=voices.flatMap(f=>['-threads','1','-i',f]);
         if(withMusic)args.push('-stream_loop','-1','-threads','1','-i',musicFile);
-        const filters=voices.map((_,i)=>`[${i}:a]${audioFormat},${tempos[i]>1?`atempo=${tempos[i].toFixed(5)},`:''}atrim=duration=4.85,adelay=${Math.round((i*5+0.1)*1000)}|${Math.round((i*5+0.1)*1000)},apad=whole_dur=23[n${i}]`);
+        const filters=voices.map((_,i)=>`[${i}:a]${audioFormat},atempo=${tempos[i].toFixed(5)},atrim=duration=${narrationSceneSeconds},adelay=${Math.round((i*5+0.1)*1000)}|${Math.round((i*5+0.1)*1000)},apad=whole_dur=23[n${i}]`);
         filters.push('[n0][n1][n2][n3]amix=inputs=4:duration=longest:normalize=0[voice]');
         if(withMusic) filters.push('[4:a]'+audioFormat+',atrim=duration=23,volume=0.16,afade=t=in:d=0.8,afade=t=out:st=20:d=3[bed]','[voice][bed]amix=inputs=2:duration=longest:normalize=0,atrim=duration=23,alimiter=limit=0.95[a]');
         else filters.push('[voice]atrim=duration=23,alimiter=limit=0.95[a]');
@@ -132,6 +138,8 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       if(musicFile)try{await mix(true);}catch{musicDropped='Music could not be mixed; finished with saved voice takes only.';await mix(false);}else await mix(false);
       await publish('audio',path.join(directory,'audio.m4a'),'audio/mp4');
       parts.music=!!musicFile&&!musicDropped; parts.musicDropped=musicDropped;
+      parts.narrationTargetSeconds=narrationTargetSeconds; parts.narrationSceneSeconds=narrationSceneSeconds;
+      parts.rawVoiceSeconds=rawVoiceSeconds;
     }
     stage = 'stream-copy concat';
     const concat=path.join(directory,'concat.txt');
@@ -144,7 +152,7 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
     const p=await probe(out),v=p.streams.find(s=>s.codec_type==='video'),a=p.streams.find(s=>s.codec_type==='audio');
     if(v?.width!==1080||v?.height!==1920||v.r_frame_rate!=='30/1'||!a||Math.abs(Number(p.format.duration)-23)>0.05)throw new Error('Final MP4 failed dimensions, frame rate, audio or 23-second duration checks.');
     sample();
-    const final={file:out,seconds:Number(p.format.duration),sha256:await shaFile(out),music:!!parts.music,musicDropped:parts.musicDropped||musicDropped,mode:'cuts',peakRssBytes:metrics.peakRssBytes,peakFfmpegRssBytes:metrics.peakFfmpegRssBytes,metrics};
+    const final={file:out,seconds:Number(p.format.duration),sha256:await shaFile(out),music:!!parts.music,musicDropped:parts.musicDropped||musicDropped,mode:'cuts',narrationTargetSeconds,narrationSceneSeconds,spokenNarrationSeconds:narrationTargetSeconds,rawVoiceSeconds:parts.rawVoiceSeconds||rawVoiceSeconds,peakRssBytes:metrics.peakRssBytes,peakFfmpegRssBytes:metrics.peakFfmpegRssBytes,metrics};
     return {parts,final};
   }finally{clearInterval(timer);}
 }

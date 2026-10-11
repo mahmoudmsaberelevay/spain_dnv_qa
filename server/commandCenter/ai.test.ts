@@ -16,10 +16,16 @@ const CAPTION = `هل تفكر في مستقبل عائلتك في أوروبا�
 
 const owner = { email: "owner@elevay.com", role: "owner" };
 const marketer = { email: "marketer@elevay.com", role: "marketer" };
+const sceneScripts = [
+  "لو قرار عيلتك مؤجل، خلينا نبص على Portugal بهدوء.",
+  "بنراجع اختياراتك علشان تعرف أنهي خطوة مناسبة ليك.",
+  "مع ELEVAY بنرتب التفاصيل بوضوح ومن غير ضغط أو وعود.",
+  "تواصل مع ELEVAY دلوقتي واحجز استشارتك بخطوة أوضح.",
+];
 const scene = (i) => ({
   keyframe_prompt: `Arab couple in Lisbon, scene ${i}, modern elegant clothing and polished leather shoes, no text, no logo, no passports, no flags`,
   motion_prompt: "Slow cinematic dolly forward with restrained natural movement",
-  spoken_text_ar: "عيلتك تستاهل خطة هادية في Portugal مع ELEVAY من البداية",
+  spoken_text_ar: sceneScripts[i - 1],
 });
 const STORYBOARD = { topic: "Lisbon", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) };
 const PASS = { pass: true, issues: [], scene_failures: [], non_scene_failures: [], verdict: "All supplied evidence complies." };
@@ -141,6 +147,8 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.voice).toBe(4);
     expect(ctx.calls.openaiText).toHaveLength(1); // storyboard and Egyptian Arabic narration
     expect(ctx.calls.openaiText[0].prompt).toMatch(/Egyptian Arabic voice-over/);
+    expect(ctx.calls.openaiText[0].prompt).toMatch(/exactly 18 seconds/);
+    expect(ctx.calls.openaiText[0].prompt).toMatch(/direct spoken consultation call to action/);
     expect(ctx.calls.claude).toHaveLength(1); // sole final QC
     expect(ctx.calls.claude[0].prompt).toMatch(/ALL supplied visual evidence/);
     expect(ctx.calls.claude[0].prompt).toMatch(/all 600 narrative frames/i);

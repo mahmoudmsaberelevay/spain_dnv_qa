@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { prepareEgyptianReelNarration } from "../shared/elevayVideoNarration";
+import { validateElevay18SecondReelNarration } from "../shared/elevayReelNarrationPolicy";
 
 describe("video and reel voice-over preflight", () => {
   it("rewrites the saved MSA reel into Egyptian Arabic and English programme/company names", () => {
@@ -16,5 +17,23 @@ describe("video and reel voice-over preflight", () => {
     expect(() => prepareEgyptianReelNarration("بنراجع تفاصيل residency في Spain")).toThrow("Egyptian Arabic");
     expect(() => prepareEgyptianReelNarration("بنراجع التفاصيل من خلال https://example.org")).toThrow("contact");
     expect(() => prepareEgyptianReelNarration("سوف نقدم لكم المعلومات الصحيحة")).toThrow("natural Egyptian Arabic");
+  });
+  it("requires one 18-second continuous narration with a truthful hook and direct consultation CTA", () => {
+    const scenes = [
+      { spoken_text_ar: "لو قرار عيلتك مؤجل، خلينا نبص على Portugal بهدوء." },
+      { spoken_text_ar: "بنراجع اختياراتك علشان تعرف أنهي خطوة مناسبة ليك." },
+      { spoken_text_ar: "مع ELEVAY بنرتب التفاصيل بوضوح ومن غير ضغط أو وعود." },
+      { spoken_text_ar: "تواصل مع ELEVAY دلوقتي واحجز استشارتك بخطوة أوضح." },
+    ];
+    expect(validateElevay18SecondReelNarration(scenes)).toBeNull();
+  });
+  it("rejects narration without a direct CTA or with bullet-style lines", () => {
+    const scenes = [
+      { spoken_text_ar: "لو قرار عيلتك مؤجل، خلينا نبص على Portugal بهدوء." },
+      { spoken_text_ar: "بنراجع اختياراتك علشان تعرف أنهي خطوة مناسبة ليك." },
+      { spoken_text_ar: "مع ELEVAY بنرتب التفاصيل بوضوح ومن غير ضغط أو وعود." },
+      { spoken_text_ar: "- بنرتب خطتك علشان تبدأ خطوتك الجاية بوضوح." },
+    ];
+    expect(validateElevay18SecondReelNarration(scenes)).toMatch(/numbered point or bullet/);
   });
 });
