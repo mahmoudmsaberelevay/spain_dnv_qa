@@ -132,6 +132,13 @@ async function approveAndFinish({ o, finishClips }, runId) {
 }
 
 describe("seven-step ELEVAY reel flow", () => {
+  it("starts every OpenAI voice-over writing prompt with the owner's strong Egyptian Arabic line", async () => {
+    const ctx = setup([STORYBOARD]);
+    const run = await ctx.o.create({ kind: "reel", request: "Strong voice test", user: marketer });
+    await settle(ctx.o, run.id, ["running", "queued"]);
+    expect(ctx.calls.openaiText[0].prompt.startsWith("I need a strong text for voice over to be strongly spoken in Arabic Egyptian language.")).toBe(true);
+  });
+
   it("stops a failed voice step without a timeout retry, render or replacement and notifies once", async () => {
     const ctx = setup([STORYBOARD], { voiceError: "HTTP 503: approved voice unavailable" });
     const run = await ctx.o.create({kind:"reel",request:"Voice failure test",user:marketer});
