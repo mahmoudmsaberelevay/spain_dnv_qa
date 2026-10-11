@@ -1443,9 +1443,56 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     return create({ kind: "plan", request: "", options: { month }, user });
   }
 
-  /** Background tick: resume waiting runs (Higgsfield clips, Manus jobs). */
+  /**
+   * Older restart recovery could mark the parent run failed while its external
+   * render job continued safely on the Mac. If that job later completed, the
+   * normal tick ignored the failed parent forever. Restore only this provable
+   * handoff state: a finished worker job with a final artifact, a still-waiting
+   * compose step, no failed production step, and pending downstream review.
+   *
+   * This never calls Higgsfield, ElevenLabs or FFmpeg. It merely returns the
+   * completed render to the normal final-Claude-QC flow.
+   */
+  function completedRenderRecoveryCandidate(run) {
+    if (run?.kind !== "reel" || run.status !== "failed") return null;
+    const compose = run.steps?.find((s) => s.action === "compose_reel");
+    const jobId = run.artifacts?.compose?.jobId;
+    const later = run.steps?.filter((s) => ["qc_final", "to_weekly_plan"].includes(s.action)) || [];
+    if (compose?.status !== "waiting" || !jobId || later.some((s) => ["done", "failed", "needs_review"].includes(s.status))) return null;
+    if (run.steps?.some((s) => s.status === "failed")) return null;
+    return { compose, jobId: String(jobId) };
+  }
+
+  async function recoverCompletedExternalRenders() {
+    const rows = await q("SELECT id, status, doc FROM ec_ai_runs WHERE status='failed' ORDER BY id LIMIT 30");
+    for (const row of rows) {
+      let snapshot;
+      try { snapshot = { ...JSON.parse(row.doc), id: row.id }; } catch { continue; }
+      const candidate = completedRenderRecoveryCandidate(snapshot);
+      if (!candidate) continue;
+      const rendered = (await q("SELECT status, doc FROM ec_render_jobs WHERE id=?", [candidate.jobId]))[0];
+      let renderDoc;
+      try { renderDoc = rendered?.doc ? JSON.parse(rendered.doc) : null; } catch { renderDoc = null; }
+      if (rendered?.status !== "done" || !renderDoc?.final?.url) continue;
+
+      const g = await get(row.id); // reload under optimistic version control
+      if (!g) continue;
+      const live = completedRenderRecoveryCandidate(g.run);
+      if (!live || live.jobId !== candidate.jobId) continue;
+      g.run.status = "waiting";
+      live.compose.error = null;
+      live.compose.output = { pending: true, jobId: live.jobId, waitReason: "Render output received; resuming final review." };
+      log(g.run, "system", "studio", "Recovered completed external render; resuming final Claude review without regenerating media.");
+      try { await save(g.run, g.ver); kick(row.id); } catch (e) {
+        if (String(e?.message || e) !== "The run changed while saving.") throw e;
+      }
+    }
+  }
+
+  /** Background tick: resume waiting runs (Higgsfield clips, render worker, Manus jobs). */
   async function tick() {
     await autopilot().catch(() => {});
+    await recoverCompletedExternalRenders();
     const rows = await q("SELECT id, status, doc FROM ec_ai_runs WHERE status IN ('waiting','queued','running') ORDER BY id LIMIT 30");
     for (const r of rows) {
       if (r.status !== "running") { kick(r.id); continue; }

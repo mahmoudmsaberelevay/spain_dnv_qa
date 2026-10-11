@@ -32,7 +32,7 @@ const PASS = { pass: true, issues: [], scene_failures: [], non_scene_failures: [
 const failScene = (n, fix = "Replace the visible passport with a clean side table and keep the same people and wardrobe.") => ({ pass: false, issues: [`Scene ${n} has a visible visual compliance issue.`], scene_failures: [{ scene: n, issues: ["visible compliance issue"], fix }], non_scene_failures: [], verdict: "Repair only the named scene." });
 
 function memoryDb() {
-  const rows = new Map(), kv = new Map();
+  const rows = new Map(), kv = new Map(), renderJobs = new Map();
   let seq = 0;
   const q = async (sql, args = []) => {
     if (sql.startsWith("CREATE")) return [];
@@ -40,15 +40,18 @@ function memoryDb() {
     if (sql.startsWith("SELECT id, ver, doc")) { const r = rows.get(Number(args[0])); return r ? [{ ...r }] : []; }
     if (sql.startsWith("UPDATE ec_ai_runs")) { const [doc, status, id, ver] = args; const r = rows.get(id); if (!r || r.ver !== ver) return { affectedRows: 0 }; Object.assign(r, { doc, status, ver: ver + 1 }); return { affectedRows: 1 }; }
     if (sql.startsWith("INSERT IGNORE INTO ec_kv")) { if (kv.has(args[0])) return { affectedRows: 0 }; kv.set(args[0], args[1]); return { affectedRows: 1 }; }
+    if (sql.startsWith("SELECT status, doc FROM ec_render_jobs")) { const r = renderJobs.get(String(args[0])); return r ? [{ ...r, doc: JSON.stringify(r.doc) }] : []; }
+    if (sql.includes("FROM ec_ai_runs WHERE status='failed'")) return [...rows.values()].filter((r) => r.status === "failed").sort((a, b) => a.id - b.id);
     if (sql.startsWith("SELECT id, doc")) return [...rows.values()].sort((a, b) => b.id - a.id).slice(0, args[0]);
     if (sql.startsWith("SELECT id, status, doc")) return [...rows.values()].filter((r) => ["waiting", "queued", "running"].includes(r.status));
     throw new Error("unexpected sql " + sql);
   };
   q.rows = rows;
+  q.renderJobs = renderJobs;
   return q;
 }
 
-function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = null } = {}) {
+function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = null, externalRender = false } = {}) {
   const state = E.emptyState();
   // Unit fixtures drive one explicit run. The live scheduler covers calendar
   // autoplan separately; it must not consume mocked Claude responses here.
@@ -90,6 +93,11 @@ function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = n
     },
     composeReelStep: async (input) => {
       calls.render.push(input);
+      if (externalRender) {
+        const id = "render-1", stored = q.renderJobs.get(id);
+        if (!stored || stored.status !== "done") return { pending: true, jobId: id, parts: {} };
+        return { parts: {}, final: stored.doc.final };
+      }
       return { parts: {}, final: { url: "https://cdn.example/final.mp4", seconds: 23.3, sha256: "f".repeat(64), music: false, mode: "cuts", peakRssBytes: 240_000_000, renderJobId: "render-1", qcFrames: Array.from({ length: 75 }, (_, i) => ({ url: `https://cdn.example/qc-${i}.jpg`, label: `Scene ${Math.min(4, Math.floor(i / 19) + 1)} frames ${i * 8 + 1}-${i * 8 + 8}` })) } };
     },
     videoFrames: async (_url, _times, evidence) => evidence.map((x) => ({ base64: "eA==", mediaType: "image/jpeg", label: x.label })),
@@ -98,7 +106,8 @@ function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = n
   const q = memoryDb();
   const mutate = async (_ctx, fn) => fn(state);
   const o = createOrchestrator({ q, mutate, loadState: async () => ({ state }), liveReport: async () => ({ window: {}, ads: { total: { spend: 1000 } } }), providers, E, R, notifyFailure: notify ? async (payload) => calls.notify.push(payload) : undefined });
-  return { o, q, state, calls, finishClips: () => { clipsDone = true; }, setClipsDone: (value) => { clipsDone = value; }, failRequest: (id) => { failedRequestId = id; } };
+  const completeRender = () => q.renderJobs.set("render-1", { status: "done", doc: { final: { url: "https://cdn.example/final.mp4", seconds: 23, sha256: "f".repeat(64), music: false, mode: "cuts", renderJobId: "render-1", qcFrames: Array.from({ length: 75 }, (_, i) => ({ url: `https://cdn.example/qc-${i}.jpg`, label: `Scene ${Math.min(4, Math.floor(i / 19) + 1)} frames ${i * 8 + 1}-${i * 8 + 8}` })) } } });
+  return { o, q, state, calls, finishClips: () => { clipsDone = true; }, setClipsDone: (value) => { clipsDone = value; }, failRequest: (id) => { failedRequestId = id; }, completeRender };
 }
 
 const settle = async (o, id, busy = ["running", "queued"]) => {
@@ -156,6 +165,40 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.claude[0].prompt).toMatch(/تأشيرة/);
     expect(result.artifacts.final).toMatchObject({ renderJobId: "render-1", peakRssBytes: 240_000_000 });
     expect(ctx.state.items.find((x) => x.item_id === result.artifacts.item_id)).toMatchObject({ status: "pending_approval" });
+  });
+
+  it("recovers a falsely failed parent run when the Mac completed its saved render without regenerating media", async () => {
+    const ctx = setup([STORYBOARD, PASS], { externalRender: true });
+    const run = await ctx.o.create({ kind: "reel", request: "External worker recovery", user: marketer });
+    let r = await settle(ctx.o, run.id);
+    await ctx.o.approve(run.id, r.steps.find((s) => s.action === "clips").n, owner);
+    await settle(ctx.o, run.id);
+    ctx.finishClips();
+    for (let i = 0; i < 30; i++) {
+      await ctx.o.tick();
+      r = await ctx.o.get(run.id);
+      if (r.steps.find((s) => s.action === "compose_reel").status === "waiting") break;
+      await new Promise((resolve) => setTimeout(resolve, 3));
+    }
+    expect(r.status).toBe("waiting");
+    expect(r.steps.find((s) => s.action === "compose_reel").status).toBe("waiting");
+    const persisted = ctx.q.rows.get(run.id), orphan = JSON.parse(persisted.doc);
+    orphan.status = "failed"; // simulates the old server-restart false failure
+    persisted.status = "failed"; persisted.doc = JSON.stringify(orphan);
+    ctx.completeRender();
+    for (let i = 0; i < 30; i++) {
+      await ctx.o.tick();
+      r = await ctx.o.get(run.id);
+      if (!["running", "queued", "waiting"].includes(r.status)) break;
+      await new Promise((resolve) => setTimeout(resolve, 3));
+    }
+    expect(r.status).toBe("done");
+    expect(r.artifacts.final.renderJobId).toBe("render-1");
+    expect(ctx.calls.openai).toHaveLength(4);
+    expect(ctx.calls.hfSubmit).toHaveLength(4);
+    expect(ctx.calls.voice).toBe(4);
+    expect(ctx.calls.render.length).toBeGreaterThanOrEqual(2); // durable queue/result polling only; no media providers were re-run
+    expect(ctx.calls.claude).toHaveLength(1);
   });
 
   it("regenerates exactly named final-QC scenes, preserves voice takes, and reopens the manual owner gate", async () => {
