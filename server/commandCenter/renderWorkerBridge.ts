@@ -248,17 +248,32 @@ export function createRenderWorkerBridge({
     return { row, doc, key: leaseKey(workerId, leaseId) };
   }
 
+  async function quarantineInvalidManifest(row: any, doc: any, reason: unknown) {
+    const error = `Queued render job is invalid and was not sent to a worker: ${cleanError(reason)}`;
+    doc.error = error;
+    doc.stage = "invalid_manifest";
+    doc.invalidManifestAt = now();
+    doc.lastFailure = { at: now(), stage: "queued render inputs", error };
+    try { doc.notification = await notifyFailure({ runId: row.run_id, stepName: "Final edit — saved render inputs", reason: error }); }
+    catch { doc.notification = false; }
+    await q("UPDATE ec_render_jobs SET status='failed',doc=?,updated_at=?,lease_until=0,lease_owner=NULL WHERE id=? AND status IN ('pending','running')", [JSON.stringify(doc), now(), row.id]);
+  }
+
   async function lease(workerId: string) {
     await ensure();
     limit("lease", 90, 15 * 60_000);
     if (!isWorkerId(workerId)) throw new RenderWorkerBridgeError(400, "Worker identifier is invalid.");
-    for (let retry = 0; retry < 3; retry++) {
+    // Legacy queue rows can pre-date the fixed-outro contract. Quarantine a
+    // bounded batch rather than handing an unusable job to the Mac forever.
+    for (let retry = 0; retry < 20; retry++) {
       const t = now();
       const rows = await q("SELECT * FROM ec_render_jobs WHERE ((status='pending' AND lease_until<=?) OR (status='running' AND lease_until<?)) ORDER BY created_at LIMIT 1", [t, t]);
       const row = rows[0];
       if (!row) return { ok: true, job: null };
       const doc = parseDoc(row);
-      const manifest = safeManifest(doc.manifest);
+      let manifest;
+      try { manifest = safeManifest(doc.manifest); }
+      catch (error) { await quarantineInvalidManifest(row, doc, error); continue; }
       const leaseId = crypto.randomBytes(24).toString("base64url");
       const owner = leaseKey(workerId, leaseId);
       const leaseUntil = t + LEASE_MS;
@@ -381,7 +396,11 @@ export function createRenderWorkerBridge({
     current.doc.stage = "retry_wait";
     current.doc.lastFailure = { at: now(), stage, error };
     const attempts = Number(current.row.attempts || 0);
-    if (attempts <= 3) {
+    // A saved voice that cannot meet the locked 4.5-second slot is a durable
+    // input problem, not a transient FFmpeg or network failure. Preserve it
+    // and surface review rather than retrying it three times.
+    const permanent = input?.permanent === true || /cannot be naturally timed|saved narration is .*cannot/i.test(error);
+    if (!permanent && attempts <= 3) {
       const retryAt = now() + RETRY_DELAY_MS;
       current.doc.retryAt = retryAt;
       delete current.doc.lease;

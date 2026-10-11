@@ -54,6 +54,11 @@ function harness(start = 1_000_000) {
       Object.assign(row, { status: "pending", doc, updated_at: updatedAt, lease_until: leaseUntil, lease_owner: null }); return { affectedRows: 1 };
     }
     if (sql.startsWith("UPDATE ec_render_jobs SET status='failed'")) {
+      if (sql.includes("status IN ('pending','running')")) {
+        const [doc, updatedAt, id] = args; const row = rows.get(id);
+        if (!row || !["pending", "running"].includes(row.status)) return { affectedRows: 0 };
+        Object.assign(row, { status: "failed", doc, updated_at: updatedAt, lease_until: 0, lease_owner: null }); return { affectedRows: 1 };
+      }
       const [doc, updatedAt, id, owner] = args; const row = rows.get(id);
       if (!row || row.status !== "running" || row.lease_owner !== owner) return { affectedRows: 0 };
       Object.assign(row, { status: "failed", doc, updated_at: updatedAt, lease_until: 0, lease_owner: null }); return { affectedRows: 1 };
@@ -66,7 +71,7 @@ function harness(start = 1_000_000) {
     throw new Error(`Unexpected SQL: ${sql}`);
   };
   const bridge = createRenderWorkerBridge({ q, token: "test-worker-token", now: () => clock, notifyFailure: async () => true, putFile: async (_key: string, _file: string, type: string) => ({ url: `https://storage.example/${type.replace("/", "-")}` }) });
-  const enqueue = (id = "reel-bridge-security-90007") => rows.set(id, { id, run_id: 90007, status: "pending", created_at: clock, updated_at: clock, lease_until: 0, lease_owner: null, attempts: 0, doc: JSON.stringify({ manifest, parts: { _version: manifest.version, privateServerOnly: "not-a-render-part" }, stage: "queued" }) });
+  const enqueue = (id = "reel-bridge-security-90007", manifestOverride = {}) => rows.set(id, { id, run_id: 90007, status: "pending", created_at: clock, updated_at: clock, lease_until: 0, lease_owner: null, attempts: 0, doc: JSON.stringify({ manifest: { ...manifest, ...manifestOverride }, parts: { _version: manifest.version, privateServerOnly: "not-a-render-part" }, stage: "queued" }) });
   return { bridge, rows, enqueue, advance: (ms: number) => { clock += ms; } };
 }
 
@@ -98,6 +103,17 @@ describe("render worker bridge", () => {
     expect(result.lease.id).not.toContain("test-worker-token");
   });
 
+  it("quarantines a legacy job without a fixed outro and continues to a valid waiting job", async () => {
+    const { bridge, enqueue, rows } = harness();
+    enqueue("reel-legacy-invalid-90007", { outroUrl: null });
+    enqueue("reel-valid-next-90007");
+    const result = await bridge.lease("macbook-worker-01");
+    expect(result.job.id).toBe("reel-valid-next-90007");
+    const invalid = rows.get("reel-legacy-invalid-90007");
+    expect(invalid.status).toBe("failed");
+    expect(JSON.parse(invalid.doc)).toMatchObject({ stage: "invalid_manifest" });
+  });
+
   it("rejects a second worker’s progress or completion attempts on an active lease", async () => {
     const { bridge, enqueue } = harness(); enqueue();
     const lease = await bridge.lease("macbook-worker-01");
@@ -113,6 +129,13 @@ describe("render worker bridge", () => {
     const second = await bridge.lease("macbook-worker-02");
     expect(second.job.id).toBe(first.job.id);
     expect(second.lease.id).not.toBe(first.lease.id);
+  });
+
+  it("stops a permanently untimable saved voice without consuming automatic render retries", async () => {
+    const { bridge, enqueue, rows } = harness(); enqueue();
+    const lease = await bridge.lease("macbook-worker-01");
+    await expect(bridge.fail(lease.job.id, "macbook-worker-01", lease.lease.id, { stage: "rendering", error: "Scene 1 saved narration cannot be naturally timed to the locked slot." })).resolves.toMatchObject({ retry: false });
+    expect(rows.get(lease.job.id).status).toBe("failed");
   });
 
   it("validates artifact kind, MIME, size, SHA-256 and active lease before committing", async () => {
