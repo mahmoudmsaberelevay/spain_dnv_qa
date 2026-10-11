@@ -198,6 +198,7 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.hfSubmit).toHaveLength(4);
     expect(ctx.calls.voice).toBe(4);
     expect(ctx.calls.render.length).toBeGreaterThanOrEqual(2); // durable queue/result polling only; no media providers were re-run
+    expect(ctx.calls.render.at(-1)).toMatchObject({ narrationTargetSeconds: 18, narrationSceneSeconds: 4.5 });
     expect(ctx.calls.claude).toHaveLength(1);
   });
 

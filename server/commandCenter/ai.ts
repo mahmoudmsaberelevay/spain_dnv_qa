@@ -1146,7 +1146,10 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       const music = (process.env.ELEVAY_REEL_MUSIC_URLS || "").split(",").map((x) => x.trim()).filter(Boolean);
       const musicUrl = music.length ? music[run.id % music.length] : null;
       const C = A.compose || (A.compose = { parts: {}, mode: "cuts" });
-      const s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: C.parts || {}, mode: C.mode || "cuts", jobId: C.jobId, editDirection: A.brief?.reel?.final_edit_direction });
+      // Must exactly match the compose manifest created before the Mac leased the
+      // job. Omitting these values changes validation/hash behavior and can make
+      // a completed external render look permanently unavailable.
+      const s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: C.parts || {}, mode: C.mode || "cuts", jobId: C.jobId, editDirection: A.brief?.reel?.final_edit_direction, narrationTargetSeconds: A.brief?.reel?.narration_target_seconds || ELEVAY_REEL_NARRATION_STANDARD.targetSeconds, narrationSceneSeconds: A.brief?.reel?.narration_target_scene_seconds || ELEVAY_REEL_NARRATION_STANDARD.targetSceneSeconds });
       C.parts = s.parts || C.parts;
       if (s.pending) {
         C.jobId = s.jobId || C.jobId || null;
