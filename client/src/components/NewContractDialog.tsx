@@ -12,13 +12,6 @@ import { Loader2, Download, CheckCircle, Users, User, FileText, Phone, Receipt, 
 import { formatCurrency } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const CONSULTANTS = [
-  "Ziad El Shurafa",
-  "Mahmoud Saber",
-  "Fouad Abdo",
-  "Kirolos Nabil",
-];
-
 // Spain uses family-size pricing; citizenship programs require a manual fee entry
 const SPAIN_PRICING: Record<number, number> = { 1: 12000, 2: 13000, 3: 14000, 4: 14000 };
 
@@ -51,6 +44,7 @@ export default function NewContractDialog({ open, onClose }: Props) {
 
   // Load country list from backend
   const { data: countries } = trpc.contracting.contracts.getCountries.useQuery();
+  const { data: consultants = [], isLoading: consultantsLoading } = trpc.contracting.contracts.getConsultants.useQuery();
   const parsedMarketingLeadId = Number(marketingLeadId);
   const marketingLead = trpc.contracting.contracts.getMarketingLead.useQuery(
     { leadId: Number.isInteger(parsedMarketingLeadId) && parsedMarketingLeadId > 0 ? parsedMarketingLeadId : 1 },
@@ -233,16 +227,19 @@ export default function NewContractDialog({ open, onClose }: Props) {
                   <UserCheck className="h-3.5 w-3.5" />
                   Consultant
                 </Label>
-                <Select value={consultantName} onValueChange={setConsultantName} disabled={createMutation.isPending}>
+                <Select value={consultantName} onValueChange={setConsultantName} disabled={createMutation.isPending || consultantsLoading}>
                   <SelectTrigger className="h-10">
-                    <SelectValue placeholder="Select consultant..." />
+                    <SelectValue placeholder={consultantsLoading ? "Loading consultants..." : "Select consultant..."} />
                   </SelectTrigger>
                   <SelectContent>
-                    {CONSULTANTS.map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    {consultants.map((consultant) => (
+                      <SelectItem key={consultant.id} value={consultant.name}>{consultant.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {!consultantsLoading && consultants.length === 0 && (
+                  <p className="text-xs text-destructive">Add an active employee with the Consultant position before issuing a contract.</p>
+                )}
               </div>
 
               <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">

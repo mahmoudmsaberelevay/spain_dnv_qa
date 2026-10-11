@@ -6,6 +6,7 @@ import {
   clientCases, appSettings, contracts,
 } from "../drizzle/schema";
 import { enforceQualifierCommissionMarketingSource } from "../shared/commissionSourcePolicy";
+import { isContractConsultantPosition } from "../shared/elevayEmployeePositions";
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
 export async function listAccounts() {
@@ -122,6 +123,24 @@ export async function listEmployees() {
     totalExpense: totalsMap[e.id]?.totalExpense ?? 0,
   }));
 }
+
+/** The Contracting module may only offer active employees with a consultant-equivalent position. */
+export async function listActiveContractConsultants() {
+  const db = await getDb(); if (!db) return [];
+  const employees = await db
+    .select({ id: finEmployees.id, name: finEmployees.name, position: finEmployees.role })
+    .from(finEmployees)
+    .where(eq(finEmployees.isActive, true))
+    .orderBy(asc(finEmployees.name));
+  return employees.filter((employee) => isContractConsultantPosition(employee.position));
+}
+
+export async function isActiveContractConsultant(name: string) {
+  const normalizedName = name.trim().toLocaleLowerCase();
+  const consultants = await listActiveContractConsultants();
+  return consultants.some((consultant) => consultant.name.trim().toLocaleLowerCase() === normalizedName);
+}
+
 export async function createEmployee(data: { name: string; role?: string; salary?: string }) {
   const db = await getDb(); if (!db) return null;
   const [result] = await db.insert(finEmployees).values(data);

@@ -48,7 +48,7 @@ describe("Meta Ads Strategy Approval Packet", () => {
     expect(migration).not.toMatch(/CREATE TABLE\s+`?(campaign|ad_account|payment|lead|contract|fin)/i);
   });
 
-  it("wires the protected owner workspace and visibly describes the no-execution boundary", () => {
+  it("retains the protected owner route and no-execution boundary without a legacy Marketing hub", () => {
     const app = read("client/src/App.tsx");
     const workspace = read("client/src/pages/marketing/WeeklyResults.tsx");
     const mobile = read("client/src/components/MobileLayout.tsx");
@@ -56,7 +56,7 @@ describe("Meta Ads Strategy Approval Packet", () => {
     expect(app).toContain('path="/marketing/meta-ads-strategy-packet"');
     expect(workspace).toContain('title: "Strategy Packet"');
     expect(workspace).toContain('href: "/marketing/meta-ads-strategy-packet"');
-    expect(mobile).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
+    expect(mobile).not.toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
     expect(page).toContain("Meta operations locked");
     expect(page).toContain("Approve planning packet only");
     expect(page).toContain("A separate Phase 5b proposal, Meta authorization, explicit budget/spend caps and measurement-pilot approval are still required.");

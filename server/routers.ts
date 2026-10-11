@@ -889,6 +889,10 @@ async function regenerateStoredReceiptPdf(invoice: StoredInvoice): Promise<strin
 const contractingRouter = router({
   contracts: router({
     list: protectedProcedure.query(async () => getAllContracts()),
+    getConsultants: protectedProcedure.query(async () => {
+      const { listActiveContractConsultants } = await import("./finDb");
+      return listActiveContractConsultants();
+    }),
     getById: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
@@ -920,6 +924,12 @@ const contractingRouter = router({
         currency: z.enum(["EUR", "USD"]).default("EUR"),
       }))
       .mutation(async ({ ctx, input }) => {
+        if (input.consultantName) {
+          const { isActiveContractConsultant } = await import("./finDb");
+          if (!await isActiveContractConsultant(input.consultantName)) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Select an active employee whose position is Consultant." });
+          }
+        }
         if (input.clientOrigin === "marketing") {
           if (!input.marketingLeadId) throw new TRPCError({ code: "BAD_REQUEST", message: "Enter a valid Marketing Lead ID" });
           try {
@@ -1050,11 +1060,16 @@ const contractingRouter = router({
     updateConsultant: protectedProcedure
       .input(z.object({
         id: z.number(),
-        consultantName: z.enum(["Mahmoud Saber", "Fouad Abdo", "Ziad El Shurafa", "Kirolos Nabil"]),
+        consultantName: z.string().trim().min(1),
       }))
       .mutation(async ({ input }) => {
         const contract = await getContractById(input.id);
         if (!contract) throw new TRPCError({ code: "NOT_FOUND", message: "Contract not found" });
+
+        const { isActiveContractConsultant } = await import("./finDb");
+        if (!await isActiveContractConsultant(input.consultantName)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Select an active employee whose position is Consultant." });
+        }
 
         await updateContractConsultant(input.id, input.consultantName);
         const { syncConsultantForContract } = await import("./finDb");

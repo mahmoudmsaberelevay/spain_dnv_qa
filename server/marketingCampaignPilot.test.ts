@@ -50,17 +50,15 @@ describe("Campaign Pilot Proposal", () => {
     expect(migration).not.toMatch(/CREATE TABLE\s+`?(campaign|ad_account|payment|lead|contract|fin|meta_credential)/i);
   });
 
-  it("wires a protected workspace and visibly retains the no-execution boundary", () => {
+  it("retains the protected route and no-execution boundary without a legacy Marketing hub", () => {
     const app = read("client/src/App.tsx");
     const workspace = read("client/src/pages/marketing/WeeklyResults.tsx");
     const mobile = read("client/src/components/MobileLayout.tsx");
-    const hub = read("client/src/pages/marketing/AgenticMarketingHub.tsx");
     const page = read("client/src/pages/marketing/CampaignPilotProposal.tsx");
     expect(app).toContain('path="/marketing/campaign-pilot-proposal"');
     expect(workspace).toContain('title: "Pilot Proposal"');
     expect(workspace).toContain('href: "/marketing/campaign-pilot-proposal"');
-    expect(mobile).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
-    expect(hub).toContain("Choose one of three workspaces");
+    expect(mobile).not.toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
     expect(page).toContain("External operations locked");
     expect(page).toContain("Create hash-locked internal proposal");
     expect(page).toContain("does not authorize a Meta sign-in");

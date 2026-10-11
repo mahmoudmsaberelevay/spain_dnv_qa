@@ -46,7 +46,7 @@ describe("Marketing System Content Studio integration contract", () => {
     expect(router).toContain("owner_batch_approved");
   });
 
-  it("wires the protected Content Studio route and preserves the no-execution boundary in the user interface", () => {
+  it("retains the protected Content Studio route while removing the legacy Marketing hub navigation", () => {
     const app = read("client/src/App.tsx");
     const workspace = read("client/src/pages/marketing/WeeklyResults.tsx");
     const mobile = read("client/src/components/MobileLayout.tsx");
@@ -54,7 +54,7 @@ describe("Marketing System Content Studio integration contract", () => {
     expect(app).toContain('path="/marketing/content-studio"');
     expect(workspace).toContain('title: "Content Studio & Approval Inbox"');
     expect(workspace).toContain('href: "/marketing/content-studio"');
-    expect(mobile).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
+    expect(mobile).not.toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
     expect(page).toContain("no model call, media render, publication, schedule, campaign activation, CAPI change, client message, or spend action");
     expect(page).toContain("Published</p><p className=\"mt-1 font-semibold text-emerald-200\">0");
   });

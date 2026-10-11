@@ -183,18 +183,16 @@ describe("Weekly Results CRM integration contract", () => {
     expect(hub).toContain('agentic-readable min-h-full bg-[#0c1320]');
   });
 
-  it("keeps Weekly Results inside the protected central Agentic Marketing workspace", () => {
+  it("keeps the legacy Weekly Results route isolated after retiring its Marketing hub", () => {
     const app = read("client/src/App.tsx");
     const dashboard = read("client/src/pages/marketing/MarketingDashboard.tsx");
     const desktopNav = read("client/src/components/DashboardLayout.tsx");
     const mobileNav = read("client/src/components/MobileLayout.tsx");
     const page = read("client/src/pages/marketing/WeeklyResults.tsx");
     expect(app).toContain('path="/marketing/weekly-results"');
-    expect(dashboard).toContain('title: "AI Agentic Marketing System"');
-    expect(desktopNav).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
-    expect(mobileNav).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
-    expect(desktopNav).not.toContain('label: "1. Setup"');
-    expect(desktopNav).not.toContain('label: "2. Weekly Results"');
+    expect(dashboard).not.toContain('title: "AI Agentic Marketing System"');
+    expect(desktopNav).not.toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
+    expect(mobileNav).not.toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
     expect(page).toContain("Provider execution paused");
     expect(page).toContain("Batch approval");
     expect(page).toContain("Not available by design");

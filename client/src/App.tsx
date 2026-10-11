@@ -88,7 +88,6 @@ import ContentStudio from "./pages/marketing/ContentStudio";
 import MetaAdsStrategyIntake from "./pages/marketing/MetaAdsStrategyIntake";
 import MetaAdsStrategyPacket from "./pages/marketing/MetaAdsStrategyPacket";
 import CampaignPilotProposal from "./pages/marketing/CampaignPilotProposal";
-import AgenticMarketingHub from "./pages/marketing/AgenticMarketingHub";
 import MetaAdsProduction from "./pages/marketing/MetaAdsProduction";
 import ProviderConnectionCenter from "./pages/marketing/ProviderConnectionCenter";
 import PilotReadinessDashboard from "./pages/marketing/PilotReadinessDashboard";
@@ -354,7 +353,7 @@ function Router() {
         <MobileRoute><MarketingDashboard /></MobileRoute>
       </Route>
       <Route path="/marketing/agentic-system">
-        <MobileRoute><AgenticMarketingHub /></MobileRoute>
+        <Redirect to="/marketing" />
       </Route>
       <Route path="/marketing/agentic-settings">
         <MobileRoute><WeeklyResults section="setup" /></MobileRoute>

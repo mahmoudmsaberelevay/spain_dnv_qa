@@ -34,13 +34,13 @@ describe("Marketing System Work Orders integration contract", () => {
     expect(router).not.toContain("delete(marketingWorkOrderEvents)");
   });
 
-  it("wires the responsive CRM route and Marketing navigation entry", () => {
+  it("retains the responsive CRM route while removing the legacy Marketing hub navigation entry", () => {
     const app = read("client/src/App.tsx");
     const workspace = read("client/src/pages/marketing/WeeklyResults.tsx");
     const mobile = read("client/src/components/MobileLayout.tsx");
     expect(app).toContain('path="/marketing/work-orders"');
     expect(workspace).toContain('title: "Work Orders"');
     expect(workspace).toContain('href: "/marketing/work-orders"');
-    expect(mobile).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
+    expect(mobile).not.toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
   });
 });

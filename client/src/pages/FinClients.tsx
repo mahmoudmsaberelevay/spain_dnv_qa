@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-const CONSULTANTS = ["Mahmoud Saber", "Fouad Abdo", "Ziad El Shurafa", "Kirolos Nabil"] as const;
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 250];
 
 type SortField = "clientCode" | "name" | "program" | "consultant" | "contractValueEur" | "paidAmountEur" | "remainingAmountEur" | "signingDate";
@@ -43,6 +42,7 @@ function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: 
 }
 
 export default function FinClients() {
+  const { data: consultants = [] } = trpc.contracting.contracts.getConsultants.useQuery();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [codeFilter, setCodeFilter] = useState("");
@@ -436,7 +436,7 @@ export default function FinClients() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Consultants</SelectItem>
-            {CONSULTANTS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            {consultants.map(item => <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={signingDateRange} onValueChange={(v) => { setSigningDateRange(v as typeof signingDateRange); setPage(0); }}>
@@ -796,7 +796,7 @@ export default function FinClients() {
                 <Select value={form.consultant} onValueChange={v => setForm(f => ({ ...f, consultant: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {CONSULTANTS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {consultants.map(item => <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

@@ -25,8 +25,6 @@ import { usePermissions } from "@/contexts/PermissionsContext";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Trash2 } from "lucide-react";
 
-const CONSULTANTS = ["Mahmoud Saber", "Fouad Abdo", "Ziad El Shurafa", "Kirolos Nabil"] as const;
-
 type DateRangePreset = "all" | "this_month" | "last_month" | "this_quarter" | "this_year";
 
 const DATE_RANGE_LABELS: Record<DateRangePreset, string> = {
@@ -125,6 +123,7 @@ export default function Contracts() {
   } | null>(null);
 
   const { data: contracts, isLoading } = trpc.contracting.contracts.list.useQuery();
+  const { data: consultants = [] } = trpc.contracting.contracts.getConsultants.useQuery();
   const utils = trpc.useUtils();
 
   const [redownloadingId, setRedownloadingId] = useState<number | null>(null);
@@ -301,8 +300,8 @@ export default function Contracts() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Consultants</SelectItem>
-              {CONSULTANTS.map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
+              {consultants.map((consultant) => (
+                <SelectItem key={consultant.id} value={consultant.name}>{consultant.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -539,8 +538,8 @@ export default function Contracts() {
                 <SelectValue placeholder="Select consultant" />
               </SelectTrigger>
               <SelectContent>
-                {CONSULTANTS.map((consultantName) => (
-                  <SelectItem key={consultantName} value={consultantName}>{consultantName}</SelectItem>
+                {consultants.map((consultant) => (
+                  <SelectItem key={consultant.id} value={consultant.name}>{consultant.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -553,7 +552,7 @@ export default function Contracts() {
                 if (!editConsultant) return;
                 updateConsultantMutation.mutate({
                   id: editConsultant.id,
-                  consultantName: editConsultant.consultantName as typeof CONSULTANTS[number],
+                  consultantName: editConsultant.consultantName,
                 });
               }}
             >

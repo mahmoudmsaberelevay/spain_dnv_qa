@@ -51,14 +51,10 @@ describe("Provider Connection Center and scoped administrator", () => {
     expect(lock.blockers).toContain("The provider execution release has not been implemented; external actions remain intentionally blocked.");
   });
 
-  it("keeps the provider center reachable through the single Agentic Marketing tab and hub", () => {
+  it("keeps the legacy provider route internal while retiring its Marketing navigation hub", () => {
     expect(read("client/src/App.tsx")).toContain('path="/marketing/provider-connections"');
-    expect(read("client/src/pages/marketing/MarketingDashboard.tsx")).toContain("AI Agentic Marketing System");
-    expect(read("client/src/components/MobileLayout.tsx")).toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
-    const hub = read("client/src/pages/marketing/AgenticMarketingHub.tsx");
-    const settings = read("client/src/pages/marketing/WeeklyResults.tsx");
-    expect(hub).toContain("Choose one of three workspaces");
-    expect(settings).toContain("Provider Connections");
-    expect(settings).toContain('href: "/marketing/provider-connections"');
+    expect(read("client/src/pages/marketing/MarketingDashboard.tsx")).not.toContain("AI Agentic Marketing System");
+    expect(read("client/src/components/MobileLayout.tsx")).not.toContain('label: "AI Agentic Marketing System", path: "/marketing/agentic-system"');
+    expect(read("client/src/App.tsx")).toContain('<Redirect to="/marketing" />');
   });
 });

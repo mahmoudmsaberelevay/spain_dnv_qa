@@ -4,9 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Edit2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ELEVAY_EMPLOYEE_POSITIONS } from "@shared/elevayEmployeePositions";
 
 export default function FinEmployees() {
   const utils = trpc.useUtils();
@@ -66,7 +68,7 @@ export default function FinEmployees() {
                   <tr className="border-b">
                     <th className="text-left py-2 font-medium">#</th>
                     <th className="text-left py-2 font-medium">Name</th>
-                    <th className="text-left py-2 font-medium">Role</th>
+                    <th className="text-left py-2 font-medium">Position</th>
                     <th className="text-right py-2 font-medium">Fixed Salary</th>
                     <th className="text-right py-2 font-medium text-green-700">Total Income</th>
                     <th className="text-right py-2 font-medium text-red-700">Total Expense</th>
@@ -117,8 +119,13 @@ export default function FinEmployees() {
               <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Employee name" />
             </div>
             <div>
-              <label className="text-sm font-medium">Role</label>
-              <Input value={newRole} onChange={e => setNewRole(e.target.value)} placeholder="e.g. Consultant, Paralegal" />
+              <label className="text-sm font-medium">Position</label>
+              <Select value={newRole} onValueChange={setNewRole}>
+                <SelectTrigger><SelectValue placeholder="Select employee position" /></SelectTrigger>
+                <SelectContent>
+                  {ELEVAY_EMPLOYEE_POSITIONS.map((position) => <SelectItem key={position} value={position}>{position}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="text-sm font-medium">Fixed Salary (EGP)</label>
@@ -127,7 +134,7 @@ export default function FinEmployees() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button onClick={() => createMut.mutate({ name: newName, role: newRole || undefined, salary: newSalary ? Number(newSalary) : undefined })} disabled={!newName.trim() || createMut.isPending}>
+            <Button onClick={() => createMut.mutate({ name: newName, role: newRole, salary: newSalary ? Number(newSalary) : undefined })} disabled={!newName.trim() || !newRole || createMut.isPending}>
               {createMut.isPending ? "Adding..." : "Add"}
             </Button>
           </DialogFooter>
@@ -144,8 +151,16 @@ export default function FinEmployees() {
               <Input value={editName} onChange={e => setEditName(e.target.value)} />
             </div>
             <div>
-              <label className="text-sm font-medium">Role</label>
-              <Input value={editRole} onChange={e => setEditRole(e.target.value)} />
+              <label className="text-sm font-medium">Position</label>
+              <Select value={editRole} onValueChange={setEditRole}>
+                <SelectTrigger><SelectValue placeholder="Select employee position" /></SelectTrigger>
+                <SelectContent>
+                  {!ELEVAY_EMPLOYEE_POSITIONS.includes(editRole as typeof ELEVAY_EMPLOYEE_POSITIONS[number]) && editRole && (
+                    <SelectItem value={editRole}>Legacy position: {editRole}</SelectItem>
+                  )}
+                  {ELEVAY_EMPLOYEE_POSITIONS.map((position) => <SelectItem key={position} value={position}>{position}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="text-sm font-medium">Fixed Salary (EGP)</label>
@@ -154,7 +169,7 @@ export default function FinEmployees() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditEmp(null)}>Cancel</Button>
-            <Button onClick={() => updateMut.mutate({ id: editEmp.id, name: editName, role: editRole || undefined, salary: editSalary ? Number(editSalary) : undefined })} disabled={!editName.trim() || updateMut.isPending}>
+            <Button onClick={() => updateMut.mutate({ id: editEmp.id, name: editName, role: editRole || undefined, salary: editSalary ? Number(editSalary) : undefined })} disabled={!editName.trim() || !editRole || updateMut.isPending}>
               {updateMut.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
