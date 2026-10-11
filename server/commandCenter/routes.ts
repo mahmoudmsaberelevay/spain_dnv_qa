@@ -427,6 +427,10 @@ route("GET", "/ai/autopilot", "team", async () => {
   const a = R.approvalStats(state.items, state.settings);
   return ok({ ok: true, autopublish: state.settings.autopublish, approval: { weeksDone: a.weeksDone, cumulative: a.cumulative, rolling4: a.rolling4, gateEligible: a.gateEligible, manualWeeks: state.settings.manualWeeks, threshold: state.settings.approvalThreshold }, studio: { autoplan: state.settings.studio?.autoplan !== false, autoClips: state.settings.studio?.autoClips !== false, reelLimitPerWeek: Number(state.settings.studio?.reelLimitPerWeek ?? 6) }, lastWeekly: await kvGet("autoplan_last_week") });
 });
+route("POST", "/ai/news/research", "owner", async () => {
+  try { return ok({ ok: true, ...(await (await studio()).researchNews({ email: "owner", role: "owner" })) }); }
+  catch (e) { return fail(502, "News research failed: " + String(e?.message || e).slice(0, 300)); }
+});
 route("POST", "/ai/autoplan/weekly", "marketer", async (ctx) => {
   const week = /^\d{4}-W\d{2}$/.test(ctx.body.week || "") ? ctx.body.week : ctx.body.which === "this" ? isoWeekOf(Date.now()) : ctx.body.which === "next" ? isoWeekOf(Date.now() + 7 * 86400000) : undefined;
   try { const run = await (await studio()).startWeekly(week, ctx.user); return ok({ ok: true, run }); } catch (e) { return fail(400, e.message); }

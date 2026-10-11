@@ -269,7 +269,7 @@
       plan: '7 posts a week (4 static + 3 reels). Approve, request changes or reject each item. Manus regenerates only what you flag.',
       actions: 'Friday action plan from the Meta report. Manus executes only what the owner approves.',
       performance: 'Live from Meta and the ELEVAY CRM: last 30 days of ads, leads, qualified, unqualified, clients and page growth. Read-only.',
-      news: 'Weekly news search: Manus collects, Claude verifies. Only verified or reported items can feed posts.',
+      news: 'Weekly news search: Claude searches the web every Thursday at 20:00 Cairo. Only verified or reported items can feed posts.',
       monthly: 'Next month’s plan, built from 6 months of Meta and CRM results. The owner approves it.',
       studio: 'Autopilot plans the week from your Meta and CRM results, Claude hands each part to OpenAI, Higgsfield or Manus, and checks the results.',
       meta: 'Replies to comments and messages, publishing approved posts, and campaign changes. Nothing runs on Meta without approval (automatic only after the 6-week gate), always inside the cap and max CPL.',
@@ -768,13 +768,16 @@
   // ------------------------------------------------------------ news
   function viewNews(el) {
     const news = S.data.news;
-    if (!news.length) { el.innerHTML = '<div class="empty">Manus starts the deep news search every Thursday at 20:00 Cairo.</div>'; return; }
-    el.innerHTML = `<section class="panel"><div class="table-wrap"><table><thead><tr><th>Use</th><th>Headline</th><th>Country / program</th><th>Effective</th><th>Confidence</th><th>Marketing angle</th></tr></thead><tbody>
+    const runBtn = isOwner() && S.mode === 'server' ? `<div class="row" style="justify-content:space-between;margin-bottom:12px"><span class="small muted">Claude searches the web for programme news every Thursday at 20:00 Cairo (or before Saturday's plan if that was missed) and files it here.</span><button class="btn sm" id="newsRun">Research news now</button></div>` : '';
+    const wire = () => { const b = el.querySelector('#newsRun'); if (b) b.onclick = () => { b.disabled = true; b.textContent = 'Researching… (1–3 min)'; act(async () => { const r = await api.req('POST', 'ai/news/research', {}); await refresh(); toast(`News research finished: ${r.added} new item(s) of ${r.found} found.`); }); }; };
+    if (!news.length) { el.innerHTML = runBtn + '<div class="empty">No news yet. Claude researches programme news every Thursday at 20:00 Cairo.</div>'; wire(); return; }
+    el.innerHTML = runBtn + `<section class="panel"><div class="table-wrap"><table><thead><tr><th>Use</th><th>Headline</th><th>Country / program</th><th>Effective</th><th>Confidence</th><th>Marketing angle</th></tr></thead><tbody>
       ${news.map((n) => `<tr><td><input type="checkbox" data-news="${n.id}" ${n.selected ? 'checked' : ''} ${!canEdit() || n.confidence === 'unconfirmed' ? 'disabled' : ''} aria-label="Use this item"></td>
         <td><strong>${esc(n.headline)}</strong><div class="small muted">${esc(n.what_changed || '')}</div>${n.source_url ? `<a class="small" href="${esc(n.source_url)}" target="_blank" rel="noopener">Source</a>` : ''}</td>
         <td class="small">${esc(n.country || '')}<br>${esc(n.program || '')}</td><td class="small num">${esc(n.effective_date || '—')}</td><td>${confPill(n.confidence)}</td><td class="small">${esc(n.marketing_angle || '')}</td></tr>`).join('')}
     </tbody></table></div><p class="small muted" style="margin-top:10px">Unconfirmed items cannot be selected. Every figure needs an official source before it appears in a post.</p></section>`;
     el.querySelectorAll('[data-news]').forEach((cb) => (cb.onchange = () => act(() => api.selectNews(cb.dataset.news, cb.checked))));
+    wire();
   }
 
   // ------------------------------------------------------------ monthly plan
