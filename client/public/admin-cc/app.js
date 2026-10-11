@@ -9,7 +9,7 @@
   const S = { mode: null, ext: null, data: null, view: 'overview', week: null, jobFilter: 'open', openItem: null, demoRole: 'owner', busy: false };
   const VIEWS = [
     ['overview', 'Overview'], ['plan', 'Weekly plan'], ['actions', 'Action plan'], ['performance', 'Performance'],
-    ['news', 'News'], ['monthly', 'Monthly plan'], ['studio', 'AI Studio'], ['meta', 'Meta'], ['manus', 'Manus bridge'], ['settings', 'Settings'],
+    ['news', 'News'], ['monthly', 'Monthly plan'], ['studio', 'AI Studio'], ['meta', 'Meta'], ['manus', 'Manus bridge'], ['credits', 'Credits'], ['settings', 'Settings'],
   ];
 
   // ------------------------------------------------------------ utils
@@ -258,7 +258,7 @@
         <div id="view"></div>
       </main></div>`;
     const v = document.getElementById('view');
-    ({ overview: viewOverview, plan: viewPlan, actions: viewActions, performance: viewPerformance, news: viewNews, monthly: viewMonthly, studio: viewStudio, meta: viewMeta, manus: viewManus, settings: viewSettings })[S.view](v);
+    ({ overview: viewOverview, plan: viewPlan, actions: viewActions, performance: viewPerformance, news: viewNews, monthly: viewMonthly, studio: viewStudio, meta: viewMeta, manus: viewManus, credits: viewCredits, settings: viewSettings })[S.view](v);
     wireShell();
   }
 
@@ -270,6 +270,7 @@
       actions: 'Friday action plan from the Meta report. Manus executes only what the owner approves.',
       performance: 'Live from Meta and the ELEVAY CRM: last 30 days of ads, leads, qualified, unqualified, clients and page growth. Read-only.',
       news: 'Weekly news search: Claude searches the web every Thursday at 20:00 Cairo. Only verified or reported items can feed posts.',
+      credits: 'What each AI platform has left. Live where the platform offers it; otherwise from the balance you enter, minus what the system has used since.',
       monthly: 'Next month’s plan, built from 6 months of Meta and CRM results. The owner approves it.',
       studio: 'Autopilot plans the week from your Meta and CRM results, Claude hands each part to OpenAI, Higgsfield or Manus, and checks the results.',
       meta: 'Replies to comments and messages, publishing approved posts, and campaign changes. Nothing runs on Meta without approval (automatic only after the 6-week gate), always inside the cap and max CPL.',
@@ -764,6 +765,63 @@
     const b = ev.target.closest('[data-pause]');
     if (b) act(() => api.proposePause(b.dataset.pause), 'Pause proposal added to the action plan for approval.');
   });
+
+
+  // ------------------------------------------------------------ credits
+  function viewCredits(el) {
+    if (!isOwner()) { el.innerHTML = '<div class="empty">Only the owner can see credit balances.</div>'; return; }
+    if (S.mode !== 'server') { el.innerHTML = '<div class="empty">Credits are read from the live server.</div>'; return; }
+    const draw = () => {
+      const c = S.credits;
+      if (!c) { el.innerHTML = '<div class="empty">Loading credits…</div>'; return; }
+      const val = (v, unit) => (v === null || v === undefined ? '—' : unit === 'USD' ? '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : n0(v) + ' ' + esc(unit || ''));
+      const srcPill = (p) => {
+        if (p.source === 'live' || p.source === 'live spend') return '<span class="pill ok">Live</span>';
+        if (p.source === 'needs_key') return `<span class="pill warn">Needs ${esc(p.need)}</span>`;
+        if (p.source === 'error') return '<span class="pill bad">Error</span>';
+        if (p.source === 'estimate') return '<span class="pill info">Estimate</span>';
+        return '<span class="pill plain">You enter it</span>';
+      };
+      const manualForm = (p) => {
+        const e = p.entered || {};
+        const usd = p.unit === 'USD';
+        const showBalance = ['claude_api', 'openai_api', 'higgsfield_api', 'higgsfield_app'].includes(p.id);
+        return `<details style="margin-top:8px"><summary class="small">Enter / update</summary><div class="row small" style="flex-wrap:wrap;gap:8px;margin-top:8px">
+          ${showBalance ? `<label class="row">${usd ? 'Prepaid balance today (USD)' : 'Credits today'} <input class="input" data-cr-bal="${p.id}" type="number" step="0.01" min="0" value="${e.balance ?? ''}" style="width:110px"></label>` : ''}
+          ${p.id === 'higgsfield_api' ? `<label class="row">Credits per 5 s clip <input class="input" data-cr-per="${p.id}" type="number" step="0.1" min="0" value="${e.credits_per_clip ?? ''}" style="width:80px"></label>` : ''}
+          <label class="row">Plan <input class="input" data-cr-plan="${p.id}" value="${esc(e.plan || '')}" style="width:120px"></label>
+          <label class="row">Renews <input class="input" data-cr-renew="${p.id}" type="date" value="${esc(e.renews_on || '')}"></label>
+          <label class="row grow">Note <input class="input" data-cr-note="${p.id}" value="${esc(e.note || '')}"></label>
+          <button class="btn sm" data-cr-save="${p.id}">Save</button></div>${e.updated_at ? `<div class="small muted">Entered ${fmtDT(e.updated_at)}</div>` : ''}</details>`;
+      };
+      el.innerHTML = `<div class="row" style="justify-content:space-between;margin-bottom:12px"><span class="small muted">Updated ${fmtDT(c.generated_at)}${c.cached ? ' (cached, refreshes every 10 min)' : ''}</span><button class="btn sm" id="crRefresh">Refresh now</button></div>
+        <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
+        ${c.platforms.map((p) => {
+          const lines = [];
+          if (p.remaining !== null && p.remaining !== undefined) lines.push(`<div style="font-size:26px;font-weight:600">${val(p.remaining, p.unit)}</div><div class="small muted">remaining</div>`);
+          if (p.limit != null) lines.push(`<div class="small">Used ${n0(p.used)} of ${n0(p.limit)} ${esc(p.unit)}</div>`);
+          if (p.spent_this_month != null) lines.push(`<div class="small">Spent this month: <strong>${val(p.spent_this_month, 'USD')}</strong></div>`);
+          if (p.used_this_month) lines.push(`<div class="small">Made this month: <strong>${esc(p.used_this_month)}</strong></div>`);
+          if (p.breakdown) lines.push(`<div class="small muted">${Object.entries(p.breakdown).filter(([, v]) => v).map(([k, v]) => `${esc(k.replace('_', '-'))}: ${n0(v)}`).join(' · ')}</div>`);
+          if (p.plan || (p.entered && p.entered.plan)) lines.push(`<div class="small">Plan: ${esc(p.plan || p.entered.plan)}</div>`);
+          if (p.renews_at || (p.entered && p.entered.renews_on)) lines.push(`<div class="small">Renews: ${p.renews_at ? fmtDT(p.renews_at) : esc(p.entered.renews_on)}</div>`);
+          if (p.entered && p.entered.note) lines.push(`<div class="small muted">${esc(p.entered.note)}</div>`);
+          if (p.error) lines.push(`<div class="small" style="color:var(--bad,#e66)">${esc(p.error)}</div>`);
+          if (!lines.length) lines.push('<div class="small muted">Nothing entered yet.</div>');
+          return `<section class="panel"><div class="row" style="justify-content:space-between"><strong>${esc(p.name)}</strong>${srcPill(p)}</div><div style="margin-top:8px">${lines.join('')}</div>
+            ${p.note ? `<p class="small muted" style="margin:8px 0 0">${esc(p.note)}</p>` : ''}<a class="small" href="${esc(p.link)}" target="_blank" rel="noopener">Open billing / usage page</a>
+            ${['manus', 'elevenlabs'].includes(p.id) ? '' : manualForm(p)}</section>`;
+        }).join('')}</div>`;
+      const b = el.querySelector('#crRefresh'); if (b) b.onclick = () => load(true);
+      el.querySelectorAll('[data-cr-save]').forEach((btn) => (btn.onclick = () => {
+        const id = btn.dataset.crSave, g = (a) => { const x = el.querySelector(`[${a}="${id}"]`); return x ? x.value : ''; };
+        act(async () => { await api.req('POST', `credits/${id}`, { balance: g('data-cr-bal'), credits_per_clip: g('data-cr-per'), plan: g('data-cr-plan'), renews_on: g('data-cr-renew'), note: g('data-cr-note') }); await load(true); }, 'Saved.');
+      }));
+    };
+    const load = async (refresh) => { try { S.credits = await api.req('GET', 'credits' + (refresh ? '?refresh=1' : '')); } catch (e) { S.credits = null; el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; } if (S.view === 'credits') draw(); };
+    draw();
+    if (!S.credits) load(false);
+  }
 
   // ------------------------------------------------------------ news
   function viewNews(el) {
