@@ -27,7 +27,7 @@ function db() {
   };
 }
 
-function fakeMeta({ mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 150 } } = {}) {
+function fakeMeta({ mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 150 }, instagramPermission = true, instagramStatus = "FINISHED" } = {}) {
   const posts = [];
   const fetcher = async (url, init) => {
     const u = new URL(url), path = u.pathname.split("/").slice(2).join("/"), body = init.body ? JSON.parse(init.body) : null;
@@ -45,10 +45,11 @@ function fakeMeta({ mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 15
         { id: "cm3", message: "Thanks!", from: { id: "111", name: "ELEVAY" }, created_time: new Date().toISOString() },
         { id: "cm4", message: "You took my money and nothing happened", from: { id: "u3", name: "Omar" }, created_time: new Date().toISOString() },
       ] };
+      else if (path === "me/permissions") out = { data: instagramPermission ? [{ permission: "instagram_content_publish", status: "granted" }] : [] };
       else if (path === "111") out = { instagram_business_account: { id: "ig1", username: "elevayglobal" } };
       else if (path === "ig1/media") out = { data: [] };
       else if (path === "111/conversations") out = { data: [] };
-      else if (path === "igc1") out = { status_code: "FINISHED" };
+      else if (path === "igc1") out = { status_code: instagramStatus };
     } else {
       if (path.endsWith("/campaigns")) out = { id: "newcamp" }; else if (path.endsWith("/adsets")) out = { id: "newset" }; else if (path.endsWith("/adcreatives")) out = { id: "newcr" }; else if (path.endsWith("/ads")) out = { id: "newad" };
       else if (path === "111/photos") out = { id: "ph1", post_id: "111_post9" }; else if (path === "ig1/media") out = { id: "igc1" }; else if (path === "ig1/media_publish") out = { id: "igpost1" };
@@ -142,6 +143,39 @@ describe("Meta actions", () => {
     expect(r.published).toBe(1);
     expect(posts.map((p) => p.path)).toEqual(["111/photos", "ig1/media", "ig1/media_publish"]);
     expect(state.items[0]).toMatchObject({ status: "published", publish: { direct: { facebook: "111_post9", instagram: "igpost1", done: true } } });
+  });
+
+  it("does not send Facebook when Meta lacks Instagram publishing permission for a both-channel item", async () => {
+    const { h, state, posts } = hub({ meta: { instagramPermission: false } });
+    state.settings.meta = { directPublish: true };
+    state.items.push({ item_id: "2026-W41-02", type: "static", status: "approved", caption_ar: "نص", media: { image_url: "https://cdn/final.png" }, publish: { channel: "both", datetime_cairo: "2026-01-01T10:00" }, owner_comments: [] });
+    await expect(h.publishDue()).resolves.toMatchObject({ published: 0 });
+    expect(posts.map((p) => p.path)).not.toContain("111/photos");
+    expect(state.items[0].status).toBe("approved");
+    expect(state.items[0].publish.direct.done).not.toBe(true);
+    expect(state.items[0].publish.direct.error).toMatch(/instagram_content_publish/);
+  });
+
+  it("persists Facebook success before an Instagram processing wait so a retry cannot duplicate Facebook", async () => {
+    const { h, state, posts } = hub({ meta: { instagramStatus: "IN_PROGRESS" } });
+    state.settings.meta = { directPublish: true };
+    state.items.push({ item_id: "2026-W41-03", type: "static", status: "approved", caption_ar: "نص", media: { image_url: "https://cdn/final.png" }, publish: { channel: "both", datetime_cairo: "2026-01-01T10:00" }, owner_comments: [] });
+    await expect(h.publishDue()).resolves.toMatchObject({ published: 0 });
+    expect(posts.filter((p) => p.path === "111/photos")).toHaveLength(1);
+    expect(state.items[0].publish.direct).toMatchObject({ facebook: "111_post9", ig_container: "igc1" });
+    expect(state.items[0].publish.direct.done).not.toBe(true);
+    state.items[0].publish.direct.retry_after = 0; // simulate the next scheduler window
+    await expect(h.publishDue()).resolves.toMatchObject({ published: 0 });
+    expect(posts.filter((p) => p.path === "111/photos")).toHaveLength(1);
+  });
+
+  it("allows only one overlapping scheduler tick to claim and publish an item", async () => {
+    const { h, state, posts } = hub();
+    state.settings.meta = { directPublish: true };
+    state.items.push({ item_id: "2026-W41-04", type: "static", status: "approved", caption_ar: "نص", media: { image_url: "https://cdn/final.png" }, publish: { channel: "facebook", datetime_cairo: "2026-01-01T10:00" }, owner_comments: [] });
+    await Promise.all([h.publishDue(), h.publishDue()]);
+    expect(posts.filter((p) => p.path === "111/photos")).toHaveLength(1);
+    expect(state.items[0].status).toBe("published");
   });
 });
 

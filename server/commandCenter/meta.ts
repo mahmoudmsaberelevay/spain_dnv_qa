@@ -14,6 +14,7 @@
  * Tokens: META_PAGE_ACCESS_TOKEN (page: posts, comments, messages, Instagram) and
  * META_SYSTEM_USER_ACCESS_TOKEN + META_AD_ACCOUNT_ID (ads).
  */
+import crypto from "node:crypto";
 import { pageCredentials, lastDays } from "./live";
 import { ELEVAY_RULES } from "./ai";
 import { programFactsFor } from "./knowledge";
@@ -335,55 +336,163 @@ export function createMetaHub(deps) {
   }
 
   // ---------------------------------------------------------------- publishing approved posts
-  /** Publish approved items whose time has come (Cairo), on Facebook and/or Instagram. */
+  // The publisher is deliberately a durable two-channel state machine. A Facebook
+  // success is stored before any Instagram request so an Instagram permission or
+  // processing problem can never cause Facebook to be posted again on the next tick.
+  const PUBLISH_LEASE_MS = 10 * 60_000;
+  const IG_PROCESSING_RETRY_MS = 90_000;
+  const IG_PERMISSION_RETRY_MS = 6 * 60 * 60_000;
+  const clone = (v) => JSON.parse(JSON.stringify(v));
+  const usesFacebook = (channel) => channel === "both" || channel === "facebook";
+  const usesInstagram = (channel) => channel === "both" || channel === "instagram";
+  const knownPublishError = (message, retryAfter = 5 * 60_000) => Object.assign(new Error(message), { publishKnown: true, retryAfter });
+
+  function isDue(item, now) {
+    const d = item.publish?.direct || {}, lease = d.lease;
+    return item.status === "approved" && item.publish?.datetime_cairo && item.publish.datetime_cairo <= now
+      && !d.done && Number(d.retry_after || 0) <= Date.now() && !(lease?.until && Number(lease.until) > Date.now())
+      && !item.publish?.revision_hold?.active;
+  }
+
+  async function claimPublish(itemId) {
+    const claimId = crypto.randomUUID();
+    let claimed = null;
+    await deps.mutate({}, (st) => {
+      const item = st.items.find((x) => x.item_id === itemId);
+      if (!item || !isDue(item, cairoNowLocal())) return { ok: true };
+      const d = { ...(item.publish?.direct || {}) }, previous = d.lease;
+      // A process crash after a POST begins is an unknown external outcome. Never
+      // replay it automatically: that is how duplicate Page posts are created.
+      if (previous?.stage && /_sending$/.test(previous.stage)) {
+        d.done = true; d.manual_review = true;
+        d.error = "Publish outcome is unknown after an interrupted Meta request; no automatic retry was sent to avoid a duplicate post.";
+        delete d.lease;
+        item.publish = { ...item.publish, direct: d };
+        E.audit(st, "system", "publish.manual_review", itemId, "Interrupted external publish request; held to prevent a duplicate.");
+        return { ok: true };
+      }
+      d.lease = { id: claimId, until: Date.now() + PUBLISH_LEASE_MS, stage: "claimed", started_at: nowIso() };
+      delete d.retry_after;
+      item.publish = { ...item.publish, direct: d };
+      claimed = { item: clone(item), claimId };
+      return { ok: true };
+    });
+    return claimed;
+  }
+
+  async function updateDirect(itemId, claimId, apply) {
+    let updated = null;
+    const result = await deps.mutate({}, (st) => {
+      const item = st.items.find((x) => x.item_id === itemId), d = { ...(item?.publish?.direct || {}) };
+      if (!item || d.lease?.id !== claimId) return { ok: false, error: "Publishing lease is no longer active." };
+      apply(d, item, st);
+      if (d.lease?.id === claimId) d.lease.until = Date.now() + PUBLISH_LEASE_MS;
+      item.publish = { ...item.publish, direct: d };
+      updated = clone(item);
+      return { ok: true };
+    });
+    if (!result?.ok) throw new Error(result?.error || "Publishing lease is no longer active.");
+    return updated;
+  }
+
+  async function releaseForRetry(itemId, claimId, waitMs, error = "") {
+    return updateDirect(itemId, claimId, (d) => {
+      if (error) { d.error = clip(error, 500); d.tries = Number(d.tries || 0) + 1; }
+      d.retry_after = Date.now() + waitMs;
+      delete d.lease;
+    });
+  }
+
+  async function recordPublishFailure(itemId, claimId, error) {
+    const message = clip(error?.message || error || "Meta publishing failed.", 500);
+    const known = error?.publishKnown === true || /^Meta:/.test(message);
+    try {
+      return await updateDirect(itemId, claimId, (d) => {
+        d.error = message; d.tries = Number(d.tries || 0) + 1;
+        if (!known && /_sending$/.test(d.lease?.stage || "")) {
+          d.done = true; d.manual_review = true;
+          d.error = "Publish outcome is unknown after a network interruption; no automatic retry was sent to avoid a duplicate post.";
+        } else d.retry_after = Date.now() + Number(error?.retryAfter || 5 * 60_000);
+        delete d.lease;
+      });
+    } catch { return null; } // Another worker safely owns or completed the claim.
+  }
+
+  async function instagramAccountForPublish(page) {
+    const permissionToken = adsToken() || page.token;
+    let permissions;
+    try { permissions = await graph.get("me/permissions", permissionToken, {}); }
+    catch (e) { throw knownPublishError(`Instagram publishing permission check failed: ${clip(e.message, 240)}`, IG_PERMISSION_RETRY_MS); }
+    const granted = new Set((permissions.data || []).filter((p) => p.status === "granted").map((p) => p.permission));
+    if (!granted.has("instagram_content_publish")) throw knownPublishError("Instagram direct publishing is blocked: Meta has not granted instagram_content_publish to the active system user/app.", IG_PERMISSION_RETRY_MS);
+    const pg = await graph.get(page.pageId, page.token, { fields: "instagram_business_account{id}" });
+    const ig = pg.instagram_business_account?.id;
+    if (!ig) throw knownPublishError("No Instagram business account is linked to the Facebook Page.", IG_PERMISSION_RETRY_MS);
+    return ig;
+  }
+
+  async function completePublish(itemId, claimId) {
+    const result = await deps.mutate({}, (st) => {
+      const item = st.items.find((x) => x.item_id === itemId), d = { ...(item?.publish?.direct || {}) };
+      if (!item || d.lease?.id !== claimId) return { ok: false, error: "Publishing lease is no longer active." };
+      d.done = true; d.at = nowIso(); delete d.error; delete d.retry_after; delete d.lease;
+      return E.markPublished(st, itemId, "published", { direct: d, meta_post_id: d.facebook || d.instagram, published_by: "elevay.vip" }, "elevay.vip");
+    });
+    if (!result?.ok) throw new Error(result?.error || "Could not record completed Meta publication.");
+  }
+
+  /** Publish approved items whose time has come (Cairo), one durable channel step at a time. */
   async function publishDue() {
     const { state } = await deps.loadState();
     if (!state.settings.meta?.directPublish) return { published: 0 };
-    const now = cairoNowLocal();
-    // A final-QC-reviewed content replacement is intentionally not a fresh Meta
-    // authorization. Never direct-publish an item while its per-version revision
-    // hold is active; an explicit future owner publishing release is required.
-    const due = state.items.filter((i) => i.status === "approved" && i.publish?.datetime_cairo && i.publish.datetime_cairo <= now && !(i.publish.direct?.done) && !i.publish?.revision_hold?.active);
+    const due = state.items.filter((i) => isDue(i, cairoNowLocal()));
     let n = 0;
     for (const item of due.slice(0, 3)) {
-      try { const r = await publishItem(item); if (r) n++; } catch (e) {
-        await deps.mutate({}, (st) => { const it = st.items.find((x) => x.item_id === item.item_id); if (it) { it.publish = { ...it.publish, direct: { ...(it.publish.direct || {}), error: String(e.message).slice(0, 300), tries: (it.publish.direct?.tries || 0) + 1, done: (it.publish.direct?.tries || 0) >= 2 } }; } return { ok: true }; });
-      }
+      try { const r = await publishItem(item); if (r) n++; } catch { /* Failure is persisted by publishItem; next safe retry follows its backoff. */ }
     }
     return { published: n };
   }
 
   async function publishItem(item) {
-    const page = await pageCredentials(q, deps.fetcher || fetch);
-    const m = item.media || {}, caption = item.caption_ar || "";
-    const channel = item.publish?.channel || "both";
-    const d = { ...(item.publish?.direct || {}) };
-    if (item.type === "reel" && !m.video_url) throw new Error("The final reel video is missing.");
-    if (item.type !== "reel" && !m.image_url) throw new Error("The design image is missing.");
-    if ((channel === "both" || channel === "facebook") && !d.facebook) {
-      const r = item.type === "reel" ? await graph.post(`${page.pageId}/videos`, page.token, { file_url: m.video_url, description: caption }) : await graph.post(`${page.pageId}/photos`, page.token, { url: m.image_url, caption });
-      d.facebook = r.post_id || r.id;
-    }
-    if ((channel === "both" || channel === "instagram") && !d.instagram) {
-      const pg = await graph.get(page.pageId, page.token, { fields: "instagram_business_account{id}" });
-      const ig = pg.instagram_business_account?.id;
-      if (!ig) throw new Error("No Instagram business account is linked to the page.");
-      if (!d.ig_container) {
-        const c = item.type === "reel" ? await graph.post(`${ig}/media`, page.token, { media_type: "REELS", video_url: m.video_url, caption, share_to_feed: true }) : await graph.post(`${ig}/media`, page.token, { image_url: m.image_url, caption });
-        d.ig_container = c.id;
+    const claimed = await claimPublish(item.item_id);
+    if (!claimed) return false;
+    const { claimId } = claimed;
+    try {
+      let current = claimed.item;
+      const page = await pageCredentials(q, deps.fetcher || fetch);
+      const m = current.media || {}, caption = current.caption_ar || "", channel = current.publish?.channel || "both";
+      if (current.type === "reel" && !m.video_url) throw knownPublishError("The final reel video is missing.");
+      if (current.type !== "reel" && !m.image_url) throw knownPublishError("The design image is missing.");
+      // Validate Instagram before Facebook. If Meta has not granted the Instagram
+      // permission, neither channel is sent, preventing a partial duplicate.
+      const ig = usesInstagram(channel) ? await instagramAccountForPublish(page) : null;
+      let d = current.publish?.direct || {};
+      if (usesFacebook(channel) && !d.facebook) {
+        await updateDirect(item.item_id, claimId, (x) => { x.lease.stage = "facebook_sending"; });
+        const r = current.type === "reel" ? await graph.post(`${page.pageId}/videos`, page.token, { file_url: m.video_url, description: caption }) : await graph.post(`${page.pageId}/photos`, page.token, { url: m.image_url, caption });
+        current = await updateDirect(item.item_id, claimId, (x) => { x.facebook = r.post_id || r.id; x.facebook_at = nowIso(); x.lease.stage = "instagram_preflight"; });
+        d = current.publish.direct;
       }
-      const st = await graph.get(d.ig_container, page.token, { fields: "status_code" });
-      if (st.status_code === "ERROR") throw new Error("Instagram could not process the media.");
-      if (st.status_code !== "FINISHED") { // reels take a while; try again on the next tick
-        await deps.mutate({}, (s2) => { const it = s2.items.find((x) => x.item_id === item.item_id); if (it) it.publish = { ...it.publish, direct: d }; return { ok: true }; });
-        return false;
+      if (usesInstagram(channel) && !d.instagram) {
+        if (!d.ig_container) {
+          await updateDirect(item.item_id, claimId, (x) => { x.lease.stage = "instagram_container_sending"; });
+          const c = current.type === "reel" ? await graph.post(`${ig}/media`, page.token, { media_type: "REELS", video_url: m.video_url, caption, share_to_feed: true }) : await graph.post(`${ig}/media`, page.token, { image_url: m.image_url, caption });
+          current = await updateDirect(item.item_id, claimId, (x) => { x.ig_container = c.id; x.ig_container_at = nowIso(); x.lease.stage = "instagram_processing"; });
+          d = current.publish.direct;
+        }
+        const st = await graph.get(d.ig_container, page.token, { fields: "status_code" });
+        if (st.status_code === "ERROR") throw knownPublishError("Instagram could not process the media.", IG_PERMISSION_RETRY_MS);
+        if (st.status_code !== "FINISHED") { await releaseForRetry(item.item_id, claimId, IG_PROCESSING_RETRY_MS); return false; }
+        await updateDirect(item.item_id, claimId, (x) => { x.lease.stage = "instagram_publishing"; });
+        const p = await graph.post(`${ig}/media_publish`, page.token, { creation_id: d.ig_container });
+        current = await updateDirect(item.item_id, claimId, (x) => { x.instagram = p.id; x.instagram_at = nowIso(); x.lease.stage = "finishing"; });
       }
-      const p = await graph.post(`${ig}/media_publish`, page.token, { creation_id: d.ig_container });
-      d.instagram = p.id;
+      await completePublish(item.item_id, claimId);
+      return true;
+    } catch (e) {
+      await recordPublishFailure(item.item_id, claimId, e);
+      throw e;
     }
-    d.done = true; d.at = nowIso();
-    await deps.mutate({}, (s2) => E.markPublished(s2, item.item_id, "published", { direct: d, meta_post_id: d.facebook || d.instagram, published_by: "elevay.vip" }, "elevay.vip"));
-    return true;
   }
 
   // ---------------------------------------------------------------- connection check
