@@ -122,7 +122,11 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
         if (!(d>0.2)) throw new Error(`Scene ${i+1} saved voice take is empty.`);
         const tempo=d/narrationSceneSeconds;
         if (tempo<0.80 || tempo>1.12) throw new Error(`Scene ${i+1} saved narration is ${d.toFixed(2)}s and cannot be naturally timed to its ${narrationSceneSeconds.toFixed(1)}-second share of the 18-second voice-over; saved take retained for review.`);
-        voices.push(wav);tempos.push(tempo);rawVoiceSeconds.push(d);
+        // Time each take in its own pass. atempo inside the 4-input mix produced broken timestamps that made
+        // FFmpeg write a 0.1-second silent track (reels shipped with no voice-over).
+        const timed=path.join(directory,`voice${i}.timed.wav`);
+        await ff(['-threads','1','-i',wav,'-af',`${audioFormat},atempo=${tempo.toFixed(5)},atrim=duration=${narrationSceneSeconds},asetpts=N/SR/TB`,'-c:a','pcm_s16le',timed]);
+        voices.push(timed);tempos.push(tempo);rawVoiceSeconds.push(d);
         await fsp.rm(src,{force:true});
       }
       let musicFile=null;
@@ -130,13 +134,24 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       const mix=async withMusic => {
         const args=voices.flatMap(f=>['-threads','1','-i',f]);
         if(withMusic)args.push('-stream_loop','-1','-threads','1','-i',musicFile);
-        const filters=voices.map((_,i)=>`[${i}:a]${audioFormat},atempo=${tempos[i].toFixed(5)},atrim=duration=${narrationSceneSeconds},adelay=${Math.round((i*5+0.1)*1000)}|${Math.round((i*5+0.1)*1000)},apad=whole_dur=23[n${i}]`);
+        const filters=voices.map((_,i)=>`[${i}:a]${audioFormat},adelay=${Math.round((i*5+0.1)*1000)}|${Math.round((i*5+0.1)*1000)},apad=whole_dur=23[n${i}]`);
         filters.push('[n0][n1][n2][n3]amix=inputs=4:duration=longest:normalize=0[voice]');
         if(withMusic) filters.push('[4:a]'+audioFormat+',atrim=duration=23,volume=0.16,afade=t=in:d=0.8,afade=t=out:st=20:d=3[bed]','[voice][bed]amix=inputs=2:duration=longest:normalize=0,atrim=duration=23,alimiter=limit=0.95[a]');
         else filters.push('[voice]atrim=duration=23,alimiter=limit=0.95[a]');
         await ff([...args,'-filter_complex',filters.join(';'),'-map','[a]','-t','23','-c:a','aac','-b:a','192k','-threads','1',path.join(directory,'audio.m4a')]);
       };
       if(musicFile)try{await mix(true);}catch{musicDropped='Music could not be mixed; finished with saved voice takes only.';await mix(false);}else await mix(false);
+      // Never ship a reel without its voice-over: the mixed track must last the full 23 s and be audible.
+      {
+        const am=path.join(directory,'audio.m4a');
+        const ad=Number((await probe(am)).format.duration);
+        if(!(ad>=22.9))throw new Error(`Voice-over mix is ${ad.toFixed(2)}s instead of 23s; the reel was not finished without its voice.`);
+        const peakFile=path.join(directory,'audio-peak.txt');
+        await ff(['-i',am,'-af',`astats=metadata=1:reset=0,ametadata=mode=print:key=lavfi.astats.Overall.Peak_level:file=${peakFile}`,'-f','null','-']);
+        const peaks=[...(await fsp.readFile(peakFile,'utf8')).matchAll(/Peak_level=(-?inf|-?[\d.]+)/g)];
+        const peak=peaks.length?Number(peaks[peaks.length-1][1].replace('inf','Infinity')):NaN;
+        if(!(peak>-50))throw new Error('Voice-over mix is silent; the reel was not finished without its voice.');
+      }
       await publish('audio',path.join(directory,'audio.m4a'),'audio/mp4');
       parts.music=!!musicFile&&!musicDropped; parts.musicDropped=musicDropped;
       parts.narrationTargetSeconds=narrationTargetSeconds; parts.narrationSceneSeconds=narrationSceneSeconds;
