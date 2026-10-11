@@ -261,7 +261,9 @@ export function createRenderWorkerBridge({
 
   async function lease(workerId: string) {
     await ensure();
-    limit("lease", 90, 15 * 60_000);
+    // The Mac worker polls every 5 s while idle (180 requests per 15 minutes); the old cap of 90 refused
+    // half of them and kept it in a permanent "rate limit" loop. Allow normal polling with headroom.
+    limit("lease", 400, 15 * 60_000);
     if (!isWorkerId(workerId)) throw new RenderWorkerBridgeError(400, "Worker identifier is invalid.");
     // Legacy queue rows can pre-date the fixed-outro contract. Quarantine a
     // bounded batch rather than handing an unusable job to the Mac forever.
