@@ -628,6 +628,8 @@ async function startServer() {
   // Server-rendered public legal pages (no JS bundle needed, always accessible)
   const { registerPublicPages } = await import("../publicPagesHandler.js");
   registerPublicPages(app);
+  const { registerPublicOutroPage } = await import("../publicOutroPage.js");
+  registerPublicOutroPage(app);
   const { registerClientAppPublicPages } = await import("../clientAppPublicPages.js");
   registerClientAppPublicPages(app);
   const { registerClientAppAiPages } = await import("../clientAppAiPages.js");
