@@ -33,6 +33,9 @@ export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<
     const job = JSON.parse(row.doc);
     if (row.status === "failed") throw new Error("External render failed: " + (job.error || "unknown worker error"));
     if (row.status === "done" && job.final) return { parts: job.parts, final: { ...job.final, renderJobId: id }, stage: "final" };
+    // A finished job without a usable result, or a status this website does not know, must not wait forever.
+    if (row.status === "done") throw new Error("External render finished without a usable final video; press Retry to render it again.");
+    if (!["pending", "running"].includes(row.status)) throw new Error(`External render is in an unexpected state (${row.status}); press Retry.`);
     return { pending: true, jobId: id, parts: job.parts || {}, stage: job.stage, waitReason: row.status === "running" ? "Rendering the final edit" : (opts.pendingReason?.() || "Waiting for render worker"), metrics: job.metrics || {} };
   }
   return { ensure, compose };
