@@ -30,7 +30,7 @@ async function loadState() {
       ...E.emptyState(),
       ...JSON.parse(meta.doc),
       items: (await q("SELECT doc FROM ec_items")).map((row) => JSON.parse(row.doc)),
-      jobs: (await q("SELECT doc FROM ec_jobs WHERE id LIKE 'REV-TWO-REELS-V3-%'")).map((row) => JSON.parse(row.doc)),
+      jobs: (await q("SELECT doc FROM ec_jobs WHERE id LIKE 'R3-%'")).map((row) => JSON.parse(row.doc)),
       audit: [],
     },
   };
@@ -42,7 +42,7 @@ async function mutate(_ctx, fn) {
     await connection.beginTransaction();
     const rows = (await connection.query("SELECT item_id,doc FROM ec_items WHERE item_id IN ('2026-W41-04','2026-W41-07') FOR UPDATE"))[0];
     const meta = (await connection.query("SELECT doc FROM ec_meta WHERE id=1"))[0][0];
-    const jobs = (await connection.query("SELECT doc FROM ec_jobs WHERE id LIKE 'REV-TWO-REELS-V3-%' FOR UPDATE"))[0].map((row) => JSON.parse(row.doc));
+    const jobs = (await connection.query("SELECT doc FROM ec_jobs WHERE id LIKE 'R3-%' FOR UPDATE"))[0].map((row) => JSON.parse(row.doc));
     const state = { ...E.emptyState(), ...JSON.parse(meta.doc), items: rows.map((row) => JSON.parse(row.doc)), jobs, audit: [] };
     const before = new Map(state.items.map((item) => [item.item_id, JSON.stringify(item)]));
     const result = await fn(state);
@@ -106,8 +106,8 @@ async function main() {
       entry.status = run.status; entry.step = step?.action || "finished";
       entry.generated = { keyframes: run.artifacts.keyframes?.filter(Boolean).length || 0, clips: run.artifacts.clips?.filter(Boolean).length || 0, voices: run.artifacts.voices?.filter(Boolean).length || 0 };
       console.log(`${itemId} · run #${run.id} · ${run.status} · ${entry.step} · ${JSON.stringify(entry.generated)} · elapsed ${Math.round((Date.now() - started) / 1000)}s`);
-      if (step?.action === "compose_reel" && run.artifacts?.render?.stage === "waiting_for_fixed_outro") {
-        entry.waitingFor = "ELEVAYEXTRO.mov"; entry.error = run.artifacts?.render?.waitReason || "Waiting for fixed outro.";
+      if (step?.action === "compose_reel" && run.artifacts?.compose?.jobId === null && /fixed ELEVAYEXTRO\.mov/i.test(String(run.artifacts?.compose?.waitReason || ""))) {
+        entry.waitingFor = "ELEVAYEXTRO.mov"; entry.error = run.artifacts?.compose?.waitReason || "Waiting for fixed outro.";
         await fsp.writeFile(manifestFile, JSON.stringify(manifest, null, 2) + "\n");
         break;
       }

@@ -304,6 +304,28 @@ describe("owner-authorized targeted content revisions", () => {
     await expect(ctx.o.reviseItem('2026-W41-02',{comment:'edit'},marketer)).rejects.toThrow(/Only the owner/);
     await expect(ctx.o.create({kind:'reel',request:'sandbox',options:{sandboxOnly:true},user:owner})).rejects.toThrow(/finite worker/);
   });
+  it("recreates a completed reel from scratch as a new owner-authorized version without reusing old assets", async()=>{
+    const ctx=setup([STORYBOARD,PASS,STORYBOARD,PASS]);
+    const base=await finishedBase(ctx);const item=ctx.state.items.find(i=>i.item_id===base.artifacts.item_id);
+    const originalMedia=structuredClone(item.media);
+    await expect(ctx.o.recreate(base.id,marketer)).rejects.toThrow(/Only the owner/);
+    const recreated=await ctx.o.recreate(base.id,owner);
+    expect(recreated.id).not.toBe(base.id);
+    expect(recreated.artifacts).toEqual({});
+    expect(recreated.options.revision).toMatchObject({itemId:item.item_id,baseVersion:1,scope:'whole_concept'});
+    expect(recreated.request).toMatch(/completely fresh/i);
+    let r=await settle(ctx.o,recreated.id);
+    if(r.status==='waiting'){await ctx.o.tick();r=await settle(ctx.o,recreated.id,['running','queued','waiting']);}
+    expect(r.status).toBe('done');
+    expect(ctx.calls.openai).toHaveLength(8);
+    expect(ctx.calls.hfSubmit).toHaveLength(8);
+    expect(ctx.calls.voice).toBe(8);
+    expect(ctx.calls.render).toHaveLength(2);
+    expect(item.version).toBe(2);
+    expect(item.history[0].snapshot.media).toEqual(originalMedia);
+    expect(item.revision).toMatchObject({scope:'whole_concept',run_id:String(recreated.id)});
+    expect(ctx.state.jobs.some(j=>j.type==='schedule_post')).toBe(false);
+  });
   it("changes only scene 3 narration and rerenders without regenerating a keyframe or clip", async()=>{
     const ctx=setup([STORYBOARD,PASS,{scenes:[{scene:3,spoken_text_ar:'خلينا نراجع ملفك في Portugal مع ELEVAY خطوة خطوة'}]},PASS]);
     const base=await finishedBase(ctx);const item=ctx.state.items.find(i=>i.item_id===base.artifacts.item_id);

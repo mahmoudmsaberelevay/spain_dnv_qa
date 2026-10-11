@@ -413,6 +413,14 @@ const studioAct = (fn) => async (ctx) => { try { await fn(await studio(), ctx); 
 route("POST", "/ai/runs/:id/steps/:n/approve", "marketer", studioAct((o, ctx) => o.approve(Number(ctx.params.id), ctx.params.n, ctx.user)));
 route("POST", "/ai/runs/:id/retry", "marketer", studioAct((o, ctx) => o.retry(Number(ctx.params.id), ctx.user)));
 route("POST", "/ai/runs/:id/redo", "marketer", studioAct((o, ctx) => o.redo(Number(ctx.params.id), ctx.user)));
+route("POST", "/ai/runs/:id/recreate", "owner", async (ctx) => {
+  try {
+    const run = await (await studio()).recreate(Number(ctx.params.id), ctx.user);
+    return ok({ ok: true, run });
+  } catch (e) {
+    return fail(400, String(e?.message || e));
+  }
+});
 route("POST", "/ai/runs/:id/cancel", "marketer", studioAct((o, ctx) => o.cancel(Number(ctx.params.id), ctx.user)));
 route("GET", "/ai/autopilot", "team", async () => {
   const { state } = await loadState();

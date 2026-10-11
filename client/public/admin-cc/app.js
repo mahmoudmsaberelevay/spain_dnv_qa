@@ -79,6 +79,7 @@
     },
     decideItem: (id, body) => api.run(() => api.req('POST', `items/${encodeURIComponent(id)}/decision`, body), () => E.decideItem(demoState, id, body.decision, body, who(), role())),
     reviseItem: (id, body) => api.run(() => api.req('POST', `items/${encodeURIComponent(id)}/revision`, body), () => E.decideItem(demoState, id, 'request_changes', body, who(), role())),
+    recreateStudioRun: (id) => api.run(() => api.req('POST', `ai/runs/${encodeURIComponent(id)}/recreate`), () => ({ ok: false, error: 'From-scratch recreation runs on elevay.vip.' })),
     restoreItemVersion: (id, version, body) => api.run(() => api.req('POST', `items/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/restore`, body), () => E.restoreItemVersion(demoState, id, version, { actor: who(), role: role(), baseVersion: body.baseVersion, request: body.note })),
     approveAll: (week) => api.run(() => api.req('POST', `weeks/${week}/approve-all`), () => E.approveAllWeek(demoState, week, who(), role())),
     decideAction: (id, body) => api.run(() => api.req('POST', `actions/${id}/decision`, body), () => E.decideAction(demoState, id, body.decision, body, who(), role())),
@@ -869,7 +870,7 @@
     el.querySelectorAll('[data-run-act]').forEach((b) => (b.onclick = () => {
       const [a, id, n] = b.dataset.runAct.split(':');
       if (a === 'approve' && b.dataset.cost && !confirm(b.dataset.cost)) return;
-      act(async () => { await api.req('POST', a === 'approve' ? `ai/runs/${id}/steps/${n}/approve` : `ai/runs/${id}/${a}`); await loadStudio(); }, a === 'approve' ? 'Approved. The models continue.' : a === 'retry' ? 'Retrying.' : a === 'redo' ? 'Making the reel again.' : 'Cancelled.');
+      act(async () => { if (a === 'recreate') await api.recreateStudioRun(id); else await api.req('POST', a === 'approve' ? `ai/runs/${id}/steps/${n}/approve` : `ai/runs/${id}/${a}`); await loadStudio(); }, a === 'approve' ? 'Approved. The models continue.' : a === 'retry' ? 'Retrying.' : a === 'redo' ? 'Making the reel again.' : a === 'recreate' ? 'Fresh version started. The prior version and all its assets are retained.' : 'Cancelled.');
     }));
     el.querySelectorAll('[data-goview]').forEach((b) => (b.onclick = (ev) => { ev.preventDefault(); go(b.dataset.goview); }));
   }
@@ -900,11 +901,12 @@
     const clips = (A.clips || []).filter((c) => c && c.url);
     const brief = A.brief;
     const stoppedReel = r.kind === 'reel' && A.qc_blocked && (r.steps || []).some((s2) => s2.status === 'skipped');
+    const recreateReady = isOwner() && ['reel', 'static'].includes(r.kind) && !['queued', 'running', 'waiting', 'awaiting_approval', 'sandbox_queued', 'sandbox_running', 'sandbox_waiting'].includes(r.status);
     return `<details class="run" data-run="${r.id}" ${isOpen || ['awaiting_approval', 'failed', 'needs_review'].includes(r.status) ? 'open' : ''}><summary><span class="pill ${pc}">${pl}</span> <strong>${esc(r.title)}</strong> <span class="small muted">· ${esc((S.studio.pipelines[r.kind] || {}).label || r.kind)} · #${r.id} · ${esc(r.created_by)} · ${ago(r.created_at)}</span></summary>
       <div class="run-body"><ol class="steps">${steps}</ol>
         ${A.answer ? `<div class="answer">${esc(A.answer)}</div>` : ''}
         ${A.qc && A.qc.pass === false ? `<div class="alert"><span class="tag">Claude QC</span><span>${esc((A.qc.issues || []).join(' · '))}</span></div>` : A.qc ? '<div class="small" style="color:var(--ok)">Claude visual check passed.</div>' : ''}
-        ${brief ? `<div class="grid g2" style="margin-top:8px"><div><div class="small muted">Caption (Arabic)</div><div dir="rtl" class="small" style="white-space:pre-wrap">${esc(brief.caption_ar || '')}</div></div><div>${brief.design ? `<div class="small muted">Design text</div><div>${esc(brief.design.headline_en || '')}</div>` : ''}${brief.reel ? `<div class="small muted">Voice-over (Egyptian Arabic)</div><ol class="small" dir="rtl">${brief.reel.storyboard.map((c) => `<li>${esc(c.spoken_text_ar || '')}</li>`).join('')}</ol>` : ''}</div></div>` : ''}
+        ${brief ? `<div class="grid g2" style="margin-top:8px"><div><div class="small muted">Caption (Arabic)</div><div dir="rtl" class="small" style="white-space:pre-wrap">${esc(brief.caption_ar || '')}</div></div><div>${brief.design ? `<div class="small muted">Design text</div><div>${esc(brief.design.headline_en || '')}</div>` : ''}${brief.reel ? `<div class="small muted">Voice-over (Egyptian Arabic)</div><div class="small" dir="rtl" style="white-space:pre-wrap;line-height:1.8">${esc(brief.reel.storyboard.map((c) => c.spoken_text_ar || '').filter(Boolean).join(' '))}</div><div class="small muted">Shown as one continuous narration; it is split into four scene takes only for timing.</div>` : ''}</div></div>` : ''}
         ${imgs.length ? `<div class="thumbs">${imgs.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Generated design" loading="lazy"></a>`).join('')}</div>` : ''}
         ${A.final?.peakRssBytes ? `<p class="small muted">Isolated render peak RSS: ${(A.final.peakRssBytes / 1048576).toFixed(1)} MiB · FFmpeg threads: 1 · video join: stream copy</p>` : ''}
         ${A.final && A.final.url ? `<div class="small muted" style="margin-top:8px">Finished reel</div><video src="${esc(A.final.url)}" controls playsinline preload="metadata" style="max-width:280px;border-radius:8px"></video>` : ''}
@@ -913,7 +915,7 @@
         ${A.item_id ? `<p class="small">In the weekly plan as <a href="#plan" data-goview="plan">${esc(A.item_id)}</a>.</p>` : ''}
         ${A.plan ? '<p class="small">Plan sent to the <a href="#monthly" data-goview="monthly">Monthly plan</a> tab.</p>' : ''}
         <details class="small"><summary>Conversation between the models (${(r.messages || []).length})</summary><ul class="msgs">${(r.messages || []).map((m) => `<li><span class="muted">${fmtDT(m.at)}</span> ${provChip(m.from)} → ${provChip(m.to)}<pre>${esc(m.text)}</pre></li>`).join('')}</ul></details>
-        ${canEdit() ? `<div class="row" style="margin-top:8px">${r.status === 'failed' ? `<button class="btn sm" data-run-act="retry:${r.id}">Retry failed step</button>` : ''}${stoppedReel ? `<button class="btn sm primary" data-run-act="redo:${r.id}">Make the reel again</button>` : ''}${!['done', 'failed', 'cancelled'].includes(r.status) ? `<button class="btn ghost sm" data-run-act="cancel:${r.id}">Cancel</button>` : ''}</div>` : ''}
+        ${canEdit() ? `<div class="row" style="margin-top:8px">${r.status === 'failed' ? `<button class="btn sm" data-run-act="retry:${r.id}">Retry failed step</button>` : ''}${stoppedReel ? `<button class="btn sm primary" data-run-act="redo:${r.id}">Make the reel again</button>` : ''}${recreateReady ? `<button class="btn sm primary" data-run-act="recreate:${r.id}" title="Creates a fully fresh version; never reuses the previous media">Recreate from scratch</button><span class="small muted">New version · previous assets retained</span>` : ''}${!['done', 'failed', 'cancelled'].includes(r.status) ? `<button class="btn ghost sm" data-run-act="cancel:${r.id}">Cancel</button>` : ''}</div>` : ''}
       </div></details>`;
   }
   // ------------------------------------------------------------ Meta (replies, publishing, campaigns)

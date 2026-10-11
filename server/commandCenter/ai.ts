@@ -713,7 +713,7 @@ export function createOrchestrator(deps) {
         return;
       }
       case "openai.reel_storyboard": {
-        const r = await askOpenAi(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "final_edit_direction": "one concise editing direction for the external renderer: pacing, clean scene joins and narration placement only; never request text, logo changes or outro changes", "scenes": [4 scenes in order hook → explanation → trust → realistic outcome, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic voice-over for this scene, 7–10 words; ONLY country names and ELEVAY in English letters, everything else in Arabic; write شينغن rather than Schengen"}]}`, { maxTokens: 5000 });
+        const r = await askOpenAi(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}The four spoken_text_ar values are recorded separately for scene timing, but together they MUST read as one complete, connected Egyptian Arabic voice-over narration—not numbered points, disconnected bullets or four standalone statements. Each line should naturally continue the thought before it.\n\nReturn JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "final_edit_direction": "one concise editing direction for the external renderer: pacing, clean scene joins and narration placement only; never request text, logo changes or outro changes", "scenes": [4 scenes in order hook → explanation → trust → realistic outcome, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic continuation, 7–10 words; ONLY country names and ELEVAY in English letters, everything else in Arabic; write شينغن rather than Schengen"}]}`, { maxTokens: 5000 });
         const scenes = (r.data.scenes || []).slice(0, 4);
         if (scenes.length !== 4) throw new Error("OpenAI did not return 4 scenes.");
         const invalidScripts = async () => {
@@ -723,7 +723,7 @@ export function createOrchestrator(deps) {
         };
         let invalid = await invalidScripts();
         for (let repair = 0; invalid.length && repair < 2; repair++) {
-          const fixed = await askOpenAi(run, step, `Your storyboard is accepted visually, but scene(s) ${invalid.map(i=>i+1).join(",")} have missing or non-Egyptian spoken scripts. Rewrite ONLY these scripts, 7–10 words each, natural Egyptian Arabic, with a clear Egyptian marker such as خلينا، تقدر، بنراجع، معاك، علشان، دلوقتي. Country names and ELEVAY English only; write شينغن in Arabic, never Schengen. No guarantees or تأشيرة. Leave all visuals unchanged. Current scenes:\n${JSON.stringify(scenes)}\nReturn JSON {"scenes":[{"scene":1,"spoken_text_ar":"..."}]} for ONLY the specified scenes.`, { maxTokens: 1000 });
+          const fixed = await askOpenAi(run, step, `Your storyboard is accepted visually, but scene(s) ${invalid.map(i=>i+1).join(",")} have missing or non-Egyptian spoken scripts. Rewrite ONLY these scripts, 7–10 words each, natural Egyptian Arabic, with a clear Egyptian marker such as خلينا، تقدر، بنراجع، معاك، علشان، دلوقتي. Each replacement must continue the complete narration naturally from the preceding and following scene; never make a numbered point or standalone bullet. Country names and ELEVAY English only; write شينغن in Arabic, never Schengen. No guarantees or تأشيرة. Leave all visuals unchanged. Current scenes:\n${JSON.stringify(scenes)}\nReturn JSON {"scenes":[{"scene":1,"spoken_text_ar":"..."}]} for ONLY the specified scenes.`, { maxTokens: 1000 });
           for (const s of fixed.data?.scenes || []) if (invalid.includes(s.scene - 1)) scenes[s.scene - 1].spoken_text_ar = s.spoken_text_ar;
           invalid = await invalidScripts();
         }
@@ -737,7 +737,7 @@ export function createOrchestrator(deps) {
         if (!rev?.authorizedBy) throw new Error("Revision authorization is missing.");
         const scope = rev.scope;
         const selected = rev.clip ? [Number(rev.clip) - 1] : Array.from({length:run.kind === "carousel" ? A.brief.carousel.slides.length : 4}, (_, i)=>i);
-        const instructions = scope === "caption" ? 'Return {"caption_ar":"revised MSA caption"} only.' : scope === "schedule" ? 'Return {"datetime_cairo":"YYYY-MM-DDTHH:mm"} only. Preserve the original channel; timezone Africa/Cairo.' : scope === "voice" ? `Return {"scenes":[{"scene":1,"spoken_text_ar":"Egyptian Arabic revised line"}]} for exactly scenes ${selected.map(i=>i+1).join(",")}. Preserve every visual description.` : scope === "reel_clip" ? `Return {"scenes":[{"scene":1,"keyframe_prompt":"complete corrected frame prompt","motion_prompt":"complete corrected motion prompt"}]} for exactly scenes ${selected.map(i=>i+1).join(",")}. Preserve spoken lines.` : run.kind === "carousel" ? `Return {"slides":[{"slide":1,"image_prompt":"revised complete photograph prompt","headline_en":"English headline"}]} for exactly slides ${selected.map(i=>i+1).join(",")}. Preserve all other slides and caption.` : 'Return {"design":{"image_prompt":"complete revised image prompt","headline_en":"revised English headline"}} only. Preserve caption, schedule and other fields.';
+        const instructions = scope === "caption" ? 'Return {"caption_ar":"revised MSA caption"} only.' : scope === "schedule" ? 'Return {"datetime_cairo":"YYYY-MM-DDTHH:mm"} only. Preserve the original channel; timezone Africa/Cairo.' : scope === "voice" ? `Return {"scenes":[{"scene":1,"spoken_text_ar":"Egyptian Arabic revised line"}]} for exactly scenes ${selected.map(i=>i+1).join(",")}. Preserve every visual description. A revised line must remain a natural continuation of the complete Egyptian Arabic narration, never a list point.` : scope === "reel_clip" ? `Return {"scenes":[{"scene":1,"keyframe_prompt":"complete corrected frame prompt","motion_prompt":"complete corrected motion prompt"}]} for exactly scenes ${selected.map(i=>i+1).join(",")}. Preserve spoken lines.` : run.kind === "carousel" ? `Return {"slides":[{"slide":1,"image_prompt":"revised complete photograph prompt","headline_en":"English headline"}]} for exactly slides ${selected.map(i=>i+1).join(",")}. Preserve all other slides and caption.` : 'Return {"design":{"image_prompt":"complete revised image prompt","headline_en":"revised English headline"}} only. Preserve caption, schedule and other fields.';
         const writer = scope === "voice" ? askOpenAi : askClaude;
         const r = await writer(run, step, `Owner-authorized targeted change. Scope: ${scope}. Request: ${rev.request}. Current brief:\n${JSON.stringify(A.brief)}\nChange ONLY the stated scope. ${instructions}`, { maxTokens: 4000 });
         const d = r.data;
@@ -1230,6 +1230,56 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
     kick(id);
   }
 
+  /**
+   * Owner-triggered clean recreation. Unlike retry/redo, this never carries a
+   * keyframe, clip, voice take, final MP4, or QC result into the new run.
+   * A linked weekly-plan item is replaced only after normal final Claude QC.
+   */
+  async function recreate(id, user) {
+    if (user.role !== "owner") throw new Error("Only the owner can recreate a creative from scratch.");
+    const g = await get(id);
+    if (!g) throw new Error("Run not found.");
+    const source = g.run;
+    if (!["reel", "static"].includes(source.kind)) throw new Error("Only reels and static posts can be recreated from scratch.");
+    if (["queued", "running", "waiting", "awaiting_approval", "sandbox_queued", "sandbox_running", "sandbox_waiting"].includes(source.status)) {
+      throw new Error("This creative is still running. Cancel or wait for it before creating a separate fresh version.");
+    }
+
+    const A = source.artifacts || {};
+    const sourceBrief = A.brief || {};
+    const sourceOptions = source.options || {};
+    const program = String(sourceOptions.program || sourceBrief.program || "").slice(0, 80);
+    const datetime = String(sourceOptions.datetime_cairo || sourceBrief.publish?.datetime_cairo || "").slice(0, 16);
+    const itemId = String(A.item_id || "");
+    const originalObjective = String(source.request || sourceBrief.topic || `${source.kind} creative`).trim();
+    const recreationRequest = [
+      `AI Studio full recreation requested from run #${source.id}.`,
+      `Create a completely fresh ${source.kind} from the same marketing objective: ${originalObjective}`,
+      program ? `Keep the programme context: ${program}.` : "",
+      datetime ? `Keep the intended Cairo publishing time: ${datetime}.` : "",
+      "Do not reuse the old caption, storyboard, design, keyframes, clips, voice takes, final media or QC result. Produce a new creative version from the beginning.",
+      source.kind === "reel" ? "Write the four Egyptian Arabic scene takes as one continuous, complete narration when read in order; they are split only for timing and audio production." : "",
+    ].filter(Boolean).join("\n");
+
+    if (itemId) {
+      const { state } = await deps.loadState();
+      const item = state.items.find((x) => x.item_id === itemId);
+      if (!item) throw new Error("The linked weekly-plan item no longer exists, so its version history cannot be protected.");
+      if (item.revision?.status === "revision_pending") throw new Error("A revision is already in progress for this creative. Wait for it to finish before recreating it again.");
+      return reviseItem(itemId, { comment: recreationRequest, scope: "whole_concept" }, user);
+    }
+
+    // Historical studio-only work has no linked item to version. It still gets
+    // a wholly empty asset set and leaves the source run untouched.
+    const week = /^\d{4}-W\d{2}$/.test(String(sourceOptions.week || "")) ? sourceOptions.week : undefined;
+    return create({
+      kind: source.kind,
+      request: recreationRequest,
+      options: { program, datetime_cairo: datetime, week, manualReviewOnly: true, recreatedFromRunId: source.id, fullRecreation: true },
+      user,
+    });
+  }
+
   async function cancel(id, user) {
     const g = await get(id);
     if (!g) throw new Error("Run not found.");
@@ -1369,5 +1419,5 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
     }
   }
 
-  return { ensureTable, create, reviseItem, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, redo, cancel, tick, test: () => providers.test() };
+  return { ensureTable, create, reviseItem, recreate, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, redo, cancel, tick, test: () => providers.test() };
 }
