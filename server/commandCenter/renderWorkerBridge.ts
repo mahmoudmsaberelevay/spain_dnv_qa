@@ -265,6 +265,11 @@ export function createRenderWorkerBridge({
     // half of them and kept it in a permanent "rate limit" loop. Allow normal polling with headroom.
     limit("lease", 400, 15 * 60_000);
     if (!isWorkerId(workerId)) throw new RenderWorkerBridgeError(400, "Worker identifier is invalid.");
+    // One Mac may accidentally have a stale manual process alongside its
+    // LaunchAgent. A worker identity can own only one unexpired lease so the
+    // second process stays idle instead of rendering multiple reels at once.
+    const active = await q("SELECT id FROM ec_render_jobs WHERE status='running' AND lease_until>? AND JSON_UNQUOTE(JSON_EXTRACT(doc,'$.lease.workerId'))=? LIMIT 1", [now(), workerId]);
+    if (active[0]) return { ok: true, job: null };
     // Legacy queue rows can pre-date the fixed-outro contract. Quarantine a
     // bounded batch rather than handing an unusable job to the Mac forever.
     for (let retry = 0; retry < 20; retry++) {

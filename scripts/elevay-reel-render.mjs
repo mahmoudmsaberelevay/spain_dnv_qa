@@ -111,7 +111,10 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
     }
     stage = 'voice and music audio mix';
     let musicDropped = null;
-    let rawVoiceSeconds = Array.isArray(parts.rawVoiceSeconds) ? parts.rawVoiceSeconds : [];
+    // Timing is evidence for the current audio mix, not a reusable source
+    // part. Rebuilding audio must replace prior timing rather than append to
+    // stale values from a silent or superseded final.
+    let rawVoiceSeconds = [];
     if (!(await restore('audio', 'm4a'))) {
       const voices = [], tempos = [];
       for (let i=0;i<4;i++) {

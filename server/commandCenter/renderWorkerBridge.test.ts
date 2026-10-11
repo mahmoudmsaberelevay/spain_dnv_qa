@@ -25,6 +25,13 @@ function harness(start = 1_000_000) {
       const [pendingAt, runningAt] = args;
       return [...rows.values()].filter((row) => (row.status === "pending" && row.lease_until <= pendingAt) || (row.status === "running" && row.lease_until < runningAt)).sort((a, b) => a.created_at - b.created_at).slice(0, 1).map(clone);
     }
+    if (sql.startsWith("SELECT id FROM ec_render_jobs WHERE status='running'")) {
+      const [activeAt, workerId] = args;
+      return [...rows.values()].filter((row) => {
+        const lease = JSON.parse(row.doc || "{}").lease;
+        return row.status === "running" && row.lease_until > activeAt && lease?.workerId === workerId;
+      }).slice(0, 1).map((row) => ({ id: row.id }));
+    }
     if (sql.startsWith("SELECT * FROM ec_render_jobs WHERE id=")) return rows.has(args[0]) ? [clone(rows.get(args[0]))] : [];
     if (sql.startsWith("SELECT status, COUNT(*)")) {
       const counts = new Map<string, number>();
@@ -140,6 +147,15 @@ describe("render worker bridge", () => {
     const second = await bridge.lease("macbook-worker-02");
     expect(second.job.id).toBe(first.job.id);
     expect(second.lease.id).not.toBe(first.lease.id);
+  });
+
+  it("allows only one active lease for a worker identity even if a stale process polls", async () => {
+    const { bridge, enqueue } = harness();
+    enqueue("reel-one-active-90007"); enqueue("reel-two-active-90008");
+    const first = await bridge.lease("macbook-worker-01");
+    await expect(bridge.lease("macbook-worker-01")).resolves.toMatchObject({ ok: true, job: null });
+    await expect(bridge.lease("other-worker-02")).resolves.toMatchObject({ job: { id: "reel-two-active-90008" } });
+    expect(first.job.id).toBe("reel-one-active-90007");
   });
 
   it("stops a permanently untimable saved voice without consuming automatic render retries", async () => {
