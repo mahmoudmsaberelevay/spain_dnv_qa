@@ -305,7 +305,11 @@ export function createRenderWorkerBridge({
 
   async function progress(jobId: string, workerId: string, leaseId: string, input: any) {
     await ensure();
-    limit("progress", 180, 15 * 60_000);
+    // A legitimate final render reports every one of its 77 QC sheets and
+    // artifacts. Scope this high-volume callback to the leased job so a
+    // completed reel cannot exhaust the next reel's allowance, while keeping
+    // the same per-job flood protection.
+    limit(`progress:${jobId}`, 180, 15 * 60_000);
     const current = await leased(jobId, workerId, leaseId);
     const stage = SAFE_STAGES.has(String(input?.stage || "")) ? String(input.stage) : "rendering";
     const metadata = safeProgressMetadata(input?.parts);
@@ -428,7 +432,10 @@ export function createRenderWorkerBridge({
 
   async function uploadRequest(req: any, { jobId, kind }: { jobId: string, kind: string }) {
     await ensure();
-    limit("artifact", 120, 15 * 60_000);
+    // Final QC evidence is deliberately extensive (75 sheets plus 2 outro
+    // frames). Rate-limit uploads per job rather than globally so one valid
+    // completed render cannot make the next leased render fail closed.
+    limit(`artifact:${jobId}`, 120, 15 * 60_000);
     const workerId = header(req, "x-render-worker-id");
     const leaseId = header(req, "x-render-worker-lease");
     const expectedSha = header(req, "x-artifact-sha256").toLowerCase();

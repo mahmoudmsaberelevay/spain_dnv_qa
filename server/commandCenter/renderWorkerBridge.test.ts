@@ -121,6 +121,17 @@ describe("render worker bridge", () => {
     await expect(bridge.complete(lease.job.id, "other-worker-02", lease.lease.id, { final: {} })).rejects.toMatchObject({ status: 409 });
   });
 
+  it("keeps high-volume progress allowance isolated to each leased render job", async () => {
+    const { bridge, enqueue } = harness();
+    enqueue("reel-rate-job-one-90007");
+    enqueue("reel-rate-job-two-90008");
+    const first = await bridge.lease("macbook-worker-01");
+    const second = await bridge.lease("macbook-worker-02");
+    for (let i = 0; i < 180; i++) await bridge.progress(first.job.id, "macbook-worker-01", first.lease.id, { stage: "rendering" });
+    await expect(bridge.progress(first.job.id, "macbook-worker-01", first.lease.id, { stage: "rendering" })).rejects.toMatchObject({ status: 429 });
+    await expect(bridge.progress(second.job.id, "macbook-worker-02", second.lease.id, { stage: "rendering" })).resolves.toMatchObject({ ok: true });
+  });
+
   it("allows an expired lease to be reclaimed, but not a live lease", async () => {
     const { bridge, enqueue, advance } = harness(); enqueue();
     const first = await bridge.lease("macbook-worker-01");
