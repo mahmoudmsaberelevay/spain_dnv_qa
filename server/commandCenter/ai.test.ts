@@ -52,7 +52,7 @@ function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = n
   const state = E.emptyState();
   // Unit fixtures drive one explicit run. The live scheduler covers calendar
   // autoplan separately; it must not consume mocked Claude responses here.
-  state.settings.studio = { autoClips, autoplan: false };
+  state.settings.studio = { autoClips, autoplan: false, autonews: false };
   const calls = { claude: [], openaiText: [], openai: [], hfSubmit: [], hfPoll: 0, voice: 0, render: [], notify: [] };
   let clipsDone = false, failedRequestId = null;
   const providers = {
@@ -273,6 +273,21 @@ describe("reel durability and legacy compatibility", () => {
 });
 
 describe("helpers", () => {
+  it("researches news with Claude web search and files only new, sourced items", async () => {
+    const { o, state, calls } = setup([{ news: [
+      { headline: "Spain updates remote-work residency guidance", country: "Spain", program: "Spain Digital Nomad Residence", what_changed: "x", effective_date: "2026-11-01", published_date: "2026-10-08", source_url: "https://www.exteriores.gob.es/x", source_name: "MAEC", confidence: "verified", marketing_angle: "Explain the update." },
+      { headline: "No source", country: "Malta", confidence: "reported" },
+      { headline: "Rumour", country: "Grenada", source_url: "https://news.example/r", confidence: "bogus" },
+    ] }]);
+    const r = await o.researchNews();
+    expect(r).toEqual({ found: 2, added: 2 });
+    expect(state.news.find((n) => n.headline === "Rumour").confidence).toBe("unconfirmed");
+    expect(state.news.some((n) => n.confidence === "verified" && n.researched_by === "claude-web-search")).toBe(true);
+    expect(calls.claude[0].prompt).toMatch(/Spain Digital Nomad Residence/);
+    expect(JSON.stringify(state.audit)).toMatch(/news\.researched/);
+    expect((await o.researchNews().catch(() => ({ added: -1 }))).added).not.toBe(2); // same items are not filed twice
+  });
+
   it("parses JSON embedded in prose or a fence", () => {
     expect(extractJson('Sure:\n```json\n{"a":1}\n```')).toEqual({ a: 1 });
     expect(extractJson('Here {"b":[1,2]} done')).toEqual({ b: [1, 2] });

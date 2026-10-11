@@ -159,19 +159,27 @@ export function extractJson(text: string) {
 }
 
 export function makeProviders(fetcher = fetch, renderQueue = null) {
-  async function claude({ system, prompt, images = [], maxTokens = 4000, json = true, repairing = false }) {
+  async function claude({ system, prompt, images = [], maxTokens = 4000, json = true, repairing = false, tools = null }) {
     const key = process.env.ANTHROPIC_API_KEY;
     if (!key) throw new Error("ANTHROPIC_API_KEY is not set on elevay.vip.");
     const content = [...images.map((im) => (typeof im === "string" || im.url ? { type: "image", source: { type: "url", url: typeof im === "string" ? im : im.url } } : { type: "image", source: { type: "base64", media_type: im.mediaType || "image/jpeg", data: im.base64 } })), { type: "text", text: prompt }];
-    const res = await fetcher("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: CLAUDE_MODEL(), max_tokens: maxTokens, system, messages: [{ role: "user", content }] }),
-      signal: AbortSignal.timeout(180000),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(`Claude: ${body?.error?.message || `HTTP ${res.status}`}`);
-    const text = (body.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
+    const messages: any[] = [{ role: "user", content }];
+    let body: any = {}, blocks: any[] = [];
+    // Server tools (web search) can pause a long turn; continue it up to 4 times.
+    for (let turn = 0; turn < 5; turn++) {
+      const res = await fetcher("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: CLAUDE_MODEL(), max_tokens: maxTokens, system, messages, ...(tools ? { tools } : {}) }),
+        signal: AbortSignal.timeout(tools ? 300000 : 180000),
+      });
+      body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(`Claude: ${body?.error?.message || `HTTP ${res.status}`}`);
+      blocks = blocks.concat(body.content || []);
+      if (body.stop_reason !== "pause_turn") break;
+      messages.push({ role: "assistant", content: body.content });
+    }
+    const text = (tools ? blocks.slice(blocks.map((c) => c.type).lastIndexOf("web_search_tool_result") + 1) : blocks).filter((c) => c.type === "text").map((c) => c.text).join("\n");
     if (!json) return { text, data: null, usage: body.usage || null, model: body.model || CLAUDE_MODEL() };
     try {
       return { text, data: extractJson(text), usage: body.usage || null, model: body.model || CLAUDE_MODEL() };
@@ -1365,12 +1373,61 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       const pending = state.actions.filter((x) => x.status === "pending").map((x) => x.id);
       if (pending.length) await deps.mutate({}, (s2) => { for (const id of pending) { const r = E.decideAction(s2, id, "approve", { comment: "Approved by autopilot (6-week gate reached)" }, "autopilot", "owner"); if (r.ok === false) E.audit(s2, "autopilot", "action.left_for_owner", id, r.error); } return { ok: true }; });
     }
+    if (st.studio?.autonews !== false) await newsDue(nowMs).catch(() => {});
     if (st.studio?.autoplan === false) return;
     const c = cairoParts(nowMs);
     if (c.weekday === "Sat" && c.hour >= 9) await startWeekly(planningWeek(nowMs), { email: "autopilot", role: "owner" }).catch(() => {});
     if (c.day >= 25) {
       const d = new Date(nowMs); d.setUTCMonth(d.getUTCMonth() + 1, 1);
       await startMonthly(d.toISOString().slice(0, 7), { email: "autopilot", role: "owner" }).catch(() => {});
+    }
+  }
+  // ---------------------------------------------------------------- weekly news research (runs on the website itself)
+  /** Claude searches the web for this week's residency/citizenship-by-investment news and files it in the News tab. */
+  async function researchNews(user = { email: "autopilot", role: "owner" }) {
+    const since = new Date(Date.now() - 8 * 86400000).toISOString().slice(0, 10);
+    const r = await providers.claude({
+      system: ELEVAY_RULES,
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: Number(process.env.ELEVAY_NEWS_SEARCHES) || 15 }],
+      maxTokens: 8000,
+      prompt: `You are ELEVAY's weekly news researcher. Today is ${cairoParts().date} (Cairo). Search the web for news published since ${since} that matters to Egyptian and Middle Eastern clients of these programs: Spain Digital Nomad Residence, Portugal D7 / D8 / D2 / Golden Visa, Greece Golden Visa, Malta Permanent Residence, UK Expansion Worker, Canada Express Entry and Provincial Nominee Programs, and Caribbean Citizenship by Investment (Antigua, Dominica, Grenada, St Kitts, St Lucia) and Vanuatu.
+Look for: rule, fee, income or investment-threshold changes; processing changes; new or closing routes; official announcements; credible reports of upcoming changes.
+For each item, open and rely on the most authoritative source you can find. Confidence: "verified" only when an official government or programme source states it; "reported" when reputable media report it but no official source was found; "unconfirmed" for anything else. Never invent a URL, date or figure. Skip items older than ${since} and skip duplicates. Prefer 4–10 strong items over many weak ones; return an empty list if nothing relevant happened.
+Marketing angle: one sentence, educational and benefit-led, never fear-based, never a guarantee, never legal or tax advice. Never use the word "visa" in Arabic or "تأشيرة".
+Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": "...", "program": "...", "what_changed": "1–2 factual sentences", "effective_date": "YYYY-MM-DD or empty", "published_date": "YYYY-MM-DD", "source_url": "https://...", "source_name": "...", "confidence": "verified"|"reported"|"unconfirmed", "marketing_angle": "..."}]}`,
+    });
+    const list = (Array.isArray(r.data?.news) ? r.data.news : [])
+      .filter((n) => n && n.headline && /^https:\/\//.test(String(n.source_url || "")))
+      .map((n) => ({
+        headline: String(n.headline).slice(0, 200), country: String(n.country || "").slice(0, 80), program: String(n.program || "").slice(0, 120),
+        what_changed: String(n.what_changed || "").slice(0, 600), effective_date: /^\d{4}-\d{2}-\d{2}$/.test(n.effective_date || "") ? n.effective_date : "",
+        published_date: /^\d{4}-\d{2}-\d{2}$/.test(n.published_date || "") ? n.published_date : "", source_url: String(n.source_url).slice(0, 500), source_name: String(n.source_name || "").slice(0, 120),
+        confidence: ["verified", "reported", "unconfirmed"].includes(n.confidence) ? n.confidence : "unconfirmed", marketing_angle: String(n.marketing_angle || "").slice(0, 400),
+        researched_by: "claude-web-search",
+      }));
+    // Skip headlines already in the News tab.
+    const { state } = await deps.loadState();
+    const seen = new Set(state.news.map((n) => String(n.source_url || n.headline).toLowerCase()));
+    const fresh = list.filter((n) => !seen.has(n.source_url.toLowerCase()));
+    await deps.mutate({}, (st) => {
+      if (fresh.length) { const out = E.addNews(st, fresh, "claude"); if (out.ok === false) return out; }
+      E.audit(st, user.email, "news.researched", null, `${fresh.length} new item(s) from Claude web search (${list.length} found)`);
+      return { ok: true };
+    });
+    return { found: list.length, added: fresh.length };
+  }
+  /** Thursday 20:00 Cairo, or any time before Saturday's 09:00 plan if Thursday's run was missed. Once per planning week. */
+  async function newsDue(nowMs) {
+    const c = cairoParts(nowMs);
+    const due = (c.weekday === "Thu" && c.hour >= 20) || c.weekday === "Fri" || (c.weekday === "Sat" && c.hour < 9);
+    if (!due) return;
+    if (!(await claimOnce(`news_${planningWeek(nowMs)}`))) return;
+    try { await researchNews(); }
+    catch (e) {
+      const reason = String(e?.message || e).slice(0, 300);
+      await deps.mutate({}, (st) => { E.audit(st, "autopilot", "news.research_failed", null, reason); return { ok: true }; }).catch(() => {});
+      if (deps.notifyFailure) await deps.notifyFailure({ runId: 0, kind: "news", title: "Weekly news research", stepName: "Claude web search", reason, status: "failed" }).catch(() => {});
+      await q("DELETE FROM ec_kv WHERE name = ?", [`news_${planningWeek(nowMs)}`]).catch(() => {}); // try again on the next tick hour
     }
   }
   async function claimOnce(key) {
@@ -1428,5 +1485,5 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
     }
   }
 
-  return { ensureTable, create, reviseItem, recreate, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, redo, cancel, tick, test: () => providers.test() };
+  return { ensureTable, researchNews, create, reviseItem, recreate, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, redo, cancel, tick, test: () => providers.test() };
 }
