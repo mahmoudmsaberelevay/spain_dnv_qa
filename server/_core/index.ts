@@ -207,6 +207,11 @@ async function startServer() {
   const { registerMetaDataDeletionRoutes } = await import("../metaDataDeletionRoutes");
   registerMetaDataDeletionRoutes(app);
 
+  // Final-render artifacts can be large MP4 files. This worker-only route must
+  // stay before express.json() so the website never buffers video bytes in RAM.
+  const { registerRenderWorkerUploadRoute } = await import("../commandCenter/renderWorkerBridge");
+  registerRenderWorkerUploadRoute(app);
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));

@@ -46,8 +46,9 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
   if (narrationTargetSeconds !== 18 || narrationSceneSeconds !== 4.5) {
     throw new Error('Render manifest must use the locked 18-second narration target and four 4.5-second voice takes.');
   }
-  const metrics = { method: 'Linux /proc RSS sampled every 25 ms; isolated worker and all child processes', peakRssBytes: 0, peakFfmpegRssBytes: 0, threads: THREADS, stages: [] };
-  const sample = () => { metrics.peakRssBytes = Math.max(metrics.peakRssBytes, memoryTree(process.pid)); };
+  const linuxRss = process.platform === 'linux';
+  const metrics = { method: linuxRss ? 'Linux /proc RSS sampled every 25 ms; isolated worker and all child processes' : 'Worker-process RSS sampled every 25 ms; macOS FFmpeg RSS unavailable', peakRssBytes: 0, peakFfmpegRssBytes: 0, ffmpegRssAvailable: linuxRss, threads: THREADS, stages: [] };
+  const sample = () => { metrics.peakRssBytes = Math.max(metrics.peakRssBytes, linuxRss ? memoryTree(process.pid) : process.memoryUsage().rss); };
   const timer = setInterval(sample, 25); sample();
   const parts = { ...savedParts };
   const files = {};
@@ -58,7 +59,7 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       const child = spawn(bin, args, { stdio: ['ignore', capture ? 'pipe' : 'ignore', 'pipe'], env: { ...process.env, ELEVAY_REEL_THREADS: '1', OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1' } });
       let err = '', out = '';
       const t = setTimeout(() => child.kill('SIGKILL'), timeout);
-      const m = setInterval(() => { sample(); metrics.peakFfmpegRssBytes = Math.max(metrics.peakFfmpegRssBytes, memoryTree(child.pid)); }, 25);
+      const m = setInterval(() => { sample(); if (linuxRss) metrics.peakFfmpegRssBytes = Math.max(metrics.peakFfmpegRssBytes, memoryTree(child.pid)); }, 25);
       child.stdout?.on('data', d => { out = (out + d).slice(-65536); });
       child.stderr.on('data', d => { err = (err + d).slice(-2500); });
       child.on('error', e => { clearTimeout(t); clearInterval(m); reject(e); });

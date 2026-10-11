@@ -31,6 +31,7 @@ import { buildLiveReport } from "./live";
 import { createOrchestrator, makeProviders, PIPELINES, planningWeek } from "./ai";
 import { PROGRAMS, assetPath, assetText } from "./knowledge";
 import { createRenderQueue } from "./renderQueue";
+import { createRenderWorkerBridge, RenderWorkerBridgeError } from "./renderWorkerBridge";
 import { creditsReport, cleanManualCredit, clearCreditsCache, CREDIT_IDS } from "./credits";
 import { startEmbeddedRenderWorker, embeddedRenderStatus } from "./embeddedRenderWorker";
 import { notifyAiFailure } from "./alerts";
@@ -55,6 +56,14 @@ const ROLE_MAP: Record<string, "owner" | "marketer" | "viewer"> = {
   researcher: "marketer",
   analyst: "viewer",
 };
+
+// This bridge has no route to CRM, Lead, Meta or provider data. Its only durable
+// state is the external final-render queue and its server-side storage handoff.
+let renderWorkerBridgePromise = null;
+function renderWorkerBridge() {
+  if (!renderWorkerBridgePromise) renderWorkerBridgePromise = Promise.resolve(createRenderWorkerBridge({ q }));
+  return renderWorkerBridgePromise;
+}
 
 // ------------------------------------------------------------------ database
 let poolPromise: Promise<mysql.Pool> | null = null; // connection pool only; no request data
@@ -224,6 +233,24 @@ const fromResult = (r) => (r && r.ok === false ? fail(400, r.error, r) : ok(r ||
 const loginUrl = `/login?returnTo=${encodeURIComponent(BASE + "/")}`;
 
 route("GET", "/health", "public", async () => ok({ ok: true, service: "elevay-command-center", externalAuth: true, loginUrl, needsSetup: false, time: new Date().toISOString() }));
+
+// ------------------------------------------------------------------ external final-render worker
+const workerBody = (ctx) => ctx.body && typeof ctx.body === "object" ? ctx.body : {};
+route("GET", "/render-worker/health", "worker", async () => ok(await (await renderWorkerBridge()).status()));
+route("GET", "/render-worker/status", "worker", async () => ok(await (await renderWorkerBridge()).status()));
+route("POST", "/render-worker/lease", "worker", async (ctx) => ok(await (await renderWorkerBridge()).lease(String(workerBody(ctx).workerId || ""))));
+route("POST", "/render-worker/jobs/:id/renew", "worker", async (ctx) => {
+  const body = workerBody(ctx); return ok(await (await renderWorkerBridge()).renew(ctx.params.id, String(body.workerId || ""), String(body.leaseId || "")));
+});
+route("POST", "/render-worker/jobs/:id/progress", "worker", async (ctx) => {
+  const body = workerBody(ctx); return ok(await (await renderWorkerBridge()).progress(ctx.params.id, String(body.workerId || ""), String(body.leaseId || ""), body));
+});
+route("POST", "/render-worker/jobs/:id/complete", "worker", async (ctx) => {
+  const body = workerBody(ctx); return ok(await (await renderWorkerBridge()).complete(ctx.params.id, String(body.workerId || ""), String(body.leaseId || ""), body));
+});
+route("POST", "/render-worker/jobs/:id/fail", "worker", async (ctx) => {
+  const body = workerBody(ctx); return ok(await (await renderWorkerBridge()).fail(ctx.params.id, String(body.workerId || ""), String(body.leaseId || ""), body));
+});
 
 // ------------------------------------------------------------------ Credits (what each AI platform has left)
 route("GET", "/credits", "owner", async (ctx) => {
@@ -573,6 +600,8 @@ async function handle(req: Request, res: Response) {
       const h = String(req.headers.authorization || "");
       if (!h.startsWith("Bearer ") || !safeEqual(h.slice(7), await secret("agent_token", 24))) return res.status(401).json({ ok: false, error: "Agent token missing or invalid." });
       await kvSet("last_agent_seen", new Date().toISOString());
+    } else if (r.auth === "worker") {
+      if (!(await renderWorkerBridge()).authenticate(req.headers.authorization)) return res.status(401).json({ ok: false, error: "Worker token missing or invalid." });
     } else if (r.auth === "webhook") {
       if (!safeEqual(req.query.secret, await secret("webhook_secret", 16))) return res.status(401).json({ ok: false, error: "Bad webhook secret." });
     } else if (r.auth !== "public") {
@@ -589,6 +618,7 @@ async function handle(req: Request, res: Response) {
     if (ctx.changed) { try { await pushJobs(ctx); } catch (e) { console.error("[CommandCenter] push", e); } }
     return res.status(result.status).json(result.body);
   } catch (e) {
+    if (e instanceof RenderWorkerBridgeError) return res.status(e.status).json({ ok: false, error: e.message });
     console.error("[CommandCenter]", e);
     return res.status(500).json({ ok: false, error: "Server error" });
   }

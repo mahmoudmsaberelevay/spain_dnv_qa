@@ -26,4 +26,6 @@ export const ENV = {
   // Managed secret forms can preserve an accidental trailing newline or space.
   // Normalize centrally so every API v2 caller receives the same credential bytes.
   manusApiKey: (process.env.MANUS_API_KEY ?? "").trim(),
+  // External final-render worker only; never sent to the browser or to providers.
+  renderWorkerToken: (process.env.ELEVAY_RENDER_WORKER_TOKEN ?? "").trim(),
 };

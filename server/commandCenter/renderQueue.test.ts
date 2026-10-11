@@ -23,7 +23,9 @@ describe('external render queue', () => {
     expect(d.manifest).toMatchObject({ narrationTargetSeconds: 18, narrationSceneSeconds: 4.5 });
   });
   it('waits fail-closed for ELEVAYEXTRO.mov rather than generating a logo substitute', async () => {
-    const { queue, rows } = setup({ fixedOutroUrl: "" });
+    // A whitespace override is intentionally truthy before trimming, so this
+    // remains a fail-closed test even when the test environment has an outro URL.
+    const { queue, rows } = setup({ fixedOutroUrl: " " });
     await expect(queue.compose(input)).resolves.toMatchObject({ stage: 'waiting_for_fixed_outro', jobId: null });
     expect(rows.size).toBe(0);
   });
