@@ -265,6 +265,9 @@ export function createRenderWorkerBridge({
     // half of them and kept it in a permanent "rate limit" loop. Allow normal polling with headroom.
     limit("lease", 400, 15 * 60_000);
     if (!isWorkerId(workerId)) throw new RenderWorkerBridgeError(400, "Worker identifier is invalid.");
+    // Owner switch: worker names in ELEVAY_RENDER_WORKERS_PAUSED (comma-separated) get no new jobs, e.g. a Mac
+    // still running an outdated renderer until someone can restart it. Other workers keep rendering.
+    if (String(process.env.ELEVAY_RENDER_WORKERS_PAUSED || "").split(",").map((x) => x.trim()).filter(Boolean).includes(workerId)) return { ok: true, job: null, paused: true };
     // One Mac may accidentally have a stale manual process alongside its
     // LaunchAgent. A worker identity can own only one unexpired lease so the
     // second process stays idle instead of rendering multiple reels at once.

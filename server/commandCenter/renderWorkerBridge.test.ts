@@ -149,6 +149,15 @@ describe("render worker bridge", () => {
     expect(second.lease.id).not.toBe(first.lease.id);
   });
 
+  it("gives no new jobs to a paused worker name while other workers keep rendering", async () => {
+    const { bridge, enqueue } = harness(); enqueue();
+    process.env.ELEVAY_RENDER_WORKERS_PAUSED = "old-mac-worker";
+    try {
+      await expect(bridge.lease("old-mac-worker")).resolves.toMatchObject({ ok: true, job: null, paused: true });
+      await expect(bridge.lease("new-mac-worker-2")).resolves.toMatchObject({ ok: true, job: { id: expect.any(String) } });
+    } finally { delete process.env.ELEVAY_RENDER_WORKERS_PAUSED; }
+  });
+
   it("allows only one active lease for a worker identity even if a stale process polls", async () => {
     const { bridge, enqueue } = harness();
     enqueue("reel-one-active-90007"); enqueue("reel-two-active-90008");
