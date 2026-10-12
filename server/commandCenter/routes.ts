@@ -238,7 +238,7 @@ route("GET", "/health", "public", async () => ok({ ok: true, service: "elevay-co
 const workerBody = (ctx) => ctx.body && typeof ctx.body === "object" ? ctx.body : {};
 route("GET", "/render-worker/health", "worker", async () => ok(await (await renderWorkerBridge()).status()));
 route("GET", "/render-worker/status", "worker", async () => ok(await (await renderWorkerBridge()).status()));
-route("POST", "/render-worker/lease", "worker", async (ctx) => ok(await (await renderWorkerBridge()).lease(String(workerBody(ctx).workerId || ""))));
+route("POST", "/render-worker/lease", "worker", async (ctx) => ok(await (await renderWorkerBridge()).lease(String(workerBody(ctx).workerId || ""), workerBody(ctx).rendererVersion)));
 route("POST", "/render-worker/jobs/:id/renew", "worker", async (ctx) => {
   const body = workerBody(ctx); return ok(await (await renderWorkerBridge()).renew(ctx.params.id, String(body.workerId || ""), String(body.leaseId || "")));
 });

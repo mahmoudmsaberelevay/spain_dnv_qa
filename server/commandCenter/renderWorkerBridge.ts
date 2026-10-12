@@ -259,12 +259,20 @@ export function createRenderWorkerBridge({
     await q("UPDATE ec_render_jobs SET status='failed',doc=?,updated_at=?,lease_until=0,lease_owner=NULL WHERE id=? AND status IN ('pending','running')", [JSON.stringify(doc), now(), row.id]);
   }
 
-  async function lease(workerId: string) {
+  /** Lowest renderer version that may take jobs (3 = the voice-over fix). Older or unversioned Macs wait. */
+  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 3) || 0);
+  const workersSeen = new Map<string, { rendererVersion: number | null; at: number; outdated: boolean }>();
+  async function lease(workerId: string, rendererVersion?: unknown) {
     await ensure();
     // The Mac worker polls every 5 s while idle (180 requests per 15 minutes); the old cap of 90 refused
     // half of them and kept it in a permanent "rate limit" loop. Allow normal polling with headroom.
     limit("lease", 400, 15 * 60_000);
     if (!isWorkerId(workerId)) throw new RenderWorkerBridgeError(400, "Worker identifier is invalid.");
+    const version = Number.isFinite(Number(rendererVersion)) && rendererVersion !== null && rendererVersion !== undefined && rendererVersion !== "" ? Number(rendererVersion) : null;
+    const outdated = version === null || version < requiredRenderer();
+    workersSeen.set(workerId, { rendererVersion: version, at: now(), outdated });
+    // Only Macs running the current renderer get work; an outdated Mac keeps polling and simply waits.
+    if (outdated) return { ok: true, job: null, outdated: true, requiredVersion: requiredRenderer() };
     // Owner switch: worker names in ELEVAY_RENDER_WORKERS_PAUSED (comma-separated) get no new jobs, e.g. a Mac
     // still running an outdated renderer until someone can restart it. Other workers keep rendering.
     if (String(process.env.ELEVAY_RENDER_WORKERS_PAUSED || "").split(",").map((x) => x.trim()).filter(Boolean).includes(workerId)) return { ok: true, job: null, paused: true };
@@ -435,7 +443,7 @@ export function createRenderWorkerBridge({
     await ensure();
     const rows = await q("SELECT status, COUNT(*) AS total FROM ec_render_jobs GROUP BY status");
     const counts = Object.fromEntries((rows || []).map((row: any) => [String(row.status), Number(row.total || 0)]));
-    return { ok: true, service: "elevay-render-worker-bridge", protocol: 1, leaseSeconds: LEASE_MS / 1000, retryDelaySeconds: RETRY_DELAY_MS / 1000, queue: { pending: counts.pending || 0, running: counts.running || 0, retrying: counts.retry_wait || 0, failed: counts.failed || 0, done: counts.done || 0 } };
+    return { ok: true, service: "elevay-render-worker-bridge", protocol: 1, leaseSeconds: LEASE_MS / 1000, retryDelaySeconds: RETRY_DELAY_MS / 1000, queue: { pending: counts.pending || 0, running: counts.running || 0, retrying: counts.retry_wait || 0, failed: counts.failed || 0, done: counts.done || 0 }, requiredRendererVersion: requiredRenderer(), workers: [...workersSeen.entries()].filter(([, w]) => now() - w.at < 10 * 60_000).map(([id, w]) => ({ id, rendererVersion: w.rendererVersion, outdated: w.outdated, lastSeen: new Date(w.at).toISOString() })) };
   }
 
   async function uploadRequest(req: any, { jobId, kind }: { jobId: string, kind: string }) {

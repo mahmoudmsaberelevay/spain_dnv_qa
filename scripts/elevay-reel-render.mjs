@@ -7,6 +7,8 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
+/** Bumped whenever the renderer output changes; the website only gives jobs to Macs at or above its required version. 3 = voice-over timed per take (no silent reels) + fresh voice timing on audio rebuilds. */
+export const RENDERER_VERSION = 3;
 const THREADS = 1;
 const FFMPEG = process.env.ELEVAY_FFMPEG_BIN || '/usr/bin/ffmpeg';
 const FFPROBE = process.env.ELEVAY_FFPROBE_BIN || '/usr/bin/ffprobe';
