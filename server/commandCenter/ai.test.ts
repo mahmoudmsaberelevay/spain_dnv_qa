@@ -388,6 +388,8 @@ describe("owner-authorized targeted content revisions", () => {
     expect(recreated.artifacts).toEqual({});
     expect(recreated.options.revision).toMatchObject({itemId:item.item_id,baseVersion:1,scope:'whole_concept'});
     expect(recreated.request).toMatch(/completely fresh/i);
+    expect(recreated.request).toMatch(/I need a strong text for voice over to be strongly spoken in Arabic Egyptian language\./);
+    expect(recreated.request).toMatch(/completely NEW voice-over text/);
     let r=await settle(ctx.o,recreated.id);
     if(r.status==='waiting'){await ctx.o.tick();r=await settle(ctx.o,recreated.id,['running','queued','waiting']);}
     expect(r.status).toBe('done');
