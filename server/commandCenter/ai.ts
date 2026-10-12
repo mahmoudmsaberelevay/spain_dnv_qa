@@ -1275,6 +1275,7 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
     const datetime = String(sourceOptions.datetime_cairo || sourceBrief.publish?.datetime_cairo || "").slice(0, 16);
     const itemId = String(A.item_id || "");
     const originalObjective = String(source.request || sourceBrief.topic || `${source.kind} creative`).trim();
+    const oldNarration = (sourceBrief.reel?.storyboard || []).map((x) => String(x?.spoken_text_ar || "").trim()).filter(Boolean).join(" ").slice(0, 600);
     const recreationRequest = [
       `AI Studio full recreation requested from run #${source.id}.`,
       `Create a completely fresh ${source.kind} from the same marketing objective: ${originalObjective}`,
@@ -1282,6 +1283,9 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       datetime ? `Keep the intended Cairo publishing time: ${datetime}.` : "",
       "Do not reuse the old caption, storyboard, design, keyframes, clips, voice takes, final media or QC result. Produce a new creative version from the beginning.",
       source.kind === "reel" ? "Write the four Egyptian Arabic scene takes as one continuous, complete narration when read in order; they are split only for timing and audio production." : "",
+      // Owner rule: a recreated reel always gets a brand-new voice-over text written to his voice-over instruction.
+      source.kind === "reel" ? `${VOICEOVER_LEAD} Write a completely NEW voice-over text for all four takes: every spoken word in natural Egyptian Arabic (عامية مصرية), never Modern Standard Arabic; only country names and ELEVAY in English letters.` : "",
+      source.kind === "reel" && oldNarration ? `Previous voice-over, for reference only — do not reuse any of its lines, hook or phrasing:\n${oldNarration}` : "",
     ].filter(Boolean).join("\n");
 
     if (itemId) {
