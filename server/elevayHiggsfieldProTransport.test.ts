@@ -99,7 +99,11 @@ describe("server-only ELEVAY Higgsfield Pro transport", () => {
 
     const httpFailure = vi.fn(async () => new Response("provider-private-body", { status: 503 }));
     await expect(submitElevayHiggsfieldProClip(input, dependencies(httpFailure as typeof fetch))).rejects.toThrow(/do not replay automatically/);
-    expect(httpFailure).toHaveBeenCalledTimes(1);
+    await expect(submitElevayHiggsfieldProClip(input, dependencies(httpFailure as typeof fetch))).rejects.toThrow(/HTTP 503/);
+    await expect(submitElevayHiggsfieldProClip(input, dependencies(httpFailure as typeof fetch))).rejects.not.toThrow(/provider-private-body/);
+    const noCredits = vi.fn(async () => new Response("{}", { status: 402 }));
+    await expect(submitElevayHiggsfieldProClip(input, dependencies(noCredits as typeof fetch))).rejects.toThrow(/not enough Higgsfield API credits/);
+    expect(httpFailure).toHaveBeenCalledTimes(3);
 
     const malformedAcceptance = vi.fn(async () => new Response(JSON.stringify({ status: "queued" }), { status: 200 }));
     await expect(submitElevayHiggsfieldProClip(input, dependencies(malformedAcceptance as typeof fetch))).rejects.toThrow(/do not replay automatically/);

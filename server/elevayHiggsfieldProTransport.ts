@@ -157,9 +157,19 @@ function assertSubmission(input: ElevayHiggsfieldProClipSubmission, dependencies
   };
 }
 
-function submissionNotReplayable(): Error {
-  // This intentionally avoids HTTP bodies, provider URLs, prompts, and credentials.
-  return new Error("Higgsfield Pro submission was not accepted. Its outcome may be ambiguous; do not replay automatically.");
+function submissionNotReplayable(reason = ""): Error {
+  // This intentionally avoids HTTP bodies, provider URLs, prompts, and credentials. Only a safe reason is added.
+  return new Error(`Higgsfield Pro submission was not accepted. Its outcome may be ambiguous; do not replay automatically.${reason ? " Reason: " + reason : ""}`);
+}
+
+/** Plain-language reason for a rejected submission, from the HTTP status only (never the body). */
+export function higgsfieldRejectionReason(status: number): string {
+  if (status === 401 || status === 403) return `HTTP ${status}: Higgsfield rejected the API key or its permissions. No clip was created; fix the key, then press Retry.`;
+  if (status === 402) return "HTTP 402: not enough Higgsfield API credits. No clip was created; top up the Higgsfield API (cloud) balance, then press Retry.";
+  if (status === 400 || status === 422) return `HTTP ${status}: Higgsfield refused this request (prompt, image or settings). No clip was created; check the keyframe and motion prompt, then press Retry.`;
+  if (status === 429) return "HTTP 429: Higgsfield rate limit. No clip was created; wait a few minutes, then press Retry.";
+  if (status >= 500) return `HTTP ${status}: Higgsfield server error. The clip may or may not have started; check the Higgsfield dashboard before pressing Retry.`;
+  return `HTTP ${status} from Higgsfield.`;
 }
 
 /**
@@ -192,22 +202,23 @@ export async function submitElevayHiggsfieldProClip(
       }),
       signal: AbortSignal.timeout(120_000),
     });
-  } catch {
-    throw submissionNotReplayable();
+  } catch (error) {
+    const timedOut = (error as any)?.name === "TimeoutError" || (error as any)?.name === "AbortError";
+    throw submissionNotReplayable(timedOut ? "no answer from Higgsfield within 2 minutes. The clip may or may not have started; check the Higgsfield dashboard before pressing Retry." : "could not reach Higgsfield (network error). The clip may or may not have started; check the Higgsfield dashboard before pressing Retry.");
   }
 
-  if (!response.ok) throw submissionNotReplayable();
+  if (!response.ok) throw submissionNotReplayable(higgsfieldRejectionReason(response.status));
 
   let payload: unknown;
   try {
     payload = await response.json();
   } catch {
-    throw submissionNotReplayable();
+    throw submissionNotReplayable("Higgsfield accepted the call but its reply was unreadable. Check the Higgsfield dashboard before pressing Retry.");
   }
   try {
     return parseHiggsfieldAcceptedClip(payload);
   } catch {
-    throw submissionNotReplayable();
+    throw submissionNotReplayable("Higgsfield replied without a valid request ID. Check the Higgsfield dashboard before pressing Retry.");
   }
 }
 
