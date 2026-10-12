@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { Readable } from "node:stream";
-import { renderReel, shaFile } from "./elevay-reel-render.mjs";
+import { renderReel, shaFile, RENDERER_VERSION } from "./elevay-reel-render.mjs";
 
 const args = process.argv.slice(2);
 const once = args.includes("--once");
@@ -161,6 +161,7 @@ async function processJob(leased: any) {
   } finally { clearInterval(heartbeat); }
 }
 
+let warnedOutdated = false;
 async function main() {
   requireConfig();
   await cleanOldWork();
@@ -168,7 +169,8 @@ async function main() {
   console.log(`ELEVAY render bridge connected as ${workerId}; one job at a time.`);
   do {
     try {
-      const leased = await jsonRequest("POST", "/lease", { workerId });
+      const leased = await jsonRequest("POST", "/lease", { workerId, rendererVersion: RENDERER_VERSION });
+      if (leased?.outdated && !warnedOutdated) { warnedOutdated = true; console.error(`Render worker: this Mac's renderer (v${RENDERER_VERSION}) is older than the website requires (v${leased.requiredVersion}); it gets no jobs until updated.`); }
       if (leased?.job) await processJob(leased);
       else if (!once) await sleep(POLL_MS);
     } catch (error) {
