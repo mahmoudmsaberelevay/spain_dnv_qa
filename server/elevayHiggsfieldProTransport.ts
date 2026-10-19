@@ -200,11 +200,11 @@ export async function submitElevayHiggsfieldProClip(
         duration: 5,
         negative_prompt: NEGATIVE_PROMPT,
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(300_000),
     });
   } catch (error) {
     const timedOut = (error as any)?.name === "TimeoutError" || (error as any)?.name === "AbortError";
-    throw submissionNotReplayable(timedOut ? "no answer from Higgsfield within 2 minutes. The clip may or may not have started; check the Higgsfield dashboard before pressing Retry." : "could not reach Higgsfield (network error). The clip may or may not have started; check the Higgsfield dashboard before pressing Retry.");
+    throw submissionNotReplayable(timedOut ? "no answer from Higgsfield within 5 minutes. The clip may or may not have started; check the Higgsfield dashboard before pressing Retry." : "could not reach Higgsfield (network error). The clip may or may not have started; check the Higgsfield dashboard before pressing Retry.");
   }
 
   if (!response.ok) throw submissionNotReplayable(higgsfieldRejectionReason(response.status));
