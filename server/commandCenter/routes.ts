@@ -22,6 +22,7 @@
  */
 import crypto from "crypto";
 import mysql from "mysql2/promise";
+import path from "node:path";
 import type { Express, Request, Response } from "express";
 import R from "./rules";
 import E from "./engine";
@@ -689,6 +690,16 @@ export function registerCommandCenterRoutes(app: Express) {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("X-Robots-Tag", "noindex, nofollow");
     res.type("html").send(PAGE_WITH_VERSION);
+  });
+  // Public by design: these two files contain no settings or credentials. The
+  // approved Mac fetches them over HTTPS, verifies a change by hash, and then
+  // LaunchAgent restarts it. Do not turn this into a general file browser.
+  app.get("/admin/render-worker-source/:name", (req, res) => {
+    const name = String(req.params.name || "");
+    if (!["elevay-render-worker.ts", "elevay-reel-render.mjs"].includes(name)) return res.status(404).end();
+    res.setHeader("Cache-Control", "no-store");
+    res.type("application/javascript");
+    return res.sendFile(path.resolve(process.cwd(), "dist", "command-center-assets", "render-worker", name));
   });
   app.all(BASE + "/api/*", handle);
   // Resume AI Studio runs that wait on Higgsfield clips or Manus jobs.

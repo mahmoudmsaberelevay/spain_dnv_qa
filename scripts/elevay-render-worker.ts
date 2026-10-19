@@ -56,7 +56,7 @@ async function updateRuntimeSources() {
   const names = ["elevay-render-worker.ts", "elevay-reel-render.mjs"];
   let changed = false;
   for (const name of names) {
-    const response = await fetch(`${origin}/command-center-assets/render-worker/${name}`, { signal: AbortSignal.timeout(30_000) });
+    const response = await fetch(`${origin}/admin/render-worker-source/${name}`, { signal: AbortSignal.timeout(30_000) });
     if (!response.ok) throw new Error(`Worker source update check failed (${response.status}).`);
     const remote = Buffer.from(await response.arrayBuffer());
     if (!remote.length || remote.length > 4 * 1024 * 1024) throw new Error("Worker source update is invalid.");
