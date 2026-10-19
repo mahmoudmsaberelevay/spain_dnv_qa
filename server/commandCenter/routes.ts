@@ -406,6 +406,12 @@ function studio() {
   return studioPromise;
 }
 
+/** Called only by the cron-authenticated scheduled handler. It intentionally
+ * excludes Meta, CRM and Lead work: this is AI Studio recovery only. */
+export async function runAiStudioWatchdog() {
+  return (await studio()).watchdog();
+}
+
 
 /**
  * Starts an owner-authorized, scope-specific content revision. The orchestrator

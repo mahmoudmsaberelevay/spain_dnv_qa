@@ -122,9 +122,13 @@ const settle = async (o, id, busy = ["running", "queued"]) => {
 async function approveAndFinish({ o, finishClips }, runId) {
   let r = await settle(o, runId);
   const clips = r.steps.find((s) => s.action === "clips");
-  expect(clips.status).toBe("needs_approval");
-  await o.approve(runId, clips.n, owner);
-  r = await settle(o, runId);
+  // Higgsfield clips are now automatically submitted; preserve compatibility
+  // with legacy fixtures that still carry an old approval gate.
+  if (clips.status === "needs_approval") {
+    await o.approve(runId, clips.n, owner);
+    r = await settle(o, runId);
+  }
+  expect(r.steps.find((s) => s.action === "clips").status).toBe("waiting");
   expect(r.status).toBe("waiting");
   finishClips();
   await o.tick();
@@ -137,6 +141,27 @@ describe("seven-step ELEVAY reel flow", () => {
     const run = await ctx.o.create({ kind: "reel", request: "Strong voice test", user: marketer });
     await settle(ctx.o, run.id, ["running", "queued"]);
     expect(ctx.calls.openaiText[0].prompt.startsWith("I need a strong text for voice over to be strongly spoken in Arabic Egyptian language.")).toBe(true);
+  });
+
+  it("recovers a persisted Higgsfield clip with no provider receipt once using its original idempotency key", async () => {
+    const ctx = setup([STORYBOARD]);
+    const run = await ctx.o.create({ kind: "reel", request: "Receipt recovery", user: marketer });
+    let r = await settle(ctx.o, run.id, ["running", "queued"]);
+    expect(r.steps.find((s) => s.action === "clips").status).toBe("waiting");
+    const oldKey = ctx.calls.hfSubmit[0].idempotencyKey;
+    const row = ctx.q.rows.get(run.id), doc = JSON.parse(row.doc);
+    const old = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+    doc.artifacts.higgsfield_watchdog = { startedAt: old, retryRound: 0 };
+    doc.artifacts.clips[0] = { ...doc.artifacts.clips[0], requestId: null, statusUrl: null, state: "submitting", submittedAt: old, lastProgressAt: old };
+    row.doc = JSON.stringify(doc);
+    await ctx.o.tick(); // queues the one recovery round; no new media yet
+    r = await ctx.o.get(run.id);
+    expect(r.status).toBe("queued");
+    await ctx.o.tick(); // recovery POST uses the persisted idempotency key
+    r = await ctx.o.get(run.id);
+    expect(r.steps.find((s) => s.action === "clips").status).toBe("waiting");
+    expect(ctx.calls.hfSubmit).toHaveLength(5);
+    expect(ctx.calls.hfSubmit[4].idempotencyKey).toBe(oldKey);
   });
 
   it("stops a failed voice step without a timeout retry, render or replacement and notifies once", async () => {
@@ -178,8 +203,6 @@ describe("seven-step ELEVAY reel flow", () => {
     const ctx = setup([STORYBOARD, PASS], { externalRender: true });
     const run = await ctx.o.create({ kind: "reel", request: "External worker recovery", user: marketer });
     let r = await settle(ctx.o, run.id);
-    await ctx.o.approve(run.id, r.steps.find((s) => s.action === "clips").n, owner);
-    await settle(ctx.o, run.id);
     ctx.finishClips();
     for (let i = 0; i < 30; i++) {
       await ctx.o.tick();
@@ -209,41 +232,21 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.claude).toHaveLength(1);
   });
 
-  it("regenerates exactly named final-QC scenes, preserves voice takes, and reopens the manual owner gate", async () => {
+  it("regenerates exactly named final-QC scenes automatically and preserves voice takes", async () => {
     const ctx = setup([STORYBOARD, failScene(2), PASS]);
     const run = await ctx.o.create({ kind: "reel", request: "Portugal family reel", user: marketer });
     let r = await approveAndFinish(ctx, run.id);
-    expect(r.status).toBe("awaiting_approval");
-    expect(ctx.calls.openai).toHaveLength(5); // only Scene 2 keyframe
-    expect(ctx.calls.hfSubmit).toHaveLength(4); // repair is gated, not silently submitted
-    expect(ctx.calls.voice).toBe(4); // visual repair retains voice takes
-    const clips = r.steps.find((s) => s.action === "clips");
-    await expect(ctx.o.approve(run.id, clips.n, marketer)).rejects.toThrow(/owner/);
-    ctx.setClipsDone(false);
-    await ctx.o.approve(run.id, clips.n, owner);
-    r = await settle(ctx.o, run.id);
-    expect(r.status).toBe("waiting");
-    expect(ctx.calls.hfSubmit).toHaveLength(5);
-    expect(ctx.calls.hfSubmit[4].idempotencyKey).toMatch(/clip-2-/);
-    ctx.finishClips();
-    await ctx.o.tick();
-    r = await settle(ctx.o, run.id, ["running", "queued", "waiting"]);
     expect(r.status).toBe("done");
-    expect(ctx.calls.voice).toBe(4);
+    expect(ctx.calls.openai).toHaveLength(5); // only Scene 2 keyframe
+    expect(ctx.calls.hfSubmit).toHaveLength(5); // only the corrected scene is re-submitted
+    expect(ctx.calls.voice).toBe(4); // visual repair retains voice takes
+    expect(ctx.calls.hfSubmit[4].idempotencyKey).toMatch(/clip-2-/);
   });
 
   it("stops after two targeted repair rounds and notifies failure once", async () => {
     const ctx = setup([STORYBOARD, failScene(3), failScene(3), failScene(3)]);
     const run = await ctx.o.create({ kind: "reel", request: "Portugal family reel", user: marketer });
-    let r = await approveAndFinish(ctx, run.id);
-    for (let round = 0; round < 2; round++) {
-      expect(r.status).toBe("awaiting_approval");
-      const clips = r.steps.find((s) => s.action === "clips");
-      await ctx.o.approve(run.id, clips.n, owner);
-      r = await settle(ctx.o, run.id);
-      await ctx.o.tick();
-      r = await settle(ctx.o, run.id, ["running", "queued", "waiting"]);
-    }
+    const r = await approveAndFinish(ctx, run.id);
     expect(r.status).toBe("needs_review");
     expect(r.artifacts.repair_rounds).toBe(2);
     expect(ctx.calls.openai).toHaveLength(6); // 4 initial + scene 3 twice
@@ -303,9 +306,7 @@ describe("reel durability and legacy compatibility", () => {
     const ctx = setup([STORYBOARD]);
     const run = await ctx.o.create({ kind: "reel", request: "Portugal family reel", user: marketer });
     let r = await settle(ctx.o, run.id);
-    const clips = r.steps.find((s) => s.action === "clips");
-    await ctx.o.approve(run.id, clips.n, owner);
-    r = await settle(ctx.o, run.id);
+    expect(r.steps.find((s) => s.action === "clips").status).toBe("waiting");
     const retainedScene1 = r.artifacts.clips[0].requestId;
     ctx.finishClips();
     ctx.failRequest(r.artifacts.clips[1].requestId);

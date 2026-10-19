@@ -627,6 +627,8 @@ async function startServer() {
   registerNewsRoutes(app);
   const { scheduledNewsDigestHandler } = await import("../scheduledNewsDigestHandler.js");
   app.post("/api/scheduled/news-digest", scheduledNewsDigestHandler);
+  const { scheduledAiStudioWatchdogHandler } = await import("../scheduledAiStudioWatchdogHandler.js");
+  app.post("/api/scheduled/ai-studio-watchdog", scheduledAiStudioWatchdogHandler);
   const { registerClientPortalRoutes } = await import("../clientPortalRoutes.js");
   registerClientPortalRoutes(app);
 

@@ -68,6 +68,15 @@ export const REEL = { scene: 5, fade: 0.3, outro: 3, maxVoice: 4.85, maxTempo: 1
 // Do not restore any web-process compose fallback: the container memory limit is shared with FFmpeg.
 export const REEL_STAGES = ["seg0", "seg1", "seg2", "seg3", "outro", "audio", "final"] as const;
 const REEL_THREADS = 1;
+const EXTERNAL_RECEIPT_DEADLINE_MS = 5 * 60 * 1000;
+const EXTERNAL_PROGRESS_DEADLINE_MS = 20 * 60 * 1000;
+
+function providerSafeReason(value: unknown, max = 260) {
+  return String(value instanceof Error ? value.message : value || "provider response unavailable")
+    .replace(/https?:\/\/\S+/g, "[provider-asset]")
+    .replace(/(?:Key|Bearer)\s+\S+/gi, "[credential]")
+    .slice(0, max);
+}
 
 /** Wrap an English headline into at most 3 lines for the static design. */
 export function wrapHeadline(text: string, max = 22) {
@@ -380,7 +389,7 @@ export const PIPELINES = {
   reel: { label: "Reel", steps: () => [
     S("openai", "reel_storyboard", "OpenAI writes the 4-scene storyboard, MSA caption and Egyptian Arabic voice-over"),
     S("openai", "reel_keyframes", "OpenAI creates the 4 keyframes (9:16)"),
-    S("higgsfield", "clips", "Higgsfield animates 4 × 5 s clips", { gate: "owner" }),
+    S("higgsfield", "clips", "Higgsfield animates 4 × 5 s clips"),
     S("elevenlabs", "voice", "ELEVAY voice clone reads the Egyptian Arabic script, one take per scene"),
     S("system", "compose_reel", "External render worker combines clips, ELEVAY voice and 3 s white logo outro under OpenAI edit direction"),
     S("claude", "qc_final", "Claude performs the comprehensive finished-reel check"),
@@ -582,6 +591,7 @@ export function createOrchestrator(deps) {
       }
       if (step.status === "waiting") {
         const r = await poll(run, step, async (note) => { ver = await saveCheckpoint(run, ver, note); });
+        if (r === "resubmit") { run.status = "queued"; ver = await save(run, ver); return; }
         if (!r) {
           if (step.status === "failed") {
             run.status = "failed";
@@ -863,14 +873,47 @@ export function createOrchestrator(deps) {
       }
       case "higgsfield.clips": {
         A.clips = A.clips || [];
+        A.higgsfield_watchdog = A.higgsfield_watchdog || { startedAt: nowIso(), retryRound: 0 };
         const sb = A.brief.reel.storyboard;
         for (let i = 0; i < 4; i++) {
-          if (A.clips[i]) continue;
+          const existing = A.clips[i];
+          const hasReceipt = typeof existing?.requestId === "string" && existing.requestId.length > 0 && typeof existing?.statusUrl === "string" && /^https:\/\//.test(existing.statusUrl);
+          if (hasReceipt && !existing?.watchdogResubmit) continue;
           const retryIndex = Number(A.clipRetryByIndex?.[i] || 0);
-          const key = `ec-${run.id}-clip-${i + 1}-${A.keyframes[i].sha256.slice(0, 12)}-r${retryIndex}`;
+          const key = typeof existing?.idempotencyKey === "string" && existing.idempotencyKey
+            ? existing.idempotencyKey
+            : `ec-${run.id}-clip-${i + 1}-${A.keyframes[i].sha256.slice(0, 12)}-r${retryIndex}`;
+          // Persist the stable key before calling Higgsfield. A lost network
+          // receipt may be retried once with this same key, never as a new clip.
+          A.clips[i] = {
+            ...existing,
+            scene: i + 1,
+            idempotencyKey: key,
+            keyframeSha256: A.keyframes[i].sha256,
+            submittedAt: existing?.submittedAt || nowIso(),
+            lastProgressAt: existing?.lastProgressAt || nowIso(),
+            state: existing?.watchdogResubmit ? "retrying" : (existing?.state || "submitting"),
+            requestId: existing?.watchdogResubmit ? null : (existing?.requestId || null),
+            statusUrl: existing?.watchdogResubmit ? null : (existing?.statusUrl || null),
+          };
+          await checkpoint(`Checkpoint saved: clip ${i + 1} submission intent.`);
           log(run, "studio", "higgsfield", `Clip ${i + 1}: ${sb[i].motion_prompt}`);
-          const r = await providers.higgsfieldSubmit({ runId: run.id, stepId: step.n, idempotencyKey: key, prompt: sb[i].motion_prompt, keyframe: A.keyframes[i] });
-          A.clips[i] = { requestId: r.requestId, statusUrl: r.statusUrl, state: "queued", url: null };
+          let r;
+          try {
+            r = await providers.higgsfieldSubmit({ runId: run.id, stepId: step.n, idempotencyKey: key, prompt: sb[i].motion_prompt, keyframe: A.keyframes[i] });
+          } catch (error) {
+            A.clips[i] = { ...A.clips[i], state: "submitting", watchdogResubmit: false, lastPollError: providerSafeReason(error) };
+            log(run, "higgsfield", "studio", `Clip ${i + 1}: submission receipt unavailable; watchdog will make one idempotent recovery attempt.`);
+            await checkpoint(`Checkpoint saved: clip ${i + 1} receipt unavailable.`);
+            continue;
+          }
+          if (!r || typeof r.requestId !== "string" || !r.requestId || typeof r.statusUrl !== "string" || !/^https:\/\//.test(r.statusUrl)) {
+            A.clips[i] = { ...A.clips[i], state: "submitting", watchdogResubmit: false, lastPollError: "Higgsfield returned no valid provider receipt." };
+            log(run, "higgsfield", "studio", `Clip ${i + 1}: submission receipt invalid; watchdog will make one idempotent recovery attempt.`);
+            await checkpoint(`Checkpoint saved: clip ${i + 1} invalid receipt.`);
+            continue;
+          }
+          A.clips[i] = { ...A.clips[i], requestId: r.requestId, statusUrl: r.statusUrl, state: "queued", url: null, watchdogResubmit: false, lastProgressAt: nowIso(), lastPollError: null };
           await checkpoint(`Checkpoint saved: clip ${i + 1} submitted.`);
         }
         log(run, "higgsfield", "studio", A.qc_clips_attempts ? "Replacement clips queued." : "4 clips queued.");
@@ -1170,17 +1213,63 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       return true;
     }
     if (step.provider === "higgsfield") {
-      for (const c of A.clips || []) {
-        if (!c) continue;
-        if (c.state === "completed" && c.permanent) continue;
-        const s = await providers.higgsfieldStatus(c).catch((e) => ({ state: c.state, error: e.message }));
-        if (s.state !== c.state) log(run, "higgsfield", "studio", `Clip ${A.clips.indexOf(c) + 1}: ${s.state}`);
-        c.state = s.state; if (s.videoUrl) c.url = s.videoUrl;
-        if (c.state === "completed" && c.url && providers.persistClip && !c.permanent) { const stored = await providers.persistClip(c.url); c.provider_url = c.url; c.url = stored.url; c.sha256 = stored.sha256; c.permanent = true; }
-        await checkpoint(`Checkpoint saved: clip ${A.clips.indexOf(c) + 1} ${c.state}.`);
-        if (["failed", "nsfw", "canceled"].includes(s.state)) { step.status = "failed"; step.error = `Clip ${A.clips.indexOf(c) + 1} ${s.state}. Retry creates a new clip.`; return false; }
+      const now = Date.now();
+      const clips = Array.isArray(A.clips) ? A.clips : [];
+      const watch = A.higgsfield_watchdog || (A.higgsfield_watchdog = { startedAt: nowIso(), retryRound: 0 });
+      const startedAt = Date.parse(watch.startedAt || step.started_at || run.updated_at || run.created_at || nowIso()) || now;
+      const retryAt = Date.parse(watch.retryAt || "") || 0;
+      const hasValidReceipt = (c) => typeof c?.requestId === "string" && c.requestId && typeof c?.statusUrl === "string" && /^https:\/\//.test(c.statusUrl);
+      const recoverOnceOrFail = async (reason, retryExisting = false) => {
+        if (Number(watch.retryRound || 0) >= 1) {
+          step.status = "failed";
+          step.error = `Higgsfield watchdog: ${reason} after the single idempotent recovery attempt.`;
+          log(run, "higgsfield", "studio", step.error);
+          return false;
+        }
+        watch.retryRound = 1;
+        watch.retryAt = nowIso();
+        for (const c of clips) if (c && c.state !== "completed" && (retryExisting || !hasValidReceipt(c))) {
+          c.watchdogResubmit = true;
+          c.state = "retrying";
+          c.requestId = null;
+          c.statusUrl = null;
+        }
+        step.status = "pending";
+        run.status = "queued";
+        log(run, "higgsfield", "studio", `Higgsfield watchdog: ${reason}; retrying once with the same idempotency keys.`);
+        await checkpoint("Checkpoint saved: Higgsfield watchdog recovery queued.");
+        return "resubmit";
+      };
+
+      if (clips.length !== 4 || clips.some((c) => !hasValidReceipt(c))) {
+        if (now - (retryAt || startedAt) >= EXTERNAL_RECEIPT_DEADLINE_MS) return recoverOnceOrFail("one or more clips have no valid provider job ID for 5 minutes");
+        return false;
       }
-      return (A.clips || []).length === 4 && A.clips.every((c) => c?.state === "completed");
+      for (let i = 0; i < clips.length; i++) {
+        const c = clips[i];
+        if (c.state === "completed" && c.permanent) continue;
+        let s;
+        try { s = await providers.higgsfieldStatus(c); }
+        catch (error) { c.lastPollError = providerSafeReason(error); continue; }
+        const changed = s.state !== c.state || (!!s.videoUrl && s.videoUrl !== c.url);
+        if (changed) {
+          log(run, "higgsfield", "studio", `Clip ${i + 1}: ${s.state}`);
+          c.lastProgressAt = nowIso();
+          c.lastPollError = null;
+        }
+        c.state = s.state; if (s.videoUrl) c.url = s.videoUrl;
+        if (c.state === "completed" && c.url && providers.persistClip && !c.permanent) {
+          const stored = await providers.persistClip(c.url);
+          c.provider_url = c.url; c.url = stored.url; c.sha256 = stored.sha256; c.permanent = true; c.lastProgressAt = nowIso();
+        }
+        if (["failed", "nsfw", "canceled"].includes(c.state)) { step.status = "failed"; step.error = `Clip ${i + 1} ${c.state}. Retry creates a new clip.`; return false; }
+      }
+      // Production persists provider URLs immediately. Test/legacy adapters may
+      // already return a storage-backed URL and intentionally omit persistClip.
+      if (clips.every((c) => c?.state === "completed" && (c?.permanent || !providers.persistClip))) return true;
+      const latestProgress = Math.max(startedAt, ...clips.map((c) => Date.parse(c.lastProgressAt || c.submittedAt || "") || 0));
+      if (now - latestProgress >= EXTERNAL_PROGRESS_DEADLINE_MS) return recoverOnceOrFail("no provider progress was recorded for 20 minutes", true);
+      return false;
     }
     if (step.provider === "manus") {
       const { state } = await deps.loadState();
@@ -1499,23 +1588,29 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     }
   }
 
-  /** Background tick: resume waiting runs (Higgsfield clips, render worker, Manus jobs). */
-  async function tick() {
-    await autopilot().catch(() => {});
+  /** Durable external-step watchdog; production invokes this through a Heartbeat. */
+  async function watchdog() {
     await recoverCompletedExternalRenders();
     const rows = await q("SELECT id, status, doc FROM ec_ai_runs WHERE status IN ('waiting','queued','running') ORDER BY id LIMIT 30");
     for (const r of rows) {
-      if (r.status !== "running") { kick(r.id); continue; }
+      if (r.status !== "running") {
+        if (!running.has(r.id) && running.size < MAX_ACTIVE) await advance(r.id).catch(() => {});
+        continue;
+      }
       if (running.has(r.id)) continue;
-      // A step that was running when the server restarted: never re-run paid work silently.
       const doc = JSON.parse(r.doc);
-      const composing = doc.steps?.some((s) => s.status === "running" && s.action === "compose_reel");
-      if (Date.now() - Date.parse(doc.updated_at || doc.created_at) < (composing ? 6 : 15) * 60 * 1000) continue;
       const g = await get(r.id);
       const step = g.run.steps.find((s) => s.status === "running");
-      // Cheap planning/image steps and external render polling can resume automatically.
-      // up to 3 times (back-to-back publishes restart the server more than once).
-      // Higgsfield clips (the expensive step) are never re-submitted without a person pressing Retry.
+      if (!step) continue;
+      const isHiggsfield = step.provider === "higgsfield";
+      const hasHiggsfieldIds = isHiggsfield && (g.run.artifacts.clips || []).length === 4 && (g.run.artifacts.clips || []).every((c) => typeof c?.requestId === "string" && c.requestId);
+      const hasRenderJob = step.action === "compose_reel" && !!g.run.artifacts.compose?.jobId;
+      const hasVoiceIds = step.provider === "elevenlabs" && (g.run.artifacts.voices || []).length === 4 && (g.run.artifacts.voices || []).every((v) => typeof v?.requestId === "string" && v.requestId);
+      const external = ["openai", "higgsfield", "elevenlabs"].includes(step.provider) || step.action === "compose_reel";
+      const hasExternalId = hasHiggsfieldIds || hasRenderJob || hasVoiceIds;
+      const started = Date.parse(step.started_at || doc.updated_at || doc.created_at || "") || Date.now();
+      const timeout = hasExternalId ? EXTERNAL_PROGRESS_DEADLINE_MS : EXTERNAL_RECEIPT_DEADLINE_MS;
+      if (Date.now() - started < timeout) continue;
       let resumes = Number(step?.auto_resumes || (step?.auto_resumed ? 1 : 0));
       if (step?.action === "compose_reel" && g.run.artifacts.compose) {
         const C = g.run.artifacts.compose, done = Object.keys(C.parts || {}).length;
@@ -1524,23 +1619,26 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
         // The join is the only heavy piece: if it brought the server down, join with straight cuts instead.
         if (REEL_STAGES.every((k) => k === "final" || C.parts?.[k]) && C.mode !== "cuts") { C.join_crashes = Number(C.join_crashes || 0) + 1; if (C.join_crashes >= 1) C.mode = "cuts"; }
       }
-      if (step && !["higgsfield", "elevenlabs"].includes(step.provider) && resumes < 3) {
-        step.status = "pending"; step.auto_resumes = resumes + 1; step.auto_resumed = true; g.run.status = "queued";
-        log(g.run, "studio", "team", `Resumed automatically after a server restart: ${step.title}`);
+      if (external && !step.watchdog_retried) {
+        step.status = "pending"; step.watchdog_retried = true; step.watchdog_retried_at = nowIso(); step.error = null; g.run.status = "queued";
+        log(g.run, "studio", "team", `External-step watchdog: ${step.title} had ${hasExternalId ? "no progress" : "no provider job ID"} for ${hasExternalId ? "20" : "5"} minutes; retrying once.`);
         await save(g.run, g.ver).catch(() => {});
         continue;
       }
-      if (step) {
-        step.status = "failed";
-        step.error = step.action === "compose_reel" && resumes >= 3
-          ? "The server restarted every time it tried this final edit, so it is most likely running out of memory while rendering the reel. Ask Manus to give the server more memory (or set ELEVAY_REEL_THREADS=1), then press Retry."
-          : "Interrupted (server restart). Press Retry to run this step again.";
-      }
+      step.status = "failed";
+      step.error = `External-step watchdog: ${step.title} still has ${hasExternalId ? "no progress" : "no provider job ID"} after its single automatic retry.`;
       g.run.status = "failed";
       await notifyFailureOnce(g.run, step?.error || "Interrupted (server restart).");
       await save(g.run, g.ver).catch(() => {});
     }
+    return { ok: true };
   }
 
-  return { ensureTable, researchNews, create, reviseItem, recreate, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, redo, cancel, tick, test: () => providers.test() };
+  /** Compatibility tick for development; recurring production recovery uses watchdog(). */
+  async function tick() {
+    await autopilot().catch(() => {});
+    return watchdog();
+  }
+
+  return { ensureTable, researchNews, create, reviseItem, recreate, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, redo, cancel, tick, watchdog, test: () => providers.test() };
 }
