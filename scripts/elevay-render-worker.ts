@@ -28,6 +28,19 @@ const POLL_MS = 60_000;
 const RENEW_MS = 30_000;
 const runtimeDir = path.dirname(fileURLToPath(import.meta.url));
 
+/** macOS may preserve typographic dashes when a Computer Name becomes its hostname. */
+export function normalizeMacHostname(value: unknown) {
+  return String(value || "")
+    .normalize("NFKC")
+    .trim()
+    .replace(/[‐‑‒–—―]/g, "-")
+    .toLowerCase();
+}
+
+export function isApprovedMacHostname(value: unknown) {
+  return normalizeMacHostname(value) === APPROVED_HOSTNAME;
+}
+
 function cleanError(value: unknown) {
   return String(value || "Render worker error")
     .replace(/https?:\/\/\S+/gi, "[asset]")
@@ -39,7 +52,7 @@ function requireConfig() {
   if (!/^https:\/\//i.test(baseUrl)) throw new Error("ELEVAY_RENDER_BRIDGE_URL must be an HTTPS endpoint.");
   if (!token) throw new Error("ELEVAY_RENDER_WORKER_TOKEN is required.");
   if (workerId !== APPROVED_WORKER_ID) throw new Error("This package is authorized only for Mahmoud's MacBook Pro.");
-  if (process.platform === "darwin" && os.hostname().toLowerCase() !== APPROVED_HOSTNAME) throw new Error("This package is authorized only for hostname Mahmouds-MacBook-Pro.");
+  if (process.platform === "darwin" && !isApprovedMacHostname(os.hostname())) throw new Error("This package is authorized only for hostname Mahmouds-MacBook-Pro.");
   if (process.env.DATABASE_URL || process.env.AWS_ACCESS_KEY_ID || process.env.AWS_SECRET_ACCESS_KEY || process.env.OPENAI_API_KEY || process.env.HF_API_KEY || process.env.ELEVENLABS_API_KEY || process.env.ANTHROPIC_API_KEY) {
     throw new Error("This bridge worker must not be configured with database, storage, Meta, or AI-provider credentials.");
   }
@@ -230,4 +243,6 @@ async function main() {
   } while (!once);
 }
 
-main().catch((error) => { console.error(`Worker failed: ${cleanError(error)}`); process.exitCode = 1; });
+if (process.env.ELEVAY_RENDER_WORKER_TEST !== "1") {
+  main().catch((error) => { console.error(`Worker failed: ${cleanError(error)}`); process.exitCode = 1; });
+}
