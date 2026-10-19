@@ -19,13 +19,15 @@ export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<
     if (!/^https:\/\//.test(outroUrl)) throw new Error("ELEVAY_FIXED_OUTRO_URL must be a public HTTPS stored ELEVAYEXTRO.mov URL.");
     const narrationTargetSeconds = Number(input.narrationTargetSeconds);
     const narrationSceneSeconds = Number(input.narrationSceneSeconds);
-    if (narrationTargetSeconds !== 18 || narrationSceneSeconds !== 4.5) {
-      throw new Error("ELEVAY reels require the locked 18-second narration target: four 4.5-second voice takes.");
+    const legacyNarration = narrationTargetSeconds === 18 && narrationSceneSeconds === 4.5;
+    const currentNarration = narrationTargetSeconds === 20 && narrationSceneSeconds === 5;
+    if (!legacyNarration && !currentNarration) {
+      throw new Error("ELEVAY reels require four saved voice takes using either the legacy 18-second/4.5-second contract or the current 20-second/5-second contract.");
     }
-    const manifest = { version: "disk-concat-v3-18s-narration-fixed-elevayoutro", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, outroUrl, editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: 3, narrationTargetSeconds, narrationSceneSeconds };
+    const manifest = { version: currentNarration ? "disk-concat-v4-20s-narration-fixed-elevayoutro" : "disk-concat-v3-18s-narration-fixed-elevayoutro", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, outroUrl, editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: 3, narrationTargetSeconds, narrationSceneSeconds };
     const id = "reel-" + crypto.createHash("sha256").update(JSON.stringify(manifest)).digest("hex").slice(0, 40);
     const now = Date.now();
-    const reusable = input.parts?._version === manifest.version ? Object.fromEntries(Object.entries(input.parts).filter(([k]) => ["seg0", "seg1", "seg2", "seg3", "outro", "audio", "music", "musicDropped", "narrationTargetSeconds", "narrationSceneSeconds", "rawVoiceSeconds"].includes(k))) : {};
+    const reusable = input.parts?._version === manifest.version ? Object.fromEntries(Object.entries(input.parts).filter(([k]) => ["seg0", "seg1", "seg2", "seg3", "outro", "audio", "music", "musicDropped", "narrationTargetSeconds", "narrationSceneSeconds", "rawVoiceSeconds", "appliedVoiceTempos", "voicePaddingSeconds"].includes(k))) : {};
     const doc = JSON.stringify({ manifest, parts: { ...reusable, _version: manifest.version }, stage: "queued", waitReason: "Waiting for render worker", metrics: {} });
     await q("INSERT IGNORE INTO ec_render_jobs (id,run_id,status,created_at,updated_at,doc) VALUES (?,?,'pending',?,?,?)", [id, input.runId, now, now, doc]);
     const row = (await q("SELECT id,status,doc FROM ec_render_jobs WHERE id=?", [id]))[0];

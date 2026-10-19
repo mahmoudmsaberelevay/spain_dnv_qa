@@ -7,8 +7,8 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
-/** Bumped whenever the renderer output changes; the website only gives jobs to Macs at or above its required version. 3 = voice-over timed per take (no silent reels) + fresh voice timing on audio rebuilds. */
-export const RENDERER_VERSION = 3;
+/** Bumped whenever renderer output changes. Version 4 adds the 20-second / four 5-second narration timeline. */
+export const RENDERER_VERSION = 4;
 const THREADS = 1;
 const FFMPEG = process.env.ELEVAY_FFMPEG_BIN || '/usr/bin/ffmpeg';
 const FFPROBE = process.env.ELEVAY_FFPROBE_BIN || '/usr/bin/ffprobe';
@@ -45,8 +45,10 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
   await fsp.mkdir(directory, { recursive: true });
   const narrationTargetSeconds = Number(manifest?.narrationTargetSeconds);
   const narrationSceneSeconds = Number(manifest?.narrationSceneSeconds);
-  if (narrationTargetSeconds !== 18 || narrationSceneSeconds !== 4.5) {
-    throw new Error('Render manifest must use the locked 18-second narration target and four 4.5-second voice takes.');
+  const legacyNarration = narrationTargetSeconds === 18 && narrationSceneSeconds === 4.5;
+  const currentNarration = narrationTargetSeconds === 20 && narrationSceneSeconds === 5;
+  if (!legacyNarration && !currentNarration) {
+    throw new Error('Render manifest must use four voice takes under either the legacy 18-second/4.5-second contract or the current 20-second/5-second contract.');
   }
   const linuxRss = process.platform === 'linux';
   const metrics = { method: linuxRss ? 'Linux /proc RSS sampled every 25 ms; isolated worker and all child processes' : 'Worker-process RSS sampled every 25 ms; macOS FFmpeg RSS unavailable', peakRssBytes: 0, peakFfmpegRssBytes: 0, ffmpegRssAvailable: linuxRss, threads: THREADS, stages: [] };
@@ -118,7 +120,7 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
     // stale values from a silent or superseded final.
     let rawVoiceSeconds = [];
     if (!(await restore('audio', 'm4a'))) {
-      const voices = [], tempos = [];
+      const voices = [], appliedVoiceTempos = [], voicePaddingSeconds = [];
       for (let i=0;i<4;i++) {
         const src=path.join(directory,`voice${i}.src`), wav=path.join(directory,`voice${i}.wav`);
         await downloadFile(manifest.voiceUrls[i],src,15*1024*1024);
@@ -126,12 +128,15 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
         const d=Number((await probe(wav)).format.duration);
         if (!(d>0.2)) throw new Error(`Scene ${i+1} saved voice take is empty.`);
         const tempo=d/narrationSceneSeconds;
-        if (tempo<0.80 || tempo>1.12) throw new Error(`Scene ${i+1} saved narration is ${d.toFixed(2)}s and cannot be naturally timed to its ${narrationSceneSeconds.toFixed(1)}-second share of the 18-second voice-over; saved take retained for review.`);
+        if (tempo>1.12 + 0.0001) throw new Error(`Scene ${i+1} saved narration is ${d.toFixed(2)}s and cannot be naturally timed to its ${narrationSceneSeconds.toFixed(1)}-second share of the ${narrationTargetSeconds}-second voice-over; saved take retained for review.`);
         // Time each take in its own pass. atempo inside the 4-input mix produced broken timestamps that made
         // FFmpeg write a 0.1-second silent track (reels shipped with no voice-over).
         const timed=path.join(directory,`voice${i}.timed.wav`);
-        await ff(['-threads','1','-i',wav,'-af',`${audioFormat},atempo=${tempo.toFixed(5)},atrim=duration=${narrationSceneSeconds},asetpts=N/SR/TB`,'-c:a','pcm_s16le',timed]);
-        voices.push(timed);tempos.push(tempo);rawVoiceSeconds.push(d);
+        const voiceFilter = d <= narrationSceneSeconds
+          ? `${audioFormat},apad=whole_dur=${narrationSceneSeconds},atrim=duration=${narrationSceneSeconds},asetpts=N/SR/TB`
+          : `${audioFormat},atempo=${tempo.toFixed(5)},atrim=duration=${narrationSceneSeconds},asetpts=N/SR/TB`;
+        await ff(['-threads','1','-i',wav,'-af',voiceFilter,'-c:a','pcm_s16le',timed]);
+        voices.push(timed); appliedVoiceTempos.push(d <= narrationSceneSeconds ? 1 : tempo); voicePaddingSeconds.push(d <= narrationSceneSeconds ? Math.max(0, narrationSceneSeconds - d) : 0); rawVoiceSeconds.push(d);
         await fsp.rm(src,{force:true});
       }
       let musicFile=null;
@@ -139,7 +144,7 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       const mix=async withMusic => {
         const args=voices.flatMap(f=>['-threads','1','-i',f]);
         if(withMusic)args.push('-stream_loop','-1','-threads','1','-i',musicFile);
-        const filters=voices.map((_,i)=>`[${i}:a]${audioFormat},adelay=${Math.round((i*5+0.1)*1000)}|${Math.round((i*5+0.1)*1000)},apad=whole_dur=23[n${i}]`);
+        const filters=voices.map((_,i)=>`[${i}:a]${audioFormat},adelay=${Math.round(i*narrationSceneSeconds*1000)}|${Math.round(i*narrationSceneSeconds*1000)},apad=whole_dur=23[n${i}]`);
         filters.push('[n0][n1][n2][n3]amix=inputs=4:duration=longest:normalize=0[voice]');
         if(withMusic) filters.push('[4:a]'+audioFormat+',atrim=duration=23,volume=0.16,afade=t=in:d=0.8,afade=t=out:st=20:d=3[bed]','[voice][bed]amix=inputs=2:duration=longest:normalize=0,atrim=duration=23,alimiter=limit=0.95[a]');
         else filters.push('[voice]atrim=duration=23,alimiter=limit=0.95[a]');
@@ -161,6 +166,8 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       parts.music=!!musicFile&&!musicDropped; parts.musicDropped=musicDropped;
       parts.narrationTargetSeconds=narrationTargetSeconds; parts.narrationSceneSeconds=narrationSceneSeconds;
       parts.rawVoiceSeconds=rawVoiceSeconds;
+      parts.appliedVoiceTempos=appliedVoiceTempos;
+      parts.voicePaddingSeconds=voicePaddingSeconds;
     }
     stage = 'stream-copy concat';
     const concat=path.join(directory,'concat.txt');

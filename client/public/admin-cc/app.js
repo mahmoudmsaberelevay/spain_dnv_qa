@@ -1205,6 +1205,10 @@ Auth        Authorization: Bearer &lt;MANUS_AGENT_TOKEN&gt;</div>
           ${numField('t_qualifiedLeads', 'Qualified leads / month', set.targets.qualifiedLeads, dis)}${numField('t_signedClients', 'Signed clients / month', set.targets.signedClients, dis)}
           <label class="field"><span>Approval channel</span><select class="input" id="f-approvalChannel" ${dis}>${['email', 'whatsapp', 'telegram', 'slack'].map((c) => `<option ${c === set.approvalChannel ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
         </div>${owner ? '<div class="row"><button class="btn primary" type="submit">Save limits</button><span class="small muted">Raising the cap above 200,000 EGP is blocked unless confirmed on the server.</span></div>' : ''}</form></section>
+      <section class="panel"><div class="panel-h"><h2>ELEVAY Voice-Over Prompt</h2><span class="small muted">${owner ? 'Owner can edit the one locked template' : 'Read only'}</span></div>
+        <p class="small muted" style="max-width:75ch">Every new reel, recreation and voice-only change request uses this exact OpenAI prompt. Keep the idea placeholder so the weekly-plan objective is inserted safely.</p>
+        <form id="voicePrompt" class="stack"><textarea class="input" id="f-voiceOverPrompt" rows="12" ${dis} style="font-family:ui-monospace,monospace;line-height:1.45">${esc(set.voiceOverPrompt || R.DEFAULT_SETTINGS.voiceOverPrompt || '')}</textarea>${owner ? '<div class="row"><button class="btn primary" type="submit">Save voice-over prompt</button></div>' : ''}</form>
+      </section>
       ${owner && !S.ext ? teamPanel() : ''}
       ${S.ext ? '<section class="panel"><div class="panel-h"><h2>Team access</h2></div><p class="small" style="max-width:75ch">People sign in with their elevay.vip accounts. Access follows the Agentic Marketing roles you assign in the Marketing settings: owner and Agentic Marketing administrator approve; marketing manager, creative producer and researcher request changes; analyst views.</p></section>' : ''}
       ${S.mode === 'server' && !S.ext ? `<section class="panel"><div class="panel-h"><h2>Your password</h2></div><form id="pw" class="row"><input class="input" type="password" id="pw-cur" placeholder="Current" autocomplete="current-password" style="max-width:200px"><input class="input" type="password" id="pw-new" placeholder="New (10+ characters)" autocomplete="new-password" style="max-width:220px"><button class="btn" type="submit">Change</button></form></section>` : ''}
@@ -1220,6 +1224,8 @@ Auth        Authorization: Bearer &lt;MANUS_AGENT_TOKEN&gt;</div>
       const v = (k) => Number(document.getElementById('f-' + k).value);
       act(() => api.saveSettings({ monthlyAdCapEgp: v('monthlyAdCapEgp'), maxCplEgp: v('maxCplEgp'), targetCplEgp: v('targetCplEgp'), approvalChannel: document.getElementById('f-approvalChannel').value, targets: { views: v('t_views'), pageLikes: v('t_pageLikes'), leads: v('t_leads'), qualifiedLeads: v('t_qualifiedLeads'), signedClients: v('t_signedClients') } }), 'Limits saved.');
     };
+    const vp = document.getElementById('voicePrompt');
+    if (vp && owner) vp.onsubmit = (ev) => { ev.preventDefault(); act(() => api.saveSettings({ voiceOverPrompt: document.getElementById('f-voiceOverPrompt').value }), 'Voice-over prompt saved.'); };
     const pw = document.getElementById('pw');
     if (pw) pw.onsubmit = (ev) => { ev.preventDefault(); act(() => api.password(document.getElementById('pw-cur').value, document.getElementById('pw-new').value), 'Password changed.'); };
     const uf = document.getElementById('userForm');

@@ -2,7 +2,7 @@ export const ELEVAY_CREATIVE_LANGUAGE_POLICY = {
   version: "elevay-egyptian-arabic-voice-country-company-exceptions-v3",
   marketingCopy: "Campaign, post, reel and voice-over copy must be Arabic. Captions may be bilingual Arabic and English, but must include Arabic.",
   onScreenVisualText: "Any text rendered inside a static design, carousel, reel or ad visual must be English only.",
-  voiceOver: "Voice-over scripts must be written in Egyptian Arabic. Only approved country names and ELEVAY as the company name may appear in English.",
+  voiceOver: "Voice-over scripts must be written in Egyptian Arabic. Only approved country names and Elevay as the company name may appear in English.",
 } as const;
 
 export const ELEVAY_APPROVED_ENGLISH_COUNTRY_NAMES = [
@@ -25,7 +25,7 @@ export const ELEVAY_APPROVED_ENGLISH_COUNTRY_NAMES = [
   "UK",
 ] as const;
 
-export const ELEVAY_APPROVED_ENGLISH_COMPANY_NAMES = ["ELEVAY"] as const;
+export const ELEVAY_APPROVED_ENGLISH_COMPANY_NAMES = ["Elevay"] as const;
 
 const ARABIC_SCRIPT = /[\u0600-\u06FF]/;
 const LATIN_LETTERS = /[A-Za-z]/;

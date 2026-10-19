@@ -149,12 +149,16 @@ function safeMetrics(value: unknown) {
 function safeProgressMetadata(value: unknown) {
   const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const raw = Array.isArray(input.rawVoiceSeconds) ? input.rawVoiceSeconds.slice(0, 4).map(Number) : [];
+  const legacy = Number(input.narrationTargetSeconds) === 18 && Number(input.narrationSceneSeconds) === 4.5;
+  const current = Number(input.narrationTargetSeconds) === 20 && Number(input.narrationSceneSeconds) === 5;
   return {
     music: input.music === true,
     musicDropped: input.musicDropped ? cleanError(input.musicDropped).slice(0, 240) : null,
-    narrationTargetSeconds: Number(input.narrationTargetSeconds) === 18 ? 18 : undefined,
-    narrationSceneSeconds: Number(input.narrationSceneSeconds) === 4.5 ? 4.5 : undefined,
+    narrationTargetSeconds: current ? 20 : legacy ? 18 : undefined,
+    narrationSceneSeconds: current ? 5 : legacy ? 4.5 : undefined,
     rawVoiceSeconds: raw.length === 4 && raw.every((n) => Number.isFinite(n) && n > 0.2 && n < 12) ? raw : undefined,
+    appliedVoiceTempos: Array.isArray(input.appliedVoiceTempos) && input.appliedVoiceTempos.length === 4 && input.appliedVoiceTempos.every((n: unknown) => Number.isFinite(Number(n)) && Number(n) >= 0.8 && Number(n) <= 1.12 + 0.0001) ? input.appliedVoiceTempos.map(Number) : undefined,
+    voicePaddingSeconds: Array.isArray(input.voicePaddingSeconds) && input.voicePaddingSeconds.length === 4 && input.voicePaddingSeconds.every((n: unknown) => Number.isFinite(Number(n)) && Number(n) >= 0 && Number(n) <= 5) ? input.voicePaddingSeconds.map(Number) : undefined,
   };
 }
 
@@ -166,7 +170,9 @@ function safeManifest(value: unknown) {
   if (clips.length !== 4 || clips.some((x) => !x) || voices.length !== 4 || voices.some((x) => !x) || !outroUrl) {
     throw new RenderWorkerBridgeError(409, "Queued job has no valid saved render inputs.");
   }
-  if (Number(input.narrationTargetSeconds) !== 18 || Number(input.narrationSceneSeconds) !== 4.5) {
+  const legacy = Number(input.narrationTargetSeconds) === 18 && Number(input.narrationSceneSeconds) === 4.5;
+  const current = Number(input.narrationTargetSeconds) === 20 && Number(input.narrationSceneSeconds) === 5;
+  if (!legacy && !current) {
     throw new RenderWorkerBridgeError(409, "Queued job does not meet the locked narration contract.");
   }
   return {
@@ -183,8 +189,8 @@ function safeManifest(value: unknown) {
     fps: 30,
     sceneSeconds: 5,
     outroSeconds: 3,
-    narrationTargetSeconds: 18,
-    narrationSceneSeconds: 4.5,
+    narrationTargetSeconds: current ? 20 : 18,
+    narrationSceneSeconds: current ? 5 : 4.5,
   };
 }
 
@@ -422,7 +428,8 @@ export function createRenderWorkerBridge({
     const qcFrames = Array.from({ length: MAX_QC_FRAMES }, (_, index) => evidence[String(index + 1)]).filter(Boolean);
     if (qcFrames.length !== MAX_QC_FRAMES) throw new RenderWorkerBridgeError(400, "All 75 narrative QC sheets and 2 outro frames are required before completion.");
     const seconds = Number(final.seconds);
-    if (!Number.isFinite(seconds) || Math.abs(seconds - 23) > 0.05 || final.mode !== "cuts" || Number(final.narrationTargetSeconds) !== 18 || Number(final.narrationSceneSeconds) !== 4.5) {
+    const manifest = safeManifest(current.doc.manifest);
+    if (!Number.isFinite(seconds) || Math.abs(seconds - 23) > 0.05 || final.mode !== "cuts" || Number(final.narrationTargetSeconds) !== manifest.narrationTargetSeconds || Number(final.narrationSceneSeconds) !== manifest.narrationSceneSeconds) {
       throw new RenderWorkerBridgeError(400, "Final render does not meet the locked 23-second ELEVAY output contract.");
     }
     const rawVoiceSeconds = Array.isArray(final.rawVoiceSeconds) ? final.rawVoiceSeconds.slice(0, 4).map(Number) : [];
@@ -434,9 +441,9 @@ export function createRenderWorkerBridge({
       music: final.music === true,
       musicDropped: final.musicDropped ? cleanError(final.musicDropped).slice(0, 240) : null,
       mode: "cuts",
-      narrationTargetSeconds: 18,
-      narrationSceneSeconds: 4.5,
-      spokenNarrationSeconds: 18,
+      narrationTargetSeconds: manifest.narrationTargetSeconds,
+      narrationSceneSeconds: manifest.narrationSceneSeconds,
+      spokenNarrationSeconds: manifest.narrationTargetSeconds,
       rawVoiceSeconds,
       peakRssBytes: safeMetrics(final.metrics || final).peakRssBytes,
       peakFfmpegRssBytes: safeMetrics(final.metrics || final).peakFfmpegRssBytes,
@@ -464,7 +471,7 @@ export function createRenderWorkerBridge({
     current.doc.stage = "retry_wait";
     current.doc.lastFailure = { at: now(), stage, error };
     const attempts = Number(current.row.attempts || 0);
-    // A saved voice that cannot meet the locked 4.5-second slot is a durable
+    // A saved voice that cannot meet the locked five-second slot is a durable
     // input problem, not a transient FFmpeg or network failure. Preserve it
     // and surface review rather than retrying it three times.
     const permanent = input?.permanent === true || /cannot be naturally timed|saved narration is .*cannot/i.test(error);

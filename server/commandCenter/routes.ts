@@ -343,9 +343,14 @@ route("POST", "/jobs/:id/retry", "marketer", (ctx) => mutate(ctx, (st) => {
   return E.setJobStatus(st, job.id, "pending", {}, ctx.user.email);
 }).then(fromResult));
 route("PUT", "/settings", "owner", (ctx) => mutate(ctx, (st) => {
-  const allowed = ["monthlyAdCapEgp", "maxCplEgp", "targetCplEgp", "cplBreachDays", "cplBreachMinSpendEgp", "approvalThreshold", "killSwitchRollingThreshold", "manualWeeks", "approvalChannel", "targets", "studio", "meta"];
+  const allowed = ["monthlyAdCapEgp", "maxCplEgp", "targetCplEgp", "cplBreachDays", "cplBreachMinSpendEgp", "approvalThreshold", "killSwitchRollingThreshold", "manualWeeks", "approvalChannel", "targets", "studio", "meta", "voiceOverPrompt"];
   if ("meta" in ctx.body) ctx.body.meta = { directPublish: ctx.body.meta?.directPublish === true, inbox: ctx.body.meta?.inbox !== false, contactPhone: String(ctx.body.meta?.contactPhone || "").replace(/[^\d+ ]/g, "").trim().slice(0, 20) };
   if ("studio" in ctx.body) ctx.body.studio = { autoplan: ctx.body.studio?.autoplan !== false, autoClips: ctx.body.studio?.autoClips !== false, reelLimitPerWeek: Math.max(0, Math.min(30, Math.round(Number(ctx.body.studio?.reelLimitPerWeek ?? 6)))) };
+  if ("voiceOverPrompt" in ctx.body) {
+    const prompt = String(ctx.body.voiceOverPrompt || "").trim();
+    if (prompt.length < 80 || prompt.length > 3000 || !prompt.includes("[the reel's idea/objective from the weekly plan]")) return { ok: false, error: "ELEVAY Voice-Over Prompt must retain the [the reel's idea/objective from the weekly plan] placeholder." };
+    ctx.body.voiceOverPrompt = prompt;
+  }
   if (Number(ctx.body.monthlyAdCapEgp) > R.DEFAULT_SETTINGS.monthlyAdCapEgp && !ctx.body.confirmRaiseCap) return { ok: false, error: "Raising the monthly cap above 200,000 EGP needs confirmRaiseCap: true." };
   for (const k of allowed) if (k in ctx.body) st.settings[k] = ctx.body[k];
   E.audit(st, ctx.user.email, "settings.updated", null, Object.keys(ctx.body).join(", "));

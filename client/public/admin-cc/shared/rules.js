@@ -25,6 +25,14 @@
     timezone: 'Africa/Cairo',
     autopublish: { enabled: false, enabledAt: null, enabledBy: null, disabledReason: null },
     approvalChannel: 'email',
+    voiceOverPrompt: `i need a strong text for voice over to be strongly spoken at arabic egyptian language
+
+1- Use the Egyptian Arabic Language, pronunciation and writing. If you need to add a country name, write it in English only. If you need to write our company name, write it like this: Elevay
+2- The voice over text should cover 20 seconds of voice over
+3- The voice over should be generated in Egyptian Arabic language with no official (Modern Standard) Arabic
+4- Keep your tone of voice friendly with professional
+
+Idea: [the reel's idea/objective from the weekly plan]`,
   };
 
   // ---------- Terminology (brand identity §6–7) ----------
@@ -200,8 +208,8 @@
         add('voice_source', 'Voice comes from the Elevay.vip voice clone', (brief.talent?.voice_source || '') === 'elevay_vip_module');
         const spoken = sb.map((c) => c.spoken_text_ar || '').join(' ');
         for (const r of TERM_RULES) if (r.re.test(spoken)) add('spoken_' + r.id, 'Script: ' + r.label, false, r.severity);
-        add('spoken_latin', 'Script has no English words other than country names and ELEVAY', !/[A-Za-z]/.test(spoken.replace(/\b(ELEVAY|Spain|Malta|Portugal|Greece|Canada|United Kingdom|UK|Grenada|Dominica|Saint Lucia|St\. Lucia|Saint Kitts and Nevis|St\. Kitts and Nevis|Antigua and Barbuda|Antigua|Barbuda|Caribbean)\b/g, '')));
-        add('spoken_english_names', 'Script writes country names and ELEVAY in English letters (e.g. Spain, Malta, ELEVAY)', !ARABIC_PLACE_NAMES.test(spoken));
+        add('spoken_latin', 'Script has no English words other than country names and Elevay', !/[A-Za-z]/.test(spoken.replace(/\b(Elevay|Spain|Malta|Portugal|Greece|Canada|United Kingdom|UK|Grenada|Dominica|Saint Lucia|St\. Lucia|Saint Kitts and Nevis|St\. Kitts and Nevis|Antigua and Barbuda|Antigua|Barbuda|Caribbean)\b/g, '')));
+        add('spoken_english_names', 'Script writes country names and Elevay in English letters (e.g. Spain, Malta, Elevay)', !ARABIC_PLACE_NAMES.test(spoken));
         const perClip = sb.map((c) => countWords(c.spoken_text_ar || ''));
         add('spoken_length', 'Script is ~8–13 Arabic words per clip', perClip.every((n) => n === 0 || (n >= 6 && n <= 15)), 'warn');
       }

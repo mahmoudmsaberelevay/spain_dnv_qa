@@ -17,10 +17,10 @@ const CAPTION = `هل تفكر في مستقبل عائلتك في أوروبا�
 const owner = { email: "owner@elevay.com", role: "owner" };
 const marketer = { email: "marketer@elevay.com", role: "marketer" };
 const sceneScripts = [
-  "لو قرار عيلتك مؤجل، خلينا نبص على Portugal بهدوء.",
-  "بنراجع اختياراتك علشان تعرف أنهي خطوة مناسبة ليك.",
-  "مع ELEVAY بنرتب التفاصيل بوضوح ومن غير ضغط أو وعود.",
-  "تواصل مع ELEVAY دلوقتي واحجز استشارتك بخطوة أوضح.",
+  "لو قرار عيلتك مؤجل، خلينا نبص على Portugal بهدوء ونرتب أول خطوة صح.",
+  "بنراجع اختياراتك علشان تعرف أنهي خطوة مناسبة ليك ولعيلتك من غير ضغط.",
+  "مع Elevay بنرتب التفاصيل بوضوح ونشرح الصورة كاملة علشان قرارك يبقى أهدى.",
+  "تواصل مع Elevay دلوقتي واحجز استشارتك وخد خطوتك الجاية برؤية أوضح.",
 ];
 const scene = (i) => ({
   keyframe_prompt: `Arab couple in Lisbon, scene ${i}, modern elegant clothing and polished leather shoes, no text, no logo, no passports, no flags`,
@@ -140,7 +140,7 @@ describe("seven-step ELEVAY reel flow", () => {
     const ctx = setup([STORYBOARD]);
     const run = await ctx.o.create({ kind: "reel", request: "Strong voice test", user: marketer });
     await settle(ctx.o, run.id, ["running", "queued"]);
-    expect(ctx.calls.openaiText[0].prompt.startsWith("I need a strong text for voice over to be strongly spoken in Arabic Egyptian language.")).toBe(true);
+    expect(ctx.calls.openaiText[0].prompt.startsWith("i need a strong text for voice over to be strongly spoken at arabic egyptian language")).toBe(true);
   });
 
   it("recovers a persisted Higgsfield clip with no provider receipt using its original idempotency key after backoff", async () => {
@@ -222,7 +222,7 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.voice).toBe(4);
     expect(ctx.calls.openaiText).toHaveLength(1); // storyboard and Egyptian Arabic narration
     expect(ctx.calls.openaiText[0].prompt).toMatch(/Egyptian Arabic voice-over/);
-    expect(ctx.calls.openaiText[0].prompt).toMatch(/exactly 18 seconds/);
+    expect(ctx.calls.openaiText[0].prompt).toMatch(/cover 20 seconds/);
     expect(ctx.calls.openaiText[0].prompt).toMatch(/direct spoken consultation call to action/);
     expect(ctx.calls.claude).toHaveLength(1); // sole final QC
     expect(ctx.calls.claude[0].prompt).toMatch(/ALL supplied visual evidence/);
@@ -262,7 +262,7 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.hfSubmit).toHaveLength(4);
     expect(ctx.calls.voice).toBe(4);
     expect(ctx.calls.render.length).toBeGreaterThanOrEqual(2); // durable queue/result polling only; no media providers were re-run
-    expect(ctx.calls.render.at(-1)).toMatchObject({ narrationTargetSeconds: 18, narrationSceneSeconds: 4.5 });
+    expect(ctx.calls.render.at(-1)).toMatchObject({ narrationTargetSeconds: 20, narrationSceneSeconds: 5 });
     expect(ctx.calls.claude).toHaveLength(1);
   });
 
@@ -423,7 +423,7 @@ describe("owner-authorized targeted content revisions", () => {
     expect(recreated.artifacts).toEqual({});
     expect(recreated.options.revision).toMatchObject({itemId:item.item_id,baseVersion:1,scope:'whole_concept'});
     expect(recreated.request).toMatch(/completely fresh/i);
-    expect(recreated.request).toMatch(/I need a strong text for voice over to be strongly spoken in Arabic Egyptian language\./);
+    expect(recreated.request).toMatch(/locked ELEVAY Voice-Over Prompt/);
     expect(recreated.request).toMatch(/completely NEW voice-over text/);
     let r=await settle(ctx.o,recreated.id);
     if(r.status==='waiting'){await ctx.o.tick();r=await settle(ctx.o,recreated.id,['running','queued','waiting']);}
@@ -438,7 +438,7 @@ describe("owner-authorized targeted content revisions", () => {
     expect(ctx.state.jobs.some(j=>j.type==='schedule_post')).toBe(false);
   });
   it("changes only scene 3 narration and rerenders without regenerating a keyframe or clip", async()=>{
-    const ctx=setup([STORYBOARD,PASS,{scenes:[{scene:3,spoken_text_ar:'خلينا نراجع ملفك في Portugal مع ELEVAY خطوة خطوة'}]},PASS]);
+    const ctx=setup([STORYBOARD,PASS,{scenes:[{scene:3,spoken_text_ar:'خلينا نراجع ملفك في Portugal مع Elevay خطوة خطوة وبهدوء علشان قرارك يبقى أهدى.'}]},PASS]);
     const base=await finishedBase(ctx);const item=ctx.state.items.find(i=>i.item_id===base.artifacts.item_id);
     const unchanged=base.artifacts.voices.map(v=>v.url);
     const rev=await ctx.o.reviseItem(item.item_id,{comment:'Change voice scene 3',scope:'voice',clip:3},owner);
