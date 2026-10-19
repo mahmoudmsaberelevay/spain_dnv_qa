@@ -36,7 +36,9 @@ import { creditsReport, cleanManualCredit, clearCreditsCache, CREDIT_IDS } from 
 import { startEmbeddedRenderWorker, embeddedRenderStatus } from "./embeddedRenderWorker";
 import { notifyAiFailure } from "./alerts";
 import { createMetaHub, META_KINDS, cleanMetaAction as cleanMeta } from "./meta";
+import { createWeeklyOperations } from "./weeklyOperations";
 import { getMetaPlatformWebhookHealth } from "../metaPlatformEvents";
+import { notifyOwner } from "../_core/notification";
 const cleanMetaAction = (b) => cleanMeta(b, R);
 function sourcesStatus() {
   const has = (f) => { try { assetPath(f); return true; } catch { return false; } };
@@ -284,13 +286,16 @@ route("GET", "/bootstrap", "team", async (ctx) => {
 // server-derived owner identity and start a scope-limited run.
 route("POST", "/items/:id/decision", "marketer", async (ctx) => {
   if (ctx.body.decision === "request_changes" && ctx.user.role === "owner") return ownerRevision(ctx);
-  return fromResult(await mutate(ctx, (st) => E.decideItem(st, ctx.params.id, ctx.body.decision, ctx.body, ctx.user.email, ctx.user.role)));
+  const body = ctx.body.decision === "approve" && ctx.user.role === "owner"
+    ? { ...ctx.body, saturdayReview: true, reviewAt: Date.now() }
+    : ctx.body;
+  return fromResult(await mutate(ctx, (st) => E.decideItem(st, ctx.params.id, body.decision, body, ctx.user.email, ctx.user.role)));
 });
 route("POST", "/items/:id/revision", "owner", ownerRevision);
 route("POST", "/items/:id/versions/:version/restore", "owner", (ctx) => mutate(ctx, (st) => E.restoreItemVersion(st, ctx.params.id, ctx.params.version, {
   actor: ctx.user.email, role: ctx.user.role, baseVersion: ctx.body.baseVersion, request: ctx.body.note,
 })).then(fromResult));
-route("POST", "/weeks/:week/approve-all", "owner", (ctx) => mutate(ctx, (st) => E.approveAllWeek(st, ctx.params.week, ctx.user.email, ctx.user.role)).then(fromResult));
+route("POST", "/weeks/:week/approve-all", "owner", (ctx) => mutate(ctx, (st) => E.approveAllWeek(st, ctx.params.week, ctx.user.email, ctx.user.role, { saturdayReview: true, reviewAt: Date.now() })).then(fromResult));
 route("POST", "/compliance/check", "team", async (ctx) => ok({ ok: true, result: R.checkBrief(ctx.body || {}) }));
 route("POST", "/actions/:id/decision", "owner", (ctx) => mutate(ctx, (st) => E.decideAction(st, ctx.params.id, ctx.body.decision, ctx.body, ctx.user.email, ctx.user.role)).then(fromResult));
 route("POST", "/guardrails/pause", "owner", (ctx) => (ctx.body.adset ? mutate(ctx, (st) => E.proposePause(st, String(ctx.body.adset), ctx.user.email)).then(fromResult) : fail(400, "adset is required")));
@@ -412,6 +417,27 @@ export async function runAiStudioWatchdog() {
   return (await studio()).watchdog();
 }
 
+// One durable Cairo-time controller owns the Wednesday–Sunday weekly cadence.
+// It can start AI Studio production only after non-generative readiness passes;
+// it has no authority to publish Meta content or mutate CRM/Lead records.
+let weeklyOperationsPromise = null;
+function weeklyOperations() {
+  if (!weeklyOperationsPromise) weeklyOperationsPromise = Promise.resolve(createWeeklyOperations({
+    q,
+    loadState,
+    mutate,
+    studio,
+    metaHub,
+    renderBridge: renderWorkerBridge,
+    creditsReport,
+    notifyOwner,
+  })).catch((error) => { weeklyOperationsPromise = null; throw error; });
+  return weeklyOperationsPromise;
+}
+export async function runWeeklyCommandCenterOperations() {
+  return (await weeklyOperations()).run();
+}
+
 
 /**
  * Starts an owner-authorized, scope-specific content revision. The orchestrator
@@ -476,6 +502,10 @@ route("GET", "/ai/autopilot", "team", async () => {
   const { state } = await loadState();
   const a = R.approvalStats(state.items, state.settings);
   return ok({ ok: true, autopublish: state.settings.autopublish, approval: { weeksDone: a.weeksDone, cumulative: a.cumulative, rolling4: a.rolling4, gateEligible: a.gateEligible, manualWeeks: state.settings.manualWeeks, threshold: state.settings.approvalThreshold }, studio: { autoplan: state.settings.studio?.autoplan !== false, autoClips: state.settings.studio?.autoClips !== false, reelLimitPerWeek: Number(state.settings.studio?.reelLimitPerWeek ?? 6) }, lastWeekly: await kvGet("autoplan_last_week") });
+});
+route("GET", "/weekly-operations", "owner", async () => {
+  const { state } = await loadState();
+  return ok({ ok: true, weeklyOperations: state.settings?.weeklyOperations || null });
 });
 route("POST", "/ai/news/research", "owner", async () => {
   try { return ok({ ok: true, ...(await (await studio()).researchNews({ email: "owner", role: "owner" })) }); }

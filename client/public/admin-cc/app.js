@@ -8,7 +8,7 @@
   const app = document.getElementById('app');
   const S = { mode: null, ext: null, data: null, view: 'overview', week: null, jobFilter: 'open', openItem: null, demoRole: 'owner', busy: false };
   const VIEWS = [
-    ['overview', 'Overview'], ['plan', 'Weekly plan'], ['actions', 'Action plan'], ['performance', 'Performance'],
+    ['overview', 'Overview'], ['plan', 'Weekly plan'], ['review', 'Saturday Review'], ['actions', 'Action plan'], ['performance', 'Performance'],
     ['news', 'News'], ['monthly', 'Monthly plan'], ['studio', 'AI Studio'], ['meta', 'Meta'], ['manus', 'Manus bridge'], ['credits', 'Credits'], ['settings', 'Settings'],
   ];
 
@@ -229,6 +229,7 @@
     const d = S.data, s = d.summary;
     return {
       plan: d.items.filter((i) => i.status === 'pending_approval').length,
+      review: d.items.filter((i) => i.review?.required && ['pending_approval', 'revision_approved'].includes(i.status)).length,
       actions: s.actionsPending,
       manus: s.needsInput,
       performance: s.guardrails.alerts.filter((a) => a.level === 'critical').length + liveCritical(),
@@ -258,7 +259,7 @@
         <div id="view"></div>
       </main></div>`;
     const v = document.getElementById('view');
-    ({ overview: viewOverview, plan: viewPlan, actions: viewActions, performance: viewPerformance, news: viewNews, monthly: viewMonthly, studio: viewStudio, meta: viewMeta, manus: viewManus, credits: viewCredits, settings: viewSettings })[S.view](v);
+    ({ overview: viewOverview, plan: viewPlan, review: viewSaturdayReview, actions: viewActions, performance: viewPerformance, news: viewNews, monthly: viewMonthly, studio: viewStudio, meta: viewMeta, manus: viewManus, credits: viewCredits, settings: viewSettings })[S.view](v);
     wireShell();
   }
 
@@ -267,6 +268,7 @@
     return ({
       overview: `${t} Cairo. Targets, spend guardrails and what needs a decision.`,
       plan: '7 posts a week (4 static + 3 reels). Approve, request changes or reject each item. Manus regenerates only what you flag.',
+      review: 'Saturday Review: inspect all completed work, approve or request changes. No weekly item can post without an owner release recorded on Saturday in Cairo.',
       actions: 'Friday action plan from the Meta report. Manus executes only what the owner approves.',
       performance: 'Live from Meta and the ELEVAY CRM: last 30 days of ads, leads, qualified, unqualified, clients and page growth. Read-only.',
       news: 'Weekly news search: Claude searches the web every Thursday at 20:00 Cairo. Only verified or reported items can feed posts.',
@@ -404,7 +406,13 @@
   function calendar() {
     const nowCairo = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
     const start = new Date(nowCairo); start.setDate(nowCairo.getDate() - nowCairo.getDay()); start.setHours(0, 0, 0, 0);
-    const fixed = { 4: [['20:00', 'News search (Manus)']], 5: [['09:00', 'Meta report and action plan', true]], 6: [['09:00', 'Autopilot plans next week and starts production', true]] };
+    const fixed = {
+      3: [['08:00', 'Provider + worker preflight'], ['09:00', 'Plan and 7-item production starts', true]],
+      4: [['20:00', 'Verified news research']],
+      5: [['09:00', 'Production recovery and final QC']],
+      6: [['09:00', 'Saturday Review — owner approval only', true], ['18:00', 'Outstanding-review reminder']],
+      0: [['09:00', 'Unapproved-content hold — nothing posts automatically', true]],
+    };
     const monthDay = Number(new Date().toLocaleDateString('en-CA', { timeZone: TZ }).slice(8, 10));
     const posts = S.data.items.filter((i) => i.publish && i.publish.datetime_cairo && ['approved', 'scheduled', 'published', 'pending_approval', 'changes_requested'].includes(i.status));
     let html = '<div class="timeline">';
@@ -424,6 +432,33 @@
   function weeksList() {
     const set = new Set(S.data.items.map((i) => R.weekOf(i.item_id)));
     return [...set].sort().reverse();
+  }
+
+  function viewSaturdayReview(el) {
+    const weeks = weeksList();
+    if (!S.week || !weeks.includes(S.week)) {
+      const current = weeks.find((w) => S.data.items.some((i) => R.weekOf(i.item_id) === w && i.review?.required && ['pending_approval', 'revision_approved'].includes(i.status)));
+      S.week = current || weeks[0] || null;
+    }
+    if (!S.week) { el.innerHTML = '<div class="empty">No weekly content is ready for Saturday Review yet. The Wednesday preflight and production controller will add it here after final Claude QC.</div>'; return; }
+    const items = S.data.items.filter((i) => R.weekOf(i.item_id) === S.week).sort((a, b) => a.item_id.localeCompare(b.item_id));
+    const ready = items.filter((i) => ['pending_approval', 'revision_approved'].includes(i.status));
+    const review = S.data.settings.weeklyOperations?.saturdayReview;
+    el.innerHTML = `<div class="stack" style="gap:14px">
+      <section class="panel weekbar"><div class="row" style="justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap">
+        <label class="field" style="min-width:170px"><span>Publishing week</span><select class="input" id="reviewWeekSel">${weeks.map((w) => `<option ${w === S.week ? 'selected' : ''}>${w}</option>`).join('')}</select></label>
+        <div class="statusline"><span class="pill ${ready.length ? 'warn' : 'ok'}">${ready.length} awaiting owner release</span><span class="pill">${items.length} total items</span></div></div>
+        <div class="alert ${ready.length ? 'critical' : 'ok'}" style="margin-top:12px"><span class="tag">Saturday control</span><span>${ready.length ? 'Review each preview, caption, schedule, channels and Claude QC before approving. Approval is accepted only on Saturday in Africa/Cairo; no weekly post can be published without this release.' : 'No item is awaiting a Saturday release.'}</span></div>
+        ${isOwner() ? `<div class="row" style="margin-top:12px"><button class="btn primary" id="reviewApproveAll" ${ready.length ? '' : 'disabled'}>Approve all review-ready items (${ready.length})</button><span class="small muted">Approval queues scheduling only after this Saturday release. Sunday 09:00 Cairo holds all unreleased items.</span></div>` : '<p class="small muted" style="margin-top:12px">Only the owner can release weekly items during Saturday Review.</p>'}
+      </section>
+      <section class="panel"><div class="panel-h"><h2>Review calendar</h2><span class="muted small">Cairo time · Wednesday preflight → Friday recovery → Saturday owner review → Sunday hold</span></div><div class="table-wrap">${calendar()}</div></section>
+      <div class="items">${items.map(itemCard).join('')}</div>
+    </div>`;
+    document.getElementById('reviewWeekSel').onchange = (e) => { S.week = e.target.value; render(); };
+    const all = document.getElementById('reviewApproveAll');
+    if (all) all.onclick = () => act(async () => { const r = await api.approveAll(S.week); toast(`Approved ${r.approved.length}${r.skipped.length ? `; ${r.skipped.length} item(s) still need attention` : ''}.`); }, 'Saturday review release recorded.');
+    wireItems(el);
+    wireRevisionHistory(el);
   }
 
   function viewPlan(el) {
@@ -474,7 +509,7 @@
   function itemCard(i) {
     const c = i.compliance || { blocks: [], warnings: [], checks: [] };
     const passed = c.checks.filter((x) => x.ok).length;
-    const decidable = ['pending_approval', 'qc_failed'].includes(i.status) && i.revision_status !== 'owner_approved';
+    const decidable = ['pending_approval', 'revision_approved', 'qc_failed'].includes(i.status);
     const talent = i.talent && i.talent.mode && i.talent.mode !== 'none' ? (i.talent.mode === 'influencer' ? 'AI influencer + Elevay.vip voice' : 'Elevay.vip voice-over') : 'Music only';
     const lastReq = (i.owner_comments || []).filter((x) => x.kind === 'change_request').slice(-1)[0];
     const revisionPending = i.revision_status === 'revision_pending' && i.revision;
@@ -561,7 +596,7 @@
   function decideBlock(i) {
     const blocked = i.compliance && !i.compliance.pass;
     const id = esc(i.item_id);
-    const canApprove = ['pending_approval','qc_failed','draft','changes_requested'].includes(i.status) && i.revision_status !== 'owner_approved';
+    const canApprove = ['pending_approval','revision_approved','qc_failed','draft','changes_requested'].includes(i.status);
     return `<div class="decide" data-item="${id}">
       <div class="row">
         ${isOwner() && canApprove ? `<button class="btn primary" data-do="approve" ${blocked ? 'disabled title="Fix compliance blocks first"' : ''}>Approve</button>` : ''}

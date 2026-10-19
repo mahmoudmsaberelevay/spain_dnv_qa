@@ -349,9 +349,12 @@ export function createMetaHub(deps) {
 
   function isDue(item, now) {
     const d = item.publish?.direct || {}, lease = d.lease;
+    const weeklyRelease = item.review?.required
+      ? item.review?.release && Number(item.review.release.version) === Number(item.version) && item.review.release.week === item.review.week
+      : true;
     return item.status === "approved" && item.publish?.datetime_cairo && item.publish.datetime_cairo <= now
       && !d.done && Number(d.retry_after || 0) <= Date.now() && !(lease?.until && Number(lease.until) > Date.now())
-      && !item.publish?.revision_hold?.active;
+      && !item.publish?.revision_hold?.active && !item.publish?.weekly_review_hold?.active && !!weeklyRelease;
   }
 
   async function claimPublish(itemId) {

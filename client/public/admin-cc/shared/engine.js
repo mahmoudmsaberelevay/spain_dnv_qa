@@ -23,6 +23,20 @@
     };
   }
 
+  // Weekly AI Studio production can be automatic, but external publication is
+  // never an automatic consequence of that production. New controller-created
+  // items carry review.required and need a version-bound Saturday Cairo release.
+  function isSaturdayCairo(value) {
+    const weekday = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Cairo', weekday: 'short' }).format(new Date(value || Date.now()));
+    return weekday === 'Sat';
+  }
+
+  function hasValidSaturdayRelease(item) {
+    if (!item?.review?.required) return true;
+    const release = item.review.release;
+    return !!(release && Number(release.version) === Number(item.version) && release.week === item.review.week && release.approved_at && !item.publish?.weekly_review_hold?.active);
+  }
+
   function nextId(state, kind, prefix) {
     state.counters = state.counters || {};
     state.counters[kind] = (state.counters[kind] || 0) + 1;
@@ -103,10 +117,14 @@
       const prev = clone(existing);
       delete prev.history;
       item = existing;
-      const keep = { history: existing.history || [], owner_comments: existing.owner_comments || [], presented_at: existing.presented_at, first_pass: existing.first_pass, created_at: existing.created_at };
+      const keep = { history: existing.history || [], owner_comments: existing.owner_comments || [], presented_at: existing.presented_at, first_pass: existing.first_pass, created_at: existing.created_at, review: existing.review || null };
       Object.assign(item, input, keep);
       const pv = Number(prev.version || 1);
       item.version = Number(input.version) > pv ? Number(input.version) : pv + 1;
+      if (item.review?.required) {
+        item.review.release = null;
+        item.publish = Object.assign({}, item.publish || {}, { weekly_review_hold: { active: true, version: item.version, set_at: now(), reason: 'A new content version requires a fresh Saturday owner review release.' } });
+      }
       item.history.unshift({ at: now(), by: actor, version: prev.version, snapshot: prev });
     } else {
       item = Object.assign({ version: 1, owner_comments: [], history: [], created_at: now() }, input);
@@ -360,7 +378,7 @@
     const item = state.items.find((i) => i.item_id === itemId);
     if (!item) return { ok: false, error: 'Item not found' };
     const ownerRevision = decision === 'request_changes' && role === 'owner';
-    if (!ownerRevision && !['pending_approval', 'qc_failed', 'changes_requested', 'draft'].includes(item.status) && decision !== 'reject')
+    if (!ownerRevision && !['pending_approval', 'revision_approved', 'qc_failed', 'changes_requested', 'draft'].includes(item.status) && decision !== 'reject')
       return { ok: false, error: `Item is ${item.status}; nothing to decide.` };
 
     if (decision === 'approve') {
@@ -368,6 +386,17 @@
       if (item.compliance && !item.compliance.pass && !opts.override)
         return { ok: false, error: 'Compliance blocks must be fixed first (or approve with a written override).', blocks: item.compliance.blocks };
       if (opts.override && !String(opts.reason || '').trim()) return { ok: false, error: 'An override needs a written reason.' };
+      if (item.review?.required) {
+        if (opts.saturdayReview !== true || !isSaturdayCairo(opts.reviewAt || Date.now()))
+          return { ok: false, error: 'This weekly item can be released only by the owner during the Saturday Review (Africa/Cairo).' };
+        item.review = Object.assign({}, item.review, { release: { week: item.review.week, version: item.version, approved_at: now(), approved_by: actor } });
+        if (item.publish?.weekly_review_hold) {
+          item.publish = Object.assign({}, item.publish, { weekly_review_hold: Object.assign({}, item.publish.weekly_review_hold, { active: false, cleared_at: now(), cleared_by: actor }) });
+        }
+        if (item.publish?.revision_hold?.active && Number(item.publish.revision_hold.version) === Number(item.version)) {
+          item.publish = Object.assign({}, item.publish, { revision_hold: Object.assign({}, item.publish.revision_hold, { active: false, cleared_at: now(), cleared_by: actor, reason: 'Released during Saturday owner review.' }) });
+        }
+      }
       if (item.first_pass === null && item.version === 1 && item.owner_comments.length === 0) item.first_pass = true;
       else if (item.first_pass === null) item.first_pass = false;
       item.status = 'approved';
@@ -420,12 +449,12 @@
     return { ok: false, error: 'Unknown decision' };
   }
 
-  function approveAllWeek(state, week, actor, role) {
+  function approveAllWeek(state, week, actor, role, opts) {
     if (role !== 'owner') return { ok: false, error: 'Only the owner can approve content.' };
-    const pending = state.items.filter((i) => R.weekOf(i.item_id) === week && i.status === 'pending_approval');
+    const pending = state.items.filter((i) => R.weekOf(i.item_id) === week && ['pending_approval', 'revision_approved'].includes(i.status));
     const approved = [], skipped = [];
     for (const i of pending) {
-      const r = decideItem(state, i.item_id, 'approve', {}, actor, role);
+      const r = decideItem(state, i.item_id, 'approve', opts || {}, actor, role);
       (r.ok ? approved : skipped).push(i.item_id);
     }
     return { ok: true, approved, skipped };
@@ -436,6 +465,7 @@
     const item = state.items.find((i) => i.item_id === itemId);
     if (!item) return { ok: false, error: 'Item not found' };
     if (item.publish?.revision_hold?.active) return { ok: false, error: `Item v${item.version} is a reviewed revision held for separate owner publishing authorization.` };
+    if (item.publish?.weekly_review_hold?.active || !hasValidSaturdayRelease(item)) return { ok: false, error: `Item v${item.version} has no valid Saturday owner-review release for external publication.` };
     if (!['scheduled', 'published'].includes(status)) return { ok: false, error: 'status must be scheduled or published' };
     if (!['approved', 'scheduled'].includes(item.status)) return { ok: false, error: `Item is ${item.status}; only approved items can be scheduled or published.` };
     item.status = status;

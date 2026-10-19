@@ -78,6 +78,22 @@ describe("Command Center workflow engine", () => {
     E.applyManusWebhook(st, { event_type: "task_stopped", task_detail: { task_id: "task_1", message: "Which?", stop_reason: "ask", question_expectation: { options: ["A", "B"] } } });
     expect(job.status).toBe("needs_input");
   });
+
+  it("requires a version-bound Saturday Cairo owner release before weekly content can publish", () => {
+    const st = E.emptyState();
+    st.items.push({
+      item_id: "2026-W43-01", version: 1, type: "static", topic: "Reviewed", status: "pending_approval",
+      caption_ar: "محتوى توعوي", publish: { datetime_cairo: "2026-10-25T19:00", channel: "both" },
+      review: { required: true, week: "2026-W43", release: null }, owner_comments: [], history: [], first_pass: null,
+    });
+    expect(E.markPublished(st, "2026-W43-01", "published", {}, "manus").ok).toBe(false);
+    const friday = E.decideItem(st, "2026-W43-01", "approve", { saturdayReview: true, reviewAt: "2026-10-23T10:00:00Z" }, "owner@elevay.com", "owner");
+    expect(friday.ok).toBe(false);
+    const saturday = E.decideItem(st, "2026-W43-01", "approve", { saturdayReview: true, reviewAt: "2026-10-24T10:00:00Z" }, "owner@elevay.com", "owner");
+    expect(saturday.ok).toBe(true);
+    expect(st.items[0].review.release).toMatchObject({ week: "2026-W43", version: 1, approved_by: "owner@elevay.com" });
+    expect(E.markPublished(st, "2026-W43-01", "published", {}, "manus").ok).toBe(true);
+  });
 });
 
 describe("footwear rule", () => {

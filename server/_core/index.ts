@@ -629,6 +629,8 @@ async function startServer() {
   app.post("/api/scheduled/news-digest", scheduledNewsDigestHandler);
   const { scheduledAiStudioWatchdogHandler } = await import("../scheduledAiStudioWatchdogHandler.js");
   app.post("/api/scheduled/ai-studio-watchdog", scheduledAiStudioWatchdogHandler);
+  const { scheduledWeeklyCommandCenterOperationsHandler } = await import("../scheduledWeeklyCommandCenterOperationsHandler.js");
+  app.post("/api/scheduled/weekly-command-center-operations", scheduledWeeklyCommandCenterOperationsHandler);
   const { registerClientPortalRoutes } = await import("../clientPortalRoutes.js");
   registerClientPortalRoutes(app);
 

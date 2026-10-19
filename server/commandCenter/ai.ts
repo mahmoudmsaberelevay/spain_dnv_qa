@@ -1055,11 +1055,11 @@ export function createOrchestrator(deps) {
             return E.applyReviewedRevision(st, itemId, { ...A.brief, media, produced_by: { studio_run: run.id, claude: true, openai: true, higgsfield: run.kind === "reel" }, qc: { ...finalQc, reviewer: "claude" } }, { actor: opts.revision.authorizedBy, request: opts.revision.request || run.request, scope: opts.revision.scope, clip:opts.revision.clip, runId: run.id, baseVersion: opts.revision.baseVersion, finalQc });
           }
           itemId = A.item_id && st.items.some((i) => i.item_id === A.item_id) ? A.item_id : opts.item_id && !st.items.some((i) => i.item_id === opts.item_id) ? opts.item_id : nextItemId(st.items, opts.week || undefined, !!opts.planned);
-          const up = E.upsertBrief(st, { ...A.brief, item_id: itemId, status: A.qc_blocked ? "qc_failed" : "pending_approval", media, produced_by: { studio_run: run.id, claude: true, openai: true, higgsfield: run.kind === "reel" }, qc: { reviewer: "claude", pass: A.qc_blocked ? false : (A.final_qc?.pass ?? A.qc?.pass ?? null), issues: A.final_qc?.issues || A.qc?.issues || [], blocked: !!A.qc_blocked } }, "ai-studio");
+          const up = E.upsertBrief(st, { ...A.brief, item_id: itemId, status: A.qc_blocked ? "qc_failed" : "pending_approval", media, review: opts.week ? { required: true, week: opts.week, release: null } : undefined, produced_by: { studio_run: run.id, claude: true, openai: true, higgsfield: run.kind === "reel" }, qc: { reviewer: "claude", pass: A.qc_blocked ? false : (A.final_qc?.pass ?? A.qc?.pass ?? null), issues: A.final_qc?.issues || A.qc?.issues || [], blocked: !!A.qc_blocked } }, "ai-studio");
           if (up.ok === false) return up;
           // Autopilot approves clean items itself; they do not count toward the human first-pass rate.
           auto = false;
-          if (st.settings.autopublish?.enabled && !opts.manualReviewOnly && up.item.status === "pending_approval" && !A.qc_blocked && A.qc?.pass === true && (run.kind !== "reel" || A.final_qc?.pass === true)) {
+          if (st.settings.autopublish?.enabled && !opts.week && !opts.manualReviewOnly && up.item.status === "pending_approval" && !A.qc_blocked && A.qc?.pass === true && (run.kind !== "reel" || A.final_qc?.pass === true)) {
             const d = E.decideItem(st, itemId, "approve", {}, "autopilot", "owner");
             if (d.ok !== false) { Object.assign(up.item, { auto_approved: true, first_pass: null, presented_at: null }); auto = true; }
           }
@@ -1472,10 +1472,12 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       const pending = state.actions.filter((x) => x.status === "pending").map((x) => x.id);
       if (pending.length) await deps.mutate({}, (s2) => { for (const id of pending) { const r = E.decideAction(s2, id, "approve", { comment: "Approved by autopilot (6-week gate reached)" }, "autopilot", "owner"); if (r.ok === false) E.audit(s2, "autopilot", "action.left_for_owner", id, r.error); } return { ok: true }; });
     }
+    // Weekly content creation is owned by the durable Wednesday–Sunday
+    // controller. Never start a second Saturday plan from this compatibility
+    // tick: it would race the controller and bypass its preflight record.
     if (st.studio?.autonews !== false) await newsDue(nowMs).catch(() => {});
     if (st.studio?.autoplan === false) return;
     const c = cairoParts(nowMs);
-    if (c.weekday === "Sat" && c.hour >= 9) await startWeekly(planningWeek(nowMs), { email: "autopilot", role: "owner" }).catch(() => {});
     if (c.day >= 25) {
       const d = new Date(nowMs); d.setUTCMonth(d.getUTCMonth() + 1, 1);
       await startMonthly(d.toISOString().slice(0, 7), { email: "autopilot", role: "owner" }).catch(() => {});
