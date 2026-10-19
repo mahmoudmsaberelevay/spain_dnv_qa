@@ -79,7 +79,7 @@ describe("Command Center workflow engine", () => {
     expect(job.status).toBe("needs_input");
   });
 
-  it("requires a version-bound Saturday Cairo owner release before weekly content can publish", () => {
+  it("requires a version-bound owner release before weekly content can publish, on any day", () => {
     const st = E.emptyState();
     st.items.push({
       item_id: "2026-W43-01", version: 1, type: "static", topic: "Reviewed", status: "pending_approval",
@@ -87,10 +87,9 @@ describe("Command Center workflow engine", () => {
       review: { required: true, week: "2026-W43", release: null }, owner_comments: [], history: [], first_pass: null,
     });
     expect(E.markPublished(st, "2026-W43-01", "published", {}, "manus").ok).toBe(false);
-    const friday = E.decideItem(st, "2026-W43-01", "approve", { saturdayReview: true, reviewAt: "2026-10-23T10:00:00Z" }, "owner@elevay.com", "owner");
-    expect(friday.ok).toBe(false);
-    const saturday = E.decideItem(st, "2026-W43-01", "approve", { saturdayReview: true, reviewAt: "2026-10-24T10:00:00Z" }, "owner@elevay.com", "owner");
-    expect(saturday.ok).toBe(true);
+    expect(E.decideItem(st, "2026-W43-01", "approve", {}, "marketer@elevay.com", "marketer").ok).toBe(false);
+    const monday = E.decideItem(st, "2026-W43-01", "approve", { saturdayReview: true, reviewAt: "2026-10-19T10:00:00Z" }, "owner@elevay.com", "owner");
+    expect(monday.ok).toBe(true);
     expect(st.items[0].review.release).toMatchObject({ week: "2026-W43", version: 1, approved_by: "owner@elevay.com" });
     expect(E.markPublished(st, "2026-W43-01", "published", {}, "manus").ok).toBe(true);
   });

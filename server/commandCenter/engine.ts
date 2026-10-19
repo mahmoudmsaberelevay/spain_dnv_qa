@@ -128,7 +128,7 @@ const require = (p) => (p.includes('rules') ? Rules : null);
       item.version = Number(input.version) > pv ? Number(input.version) : pv + 1;
       if (item.review?.required) {
         item.review.release = null;
-        item.publish = Object.assign({}, item.publish || {}, { weekly_review_hold: { active: true, version: item.version, set_at: now(), reason: 'A new content version requires a fresh Saturday owner review release.' } });
+        item.publish = Object.assign({}, item.publish || {}, { weekly_review_hold: { active: true, version: item.version, set_at: now(), reason: 'A new content version requires a fresh owner approval.' } });
       }
       item.history.unshift({ at: now(), by: actor, version: prev.version, snapshot: prev });
     } else {
@@ -392,8 +392,7 @@ const require = (p) => (p.includes('rules') ? Rules : null);
         return { ok: false, error: 'Compliance blocks must be fixed first (or approve with a written override).', blocks: item.compliance.blocks };
       if (opts.override && !String(opts.reason || '').trim()) return { ok: false, error: 'An override needs a written reason.' };
       if (item.review?.required) {
-        if (opts.saturdayReview !== true || !isSaturdayCairo(opts.reviewAt || Date.now()))
-          return { ok: false, error: 'This weekly item can be released only by the owner during the Saturday Review (Africa/Cairo).' };
+        // Owner decision (Oct 2026): weekly items can be released by the owner on any day, not only on Saturday.
         item.review = Object.assign({}, item.review, { release: { week: item.review.week, version: item.version, approved_at: now(), approved_by: actor } });
         if (item.publish?.weekly_review_hold) {
           item.publish = Object.assign({}, item.publish, { weekly_review_hold: Object.assign({}, item.publish.weekly_review_hold, { active: false, cleared_at: now(), cleared_by: actor }) });
@@ -470,7 +469,7 @@ const require = (p) => (p.includes('rules') ? Rules : null);
     const item = state.items.find((i) => i.item_id === itemId);
     if (!item) return { ok: false, error: 'Item not found' };
     if (item.publish?.revision_hold?.active) return { ok: false, error: `Item v${item.version} is a reviewed revision held for separate owner publishing authorization.` };
-    if (item.publish?.weekly_review_hold?.active || !hasValidSaturdayRelease(item)) return { ok: false, error: `Item v${item.version} has no valid Saturday owner-review release for external publication.` };
+    if (item.publish?.weekly_review_hold?.active || !hasValidSaturdayRelease(item)) return { ok: false, error: `Item v${item.version} has no valid owner approval for external publication.` };
     if (!['scheduled', 'published'].includes(status)) return { ok: false, error: 'status must be scheduled or published' };
     if (!['approved', 'scheduled'].includes(item.status)) return { ok: false, error: `Item is ${item.status}; only approved items can be scheduled or published.` };
     item.status = status;
