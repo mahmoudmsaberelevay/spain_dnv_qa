@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { Readable } from "node:stream";
+import { fileURLToPath } from "node:url";
 import { renderReel, shaFile, RENDERER_VERSION } from "./elevay-reel-render.mjs";
 
 const args = process.argv.slice(2);
@@ -20,10 +21,12 @@ const once = args.includes("--once");
 const root = process.env.ELEVAY_RENDER_WORK_DIR || path.join(os.homedir(), ".elevay-render-worker", "work");
 const baseUrl = String(process.env.ELEVAY_RENDER_BRIDGE_URL || "").replace(/\/+$/, "");
 const token = String(process.env.ELEVAY_RENDER_WORKER_TOKEN || "").trim();
-const workerId = String(process.env.ELEVAY_RENDER_WORKER_ID || `${os.hostname()}-${crypto.randomBytes(6).toString("hex")}`)
-  .replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 80);
-const POLL_MS = 5_000;
+const APPROVED_WORKER_ID = "mahmouds-macbook-pro-render-worker";
+const APPROVED_HOSTNAME = "mahmouds-macbook-pro";
+const workerId = String(process.env.ELEVAY_RENDER_WORKER_ID || APPROVED_WORKER_ID);
+const POLL_MS = 60_000;
 const RENEW_MS = 30_000;
+const runtimeDir = path.dirname(fileURLToPath(import.meta.url));
 
 function cleanError(value: unknown) {
   return String(value || "Render worker error")
@@ -35,12 +38,37 @@ function sleep(ms: number) { return new Promise((resolve) => setTimeout(resolve,
 function requireConfig() {
   if (!/^https:\/\//i.test(baseUrl)) throw new Error("ELEVAY_RENDER_BRIDGE_URL must be an HTTPS endpoint.");
   if (!token) throw new Error("ELEVAY_RENDER_WORKER_TOKEN is required.");
+  if (workerId !== APPROVED_WORKER_ID) throw new Error("This package is authorized only for Mahmoud's MacBook Pro.");
+  if (process.platform === "darwin" && os.hostname().toLowerCase() !== APPROVED_HOSTNAME) throw new Error("This package is authorized only for hostname Mahmouds-MacBook-Pro.");
   if (process.env.DATABASE_URL || process.env.AWS_ACCESS_KEY_ID || process.env.AWS_SECRET_ACCESS_KEY || process.env.OPENAI_API_KEY || process.env.HF_API_KEY || process.env.ELEVENLABS_API_KEY || process.env.ANTHROPIC_API_KEY) {
     throw new Error("This bridge worker must not be configured with database, storage, Meta, or AI-provider credentials.");
   }
 }
 function headers(extra: Record<string, string> = {}) {
   return { Authorization: `Bearer ${token}`, "X-Render-Worker-Id": workerId, ...extra };
+}
+
+async function updateRuntimeSources() {
+  // The live application publishes only the two credential-free worker sources.
+  // Download is HTTPS-only, atomically replaces a changed file, then lets
+  // LaunchAgent restart this process with the reviewed code.
+  const origin = new URL(baseUrl).origin;
+  const names = ["elevay-render-worker.ts", "elevay-reel-render.mjs"];
+  let changed = false;
+  for (const name of names) {
+    const response = await fetch(`${origin}/command-center-assets/render-worker/${name}`, { signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`Worker source update check failed (${response.status}).`);
+    const remote = Buffer.from(await response.arrayBuffer());
+    if (!remote.length || remote.length > 4 * 1024 * 1024) throw new Error("Worker source update is invalid.");
+    const target = path.join(runtimeDir, name);
+    const local = await fsp.readFile(target).catch(() => Buffer.alloc(0));
+    if (crypto.timingSafeEqual(crypto.createHash("sha256").update(local).digest(), crypto.createHash("sha256").update(remote).digest())) continue;
+    const temporary = `${target}.next-${process.pid}`;
+    await fsp.writeFile(temporary, remote, { mode: 0o600 });
+    await fsp.rename(temporary, target);
+    changed = true;
+  }
+  return changed;
 }
 async function jsonRequest(method: string, pathname: string, body?: unknown) {
   const response = await fetch(`${baseUrl}${pathname}`, {
@@ -113,6 +141,7 @@ async function processJob(leased: any) {
   const directory = path.join(root, job.id);
   await fsp.mkdir(directory, { recursive: true });
   let leaseLost = false;
+  let caffeinate: ReturnType<typeof spawn> | null = null;
   const renew = async () => {
     try { await jsonRequest("POST", `/jobs/${encodeURIComponent(job.id)}/renew`, { workerId, leaseId }); }
     catch (error) { leaseLost = true; throw error; }
@@ -121,6 +150,11 @@ async function processJob(leased: any) {
   const requireLease = () => { if (leaseLost) throw new Error("Render lease lost; stopping without overwriting another worker."); };
   try {
     console.log(`Render #${job.runId}: leased; saved inputs only; threads=1.`);
+    if (process.platform === "darwin") {
+      // Keep the Mac awake only for an active FFmpeg final edit, not while the
+      // worker is merely polling the bridge every minute.
+      caffeinate = spawn("caffeinate", ["-dimsu"], { stdio: "ignore" });
+    }
     await jsonRequest("POST", `/jobs/${encodeURIComponent(job.id)}/progress`, { workerId, leaseId, stage: "rendering", metrics: { method: `external ${process.platform} worker; FFmpeg one thread`, threads: 1 } });
     const rendered = await renderReel({
       manifest: job.manifest,
@@ -158,17 +192,32 @@ async function processJob(leased: any) {
       catch { /* A stale or unavailable bridge must not be overwritten by this worker. */ }
     }
     throw error;
-  } finally { clearInterval(heartbeat); }
+  } finally {
+    clearInterval(heartbeat);
+    if (caffeinate && !caffeinate.killed) caffeinate.kill("SIGTERM");
+  }
 }
 
 let warnedOutdated = false;
 async function main() {
   requireConfig();
+  if (await updateRuntimeSources()) {
+    console.log("ELEVAY render worker source update installed; restarting under LaunchAgent.");
+    return;
+  }
   await cleanOldWork();
   await jsonRequest("GET", "/health");
   console.log(`ELEVAY render bridge connected as ${workerId}; one job at a time.`);
+  let nextUpdateCheckAt = Date.now() + POLL_MS;
   do {
     try {
+      if (!once && Date.now() >= nextUpdateCheckAt) {
+        nextUpdateCheckAt = Date.now() + POLL_MS;
+        if (await updateRuntimeSources()) {
+          console.log("ELEVAY render worker source update installed; restarting under LaunchAgent.");
+          return;
+        }
+      }
       const leased = await jsonRequest("POST", "/lease", { workerId, rendererVersion: RENDERER_VERSION });
       if (leased?.outdated && !warnedOutdated) { warnedOutdated = true; console.error(`Render worker: this Mac's renderer (v${RENDERER_VERSION}) is older than the website requires (v${leased.requiredVersion}); it gets no jobs until updated.`); }
       if (leased?.job) await processJob(leased);

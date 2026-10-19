@@ -21,6 +21,11 @@ import { notifyAiFailure } from "./alerts";
 
 const LEASE_MS = 15 * 60_000;
 const RETRY_DELAY_MS = 2 * 60_000;
+const WORKER_ONLINE_MS = 150_000;
+const WORKER_OFFLINE_ALERT_MS = 30 * 60_000;
+/** This is deliberately a stable machine identity, not a secret. */
+const DEFAULT_ALLOWED_WORKER_ID = "mahmouds-macbook-pro-render-worker";
+const DEFAULT_WORKER_NAME = "Mahmoud's MacBook Pro";
 const MAX_QC_FRAMES = 77;
 const ARTIFACTS = {
   seg0: { type: "video/mp4", maxBytes: 120 * 1024 * 1024, extension: "mp4" },
@@ -59,6 +64,11 @@ function cleanError(value: unknown) {
 
 function isWorkerId(value: unknown) {
   return /^[A-Za-z0-9._-]{8,80}$/.test(String(value || ""));
+}
+
+function workerIdSetting(value: unknown) {
+  const id = String(value || DEFAULT_ALLOWED_WORKER_ID).trim();
+  return isWorkerId(id) ? id : DEFAULT_ALLOWED_WORKER_ID;
 }
 
 function isLeaseId(value: unknown) {
@@ -225,16 +235,46 @@ export function createRenderWorkerBridge({
   }
 
   async function ensure() {
-    return ensurePromise ??= q(`CREATE TABLE IF NOT EXISTS ec_render_jobs (
+    return ensurePromise ??= (async () => {
+      await q(`CREATE TABLE IF NOT EXISTS ec_render_jobs (
       id VARCHAR(64) PRIMARY KEY, run_id INT NOT NULL, status VARCHAR(24) NOT NULL,
       created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, lease_until BIGINT NOT NULL DEFAULT 0,
       lease_owner VARCHAR(64), attempts INT NOT NULL DEFAULT 0, doc LONGTEXT NOT NULL,
       INDEX ec_render_status (status, created_at))`);
+      await q(`CREATE TABLE IF NOT EXISTS ec_render_workers (
+        id VARCHAR(80) PRIMARY KEY, display_name VARCHAR(160) NOT NULL,
+        hostname VARCHAR(120) NOT NULL, mac_user VARCHAR(120) NOT NULL,
+        renderer_version INT NULL, last_seen BIGINT NOT NULL DEFAULT 0,
+        current_job_id VARCHAR(64) NULL, offline_alert_at BIGINT NOT NULL DEFAULT 0,
+        updated_at BIGINT NOT NULL)`).catch(() => {});
+      const id = allowedWorkerId();
+      await q("INSERT IGNORE INTO ec_render_workers (id,display_name,hostname,mac_user,renderer_version,last_seen,current_job_id,offline_alert_at,updated_at) VALUES (?,?,?,?,NULL,0,NULL,0,?)", [id, DEFAULT_WORKER_NAME, "Mahmouds-MacBook-Pro", "mahmoudsaber", now()]).catch(() => {});
+    })();
+  }
+
+  const allowedWorkerId = () => workerIdSetting(process.env.ELEVAY_RENDER_ALLOWED_WORKER_ID);
+  function assertAllowedWorker(workerId: string) {
+    if (!isWorkerId(workerId) || !timingSafeEqual(workerId, allowedWorkerId())) {
+      throw new RenderWorkerBridgeError(403, "This bridge is reserved for Mahmoud's MacBook Pro.");
+    }
+  }
+  async function touchWorker(workerId: string, rendererVersion?: unknown, currentJobId?: string) {
+    const version = Number.isFinite(Number(rendererVersion)) ? Number(rendererVersion) : null;
+    const t = now();
+    if (currentJobId) {
+      await q("INSERT INTO ec_render_workers (id,display_name,hostname,mac_user,renderer_version,last_seen,current_job_id,offline_alert_at,updated_at) VALUES (?,?,?,?,?,?,?,0,?) ON DUPLICATE KEY UPDATE renderer_version=COALESCE(VALUES(renderer_version),renderer_version),last_seen=VALUES(last_seen),current_job_id=VALUES(current_job_id),updated_at=VALUES(updated_at)", [workerId, DEFAULT_WORKER_NAME, "Mahmouds-MacBook-Pro", "mahmoudsaber", version, t, currentJobId, t]).catch(() => {});
+    } else {
+      await q("INSERT INTO ec_render_workers (id,display_name,hostname,mac_user,renderer_version,last_seen,current_job_id,offline_alert_at,updated_at) VALUES (?,?,?,?,?,?,NULL,0,?) ON DUPLICATE KEY UPDATE renderer_version=COALESCE(VALUES(renderer_version),renderer_version),last_seen=VALUES(last_seen),updated_at=VALUES(updated_at)", [workerId, DEFAULT_WORKER_NAME, "Mahmouds-MacBook-Pro", "mahmoudsaber", version, t, t]).catch(() => {});
+    }
+  }
+  async function clearWorkerJob(workerId: string) {
+    await q("UPDATE ec_render_workers SET current_job_id=NULL,last_seen=?,updated_at=? WHERE id=?", [now(), now(), workerId]).catch(() => {});
   }
 
   async function leased(jobId: string, workerId: string, leaseId: string) {
     if (!/^[a-z0-9-]{8,64}$/i.test(jobId)) throw new RenderWorkerBridgeError(400, "Job identifier is invalid.");
-    if (!isWorkerId(workerId) || !isLeaseId(leaseId)) throw new RenderWorkerBridgeError(400, "Worker lease credentials are invalid.");
+    if (!isLeaseId(leaseId)) throw new RenderWorkerBridgeError(400, "Worker lease credentials are invalid.");
+    assertAllowedWorker(workerId);
     const rows = await q("SELECT * FROM ec_render_jobs WHERE id=? LIMIT 1", [jobId]);
     const row = rows[0];
     if (!row) throw new RenderWorkerBridgeError(404, "Render job not found.");
@@ -267,10 +307,11 @@ export function createRenderWorkerBridge({
     // The Mac worker polls every 5 s while idle (180 requests per 15 minutes); the old cap of 90 refused
     // half of them and kept it in a permanent "rate limit" loop. Allow normal polling with headroom.
     limit("lease", 400, 15 * 60_000);
-    if (!isWorkerId(workerId)) throw new RenderWorkerBridgeError(400, "Worker identifier is invalid.");
+    assertAllowedWorker(workerId);
     const version = Number.isFinite(Number(rendererVersion)) && rendererVersion !== null && rendererVersion !== undefined && rendererVersion !== "" ? Number(rendererVersion) : null;
     const outdated = version === null || version < requiredRenderer();
     workersSeen.set(workerId, { rendererVersion: version, at: now(), outdated });
+    await touchWorker(workerId, version);
     // Only Macs running the current renderer get work; an outdated Mac keeps polling and simply waits.
     if (outdated) return { ok: true, job: null, outdated: true, requiredVersion: requiredRenderer() };
     // Owner switch: worker names in ELEVAY_RENDER_WORKERS_PAUSED (comma-separated) get no new jobs, e.g. a Mac
@@ -300,6 +341,7 @@ export function createRenderWorkerBridge({
       doc.error = null;
       const update = await q("UPDATE ec_render_jobs SET status='running',lease_owner=?,lease_until=?,attempts=attempts+1,doc=?,updated_at=? WHERE id=? AND ((status='pending' AND lease_until<=?) OR (status='running' AND lease_until<?))", [owner, leaseUntil, JSON.stringify(doc), t, row.id, t, t]);
       if (Number(update.affectedRows) !== 1) continue;
+      await touchWorker(workerId, version, row.id);
       return {
         ok: true,
         job: { id: row.id, runId: Number(row.run_id), manifest, parts: safeParts(doc.parts) },
@@ -316,6 +358,7 @@ export function createRenderWorkerBridge({
     const leaseUntil = now() + LEASE_MS;
     const update = await q("UPDATE ec_render_jobs SET lease_until=?,updated_at=? WHERE id=? AND status='running' AND lease_owner=? AND lease_until>?", [leaseUntil, now(), jobId, current.key, now()]);
     if (Number(update.affectedRows) !== 1) throw new RenderWorkerBridgeError(409, "Render lease is no longer active.");
+    await touchWorker(workerId, undefined, jobId);
     return { ok: true, leaseUntil };
   }
 
@@ -334,6 +377,7 @@ export function createRenderWorkerBridge({
     current.doc.stage = stage;
     const update = await q("UPDATE ec_render_jobs SET doc=?,updated_at=? WHERE id=? AND status='running' AND lease_owner=? AND lease_until>?", [JSON.stringify(current.doc), now(), jobId, current.key, now()]);
     if (Number(update.affectedRows) !== 1) throw new RenderWorkerBridgeError(409, "Render lease is no longer active.");
+    await touchWorker(workerId, undefined, jobId);
     return { ok: true };
   }
 
@@ -405,6 +449,7 @@ export function createRenderWorkerBridge({
     delete current.doc.lease;
     const update = await q("UPDATE ec_render_jobs SET status='done',doc=?,updated_at=?,lease_until=0,lease_owner=NULL WHERE id=? AND status='running' AND lease_owner=? AND lease_until>?", [JSON.stringify(current.doc), now(), jobId, current.key, now()]);
     if (Number(update.affectedRows) !== 1) throw new RenderWorkerBridgeError(409, "Render lease is no longer active.");
+    await clearWorkerJob(workerId);
     return { ok: true, final: { seconds, sha256: uploaded.sha256 } };
   }
 
@@ -428,6 +473,7 @@ export function createRenderWorkerBridge({
       delete current.doc.lease;
       const update = await q("UPDATE ec_render_jobs SET status='pending',doc=?,updated_at=?,lease_until=?,lease_owner=NULL WHERE id=? AND status='running' AND lease_owner=?", [JSON.stringify(current.doc), now(), retryAt, jobId, current.key]);
       if (Number(update.affectedRows) !== 1) throw new RenderWorkerBridgeError(409, "Render lease is no longer active.");
+      await clearWorkerJob(workerId);
       return { ok: true, retry: true, retryAt };
     }
     current.doc.stage = "failed";
@@ -436,6 +482,7 @@ export function createRenderWorkerBridge({
     catch { current.doc.notification = false; }
     const update = await q("UPDATE ec_render_jobs SET status='failed',doc=?,updated_at=?,lease_until=0,lease_owner=NULL WHERE id=? AND status='running' AND lease_owner=?", [JSON.stringify(current.doc), now(), jobId, current.key]);
     if (Number(update.affectedRows) !== 1) throw new RenderWorkerBridgeError(409, "Render lease is no longer active.");
+    await clearWorkerJob(workerId);
     return { ok: true, retry: false };
   }
 
@@ -443,7 +490,37 @@ export function createRenderWorkerBridge({
     await ensure();
     const rows = await q("SELECT status, COUNT(*) AS total FROM ec_render_jobs GROUP BY status");
     const counts = Object.fromEntries((rows || []).map((row: any) => [String(row.status), Number(row.total || 0)]));
-    return { ok: true, service: "elevay-render-worker-bridge", protocol: 1, leaseSeconds: LEASE_MS / 1000, retryDelaySeconds: RETRY_DELAY_MS / 1000, queue: { pending: counts.pending || 0, running: counts.running || 0, retrying: counts.retry_wait || 0, failed: counts.failed || 0, done: counts.done || 0 }, requiredRendererVersion: requiredRenderer(), workers: [...workersSeen.entries()].filter(([, w]) => now() - w.at < 10 * 60_000).map(([id, w]) => ({ id, rendererVersion: w.rendererVersion, outdated: w.outdated, lastSeen: new Date(w.at).toISOString() })) };
+    const workerRows = await q("SELECT id,display_name,hostname,mac_user,renderer_version,last_seen,current_job_id FROM ec_render_workers WHERE id=? LIMIT 1", [allowedWorkerId()]).catch(() => []);
+    const worker = workerRows[0] || { id: allowedWorkerId(), display_name: DEFAULT_WORKER_NAME, hostname: "Mahmouds-MacBook-Pro", mac_user: "mahmoudsaber", renderer_version: null, last_seen: 0, current_job_id: null };
+    const seen = workersSeen.get(allowedWorkerId());
+    const lastSeenAt = Number(worker.last_seen || 0) || Number(seen?.at || 0);
+    const rendererVersion = worker.renderer_version === null || worker.renderer_version === undefined ? (seen?.rendererVersion ?? null) : Number(worker.renderer_version);
+    const online = lastSeenAt > 0 && now() - lastSeenAt <= WORKER_ONLINE_MS;
+    const currentJob = worker.current_job_id ? String(worker.current_job_id) : null;
+    return {
+      ok: true, service: "elevay-render-worker-bridge", protocol: 1, leaseSeconds: LEASE_MS / 1000, retryDelaySeconds: RETRY_DELAY_MS / 1000,
+      queue: { pending: counts.pending || 0, running: counts.running || 0, retrying: counts.retry_wait || 0, failed: counts.failed || 0, done: counts.done || 0 },
+      requiredRendererVersion: requiredRenderer(),
+      workers: [{ id: allowedWorkerId(), name: DEFAULT_WORKER_NAME, hostname: String(worker.hostname || "Mahmouds-MacBook-Pro"), macUser: String(worker.mac_user || "mahmoudsaber"), online, lastSeen: lastSeenAt ? new Date(lastSeenAt).toISOString() : null, rendererVersion, outdated: rendererVersion === null || rendererVersion < requiredRenderer(), currentJob }],
+    };
+  }
+
+  async function checkOfflineWaiting() {
+    await ensure();
+    const pendingRows = await q("SELECT COUNT(*) AS total FROM ec_render_jobs WHERE status IN ('pending','running')");
+    const pending = Number(pendingRows[0]?.total || 0);
+    const workers = await q("SELECT id,last_seen,offline_alert_at,updated_at FROM ec_render_workers WHERE id=? LIMIT 1", [allowedWorkerId()]).catch(() => []);
+    const worker = workers[0] || { id: allowedWorkerId(), last_seen: 0, offline_alert_at: 0, updated_at: now() };
+    const lastSeenAt = Number(worker.last_seen || 0);
+    const offlineSince = lastSeenAt || Number(worker.updated_at || now());
+    const offline = pending > 0 && now() - offlineSince >= WORKER_OFFLINE_ALERT_MS;
+    if (!offline) return { ok: true, pending, offline: false, alerted: false };
+    const alertedAt = Number(worker.offline_alert_at || 0);
+    if (alertedAt && now() - alertedAt < WORKER_OFFLINE_ALERT_MS) return { ok: true, pending, offline: true, alerted: false };
+    const reason = `${DEFAULT_WORKER_NAME} has been offline for 30 minutes while ${pending} saved final render job${pending === 1 ? " is" : "s are"} waiting. Jobs remain safely queued; website rendering is disabled.`;
+    try { await notifyFailure({ runId: "render-worker", stepName: "Mac render worker offline", reason }); } catch { /* alert retry is safe */ }
+    await q("UPDATE ec_render_workers SET offline_alert_at=?,updated_at=? WHERE id=?", [now(), now(), allowedWorkerId()]).catch(() => {});
+    return { ok: true, pending, offline: true, alerted: true };
   }
 
   async function uploadRequest(req: any, { jobId, kind }: { jobId: string, kind: string }) {
@@ -487,7 +564,7 @@ export function createRenderWorkerBridge({
     }
   }
 
-  return { authenticate, ensure, lease, renew, progress, commitArtifact, complete, fail, status, uploadRequest };
+  return { authenticate, ensure, lease, renew, progress, commitArtifact, complete, fail, status, checkOfflineWaiting, uploadRequest };
 }
 
 let uploadBridgePromise: Promise<any> | null = null;

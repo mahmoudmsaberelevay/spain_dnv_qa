@@ -1109,6 +1109,7 @@
   // ------------------------------------------------------------ manus bridge
   function viewManus(el) {
     const m = S.data.manus, jobs = S.data.jobs;
+    const renderer = S.data.renderer, worker = renderer && renderer.workers && renderer.workers[0];
     const filters = { open: ['pending', 'sent', 'in_progress', 'needs_input'], needs_input: ['needs_input'], done: ['done'], failed: ['failed'], all: null };
     const shown = jobs.filter((j) => !filters[S.jobFilter] || filters[S.jobFilter].includes(j.status));
     const base = (m.publicUrl || location.origin).replace(/\/$/, '');
@@ -1121,6 +1122,11 @@
           ${conn('Task push (here → Manus API)', m.push, m.push ? 'Each new job starts a Manus task' : 'Optional. Add a MANUS_API_KEY secret, or let Manus pull jobs every 15 minutes')}
           ${conn('Webhook (Manus task updates)', m.webhook, m.webhook ? `Last event: ${ago(m.lastWebhookAt)}` : 'Not configured on the server')}
         </div></section>
+        ${isOwner() && worker ? `<section class="panel"><div class="panel-h"><h2>Render worker</h2><span class="pill ${worker.online ? 'ok' : 'bad'}">${worker.online ? 'Online' : 'Offline'}</span></div><div class="stack small">
+          <div><strong>${esc(worker.name)}</strong> <span class="muted">· ${esc(worker.hostname)} · ${esc(worker.macUser)}</span></div>
+          <div class="muted">Last seen: ${worker.lastSeen ? `${ago(worker.lastSeen)} (${fmtDT(worker.lastSeen)})` : 'never'} · Renderer v${worker.rendererVersion || '—'}${worker.outdated ? ' · update required' : ''}</div>
+          <div class="muted">Current job: ${worker.currentJob ? esc(worker.currentJob) : 'Idle'} · Queue: ${n0(renderer.queue && renderer.queue.pending)} waiting, ${n0(renderer.queue && renderer.queue.running)} rendering</div>
+        </div></section>` : ''}
         <section class="panel"><div class="panel-h"><h2>Endpoints for Manus</h2></div>
           <div class="code">Pull jobs   GET  ${esc(base)}/api/agent/jobs?status=pending
 Briefs      POST ${esc(base)}/api/agent/briefs

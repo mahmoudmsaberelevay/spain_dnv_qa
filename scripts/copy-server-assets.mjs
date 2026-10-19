@@ -30,6 +30,11 @@ const assets = [
     source: join(projectRoot, "server", "commandCenter", "assets", name),
     destination: join(projectRoot, "dist", "command-center-assets", name),
   })),
+  // Reviewed, credential-free sources used by the self-updating Mac render worker.
+  ...["elevay-render-worker.ts", "elevay-reel-render.mjs"].map((name) => ({
+    source: join(projectRoot, "scripts", name),
+    destination: join(projectRoot, "dist", "command-center-assets", "render-worker", name),
+  })),
 ];
 
 function sha256(buffer) {

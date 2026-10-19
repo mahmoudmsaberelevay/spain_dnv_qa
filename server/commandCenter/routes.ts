@@ -240,6 +240,7 @@ route("GET", "/health", "public", async () => ok({ ok: true, service: "elevay-co
 const workerBody = (ctx) => ctx.body && typeof ctx.body === "object" ? ctx.body : {};
 route("GET", "/render-worker/health", "worker", async () => ok(await (await renderWorkerBridge()).status()));
 route("GET", "/render-worker/status", "worker", async () => ok(await (await renderWorkerBridge()).status()));
+route("GET", "/renderer/status", "owner", async () => ok(await (await renderWorkerBridge()).status()));
 route("POST", "/render-worker/lease", "worker", async (ctx) => ok(await (await renderWorkerBridge()).lease(String(workerBody(ctx).workerId || ""), workerBody(ctx).rendererVersion)));
 route("POST", "/render-worker/jobs/:id/renew", "worker", async (ctx) => {
   const body = workerBody(ctx); return ok(await (await renderWorkerBridge()).renew(ctx.params.id, String(body.workerId || ""), String(body.leaseId || "")));
@@ -272,11 +273,13 @@ route("POST", "/credits/:id", "owner", (ctx) => {
 
 route("GET", "/bootstrap", "team", async (ctx) => {
   const { state } = await loadState();
+  const renderer = ctx.user.role === "owner" ? await (await renderWorkerBridge()).status() : null;
   return ok({
     ok: true, me: { id: ctx.user.id, email: ctx.user.email, name: ctx.user.name, role: ctx.user.role }, externalAuth: true, loginUrl,
     settings: state.settings, summary: E.summary(state), items: state.items, actions: state.actions.slice(0, 200), reports: state.reports.slice(0, 12),
     news: state.news.slice(0, 150), plans: state.plans.slice(0, 12), jobs: state.jobs.slice(0, 200), audit: ctx.user.role === "owner" ? state.audit : [], users: [],
     manus: { push: !!manusCfg(ctx).manusApiKey, agentApi: true, webhook: true, lastAgentSeen: await kvGet("last_agent_seen"), lastWebhookAt: await kvGet("last_webhook_at"), publicUrl: ctx.origin + BASE },
+    renderer,
     server_time: new Date().toISOString(),
   });
 });
@@ -414,7 +417,9 @@ function studio() {
 /** Called only by the cron-authenticated scheduled handler. It intentionally
  * excludes Meta, CRM and Lead work: this is AI Studio recovery only. */
 export async function runAiStudioWatchdog() {
-  return (await studio()).watchdog();
+  const result = await (await studio()).watchdog();
+  await (await renderWorkerBridge()).checkOfflineWaiting();
+  return result;
 }
 
 // One durable Cairo-time controller owns the Wednesday–Sunday weekly cadence.
