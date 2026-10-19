@@ -38,7 +38,9 @@ export function normalizeMacHostname(value: unknown) {
 }
 
 export function isApprovedMacHostname(value: unknown) {
-  return normalizeMacHostname(value) === APPROVED_HOSTNAME;
+  // macOS commonly reports the local-network form even when the Computer Name
+  // is Mahmouds-MacBook-Pro. No other hostname or suffix is accepted.
+  return normalizeMacHostname(value).replace(/\.local$/, "") === APPROVED_HOSTNAME;
 }
 
 export function workerSourceUrl(origin: string, name: string, cacheBuster = Date.now()) {

@@ -11,11 +11,13 @@ describe("approved macOS render-worker hostname", () => {
     expect(isApprovedMacHostname("Mahmouds-MacBook-Pro")).toBe(true);
     expect(isApprovedMacHostname("Mahmouds–MacBook–Pro")).toBe(true);
     expect(isApprovedMacHostname("Mahmouds—MacBook—Pro")).toBe(true);
+    expect(isApprovedMacHostname("Mahmouds-MacBook-Pro.local")).toBe(true);
   });
 
   it("continues to reject every other hostname", () => {
     expect(isApprovedMacHostname("Mahmouds-MacBook-Pro-2")).toBe(false);
     expect(isApprovedMacHostname("other-macbook-pro")).toBe(false);
+    expect(isApprovedMacHostname("Mahmouds-MacBook-Pro.example.com")).toBe(false);
   });
 
   it("cache-busts reviewed worker source refreshes", () => {
