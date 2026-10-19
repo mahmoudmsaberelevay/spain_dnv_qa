@@ -242,7 +242,7 @@ export function createWeeklyOperations(deps: WeeklyOperationsDependencies) {
       s.settings.weeklyOperations = { ...(s.settings.weeklyOperations || {}), activeWeek: week, status: "owner_review", saturdayReview: record };
       return { ok: true };
     });
-    await notify("ELEVAY Saturday Review is ready", `${week}: ${summary.ready} item(s) are ready for approval, ${summary.working} still processing, and ${summary.blocked} need attention. Open Marketing Command Center → Saturday Review. Nothing will publish without your Saturday approval.`);
+    await notify("ELEVAY Saturday Review is ready", `${week}: ${summary.ready} item(s) are ready for approval, ${summary.working} still processing, and ${summary.blocked} need attention. Open Marketing Command Center → Saturday Review. You can approve any day; nothing will publish without your approval.`);
     return record;
   }
 
@@ -254,7 +254,7 @@ export function createWeeklyOperations(deps: WeeklyOperationsDependencies) {
     const outstanding = summary.ready + summary.working + summary.blocked;
     const record = { sentAt: iso(), outstanding, ...summary };
     await putRecord(week, "saturday_reminder", record);
-    if (outstanding) await notify("ELEVAY Saturday review reminder", `${week} still has ${outstanding} item(s) awaiting review, final QC, or correction. Sunday publishing remains blocked until Saturday release is recorded.`);
+    if (outstanding) await notify("ELEVAY Saturday review reminder", `${week} still has ${outstanding} item(s) awaiting review, final QC, or correction. Those items stay unpublished until you approve them (any day).`);
     return record;
   }
 
@@ -267,7 +267,7 @@ export function createWeeklyOperations(deps: WeeklyOperationsDependencies) {
         if (!String(item.item_id || "").startsWith(`${week}-`)) continue;
         const release = item.review?.release;
         if (release?.version === item.version) continue;
-        item.publish = { ...(item.publish || {}), weekly_review_hold: { active: true, week, at: iso(), reason: "No valid Saturday owner approval was recorded before the Sunday hold." } };
+        item.publish = { ...(item.publish || {}), weekly_review_hold: { active: true, week, at: iso(), reason: "Not yet approved by the owner at the Sunday hold; approving it releases it." } };
         held++;
       }
       state.settings.weeklyOperations = { ...(state.settings.weeklyOperations || {}), activeWeek: week, status: "sunday_hold" };
@@ -275,7 +275,7 @@ export function createWeeklyOperations(deps: WeeklyOperationsDependencies) {
     });
     const record = { at: iso(), held };
     await putRecord(week, "sunday_guard", record);
-    if (held) await notify("ELEVAY Sunday publishing hold", `${held} item(s) in ${week} have no valid Saturday owner approval and were held. No social post was published.`);
+    if (held) await notify("ELEVAY Sunday publishing hold", `${held} item(s) in ${week} are not approved yet and were held. No social post was published. Approve them any day to release them.`);
     return record;
   }
 

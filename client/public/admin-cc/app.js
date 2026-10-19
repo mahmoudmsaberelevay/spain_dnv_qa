@@ -268,7 +268,7 @@
     return ({
       overview: `${t} Cairo. Targets, spend guardrails and what needs a decision.`,
       plan: '7 posts a week (4 static + 3 reels). Approve, request changes or reject each item. Manus regenerates only what you flag.',
-      review: 'Saturday Review: inspect all completed work, approve or request changes. No weekly item can post without an owner release recorded on Saturday in Cairo.',
+      review: 'Saturday Review: inspect all completed work, approve or request changes. You can approve any day; no weekly item can post without your approval.',
       actions: 'Friday action plan from the Meta report. Manus executes only what the owner approves.',
       performance: 'Live from Meta and the ELEVAY CRM: last 30 days of ads, leads, qualified, unqualified, clients and page growth. Read-only.',
       news: 'Weekly news search: Claude searches the web every Thursday at 20:00 Cairo. Only verified or reported items can feed posts.',
@@ -410,7 +410,7 @@
       3: [['08:00', 'Provider + worker preflight'], ['09:00', 'Plan and 7-item production starts', true]],
       4: [['20:00', 'Verified news research']],
       5: [['09:00', 'Production recovery and final QC']],
-      6: [['09:00', 'Saturday Review — owner approval only', true], ['18:00', 'Outstanding-review reminder']],
+      6: [['09:00', 'Saturday Review (approval open any day)', true], ['18:00', 'Outstanding-review reminder']],
       0: [['09:00', 'Unapproved-content hold — nothing posts automatically', true]],
     };
     const monthDay = Number(new Date().toLocaleDateString('en-CA', { timeZone: TZ }).slice(8, 10));
@@ -448,15 +448,15 @@
       <section class="panel weekbar"><div class="row" style="justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap">
         <label class="field" style="min-width:170px"><span>Publishing week</span><select class="input" id="reviewWeekSel">${weeks.map((w) => `<option ${w === S.week ? 'selected' : ''}>${w}</option>`).join('')}</select></label>
         <div class="statusline"><span class="pill ${ready.length ? 'warn' : 'ok'}">${ready.length} awaiting owner release</span><span class="pill">${items.length} total items</span></div></div>
-        <div class="alert ${ready.length ? 'critical' : 'ok'}" style="margin-top:12px"><span class="tag">Saturday control</span><span>${ready.length ? 'Review each preview, caption, schedule, channels and Claude QC before approving. Approval is accepted only on Saturday in Africa/Cairo; no weekly post can be published without this release.' : 'No item is awaiting a Saturday release.'}</span></div>
-        ${isOwner() ? `<div class="row" style="margin-top:12px"><button class="btn primary" id="reviewApproveAll" ${ready.length ? '' : 'disabled'}>Approve all review-ready items (${ready.length})</button><span class="small muted">Approval queues scheduling only after this Saturday release. Sunday 09:00 Cairo holds all unreleased items.</span></div>` : '<p class="small muted" style="margin-top:12px">Only the owner can release weekly items during Saturday Review.</p>'}
+        <div class="alert ${ready.length ? 'critical' : 'ok'}" style="margin-top:12px"><span class="tag">Saturday control</span><span>${ready.length ? 'Review each preview, caption, schedule, channels and Claude QC before approving. You can approve on any day; no weekly post can be published without your approval.' : 'No item is awaiting approval.'}</span></div>
+        ${isOwner() ? `<div class="row" style="margin-top:12px"><button class="btn primary" id="reviewApproveAll" ${ready.length ? '' : 'disabled'}>Approve all review-ready items (${ready.length})</button><span class="small muted">Approval queues scheduling. Items not approved by Sunday 09:00 Cairo are held until you approve them.</span></div>` : '<p class="small muted" style="margin-top:12px">Only the owner can release weekly items.</p>'}
       </section>
       <section class="panel"><div class="panel-h"><h2>Review calendar</h2><span class="muted small">Cairo time · Wednesday preflight → Friday recovery → Saturday owner review → Sunday hold</span></div><div class="table-wrap">${calendar()}</div></section>
       <div class="items">${items.map(itemCard).join('')}</div>
     </div>`;
     document.getElementById('reviewWeekSel').onchange = (e) => { S.week = e.target.value; render(); };
     const all = document.getElementById('reviewApproveAll');
-    if (all) all.onclick = () => act(async () => { const r = await api.approveAll(S.week); toast(`Approved ${r.approved.length}${r.skipped.length ? `; ${r.skipped.length} item(s) still need attention` : ''}.`); }, 'Saturday review release recorded.');
+    if (all) all.onclick = () => act(async () => { const r = await api.approveAll(S.week); toast(`Approved ${r.approved.length}${r.skipped.length ? `; ${r.skipped.length} item(s) still need attention` : ''}.`); }, 'Owner approval recorded.');
     wireItems(el);
     wireRevisionHistory(el);
   }
