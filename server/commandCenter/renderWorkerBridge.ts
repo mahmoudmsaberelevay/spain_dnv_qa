@@ -213,6 +213,7 @@ function header(req: any, name: string) {
 /** Server-side bridge implementation. It intentionally knows nothing about CRM leads, Meta or providers. */
 export function createRenderWorkerBridge({
   q,
+  // The managed worker credential is intentionally resolved only when this process starts.
   token = ENV.renderWorkerToken,
   now = () => Date.now(),
   putFile = storagePutFile,
