@@ -437,6 +437,9 @@ function weeklyOperations() {
 export async function runWeeklyCommandCenterOperations() {
   return (await weeklyOperations()).run();
 }
+export async function startWeeklyCommandCenterNow(week: string) {
+  return (await weeklyOperations()).startNow(week);
+}
 
 
 /**
@@ -506,6 +509,13 @@ route("GET", "/ai/autopilot", "team", async () => {
 route("GET", "/weekly-operations", "owner", async () => {
   const { state } = await loadState();
   return ok({ ok: true, weeklyOperations: state.settings?.weeklyOperations || null });
+});
+route("POST", "/weekly-operations/start-now", "owner", async (ctx) => {
+  const week = /^\d{4}-W\d{2}$/.test(String(ctx.body?.week || ""))
+    ? String(ctx.body.week)
+    : planningWeek(Date.now() + 7 * 86400000);
+  try { return ok(await startWeeklyCommandCenterNow(week)); }
+  catch (error) { return fail(502, `Weekly production start failed: ${String(error?.message || error).slice(0, 300)}`); }
 });
 route("POST", "/ai/news/research", "owner", async () => {
   try { return ok({ ok: true, ...(await (await studio()).researchNews({ email: "owner", role: "owner" })) }); }

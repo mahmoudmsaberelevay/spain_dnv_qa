@@ -117,25 +117,35 @@ export async function weeklyReadiness(deps: WeeklyOperationsDependencies) {
   } catch {
     meta = { connection: { ok: false } };
   }
-  const metaReady = Object.values(meta).length > 0 && Object.values(meta).every((check) => check.ok);
+  // Inbox/reply permissions need separate Meta review and must not block
+  // content production or its later owner review. Publishing checks remain
+  // fail-closed for the Saturday release path.
+  const publishingMetaChecks = ["key", "page", "insights", "comments", "instagram", "ads", "forms"];
+  const metaReady = publishingMetaChecks.every((name) => meta[name]?.ok === true);
   const workers = workerReadiness(bridgeStatus);
   const balances = Object.fromEntries((credits?.platforms || []).map((platform: any) => [platform.id, {
     source: platform.source || null,
     remaining: typeof platform.remaining === "number" ? platform.remaining : null,
     status: platform.status || null,
   }]));
+  const hardBlockers: string[] = [];
   const blockers: string[] = [];
-  for (const [name, status] of Object.entries({ openai, claude, higgsfield, elevenlabs })) if (!status.ok) blockers.push(`${name}: ${status.detail}`);
-  if (!metaReady) blockers.push("Meta: one or more read-only Page, Instagram, Messenger, ads, or forms checks failed.");
-  if (!workers.ready) blockers.push(`Render workers: ${workers.eligible}/${workers.required} eligible v${bridgeStatus?.requiredRendererVersion || 3}+ Mac workers are currently available.`);
+  for (const [name, status] of Object.entries({ openai, claude })) if (!status.ok) hardBlockers.push(`${name}: ${status.detail}`);
+  for (const [name, status] of Object.entries({ higgsfield, elevenlabs })) if (!status.ok) blockers.push(`${name}: ${status.detail}`);
+  if (!metaReady) blockers.push("Meta publishing/insights: one or more required Page, Instagram, ads, or forms checks failed.");
+  if (!workers.ready) blockers.push(`Render workers: ${workers.eligible}/${workers.required} eligible v${bridgeStatus?.requiredRendererVersion || 3}+ Mac workers are currently available; reel final edits will stay queued outside the website container.`);
+  blockers.unshift(...hardBlockers);
 
   return {
-    ok: blockers.length === 0,
+    // A missing reel-only dependency must not stop the plan, statics,
+    // keyframes, or another independent content item from proceeding.
+    ok: hardBlockers.length === 0,
     checkedAt: iso(),
     providers: { openai, claude, higgsfield, elevenlabs },
     credits: balances,
     meta,
     workers,
+    hardBlockers,
     blockers,
   };
 }
@@ -174,6 +184,12 @@ export function createWeeklyOperations(deps: WeeklyOperationsDependencies) {
       await putRecord(week, "preflight", notified);
       return notified;
     }
+    if (report.ok && report.blockers.length && (!prior?.notifiedAt || !prior.ok)) {
+      await notify("ELEVAY weekly production is running with limited dependencies", `Preflight for ${week} passed its plan-start requirements. ${report.blockers.join(" ")} Independent items will continue; affected steps remain queued or retry through their durable provider workflow.`);
+      const notified = { ...report, notifiedAt: iso() };
+      await putRecord(week, "preflight", notified);
+      return notified;
+    }
     return report;
   }
 
@@ -196,6 +212,13 @@ export function createWeeklyOperations(deps: WeeklyOperationsDependencies) {
       await notify("ELEVAY weekly plan did not start", `The ${week} plan was not started. ${message}`);
       return record;
     }
+  }
+
+  /** Owner-authorized initial rollout or catch-up. It never bypasses preflight. */
+  async function startNow(week: string) {
+    const readiness = await preflight(week, true);
+    if (!readiness.ok) return { ok: false, blocked: true, blockers: readiness.blockers };
+    return startPlan(week);
   }
 
   async function fridayRecovery(week: string) {
@@ -276,5 +299,5 @@ export function createWeeklyOperations(deps: WeeklyOperationsDependencies) {
     return { ok: true, cairo, week, events };
   }
 
-  return { run, preflight, startPlan, fridayRecovery, saturdayReview, saturdayReminder, sundayGuard };
+  return { run, preflight, startPlan, startNow, fridayRecovery, saturdayReview, saturdayReminder, sundayGuard };
 }

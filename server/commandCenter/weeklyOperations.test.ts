@@ -62,7 +62,7 @@ describe("weekly Command Center operations", () => {
     expect(h.state.settings.weeklyOperations).toMatchObject({ status: "production" });
   });
 
-  it("fails closed and notifies without starting paid weekly production when one Mac is ineligible", async () => {
+  it("continues independent weekly production and reports a degraded render pool when one Mac is ineligible", async () => {
     process.env.OPENAI_API_KEY = "test-openai";
     process.env.ANTHROPIC_API_KEY = "test-claude";
     process.env.HF_API_KEY = "test-higgsfield";
@@ -70,8 +70,21 @@ describe("weekly Command Center operations", () => {
     const now = Date.parse("2026-10-21T06:00:00.000Z");
     const controller = createWeeklyOperations({ ...h.deps, now: () => now });
     const result = await controller.run();
-    expect(result.events).toContain("preflight_blocked");
-    expect(h.state.settings.weeklyOperations.latestPreflight.ok).toBe(false);
+    expect(result.events).toContain("preflight_ready");
+    expect(result.events).toContain("plan_start_checked");
+    expect(h.state.settings.weeklyOperations.latestPreflight.ok).toBe(true);
+    expect(h.state.settings.weeklyOperations.latestPreflight.blockers.join(" ")).toMatch(/Render workers/);
+    expect(h.notifications[0].title).toMatch(/limited dependencies/i);
+  });
+
+  it("does not start without the required plan-writing providers", async () => {
+    process.env.OPENAI_API_KEY = "";
+    process.env.ANTHROPIC_API_KEY = "test-claude";
+    process.env.HF_API_KEY = "test-higgsfield";
+    const h = harness({ workers: 2 });
+    const controller = createWeeklyOperations(h.deps);
+    const result = await controller.startNow("2026-W44");
+    expect(result).toMatchObject({ ok: false, blocked: true });
     expect(h.notifications[0].title).toMatch(/paused/i);
   });
 });

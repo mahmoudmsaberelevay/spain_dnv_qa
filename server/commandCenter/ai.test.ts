@@ -143,7 +143,7 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.openaiText[0].prompt.startsWith("I need a strong text for voice over to be strongly spoken in Arabic Egyptian language.")).toBe(true);
   });
 
-  it("recovers a persisted Higgsfield clip with no provider receipt once using its original idempotency key", async () => {
+  it("recovers a persisted Higgsfield clip with no provider receipt using its original idempotency key after backoff", async () => {
     const ctx = setup([STORYBOARD]);
     const run = await ctx.o.create({ kind: "reel", request: "Receipt recovery", user: marketer });
     let r = await settle(ctx.o, run.id, ["running", "queued"]);
@@ -155,10 +155,22 @@ describe("seven-step ELEVAY reel flow", () => {
     doc.artifacts.clips[0] = { ...doc.artifacts.clips[0], requestId: null, statusUrl: null, state: "submitting", submittedAt: old, lastProgressAt: old };
     row.doc = JSON.stringify(doc);
     await ctx.o.tick(); // queues the one recovery round; no new media yet
-    r = await ctx.o.get(run.id);
+    for (let i = 0; i < 60; i++) {
+      r = await ctx.o.get(run.id);
+      if (r.status === "queued" && r.steps.find((s) => s.action === "clips").watchdog_retry_not_before) break;
+      await new Promise((resolve) => setTimeout(resolve, 3));
+    }
     expect(r.status).toBe("queued");
-    await ctx.o.tick(); // recovery POST uses the persisted idempotency key
-    r = await ctx.o.get(run.id);
+    const delayed = JSON.parse(ctx.q.rows.get(run.id).doc);
+    delayed.steps.find((s) => s.action === "clips").watchdog_retry_not_before = new Date(Date.now() - 1_000).toISOString();
+    ctx.q.rows.get(run.id).doc = JSON.stringify(delayed);
+    await new Promise((resolve) => setTimeout(resolve, 10)); // let the completed dispatch release its slot
+    await ctx.o.tick(); // recovery POST uses the persisted idempotency key after backoff
+    for (let i = 0; i < 60; i++) {
+      r = await ctx.o.get(run.id);
+      if (r.steps.find((s) => s.action === "clips").status === "waiting") break;
+      await new Promise((resolve) => setTimeout(resolve, 3));
+    }
     expect(r.steps.find((s) => s.action === "clips").status).toBe("waiting");
     expect(ctx.calls.hfSubmit).toHaveLength(5);
     expect(ctx.calls.hfSubmit[4].idempotencyKey).toBe(oldKey);
@@ -173,6 +185,28 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.voice).toBe(1);
     expect(ctx.calls.render).toHaveLength(0);
     expect(ctx.calls.notify).toHaveLength(1);
+  });
+
+  it("schedules a delayed recovery when a waiting Mac render has no progress for twenty minutes", async () => {
+    const ctx = setup([STORYBOARD], { externalRender: true });
+    const run = await ctx.o.create({ kind: "reel", request: "Render watchdog", user: marketer });
+    await settle(ctx.o, run.id);
+    ctx.finishClips();
+    await ctx.o.tick();
+    const row = ctx.q.rows.get(run.id);
+    const doc = JSON.parse(row.doc);
+    const old = new Date(Date.now() - 21 * 60 * 1000).toISOString();
+    const compose = doc.steps.find((s) => s.action === "compose_reel");
+    compose.started_at = old;
+    doc.artifacts.compose.lastProgressAt = old;
+    row.doc = JSON.stringify(doc);
+    await ctx.o.watchdog();
+    const recovered = await ctx.o.get(run.id);
+    const delayed = recovered.steps.find((s) => s.action === "compose_reel");
+    expect(recovered.status).toBe("queued");
+    expect(delayed.status).toBe("pending");
+    expect(delayed.watchdog_retry_count).toBe(1);
+    expect(Date.parse(delayed.watchdog_retry_not_before)).toBeGreaterThan(Date.now());
   });
   it("uses exactly storyboard, keyframes, clips, voice, compose, one final Claude check, and weekly plan", async () => {
     expect(PIPELINES.reel.steps().map((s) => s.action)).toEqual(["reel_storyboard", "reel_keyframes", "clips", "voice", "compose_reel", "qc_final", "to_weekly_plan"]);

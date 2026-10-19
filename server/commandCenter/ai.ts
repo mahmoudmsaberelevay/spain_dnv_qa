@@ -70,6 +70,12 @@ export const REEL_STAGES = ["seg0", "seg1", "seg2", "seg3", "outro", "audio", "f
 const REEL_THREADS = 1;
 const EXTERNAL_RECEIPT_DEADLINE_MS = 5 * 60 * 1000;
 const EXTERNAL_PROGRESS_DEADLINE_MS = 20 * 60 * 1000;
+const EXTERNAL_MAX_AUTO_RETRIES = 3;
+const EXTERNAL_RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000];
+
+function externalRetryDelayMs(retryCount: number) {
+  return EXTERNAL_RETRY_BACKOFF_MS[Math.max(0, Math.min(EXTERNAL_RETRY_BACKOFF_MS.length - 1, retryCount - 1))];
+}
 
 function providerSafeReason(value: unknown, max = 260) {
   return String(value instanceof Error ? value.message : value || "provider response unavailable")
@@ -584,6 +590,17 @@ export function createOrchestrator(deps) {
       const step = run.steps.find((s) => !["done", "skipped", "needs_review"].includes(s.status));
       if (!step) { run.status = "done"; run.finished_at = nowIso(); await save(run, ver); return; }
       if (step.status === "failed") { run.status = "failed"; await notifyFailureOnce(run, step.error || `${step.title} failed.`); await save(run, ver); return; }
+      const retryNotBefore = Date.parse(step.watchdog_retry_not_before || "") || 0;
+      if (retryNotBefore > Date.now()) {
+        run.status = "queued";
+        await save(run, ver);
+        return;
+      }
+      if (retryNotBefore) {
+        delete step.watchdog_retry_not_before;
+        step.started_at = nowIso();
+        log(run, "studio", "team", `External-step watchdog: beginning automatic retry ${Number(step.watchdog_retry_count || 0)} of ${EXTERNAL_MAX_AUTO_RETRIES}.`);
+      }
       if (step.gate && !step.approved_by) {
         const auto = run.options?.revision?.authorizedBy || await autoApproval(run, step);
         if (auto) { step.approved_by = auto; step.approved_at = nowIso(); log(run, "studio", "team", `Approved automatically (${auto}): ${step.title}`); }
@@ -948,11 +965,13 @@ export function createOrchestrator(deps) {
         try {
           if (!providers.composeReelStep) throw new Error("Reel render adapter is not configured. Waiting for render worker is required; in-process rendering is disabled.");
           A.compose = A.compose || { parts: {}, mode: "cuts" };
-          const s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: A.compose.parts, mode: A.compose.mode, editDirection: A.brief.reel.final_edit_direction, narrationTargetSeconds: A.brief.reel.narration_target_seconds || ELEVAY_REEL_NARRATION_STANDARD.targetSeconds, narrationSceneSeconds: A.brief.reel.narration_target_scene_seconds || ELEVAY_REEL_NARRATION_STANDARD.targetSceneSeconds });
+          A.compose.attemptStartedAt = A.compose.attemptStartedAt || nowIso();
+          const s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: A.compose.parts, mode: A.compose.mode, jobId: A.compose.jobId, editDirection: A.brief.reel.final_edit_direction, narrationTargetSeconds: A.brief.reel.narration_target_seconds || ELEVAY_REEL_NARRATION_STANDARD.targetSeconds, narrationSceneSeconds: A.brief.reel.narration_target_scene_seconds || ELEVAY_REEL_NARRATION_STANDARD.targetSceneSeconds });
           A.compose.parts = s.parts || A.compose.parts;
           if (s.pending) {
             A.compose.jobId = s.jobId || A.compose.jobId || null;
             A.compose.waitReason = s.waitReason || "Waiting for render worker";
+            A.compose.lastProgressAt = A.compose.lastProgressAt || nowIso();
             step.output = { pending: true, jobId: A.compose.jobId, waitReason: A.compose.waitReason };
             log(run, "studio", "team", A.compose.waitReason);
             return "waiting";
@@ -1196,7 +1215,13 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       // job. Omitting these values changes validation/hash behavior and can make
       // a completed external render look permanently unavailable.
       const s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: C.parts || {}, mode: C.mode || "cuts", jobId: C.jobId, editDirection: A.brief?.reel?.final_edit_direction, narrationTargetSeconds: A.brief?.reel?.narration_target_seconds || ELEVAY_REEL_NARRATION_STANDARD.targetSeconds, narrationSceneSeconds: A.brief?.reel?.narration_target_scene_seconds || ELEVAY_REEL_NARRATION_STANDARD.targetSceneSeconds });
-      C.parts = s.parts || C.parts;
+      const nextParts = s.parts || C.parts || {};
+      const partsFingerprint = Object.keys(nextParts).sort().join(",");
+      if (partsFingerprint !== C.partsFingerprint) {
+        C.partsFingerprint = partsFingerprint;
+        C.lastProgressAt = nowIso();
+      }
+      C.parts = nextParts;
       if (s.pending) {
         C.jobId = s.jobId || C.jobId || null;
         C.waitReason = s.waitReason || "Waiting for render worker";
@@ -1220,13 +1245,16 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       const retryAt = Date.parse(watch.retryAt || "") || 0;
       const hasValidReceipt = (c) => typeof c?.requestId === "string" && c.requestId && typeof c?.statusUrl === "string" && /^https:\/\//.test(c.statusUrl);
       const recoverOnceOrFail = async (reason, retryExisting = false) => {
-        if (Number(watch.retryRound || 0) >= 1) {
+        const retries = Number(watch.retryRound || 0);
+        if (retries >= EXTERNAL_MAX_AUTO_RETRIES) {
           step.status = "failed";
-          step.error = `Higgsfield watchdog: ${reason} after the single idempotent recovery attempt.`;
+          step.error = `Higgsfield watchdog: ${reason}. Automatic retry limit exhausted after ${EXTERNAL_MAX_AUTO_RETRIES} of ${EXTERNAL_MAX_AUTO_RETRIES} retries (1m, 5m, 15m backoff).`;
           log(run, "higgsfield", "studio", step.error);
           return false;
         }
-        watch.retryRound = 1;
+        const nextRetry = retries + 1;
+        const delayMs = externalRetryDelayMs(nextRetry);
+        watch.retryRound = nextRetry;
         watch.retryAt = nowIso();
         for (const c of clips) if (c && c.state !== "completed" && (retryExisting || !hasValidReceipt(c))) {
           c.watchdogResubmit = true;
@@ -1236,8 +1264,11 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
         }
         step.status = "pending";
         run.status = "queued";
-        log(run, "higgsfield", "studio", `Higgsfield watchdog: ${reason}; retrying once with the same idempotency keys.`);
-        await checkpoint("Checkpoint saved: Higgsfield watchdog recovery queued.");
+        step.watchdog_retry_count = nextRetry;
+        step.watchdog_retry_reason = `Higgsfield: ${reason}`;
+        step.watchdog_retry_not_before = new Date(now + delayMs).toISOString();
+        log(run, "higgsfield", "studio", `Higgsfield watchdog: ${reason}; automatic retry ${nextRetry} of ${EXTERNAL_MAX_AUTO_RETRIES} is scheduled after ${Math.round(delayMs / 60_000)} minute(s) with the same idempotency keys.`);
+        await checkpoint("Checkpoint saved: Higgsfield watchdog recovery scheduled.");
         return "resubmit";
       };
 
@@ -1596,6 +1627,44 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     const rows = await q("SELECT id, status, doc FROM ec_ai_runs WHERE status IN ('waiting','queued','running') ORDER BY id LIMIT 30");
     for (const r of rows) {
       if (r.status !== "running") {
+        const pending = await get(r.id);
+        const pendingStep = pending?.run?.steps?.find((s) => !["done", "skipped", "needs_review"].includes(s.status));
+        const retryNotBefore = Date.parse(pendingStep?.watchdog_retry_not_before || "") || 0;
+        if (retryNotBefore > Date.now()) continue;
+        // A final edit normally lives in `waiting` while its Mac worker renders.
+        // It must not wait indefinitely just because the site process restarted
+        // or the worker stopped reporting progress.
+        if (r.status === "waiting" && pendingStep?.action === "compose_reel") {
+          const C = pending.run.artifacts?.compose || {};
+          const hasJob = !!C.jobId;
+          const started = Date.parse(pendingStep.started_at || C.attemptStartedAt || pending.run.updated_at || pending.run.created_at || "") || Date.now();
+          const progressAt = Date.parse(C.lastProgressAt || "") || 0;
+          const observedAt = hasJob ? Math.max(started, progressAt) : started;
+          const timeout = hasJob ? EXTERNAL_PROGRESS_DEADLINE_MS : EXTERNAL_RECEIPT_DEADLINE_MS;
+          if (Date.now() - observedAt >= timeout) {
+            const reason = `${pendingStep.title} had ${hasJob ? "no render-worker progress" : "no render-worker job ID"} for ${hasJob ? "20" : "5"} minutes`;
+            const retries = Number(pendingStep.watchdog_retry_count || 0);
+            if (retries < EXTERNAL_MAX_AUTO_RETRIES) {
+              const nextRetry = retries + 1;
+              const delayMs = externalRetryDelayMs(nextRetry);
+              pendingStep.status = "pending";
+              pendingStep.error = null;
+              pendingStep.watchdog_retry_count = nextRetry;
+              pendingStep.watchdog_retry_reason = reason;
+              pendingStep.watchdog_retry_not_before = new Date(Date.now() + delayMs).toISOString();
+              pending.run.status = "queued";
+              log(pending.run, "studio", "team", `External-step watchdog: ${reason}; automatic retry ${nextRetry} of ${EXTERNAL_MAX_AUTO_RETRIES} is scheduled after ${Math.round(delayMs / 60_000)} minute(s).`);
+              await save(pending.run, pending.ver).catch(() => {});
+              continue;
+            }
+            pendingStep.status = "failed";
+            pendingStep.error = `External-step watchdog: ${reason}. Automatic retry limit exhausted after ${EXTERNAL_MAX_AUTO_RETRIES} of ${EXTERNAL_MAX_AUTO_RETRIES} retries (1m, 5m, 15m backoff).`;
+            pending.run.status = "failed";
+            await notifyFailureOnce(pending.run, pendingStep.error);
+            await save(pending.run, pending.ver).catch(() => {});
+            continue;
+          }
+        }
         if (!running.has(r.id) && running.size < MAX_ACTIVE) await advance(r.id).catch(() => {});
         continue;
       }
@@ -1610,25 +1679,35 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
       const hasVoiceIds = step.provider === "elevenlabs" && (g.run.artifacts.voices || []).length === 4 && (g.run.artifacts.voices || []).every((v) => typeof v?.requestId === "string" && v.requestId);
       const external = ["openai", "higgsfield", "elevenlabs"].includes(step.provider) || step.action === "compose_reel";
       const hasExternalId = hasHiggsfieldIds || hasRenderJob || hasVoiceIds;
+      const progressAt = step.action === "compose_reel"
+        ? Date.parse(g.run.artifacts?.compose?.lastProgressAt || "") || 0
+        : 0;
       const started = Date.parse(step.started_at || doc.updated_at || doc.created_at || "") || Date.now();
       const timeout = hasExternalId ? EXTERNAL_PROGRESS_DEADLINE_MS : EXTERNAL_RECEIPT_DEADLINE_MS;
-      if (Date.now() - started < timeout) continue;
-      let resumes = Number(step?.auto_resumes || (step?.auto_resumed ? 1 : 0));
+      const observedAt = hasExternalId ? Math.max(started, progressAt) : started;
+      if (Date.now() - observedAt < timeout) continue;
       if (step?.action === "compose_reel" && g.run.artifacts.compose) {
-        const C = g.run.artifacts.compose, done = Object.keys(C.parts || {}).length;
-        if (done > Number(C.done_at_resume ?? -1)) resumes = 0; // it made progress since the last restart
-        C.done_at_resume = done;
+        const C = g.run.artifacts.compose;
         // The join is the only heavy piece: if it brought the server down, join with straight cuts instead.
         if (REEL_STAGES.every((k) => k === "final" || C.parts?.[k]) && C.mode !== "cuts") { C.join_crashes = Number(C.join_crashes || 0) + 1; if (C.join_crashes >= 1) C.mode = "cuts"; }
       }
-      if (external && !step.watchdog_retried) {
-        step.status = "pending"; step.started_at = nowIso(); step.watchdog_retried = true; step.watchdog_retried_at = nowIso(); step.error = null; g.run.status = "queued";
-        log(g.run, "studio", "team", `External-step watchdog: ${step.title} had ${hasExternalId ? "no progress" : "no provider job ID"} for ${hasExternalId ? "20" : "5"} minutes; retrying once.`);
+      const reason = `${step.title} had ${hasExternalId ? "no progress" : "no provider job ID"} for ${hasExternalId ? "20" : "5"} minutes`;
+      const retries = Number(step.watchdog_retry_count || 0);
+      if (external && retries < EXTERNAL_MAX_AUTO_RETRIES) {
+        const nextRetry = retries + 1;
+        const delayMs = externalRetryDelayMs(nextRetry);
+        step.status = "pending";
+        step.error = null;
+        step.watchdog_retry_count = nextRetry;
+        step.watchdog_retry_reason = reason;
+        step.watchdog_retry_not_before = new Date(Date.now() + delayMs).toISOString();
+        g.run.status = "queued";
+        log(g.run, "studio", "team", `External-step watchdog: ${reason}; automatic retry ${nextRetry} of ${EXTERNAL_MAX_AUTO_RETRIES} is scheduled after ${Math.round(delayMs / 60_000)} minute(s).`);
         await save(g.run, g.ver).catch(() => {});
         continue;
       }
       step.status = "failed";
-      step.error = `External-step watchdog: ${step.title} still has ${hasExternalId ? "no progress" : "no provider job ID"} after its single automatic retry.`;
+      step.error = `External-step watchdog: ${reason}. Automatic retry limit exhausted after ${EXTERNAL_MAX_AUTO_RETRIES} of ${EXTERNAL_MAX_AUTO_RETRIES} retries (1m, 5m, 15m backoff).`;
       g.run.status = "failed";
       await notifyFailureOnce(g.run, step?.error || "Interrupted (server restart).");
       await save(g.run, g.ver).catch(() => {});
