@@ -33,6 +33,7 @@ import { createOrchestrator, makeProviders, PIPELINES, planningWeek } from "./ai
 import { PROGRAMS, assetPath, assetText } from "./knowledge";
 import { createRenderQueue } from "./renderQueue";
 import { createRenderWorkerBridge, RenderWorkerBridgeError } from "./renderWorkerBridge";
+import { DEFAULT_ELEVAY_VOICEOVER_PROMPT, cleanElevayVoiceoverTemplate } from "../../shared/elevayVoiceoverTemplate";
 import { creditsReport, cleanManualCredit, clearCreditsCache, CREDIT_IDS } from "./credits";
 import { startEmbeddedRenderWorker, embeddedRenderStatus } from "./embeddedRenderWorker";
 import { notifyAiFailure } from "./alerts";
@@ -345,7 +346,21 @@ route("POST", "/jobs/:id/retry", "marketer", (ctx) => mutate(ctx, (st) => {
 route("PUT", "/settings", "owner", (ctx) => mutate(ctx, (st) => {
   const allowed = ["monthlyAdCapEgp", "maxCplEgp", "targetCplEgp", "cplBreachDays", "cplBreachMinSpendEgp", "approvalThreshold", "killSwitchRollingThreshold", "manualWeeks", "approvalChannel", "targets", "studio", "meta"];
   if ("meta" in ctx.body) ctx.body.meta = { directPublish: ctx.body.meta?.directPublish === true, inbox: ctx.body.meta?.inbox !== false, contactPhone: String(ctx.body.meta?.contactPhone || "").replace(/[^\d+ ]/g, "").trim().slice(0, 20) };
-  if ("studio" in ctx.body) ctx.body.studio = { autoplan: ctx.body.studio?.autoplan !== false, autoClips: ctx.body.studio?.autoClips !== false, reelLimitPerWeek: Math.max(0, Math.min(30, Math.round(Number(ctx.body.studio?.reelLimitPerWeek ?? 6)))) };
+  if ("studio" in ctx.body) {
+    // Merge so saving one control never wipes another (news switch, ELEVAY Voice-Over Prompt).
+    const cur = st.settings.studio || {}, b = ctx.body.studio || {};
+    const next = { ...cur };
+    if ("autoplan" in b) next.autoplan = b.autoplan !== false;
+    if ("autoClips" in b) next.autoClips = b.autoClips !== false;
+    if ("autonews" in b) next.autonews = b.autonews !== false;
+    if ("reelLimitPerWeek" in b) next.reelLimitPerWeek = Math.max(0, Math.min(30, Math.round(Number(b.reelLimitPerWeek ?? 6))));
+    if ("voiceoverPrompt" in b) {
+      try { next.voiceoverPrompt = b.voiceoverPrompt === null ? undefined : cleanElevayVoiceoverTemplate(b.voiceoverPrompt); }
+      catch (e) { return { ok: false, error: String(e?.message || e) }; }
+      E.audit(st, ctx.user.email, "voiceover_prompt.updated", null, "ELEVAY Voice-Over Prompt saved");
+    }
+    ctx.body.studio = next;
+  }
   if (Number(ctx.body.monthlyAdCapEgp) > R.DEFAULT_SETTINGS.monthlyAdCapEgp && !ctx.body.confirmRaiseCap) return { ok: false, error: "Raising the monthly cap above 200,000 EGP needs confirmRaiseCap: true." };
   for (const k of allowed) if (k in ctx.body) st.settings[k] = ctx.body[k];
   E.audit(st, ctx.user.email, "settings.updated", null, Object.keys(ctx.body).join(", "));
@@ -510,7 +525,7 @@ route("POST", "/ai/runs/:id/cancel", "marketer", studioAct((o, ctx) => o.cancel(
 route("GET", "/ai/autopilot", "team", async () => {
   const { state } = await loadState();
   const a = R.approvalStats(state.items, state.settings);
-  return ok({ ok: true, autopublish: state.settings.autopublish, approval: { weeksDone: a.weeksDone, cumulative: a.cumulative, rolling4: a.rolling4, gateEligible: a.gateEligible, manualWeeks: state.settings.manualWeeks, threshold: state.settings.approvalThreshold }, studio: { autoplan: state.settings.studio?.autoplan !== false, autoClips: state.settings.studio?.autoClips !== false, reelLimitPerWeek: Number(state.settings.studio?.reelLimitPerWeek ?? 6) }, lastWeekly: await kvGet("autoplan_last_week") });
+  return ok({ ok: true, autopublish: state.settings.autopublish, approval: { weeksDone: a.weeksDone, cumulative: a.cumulative, rolling4: a.rolling4, gateEligible: a.gateEligible, manualWeeks: state.settings.manualWeeks, threshold: state.settings.approvalThreshold }, studio: { voiceoverPrompt: state.settings.studio?.voiceoverPrompt || DEFAULT_ELEVAY_VOICEOVER_PROMPT, voiceoverPromptIsDefault: !state.settings.studio?.voiceoverPrompt, autoplan: state.settings.studio?.autoplan !== false, autoClips: state.settings.studio?.autoClips !== false, reelLimitPerWeek: Number(state.settings.studio?.reelLimitPerWeek ?? 6) }, lastWeekly: await kvGet("autoplan_last_week") });
 });
 route("GET", "/weekly-operations", "owner", async () => {
   const { state } = await loadState();

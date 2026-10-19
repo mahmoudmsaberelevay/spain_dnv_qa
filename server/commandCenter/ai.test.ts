@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { DEFAULT_ELEVAY_VOICEOVER_PROMPT } from "../../shared/elevayVoiceoverTemplate";
 import { describe, expect, it } from "vitest";
 import E from "./engine";
 import R from "./rules";
@@ -51,6 +52,9 @@ function memoryDb() {
   return q;
 }
 
+const GOOD_VOICEOVER = "بتفكر تبدأ حياة جديدة مع عيلتك في Spain؟ خلينا نقولك إزاي. إحنا في Elevay بنراجع وضعك خطوة بخطوة، وبنرتب معاك كل الأوراق علشان تكون مطمن وانت بتاخد قرارك. فريقنا معاك من أول سؤال لحد ما توصل، وبنوضح لك كل التفاصيل بهدوء. احجز استشارتك مع Elevay دلوقتي، وخلينا نبدأ نخطط لمستقبلك سوا.";
+let VOICEOVER_REPLY: any = GOOD_VOICEOVER;
+
 function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = null, externalRender = false } = {}) {
   const state = E.emptyState();
   // Unit fixtures drive one explicit run. The live scheduler covers calendar
@@ -65,7 +69,8 @@ function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = n
       const data = typeof next === "function" ? next(prompt) : next;
       return { text: JSON.stringify(data), data };
     },
-    openaiText: async ({ prompt }) => {
+    openaiText: async ({ prompt, json }) => {
+      if (json === false) { calls.voiceover = (calls.voiceover || []).concat(prompt); const text = typeof VOICEOVER_REPLY === "function" ? VOICEOVER_REPLY(calls.voiceover.length) : VOICEOVER_REPLY; return { text, data: null, model: "gpt-5-mini" }; }
       calls.openaiText.push({ prompt });
       const next = claudeAnswers.shift();
       const data = typeof next === "function" ? next(prompt) : next;
@@ -136,11 +141,30 @@ async function approveAndFinish({ o, finishClips }, runId) {
 }
 
 describe("seven-step ELEVAY reel flow", () => {
-  it("starts every OpenAI voice-over writing prompt with the owner's strong Egyptian Arabic line", async () => {
+  it("writes every voice-over with the exact ELEVAY Voice-Over Prompt and the reel idea, then splits it into 4 takes", async () => {
     const ctx = setup([STORYBOARD]);
     const run = await ctx.o.create({ kind: "reel", request: "Strong voice test", user: marketer });
-    await settle(ctx.o, run.id, ["running", "queued"]);
-    expect(ctx.calls.openaiText[0].prompt.startsWith("I need a strong text for voice over to be strongly spoken in Arabic Egyptian language.")).toBe(true);
+    const r = await settle(ctx.o, run.id, ["running", "queued"]);
+    expect(ctx.calls.voiceover[0]).toBe(DEFAULT_ELEVAY_VOICEOVER_PROMPT.replace("{{idea}}", "Strong voice test"));
+    expect(ctx.calls.voiceover[0].startsWith("i need a strong text for voice over to be strongly spoken at arabic egyptian language")).toBe(true);
+    const parts = r.artifacts.brief.reel.storyboard.map((x) => x.spoken_text_ar);
+    expect(parts).toHaveLength(4);
+    expect(parts.join(" ")).toBe(r.artifacts.brief.reel.voiceover_text);
+    expect(r.artifacts.brief.reel).toMatchObject({ narration_target_seconds: 20, narration_target_scene_seconds: 5 });
+    expect(ctx.calls.openaiText[0].prompt).toMatch(/already written and approved/);
+  });
+
+  it("regenerates the voice-over once with the same prompt when a check fails, then stops before any media", async () => {
+    VOICEOVER_REPLY = (n) => n === 1 ? "هل تفكر في الانتقال إلى إسبانيا؟ نحن في إيليفاي نضمن لك التأشيرة." : "سوف نساعدك";
+    try {
+      const ctx = setup([STORYBOARD]);
+      const run = await ctx.o.create({ kind: "reel", request: "Check test", user: marketer });
+      const r = await settle(ctx.o, run.id, ["running", "queued"]);
+      expect(ctx.calls.voiceover).toHaveLength(2);
+      expect(ctx.calls.voiceover[1]).toBe(ctx.calls.voiceover[0]);
+      expect(r.status).toBe("failed");
+      expect(ctx.calls.openai).toHaveLength(0);
+    } finally { VOICEOVER_REPLY = GOOD_VOICEOVER; }
   });
 
   it("recovers a persisted Higgsfield clip with no provider receipt using its original idempotency key after backoff", async () => {
@@ -220,10 +244,9 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.openai).toHaveLength(4);
     expect(ctx.calls.hfSubmit).toHaveLength(4);
     expect(ctx.calls.voice).toBe(4);
-    expect(ctx.calls.openaiText).toHaveLength(1); // storyboard and Egyptian Arabic narration
-    expect(ctx.calls.openaiText[0].prompt).toMatch(/Egyptian Arabic voice-over/);
-    expect(ctx.calls.openaiText[0].prompt).toMatch(/exactly 18 seconds/);
-    expect(ctx.calls.openaiText[0].prompt).toMatch(/direct spoken consultation call to action/);
+    expect(ctx.calls.openaiText).toHaveLength(1); // storyboard visuals only
+    expect(ctx.calls.voiceover).toHaveLength(1); // ELEVAY Voice-Over Prompt
+    expect(ctx.calls.openaiText[0].prompt).toMatch(/Egyptian Arabic voice-over is already written and approved/);
     expect(ctx.calls.claude).toHaveLength(1); // sole final QC
     expect(ctx.calls.claude[0].prompt).toMatch(/ALL supplied visual evidence/);
     expect(ctx.calls.claude[0].prompt).toMatch(/all 600 narrative frames/i);
@@ -262,7 +285,7 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.hfSubmit).toHaveLength(4);
     expect(ctx.calls.voice).toBe(4);
     expect(ctx.calls.render.length).toBeGreaterThanOrEqual(2); // durable queue/result polling only; no media providers were re-run
-    expect(ctx.calls.render.at(-1)).toMatchObject({ narrationTargetSeconds: 18, narrationSceneSeconds: 4.5 });
+    expect(ctx.calls.render.at(-1)).toMatchObject({ narrationTargetSeconds: 20, narrationSceneSeconds: 5 });
     expect(ctx.calls.claude).toHaveLength(1);
   });
 
@@ -423,8 +446,8 @@ describe("owner-authorized targeted content revisions", () => {
     expect(recreated.artifacts).toEqual({});
     expect(recreated.options.revision).toMatchObject({itemId:item.item_id,baseVersion:1,scope:'whole_concept'});
     expect(recreated.request).toMatch(/completely fresh/i);
-    expect(recreated.request).toMatch(/I need a strong text for voice over to be strongly spoken in Arabic Egyptian language\./);
-    expect(recreated.request).toMatch(/completely NEW voice-over text/);
+    expect(recreated.request).toMatch(/ELEVAY Voice-Over Prompt/);
+    expect(recreated.options.voiceIdea).toBe("Original approved content");
     let r=await settle(ctx.o,recreated.id);
     if(r.status==='waiting'){await ctx.o.tick();r=await settle(ctx.o,recreated.id,['running','queued','waiting']);}
     expect(r.status).toBe('done');
@@ -437,14 +460,15 @@ describe("owner-authorized targeted content revisions", () => {
     expect(item.revision).toMatchObject({scope:'whole_concept',run_id:String(recreated.id)});
     expect(ctx.state.jobs.some(j=>j.type==='schedule_post')).toBe(false);
   });
-  it("changes only scene 3 narration and rerenders without regenerating a keyframe or clip", async()=>{
-    const ctx=setup([STORYBOARD,PASS,{scenes:[{scene:3,spoken_text_ar:'خلينا نراجع ملفك في Portugal مع ELEVAY خطوة خطوة'}]},PASS]);
+  it("a voice change request writes a new voice-over from the ELEVAY Voice-Over Prompt and re-records it without regenerating keyframes or clips", async()=>{
+    const ctx=setup([STORYBOARD,PASS,PASS]);
     const base=await finishedBase(ctx);const item=ctx.state.items.find(i=>i.item_id===base.artifacts.item_id);
     const unchanged=base.artifacts.voices.map(v=>v.url);
     const rev=await ctx.o.reviseItem(item.item_id,{comment:'Change voice scene 3',scope:'voice',clip:3},owner);
     const r=await settle(ctx.o,rev.id);
-    expect(r.status).toBe('done');expect(ctx.calls.openai).toHaveLength(4);expect(ctx.calls.hfSubmit).toHaveLength(4);expect(ctx.calls.voice).toBe(5);expect(ctx.calls.render).toHaveLength(2);
-    expect(r.artifacts.voices[0].url).toBe(unchanged[0]);expect(r.artifacts.voices[1].url).toBe(unchanged[1]);expect(r.artifacts.voices[3].url).toBe(unchanged[3]);expect(r.artifacts.voices[2].url).not.toBe(unchanged[2]);
+    expect(r.status).toBe('done');expect(ctx.calls.openai).toHaveLength(4);expect(ctx.calls.hfSubmit).toHaveLength(4);expect(ctx.calls.voice).toBe(8);expect(ctx.calls.render).toHaveLength(2);
+    expect(ctx.calls.voiceover).toHaveLength(2);expect(ctx.calls.voiceover[1]).toMatch(/Owner change request: Change voice scene 3/);
+    expect(r.artifacts.voices.every((v,i)=>v.url!==unchanged[i])).toBe(true);
   });
   it("changes intended Cairo schedule after final review without regenerating or scheduling media", async()=>{
     const ctx=setup([STORYBOARD,PASS,{datetime_cairo:'2026-10-11T19:45'},PASS]);const base=await finishedBase(ctx);const item=ctx.state.items.find(i=>i.item_id===base.artifacts.item_id);

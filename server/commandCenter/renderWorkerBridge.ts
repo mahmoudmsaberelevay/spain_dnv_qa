@@ -146,14 +146,22 @@ function safeMetrics(value: unknown) {
   };
 }
 
+/** Allowed narration contracts: legacy 18 s (4 × 4.5 s) and the owner's 20 s voice-over (4 × 5 s). */
+function narrationPair(target: unknown, scene: unknown): { target: number; scene: number } | null {
+  const t = Number(target), sc = Number(scene);
+  if (t === 18 && sc === 4.5) return { target: 18, scene: 4.5 };
+  if (t === 20 && sc === 5) return { target: 20, scene: 5 };
+  return null;
+}
+
 function safeProgressMetadata(value: unknown) {
   const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const raw = Array.isArray(input.rawVoiceSeconds) ? input.rawVoiceSeconds.slice(0, 4).map(Number) : [];
   return {
     music: input.music === true,
     musicDropped: input.musicDropped ? cleanError(input.musicDropped).slice(0, 240) : null,
-    narrationTargetSeconds: Number(input.narrationTargetSeconds) === 18 ? 18 : undefined,
-    narrationSceneSeconds: Number(input.narrationSceneSeconds) === 4.5 ? 4.5 : undefined,
+    narrationTargetSeconds: narrationPair(input.narrationTargetSeconds, input.narrationSceneSeconds)?.target,
+    narrationSceneSeconds: narrationPair(input.narrationTargetSeconds, input.narrationSceneSeconds)?.scene,
     rawVoiceSeconds: raw.length === 4 && raw.every((n) => Number.isFinite(n) && n > 0.2 && n < 12) ? raw : undefined,
   };
 }
@@ -166,9 +174,8 @@ function safeManifest(value: unknown) {
   if (clips.length !== 4 || clips.some((x) => !x) || voices.length !== 4 || voices.some((x) => !x) || !outroUrl) {
     throw new RenderWorkerBridgeError(409, "Queued job has no valid saved render inputs.");
   }
-  if (Number(input.narrationTargetSeconds) !== 18 || Number(input.narrationSceneSeconds) !== 4.5) {
-    throw new RenderWorkerBridgeError(409, "Queued job does not meet the locked narration contract.");
-  }
+  const pair = narrationPair(input.narrationTargetSeconds, input.narrationSceneSeconds);
+  if (!pair) throw new RenderWorkerBridgeError(409, "Queued job does not meet the locked narration contract.");
   return {
     version: String(input.version || "").slice(0, 100),
     runId: Number(input.runId),
@@ -183,8 +190,8 @@ function safeManifest(value: unknown) {
     fps: 30,
     sceneSeconds: 5,
     outroSeconds: 3,
-    narrationTargetSeconds: 18,
-    narrationSceneSeconds: 4.5,
+    narrationTargetSeconds: pair.target,
+    narrationSceneSeconds: pair.scene,
   };
 }
 
@@ -301,7 +308,7 @@ export function createRenderWorkerBridge({
   }
 
   /** Lowest renderer version that may take jobs (3 = the voice-over fix). Older or unversioned Macs wait. */
-  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 3) || 0);
+  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 4) || 0);
   const workersSeen = new Map<string, { rendererVersion: number | null; at: number; outdated: boolean }>();
   async function lease(workerId: string, rendererVersion?: unknown) {
     await ensure();
@@ -422,7 +429,7 @@ export function createRenderWorkerBridge({
     const qcFrames = Array.from({ length: MAX_QC_FRAMES }, (_, index) => evidence[String(index + 1)]).filter(Boolean);
     if (qcFrames.length !== MAX_QC_FRAMES) throw new RenderWorkerBridgeError(400, "All 75 narrative QC sheets and 2 outro frames are required before completion.");
     const seconds = Number(final.seconds);
-    if (!Number.isFinite(seconds) || Math.abs(seconds - 23) > 0.05 || final.mode !== "cuts" || Number(final.narrationTargetSeconds) !== 18 || Number(final.narrationSceneSeconds) !== 4.5) {
+    if (!Number.isFinite(seconds) || Math.abs(seconds - 23) > 0.05 || final.mode !== "cuts" || !narrationPair(final.narrationTargetSeconds, final.narrationSceneSeconds)) {
       throw new RenderWorkerBridgeError(400, "Final render does not meet the locked 23-second ELEVAY output contract.");
     }
     const rawVoiceSeconds = Array.isArray(final.rawVoiceSeconds) ? final.rawVoiceSeconds.slice(0, 4).map(Number) : [];
@@ -434,9 +441,9 @@ export function createRenderWorkerBridge({
       music: final.music === true,
       musicDropped: final.musicDropped ? cleanError(final.musicDropped).slice(0, 240) : null,
       mode: "cuts",
-      narrationTargetSeconds: 18,
-      narrationSceneSeconds: 4.5,
-      spokenNarrationSeconds: 18,
+      narrationTargetSeconds: narrationPair(final.narrationTargetSeconds, final.narrationSceneSeconds)!.target,
+      narrationSceneSeconds: narrationPair(final.narrationTargetSeconds, final.narrationSceneSeconds)!.scene,
+      spokenNarrationSeconds: narrationPair(final.narrationTargetSeconds, final.narrationSceneSeconds)!.target,
       rawVoiceSeconds,
       peakRssBytes: safeMetrics(final.metrics || final).peakRssBytes,
       peakFfmpegRssBytes: safeMetrics(final.metrics || final).peakFfmpegRssBytes,

@@ -38,7 +38,7 @@ export function prepareEgyptianReelNarration(value: string): string {
     throw new Error("Narration must not contain a contact link or address.");
   }
   for (const [pattern, replacement] of countryNames) text = text.replace(pattern, replacement);
-  text = text.replace(/(?:إيليفاي|إليفاي|اليفاي)/g, "ELEVAY");
+  text = text.replace(/(?:إيليفاي|إليفاي|اليفاي)/g, "Elevay");
   for (const [pattern, replacement] of egyptianPhrases) text = text.replace(pattern, replacement);
   const error = validateElevayArabicVoiceOverScript(text);
   if (error) throw new Error(error);

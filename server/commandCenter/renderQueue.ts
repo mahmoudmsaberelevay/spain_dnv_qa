@@ -19,10 +19,11 @@ export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<
     if (!/^https:\/\//.test(outroUrl)) throw new Error("ELEVAY_FIXED_OUTRO_URL must be a public HTTPS stored ELEVAYEXTRO.mov URL.");
     const narrationTargetSeconds = Number(input.narrationTargetSeconds);
     const narrationSceneSeconds = Number(input.narrationSceneSeconds);
-    if (narrationTargetSeconds !== 18 || narrationSceneSeconds !== 4.5) {
-      throw new Error("ELEVAY reels require the locked 18-second narration target: four 4.5-second voice takes.");
+    const twenty = narrationTargetSeconds === 20 && narrationSceneSeconds === 5;
+    if (!twenty && !(narrationTargetSeconds === 18 && narrationSceneSeconds === 4.5)) {
+      throw new Error("ELEVAY reels need a locked narration contract: 20 seconds (four 5-second takes) or the legacy 18 seconds (four 4.5-second takes).");
     }
-    const manifest = { version: "disk-concat-v3-18s-narration-fixed-elevayoutro", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, outroUrl, editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: 3, narrationTargetSeconds, narrationSceneSeconds };
+    const manifest = { version: twenty ? "disk-concat-v4-20s-narration-fixed-elevayoutro" : "disk-concat-v3-18s-narration-fixed-elevayoutro", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, outroUrl, editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: 3, narrationTargetSeconds, narrationSceneSeconds };
     const id = "reel-" + crypto.createHash("sha256").update(JSON.stringify(manifest)).digest("hex").slice(0, 40);
     const now = Date.now();
     const reusable = input.parts?._version === manifest.version ? Object.fromEntries(Object.entries(input.parts).filter(([k]) => ["seg0", "seg1", "seg2", "seg3", "outro", "audio", "music", "musicDropped", "narrationTargetSeconds", "narrationSceneSeconds", "rawVoiceSeconds"].includes(k))) : {};

@@ -20,6 +20,7 @@
  */
 import { ELEVAY_LOCKED_VOICE_POLICY as ELEVAY_ARABIC_VOICE_DEFAULTS } from "../../shared/elevayVoicePolicy";
 import { ELEVAY_REEL_NARRATION_STANDARD, validateElevay18SecondReelNarration } from "../../shared/elevayReelNarrationPolicy";
+import { ELEVAY_VOICEOVER_PROMPT_NAME, ELEVAY_VOICEOVER_TIMING, buildElevayVoiceoverPrompt, normalizeElevayVoiceover, checkElevayVoiceover, splitElevayVoiceover, elevayVoiceoverWords } from "../../shared/elevayVoiceoverTemplate";
 import crypto from "crypto";
 import { ELEVAY_AGENTIC_DESIGN_STANDARD } from "@shared/elevayAgenticDesignStandard";
 import { spawn } from "child_process";
@@ -709,6 +710,27 @@ export function createOrchestrator(deps) {
     return "rewind";
   }
 
+  /** Owner rule: every voice-over text is written by OpenAI from the locked ELEVAY Voice-Over Prompt only,
+   *  checked automatically, regenerated once with the same prompt if a check fails, then split into 4 scenes. */
+  async function writeVoiceover(run, step, idea) {
+    const { state } = await deps.loadState();
+    const prompt = buildElevayVoiceoverPrompt(state.settings.studio?.voiceoverPrompt, idea);
+    const system = "Brand and compliance rules: never use the word \"تأشيرة\" or \"فيزا\" (say إقامة), never promise or guarantee any outcome or approval, and give no legal or tax advice. Reply with the voice-over text only.";
+    let problems = [];
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      log(run, "studio", "openai", attempt === 1 ? `${ELEVAY_VOICEOVER_PROMPT_NAME}:\n${prompt}` : `Voice-over check failed (${problems.join(" ")}). Regenerating once with the same ${ELEVAY_VOICEOVER_PROMPT_NAME}.`);
+      const r = await providers.openaiText({ system, prompt, json: false, maxTokens: 900 });
+      const text = normalizeElevayVoiceover(r.text);
+      log(run, "openai", "studio", text);
+      problems = checkElevayVoiceover(text);
+      if (!problems.length) {
+        log(run, "studio", "team", `Voice-over approved by the automatic checks (${elevayVoiceoverWords(text)} words, about 20 seconds); split into 4 scenes.`);
+        return { text, parts: splitElevayVoiceover(text, 4), attempts: attempt, idea };
+      }
+    }
+    throw new Error(`OpenAI's voice-over failed the automatic checks twice: ${problems.join(" ")} No media generation started. Press Retry, or edit the ${ELEVAY_VOICEOVER_PROMPT_NAME} in Settings.`);
+  }
+
   async function askClaude(run, step, prompt, opts = {}) {
     log(run, "studio", "claude", opts.note || prompt);
     const r = await providers.claude({ system: ELEVAY_RULES, prompt, ...opts });
@@ -752,28 +774,16 @@ export function createOrchestrator(deps) {
         return;
       }
       case "openai.reel_storyboard": {
-        const r = await askOpenAi(run, step, `${VOICEOVER_LEAD}\n\n${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n\"\"\"${run.request}\"\"\"\n${opts.program ? "Program: " + opts.program + "\n" : ""}The four spoken_text_ar values are recorded separately for timing, but together they MUST read as one complete, connected Egyptian Arabic voice-over narration—not numbered points, disconnected bullets or four standalone statements. The whole narration targets exactly 18 seconds: four connected takes of 8–10 spoken words each (32–40 words total), timed at about 4.5 seconds per take.\n\nNarrative communication structure: Scene 1 is a striking, cinematic but truthful dramatic hook about a real ambition, decision or uncertainty—never fake urgency, fear, clickbait or a guarantee. Scenes 2–3 clearly explain one valuable advisory message and why ELEVAY helps. Scene 4 finishes with a direct spoken consultation call to action such as \"احجز استشارتك مع ELEVAY دلوقتي\" or \"تواصل مع ELEVAY واحجز استشارتك\".\n\nReturn JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "final_edit_direction": "one concise editing direction for the external renderer: pacing, clean scene joins and narration placement only; never request text, logo changes or outro changes", "scenes": [4 scenes in order dramatic hook → clear message → trust/proof → direct consultation CTA, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic continuation, 8–10 words; ONLY country names and ELEVAY in English letters, everything else in Arabic; write شينغن rather than Schengen"}]}`, { maxTokens: 5000 });
+        // 1) The voice-over text comes first, from the owner's locked ELEVAY Voice-Over Prompt only.
+        const vo = await writeVoiceover(run, step, String(opts.voiceIdea || run.request));
+        // 2) Visuals and caption are planned around the approved text; this call never writes spoken text.
+        const r = await askOpenAi(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nPlan the visuals and caption for one ELEVAY reel for this request:\n\"\"\"${run.request}\"\"\"\n${opts.program ? "Program: " + opts.program + "\n" : ""}The Egyptian Arabic voice-over is already written and approved. Do NOT write, translate or change any spoken text. It is split into four 5-second scenes; match each scene's visuals to its line:\n${vo.parts.map((x, i) => `Scene ${i + 1}: ${x}`).join("\n")}\n\nReturn JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "final_edit_direction": "one concise editing direction for the external renderer: pacing, clean scene joins and narration placement only; never request text, logo changes or outro changes", "scenes": [4 scenes in the same order as the voice-over, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text"}]}`, { maxTokens: 5000 });
         const scenes = (r.data.scenes || []).slice(0, 4);
         if (scenes.length !== 4) throw new Error("OpenAI did not return 4 scenes.");
-        const invalidScripts = async () => {
-          const invalid = [];
-          for (let i = 0; i < 4; i++) { try { if (!scenes[i].spoken_text_ar) throw new Error("Missing spoken line"); await providers.checkEgyptianScript(scenes[i].spoken_text_ar); } catch { invalid.push(i); } }
-          return invalid;
-        };
-        let invalid = await invalidScripts();
-        let narrationFormatError = validateElevay18SecondReelNarration(scenes);
-        for (let repair = 0; (invalid.length || narrationFormatError) && repair < 2; repair++) {
-          const needsFullNarrationRewrite = Boolean(narrationFormatError);
-          const targets = needsFullNarrationRewrite ? [1, 2, 3, 4] : invalid.map(i=>i+1);
-          const fixed = await askOpenAi(run, step, `${VOICEOVER_LEAD}\n\nYour storyboard is accepted visually, but its Egyptian Arabic narration needs correction: ${narrationFormatError || `scene(s) ${targets.join(", ")} are missing or not Egyptian Arabic`}. Rewrite ONLY the spoken scripts for scene(s) ${targets.join(", ")}; when the full 18-second flow is invalid, rewrite all four spoken scripts. Keep every visual unchanged. The full narration is one continuous message, not points or bullets: exactly four takes of 8–10 spoken words each, 32–40 words in total, targeting 18 seconds. Scene 1 needs a bold, cinematic but truthful dramatic hook—never fear, fake urgency, clickbait or guarantees. Scenes 2–3 explain one clear benefit. Scene 4 ends with a direct consultation CTA using ELEVAY. Use natural Egyptian Arabic with markers such as خلينا، تقدر، بنراجع، معاك، علشان، دلوقتي. Country names and ELEVAY are English only; write شينغن in Arabic. No guarantees or تأشيرة. Current scenes:\n${JSON.stringify(scenes)}\nReturn JSON {"scenes":[{"scene":1,"spoken_text_ar":"..."}]} for exactly the requested scenes.`, { maxTokens: 1600 });
-          for (const s of fixed.data?.scenes || []) if ((needsFullNarrationRewrite || invalid.includes(s.scene - 1)) && Number.isInteger(s.scene) && s.scene >= 1 && s.scene <= 4) scenes[s.scene - 1].spoken_text_ar = s.spoken_text_ar;
-          invalid = await invalidScripts();
-          narrationFormatError = validateElevay18SecondReelNarration(scenes);
-        }
-        if (invalid.length) throw new Error(`OpenAI could not produce valid Egyptian Arabic for scene(s) ${invalid.map((i) => i + 1).join(", ")}. No media generation started.`);
-        if (narrationFormatError) throw new Error(`OpenAI could not produce the required 18-second dramatic hook and direct CTA narration: ${narrationFormatError} No media generation started.`);
-        for (const s of scenes) { if (!s.keyframe_prompt || !s.motion_prompt || !s.spoken_text_ar) throw new Error("Storyboard is incomplete; no generation started."); await providers.checkEgyptianScript(s.spoken_text_ar); }
-        A.brief = { type: "reel", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", talent: { mode: "voiceover_elevay_vip", voice_source: "elevay_vip_module", speech_language: "egyptian_arabic" }, reel: { storyboard: scenes.map((s, i) => ({ clip: i + 1, keyframe_prompt: s.keyframe_prompt, motion_prompt: s.motion_prompt, spoken_text_ar: s.spoken_text_ar, delivery_direction_en: "Warm, premium, deliberate Egyptian Arabic delivery; build cinematic tension in the truthful hook and finish with a confident direct consultation CTA." })), music_direction: r.data.music_direction || "Soft cinematic, royalty-free", final_edit_direction: String(r.data.final_edit_direction || "Clean direct joins; place the four voice takes across 18 seconds, leave the final 2 seconds of narrative footage for a visual breath, and keep the white logo outro silent.").slice(0, 600), duration_s: 23, narration_target_seconds: ELEVAY_REEL_NARRATION_STANDARD.targetSeconds, narration_target_scene_seconds: ELEVAY_REEL_NARRATION_STANDARD.targetSceneSeconds }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
+        for (const sc of scenes) if (!sc.keyframe_prompt || !sc.motion_prompt) throw new Error("Storyboard is incomplete; no generation started.");
+        scenes.forEach((sc, i) => { sc.spoken_text_ar = vo.parts[i]; });
+        A.voiceover = { text: vo.text, template: ELEVAY_VOICEOVER_PROMPT_NAME, attempts: vo.attempts, idea: vo.idea };
+        A.brief = { type: "reel", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", talent: { mode: "voiceover_elevay_vip", voice_source: "elevay_vip_module", speech_language: "egyptian_arabic" }, reel: { storyboard: scenes.map((sc, i) => ({ clip: i + 1, keyframe_prompt: sc.keyframe_prompt, motion_prompt: sc.motion_prompt, spoken_text_ar: sc.spoken_text_ar, delivery_direction_en: "Friendly, professional, strong Egyptian Arabic delivery." })), voiceover_text: vo.text, music_direction: r.data.music_direction || "Soft cinematic, royalty-free", final_edit_direction: String(r.data.final_edit_direction || "Clean direct joins; place the four voice takes across the first 20 seconds, one per 5-second scene, and keep the white logo outro silent.").slice(0, 600), duration_s: 23, narration_target_seconds: ELEVAY_VOICEOVER_TIMING.targetSeconds, narration_target_scene_seconds: ELEVAY_VOICEOVER_TIMING.sceneSeconds }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
         return;
       }
       case "claude.revise_content": {
@@ -781,6 +791,19 @@ export function createOrchestrator(deps) {
         if (!rev?.authorizedBy) throw new Error("Revision authorization is missing.");
         const scope = rev.scope;
         const selected = rev.clip ? [Number(rev.clip) - 1] : Array.from({length:run.kind === "carousel" ? A.brief.carousel.slides.length : 4}, (_, i)=>i);
+        if (scope === "voice" && run.kind === "reel") {
+          // Voice change requests also use only the locked ELEVAY Voice-Over Prompt: a full new text, split into 4 scenes, all takes re-recorded.
+          const idea = `${A.voiceover?.idea || A.brief?.topic || run.request} — Owner change request: ${rev.request}`;
+          const vo = await writeVoiceover(run, step, idea);
+          vo.parts.forEach((x, k) => { A.brief.reel.storyboard[k].spoken_text_ar = x; });
+          Object.assign(A.brief.reel, { voiceover_text: vo.text, narration_target_seconds: ELEVAY_VOICEOVER_TIMING.targetSeconds, narration_target_scene_seconds: ELEVAY_VOICEOVER_TIMING.sceneSeconds });
+          A.voiceover = { text: vo.text, template: ELEVAY_VOICEOVER_PROMPT_NAME, attempts: vo.attempts, idea };
+          A.voices = [null, null, null, null];
+          if (A.compose?.parts) { delete A.compose.parts.final; delete A.compose.parts.audio; }
+          delete A.final;
+          step.output = { scope, changed: rev.request, voiceover: vo.text };
+          return;
+        }
         const instructions = scope === "caption" ? 'Return {"caption_ar":"revised MSA caption"} only.' : scope === "schedule" ? 'Return {"datetime_cairo":"YYYY-MM-DDTHH:mm"} only. Preserve the original channel; timezone Africa/Cairo.' : scope === "voice" ? `Return {"scenes":[{"scene":1,"spoken_text_ar":"Egyptian Arabic revised line"}]} for exactly scenes ${selected.map(i=>i+1).join(",")}. Preserve every visual description. A revised line must remain a natural continuation of the complete Egyptian Arabic narration, never a list point.` : scope === "reel_clip" ? `Return {"scenes":[{"scene":1,"keyframe_prompt":"complete corrected frame prompt","motion_prompt":"complete corrected motion prompt"}]} for exactly scenes ${selected.map(i=>i+1).join(",")}. Preserve spoken lines.` : run.kind === "carousel" ? `Return {"slides":[{"slide":1,"image_prompt":"revised complete photograph prompt","headline_en":"English headline"}]} for exactly slides ${selected.map(i=>i+1).join(",")}. Preserve all other slides and caption.` : 'Return {"design":{"image_prompt":"complete revised image prompt","headline_en":"revised English headline"}} only. Preserve caption, schedule and other fields.';
         const writer = scope === "voice" ? askOpenAi : askClaude;
         const r = await writer(run, step, `${scope === "voice" ? VOICEOVER_LEAD + "\n\n" : ""}Owner-authorized targeted change. Scope: ${scope}. Request: ${rev.request}. Current brief:\n${JSON.stringify(A.brief)}\nChange ONLY the stated scope. ${instructions}`, { maxTokens: 4000 });
@@ -939,8 +962,9 @@ export function createOrchestrator(deps) {
       case "elevenlabs.voice": {
         const sb = A.brief.reel.storyboard;
         await providers.checkEgyptianScript(sb.map((c) => c.spoken_text_ar).join(" ")); // whole script must be natural Egyptian Arabic
-        const narrationError = validateElevay18SecondReelNarration(sb);
-        if (narrationError) throw new Error(`The 18-second reel narration needs correction before speech generation: ${narrationError}`);
+        const twentySecond = Number(A.brief.reel.narration_target_seconds) === ELEVAY_VOICEOVER_TIMING.targetSeconds;
+        const narrationError = twentySecond ? (checkElevayVoiceover(sb.map((c) => c.spoken_text_ar).join(" ")).join(" ") || null) : validateElevay18SecondReelNarration(sb);
+        if (narrationError) throw new Error(`The reel voice-over needs correction before speech generation: ${narrationError}`);
         A.voices = A.voices || [];
         for (let i = 0; i < 4; i++) {
           if (A.voices[i]) {
@@ -991,8 +1015,18 @@ export function createOrchestrator(deps) {
             }
             throw e;
           }
-          // A scene's narration is too long for 5 s: Claude shortens that line once, then the voice is redone.
           const i = e.tooLong; A.voice_fixed = true;
+          if (Number(A.brief.reel.narration_target_seconds) === ELEVAY_VOICEOVER_TIMING.targetSeconds) {
+            // A take does not fit its 5-second scene: write the whole voice-over again from the locked prompt and re-record all four takes.
+            const vo = await writeVoiceover(run, step, A.voiceover?.idea || run.request);
+            vo.parts.forEach((x, k) => { A.brief.reel.storyboard[k].spoken_text_ar = x; });
+            A.brief.reel.voiceover_text = vo.text; A.voiceover = { ...(A.voiceover || {}), text: vo.text, attempts: vo.attempts };
+            A.voices = [null, null, null, null];
+            if (A.compose?.parts) { delete A.compose.parts.audio; delete A.compose.parts.final; }
+            run.steps.find((s2) => s2.action === "voice").status = "pending";
+            log(run, "studio", "team", `Scene ${i + 1} voice take did not fit its 5 seconds; a new voice-over was written from the ${ELEVAY_VOICEOVER_PROMPT_NAME} and all four takes will be recorded again.`);
+            return "rewind";
+          }
           const r = await askOpenAi(run, step, `${VOICEOVER_LEAD}\n\nThis Egyptian Arabic voice-over line for scene ${i + 1} is too long to fit its 4.5-second share of the exact 18-second narration: "${A.brief.reel.storyboard[i].spoken_text_ar}". Rewrite it in 8–10 words, natural Egyptian Arabic, same idea, country names and ELEVAY in English letters only, everything else in Arabic. Preserve the full narration's continuous message and keep the final scene's direct consultation CTA. Return JSON: {"line": "..."}`, { maxTokens: 300 });
           A.brief.reel.storyboard[i].spoken_text_ar = String(r.data.line || "").trim();
           A.voices[i] = null;
@@ -1008,7 +1042,8 @@ export function createOrchestrator(deps) {
         // Final footage is inspected by the sole Claude check below. Retired prompt-only
         // wardrobe/motion checks must not block a finished compliant video based on text.
         const captionCheck = R.checkBrief({ ...A.brief, reel: { ...A.brief.reel, storyboard: storyboard.map(s=>({clip:s.clip,spoken_text_ar:s.spoken_text_ar})) } });
-        const narrationStructureError = validateElevay18SecondReelNarration(storyboard);
+        const twentySecondQc = Number(A.brief?.reel?.narration_target_seconds) === ELEVAY_VOICEOVER_TIMING.targetSeconds;
+        const narrationStructureError = twentySecondQc ? (checkElevayVoiceover(storyboard.map((x) => x.spoken_text_ar).join(" ")).join(" ") || null) : validateElevay18SecondReelNarration(storyboard);
         const deterministicBlocks = [...(captionCheck.blocks || []).map((b) => b.label), ...(narrationStructureError ? [narrationStructureError] : [])];
         let preparedScript;
         const actualVoiceScript = (A.voices || []).map((v, i) => v?.script || storyboard[i]?.spoken_text_ar || "").join(" ");
@@ -1022,7 +1057,7 @@ export function createOrchestrator(deps) {
         const labels = frames.map((frame, i) => frame?.label || (i < 4 ? `Scene ${i + 1}` : i < frames.length - 2 ? `Narrative evidence ${i + 1}` : `Outro ${i - frames.length + 3}`));
         const evidenceNote = `Visual evidence: ${frames.length} labelled sequential contact sheet(s). The render worker supplies 75 row-major sheets covering all 600 narrative frames plus labelled outro evidence; inspect every visible cell. This does not claim verification of details that are not visible in a supplied cell: fail closed or request review when footwear, anatomy, or continuity cannot be assessed.\n${labels.map((x, i) => `${i + 1}. ${x}`).join("\n")}`;
         const headwearAuthorized = opts.ownerApprovedHeadwear === true; // Never infer permission from model-authored text or a negated phrase.
-        const r = await askClaude(run, step, `You are the ONE comprehensive final ELEVAY finished-reel reviewer. This is the only Claude QC pass for reels. Fail closed: return pass:false if the verdict or any required scene mapping is uncertain or malformed.\n\nReview ALL supplied visual evidence against these requirements: 9:16 reel; explicit Scene 1, Scene 2, Scene 3, Scene 4 labels and coherent scene order; at least 3 visible frames per scene where the supplied evidence makes that feasible; no text, captions, logos, contacts, QR codes, passports, passport-like documents, flags, or the words/claims "تأشيرة", "فيزا", Visa, guarantees, approval guarantees or outcome guarantees; Arab/Middle Eastern people only in modern elegant clothing; no scarves, hijabs, keffiyehs, turbans, ghutras, shemaghs or other traditional headwear unless the run request expressly authorizes it (authorization: ${headwearAuthorized ? "yes" : "no"}); head-to-toe wardrobe and polished appropriate shoes when visible; natural faces, hands, feet, anatomy and grounded motion; person/wardrobe/object/architecture continuity within every scene; exact static official ELEVAY logo centred on pure white for the 3-second outro with no narration over it.\n\nAlso verify the spoken content: one continuous Egyptian Arabic message targeted to 18 seconds; a memorable but truthful dramatic hook in Scene 1; one clear advisory message across Scenes 2–3; and a direct consultation CTA in Scene 4. A strong hook must never be fear-based, fake urgency, clickbait or a guarantee.\n\nCaption to validate (MSA):\n${A.brief.caption_ar}\n\nActual script sent to the ELEVAY voice flow (Egyptian Arabic):\n${preparedScript}\n\nDeterministic pre-check findings (you must independently review them and record the matching non-scene fault):\n${[...deterministicBlocks, scriptComplianceError].filter(Boolean).join("\n") || "none"}\n\nStoryboard labels and intended speech:\n${storyboard.map((s, i) => `Scene ${i + 1}: ${s.spoken_text_ar || "(missing)"}`).join("\n")}\n\n${evidenceNote}\n\nReturn EXACT JSON only: {"pass":true|false,"issues":["..."],"scene_failures":[{"scene":1|2|3|4,"issues":["..."],"fix":"exact keyframe correction"}],"non_scene_failures":["caption"|"outro"|"voice_script"|"unknown"],"verdict":"short explanation"}. Scene failures must name exact scenes 1..4. Do not use image indexes.`, { images: frames, note: `Comprehensive final reel QC (${frames.length} evidence sheet(s))`, maxTokens: 4000 });
+        const r = await askClaude(run, step, `You are the ONE comprehensive final ELEVAY finished-reel reviewer. This is the only Claude QC pass for reels. Fail closed: return pass:false if the verdict or any required scene mapping is uncertain or malformed.\n\nReview ALL supplied visual evidence against these requirements: 9:16 reel; explicit Scene 1, Scene 2, Scene 3, Scene 4 labels and coherent scene order; at least 3 visible frames per scene where the supplied evidence makes that feasible; no text, captions, logos, contacts, QR codes, passports, passport-like documents, flags, or the words/claims "تأشيرة", "فيزا", Visa, guarantees, approval guarantees or outcome guarantees; Arab/Middle Eastern people only in modern elegant clothing; no scarves, hijabs, keffiyehs, turbans, ghutras, shemaghs or other traditional headwear unless the run request expressly authorizes it (authorization: ${headwearAuthorized ? "yes" : "no"}); head-to-toe wardrobe and polished appropriate shoes when visible; natural faces, hands, feet, anatomy and grounded motion; person/wardrobe/object/architecture continuity within every scene; exact static official ELEVAY logo centred on pure white for the 3-second outro with no narration over it.\n\nAlso verify the spoken content: ${twentySecondQc ? "one continuous Egyptian Arabic message covering about 20 seconds (four 5-second takes), friendly and professional, Egyptian dialect only, country names in English and the company written Elevay" : "one continuous Egyptian Arabic message targeted to 18 seconds; a memorable but truthful dramatic hook in Scene 1; one clear advisory message across Scenes 2–3; and a direct consultation CTA in Scene 4"}. It must never be fear-based, fake urgency, clickbait or a guarantee.\n\nCaption to validate (MSA):\n${A.brief.caption_ar}\n\nActual script sent to the ELEVAY voice flow (Egyptian Arabic):\n${preparedScript}\n\nDeterministic pre-check findings (you must independently review them and record the matching non-scene fault):\n${[...deterministicBlocks, scriptComplianceError].filter(Boolean).join("\n") || "none"}\n\nStoryboard labels and intended speech:\n${storyboard.map((s, i) => `Scene ${i + 1}: ${s.spoken_text_ar || "(missing)"}`).join("\n")}\n\n${evidenceNote}\n\nReturn EXACT JSON only: {"pass":true|false,"issues":["..."],"scene_failures":[{"scene":1|2|3|4,"issues":["..."],"fix":"exact keyframe correction"}],"non_scene_failures":["caption"|"outro"|"voice_script"|"unknown"],"verdict":"short explanation"}. Scene failures must name exact scenes 1..4. Do not use image indexes.`, { images: frames, note: `Comprehensive final reel QC (${frames.length} evidence sheet(s))`, maxTokens: 4000 });
         const data = r.data;
         const sceneFailures = Array.isArray(data?.scene_failures) ? data.scene_failures : null;
         const validSceneFailures = sceneFailures && sceneFailures.every((f) => Number.isInteger(f?.scene) && f.scene >= 1 && f.scene <= 4 && Array.isArray(f.issues) && f.issues.length && typeof f.fix === "string" && f.fix.trim());
@@ -1395,7 +1430,6 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
     const datetime = String(sourceOptions.datetime_cairo || sourceBrief.publish?.datetime_cairo || "").slice(0, 16);
     const itemId = String(A.item_id || "");
     const originalObjective = String(source.request || sourceBrief.topic || `${source.kind} creative`).trim();
-    const oldNarration = (sourceBrief.reel?.storyboard || []).map((x) => String(x?.spoken_text_ar || "").trim()).filter(Boolean).join(" ").slice(0, 600);
     const recreationRequest = [
       `AI Studio full recreation requested from run #${source.id}.`,
       `Create a completely fresh ${source.kind} from the same marketing objective: ${originalObjective}`,
@@ -1404,8 +1438,7 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       "Do not reuse the old caption, storyboard, design, keyframes, clips, voice takes, final media or QC result. Produce a new creative version from the beginning.",
       source.kind === "reel" ? "Write the four Egyptian Arabic scene takes as one continuous, complete narration when read in order; they are split only for timing and audio production." : "",
       // Owner rule: a recreated reel always gets a brand-new voice-over text written to his voice-over instruction.
-      source.kind === "reel" ? `${VOICEOVER_LEAD} Write a completely NEW voice-over text for all four takes: every spoken word in natural Egyptian Arabic (عامية مصرية), never Modern Standard Arabic; only country names and ELEVAY in English letters.` : "",
-      source.kind === "reel" && oldNarration ? `Previous voice-over, for reference only — do not reuse any of its lines, hook or phrasing:\n${oldNarration}` : "",
+      source.kind === "reel" ? "The voice-over text is written fresh from the ELEVAY Voice-Over Prompt." : "",
     ].filter(Boolean).join("\n");
 
     if (itemId) {
@@ -1413,7 +1446,7 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       const item = state.items.find((x) => x.item_id === itemId);
       if (!item) throw new Error("The linked weekly-plan item no longer exists, so its version history cannot be protected.");
       if (item.revision?.status === "revision_pending") throw new Error("A revision is already in progress for this creative. Wait for it to finish before recreating it again.");
-      return reviseItem(itemId, { comment: recreationRequest, scope: "whole_concept" }, user);
+      return reviseItem(itemId, { comment: recreationRequest, scope: "whole_concept", voiceIdea: originalObjective }, user);
     }
 
     // Historical studio-only work has no linked item to version. It still gets
@@ -1422,7 +1455,7 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
     return create({
       kind: source.kind,
       request: recreationRequest,
-      options: { program, datetime_cairo: datetime, week, manualReviewOnly: true, recreatedFromRunId: source.id, fullRecreation: true },
+      options: { program, datetime_cairo: datetime, week, manualReviewOnly: true, recreatedFromRunId: source.id, fullRecreation: true, voiceIdea: originalObjective },
       user,
     });
   }
@@ -1450,7 +1483,7 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
     if (item.type === "carousel" && ["all","whole_concept","voice","reel_clip"].includes(scope)) throw new Error("Carousel changes must identify caption, schedule or design/slide scope.");
     if (item.type !== "reel" && ["voice", "reel_clip"].includes(scope)) throw new Error("Scene/voice scope requires a reel.");
     const revision = { itemId, baseVersion: item.version, scope, request, clip: clipNumber, authorizedBy: user.email };
-    const options = { week: itemId.slice(0, 8), program: item.program, datetime_cairo: item.publish?.datetime_cairo || "", revision, manualReviewOnly: true, noSceneRegeneration: ["caption", "schedule", "voice"].includes(scope) };
+    const options = { week: itemId.slice(0, 8), program: item.program, datetime_cairo: item.publish?.datetime_cairo || "", revision, manualReviewOnly: true, noSceneRegeneration: ["caption", "schedule", "voice"].includes(scope), voiceIdea: String(body.voiceIdea || [item.topic || item.brief || "", `Owner change request: ${request}`].filter(Boolean).join(" — ")).slice(0, 1500) };
     const persistAuthority = async () => {
       const result = await deps.mutate({}, st => E.decideItem(st,itemId,"request_changes",{comment:request,scope:scope === "all" ? "whole_concept" : scope,clip:clipNumber},user.email,"owner"));
       if (result?.ok === false) throw new Error(result.error);

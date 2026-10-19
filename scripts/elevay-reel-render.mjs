@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 /** Bumped whenever the renderer output changes; the website only gives jobs to Macs at or above its required version. 3 = voice-over timed per take (no silent reels) + fresh voice timing on audio rebuilds. */
-export const RENDERER_VERSION = 3;
+export const RENDERER_VERSION = 4; // 4 = also renders the owner's 20-second voice-over (four 5-second takes)
 const THREADS = 1;
 const FFMPEG = process.env.ELEVAY_FFMPEG_BIN || '/usr/bin/ffmpeg';
 const FFPROBE = process.env.ELEVAY_FFPROBE_BIN || '/usr/bin/ffprobe';
@@ -45,8 +45,9 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
   await fsp.mkdir(directory, { recursive: true });
   const narrationTargetSeconds = Number(manifest?.narrationTargetSeconds);
   const narrationSceneSeconds = Number(manifest?.narrationSceneSeconds);
-  if (narrationTargetSeconds !== 18 || narrationSceneSeconds !== 4.5) {
-    throw new Error('Render manifest must use the locked 18-second narration target and four 4.5-second voice takes.');
+  const twentySecond = narrationTargetSeconds === 20 && narrationSceneSeconds === 5;
+  if (!twentySecond && !(narrationTargetSeconds === 18 && narrationSceneSeconds === 4.5)) {
+    throw new Error('Render manifest must use a locked narration contract: 20 s (four 5-second takes) or 18 s (four 4.5-second takes).');
   }
   const linuxRss = process.platform === 'linux';
   const metrics = { method: linuxRss ? 'Linux /proc RSS sampled every 25 ms; isolated worker and all child processes' : 'Worker-process RSS sampled every 25 ms; macOS FFmpeg RSS unavailable', peakRssBytes: 0, peakFfmpegRssBytes: 0, ffmpegRssAvailable: linuxRss, threads: THREADS, stages: [] };
@@ -125,12 +126,14 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
         await ff(['-threads','1','-i',src,'-vn','-af',audioFormat,'-c:a','pcm_s16le',wav]);
         const d=Number((await probe(wav)).format.duration);
         if (!(d>0.2)) throw new Error(`Scene ${i+1} saved voice take is empty.`);
-        const tempo=d/narrationSceneSeconds;
-        if (tempo<0.80 || tempo>1.12) throw new Error(`Scene ${i+1} saved narration is ${d.toFixed(2)}s and cannot be naturally timed to its ${narrationSceneSeconds.toFixed(1)}-second share of the 18-second voice-over; saved take retained for review.`);
+        // Each take starts 0.1 s into its scene; in the 20-second contract it must end before the next scene starts.
+        const slot = twentySecond ? 4.9 : narrationSceneSeconds;
+        const tempo=d/slot;
+        if (tempo<0.80 || tempo>1.12) throw new Error(`Scene ${i+1} saved narration is ${d.toFixed(2)}s and cannot be naturally timed to its ${narrationSceneSeconds.toFixed(1)}-second share of the ${narrationTargetSeconds}-second voice-over; saved take retained for review.`);
         // Time each take in its own pass. atempo inside the 4-input mix produced broken timestamps that made
         // FFmpeg write a 0.1-second silent track (reels shipped with no voice-over).
         const timed=path.join(directory,`voice${i}.timed.wav`);
-        await ff(['-threads','1','-i',wav,'-af',`${audioFormat},atempo=${tempo.toFixed(5)},atrim=duration=${narrationSceneSeconds},asetpts=N/SR/TB`,'-c:a','pcm_s16le',timed]);
+        await ff(['-threads','1','-i',wav,'-af',`${audioFormat},atempo=${tempo.toFixed(5)},atrim=duration=${slot},asetpts=N/SR/TB`,'-c:a','pcm_s16le',timed]);
         voices.push(timed);tempos.push(tempo);rawVoiceSeconds.push(d);
         await fsp.rm(src,{force:true});
       }

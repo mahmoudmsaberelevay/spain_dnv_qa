@@ -963,6 +963,9 @@
       await api.saveSettings({ studio: { autoplan: el.querySelector('#apAuto').checked, autoClips: el.querySelector('#apClips').checked, reelLimitPerWeek: Number(el.querySelector('#apReels').value) } });
       S.studio.autopilot = await api.req('GET', 'ai/autopilot');
     }, 'Autopilot settings saved.');
+    const vos = el.querySelector('#voSave'), vor = el.querySelector('#voReset');
+    if (vos) vos.onclick = () => act(async () => { await api.saveSettings({ studio: { voiceoverPrompt: el.querySelector('#voPrompt').value } }); S.studio.autopilot = await api.req('GET', 'ai/autopilot'); }, 'ELEVAY Voice-Over Prompt saved.');
+    if (vor) vor.onclick = () => { if (!confirm('Reset the ELEVAY Voice-Over Prompt to the default text?')) return; act(async () => { await api.saveSettings({ studio: { voiceoverPrompt: null } }); S.studio.autopilot = await api.req('GET', 'ai/autopilot'); }, 'Voice-over prompt reset to default.'); };
     el.querySelectorAll('[data-run-act]').forEach((b) => (b.onclick = () => {
       const [a, id, n] = b.dataset.runAct.split(':');
       if (a === 'approve' && b.dataset.cost && !confirm(b.dataset.cost)) return;
@@ -983,6 +986,10 @@
       <p class="small muted" style="margin:0 0 12px">OpenAI designs never wait for approval. Requests from Manus run automatically. ${ap.studio.autoClips ? 'Higgsfield clips start by themselves once the keyframes pass QC' : 'Higgsfield clips wait for your approval'}, limited to ${ap.studio.reelLimitPerWeek} reels per 7 days; Meta work stays inside the 200,000 EGP cap and 100 EGP max CPL.</p>
       ${canEdit() ? `<div class="row"><button class="btn primary" data-autoplan="this">Plan this week now</button><button class="btn" data-autoplan="next">Plan next week now</button><button class="btn" data-autoplan="monthly">Draft next month's plan now</button></div>` : ''}
       ${isOwner() ? `<div class="row small" style="margin-top:12px"><label class="row"><input type="checkbox" id="apAuto" ${ap.studio.autoplan ? 'checked' : ''}> Plan automatically</label><label class="row"><input type="checkbox" id="apClips" ${ap.studio.autoClips ? 'checked' : ''}> Make Higgsfield clips automatically</label><label class="row">Reel limit per 7 days <input class="input" id="apReels" type="number" min="0" max="30" value="${ap.studio.reelLimitPerWeek}" style="width:70px"></label><button class="btn sm" id="apSave">Save</button></div>` : ''}
+      ${isOwner() ? `<details style="margin-top:14px"><summary><strong>ELEVAY Voice-Over Prompt</strong> <span class="small muted">${ap.studio.voiceoverPromptIsDefault ? '(default)' : '(edited)'}</span></summary>
+        <p class="small muted" style="margin:8px 0">Sent to OpenAI exactly as written for every reel voice-over (new reels, recreate from scratch, voice changes). <code>{{idea}}</code> is replaced with the reel's idea. The text is then checked automatically (Egyptian Arabic only, country names in English, company written "Elevay", 45–55 words ≈ 20 seconds, no تأشيرة, guarantees, legal or tax advice), regenerated once if a check fails, and split into 4 five-second takes for the ELEVAY voice.</p>
+        <textarea class="input" id="voPrompt" dir="auto" rows="12" style="width:100%;font-family:inherit">${esc(ap.studio.voiceoverPrompt || '')}</textarea>
+        <div class="row" style="margin-top:8px"><button class="btn sm" id="voSave">Save prompt</button><button class="btn sm" id="voReset">Reset to default</button></div></details>` : ''}
     </section>`;
   }
   const COST = { higgsfield: 'This submits 4 paid Higgsfield Pro clips. Continue?', manus: 'Manus will act on Meta with these instructions. Continue?' };

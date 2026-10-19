@@ -47,6 +47,7 @@ describe('external render queue', () => {
   });
   it('fails closed when a caller tries to change the locked narration target', async () => {
     const { queue } = setup();
-    await expect(queue.compose({ ...input, narrationTargetSeconds: 20 })).rejects.toThrow(/18-second narration target/);
+    await expect(queue.compose({ ...input, narrationTargetSeconds: 20 })).rejects.toThrow(/locked narration contract/);
+    await expect(queue.compose({ ...input, narrationTargetSeconds: 20, narrationSceneSeconds: 5 })).resolves.toMatchObject({ pending: true });
   });
 });
