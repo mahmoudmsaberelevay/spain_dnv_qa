@@ -27,7 +27,7 @@ function db() {
   };
 }
 
-function fakeMeta({ mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 150 }, instagramPermission = true, instagramStatus = "FINISHED" } = {}) {
+function fakeMeta({ mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 150 }, instagramPermission = true, instagramStatus = "FINISHED", permissions = ["ads_management", "ads_read", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", "read_insights", "leads_retrieval", "instagram_basic", "instagram_manage_insights", "instagram_manage_comments", "instagram_content_publish"] } = {}) {
   const posts = [];
   const fetcher = async (url, init) => {
     const u = new URL(url), path = u.pathname.split("/").slice(2).join("/"), body = init.body ? JSON.parse(init.body) : null;
@@ -45,7 +45,7 @@ function fakeMeta({ mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 15
         { id: "cm3", message: "Thanks!", from: { id: "111", name: "ELEVAY" }, created_time: new Date().toISOString() },
         { id: "cm4", message: "You took my money and nothing happened", from: { id: "u3", name: "Omar" }, created_time: new Date().toISOString() },
       ] };
-      else if (path === "me/permissions") out = { data: instagramPermission ? [{ permission: "instagram_content_publish", status: "granted" }] : [] };
+      else if (path === "me/permissions") out = { data: instagramPermission ? permissions.map((permission) => ({ permission, status: "granted" })) : [] };
       else if (path === "111") out = { instagram_business_account: { id: "ig1", username: "elevayglobal" } };
       else if (path === "ig1/media") out = { data: [] };
       else if (path === "111/conversations") out = { data: [] };
@@ -71,6 +71,14 @@ function hub({ autopilot = false, meta = {}, claude } = {}) {
 const owner = { email: "o@elevay.com", role: "owner" };
 
 describe("Meta actions", () => {
+  it("keeps inbox-review permissions separate from publishing readiness", async () => {
+    const { h } = hub();
+    const check = await h.checkConnection();
+    expect(check.key).toMatchObject({ ok: true, detail: "Key has required publishing permissions" });
+    expect(check.inbox_key).toMatchObject({ ok: false });
+    expect(check.inbox_key.detail).toMatch(/pending Meta review/);
+  });
+
   it("drafts replies to new comments, skips spam and the page's own comments, flags complaints", async () => {
     const { h } = hub();
     const r = await h.syncInbox();
