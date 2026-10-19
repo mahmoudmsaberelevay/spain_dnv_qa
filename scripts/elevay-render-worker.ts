@@ -41,6 +41,14 @@ export function isApprovedMacHostname(value: unknown) {
   return normalizeMacHostname(value) === APPROVED_HOSTNAME;
 }
 
+export function workerSourceUrl(origin: string, name: string, cacheBuster = Date.now()) {
+  const url = new URL(`/admin/render-worker-source/${encodeURIComponent(name)}`, origin);
+  // The CDN can retain an older source briefly after a safe worker deployment.
+  // A per-check query makes the worker fetch only the reviewed current response.
+  url.searchParams.set("v", String(cacheBuster));
+  return url.toString();
+}
+
 function cleanError(value: unknown) {
   return String(value || "Render worker error")
     .replace(/https?:\/\/\S+/gi, "[asset]")
@@ -67,9 +75,10 @@ async function updateRuntimeSources() {
   // LaunchAgent restart this process with the reviewed code.
   const origin = new URL(baseUrl).origin;
   const names = ["elevay-render-worker.ts", "elevay-reel-render.mjs"];
+  const cacheBuster = Date.now();
   let changed = false;
   for (const name of names) {
-    const response = await fetch(`${origin}/admin/render-worker-source/${name}`, { signal: AbortSignal.timeout(30_000) });
+    const response = await fetch(workerSourceUrl(origin, name, cacheBuster), { signal: AbortSignal.timeout(30_000) });
     if (!response.ok) throw new Error(`Worker source update check failed (${response.status}).`);
     const remote = Buffer.from(await response.arrayBuffer());
     if (!remote.length || remote.length > 4 * 1024 * 1024) throw new Error("Worker source update is invalid.");
