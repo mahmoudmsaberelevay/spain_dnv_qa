@@ -1620,7 +1620,7 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
         if (REEL_STAGES.every((k) => k === "final" || C.parts?.[k]) && C.mode !== "cuts") { C.join_crashes = Number(C.join_crashes || 0) + 1; if (C.join_crashes >= 1) C.mode = "cuts"; }
       }
       if (external && !step.watchdog_retried) {
-        step.status = "pending"; step.watchdog_retried = true; step.watchdog_retried_at = nowIso(); step.error = null; g.run.status = "queued";
+        step.status = "pending"; step.started_at = nowIso(); step.watchdog_retried = true; step.watchdog_retried_at = nowIso(); step.error = null; g.run.status = "queued";
         log(g.run, "studio", "team", `External-step watchdog: ${step.title} had ${hasExternalId ? "no progress" : "no provider job ID"} for ${hasExternalId ? "20" : "5"} minutes; retrying once.`);
         await save(g.run, g.ver).catch(() => {});
         continue;
