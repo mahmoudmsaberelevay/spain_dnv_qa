@@ -468,13 +468,24 @@ export function createMetaHub(deps) {
       if (current.type !== "reel" && !m.image_url) throw knownPublishError("The design image is missing.");
       // Validate Instagram before Facebook. If Meta has not granted the Instagram
       // permission, neither channel is sent, preventing a partial duplicate.
-      const ig = usesInstagram(channel) ? await instagramAccountForPublish(page) : null;
       let d = current.publish?.direct || {};
+      // Owner rule (20 Oct 2026): when only the Instagram permission is missing, Facebook is posted now and
+      // Instagram follows automatically once Meta grants it. Facebook's post ID is stored before anything else,
+      // so the next attempts only try Instagram and Facebook is never posted twice.
+      let ig = null, igBlocked = null;
+      if (usesInstagram(channel) && !d.instagram) {
+        try { ig = await instagramAccountForPublish(page); }
+        catch (e) { if (usesFacebook(channel) && e?.publishKnown) igBlocked = e; else throw e; }
+      }
       if (usesFacebook(channel) && !d.facebook) {
         await updateDirect(item.item_id, claimId, (x) => { x.lease.stage = "facebook_sending"; });
         const r = current.type === "reel" ? await graph.post(`${page.pageId}/videos`, page.token, { file_url: m.video_url, description: caption }) : await graph.post(`${page.pageId}/photos`, page.token, { url: m.image_url, caption });
         current = await updateDirect(item.item_id, claimId, (x) => { x.facebook = r.post_id || r.id; x.facebook_at = nowIso(); x.lease.stage = "instagram_preflight"; });
         d = current.publish.direct;
+      }
+      if (igBlocked) {
+        await updateDirect(item.item_id, claimId, (x) => { x.instagram_waiting = igBlocked.message; });
+        throw igBlocked;
       }
       if (usesInstagram(channel) && !d.instagram) {
         if (!d.ig_container) {
@@ -545,5 +556,25 @@ export function createMetaHub(deps) {
     await syncInbox().catch(() => {});
   }
 
-  return { ensureTables, enqueue, approve, reject, list, syncInbox, publishDue, publishItem, precheck, checkConnection, leadForms, tick, replyProblems, adsSnapshot };
+  /** Owner action: let approved posts that stopped retrying (e.g. missing Instagram permission) be published again.
+   * Never touches a post whose outcome is unknown (manual review) or one already fully published. */
+  async function releaseForPublishing(itemIds, actor) {
+    const released = [], skipped = [];
+    await deps.mutate({}, (st) => {
+      for (const id of itemIds) {
+        const item = st.items.find((x) => x.item_id === id);
+        const d = { ...(item?.publish?.direct || {}) };
+        if (!item || item.status !== "approved") { skipped.push({ id, why: "not an approved post" }); continue; }
+        if (d.manual_review) { skipped.push({ id, why: "publish outcome unknown; check the Page manually" }); continue; }
+        delete d.done; delete d.retry_after; delete d.error; delete d.lease; d.tries = 0; d.released_by = actor; d.released_at = nowIso();
+        item.publish = { ...item.publish, direct: d };
+        E.audit(st, actor, "publish.released", id, "Owner released the post for publishing (Facebook now, Instagram when permitted).");
+        released.push(id);
+      }
+      return { ok: true };
+    });
+    return { released, skipped };
+  }
+
+  return { ensureTables, enqueue, approve, reject, list, syncInbox, publishDue, publishItem, releaseForPublishing, precheck, checkConnection, leadForms, tick, replyProblems, adsSnapshot };
 }

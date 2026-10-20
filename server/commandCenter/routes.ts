@@ -565,6 +565,11 @@ route("POST", "/meta/actions/:id/approve", "owner", metaAct(async (m, ctx) => ({
 route("POST", "/meta/actions/:id/reject", "owner", metaAct(async (m, ctx) => { await m.reject(Number(ctx.params.id), ctx.user, String(ctx.body.reason || "")); return {}; }));
 route("POST", "/meta/inbox/sync", "marketer", metaAct(async (m) => m.syncInbox()));
 route("GET", "/meta/connection", "owner", metaAct(async (m) => ({ checks: await m.checkConnection() })));
+route("POST", "/meta/publish/release", "owner", metaAct(async (m, ctx) => {
+  const ids = Array.isArray(ctx.body?.item_ids) ? ctx.body.item_ids.map(String).slice(0, 50) : [];
+  if (!ids.length) throw new Error("item_ids is required.");
+  return await m.releaseForPublishing(ids, ctx.user.email);
+}));
 route("GET", "/meta/webhooks", "team", async () => ok({ ok: true, health: await getMetaPlatformWebhookHealth() }));
 route("GET", "/meta/forms", "team", metaAct(async (m) => ({ forms: await m.leadForms() })));
 route("GET", "/meta/campaigns", "team", metaAct(async (m) => { const s = await m.adsSnapshot(); return { campaigns: s.campaigns.map((c) => ({ ...c, cpl30: s.cpl[c.id] ?? null })), mtd: s.mtd, dailyTotal: s.dailyTotal }; }));
