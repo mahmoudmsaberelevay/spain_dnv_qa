@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 /** Bumped whenever renderer output changes. Version 4 adds the 20-second / four 5-second narration timeline. */
-export const RENDERER_VERSION = 6;
+export const RENDERER_VERSION = 7;
 const THREADS = 1;
 const FFMPEG = process.env.ELEVAY_FFMPEG_BIN || '/usr/bin/ffmpeg';
 const FFPROBE = process.env.ELEVAY_FFPROBE_BIN || '/usr/bin/ffprobe';
@@ -124,19 +124,25 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       for (let i=0;i<4;i++) {
         const src=path.join(directory,`voice${i}.src`), wav=path.join(directory,`voice${i}.wav`);
         await downloadFile(manifest.voiceUrls[i],src,15*1024*1024);
-        await ff(['-threads','1','-i',src,'-vn','-af',audioFormat,'-c:a','pcm_s16le',wav]);
-        const d=Number((await probe(wav)).format.duration);
+        await ff(['-threads','1','-i',src,'-vn','-af',audioFormat,'-c:a','pcm_s16le',wav+'.raw.wav']);
+        const rawD=Number((await probe(wav+'.raw.wav')).format.duration);
+        // Trim the silence ElevenLabs leaves before and after each take, so the four takes flow as one narration.
+        const trim='silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.04,areverse,silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.08,areverse';
+        try { await ff(['-threads','1','-i',wav+'.raw.wav','-af',`${audioFormat},${trim}`,'-c:a','pcm_s16le',wav]); } catch { await fsp.copyFile(wav+'.raw.wav', wav); }
+        let d=Number((await probe(wav)).format.duration);
+        if (!(d>0.2)) { await fsp.copyFile(wav+'.raw.wav', wav); d=rawD; }
+        await fsp.rm(wav+'.raw.wav',{force:true});
         if (!(d>0.2)) throw new Error(`Scene ${i+1} saved voice take is empty.`);
         // Owner rule (Oct 2026): one scene's take may run past its 5 s scene, up to 6.5 s; the takes flow together below.
         if (d > 6.5 + 0.05) throw new Error(`Scene ${i+1} saved narration is ${d.toFixed(2)}s, above the 6.5-second maximum for one scene; saved take retained for review.`);
-        wavs.push(wav); rawVoiceSeconds.push(d);
+        wavs.push(wav); rawVoiceSeconds.push(d); // spoken length after trimming silence
         await fsp.rm(src,{force:true});
       }
       // The four takes are one continuous narration, so they flow back to back: a take that runs a little past
       // its 5-second scene borrows time from a shorter neighbour instead of failing. Each take starts on its
       // scene when it can, never overlaps the previous one, and the voice always ends before the 20-second
       // outro. Only when the whole narration is longer than 20 s is it sped up evenly (at most 1.12x).
-      const GAP=0.12, LEAD=0.1, END=narrationTargetSeconds;
+      const GAP=0.1, LEAD=0.05, END=narrationTargetSeconds;
       const room=END-LEAD-3*GAP, spoken=rawVoiceSeconds.reduce((a,b)=>a+b,0);
       const tempo=Math.max(1, spoken/room);
       if (tempo>1.12 + 0.0001) throw new Error(`The saved voice-over is ${spoken.toFixed(2)}s in total and cannot be naturally timed to the ${narrationTargetSeconds}-second voice-over; saved takes retained for review.`);
