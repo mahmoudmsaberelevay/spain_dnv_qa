@@ -30,9 +30,13 @@ export function prepareThoughtfulArabicScript(text: string): string {
 }
 
 /** All CRM TTS paths use the same Egyptian preflight; never fall back to generic Arabic. */
-export function prepareElevayEgyptianSpeechScript(text: string, opts: { requireEgyptianMarker?: boolean } = {}): string {
+/** Delivery tag that asks eleven_v4 to keep an Egyptian accent (reel takes; owner rule Oct 2026). */
+export const ELEVAY_EGYPTIAN_ACCENT_TAG = "[Egyptian accent]";
+
+export function prepareElevayEgyptianSpeechScript(text: string, opts: { requireEgyptianMarker?: boolean; egyptianAccent?: boolean } = {}): string {
   try {
-    return prepareThoughtfulArabicScript(prepareEgyptianReelNarration(text, opts));
+    const script = prepareThoughtfulArabicScript(prepareEgyptianReelNarration(text, opts));
+    return opts.egyptianAccent ? script.replace(/^\[thoughtful\]\s*/i, `[thoughtful] ${ELEVAY_EGYPTIAN_ACCENT_TAG} `) : script;
   } catch (caught) {
     const error = new Error(caught instanceof Error ? caught.message : "Narration must be natural Egyptian Arabic.");
     error.name = "ElevenLabsLanguagePolicyError";
@@ -74,7 +78,7 @@ function getUserSafeErrorMessage(status: number, providerCode: string | null): s
   return "The voice-over could not be generated. Please review the text and try again.";
 }
 
-export async function generateElevayArabicVoiceOver(text: string, opts: { requireEgyptianMarker?: boolean } = {}) {
+export async function generateElevayArabicVoiceOver(text: string, opts: { requireEgyptianMarker?: boolean; egyptianAccent?: boolean } = {}) {
   if (!ENV.elevenLabsApiKey) {
     throw new Error("ELEVENLABS_NOT_CONFIGURED");
   }
@@ -172,6 +176,6 @@ export async function generateElevayArabicVoiceOver(text: string, opts: { requir
  * Never send unconverted MSA or Arabic spellings of country/company names. */
 // A reel scene take is one 5-second line of a voice-over whose full text already passed the Egyptian check,
 // so the take itself skips only the marker-word test (formal/non-Egyptian words are still refused).
-export async function generateElevayVideoVoiceOver(text: string, opts: { requireEgyptianMarker?: boolean } = {}) {
+export async function generateElevayVideoVoiceOver(text: string, opts: { requireEgyptianMarker?: boolean; egyptianAccent?: boolean } = {}) {
   return generateElevayArabicVoiceOver(text, opts);
 }
