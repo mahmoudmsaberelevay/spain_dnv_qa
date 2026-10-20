@@ -313,13 +313,13 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
   /** One take per scene with the ELEVAY voice clone configured on elevay.vip. */
   async function voiceScene(text) {
     const tts = await import("../elevenLabsTts");
-    const r = await tts.generateElevayVideoVoiceOver(text);
+    const r = await tts.generateElevayVideoVoiceOver(text, { requireEgyptianMarker: false }); // full script checked before the takes
     const bytes = Buffer.from(await (await fetcher(r.url)).arrayBuffer());
     return { url: r.url, sha256: r.sha256, bytes, script: r.script, voiceId: r.voiceId, model: r.model, languageCode: r.languageCode, dialect: r.dialect, requestId: r.requestId };
   }
-  async function checkEgyptianScript(text) {
+  async function checkEgyptianScript(text, opts = {}) {
     const { prepareEgyptianReelNarration } = await import("@shared/elevayVideoNarration");
-    return prepareEgyptianReelNarration(text);
+    return prepareEgyptianReelNarration(text, opts);
   }
   // Deliberately no FFmpeg fallback in the web container. An external worker owns rendering.
   async function composeReel(input) { return composeReelStep(input); }
@@ -793,9 +793,16 @@ export function createOrchestrator(deps) {
         const r = await askOpenAi(run, step, `${voicePrompt}\n\n${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n\"\"\"${run.request}\"\"\"\n${opts.program ? "Program: " + opts.program + "\n" : ""}The four spoken_text_ar values are recorded separately for timing, but together they MUST read as one complete, connected Egyptian Arabic voice-over narration—not numbered points, disconnected bullets or four standalone statements. Keep the complete narration within 45–55 Egyptian Arabic spoken words and split it into four approximately 5-second scene takes.\n\nNarrative communication structure: Scene 1 is a striking, cinematic but truthful dramatic hook about a real ambition, decision or uncertainty—never fake urgency, fear, clickbait or a guarantee. Scenes 2–3 clearly explain one valuable advisory message and why Elevay helps. Scene 4 finishes with a direct spoken consultation call to action such as \"احجز استشارتك مع Elevay دلوقتي\" or \"تواصل مع Elevay واحجز استشارتك\".\n\nReturn JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "final_edit_direction": "one concise editing direction for the external renderer: pacing, clean scene joins, voice through the first 20 seconds only, and a silent white-logo outro; never request text or logo changes", "scenes": [4 scenes in order dramatic hook → clear message → trust/proof → direct consultation CTA, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic continuation; only country names and Elevay in English letters, everything else in Arabic; write شينغن rather than Schengen"}]}`, { maxTokens: 5000 });
         const scenes = (r.data.scenes || []).slice(0, 4);
         if (scenes.length !== 4) throw new Error("OpenAI did not return 4 scenes.");
+        // Each 5-second line is checked for formal/non-Egyptian words, English and spelling; the "sounds Egyptian"
+        // marker test runs on the whole voice-over, because one short line can be Egyptian without a marker word.
+        let scriptReasons = [];
         const invalidScripts = async () => {
-          const invalid = [];
-          for (let i = 0; i < 4; i++) { try { const lockedIssue = lockedVoiceTextIssue(scenes[i].spoken_text_ar); if (lockedIssue) throw new Error(lockedIssue); if (!scenes[i].spoken_text_ar) throw new Error("Missing spoken line"); await providers.checkEgyptianScript(scenes[i].spoken_text_ar); } catch { invalid.push(i); } }
+          const invalid = []; scriptReasons = [];
+          for (let i = 0; i < 4; i++) { try { const lockedIssue = lockedVoiceTextIssue(scenes[i].spoken_text_ar); if (lockedIssue) throw new Error(lockedIssue); if (!scenes[i].spoken_text_ar) throw new Error("Missing spoken line"); await providers.checkEgyptianScript(scenes[i].spoken_text_ar, { requireEgyptianMarker: false }); } catch (e) { invalid.push(i); scriptReasons.push(`scene ${i + 1}: ${String(e?.message || e)}`); } }
+          if (!invalid.length) {
+            try { await providers.checkEgyptianScript(scenes.map((s) => s.spoken_text_ar).join(" ")); }
+            catch (e) { invalid.push(0, 1, 2, 3); scriptReasons.push(`whole voice-over: ${String(e?.message || e)} Use clear Egyptian colloquial words such as اللي، علشان، محتاج، دلوقتي، مش، إزاي، خلينا، معاك.`); }
+          }
           return invalid;
         };
         let invalid = await invalidScripts();
@@ -803,14 +810,15 @@ export function createOrchestrator(deps) {
         for (let repair = 0; (invalid.length || narrationFormatError) && repair < 1; repair++) {
           const needsFullNarrationRewrite = Boolean(narrationFormatError);
           const targets = needsFullNarrationRewrite ? [1, 2, 3, 4] : invalid.map(i=>i+1);
-          const fixed = await askOpenAi(run, step, `${voicePrompt}\n\nYour storyboard is accepted visually, but its Egyptian Arabic narration needs correction: ${narrationFormatError || `scene(s) ${targets.join(", ")} are missing or not Egyptian Arabic`}. Rewrite ONLY the spoken scripts for scene(s) ${targets.join(", ")}; when the full 20-second flow is invalid, rewrite all four spoken scripts. Keep every visual unchanged. The full narration is one continuous message, not points or bullets: four approximately 5-second takes and 45–55 words in total. Scene 1 needs a bold, cinematic but truthful dramatic hook—never fear, fake urgency, clickbait or guarantees. Scenes 2–3 explain one clear benefit. Scene 4 ends with a direct consultation CTA using Elevay. Country names and Elevay are English only; write شينغن in Arabic. No guarantees or تأشيرة. Current scenes:\n${JSON.stringify(scenes)}\nReturn JSON {"scenes":[{"scene":1,"spoken_text_ar":"..."}]} for exactly the requested scenes.`, { maxTokens: 1600 });
+          const fixed = await askOpenAi(run, step, `${voicePrompt}\n\nYour storyboard is accepted visually, but its Egyptian Arabic narration needs correction: ${narrationFormatError || `scene(s) ${targets.join(", ")} failed the Egyptian Arabic check (${scriptReasons.join(" | ")})`}. Rewrite ONLY the spoken scripts for scene(s) ${targets.join(", ")}; when the full 20-second flow is invalid, rewrite all four spoken scripts. Keep every visual unchanged. The full narration is one continuous message, not points or bullets: four approximately 5-second takes and 45–55 words in total. Scene 1 needs a bold, cinematic but truthful dramatic hook—never fear, fake urgency, clickbait or guarantees. Scenes 2–3 explain one clear benefit. Scene 4 ends with a direct consultation CTA using Elevay. Country names and Elevay are English only; write شينغن in Arabic. No guarantees or تأشيرة. Current scenes:\n${JSON.stringify(scenes)}\nReturn JSON {"scenes":[{"scene":1,"spoken_text_ar":"..."}]} for exactly the requested scenes.`, { maxTokens: 1600 });
           for (const s of fixed.data?.scenes || []) if ((needsFullNarrationRewrite || invalid.includes(s.scene - 1)) && Number.isInteger(s.scene) && s.scene >= 1 && s.scene <= 4) scenes[s.scene - 1].spoken_text_ar = s.spoken_text_ar;
           invalid = await invalidScripts();
           narrationFormatError = validateElevay20SecondReelNarration(scenes);
         }
-        if (invalid.length) throw new Error(`OpenAI could not produce valid Egyptian Arabic for scene(s) ${invalid.map((i) => i + 1).join(", ")}. No media generation started.`);
+        if (invalid.length) throw new Error(`OpenAI could not produce valid Egyptian Arabic for scene(s) ${invalid.map((i) => i + 1).join(", ")} after one correction (${scriptReasons.join(" | ")}). No media generation started.`);
         if (narrationFormatError) throw new Error(`OpenAI could not produce the required 20-second dramatic hook and direct CTA narration after one correction: ${narrationFormatError} No media generation started.`);
-        for (const s of scenes) { if (!s.keyframe_prompt || !s.motion_prompt || !s.spoken_text_ar) throw new Error("Storyboard is incomplete; no generation started."); const issue = lockedVoiceTextIssue(s.spoken_text_ar); if (issue) throw new Error(`${issue} No media generation started.`); await providers.checkEgyptianScript(s.spoken_text_ar); }
+        for (const s of scenes) { if (!s.keyframe_prompt || !s.motion_prompt || !s.spoken_text_ar) throw new Error("Storyboard is incomplete; no generation started."); const issue = lockedVoiceTextIssue(s.spoken_text_ar); if (issue) throw new Error(`${issue} No media generation started.`); await providers.checkEgyptianScript(s.spoken_text_ar, { requireEgyptianMarker: false }); }
+        await providers.checkEgyptianScript(scenes.map((s) => s.spoken_text_ar).join(" "));
         A.brief = { type: "reel", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", talent: { mode: "voiceover_elevay_vip", voice_source: "elevay_vip_module", speech_language: "egyptian_arabic" }, reel: { storyboard: scenes.map((s, i) => ({ clip: i + 1, keyframe_prompt: s.keyframe_prompt, motion_prompt: s.motion_prompt, spoken_text_ar: s.spoken_text_ar, delivery_direction_en: "Warm, premium, friendly professional Egyptian Arabic delivery; build cinematic tension in the truthful hook and finish with a confident direct consultation CTA." })), music_direction: r.data.music_direction || "Soft cinematic, royalty-free", final_edit_direction: String(r.data.final_edit_direction || "Clean direct joins; place the four voice takes across the first 20 seconds and keep the 3-second white logo outro silent.").slice(0, 600), duration_s: 23, narration_target_seconds: ELEVAY_REEL_NARRATION_STANDARD.targetSeconds, narration_target_scene_seconds: ELEVAY_REEL_NARRATION_STANDARD.targetSceneSeconds }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
         return;
       }

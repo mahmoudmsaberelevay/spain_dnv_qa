@@ -18,6 +18,19 @@ describe("video and reel voice-over preflight", () => {
     expect(() => prepareEgyptianReelNarration("بنراجع التفاصيل من خلال https://example.org")).toThrow("contact");
     expect(() => prepareEgyptianReelNarration("سوف نقدم لكم المعلومات الصحيحة")).toThrow("natural Egyptian Arabic");
   });
+  it("checks a single 5-second scene line without demanding a marker word, but still refuses formal Arabic", () => {
+    const line = "حياة جديدة في Portugal أقرب بكتير مما تتخيل لما الخطة تبقى واضحة.";
+    expect(() => prepareEgyptianReelNarration("حياة جديدة في Portugal أقرب مما تتخيل والخطة واضحة.")).toThrow("Egyptian Arabic");
+    expect(prepareEgyptianReelNarration(line, { requireEgyptianMarker: false })).toContain("Portugal");
+    expect(() => prepareEgyptianReelNarration("سوف نقدم لكم المعلومات الصحيحة", { requireEgyptianMarker: false })).toThrow("natural Egyptian Arabic");
+    expect(prepareEgyptianReelNarration("الطريق اللي بتدور عليه أوضح دلوقتي")).toContain("اللي");
+    expect(prepareEgyptianReelNarration("ناس كتير محتاجة خطة واضحة ومش لازم تستنى، خلينا نبدأ")).toContain("كتير");
+  });
+  it("refuses formal-sounding narration that would be spoken in an official accent", () => {
+    expect(() => prepareEgyptianReelNarration("نحن في Elevay نساعدك في اختيار المسار المناسب")).toThrow('"نحن" is formal');
+    expect(() => prepareEgyptianReelNarration("حياة جديدة في Portugal تنتظرك مع عائلتك. Elevay ترافقك في كل خطوة نحو مستقبل أفضل.")).toThrow("does not sound clearly Egyptian");
+    expect(prepareEgyptianReelNarration("لو بتفكر تنقل حياتك وعيلتك لـ Portugal، خلينا نبدأ صح. مع Elevay هتعرف إزاي تختار الطريق اللي يناسبك. احجز استشارتك دلوقتي.")).toContain("Portugal");
+  });
   it("requires one 20-second continuous narration with a truthful hook and direct consultation CTA", () => {
     const scenes = [
       { spoken_text_ar: "لو قرار عيلتك مؤجل، خلينا نبص على Portugal بهدوء ونرتب أول خطوة." },

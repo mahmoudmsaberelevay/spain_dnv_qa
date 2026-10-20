@@ -26,7 +26,12 @@ const egyptianPhrases: Array<[RegExp, string]> = [
 ];
 
 /** Strictly preparation-only: never sends text or logs script/credentials. */
-export function prepareEgyptianReelNarration(value: string): string {
+/**
+ * `requireEgyptianMarker: false` is for checking ONE 5-second scene line: a 10–14-word line can be natural
+ * Egyptian Arabic without containing any of the marker words, so the positive marker test runs on the
+ * full joined voice-over instead. Formal (MSA) and non-Egyptian words are still rejected in every line.
+ */
+export function prepareEgyptianReelNarration(value: string, { requireEgyptianMarker = true }: { requireEgyptianMarker?: boolean } = {}): string {
   let text = value.replace(/^\[thoughtful\]\s*/i, "").replace(/\\n/g, "\n").trim();
   // Planning models sometimes include shot directions in scriptCopy. Those
   // directions belong in the visual brief, never in the spoken ElevenLabs text.
@@ -44,10 +49,21 @@ export function prepareEgyptianReelNarration(value: string): string {
   if (error) throw new Error(error);
   // Do not silently send unconverted formal scripts to ElevenLabs. The owner
   // can edit unusual phrasing rather than synthesizing the wrong dialect.
-  const nonEgyptian = /(?:^|[\s،.!؟])(?:هل|سوف|إنه|إنها|يمكنك|يمكن أن|من دون|بدك|بدي|شو|كتير|هلق|وايد|شلون)(?=[\s،.!؟]|$)/;
-  const egyptian = /(?:بنبدأ|بنراجع|بنتكلم|بتفكر|بتشتغل|بتخطط|بنبص|بنرتب|بنوضح|بنقولك|بيبدأ|إيه|اسأل|معاك|ليك|علشان|عشان|خلينا|من غير|محتاج|تقدر|خد قرارك|دلوقتي|بقى|عايز|عايزة|إحنا|احنا|مش|بترافقك|بيرافق|عيلتك|عيلتنا|شغلك)/;
-  if (nonEgyptian.test(text) || !egyptian.test(text)) {
-    throw new Error("Narration must be natural Egyptian Arabic before ElevenLabs; edit the script or request a revised plan.");
+  // Formal (Modern Standard) and non-Egyptian words make ElevenLabs read the take in a formal accent, so any of
+  // them stops the script and OpenAI rewrites it in Egyptian colloquial Arabic.
+  const formalWord = /(?:^|[\s،.!؟,?])(هل|سوف|إنه|إنها|يمكنك|يمكن أن|من دون|الذي|التي|الذين|اللذين|هذا|هذه|هؤلاء|ذلك|تلك|لماذا|ماذا|كيف|أين|متى|لدينا|لديك|لديكم|ليس|ليست|لسنا|نحن|أنت|أنتم|لن|لم|حيث|كي|لكي|الآن|أيضا|أيضاً|فقط|يجب|عليك أن|نستطيع|تستطيع|يستطيع|عندما|هناك|تريد|نريد|نود|سنساعدك|ستجد|ستعيش|ستبدأ|بدك|بدي|شو|هلق|هيك|وايد|شلون|زين|أبغى|ابغى)(?=[\s،.!؟,?]|$)/;
+  const formal = text.match(formalWord);
+  if (formal) {
+    throw new Error(`Narration must be natural Egyptian Arabic before ElevenLabs: "${formal[1]}" is formal or non-Egyptian Arabic; rewrite it the way Egyptians speak (e.g. ده/دي، اللي، ليه، إزاي، دلوقتي، كمان، بس، لازم، لما، فيه، عايز، إحنا).`);
+  }
+  if (requireEgyptianMarker) {
+    // A full voice-over must sound clearly Egyptian, not just avoid formal words: at least 3 different Egyptian markers (fewer for a short line).
+    const strong = /(?:^|[\s،.!؟,?])و?(مش|اللي|علشان|عشان|دلوقتي|إزاي|ازاي|ليه|فين|إمتى|امتى|كده|كدا|أوي|اوي|بجد|يلا|عايز|عايزة|عايزين|إحنا|احنا|إنت|انت|إيه|خلينا|من غير|بقى|معاك|معاكم|ده|دي|دول|كمان|بس|لازم|لما|فيه|عندنا|عندك|ب[نتي][\u0621-\u064A]{3,}|ه[نتي][\u0621-\u064A]{3,})(?=[\s،.!؟,?]|$)/g;
+    const found = new Set([...` ${text} `.matchAll(strong)].map((m) => m[1]));
+    const words = text.split(/\s+/).filter(Boolean).length;
+    if (found.size < (words >= 30 ? 3 : words >= 15 ? 2 : 1)) {
+      throw new Error("Narration must be natural Egyptian Arabic before ElevenLabs: it does not sound clearly Egyptian. Use everyday Egyptian colloquial words (e.g. اللي، علشان، محتاج، دلوقتي، مش، إزاي، خلينا، بنساعدك، هتقدر).");
+    }
   }
   return text;
 }
