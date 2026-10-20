@@ -1385,7 +1385,11 @@ Return JSON only: {"posts": [one per planned post, in order: {"index": 1, "type"
       // job. Omitting these values changes validation/hash behavior and can make
       // a completed external render look permanently unavailable.
       const timing = currentNarrationTiming(A.brief);
-      const s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: C.parts || {}, mode: C.mode || "cuts", jobId: C.jobId, editDirection: A.brief?.reel?.final_edit_direction, narrationTargetSeconds: timing.targetSeconds, narrationSceneSeconds: timing.targetSceneSeconds });
+      // A render job that failed on the Mac must fail this step visibly (owner can Retry). Throwing here used to
+      // escape the poll and leave the reel stuck on "Rendering the final edit" forever.
+      let s;
+      try { s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: C.parts || {}, mode: C.mode || "cuts", jobId: C.jobId, editDirection: A.brief?.reel?.final_edit_direction, narrationTargetSeconds: timing.targetSeconds, narrationSceneSeconds: timing.targetSceneSeconds }); }
+      catch (e) { step.status = "failed"; step.error = String(e?.message || e).slice(0, 500); C.waitReason = null; log(run, "system", "studio", `Failed: ${step.error}`); return false; }
       const nextParts = s.parts || C.parts || {};
       const partsFingerprint = Object.keys(nextParts).sort().join(",");
       if (partsFingerprint !== C.partsFingerprint) {

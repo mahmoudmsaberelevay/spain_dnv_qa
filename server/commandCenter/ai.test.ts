@@ -97,6 +97,7 @@ function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = n
       calls.render.push(input);
       if (externalRender) {
         const id = "render-1", stored = q.renderJobs.get(id);
+        if (stored?.status === "failed") throw new Error("External render failed: " + stored.error);
         if (!stored || stored.status !== "done") return { pending: true, jobId: id, parts: {} };
         return { parts: {}, final: stored.doc.final };
       }
@@ -545,5 +546,20 @@ describe("owner rule: Manus writes the week file when OpenAI cannot", () => {
     for (let i = 0; i < 50 && r.status !== "done"; i++) { await ctx.o.tick(); r = await settle(ctx.o, run.id); }
     expect(r.artifacts.week_content).toMatchObject({ written_by: "manus", missing: [] });
     expect(r.artifacts.children).toHaveLength(7);
+  });
+});
+
+describe("a render that fails on the Mac while the reel waits", () => {
+  it("fails the render step visibly (so Retry works) instead of leaving the reel stuck on Rendering", async () => {
+    const ctx = setup([STORYBOARD, PASS], { externalRender: true });
+    const run = await ctx.o.create({ kind: "reel", request: "Mac failure while waiting", user: marketer });
+    let r = await settle(ctx.o, run.id);
+    ctx.finishClips();
+    for (let i = 0; i < 30; i++) { await ctx.o.tick(); r = await ctx.o.get(run.id); if (r.steps.find((s) => s.action === "compose_reel").status === "waiting") break; await new Promise((res) => setTimeout(res, 3)); }
+    expect(r.steps.find((s) => s.action === "compose_reel").status).toBe("waiting");
+    ctx.q.renderJobs.set("render-1", { status: "failed", error: "Scene 2 saved narration is too long" });
+    for (let i = 0; i < 30; i++) { await ctx.o.tick(); r = await ctx.o.get(run.id); if (r.status === "failed") break; await new Promise((res) => setTimeout(res, 3)); }
+    expect(r.status).toBe("failed");
+    expect(r.steps.find((s) => s.action === "compose_reel")).toMatchObject({ status: "failed", error: expect.stringContaining("too long") });
   });
 });
