@@ -1098,7 +1098,9 @@ export function createOrchestrator(deps) {
         try {
           if (!providers.composeReelStep) throw new Error("Reel render adapter is not configured. Waiting for render worker is required; in-process rendering is disabled.");
           A.compose = A.compose || { parts: {}, mode: "cuts" };
-          A.compose.attemptStartedAt = A.compose.attemptStartedAt || nowIso();
+          // This step only executes when it (re)starts, so the watchdog clock starts now. Keeping the first attempt's
+          // time made the watchdog stop a retried render seconds after the Mac picked it up.
+          A.compose.attemptStartedAt = nowIso(); A.compose.lastProgressAt = nowIso(); step.started_at = nowIso();
           const timing = currentNarrationTiming(A.brief);
           const s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: A.compose.parts, mode: A.compose.mode, jobId: A.compose.jobId, editDirection: A.brief.reel.final_edit_direction, narrationTargetSeconds: timing.targetSeconds, narrationSceneSeconds: timing.targetSceneSeconds, requeueFailed: true });
           A.compose.parts = s.parts || A.compose.parts;
