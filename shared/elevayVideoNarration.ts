@@ -51,7 +51,7 @@ export function prepareEgyptianReelNarration(value: string, { requireEgyptianMar
   // can edit unusual phrasing rather than synthesizing the wrong dialect.
   // Formal (Modern Standard) and non-Egyptian words make ElevenLabs read the take in a formal accent, so any of
   // them stops the script and OpenAI rewrites it in Egyptian colloquial Arabic.
-  const formalWord = /(?:^|[\s،.!؟,?])(هل|سوف|إنه|إنها|يمكنك|يمكن أن|من دون|الذي|التي|الذين|اللذين|هذا|هذه|هؤلاء|ذلك|تلك|لماذا|ماذا|كيف|أين|متى|لدينا|لديك|لديكم|ليس|ليست|لسنا|نحن|أنت|أنتم|لن|لم|حيث|كي|لكي|الآن|أيضا|أيضاً|فقط|يجب|عليك أن|نستطيع|تستطيع|يستطيع|عندما|هناك|تريد|نريد|نود|سنساعدك|ستجد|ستعيش|ستبدأ|بدك|بدي|شو|هلق|هيك|وايد|شلون|زين|أبغى|ابغى)(?=[\s،.!؟,?]|$)/;
+  const formalWord = /(?:^|[\s،.!؟,?])(هل|سوف|إنه|إنها|يمكنك|يمكن أن|من دون|الذي|التي|الذين|اللذين|هذا|هذه|هؤلاء|ذلك|تلك|لماذا|ماذا|كيف|أين|متى|لدينا|لديك|لديكم|ليس|ليست|لسنا|نحن|أنت|أنتم|لن|لم|حيث|كي|لكي|الآن|أيضا|أيضاً|فقط|يجب|عليك أن|نستطيع|تستطيع|يستطيع|عندما|هناك|تريد|نريد|نود|سنساعدك|ستجد|ستعيش|ستبدأ|لنبدأ|لنساعدك|لنكمل|نقوم|تقوم|يقوم|نسعى|نوفر|يوفر|توفر|بدك|بدي|شو|هلق|هيك|وايد|شلون|زين|أبغى|ابغى)(?=[\s،.!؟,?]|$)/;
   const formal = text.match(formalWord);
   if (formal) {
     throw new Error(`Narration must be natural Egyptian Arabic before ElevenLabs: "${formal[1]}" is formal or non-Egyptian Arabic; rewrite it the way Egyptians speak (e.g. ده/دي، اللي، ليه، إزاي، دلوقتي، كمان، بس، لازم، لما، فيه، عايز، إحنا).`);
