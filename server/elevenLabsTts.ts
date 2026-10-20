@@ -30,9 +30,9 @@ export function prepareThoughtfulArabicScript(text: string): string {
 }
 
 /** All CRM TTS paths use the same Egyptian preflight; never fall back to generic Arabic. */
-export function prepareElevayEgyptianSpeechScript(text: string): string {
+export function prepareElevayEgyptianSpeechScript(text: string, opts: { requireEgyptianMarker?: boolean } = {}): string {
   try {
-    return prepareThoughtfulArabicScript(prepareEgyptianReelNarration(text));
+    return prepareThoughtfulArabicScript(prepareEgyptianReelNarration(text, opts));
   } catch (caught) {
     const error = new Error(caught instanceof Error ? caught.message : "Narration must be natural Egyptian Arabic.");
     error.name = "ElevenLabsLanguagePolicyError";
@@ -74,7 +74,7 @@ function getUserSafeErrorMessage(status: number, providerCode: string | null): s
   return "The voice-over could not be generated. Please review the text and try again.";
 }
 
-export async function generateElevayArabicVoiceOver(text: string) {
+export async function generateElevayArabicVoiceOver(text: string, opts: { requireEgyptianMarker?: boolean } = {}) {
   if (!ENV.elevenLabsApiKey) {
     throw new Error("ELEVENLABS_NOT_CONFIGURED");
   }
@@ -92,7 +92,7 @@ export async function generateElevayArabicVoiceOver(text: string) {
     await notifyOwner({title:"ELEVAY voice configuration blocked",content:"ELEVAY_VOICE_ID is missing or differs from the approved voice. No speech was generated and no fallback was used."}).catch(()=>false);
     throw error;
   }
-  const script = prepareElevayEgyptianSpeechScript(text);
+  const script = prepareElevayEgyptianSpeechScript(text, opts);
   if (script.length > ELEVAY_ARABIC_VOICE_DEFAULTS.maxScriptCharacters) {
     const error = new Error("Keep each Egyptian Arabic speech request within 1,900 characters. Split longer narration into separate takes.");
     error.name = "ElevenLabsLanguagePolicyError";
@@ -170,6 +170,8 @@ export async function generateElevayArabicVoiceOver(text: string) {
 
 /** Video/reel-only entry point: prepare spoken Egyptian Arabic before TTS.
  * Never send unconverted MSA or Arabic spellings of country/company names. */
-export async function generateElevayVideoVoiceOver(text: string) {
-  return generateElevayArabicVoiceOver(text);
+// A reel scene take is one 5-second line of a voice-over whose full text already passed the Egyptian check,
+// so the take itself skips only the marker-word test (formal/non-Egyptian words are still refused).
+export async function generateElevayVideoVoiceOver(text: string, opts: { requireEgyptianMarker?: boolean } = {}) {
+  return generateElevayArabicVoiceOver(text, opts);
 }

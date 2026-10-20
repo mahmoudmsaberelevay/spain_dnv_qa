@@ -18,6 +18,14 @@ describe("video and reel voice-over preflight", () => {
     expect(() => prepareEgyptianReelNarration("بنراجع التفاصيل من خلال https://example.org")).toThrow("contact");
     expect(() => prepareEgyptianReelNarration("سوف نقدم لكم المعلومات الصحيحة")).toThrow("natural Egyptian Arabic");
   });
+  it("checks a single 5-second scene line without demanding a marker word, but still refuses formal Arabic", () => {
+    const line = "حياة جديدة في Portugal أقرب بكتير مما تتخيل لما الخطة تبقى واضحة.";
+    expect(() => prepareEgyptianReelNarration("حياة جديدة في Portugal أقرب مما تتخيل لما الخطة واضحة.")).toThrow("Egyptian Arabic");
+    expect(prepareEgyptianReelNarration(line, { requireEgyptianMarker: false })).toContain("Portugal");
+    expect(() => prepareEgyptianReelNarration("سوف نقدم لكم المعلومات الصحيحة", { requireEgyptianMarker: false })).toThrow("natural Egyptian Arabic");
+    expect(prepareEgyptianReelNarration("الطريق اللي بتدور عليه أوضح دلوقتي")).toContain("اللي");
+    expect(prepareEgyptianReelNarration("ناس كتير محتاجة خطة واضحة")).toContain("كتير");
+  });
   it("requires one 20-second continuous narration with a truthful hook and direct consultation CTA", () => {
     const scenes = [
       { spoken_text_ar: "لو قرار عيلتك مؤجل، خلينا نبص على Portugal بهدوء ونرتب أول خطوة." },

@@ -26,7 +26,12 @@ const egyptianPhrases: Array<[RegExp, string]> = [
 ];
 
 /** Strictly preparation-only: never sends text or logs script/credentials. */
-export function prepareEgyptianReelNarration(value: string): string {
+/**
+ * `requireEgyptianMarker: false` is for checking ONE 5-second scene line: a 10–14-word line can be natural
+ * Egyptian Arabic without containing any of the marker words, so the positive marker test runs on the
+ * full joined voice-over instead. Formal (MSA) and non-Egyptian words are still rejected in every line.
+ */
+export function prepareEgyptianReelNarration(value: string, { requireEgyptianMarker = true }: { requireEgyptianMarker?: boolean } = {}): string {
   let text = value.replace(/^\[thoughtful\]\s*/i, "").replace(/\\n/g, "\n").trim();
   // Planning models sometimes include shot directions in scriptCopy. Those
   // directions belong in the visual brief, never in the spoken ElevenLabs text.
@@ -44,9 +49,9 @@ export function prepareEgyptianReelNarration(value: string): string {
   if (error) throw new Error(error);
   // Do not silently send unconverted formal scripts to ElevenLabs. The owner
   // can edit unusual phrasing rather than synthesizing the wrong dialect.
-  const nonEgyptian = /(?:^|[\s،.!؟])(?:هل|سوف|إنه|إنها|يمكنك|يمكن أن|من دون|بدك|بدي|شو|كتير|هلق|وايد|شلون)(?=[\s،.!؟]|$)/;
-  const egyptian = /(?:بنبدأ|بنراجع|بنتكلم|بتفكر|بتشتغل|بتخطط|بنبص|بنرتب|بنوضح|بنقولك|بيبدأ|إيه|اسأل|معاك|ليك|علشان|عشان|خلينا|من غير|محتاج|تقدر|خد قرارك|دلوقتي|بقى|عايز|عايزة|إحنا|احنا|مش|بترافقك|بيرافق|عيلتك|عيلتنا|شغلك)/;
-  if (nonEgyptian.test(text) || !egyptian.test(text)) {
+  const nonEgyptian = /(?:^|[\s،.!؟])(?:هل|سوف|إنه|إنها|يمكنك|يمكن أن|من دون|بدك|بدي|شو|هلق|وايد|شلون)(?=[\s،.!؟]|$)/;
+  const egyptian = /(?:بنبدأ|بنراجع|بنتكلم|بتفكر|بتشتغل|بتخطط|بنبص|بنرتب|بنوضح|بنقولك|بيبدأ|إيه|اسأل|معاك|ليك|علشان|عشان|خلينا|من غير|محتاج|تقدر|خد قرارك|دلوقتي|بقى|عايز|عايزة|إحنا|احنا|مش|بترافقك|بيرافق|عيلتك|عيلتنا|شغلك|اللي|إزاي|ازاي|ليه|فين|إمتى|امتى|كده|كدا|أوي|اوي|بجد|يلا|هتقدر|هتلاقي|هتعيش|هنساعدك|هنرتب|بنساعدك|بتدور|بتحلم|ولادك|حاجة|احجز|كلمنا|كلّمنا|ابعتلنا|تعالى)/;
+  if (nonEgyptian.test(text) || (requireEgyptianMarker && !egyptian.test(text))) {
     throw new Error("Narration must be natural Egyptian Arabic before ElevenLabs; edit the script or request a revised plan.");
   }
   return text;
