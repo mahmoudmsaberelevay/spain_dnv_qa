@@ -1100,7 +1100,7 @@ export function createOrchestrator(deps) {
           A.compose = A.compose || { parts: {}, mode: "cuts" };
           A.compose.attemptStartedAt = A.compose.attemptStartedAt || nowIso();
           const timing = currentNarrationTiming(A.brief);
-          const s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: A.compose.parts, mode: A.compose.mode, jobId: A.compose.jobId, editDirection: A.brief.reel.final_edit_direction, narrationTargetSeconds: timing.targetSeconds, narrationSceneSeconds: timing.targetSceneSeconds });
+          const s = await providers.composeReelStep({ runId: run.id, clipUrls: A.clips.map((c) => c.url), voiceUrls: A.voices.map((v) => v.url), musicUrl, parts: A.compose.parts, mode: A.compose.mode, jobId: A.compose.jobId, editDirection: A.brief.reel.final_edit_direction, narrationTargetSeconds: timing.targetSeconds, narrationSceneSeconds: timing.targetSceneSeconds, requeueFailed: true });
           A.compose.parts = s.parts || A.compose.parts;
           if (s.pending) {
             A.compose.jobId = s.jobId || A.compose.jobId || null;
