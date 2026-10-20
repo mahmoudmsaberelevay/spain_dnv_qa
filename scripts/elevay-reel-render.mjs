@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 /** Bumped whenever renderer output changes. Version 4 adds the 20-second / four 5-second narration timeline. */
-export const RENDERER_VERSION = 7;
+export const RENDERER_VERSION = 8;
 const THREADS = 1;
 const FFMPEG = process.env.ELEVAY_FFMPEG_BIN || '/usr/bin/ffmpeg';
 const FFPROBE = process.env.ELEVAY_FFPROBE_BIN || '/usr/bin/ffprobe';
@@ -119,7 +119,10 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
     // part. Rebuilding audio must replace prior timing rather than append to
     // stale values from a silent or superseded final.
     let rawVoiceSeconds = [];
-    if (!(await restore('audio', 'm4a'))) {
+    let sceneSeconds = Array.isArray(parts.sceneSeconds) && parts.sceneSeconds.length === 4 ? parts.sceneSeconds.map(Number) : [5,5,5,5];
+    let narrativeSeconds = sceneSeconds.reduce((a,b)=>a+b,0);
+    // A saved mix is reused only with its scene lengths (older mixes without them are rebuilt from the takes).
+    if (!(Array.isArray(parts.sceneSeconds) && parts.sceneSeconds.length === 4 && await restore('audio', 'm4a'))) {
       const voices = [], appliedVoiceTempos = [], voicePaddingSeconds = [], wavs = [];
       for (let i=0;i<4;i++) {
         const src=path.join(directory,`voice${i}.src`), wav=path.join(directory,`voice${i}.wav`);
@@ -133,8 +136,6 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
         if (!(d>0.2)) { await fsp.copyFile(wav+'.raw.wav', wav); d=rawD; }
         await fsp.rm(wav+'.raw.wav',{force:true});
         if (!(d>0.2)) throw new Error(`Scene ${i+1} saved voice take is empty.`);
-        // Owner rule (Oct 2026): one scene's take may run past its 5 s scene, up to 6.5 s; the takes flow together below.
-        if (d > 6.5 + 0.05) throw new Error(`Scene ${i+1} saved narration is ${d.toFixed(2)}s, above the 6.5-second maximum for one scene; saved take retained for review.`);
         wavs.push(wav); rawVoiceSeconds.push(d); // spoken length after trimming silence
         await fsp.rm(src,{force:true});
       }
@@ -144,12 +145,21 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       // outro. Only when the whole narration is longer than 20 s is it sped up evenly (at most 1.12x).
       const GAP=0.1, LEAD=0.05, END=narrationTargetSeconds;
       const room=END-LEAD-3*GAP, spoken=rawVoiceSeconds.reduce((a,b)=>a+b,0);
-      const tempo=Math.max(1, spoken/room);
-      if (tempo>1.12 + 0.0001) throw new Error(`The saved voice-over is ${spoken.toFixed(2)}s in total and cannot be naturally timed to the ${narrationTargetSeconds}-second voice-over; saved takes retained for review.`);
+      // Owner rule (20 Oct 2026): each scene aims for 5 s, but a longer voice never stops production. Up to 1.12x
+      // speed keeps 20 s; beyond that the scenes whose voice runs long are lengthened (gentle slow motion) and the
+      // reel simply runs longer. The 3-second logo outro always stays silent at the end.
+      const tempo=Math.min(1.12, Math.max(1, spoken/room));
       const len=rawVoiceSeconds.map(d=>d/tempo), starts=[];
-      for (let i=0;i<4;i++) starts.push(Math.max(i*narrationSceneSeconds+(i?0:LEAD), i ? starts[i-1]+len[i-1]+GAP : LEAD));
-      for (let i=3;i>=0;i--) starts[i]=Math.min(starts[i], i===3 ? END-len[3] : starts[i+1]-GAP-len[i]);
-      if (starts[0] < 0) throw new Error(`The saved voice-over cannot be placed within ${narrationTargetSeconds} seconds; saved takes retained for review.`);
+      const fits = len.reduce((a,b)=>a+b,0) + LEAD + 3*GAP <= END + 0.001;
+      if (fits) {
+        for (let i=0;i<4;i++) starts.push(Math.max(i*narrationSceneSeconds+(i?0:LEAD), i ? starts[i-1]+len[i-1]+GAP : LEAD));
+        for (let i=3;i>=0;i--) starts[i]=Math.min(starts[i], i===3 ? END-len[3] : starts[i+1]-GAP-len[i]);
+        sceneSeconds=[5,5,5,5];
+      } else {
+        sceneSeconds=len.map((l,i)=>Math.max(narrationSceneSeconds, Math.ceil((l + GAP + (i===0?LEAD:0)) * 30) / 30));
+        let at=0; for (let i=0;i<4;i++) { starts.push(at + (i===0?LEAD:0)); at+=sceneSeconds[i]; }
+      }
+      narrativeSeconds=sceneSeconds.reduce((a,b)=>a+b,0);
       for (let i=0;i<4;i++) {
         // Time each take in its own pass. atempo inside the 4-input mix produced broken timestamps that made
         // FFmpeg write a 0.1-second silent track (reels shipped with no voice-over).
@@ -157,26 +167,27 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
         const voiceFilter = tempo > 1.0001 ? `${audioFormat},atempo=${tempo.toFixed(5)},asetpts=N/SR/TB` : `${audioFormat},asetpts=N/SR/TB`;
         await ff(['-threads','1','-i',wavs[i],'-af',voiceFilter,'-c:a','pcm_s16le',timed]);
         voices.push(timed); appliedVoiceTempos.push(tempo);
-        voicePaddingSeconds.push(Math.max(0, Math.min(5, (i<3 ? starts[i+1] : END) - starts[i] - len[i])));
+        voicePaddingSeconds.push(Math.max(0, Math.min(5, (i<3 ? starts[i+1] : narrativeSeconds) - starts[i] - len[i])));
       }
       const voiceStarts=starts.map(x=>Math.round(x*1000));
       let musicFile=null;
       if(manifest.musicUrl) try { musicFile=path.join(directory,'music.src');await downloadFile(manifest.musicUrl,musicFile,25*1024*1024); } catch { musicDropped='Music source unavailable; saved voice takes retained.';musicFile=null; }
       const mix=async withMusic => {
+        const T=(narrativeSeconds+3).toFixed(3), fadeAt=narrativeSeconds.toFixed(3);
         const args=voices.flatMap(f=>['-threads','1','-i',f]);
         if(withMusic)args.push('-stream_loop','-1','-threads','1','-i',musicFile);
-        const filters=voices.map((_,i)=>`[${i}:a]${audioFormat},adelay=${voiceStarts[i]}|${voiceStarts[i]},apad=whole_dur=23[n${i}]`);
+        const filters=voices.map((_,i)=>`[${i}:a]${audioFormat},adelay=${voiceStarts[i]}|${voiceStarts[i]},apad=whole_dur=${T}[n${i}]`);
         filters.push('[n0][n1][n2][n3]amix=inputs=4:duration=longest:normalize=0[voice]');
-        if(withMusic) filters.push('[4:a]'+audioFormat+',atrim=duration=23,volume=0.16,afade=t=in:d=0.8,afade=t=out:st=20:d=3[bed]','[voice][bed]amix=inputs=2:duration=longest:normalize=0,atrim=duration=23,alimiter=limit=0.95[a]');
-        else filters.push('[voice]atrim=duration=23,alimiter=limit=0.95[a]');
-        await ff([...args,'-filter_complex',filters.join(';'),'-map','[a]','-t','23','-c:a','aac','-b:a','192k','-threads','1',path.join(directory,'audio.m4a')]);
+        if(withMusic) filters.push('[4:a]'+audioFormat+`,atrim=duration=${T},volume=0.16,afade=t=in:d=0.8,afade=t=out:st=${fadeAt}:d=3[bed]`,`[voice][bed]amix=inputs=2:duration=longest:normalize=0,atrim=duration=${T},alimiter=limit=0.95[a]`);
+        else filters.push(`[voice]atrim=duration=${T},alimiter=limit=0.95[a]`);
+        await ff([...args,'-filter_complex',filters.join(';'),'-map','[a]','-t',T,'-c:a','aac','-b:a','192k','-threads','1',path.join(directory,'audio.m4a')]);
       };
       if(musicFile)try{await mix(true);}catch{musicDropped='Music could not be mixed; finished with saved voice takes only.';await mix(false);}else await mix(false);
       // Never ship a reel without its voice-over: the mixed track must last the full 23 s and be audible.
       {
         const am=path.join(directory,'audio.m4a');
         const ad=Number((await probe(am)).format.duration);
-        if(!(ad>=22.9))throw new Error(`Voice-over mix is ${ad.toFixed(2)}s instead of 23s; the reel was not finished without its voice.`);
+        if(!(ad>=narrativeSeconds+3-0.1))throw new Error(`Voice-over mix is ${ad.toFixed(2)}s instead of ${(narrativeSeconds+3).toFixed(1)}s; the reel was not finished without its voice.`);
         const peakFile=path.join(directory,'audio-peak.txt');
         await ff(['-i',am,'-af',`astats=metadata=1:reset=0,ametadata=mode=print:key=lavfi.astats.Overall.Peak_level:file=${peakFile}`,'-f','null','-']);
         const peaks=[...(await fsp.readFile(peakFile,'utf8')).matchAll(/Peak_level=(-?inf|-?[\d.]+)/g)];
@@ -189,6 +200,15 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       parts.rawVoiceSeconds=rawVoiceSeconds;
       parts.appliedVoiceTempos=appliedVoiceTempos;
       parts.voicePaddingSeconds=voicePaddingSeconds;
+      parts.sceneSeconds=sceneSeconds;
+    }
+    // A scene lengthened for a longer voice take is slowed gently to its new length (only that scene is re-encoded).
+    for (let i=0;i<4;i++) {
+      if (!(sceneSeconds[i] > 5.0001)) continue;
+      stage = `lengthen scene ${i+1}`;
+      const ext=path.join(directory,`seg${i}.ext.mp4`), k=sceneSeconds[i]/5;
+      await ff(['-threads','1','-i',files[`seg${i}`],'-vf',`setpts=${k.toFixed(5)}*PTS,fps=30,format=yuv420p`,'-t',sceneSeconds[i].toFixed(3),'-an',...encode,ext]);
+      files[`seg${i}`]=ext;
     }
     stage = 'stream-copy concat';
     const concat=path.join(directory,'concat.txt');
@@ -197,11 +217,11 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
     await ff(['-f','concat','-safe','0','-i',concat,'-map','0:v:0','-c:v','copy','-an','-movflags','+faststart',joined]);
     stage = 'final audio mux (no video encoding)';
     const out=path.join(directory,'final.mp4');
-    await ff(['-i',joined,'-i',files.audio,'-map','0:v:0','-map','1:a:0','-c:v','copy','-c:a','copy','-t','23','-movflags','+faststart',out]);
+    await ff(['-i',joined,'-i',files.audio,'-map','0:v:0','-map','1:a:0','-c:v','copy','-c:a','copy','-t',(narrativeSeconds+3).toFixed(3),'-movflags','+faststart',out]);
     const p=await probe(out),v=p.streams.find(s=>s.codec_type==='video'),a=p.streams.find(s=>s.codec_type==='audio');
-    if(v?.width!==1080||v?.height!==1920||v.r_frame_rate!=='30/1'||!a||Math.abs(Number(p.format.duration)-23)>0.05)throw new Error('Final MP4 failed dimensions, frame rate, audio or 23-second duration checks.');
+    if(v?.width!==1080||v?.height!==1920||v.r_frame_rate!=='30/1'||!a||Math.abs(Number(p.format.duration)-(narrativeSeconds+3))>0.1)throw new Error(`Final MP4 failed dimensions, frame rate, audio or ${(narrativeSeconds+3).toFixed(1)}-second duration checks.`);
     sample();
-    const final={file:out,seconds:Number(p.format.duration),sha256:await shaFile(out),music:!!parts.music,musicDropped:parts.musicDropped||musicDropped,mode:'cuts',narrationTargetSeconds,narrationSceneSeconds,spokenNarrationSeconds:narrationTargetSeconds,rawVoiceSeconds:parts.rawVoiceSeconds||rawVoiceSeconds,peakRssBytes:metrics.peakRssBytes,peakFfmpegRssBytes:metrics.peakFfmpegRssBytes,metrics};
+    const final={file:out,seconds:Number(p.format.duration),sha256:await shaFile(out),music:!!parts.music,musicDropped:parts.musicDropped||musicDropped,mode:'cuts',narrativeSeconds,sceneSeconds,narrationTargetSeconds,narrationSceneSeconds,spokenNarrationSeconds:narrationTargetSeconds,rawVoiceSeconds:parts.rawVoiceSeconds||rawVoiceSeconds,peakRssBytes:metrics.peakRssBytes,peakFfmpegRssBytes:metrics.peakFfmpegRssBytes,metrics};
     return {parts,final};
   }finally{clearInterval(timer);}
 }

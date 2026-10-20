@@ -13,18 +13,19 @@ import { notifyAiFailure } from './alerts';
 
 export function createRenderWorker({ q, root, renderReel, owner = crypto.randomUUID(), log = console.log, logError = console.error }) {
   const console = { log, error: logError };
-  async function sheets(file, directory) {
+  async function sheets(file, directory, narrativeSeconds = 20) {
+    const N=Math.max(20,Number(narrativeSeconds)||20), sampleFps=(600/N).toFixed(5);
     const pattern=path.join(directory,'qc-%03d.jpg');
     const bin=process.env.ELEVAY_FFMPEG_BIN||'/usr/bin/ffmpeg';
     await new Promise((resolve,reject)=>{
-      const c=spawn(bin,['-y','-hide_banner','-loglevel','error','-threads','1','-i',file,'-vf','trim=duration=20,fps=30,scale=360:640:flags=bicubic,tile=4x2:nb_frames=8','-frames:v','75','-q:v','3','-threads','1','-filter_threads','1',pattern],{stdio:['ignore','ignore','pipe']});
+      const c=spawn(bin,['-y','-hide_banner','-loglevel','error','-threads','1','-i',file,'-vf',`trim=duration=${N.toFixed(3)},fps=${sampleFps},scale=360:640:flags=bicubic,tile=4x2:nb_frames=8`,'-frames:v','75','-q:v','3','-threads','1','-filter_threads','1',pattern],{stdio:['ignore','ignore','pipe']});
       let err='';const t=setTimeout(()=>c.kill('SIGKILL'),180000);
       c.stderr.on('data',d=>err=(err+d).slice(-500));c.on('error',reject);c.on('close',code=>{clearTimeout(t);code===0?resolve():reject(new Error('Final frame-sheet extraction failed: '+err));});
     });
     const names=(await fsp.readdir(directory)).filter(n=>/^qc-\d+\.jpg$/.test(n)).sort();
     if(names.length!==75)throw new Error('All 600 narrative frames must be represented in 75 QC sheets.');
     const evidence = names.map((n,i)=>({file:path.join(directory,n),label:`Sheet ${i+1}: chronological frames ${i*8+1}–${i*8+8}, row-major, t=${(i*8/30).toFixed(3)}–${((i*8+7)/30).toFixed(3)} s. Scene = floor(t/5)+1.`}));
-    for (const [index,time] of [20.1,22.8].entries()) {
+    for (const [index,time] of [N+0.1,N+2.8].entries()) {
       const f = path.join(directory, `outro-qc-${index}.jpg`);
       await new Promise((resolve,reject)=>{
         const c=spawn(bin,['-y','-hide_banner','-loglevel','error','-threads','1','-ss',String(time),'-i',file,'-frames:v','1','-vf','scale=540:960','-threads','1','-filter_threads','1',f],{stdio:'ignore'});
@@ -54,7 +55,7 @@ export function createRenderWorker({ q, root, renderReel, owner = crypto.randomU
       });
       const stored=await storagePutFile(`marketing/command-center/render-worker/${row.id}/${result.final.sha256.slice(0,24)}-final.mp4`,result.final.file,'video/mp4');
       doc.stage='final visual evidence';await persist();
-      const evidence=await sheets(result.final.file,dir);
+      const evidence=await sheets(result.final.file,dir,result.final.narrativeSeconds);
       const qcFrames=[];
       const previousFrames = doc.final?.qcFrames || [];
       for(let i=0;i<evidence.length;i++){
