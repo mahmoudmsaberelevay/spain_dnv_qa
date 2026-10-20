@@ -153,15 +153,30 @@ describe("Meta actions", () => {
     expect(state.items[0]).toMatchObject({ status: "published", publish: { direct: { facebook: "111_post9", instagram: "igpost1", done: true } } });
   });
 
-  it("does not send Facebook when Meta lacks Instagram publishing permission for a both-channel item", async () => {
+  it("owner rule: posts Facebook now and keeps Instagram waiting when only the Instagram permission is missing, never re-posting Facebook", async () => {
     const { h, state, posts } = hub({ meta: { instagramPermission: false } });
     state.settings.meta = { directPublish: true };
     state.items.push({ item_id: "2026-W41-02", type: "static", status: "approved", caption_ar: "نص", media: { image_url: "https://cdn/final.png" }, publish: { channel: "both", datetime_cairo: "2026-01-01T10:00" }, owner_comments: [] });
     await expect(h.publishDue()).resolves.toMatchObject({ published: 0 });
-    expect(posts.map((p) => p.path)).not.toContain("111/photos");
+    expect(posts.filter((p) => p.path === "111/photos")).toHaveLength(1);
     expect(state.items[0].status).toBe("approved");
+    expect(state.items[0].publish.direct).toMatchObject({ facebook: "111_post9" });
     expect(state.items[0].publish.direct.done).not.toBe(true);
     expect(state.items[0].publish.direct.error).toMatch(/instagram_content_publish/);
+    state.items[0].publish.direct.retry_after = 0; // next window, permission still missing
+    await h.publishDue();
+    expect(posts.filter((p) => p.path === "111/photos")).toHaveLength(1);
+  });
+
+  it("owner release lets a stopped post publish again but never touches an unknown-outcome post", async () => {
+    const { h, state } = hub({});
+    state.items.push({ item_id: "A", type: "static", status: "approved", publish: { channel: "both", direct: { done: true, error: "old", tries: 4 } }, owner_comments: [] });
+    state.items.push({ item_id: "B", type: "static", status: "approved", publish: { channel: "both", direct: { done: true, manual_review: true } }, owner_comments: [] });
+    const r = await h.releaseForPublishing(["A", "B"], "owner@elevay.com");
+    expect(r.released).toEqual(["A"]);
+    expect(r.skipped[0]).toMatchObject({ id: "B" });
+    expect(state.items[0].publish.direct.done).toBeUndefined();
+    expect(state.items[1].publish.direct.done).toBe(true);
   });
 
   it("persists Facebook success before an Instagram processing wait so a retry cannot duplicate Facebook", async () => {
