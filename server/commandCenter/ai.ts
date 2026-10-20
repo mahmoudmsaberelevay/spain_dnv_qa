@@ -432,8 +432,8 @@ export const PIPELINES = {
     S("openai", "reel_storyboard", "OpenAI writes the 4-scene storyboard, MSA caption and Egyptian Arabic voice-over"),
     S("openai", "reel_keyframes", "OpenAI creates the 4 keyframes (9:16)"),
     S("claude", "qc_visual", "Claude checks the 4 keyframes before Higgsfield and remakes only faulty ones (up to 3 times)"),
+    S("elevenlabs", "voice", "ELEVAY Arabic Voice-over (elevay.vip) records the Egyptian voice-over, one take per scene"),
     S("higgsfield", "clips", "Higgsfield animates 4 × 5 s clips"),
-    S("elevenlabs", "voice", "ELEVAY voice clone reads the Egyptian Arabic script, one take per scene"),
     S("system", "compose_reel", "External render worker combines clips, ELEVAY voice and 3 s white logo outro under OpenAI edit direction"),
     S("claude", "qc_final", "Claude performs the comprehensive finished-reel check"),
     S("system", "to_weekly_plan", "Send the finished reel to the weekly plan"),
@@ -756,6 +756,27 @@ export function createOrchestrator(deps) {
     log(run, "claude", "studio", r.data ? clip(r.data) : r.text);
     step.output = r.data ?? r.text;
     return r;
+  }
+
+  /** Matches a week content file (from OpenAI or Manus) to Claude's planned posts; unusable entries become null. */
+  function usableWeekPosts(posts, data) {
+    const out = Array.isArray(data?.posts) ? data.posts : [];
+    return posts.map((p, i) => {
+      const c = out.find((x) => Number(x?.index) === i + 1) || out[i];
+      if (!c || c.type !== p.type || !c.caption_ar) return null;
+      if (p.type === "reel" && !(Array.isArray(c.scenes) && c.scenes.length === 4 && c.scenes.every((x) => x?.keyframe_prompt && x?.motion_prompt && x?.spoken_text_ar))) return null;
+      if (p.type === "static" && !(c.headline_en && c.image_prompt)) return null;
+      return c;
+    });
+  }
+  async function saveWeekFile(run, step, week, planned, usable, by) {
+    const A = run.artifacts;
+    const file = JSON.stringify({ week, written_by: by, generated_at: nowIso(), plan: planned, posts: usable }, null, 2);
+    let fileUrl = null;
+    if (typeof providers.storeWeekFile === "function") fileUrl = await providers.storeWeekFile(`marketing/command-center/week-content/${week}-run${run.id}.json`, file).catch(() => null);
+    A.week_content = { week, written_by: by, posts: usable, file_url: fileUrl, missing: usable.map((c, i) => (c ? null : i + 1)).filter(Boolean) };
+    step.output = { written_by: by, file_url: fileUrl, posts: usable.filter(Boolean).length, missing: A.week_content.missing };
+    log(run, "studio", by, `Week content file ready (written by ${by === "manus" ? "Manus" : "OpenAI"}): ${usable.filter(Boolean).length} of ${usable.length} posts${A.week_content.missing.length ? ` (post ${A.week_content.missing.join(", ")} will be written on its own)` : ""}${fileUrl ? `. File: ${fileUrl}` : ""}.`);
   }
 
   async function askOpenAi(run, step, prompt, opts = {}) {
@@ -1231,7 +1252,7 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
         const voiceTemplate = voicePromptTemplate(state.settings?.voiceOverPrompt).replace("[the reel's idea/objective from the weekly plan]", "(each reel's own idea, listed below)");
         const planned = posts.map((p, i) => ({ index: i + 1, type: p.type, date: p.date, time: p.time, program: p.program, pillar: p.pillar, audience: p.audience, idea: p.brief }));
         try {
-          const r = await askOpenAi(run, step, `Write the complete content file for ELEVAY's ${week} posts, exactly as Claude planned them. One entry per planned post, same order and type.
+          A.week_prompt = `Write the complete content file for ELEVAY's ${week} posts, exactly as Claude planned them. One entry per planned post, same order and type.
 
 FOR EVERY REEL, the Egyptian voice-over follows the owner's ELEVAY Voice-Over Prompt exactly:
 ${voiceTemplate}
@@ -1248,25 +1269,22 @@ ${allProgramFacts()}
 Claude's week plan:
 ${JSON.stringify(planned)}
 
-Return JSON only: {"posts": [one per planned post, in order: {"index": 1, "type": "static"|"reel", "topic": "...", "pillar": "...", "program": "...", "caption_ar": "...", "headline_en": "statics only", "image_prompt": "statics only", "format": "statics only", "music_direction": "reels only, royalty-free mood", "final_edit_direction": "reels only: pacing and clean joins, voice in the first 20 seconds, silent white-logo outro; never text or logo changes", "scenes": [reels only, exactly 4: {"keyframe_prompt": "...", "motion_prompt": "...", "spoken_text_ar": "..."}]}]}`, { note: `Week content file for ${week}: all 7 posts in one OpenAI request`, maxTokens: 24000, timeoutMs: 420000 });
-          const out = Array.isArray(r.data?.posts) ? r.data.posts : [];
-          const usable = posts.map((p, i) => {
-            const c = out.find((x) => Number(x?.index) === i + 1) || out[i];
-            if (!c || c.type !== p.type || !c.caption_ar) return null;
-            if (p.type === "reel" && !(Array.isArray(c.scenes) && c.scenes.length === 4 && c.scenes.every((x) => x?.keyframe_prompt && x?.motion_prompt && x?.spoken_text_ar))) return null;
-            if (p.type === "static" && !(c.headline_en && c.image_prompt)) return null;
-            return c;
-          });
-          const file = JSON.stringify({ week, generated_at: nowIso(), plan: planned, posts: usable }, null, 2);
-          let fileUrl = null;
-          if (typeof providers.storeWeekFile === "function") fileUrl = await providers.storeWeekFile(`marketing/command-center/week-content/${week}-run${run.id}.json`, file).catch(() => null);
-          A.week_content = { week, posts: usable, file_url: fileUrl, missing: usable.map((c, i) => (c ? null : i + 1)).filter(Boolean) };
-          step.output = { file_url: fileUrl, posts: usable.filter(Boolean).length, missing: A.week_content.missing };
-          log(run, "studio", "openai", `Week content file ready: ${usable.filter(Boolean).length} of ${posts.length} posts${A.week_content.missing.length ? ` (post ${A.week_content.missing.join(", ")} will be written on its own)` : ""}${fileUrl ? `. File: ${fileUrl}` : ""}.`);
+Return JSON only: {"posts": [one per planned post, in order: {"index": 1, "type": "static"|"reel", "topic": "...", "pillar": "...", "program": "...", "caption_ar": "...", "headline_en": "statics only", "image_prompt": "statics only", "format": "statics only", "music_direction": "reels only, royalty-free mood", "final_edit_direction": "reels only: pacing and clean joins, voice in the first 20 seconds, silent white-logo outro; never text or logo changes", "scenes": [reels only, exactly 4: {"keyframe_prompt": "...", "motion_prompt": "...", "spoken_text_ar": "..."}]}]}`;
+          const r = await askOpenAi(run, step, A.week_prompt, { note: `Week content file for ${week}: all 7 posts in one OpenAI request`, maxTokens: 24000, timeoutMs: 420000 });
+          const usable = usableWeekPosts(posts, r.data);
+          if (!usable.some(Boolean)) throw new Error("OpenAI's file had no usable post.");
+          await saveWeekFile(run, step, week, planned, usable, "openai");
         } catch (e) {
-          // Never block the week: without the file each post is written on its own, as before.
-          A.week_content = { week, posts: posts.map(() => null), failed: String(e?.message || e).slice(0, 300) };
-          log(run, "studio", "openai", `The week content file could not be written (${A.week_content.failed}); each post will be written on its own.`);
+          // Owner rule: if OpenAI can't produce the file, Manus writes it (text-only job); the week waits for it.
+          const why = String(e?.message || e).slice(0, 300);
+          let jobId;
+          const instructions = `ELEVAY AI Studio needs this week's content file. Text only: do not generate or change any image, clip, voice take or render; do not publish, post or perform any Meta, campaign, budget, Lead or CRM action; do not read or change any secret.\n\nOpenAI could not write it (${why}). Write it yourself following these exact instructions:\n\n${A.week_prompt}\n\nReply with JSON only, in that exact format.`;
+          const q2 = await deps.mutate({}, (st) => { const j = E.enqueueJob(st, "custom", { request: instructions, requested_by: run.created_by, studio_run: run.id, purpose: "week_content_file" }, "ai-studio"); jobId = j.id; return { ok: true }; });
+          if (q2 && q2.ok === false) throw new Error(q2.error);
+          A.week_manus = { status: "waiting", job: jobId, reason: why, requested_at: nowIso() };
+          step.output = { waiting_for: "manus_week_content", job: jobId, reason: why };
+          log(run, "studio", "manus", `OpenAI could not write the week content file (${why}). Asked Manus to write it (job ${jobId}); production waits for it.`);
+          return "waiting";
         }
         return;
       }
@@ -1452,6 +1470,21 @@ Return JSON only: {"posts": [one per planned post, in order: {"index": 1, "type"
       const latestProgress = Math.max(startedAt, ...clips.map((c) => Date.parse(c.lastProgressAt || c.submittedAt || "") || 0));
       if (now - latestProgress >= EXTERNAL_PROGRESS_DEADLINE_MS) return recoverOnceOrFail("no provider progress was recorded for 20 minutes", true);
       return false;
+    }
+    if (step.action === "week_content" && A.week_manus?.status === "waiting") {
+      const { state } = await deps.loadState();
+      const j = state.jobs.find((x) => x.id === A.week_manus.job);
+      if (!j) return false;
+      if (j.status !== "done" && j.status !== "failed") return false;
+      const { week, posts } = A.week_plan;
+      const planned = posts.map((p, i) => ({ index: i + 1, type: p.type, date: p.date, time: p.time, program: p.program, pillar: p.pillar, audience: p.audience, idea: p.brief }));
+      let data = null;
+      if (j.status === "done") { let v = j.result ?? j.manus?.message; if (v && typeof v === "object" && !v.posts) v = v.text ?? v.message ?? v.result ?? JSON.stringify(v); if (typeof v === "string") { const m = v.match(/\{[\s\S]*\}/); try { data = m ? JSON.parse(m[0]) : null; } catch { data = null; } } else data = v; }
+      const usable = usableWeekPosts(posts, data);
+      A.week_manus = { ...A.week_manus, status: j.status === "done" ? "received" : "failed" };
+      if (usable.some(Boolean)) await saveWeekFile(run, step, week, planned, usable, "manus");
+      else { A.week_content = { week, posts: posts.map(() => null), failed: "Neither OpenAI nor Manus produced a usable week file." }; log(run, "studio", "manus", "Manus's week file was not usable; each post will be written on its own so the week is not blocked."); }
+      return true;
     }
     if (step.action === "reel_storyboard" && A.voiceover_manus?.status === "waiting") {
       const { state } = await deps.loadState();

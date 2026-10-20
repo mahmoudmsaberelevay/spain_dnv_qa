@@ -181,7 +181,8 @@ describe("seven-step ELEVAY reel flow", () => {
   it("retries a failed voice take twice, then stops without a render or replacement voice and notifies once", async () => {
     const ctx = setup([STORYBOARD], { voiceError: "HTTP 503: approved voice unavailable" });
     const run = await ctx.o.create({kind:"reel",request:"Voice failure test",user:marketer});
-    const r = await approveAndFinish(ctx, run.id);
+    const r = await settle(ctx.o, run.id); // voice now runs before Higgsfield, so a voice failure spends no clip credits
+    expect(ctx.calls.hfSubmit).toHaveLength(0);
     expect(r.status).toBe("failed");
     expect(r.steps.find(s=>s.action==="voice").status).toBe("failed");
     expect(ctx.calls.voice).toBe(3); // owner rule: a failed take is tried 2 more times, then the step stops
@@ -211,7 +212,7 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(Date.parse(delayed.watchdog_retry_not_before)).toBeGreaterThan(Date.now());
   });
   it("uses exactly storyboard, keyframes, keyframe check, clips, voice, compose, one final Claude check, and weekly plan", async () => {
-    expect(PIPELINES.reel.steps().map((s) => s.action)).toEqual(["reel_storyboard", "reel_keyframes", "qc_visual", "clips", "voice", "compose_reel", "qc_final", "to_weekly_plan"]);
+    expect(PIPELINES.reel.steps().map((s) => s.action)).toEqual(["reel_storyboard", "reel_keyframes", "qc_visual", "voice", "clips", "compose_reel", "qc_final", "to_weekly_plan"]);
     expect(PIPELINES.static.steps().map((s) => s.action)).toContain("check_brief");
     expect(PIPELINES.static.steps().map((s) => s.action)).toContain("qc_visual");
 
@@ -331,7 +332,7 @@ describe("reel durability and legacy compatibility", () => {
     await ctx.o.tick();
     const r = await settle(ctx.o, seeded.insertId);
     expect(r.status).toBe("done");
-    expect(r.steps.map((s) => s.action)).toEqual(["reel_storyboard", "reel_keyframes", "qc_visual", "clips", "voice", "compose_reel", "qc_final", "to_weekly_plan"]);
+    expect(r.steps.map((s) => s.action)).toEqual(["reel_storyboard", "reel_keyframes", "qc_visual", "voice", "clips", "compose_reel", "qc_final", "to_weekly_plan"]);
     expect(r.steps.find((s) => s.action === "clips")).toMatchObject({ approved_by: owner.email, status: "done" });
     expect(r.artifacts.clips.map((c) => c.url)).toEqual(["https://cdn.example/c1.mp4", "https://cdn.example/c2.mp4", "https://cdn.example/c3.mp4", "https://cdn.example/c4.mp4"]);
     expect(ctx.calls.openai).toHaveLength(0);
@@ -519,5 +520,30 @@ describe("owner rule: one week content file from OpenAI", () => {
     for (let i = 0; i < 200; i++) { reel = await ctx.o.get(r.artifacts.children[1]); if (reel.artifacts?.brief?.reel) break; await ctx.o.tick(); await new Promise((res) => setTimeout(res, 3)); }
     expect(reel.artifacts.brief.reel.storyboard.map((x) => x.spoken_text_ar)).toEqual(sceneScripts);
     expect(ctx.calls.openaiText).toHaveLength(1); // no separate storyboard request per reel
+  });
+});
+
+describe("owner rule: Manus writes the week file when OpenAI cannot", () => {
+  const types = ["static", "reel", "static", "reel", "static", "reel", "static"];
+  const WEEK_PLAN = { rationale: "Mix", posts: types.map((type, i) => ({ type, date: "2026-11-0" + (i + 1), time: "19:00", program: "Portugal D7", pillar: "Family Security", audience: "Families", brief: `Idea ${i + 1}` })) };
+  const FILE = { posts: types.map((type, i) => type === "reel"
+    ? { index: i + 1, type, topic: "R", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }
+    : { index: i + 1, type, topic: "S", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, headline_en: "Plan your next chapter", image_prompt: "Arab family, elegant clothing and shoes, no text, no logo" }) };
+
+  it("asks Manus with the same instructions, waits, then starts production from Manus's file", async () => {
+    const ctx = setup([WEEK_PLAN, { posts: [] }]);
+    const run = await ctx.o.create({ kind: "weekly_plan", request: "Plan", options: { week: "2026-W45" }, user: owner });
+    let r = await settle(ctx.o, run.id);
+    expect(r.status).toBe("waiting");
+    expect(r.artifacts.children || []).toHaveLength(0);
+    const job = ctx.state.jobs.find((j) => j.id === r.artifacts.week_manus.job);
+    expect(job.payload.purpose).toBe("week_content_file");
+    expect(job.payload.request).toMatch(/Idea 3/);
+    job.status = "done"; job.result = { message: "```json\n" + JSON.stringify(FILE) + "\n```" };
+    await ctx.o.tick();
+    r = await settle(ctx.o, run.id);
+    for (let i = 0; i < 50 && r.status !== "done"; i++) { await ctx.o.tick(); r = await settle(ctx.o, run.id); }
+    expect(r.artifacts.week_content).toMatchObject({ written_by: "manus", missing: [] });
+    expect(r.artifacts.children).toHaveLength(7);
   });
 });
