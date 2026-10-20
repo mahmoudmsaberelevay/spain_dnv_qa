@@ -17,13 +17,15 @@ describe("Existing ELEVAY ElevenLabs voice provider policy", () => {
     expect(providerSecretPresence(connection!, { ELEVENLABS_API_KEY: "x" } as NodeJS.ProcessEnv).allPresent).toBe(true);
   });
 
-  it("retains the approved Arabic Eleven v3 defaults and thoughtful delivery behavior", () => {
+  it("retains the approved Arabic Eleven v4 defaults and thoughtful delivery behavior", () => {
     expect(ELEVAY_ARABIC_VOICE_DEFAULTS).toEqual({
       voiceId: "nc8XQG8lRYRZDnjvKW0H",
-      modelId: "eleven_v3",
+      modelId: "eleven_v4",
       languageCode: "ar",
       outputFormat: "mp3_44100_128",
       stability: 0.5,
+      dialect: "Egyptian Arabic",
+      maxScriptCharacters: 1900,
     });
     expect(prepareThoughtfulArabicScript("النص المعتمد")).toBe("[thoughtful] النص المعتمد");
   });

@@ -59,7 +59,10 @@ export function prepareEgyptianReelNarration(value: string, { requireEgyptianMar
   if (requireEgyptianMarker) {
     // A full voice-over must sound clearly Egyptian, not just avoid formal words: at least 3 different Egyptian markers (fewer for a short line).
     const strong = /(?:^|[\s،.!؟,?])و?(مش|اللي|علشان|عشان|دلوقتي|إزاي|ازاي|ليه|فين|إمتى|امتى|كده|كدا|أوي|اوي|بجد|يلا|عايز|عايزة|عايزين|إحنا|احنا|إنت|انت|إيه|خلينا|من غير|بقى|معاك|معاكم|ده|دي|دول|كمان|بس|لازم|لما|فيه|عندنا|عندك|ب[نتي][\u0621-\u064A]{3,}|ه[نتي][\u0621-\u064A]{3,})(?=[\s،.!؟,?]|$)/g;
-    const found = new Set([...` ${text} `.matchAll(strong)].map((m) => m[1]));
+    const found = new Set<string>();
+    const padded = ` ${text} `;
+    let marker: RegExpExecArray | null;
+    while ((marker = strong.exec(padded)) !== null) found.add(marker[1]);
     const words = text.split(/\s+/).filter(Boolean).length;
     if (found.size < (words >= 30 ? 3 : words >= 15 ? 2 : 1)) {
       throw new Error("Narration must be natural Egyptian Arabic before ElevenLabs: it does not sound clearly Egyptian. Use everyday Egyptian colloquial words (e.g. اللي، علشان، محتاج، دلوقتي، مش، إزاي، خلينا، بنساعدك، هتقدر).");
