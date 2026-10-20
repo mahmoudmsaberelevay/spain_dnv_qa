@@ -7,6 +7,7 @@ function setup(options: { fixedOutroUrl?: string } = {}) {
     if (sql.startsWith('CREATE')) return [];
     if (sql.startsWith('INSERT IGNORE')) { inserts++; if (!rows.has(args[0])) rows.set(args[0], { id: args[0], status: 'pending', doc: args[4] }); return { affectedRows: 1 }; }
     if (sql.startsWith('SELECT')) return rows.has(args[0]) ? [rows.get(args[0])] : [];
+    if (sql.startsWith("UPDATE ec_render_jobs SET status='pending'")) { const r = rows.get(args[2]); if (r && r.status === 'failed') { r.status = 'pending'; r.doc = args[1]; return { affectedRows: 1 }; } return { affectedRows: 0 }; }
     throw new Error('Unexpected SQL');
   };
   return { queue: createRenderQueue(q, { fixedOutroUrl: "https://cdn.example/ELEVAYEXTRO.mov", ...options }), rows, insertCount: () => inserts };
@@ -49,5 +50,15 @@ describe('external render queue', () => {
     const { queue } = setup();
     await expect(queue.compose({ ...input, runId: 9, narrationTargetSeconds: 18, narrationSceneSeconds: 4.5 })).resolves.toMatchObject({ pending: true });
     await expect(queue.compose({ ...input, narrationTargetSeconds: 21 })).rejects.toThrow(/four saved voice takes/);
+  });
+  it('sends a failed render back to the Mac on Retry, but never re-queues during plain polling', async () => {
+    const { queue, rows } = setup(); const a = await queue.compose(input);
+    rows.set(a.jobId, { id: a.jobId, status: 'failed', doc: JSON.stringify({ ...JSON.parse(rows.get(a.jobId).doc), error: 'old renderer timing' }) });
+    await expect(queue.compose(input)).rejects.toThrow('old renderer timing');
+    const retried = await queue.compose({ ...input, requeueFailed: true });
+    expect(retried).toMatchObject({ pending: true, jobId: a.jobId });
+    expect(rows.get(a.jobId).status).toBe('pending');
+    expect(JSON.parse(rows.get(a.jobId).doc)).toMatchObject({ retriedAfter: 'old renderer timing' });
+    expect(rows.size).toBe(1);
   });
 });

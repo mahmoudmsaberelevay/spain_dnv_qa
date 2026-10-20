@@ -33,6 +33,13 @@ export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<
     const row = (await q("SELECT id,status,doc FROM ec_render_jobs WHERE id=?", [id]))[0];
     if (!row) throw new Error("Render job could not be persisted.");
     const job = JSON.parse(row.doc);
+    // A Retry (step restarted) sends a failed job back to the Mac with the same saved inputs: the renderer may have
+    // been updated since (e.g. new timing rules). Plain status polling never re-queues, so a failure can't loop.
+    if (row.status === "failed" && input.requeueFailed) {
+      const fresh = JSON.stringify({ ...JSON.parse(doc), retriedAfter: String(job.error || "").slice(0, 300), retriedAt: new Date(now).toISOString() });
+      await q("UPDATE ec_render_jobs SET status='pending', lease_owner=NULL, lease_until=0, attempts=0, updated_at=?, doc=? WHERE id=? AND status='failed'", [now, fresh, id]);
+      return { pending: true, jobId: id, parts: JSON.parse(fresh).parts || {}, stage: "queued", waitReason: "Waiting for render worker (retry of a failed render)", metrics: {} };
+    }
     if (row.status === "failed") throw new Error("External render failed: " + (job.error || "unknown worker error"));
     if (row.status === "done" && job.final) return { parts: job.parts, final: { ...job.final, renderJobId: id }, stage: "final" };
     // A finished job without a usable result, or a status this website does not know, must not wait forever.
