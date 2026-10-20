@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { prepareEgyptianReelNarration } from "../shared/elevayVideoNarration";
-import { validateElevay20SecondReelNarration } from "../shared/elevayReelNarrationPolicy";
+import { validateElevay20SecondReelNarration, rebalanceElevay20SecondNarration } from "../shared/elevayReelNarrationPolicy";
 
 describe("video and reel voice-over preflight", () => {
   it("rewrites the saved MSA reel into Egyptian Arabic and English programme/company names", () => {
@@ -48,5 +48,18 @@ describe("video and reel voice-over preflight", () => {
       { spoken_text_ar: "- بنرتب خطتك علشان تبدأ خطوتك الجاية بوضوح." },
     ];
     expect(validateElevay20SecondReelNarration(scenes)).toMatch(/numbered point or bullet/);
+  });
+  it("re-divides a right-length voice-over whose scene shares are uneven, keeping the same words", () => {
+    const scenes = [
+      { spoken_text_ar: "لو بتفكر تعيش وتشتغل في Spain مع شريك حياتك، خلينا نبدأ صح." },
+      { spoken_text_ar: "دخلكم مع بعض ممكن يفرق." },
+      { spoken_text_ar: "إحنا في Elevay بنراجع دخلكم ومستنداتكم خطوة بخطوة علشان تعرفوا الطريق اللي يناسبكم من غير لف ودوران ولا تعب." },
+      { spoken_text_ar: "احجز استشارتك مع Elevay دلوقتي ونبدأ نرتب خطتكم سوا." },
+    ];
+    const before = scenes.map((s) => s.spoken_text_ar).join(" ");
+    expect(validateElevay20SecondReelNarration(scenes)).toMatch(/Scene 2 must contain/);
+    expect(rebalanceElevay20SecondNarration(scenes)).toBe(true);
+    expect(scenes.map((s) => s.spoken_text_ar).join(" ")).toBe(before);
+    expect(validateElevay20SecondReelNarration(scenes)).toBeNull();
   });
 });

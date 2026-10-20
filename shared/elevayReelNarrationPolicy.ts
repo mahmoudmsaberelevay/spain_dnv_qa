@@ -61,3 +61,39 @@ export function validateElevay20SecondReelNarration(scenes: Array<{ spoken_text_
 
 /** Compatibility export: the system-wide contract is now 20 seconds. */
 export const validateElevay18SecondReelNarration = validateElevay20SecondReelNarration;
+
+/**
+ * When the whole narration already fits 20 seconds (45–55 words) but one scene's share is outside 10–14 words,
+ * re-divide the same words into four near-equal takes instead of failing the reel. Breaks prefer sentence or
+ * comma pauses. The text itself is unchanged, only where each 5-second take starts. Returns true if it changed.
+ */
+export function rebalanceElevay20SecondNarration(scenes: Array<{ spoken_text_ar?: unknown }>): boolean {
+  const S = ELEVAY_REEL_NARRATION_STANDARD;
+  if (!Array.isArray(scenes) || scenes.length !== S.sceneCount) return false;
+  const lines = scenes.map((s) => clean(s?.spoken_text_ar));
+  if (lines.some((l) => !l)) return false;
+  const counts = lines.map(elevayNarrationWordCount);
+  const total = counts.reduce((a, b) => a + b, 0);
+  if (total < S.minTotalWords || total > S.maxTotalWords) return false;
+  if (counts.every((c) => c >= S.minWordsPerScene && c <= S.maxWordsPerScene)) return false;
+  const words = lines.join(" ").split(/\s+/).filter(Boolean);
+  const breaks: number[] = [];
+  let start = 0;
+  for (let p = 1; p < S.sceneCount; p++) {
+    const left = S.sceneCount - p; // takes still to fill after this one
+    const ideal = start + Math.round((words.length - start) / (left + 1));
+    let best = ideal, bestScore = Infinity;
+    for (let k = ideal - 2; k <= ideal + 2; k++) {
+      const size = k - start, rest = words.length - k;
+      if (size < S.minWordsPerScene || size > S.maxWordsPerScene) continue;
+      if (rest < left * S.minWordsPerScene || rest > left * S.maxWordsPerScene) continue;
+      const score = Math.abs(k - ideal) + (/[.،,!؟?؛…]$/.test(words[k - 1]) ? 0 : 1.5);
+      if (score < bestScore) { bestScore = score; best = k; }
+    }
+    breaks.push(best);
+    start = best;
+  }
+  let from = 0;
+  [...breaks, words.length].forEach((b, i) => { (scenes[i] as any).spoken_text_ar = words.slice(from, b).join(" "); from = b; });
+  return true;
+}
