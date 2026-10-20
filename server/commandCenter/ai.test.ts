@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import E from "./engine";
 import R from "./rules";
-import { createOrchestrator, extractJson, PIPELINES } from "./ai";
+import { createOrchestrator, extractJson, PIPELINES, parseManusVoiceoverLines } from "./ai";
 
 const CAPTION = `هل تفكر في مستقبل عائلتك في أوروبا؟
 
@@ -61,6 +61,8 @@ function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = n
   const providers = {
     claude: async ({ prompt, images }) => {
       calls.claude.push({ prompt, images });
+      // The keyframe check before Higgsfield passes by default so each test's answers stay focused on its subject.
+      if (/reel keyframes \(no text or logo/.test(prompt) && !(typeof claudeAnswers[0] === "object" && claudeAnswers[0]?.per_image)) { calls.keyframeQc = (calls.keyframeQc || 0) + 1; const data = { pass: true, issues: [], per_image: [1, 2, 3, 4].map((index) => ({ index, pass: true })) }; return { text: JSON.stringify(data), data }; }
       const next = claudeAnswers.shift();
       const data = typeof next === "function" ? next(prompt) : next;
       return { text: JSON.stringify(data), data };
@@ -176,13 +178,13 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.hfSubmit[4].idempotencyKey).toBe(oldKey);
   });
 
-  it("stops a failed voice step without a timeout retry, render or replacement and notifies once", async () => {
+  it("retries a failed voice take twice, then stops without a render or replacement voice and notifies once", async () => {
     const ctx = setup([STORYBOARD], { voiceError: "HTTP 503: approved voice unavailable" });
     const run = await ctx.o.create({kind:"reel",request:"Voice failure test",user:marketer});
     const r = await approveAndFinish(ctx, run.id);
     expect(r.status).toBe("failed");
     expect(r.steps.find(s=>s.action==="voice").status).toBe("failed");
-    expect(ctx.calls.voice).toBe(1);
+    expect(ctx.calls.voice).toBe(3); // owner rule: a failed take is tried 2 more times, then the step stops
     expect(ctx.calls.render).toHaveLength(0);
     expect(ctx.calls.notify).toHaveLength(1);
   });
@@ -208,8 +210,8 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(delayed.watchdog_retry_count).toBe(1);
     expect(Date.parse(delayed.watchdog_retry_not_before)).toBeGreaterThan(Date.now());
   });
-  it("uses exactly storyboard, keyframes, clips, voice, compose, one final Claude check, and weekly plan", async () => {
-    expect(PIPELINES.reel.steps().map((s) => s.action)).toEqual(["reel_storyboard", "reel_keyframes", "clips", "voice", "compose_reel", "qc_final", "to_weekly_plan"]);
+  it("uses exactly storyboard, keyframes, keyframe check, clips, voice, compose, one final Claude check, and weekly plan", async () => {
+    expect(PIPELINES.reel.steps().map((s) => s.action)).toEqual(["reel_storyboard", "reel_keyframes", "qc_visual", "clips", "voice", "compose_reel", "qc_final", "to_weekly_plan"]);
     expect(PIPELINES.static.steps().map((s) => s.action)).toContain("check_brief");
     expect(PIPELINES.static.steps().map((s) => s.action)).toContain("qc_visual");
 
@@ -224,11 +226,12 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.openaiText[0].prompt).toMatch(/Egyptian Arabic voice-over/);
     expect(ctx.calls.openaiText[0].prompt).toMatch(/cover 20 seconds/);
     expect(ctx.calls.openaiText[0].prompt).toMatch(/direct spoken consultation call to action/);
-    expect(ctx.calls.claude).toHaveLength(1); // sole final QC
-    expect(ctx.calls.claude[0].prompt).toMatch(/ALL supplied visual evidence/);
-    expect(ctx.calls.claude[0].prompt).toMatch(/all 600 narrative frames/i);
-    expect(ctx.calls.claude[0].prompt).toMatch(/Actual script sent/);
-    expect(ctx.calls.claude[0].prompt).toMatch(/تأشيرة/);
+    expect(ctx.calls.claude).toHaveLength(2); // keyframe check before Higgsfield + sole final QC
+    expect(ctx.calls.keyframeQc).toBe(1);
+    expect(ctx.calls.claude.at(-1).prompt).toMatch(/ALL supplied visual evidence/);
+    expect(ctx.calls.claude.at(-1).prompt).toMatch(/all 600 narrative frames/i);
+    expect(ctx.calls.claude.at(-1).prompt).toMatch(/Actual script sent/);
+    expect(ctx.calls.claude.at(-1).prompt).toMatch(/تأشيرة/);
     expect(result.artifacts.final).toMatchObject({ renderJobId: "render-1", peakRssBytes: 240_000_000 });
     expect(ctx.state.items.find((x) => x.item_id === result.artifacts.item_id)).toMatchObject({ status: "pending_approval" });
   });
@@ -263,7 +266,7 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.voice).toBe(4);
     expect(ctx.calls.render.length).toBeGreaterThanOrEqual(2); // durable queue/result polling only; no media providers were re-run
     expect(ctx.calls.render.at(-1)).toMatchObject({ narrationTargetSeconds: 20, narrationSceneSeconds: 5 });
-    expect(ctx.calls.claude).toHaveLength(1);
+    expect(ctx.calls.claude).toHaveLength(2); // keyframe check + final check
   });
 
   it("regenerates exactly named final-QC scenes automatically and preserves voice takes", async () => {
@@ -328,7 +331,7 @@ describe("reel durability and legacy compatibility", () => {
     await ctx.o.tick();
     const r = await settle(ctx.o, seeded.insertId);
     expect(r.status).toBe("done");
-    expect(r.steps.map((s) => s.action)).toEqual(["reel_storyboard", "reel_keyframes", "clips", "voice", "compose_reel", "qc_final", "to_weekly_plan"]);
+    expect(r.steps.map((s) => s.action)).toEqual(["reel_storyboard", "reel_keyframes", "qc_visual", "clips", "voice", "compose_reel", "qc_final", "to_weekly_plan"]);
     expect(r.steps.find((s) => s.action === "clips")).toMatchObject({ approved_by: owner.email, status: "done" });
     expect(r.artifacts.clips.map((c) => c.url)).toEqual(["https://cdn.example/c1.mp4", "https://cdn.example/c2.mp4", "https://cdn.example/c3.mp4", "https://cdn.example/c4.mp4"]);
     expect(ctx.calls.openai).toHaveLength(0);
@@ -456,5 +459,39 @@ describe("owner-authorized targeted content revisions", () => {
     const item={item_id:'2026-W41-01',type:'carousel',version:1,status:'approved',caption_ar:CAPTION,topic:'Family mobility',pillar:'Family Security',program:'Portugal D7',carousel:{format:'1080x1080',slides:[1,2,3].map(i=>({slide:i,headline_en:'Family planning',image_prompt:'Modern Arab family, no logo',image_url:`https://cdn.example/slide-${i}.png`}))},media:{image_urls:[1,2,3].map(i=>`https://cdn.example/slide-${i}.png`)},publish:{channel:'both',datetime_cairo:'2026-10-10T20:00'},history:[],owner_comments:[],first_pass:null};ctx.state.items.push(item);
     const rev=await ctx.o.reviseItem(item.item_id,{comment:'Change slide 2 photograph',scope:'static_design',clip:2},owner);const r=await settle(ctx.o,rev.id);
     expect(r.status).toBe('done');expect(ctx.calls.openai).toHaveLength(1);expect(ctx.calls.claude).toHaveLength(2);expect(item.media.image_urls[0]).toBe('https://cdn.example/slide-1.png');expect(item.media.image_urls[2]).toBe('https://cdn.example/slide-3.png');expect(item.media.image_urls[1]).not.toBe('https://cdn.example/slide-2.png');expect(item.history[0].snapshot.media.image_urls[1]).toBe('https://cdn.example/slide-2.png');expect(item.status).toBe('revision_approved');
+  });
+});
+
+describe("owner rule: Manus rewrites a voice-over that OpenAI could not fix", () => {
+  const BAD = { ...STORYBOARD, scenes: [1, 2, 3, 4].map((i) => ({ ...scene(i), spoken_text_ar: "لو بتفكر في إسبانيا خلينا نرتب خطوتك الجاية صح مع Elevay دلوقتي" })) };
+  const BAD_FIX = { scenes: [1, 2, 3, 4].map((n) => ({ scene: n, spoken_text_ar: "لو بتفكر في إسبانيا خلينا نرتب خطوتك الجاية صح مع Elevay دلوقتي" })) };
+
+  it("asks Manus once, waits without media, then continues with Manus's four lines and the saved storyboard", async () => {
+    const ctx = setup([BAD, BAD_FIX, PASS]);
+    const run = await ctx.o.create({ kind: "reel", request: "Manus voice-over fallback", user: marketer });
+    let r = await settle(ctx.o, run.id);
+    expect(r.status).toBe("waiting");
+    expect(r.artifacts.voiceover_manus).toMatchObject({ status: "waiting" });
+    expect(ctx.calls.openai).toHaveLength(0);
+    expect(ctx.calls.openaiText).toHaveLength(2);
+    const job = ctx.state.jobs.find((j) => j.id === r.artifacts.voiceover_manus.job);
+    expect(job.payload.request).toMatch(/fully in Egyptian colloquial Arabic/);
+    expect(job.payload.request).toMatch(/do not publish/);
+    job.status = "done";
+    job.result = { message: JSON.stringify({ scenes: sceneScripts }) };
+    await ctx.o.tick(); // the heartbeat sees Manus's reply and re-queues the storyboard step
+    await settle(ctx.o, run.id, ["running"]);
+    await ctx.o.tick();
+    r = await approveAndFinish(ctx, run.id);
+    expect(r.status).toBe("done");
+    expect(ctx.calls.openaiText).toHaveLength(2);
+    expect(r.artifacts.brief.reel.storyboard.map((s) => s.spoken_text_ar)).toEqual(sceneScripts);
+  });
+
+  it("reads Manus replies as JSON, nested JSON text or four plain lines", () => {
+    expect(parseManusVoiceoverLines({ scenes: sceneScripts })).toEqual(sceneScripts);
+    expect(parseManusVoiceoverLines("Here you go: " + JSON.stringify({ scenes: sceneScripts }))).toEqual(sceneScripts);
+    expect(parseManusVoiceoverLines(sceneScripts.map((l, i) => `${i + 1}. ${l}`).join("\n"))).toEqual(sceneScripts);
+    expect(parseManusVoiceoverLines("no lines")).toBeNull();
   });
 });

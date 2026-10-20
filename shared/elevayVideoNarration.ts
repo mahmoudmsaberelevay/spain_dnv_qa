@@ -32,7 +32,7 @@ const egyptianPhrases: Array<[RegExp, string]> = [
  * full joined voice-over instead. Formal (MSA) and non-Egyptian words are still rejected in every line.
  */
 export function prepareEgyptianReelNarration(value: string, { requireEgyptianMarker = true }: { requireEgyptianMarker?: boolean } = {}): string {
-  let text = value.replace(/^\[thoughtful\]\s*/i, "").replace(/\\n/g, "\n").trim();
+  let text = value.replace(/^(?:\s*\[[a-z][a-z _-]{0,48}\])+\s*/i, "").replace(/\\n/g, "\n").trim();
   // Planning models sometimes include shot directions in scriptCopy. Those
   // directions belong in the visual brief, never in the spoken ElevenLabs text.
   text = text.split(/\n+/).map(line => line.trim())

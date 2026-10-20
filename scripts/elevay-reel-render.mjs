@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 /** Bumped whenever renderer output changes. Version 4 adds the 20-second / four 5-second narration timeline. */
-export const RENDERER_VERSION = 5;
+export const RENDERER_VERSION = 6;
 const THREADS = 1;
 const FFMPEG = process.env.ELEVAY_FFMPEG_BIN || '/usr/bin/ffmpeg';
 const FFPROBE = process.env.ELEVAY_FFPROBE_BIN || '/usr/bin/ffprobe';
@@ -127,6 +127,8 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
         await ff(['-threads','1','-i',src,'-vn','-af',audioFormat,'-c:a','pcm_s16le',wav]);
         const d=Number((await probe(wav)).format.duration);
         if (!(d>0.2)) throw new Error(`Scene ${i+1} saved voice take is empty.`);
+        // Owner rule (Oct 2026): one scene's take may run past its 5 s scene, up to 6.5 s; the takes flow together below.
+        if (d > 6.5 + 0.05) throw new Error(`Scene ${i+1} saved narration is ${d.toFixed(2)}s, above the 6.5-second maximum for one scene; saved take retained for review.`);
         wavs.push(wav); rawVoiceSeconds.push(d);
         await fsp.rm(src,{force:true});
       }

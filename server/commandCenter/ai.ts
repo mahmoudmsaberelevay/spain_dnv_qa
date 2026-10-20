@@ -188,6 +188,17 @@ function voicePromptTemplate(value: unknown) {
   return template.includes("[the reel's idea/objective from the weekly plan]") ? template : ELEVAY_VOICE_OVER_PROMPT_DEFAULT;
 }
 
+/** Reads Manus's reply to a voice-over rewrite job: {"scenes":[4 lines]} (object or JSON text) or 4 plain lines. */
+export function parseManusVoiceoverLines(raw: unknown): string[] | null {
+  const tidy = (x: unknown) => String(x ?? "").replace(/^\s*(?:\d+[.)-]|[-•])\s*/, "").replace(/["“”]/g, "").trim();
+  let v: any = raw;
+  if (v && typeof v === "object" && !Array.isArray(v) && !v.scenes) v = v.text ?? v.message ?? v.result ?? v.output ?? JSON.stringify(v);
+  if (typeof v === "string") { const m = v.match(/\{[\s\S]*\}/); if (m) { try { v = JSON.parse(m[0]); } catch { /* plain lines */ } } }
+  const arr = Array.isArray(v?.scenes) ? v.scenes.map((x: any) => (typeof x === "string" ? x : x?.spoken_text_ar ?? x?.text)) : typeof v === "string" ? v.split(/\n+/) : null;
+  const lines = (arr || []).map(tidy).filter((l: string) => /[\u0600-\u06FF]/.test(l));
+  return lines.length === 4 ? lines : null;
+}
+
 function lockedVoiceTextIssue(value: unknown) {
   const text = String(value || "").trim();
   if (!text) return "Voice-over text is missing.";
@@ -313,7 +324,7 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
   /** One take per scene with the ELEVAY voice clone configured on elevay.vip. */
   async function voiceScene(text) {
     const tts = await import("../elevenLabsTts");
-    const r = await tts.generateElevayVideoVoiceOver(text, { requireEgyptianMarker: false }); // full script checked before the takes
+    const r = await tts.generateElevayVideoVoiceOver(text, { requireEgyptianMarker: false, egyptianAccent: true }); // full script checked before the takes
     const bytes = Buffer.from(await (await fetcher(r.url)).arrayBuffer());
     return { url: r.url, sha256: r.sha256, bytes, script: r.script, voiceId: r.voiceId, model: r.model, languageCode: r.languageCode, dialect: r.dialect, requestId: r.requestId };
   }
@@ -416,6 +427,7 @@ export const PIPELINES = {
   reel: { label: "Reel", steps: () => [
     S("openai", "reel_storyboard", "OpenAI writes the 4-scene storyboard, MSA caption and Egyptian Arabic voice-over"),
     S("openai", "reel_keyframes", "OpenAI creates the 4 keyframes (9:16)"),
+    S("claude", "qc_visual", "Claude checks the 4 keyframes before Higgsfield and remakes only faulty ones (up to 3 times)"),
     S("higgsfield", "clips", "Higgsfield animates 4 × 5 s clips"),
     S("elevenlabs", "voice", "ELEVAY voice clone reads the Egyptian Arabic script, one take per scene"),
     S("system", "compose_reel", "External render worker combines clips, ELEVAY voice and 3 s white logo outro under OpenAI edit direction"),
@@ -499,7 +511,10 @@ function migrateReelPipeline(run) {
   const retiredFailure = run.steps.some((s) => RETIRED_REEL_ACTIONS.has(s?.action) && s.status === "failed");
   run.steps = wanted.map((fresh, i) => {
     const saved = byAction.get(fresh.action);
-    const next = saved ? { ...fresh, ...saved, provider: fresh.provider, action: fresh.action, title: fresh.title } : fresh;
+    let next = saved ? { ...fresh, ...saved, provider: fresh.provider, action: fresh.action, title: fresh.title } : fresh;
+    // The keyframe check is new (Oct 2026). A run whose clips were already submitted never goes back to check
+    // keyframes that Higgsfield has animated; the final Claude check still reviews them.
+    if (!saved && fresh.action === "qc_visual" && (byAction.get("clips")?.status && byAction.get("clips").status !== "pending" || (run.artifacts?.clips || []).some(Boolean))) next = { ...fresh, status: "done", error: null, note: "Added after this reel's clips were made; covered by the final check." };
     // A legacy QC block skipped downstream work. Those retired checks no longer control reels.
     if (next.status === "skipped" && /keyframe|design QC|paid clips|visual QC|clip QC/i.test(String(next.error || ""))) {
       next.status = "pending";
@@ -790,8 +805,12 @@ export function createOrchestrator(deps) {
       }
       case "openai.reel_storyboard": {
         const voicePrompt = await voicePromptFor(run, run.request);
-        const r = await askOpenAi(run, step, `${voicePrompt}\n\n${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n\"\"\"${run.request}\"\"\"\n${opts.program ? "Program: " + opts.program + "\n" : ""}The four spoken_text_ar values are recorded separately for timing, but together they MUST read as one complete, connected Egyptian Arabic voice-over narration—not numbered points, disconnected bullets or four standalone statements. Keep the complete narration within 45–55 Egyptian Arabic spoken words and split it into four approximately 5-second scene takes.\n\nNarrative communication structure: Scene 1 is a striking, cinematic but truthful dramatic hook about a real ambition, decision or uncertainty—never fake urgency, fear, clickbait or a guarantee. Scenes 2–3 clearly explain one valuable advisory message and why Elevay helps. Scene 4 finishes with a direct spoken consultation call to action such as \"احجز استشارتك مع Elevay دلوقتي\" or \"تواصل مع Elevay واحجز استشارتك\".\n\nReturn JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "final_edit_direction": "one concise editing direction for the external renderer: pacing, clean scene joins, voice through the first 20 seconds only, and a silent white-logo outro; never request text or logo changes", "scenes": [4 scenes in order dramatic hook → clear message → trust/proof → direct consultation CTA, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic continuation; only country names and Elevay in English letters, everything else in Arabic; write شينغن rather than Schengen"}]}`, { maxTokens: 5000 });
+        // Owner rule: when OpenAI's text still fails after its correction, Manus rewrites the voice-over; the saved
+        // storyboard is then reused with Manus's four lines (no second OpenAI storyboard, no media yet).
+        const fromManus = A.voiceover_manus?.status === "received" && A.storyboard_draft && Array.isArray(A.voiceover_manus.lines);
+        const r = fromManus ? { data: JSON.parse(JSON.stringify(A.storyboard_draft)) } : await askOpenAi(run, step, `${voicePrompt}\n\n${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n\"\"\"${run.request}\"\"\"\n${opts.program ? "Program: " + opts.program + "\n" : ""}Every sentence must be written fully in Egyptian colloquial Arabic — Egyptian wording, grammar and pronunciation, never Modern Standard Arabic words or grammar. The four spoken_text_ar values are recorded separately for timing, but together they MUST read as one complete, connected Egyptian Arabic voice-over narration—not numbered points, disconnected bullets or four standalone statements. Keep the complete narration within 45–55 Egyptian Arabic spoken words and split it into four approximately 5-second scene takes.\n\nNarrative communication structure: Scene 1 is a striking, cinematic but truthful dramatic hook about a real ambition, decision or uncertainty—never fake urgency, fear, clickbait or a guarantee. Scenes 2–3 clearly explain one valuable advisory message and why Elevay helps. Scene 4 finishes with a direct spoken consultation call to action such as \"احجز استشارتك مع Elevay دلوقتي\" or \"تواصل مع Elevay واحجز استشارتك\".\n\nReturn JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "final_edit_direction": "one concise editing direction for the external renderer: pacing, clean scene joins, voice through the first 20 seconds only, and a silent white-logo outro; never request text or logo changes", "scenes": [4 scenes in order dramatic hook → clear message → trust/proof → direct consultation CTA, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic continuation; only country names and Elevay in English letters, everything else in Arabic; write شينغن rather than Schengen"}]}`, { maxTokens: 5000 });
         const scenes = (r.data.scenes || []).slice(0, 4);
+        if (fromManus) { scenes.forEach((sc, k) => { sc.spoken_text_ar = A.voiceover_manus.lines[k]; }); log(run, "studio", "manus", "Using Manus's rewritten Egyptian voice-over with the saved storyboard."); }
         if (scenes.length !== 4) throw new Error("OpenAI did not return 4 scenes.");
         // Each 5-second line is checked for formal/non-Egyptian words, English and spelling; the "sounds Egyptian"
         // marker test runs on the whole voice-over, because one short line can be Egyptian without a marker word.
@@ -809,15 +828,35 @@ export function createOrchestrator(deps) {
         if (rebalanceElevay20SecondNarration(scenes)) log(run, "studio", "team", "Voice-over takes re-divided evenly across the four 5-second scenes (same text).");
         let invalid = await invalidScripts();
         let narrationFormatError = validateElevay20SecondReelNarration(scenes);
-        for (let repair = 0; (invalid.length || narrationFormatError) && repair < 1; repair++) {
+        for (let repair = 0; (invalid.length || narrationFormatError) && repair < (fromManus ? 0 : 1); repair++) {
           const needsFullNarrationRewrite = Boolean(narrationFormatError);
           const targets = needsFullNarrationRewrite ? [1, 2, 3, 4] : invalid.map(i=>i+1);
-          const fixed = await askOpenAi(run, step, `${voicePrompt}\n\nYour storyboard is accepted visually, but its Egyptian Arabic narration needs correction: ${narrationFormatError || `scene(s) ${targets.join(", ")} failed the Egyptian Arabic check (${scriptReasons.join(" | ")})`}. Rewrite ONLY the spoken scripts for scene(s) ${targets.join(", ")}; when the full 20-second flow is invalid, rewrite all four spoken scripts. Keep every visual unchanged. The full narration is one continuous message, not points or bullets: four approximately 5-second takes and 45–55 words in total. Scene 1 needs a bold, cinematic but truthful dramatic hook—never fear, fake urgency, clickbait or guarantees. Scenes 2–3 explain one clear benefit. Scene 4 ends with a direct consultation CTA using Elevay. Country names and Elevay are English only; write شينغن in Arabic. No guarantees or تأشيرة. Current scenes:\n${JSON.stringify(scenes)}\nReturn JSON {"scenes":[{"scene":1,"spoken_text_ar":"..."}]} for exactly the requested scenes.`, { maxTokens: 1600 });
+          const fixed = await askOpenAi(run, step, `${voicePrompt}\n\nYour storyboard is accepted visually, but its Egyptian Arabic narration needs correction: ${narrationFormatError || `scene(s) ${targets.join(", ")} failed the Egyptian Arabic check (${scriptReasons.join(" | ")})`}. Rewrite ONLY the spoken scripts for scene(s) ${targets.join(", ")}. Every sentence must be written fully in Egyptian colloquial Arabic — Egyptian wording, grammar and pronunciation, never Modern Standard Arabic words or grammar. when the full 20-second flow is invalid, rewrite all four spoken scripts. Keep every visual unchanged. The full narration is one continuous message, not points or bullets: four approximately 5-second takes and 45–55 words in total. Scene 1 needs a bold, cinematic but truthful dramatic hook—never fear, fake urgency, clickbait or guarantees. Scenes 2–3 explain one clear benefit. Scene 4 ends with a direct consultation CTA using Elevay. Country names and Elevay are English only; write شينغن in Arabic. No guarantees or تأشيرة. Current scenes:\n${JSON.stringify(scenes)}\nReturn JSON {"scenes":[{"scene":1,"spoken_text_ar":"..."}]} for exactly the requested scenes.`, { maxTokens: 1600 });
           for (const s of fixed.data?.scenes || []) if ((needsFullNarrationRewrite || invalid.includes(s.scene - 1)) && Number.isInteger(s.scene) && s.scene >= 1 && s.scene <= 4) scenes[s.scene - 1].spoken_text_ar = s.spoken_text_ar;
           if (rebalanceElevay20SecondNarration(scenes)) log(run, "studio", "team", "Corrected voice-over takes re-divided evenly across the four 5-second scenes (same text).");
           invalid = await invalidScripts();
           narrationFormatError = validateElevay20SecondReelNarration(scenes);
         }
+        if ((invalid.length || narrationFormatError) && !fromManus && !A.voiceover_manus) {
+          const reason = invalid.length ? scriptReasons.join(" | ") : narrationFormatError;
+          A.storyboard_draft = JSON.parse(JSON.stringify({ ...r.data, scenes }));
+          let jobId;
+          const instructions = [
+            "ELEVAY AI Studio needs a corrected reel voice-over text. Text only: do not generate or change any image, clip, voice take or render; do not publish, post or perform any Meta, campaign, budget, Lead or CRM action; do not read or change any secret.",
+            `Why OpenAI's text failed the automatic checks: ${reason}`,
+            `OpenAI's last four lines (one per 5-second scene): ${JSON.stringify(scenes.map((sc) => sc.spoken_text_ar))}`,
+            `Write a new voice-over following the owner's ELEVAY Voice-Over Prompt exactly:\n${voicePrompt}`,
+            `Rules the text must pass: Every sentence must be written fully in Egyptian colloquial Arabic — Egyptian wording, grammar and pronunciation, never Modern Standard Arabic words or grammar. One continuous message of 45–55 words split into exactly 4 lines of 10–14 words (about 5 seconds each). Line 1 is a truthful dramatic hook (e.g. starts with لو / تخيل / بتحلم). Line 4 is a direct consultation call to action (e.g. احجز استشارتك مع Elevay دلوقتي). Use at least 3 everyday Egyptian words (مش، اللي، علشان، دلوقتي، إزاي، خلينا، بنساعدك، هتقدر). Never use formal words such as نحن، هذا، الذي، لماذا، كيف، الآن، فقط، يجب، لنبدأ، نقوم، نوفر. Country names in English letters only; the company written exactly "Elevay"; no other English; never "تأشيرة" or "فيزا"; no guarantees; no legal or tax advice.`,
+            'Reply with JSON only, exactly: {"scenes":["line 1","line 2","line 3","line 4"]}',
+          ].join("\n\n");
+          const q2 = await deps.mutate({}, (st) => { const j = E.enqueueJob(st, "custom", { request: instructions, requested_by: run.created_by, studio_run: run.id, purpose: "reel_voiceover_rewrite" }, "ai-studio"); jobId = j.id; return { ok: true }; });
+          if (q2 && q2.ok === false) throw new Error(q2.error);
+          A.voiceover_manus = { status: "waiting", job: jobId, reason, requested_at: nowIso() };
+          step.output = { waiting_for: "manus_voiceover", job: jobId, reason };
+          log(run, "studio", "manus", `OpenAI's voice-over still failed after its correction (${reason}). Asked Manus to rewrite it (job ${jobId}); no media generated yet.`);
+          return "waiting";
+        }
+        if (fromManus && (invalid.length || narrationFormatError)) throw new Error(`Manus's rewritten voice-over also failed the automatic checks (${invalid.length ? scriptReasons.join(" | ") : narrationFormatError}). No media generation started.`);
         if (invalid.length) throw new Error(`OpenAI could not produce valid Egyptian Arabic for scene(s) ${invalid.map((i) => i + 1).join(", ")} after one correction (${scriptReasons.join(" | ")}). No media generation started.`);
         if (narrationFormatError) throw new Error(`OpenAI could not produce the required 20-second dramatic hook and direct CTA narration after one correction: ${narrationFormatError} No media generation started.`);
         for (const s of scenes) { if (!s.keyframe_prompt || !s.motion_prompt || !s.spoken_text_ar) throw new Error("Storyboard is incomplete; no generation started."); const issue = lockedVoiceTextIssue(s.spoken_text_ar); if (issue) throw new Error(`${issue} No media generation started.`); await providers.checkEgyptianScript(s.spoken_text_ar, { requireEgyptianMarker: false }); }
@@ -999,8 +1038,21 @@ export function createOrchestrator(deps) {
             continue;
           }
           log(run, "studio", "elevenlabs", `Scene ${i + 1}: ${sb[i].spoken_text_ar}`);
-          const v = await providers.voiceScene(sb[i].spoken_text_ar);
-          if (v.voiceId !== ELEVAY_ARABIC_VOICE_DEFAULTS.voiceId || v.languageCode !== "ar") throw new Error("The voice provider returned unexpected voice/language provenance. Step stopped; no alternate voice accepted.");
+          // Owner rule: a failed take is tried again up to 2 more times. Text-policy refusals and a missing
+          // ELEVAY voice are not retried (the same request would fail the same way).
+          let v = null, lastError = null;
+          for (let attempt = 1; attempt <= 3 && !v; attempt++) {
+            try {
+              const got = await providers.voiceScene(sb[i].spoken_text_ar);
+              if (got.voiceId !== ELEVAY_ARABIC_VOICE_DEFAULTS.voiceId || got.languageCode !== "ar") throw new Error("The voice provider returned unexpected voice/language provenance. No alternate voice accepted.");
+              v = got;
+            } catch (e) {
+              lastError = e;
+              if (e?.name === "ElevenLabsLanguagePolicyError" || e?.name === "ElevenLabsVoiceUnavailableError") throw e;
+              if (attempt < 3) log(run, "elevenlabs", "studio", `Scene ${i + 1} take failed (${String(e?.message || e).slice(0, 160)}); trying again (${attempt + 1} of 3).`);
+            }
+          }
+          if (!v) throw new Error(`Scene ${i + 1} voice take failed 3 times: ${String(lastError?.message || lastError).slice(0, 200)} Step stopped; no alternate voice accepted.`);
           A.voices[i] = { url: v.url, sha256: v.sha256, script: v.script || sb[i].spoken_text_ar, voiceId: v.voiceId, model: v.model, languageCode: v.languageCode, dialect: v.dialect, requestId: v.requestId };
           await checkpoint(`Checkpoint saved: ELEVAY voice take ${i + 1}.`);
         }
@@ -1343,6 +1395,19 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
       const latestProgress = Math.max(startedAt, ...clips.map((c) => Date.parse(c.lastProgressAt || c.submittedAt || "") || 0));
       if (now - latestProgress >= EXTERNAL_PROGRESS_DEADLINE_MS) return recoverOnceOrFail("no provider progress was recorded for 20 minutes", true);
       return false;
+    }
+    if (step.action === "reel_storyboard" && A.voiceover_manus?.status === "waiting") {
+      const { state } = await deps.loadState();
+      const j = state.jobs.find((x) => x.id === A.voiceover_manus.job);
+      if (!j) return false;
+      if (j.status === "failed") { step.status = "failed"; step.error = "Manus could not rewrite the voice-over: " + clip(j.result?.error || "", 300) + " No media generation started."; return false; }
+      if (j.status !== "done") return false;
+      const lines = parseManusVoiceoverLines(j.result ?? j.manus?.message);
+      if (!lines) { step.status = "failed"; step.error = "Manus's reply did not contain the 4 voice-over lines in the requested format. No media generation started."; return false; }
+      A.voiceover_manus = { ...A.voiceover_manus, status: "received", lines, received_at: nowIso() };
+      log(run, "manus", "studio", `Rewritten voice-over received: ${lines.join(" / ")}`);
+      step.status = "pending"; step.output = null;
+      return "resubmit";
     }
     if (step.provider === "manus") {
       const { state } = await deps.loadState();
