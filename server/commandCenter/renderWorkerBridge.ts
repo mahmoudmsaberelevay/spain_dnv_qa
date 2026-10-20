@@ -156,7 +156,8 @@ function safeProgressMetadata(value: unknown) {
     musicDropped: input.musicDropped ? cleanError(input.musicDropped).slice(0, 240) : null,
     narrationTargetSeconds: current ? 20 : legacy ? 18 : undefined,
     narrationSceneSeconds: current ? 5 : legacy ? 4.5 : undefined,
-    rawVoiceSeconds: raw.length === 4 && raw.every((n) => Number.isFinite(n) && n > 0.2 && n < 12) ? raw : undefined,
+    rawVoiceSeconds: raw.length === 4 && raw.every((n) => Number.isFinite(n) && n > 0.2 && n < 30) ? raw : undefined,
+    sceneSeconds: Array.isArray(input.sceneSeconds) && input.sceneSeconds.length === 4 && input.sceneSeconds.every((n: unknown) => Number.isFinite(Number(n)) && Number(n) >= 4.5 && Number(n) <= 30) ? input.sceneSeconds.map(Number) : undefined,
     appliedVoiceTempos: Array.isArray(input.appliedVoiceTempos) && input.appliedVoiceTempos.length === 4 && input.appliedVoiceTempos.every((n: unknown) => Number.isFinite(Number(n)) && Number(n) >= 0.8 && Number(n) <= 1.12 + 0.0001) ? input.appliedVoiceTempos.map(Number) : undefined,
     voicePaddingSeconds: Array.isArray(input.voicePaddingSeconds) && input.voicePaddingSeconds.length === 4 && input.voicePaddingSeconds.every((n: unknown) => Number.isFinite(Number(n)) && Number(n) >= 0 && Number(n) <= 5) ? input.voicePaddingSeconds.map(Number) : undefined,
   };
@@ -307,7 +308,7 @@ export function createRenderWorkerBridge({
   }
 
   /** Lowest renderer version that may take jobs (3 = the voice-over fix). Older or unversioned Macs wait. */
-  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 7) || 0);
+  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 8) || 0);
   const workersSeen = new Map<string, { rendererVersion: number | null; at: number; outdated: boolean }>();
   async function lease(workerId: string, rendererVersion?: unknown) {
     await ensure();
@@ -429,14 +430,18 @@ export function createRenderWorkerBridge({
     if (qcFrames.length !== MAX_QC_FRAMES) throw new RenderWorkerBridgeError(400, "All 75 narrative QC sheets and 2 outro frames are required before completion.");
     const seconds = Number(final.seconds);
     const manifest = safeManifest(current.doc.manifest);
-    if (!Number.isFinite(seconds) || Math.abs(seconds - 23) > 0.05 || final.mode !== "cuts" || Number(final.narrationTargetSeconds) !== manifest.narrationTargetSeconds || Number(final.narrationSceneSeconds) !== manifest.narrationSceneSeconds) {
-      throw new RenderWorkerBridgeError(400, "Final render does not meet the locked 23-second ELEVAY output contract.");
+    // Owner rule (20 Oct 2026): 20 s of narrative + 3 s outro normally; longer when a voice take runs long.
+    const narrativeSeconds = Number(final.narrativeSeconds ?? 20);
+    if (!Number.isFinite(seconds) || !(narrativeSeconds >= 20 - 0.01 && narrativeSeconds <= 90) || Math.abs(seconds - (narrativeSeconds + 3)) > 0.1 || final.mode !== "cuts" || Number(final.narrationTargetSeconds) !== manifest.narrationTargetSeconds || Number(final.narrationSceneSeconds) !== manifest.narrationSceneSeconds) {
+      throw new RenderWorkerBridgeError(400, "Final render does not meet the ELEVAY output contract (narrative of at least 20 s + 3 s silent logo outro).");
     }
     const rawVoiceSeconds = Array.isArray(final.rawVoiceSeconds) ? final.rawVoiceSeconds.slice(0, 4).map(Number) : [];
-    if (rawVoiceSeconds.length !== 4 || rawVoiceSeconds.some((n) => !Number.isFinite(n) || n <= 0.2 || n > 12)) throw new RenderWorkerBridgeError(400, "Final render voice timing metadata is invalid.");
+    if (rawVoiceSeconds.length !== 4 || rawVoiceSeconds.some((n) => !Number.isFinite(n) || n <= 0.2 || n > 30)) throw new RenderWorkerBridgeError(400, "Final render voice timing metadata is invalid.");
     const cleanFinal = {
       url: current.doc.parts.final,
       seconds,
+      narrativeSeconds,
+      sceneSeconds: Array.isArray(final.sceneSeconds) && final.sceneSeconds.length === 4 ? final.sceneSeconds.map(Number) : [5, 5, 5, 5],
       sha256: uploaded.sha256,
       music: final.music === true,
       musicDropped: final.musicDropped ? cleanError(final.musicDropped).slice(0, 240) : null,

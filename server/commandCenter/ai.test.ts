@@ -231,7 +231,7 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.claude).toHaveLength(2); // keyframe check before Higgsfield + sole final QC
     expect(ctx.calls.keyframeQc).toBe(1);
     expect(ctx.calls.claude.at(-1).prompt).toMatch(/ALL supplied visual evidence/);
-    expect(ctx.calls.claude.at(-1).prompt).toMatch(/all 600 narrative frames/i);
+    expect(ctx.calls.claude.at(-1).prompt).toMatch(/600 frames spread evenly over the whole narrative part/i);
     expect(ctx.calls.claude.at(-1).prompt).toMatch(/Actual script sent/);
     expect(ctx.calls.claude.at(-1).prompt).toMatch(/تأشيرة/);
     expect(result.artifacts.final).toMatchObject({ renderJobId: "render-1", peakRssBytes: 240_000_000 });
