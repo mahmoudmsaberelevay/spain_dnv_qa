@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 /** Bumped whenever renderer output changes. Version 4 adds the 20-second / four 5-second narration timeline. */
-export const RENDERER_VERSION = 4;
+export const RENDERER_VERSION = 5;
 const THREADS = 1;
 const FFMPEG = process.env.ELEVAY_FFMPEG_BIN || '/usr/bin/ffmpeg';
 const FFPROBE = process.env.ELEVAY_FFPROBE_BIN || '/usr/bin/ffprobe';
@@ -120,31 +120,44 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
     // stale values from a silent or superseded final.
     let rawVoiceSeconds = [];
     if (!(await restore('audio', 'm4a'))) {
-      const voices = [], appliedVoiceTempos = [], voicePaddingSeconds = [];
+      const voices = [], appliedVoiceTempos = [], voicePaddingSeconds = [], wavs = [];
       for (let i=0;i<4;i++) {
         const src=path.join(directory,`voice${i}.src`), wav=path.join(directory,`voice${i}.wav`);
         await downloadFile(manifest.voiceUrls[i],src,15*1024*1024);
         await ff(['-threads','1','-i',src,'-vn','-af',audioFormat,'-c:a','pcm_s16le',wav]);
         const d=Number((await probe(wav)).format.duration);
         if (!(d>0.2)) throw new Error(`Scene ${i+1} saved voice take is empty.`);
-        const tempo=d/narrationSceneSeconds;
-        if (tempo>1.12 + 0.0001) throw new Error(`Scene ${i+1} saved narration is ${d.toFixed(2)}s and cannot be naturally timed to its ${narrationSceneSeconds.toFixed(1)}-second share of the ${narrationTargetSeconds}-second voice-over; saved take retained for review.`);
+        wavs.push(wav); rawVoiceSeconds.push(d);
+        await fsp.rm(src,{force:true});
+      }
+      // The four takes are one continuous narration, so they flow back to back: a take that runs a little past
+      // its 5-second scene borrows time from a shorter neighbour instead of failing. Each take starts on its
+      // scene when it can, never overlaps the previous one, and the voice always ends before the 20-second
+      // outro. Only when the whole narration is longer than 20 s is it sped up evenly (at most 1.12x).
+      const GAP=0.12, LEAD=0.1, END=narrationTargetSeconds;
+      const room=END-LEAD-3*GAP, spoken=rawVoiceSeconds.reduce((a,b)=>a+b,0);
+      const tempo=Math.max(1, spoken/room);
+      if (tempo>1.12 + 0.0001) throw new Error(`The saved voice-over is ${spoken.toFixed(2)}s in total and cannot be naturally timed to the ${narrationTargetSeconds}-second voice-over; saved takes retained for review.`);
+      const len=rawVoiceSeconds.map(d=>d/tempo), starts=[];
+      for (let i=0;i<4;i++) starts.push(Math.max(i*narrationSceneSeconds+(i?0:LEAD), i ? starts[i-1]+len[i-1]+GAP : LEAD));
+      for (let i=3;i>=0;i--) starts[i]=Math.min(starts[i], i===3 ? END-len[3] : starts[i+1]-GAP-len[i]);
+      if (starts[0] < 0) throw new Error(`The saved voice-over cannot be placed within ${narrationTargetSeconds} seconds; saved takes retained for review.`);
+      for (let i=0;i<4;i++) {
         // Time each take in its own pass. atempo inside the 4-input mix produced broken timestamps that made
         // FFmpeg write a 0.1-second silent track (reels shipped with no voice-over).
         const timed=path.join(directory,`voice${i}.timed.wav`);
-        const voiceFilter = d <= narrationSceneSeconds
-          ? `${audioFormat},apad=whole_dur=${narrationSceneSeconds},atrim=duration=${narrationSceneSeconds},asetpts=N/SR/TB`
-          : `${audioFormat},atempo=${tempo.toFixed(5)},atrim=duration=${narrationSceneSeconds},asetpts=N/SR/TB`;
-        await ff(['-threads','1','-i',wav,'-af',voiceFilter,'-c:a','pcm_s16le',timed]);
-        voices.push(timed); appliedVoiceTempos.push(d <= narrationSceneSeconds ? 1 : tempo); voicePaddingSeconds.push(d <= narrationSceneSeconds ? Math.max(0, narrationSceneSeconds - d) : 0); rawVoiceSeconds.push(d);
-        await fsp.rm(src,{force:true});
+        const voiceFilter = tempo > 1.0001 ? `${audioFormat},atempo=${tempo.toFixed(5)},asetpts=N/SR/TB` : `${audioFormat},asetpts=N/SR/TB`;
+        await ff(['-threads','1','-i',wavs[i],'-af',voiceFilter,'-c:a','pcm_s16le',timed]);
+        voices.push(timed); appliedVoiceTempos.push(tempo);
+        voicePaddingSeconds.push(Math.max(0, Math.min(5, (i<3 ? starts[i+1] : END) - starts[i] - len[i])));
       }
+      const voiceStarts=starts.map(x=>Math.round(x*1000));
       let musicFile=null;
       if(manifest.musicUrl) try { musicFile=path.join(directory,'music.src');await downloadFile(manifest.musicUrl,musicFile,25*1024*1024); } catch { musicDropped='Music source unavailable; saved voice takes retained.';musicFile=null; }
       const mix=async withMusic => {
         const args=voices.flatMap(f=>['-threads','1','-i',f]);
         if(withMusic)args.push('-stream_loop','-1','-threads','1','-i',musicFile);
-        const filters=voices.map((_,i)=>`[${i}:a]${audioFormat},adelay=${Math.round(i*narrationSceneSeconds*1000)}|${Math.round(i*narrationSceneSeconds*1000)},apad=whole_dur=23[n${i}]`);
+        const filters=voices.map((_,i)=>`[${i}:a]${audioFormat},adelay=${voiceStarts[i]}|${voiceStarts[i]},apad=whole_dur=23[n${i}]`);
         filters.push('[n0][n1][n2][n3]amix=inputs=4:duration=longest:normalize=0[voice]');
         if(withMusic) filters.push('[4:a]'+audioFormat+',atrim=duration=23,volume=0.16,afade=t=in:d=0.8,afade=t=out:st=20:d=3[bed]','[voice][bed]amix=inputs=2:duration=longest:normalize=0,atrim=duration=23,alimiter=limit=0.95[a]');
         else filters.push('[voice]atrim=duration=23,alimiter=limit=0.95[a]');
