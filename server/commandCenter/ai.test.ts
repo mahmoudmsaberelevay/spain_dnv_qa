@@ -495,3 +495,29 @@ describe("owner rule: Manus rewrites a voice-over that OpenAI could not fix", ()
     expect(parseManusVoiceoverLines("no lines")).toBeNull();
   });
 });
+
+describe("owner rule: one week content file from OpenAI", () => {
+  const types = ["static", "reel", "static", "reel", "static", "reel", "static"];
+  const WEEK_PLAN = { rationale: "Mix for test", posts: types.map((type, i) => ({ type, date: "2026-11-0" + (i + 1), time: "19:00", program: "Portugal D7", pillar: "Family Security", audience: "Families", brief: `Idea ${i + 1}` })) };
+  const WEEK_FILE = { posts: types.map((type, i) => type === "reel"
+    ? { index: i + 1, type, topic: `Reel ${i + 1}`, pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, music_direction: "Soft", final_edit_direction: "Clean joins", scenes: [1, 2, 3, 4].map(scene) }
+    : { index: i + 1, type, topic: `Static ${i + 1}`, pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, headline_en: "Plan your next chapter", image_prompt: "Arab family in Lisbon, elegant clothing and shoes, no text, no logo, no passports, no flags, no contact details", format: "1080x1350" }) };
+
+  it("sends Claude's week plan to OpenAI once and hands each post its own part", async () => {
+    const ctx = setup([WEEK_PLAN, WEEK_FILE]);
+    const run = await ctx.o.create({ kind: "weekly_plan", request: "Plan the week", options: { week: "2026-W45" }, user: owner });
+    const r = await settle(ctx.o, run.id);
+    expect(r.steps.map((x) => x.action)).toEqual(["weekly_plan", "week_content", "spawn_week"]);
+    expect(ctx.calls.openaiText).toHaveLength(1);
+    expect(ctx.calls.openaiText[0].prompt).toMatch(/Idea 1/);
+    expect(ctx.calls.openaiText[0].prompt).toMatch(/cover 20 seconds/);
+    expect(r.artifacts.week_content.missing).toEqual([]);
+    const children = await Promise.all(r.artifacts.children.map((id) => ctx.o.get(id)));
+    expect(children[1].options.prewritten.scenes.map((x) => x.spoken_text_ar)).toEqual(sceneScripts);
+    expect(children[0].options.prewritten.headline_en).toBe("Plan your next chapter");
+    let reel;
+    for (let i = 0; i < 200; i++) { reel = await ctx.o.get(r.artifacts.children[1]); if (reel.artifacts?.brief?.reel) break; await ctx.o.tick(); await new Promise((res) => setTimeout(res, 3)); }
+    expect(reel.artifacts.brief.reel.storyboard.map((x) => x.spoken_text_ar)).toEqual(sceneScripts);
+    expect(ctx.calls.openaiText).toHaveLength(1); // no separate storyboard request per reel
+  });
+});

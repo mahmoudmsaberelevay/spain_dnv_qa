@@ -252,7 +252,7 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
    * separate from image generation so a writing request can never switch voice,
    * language, or turn into a render request.
    */
-  async function openaiText({ system, prompt, maxTokens = 4000, json = true, retried = false }) {
+  async function openaiText({ system, prompt, maxTokens = 4000, json = true, retried = false, timeoutMs = 180000 }) {
     const key = process.env.OPENAI_API_KEY;
     if (!key) throw new Error("OPENAI_API_KEY is not set on elevay.vip.");
     const model = process.env.ELEVAY_OPENAI_TEXT_MODEL || "gpt-5-mini";
@@ -266,7 +266,7 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(180000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const response = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(`OpenAI writing: ${response?.error?.message || `HTTP ${res.status}`}`);
@@ -405,7 +405,11 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
     return out;
   }
 
-  return { claude, openaiText, openaiImage, openaiPortrait, brandStatic, clipFrames, voiceScene, checkEgyptianScript, composeReel, composeReelStep, videoFrames, higgsfieldSubmit, higgsfieldStatus, persistClip, test };
+  async function storeWeekFile(key, text) {
+    const { storagePut } = await import("../storage");
+    return (await storagePut(key, Buffer.from(text, "utf8"), "application/json")).url;
+  }
+  return { storeWeekFile, claude, openaiText, openaiImage, openaiPortrait, brandStatic, clipFrames, voiceScene, checkEgyptianScript, composeReel, composeReelStep, videoFrames, higgsfieldSubmit, higgsfieldStatus, persistClip, test };
 }
 
 // ------------------------------------------------------------------ pipelines
@@ -436,6 +440,7 @@ export const PIPELINES = {
   ] },
   weekly_plan: { label: "Weekly plan (automatic)", steps: () => [
     S("claude", "weekly_plan", "Claude plans the week's 7 posts from Meta + CRM results and the monthly plan"),
+    S("openai", "week_content", "OpenAI writes the storyboard, caption and voice-over for all 7 posts in one file"),
     S("system", "spawn_week", "Start production of the 4 statics and 3 reels"),
   ] },
   plan: { label: "Monthly plan from data", steps: () => [
@@ -799,7 +804,9 @@ export function createOrchestrator(deps) {
         return;
       }
       case "claude.static_brief": {
-        const r = await askClaude(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY static Instagram/Facebook post for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": one of ["Family Security","Global Mobility","Long-term Planning","Premium Service","Ethical Advisory"], "program": "...", "headline_en": "English headline for inside the design, 3–7 words (max 55 characters), sentence case, no Visa/guarantee wording", "caption_ar": "MSA caption following every rule", "image_prompt": "Detailed English scene for the image model: setting, Arab/Middle Eastern people and clothing, light, complete elegant outfits incl. footwear, natural light, diagonal/asymmetric composition with a calm top-left area and a calm lower third. Must say: no text, no logo, no passports, no flags, no contact details.", "format": "1080x1350 (4:5, default, best reach) or 1080x1080 (1:1)"}`);
+        const pre = opts.prewritten?.type === "static" && opts.prewritten.caption_ar && opts.prewritten.headline_en && opts.prewritten.image_prompt ? opts.prewritten : null;
+        if (pre) log(run, "studio", "openai", "Using this post's part of the week content file (caption, headline and image direction).");
+        const r = pre ? { data: pre } : await askClaude(run, step, `${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY static Instagram/Facebook post for this request:\n"""${run.request}"""\n${opts.program ? "Program: " + opts.program + "\n" : ""}Return JSON:\n{"topic": "...", "pillar": one of ["Family Security","Global Mobility","Long-term Planning","Premium Service","Ethical Advisory"], "program": "...", "headline_en": "English headline for inside the design, 3–7 words (max 55 characters), sentence case, no Visa/guarantee wording", "caption_ar": "MSA caption following every rule", "image_prompt": "Detailed English scene for the image model: setting, Arab/Middle Eastern people and clothing, light, complete elegant outfits incl. footwear, natural light, diagonal/asymmetric composition with a calm top-left area and a calm lower third. Must say: no text, no logo, no passports, no flags, no contact details.", "format": "1080x1350 (4:5, default, best reach) or 1080x1080 (1:1)"}`);
         A.brief = { type: "static", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", design: { format: /1080x1080/.test(String(r.data.format)) && !/1350/.test(String(r.data.format)) ? "1080x1080" : "1080x1350", headline_en: r.data.headline_en, image_prompt: r.data.image_prompt }, talent: { mode: "none" }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
         return;
       }
@@ -808,7 +815,9 @@ export function createOrchestrator(deps) {
         // Owner rule: when OpenAI's text still fails after its correction, Manus rewrites the voice-over; the saved
         // storyboard is then reused with Manus's four lines (no second OpenAI storyboard, no media yet).
         const fromManus = A.voiceover_manus?.status === "received" && A.storyboard_draft && Array.isArray(A.voiceover_manus.lines);
-        const r = fromManus ? { data: JSON.parse(JSON.stringify(A.storyboard_draft)) } : await askOpenAi(run, step, `${voicePrompt}\n\n${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n\"\"\"${run.request}\"\"\"\n${opts.program ? "Program: " + opts.program + "\n" : ""}Every sentence must be written fully in Egyptian colloquial Arabic — Egyptian wording, grammar and pronunciation, never Modern Standard Arabic words or grammar. The four spoken_text_ar values are recorded separately for timing, but together they MUST read as one complete, connected Egyptian Arabic voice-over narration—not numbered points, disconnected bullets or four standalone statements. Keep the complete narration within 45–55 Egyptian Arabic spoken words and split it into four approximately 5-second scene takes.\n\nNarrative communication structure: Scene 1 is a striking, cinematic but truthful dramatic hook about a real ambition, decision or uncertainty—never fake urgency, fear, clickbait or a guarantee. Scenes 2–3 clearly explain one valuable advisory message and why Elevay helps. Scene 4 finishes with a direct spoken consultation call to action such as \"احجز استشارتك مع Elevay دلوقتي\" or \"تواصل مع Elevay واحجز استشارتك\".\n\nReturn JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "final_edit_direction": "one concise editing direction for the external renderer: pacing, clean scene joins, voice through the first 20 seconds only, and a silent white-logo outro; never request text or logo changes", "scenes": [4 scenes in order dramatic hook → clear message → trust/proof → direct consultation CTA, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic continuation; only country names and Elevay in English letters, everything else in Arabic; write شينغن rather than Schengen"}]}`, { maxTokens: 5000 });
+        const pre = !fromManus && opts.prewritten?.type === "reel" && Array.isArray(opts.prewritten.scenes) && opts.prewritten.scenes.length === 4 ? opts.prewritten : null;
+        if (pre) log(run, "studio", "openai", "Using this reel's part of the week content file (no separate OpenAI storyboard request).");
+        const r = fromManus ? { data: JSON.parse(JSON.stringify(A.storyboard_draft)) } : pre ? { data: JSON.parse(JSON.stringify(pre)) } : await askOpenAi(run, step, `${voicePrompt}\n\n${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n\"\"\"${run.request}\"\"\"\n${opts.program ? "Program: " + opts.program + "\n" : ""}Every sentence must be written fully in Egyptian colloquial Arabic — Egyptian wording, grammar and pronunciation, never Modern Standard Arabic words or grammar. The four spoken_text_ar values are recorded separately for timing, but together they MUST read as one complete, connected Egyptian Arabic voice-over narration—not numbered points, disconnected bullets or four standalone statements. Keep the complete narration within 45–55 Egyptian Arabic spoken words and split it into four approximately 5-second scene takes.\n\nNarrative communication structure: Scene 1 is a striking, cinematic but truthful dramatic hook about a real ambition, decision or uncertainty—never fake urgency, fear, clickbait or a guarantee. Scenes 2–3 clearly explain one valuable advisory message and why Elevay helps. Scene 4 finishes with a direct spoken consultation call to action such as \"احجز استشارتك مع Elevay دلوقتي\" or \"تواصل مع Elevay واحجز استشارتك\".\n\nReturn JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "final_edit_direction": "one concise editing direction for the external renderer: pacing, clean scene joins, voice through the first 20 seconds only, and a silent white-logo outro; never request text or logo changes", "scenes": [4 scenes in order dramatic hook → clear message → trust/proof → direct consultation CTA, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people, elegant clothing incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "English camera and subject motion for 5 seconds, subtle and cinematic, no speech, no text", "spoken_text_ar": "natural Egyptian Arabic continuation; only country names and Elevay in English letters, everything else in Arabic; write شينغن rather than Schengen"}]}`, { maxTokens: 5000 });
         const scenes = (r.data.scenes || []).slice(0, 4);
         if (fromManus) { scenes.forEach((sc, k) => { sc.spoken_text_ar = A.voiceover_manus.lines[k]; }); log(run, "studio", "manus", "Using Manus's rewritten Egyptian voice-over with the saved storyboard."); }
         if (scenes.length !== 4) throw new Error("OpenAI did not return 4 scenes.");
@@ -1213,12 +1222,60 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
         A.week_plan = { week, rationale: r.data.rationale, posts };
         return;
       }
+      case "openai.week_content": {
+        // Owner rule (20 Oct 2026): Claude's whole week plan goes to OpenAI once, and OpenAI returns one file with
+        // every post's caption, design or storyboard and Egyptian voice-over. Each post's run then uses its part and
+        // sends it to its provider (images, Higgsfield, the ELEVAY Arabic voice-over). The usual checks still run per post.
+        const { week, posts } = A.week_plan;
+        const { state } = await deps.loadState();
+        const voiceTemplate = voicePromptTemplate(state.settings?.voiceOverPrompt).replace("[the reel's idea/objective from the weekly plan]", "(each reel's own idea, listed below)");
+        const planned = posts.map((p, i) => ({ index: i + 1, type: p.type, date: p.date, time: p.time, program: p.program, pillar: p.pillar, audience: p.audience, idea: p.brief }));
+        try {
+          const r = await askOpenAi(run, step, `Write the complete content file for ELEVAY's ${week} posts, exactly as Claude planned them. One entry per planned post, same order and type.
+
+FOR EVERY REEL, the Egyptian voice-over follows the owner's ELEVAY Voice-Over Prompt exactly:
+${voiceTemplate}
+
+Reel rules: every sentence written fully in Egyptian colloquial Arabic (wording, grammar, pronunciation; never Modern Standard Arabic words or grammar). One continuous message of 45–55 words split into exactly 4 spoken lines of 10–14 words (about 5 seconds each). Line 1 is a truthful dramatic hook (e.g. لو / تخيل / بتحلم); line 4 is a direct consultation call to action (e.g. احجز استشارتك مع Elevay دلوقتي). Country names and Elevay in English letters only; no other English; write شينغن in Arabic; never تأشيرة or فيزا; no guarantees; no legal or tax advice. Each scene also needs an English keyframe_prompt (9:16 first frame: setting, Arab/Middle Eastern people, modern elegant clothing incl. visible footwear, light; no text, logo, passports or flags) and an English motion_prompt (5 seconds, subtle cinematic camera and subject motion, no speech, no text).
+
+FOR EVERY STATIC: headline_en (English, 3–7 words, max 55 characters, sentence case, no visa/guarantee wording) and image_prompt (detailed English scene: setting, Arab/Middle Eastern people, complete elegant outfits incl. footwear, natural light, diagonal/asymmetric composition with a calm top-left area and calm lower third; must say no text, no logo, no passports, no flags, no contact details); format "1080x1350" unless 1:1 is clearly better.
+
+FOR EVERY POST: caption_ar in Modern Standard Arabic following every ELEVAY rule (strong hook first, call to action last, never تأشيرة, no guarantees, no contact details), topic, pillar, program.
+
+Approved program sources:
+${allProgramFacts()}
+
+Claude's week plan:
+${JSON.stringify(planned)}
+
+Return JSON only: {"posts": [one per planned post, in order: {"index": 1, "type": "static"|"reel", "topic": "...", "pillar": "...", "program": "...", "caption_ar": "...", "headline_en": "statics only", "image_prompt": "statics only", "format": "statics only", "music_direction": "reels only, royalty-free mood", "final_edit_direction": "reels only: pacing and clean joins, voice in the first 20 seconds, silent white-logo outro; never text or logo changes", "scenes": [reels only, exactly 4: {"keyframe_prompt": "...", "motion_prompt": "...", "spoken_text_ar": "..."}]}]}`, { note: `Week content file for ${week}: all 7 posts in one OpenAI request`, maxTokens: 24000, timeoutMs: 420000 });
+          const out = Array.isArray(r.data?.posts) ? r.data.posts : [];
+          const usable = posts.map((p, i) => {
+            const c = out.find((x) => Number(x?.index) === i + 1) || out[i];
+            if (!c || c.type !== p.type || !c.caption_ar) return null;
+            if (p.type === "reel" && !(Array.isArray(c.scenes) && c.scenes.length === 4 && c.scenes.every((x) => x?.keyframe_prompt && x?.motion_prompt && x?.spoken_text_ar))) return null;
+            if (p.type === "static" && !(c.headline_en && c.image_prompt)) return null;
+            return c;
+          });
+          const file = JSON.stringify({ week, generated_at: nowIso(), plan: planned, posts: usable }, null, 2);
+          let fileUrl = null;
+          if (typeof providers.storeWeekFile === "function") fileUrl = await providers.storeWeekFile(`marketing/command-center/week-content/${week}-run${run.id}.json`, file).catch(() => null);
+          A.week_content = { week, posts: usable, file_url: fileUrl, missing: usable.map((c, i) => (c ? null : i + 1)).filter(Boolean) };
+          step.output = { file_url: fileUrl, posts: usable.filter(Boolean).length, missing: A.week_content.missing };
+          log(run, "studio", "openai", `Week content file ready: ${usable.filter(Boolean).length} of ${posts.length} posts${A.week_content.missing.length ? ` (post ${A.week_content.missing.join(", ")} will be written on its own)` : ""}${fileUrl ? `. File: ${fileUrl}` : ""}.`);
+        } catch (e) {
+          // Never block the week: without the file each post is written on its own, as before.
+          A.week_content = { week, posts: posts.map(() => null), failed: String(e?.message || e).slice(0, 300) };
+          log(run, "studio", "openai", `The week content file could not be written (${A.week_content.failed}); each post will be written on its own.`);
+        }
+        return;
+      }
       case "system.spawn_week": {
         const { week, posts } = A.week_plan;
         A.children = A.children || [];
         for (let i = A.children.length; i < posts.length; i++) {
           const p = posts[i];
-          const child = await create({ kind: p.type === "reel" ? "reel" : "static", request: `${p.brief}\nAudience: ${p.audience || ""}`, options: { program: p.program || "", datetime_cairo: p.date && p.time ? `${p.date}T${p.time}` : "", week, item_id: `${week}-${String(i + 1).padStart(2, "0")}`, planned: true, parent: run.id, auto: !!opts.auto }, user: { email: "autopilot", role: "owner" } });
+          const child = await create({ kind: p.type === "reel" ? "reel" : "static", request: `${p.brief}\nAudience: ${p.audience || ""}`, options: { prewritten: A.week_content?.posts?.[i] || null, program: p.program || "", datetime_cairo: p.date && p.time ? `${p.date}T${p.time}` : "", week, item_id: `${week}-${String(i + 1).padStart(2, "0")}`, planned: true, parent: run.id, auto: !!opts.auto }, user: { email: "autopilot", role: "owner" } });
           A.children.push(child.id);
         }
         log(run, "studio", "team", `Started ${posts.length} runs for ${week}: ${A.children.map((c) => "#" + c).join(", ")}.`);
