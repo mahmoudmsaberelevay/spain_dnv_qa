@@ -19,7 +19,7 @@
  * Higgsfield spend, and Meta work stays inside the 200,000 EGP cap and 100 EGP max CPL.
  */
 import { ELEVAY_LOCKED_VOICE_POLICY as ELEVAY_ARABIC_VOICE_DEFAULTS } from "../../shared/elevayVoicePolicy";
-import { ELEVAY_REEL_NARRATION_STANDARD, validateElevay20SecondReelNarration } from "../../shared/elevayReelNarrationPolicy";
+import { ELEVAY_REEL_NARRATION_STANDARD, validateElevay20SecondReelNarration, rebalanceElevay20SecondNarration } from "../../shared/elevayReelNarrationPolicy";
 import crypto from "crypto";
 import { ELEVAY_AGENTIC_DESIGN_STANDARD } from "@shared/elevayAgenticDesignStandard";
 import { spawn } from "child_process";
@@ -805,6 +805,8 @@ export function createOrchestrator(deps) {
           }
           return invalid;
         };
+        // Right length overall but uneven takes: re-divide the same words into four 5-second takes instead of failing.
+        if (rebalanceElevay20SecondNarration(scenes)) log(run, "studio", "team", "Voice-over takes re-divided evenly across the four 5-second scenes (same text).");
         let invalid = await invalidScripts();
         let narrationFormatError = validateElevay20SecondReelNarration(scenes);
         for (let repair = 0; (invalid.length || narrationFormatError) && repair < 1; repair++) {
@@ -812,6 +814,7 @@ export function createOrchestrator(deps) {
           const targets = needsFullNarrationRewrite ? [1, 2, 3, 4] : invalid.map(i=>i+1);
           const fixed = await askOpenAi(run, step, `${voicePrompt}\n\nYour storyboard is accepted visually, but its Egyptian Arabic narration needs correction: ${narrationFormatError || `scene(s) ${targets.join(", ")} failed the Egyptian Arabic check (${scriptReasons.join(" | ")})`}. Rewrite ONLY the spoken scripts for scene(s) ${targets.join(", ")}; when the full 20-second flow is invalid, rewrite all four spoken scripts. Keep every visual unchanged. The full narration is one continuous message, not points or bullets: four approximately 5-second takes and 45–55 words in total. Scene 1 needs a bold, cinematic but truthful dramatic hook—never fear, fake urgency, clickbait or guarantees. Scenes 2–3 explain one clear benefit. Scene 4 ends with a direct consultation CTA using Elevay. Country names and Elevay are English only; write شينغن in Arabic. No guarantees or تأشيرة. Current scenes:\n${JSON.stringify(scenes)}\nReturn JSON {"scenes":[{"scene":1,"spoken_text_ar":"..."}]} for exactly the requested scenes.`, { maxTokens: 1600 });
           for (const s of fixed.data?.scenes || []) if ((needsFullNarrationRewrite || invalid.includes(s.scene - 1)) && Number.isInteger(s.scene) && s.scene >= 1 && s.scene <= 4) scenes[s.scene - 1].spoken_text_ar = s.spoken_text_ar;
+          if (rebalanceElevay20SecondNarration(scenes)) log(run, "studio", "team", "Corrected voice-over takes re-divided evenly across the four 5-second scenes (same text).");
           invalid = await invalidScripts();
           narrationFormatError = validateElevay20SecondReelNarration(scenes);
         }
