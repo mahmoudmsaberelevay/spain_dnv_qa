@@ -2,7 +2,7 @@ import { eq, desc, and, lt, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, cases, documents, analysisResults, InsertCase, InsertDocument, InsertAnalysisResult } from "../drizzle/schema";
 import { ENV } from './_core/env';
-
+import { linkedClientContractFinancialState } from "./contractFinancialSync";
 let _db: ReturnType<typeof drizzle> | null = null;
 
 export async function getDb() {
@@ -196,18 +196,35 @@ export async function getContractById(id: number) {
 export async function applyContractDiscount(id: number, discountValue: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const contract = await getContractById(id);
-  if (!contract) throw new Error("Contract not found");
-  // Only allow applying a discount once — if discountValue is already set, reject
-  if (Number(contract.discountValue ?? 0) > 0) {
-    throw new Error("A discount has already been applied to this contract and cannot be changed.");
-  }
-  const originalValue = Number(contract.contractValue);
-  const newValue = Math.max(0, originalValue - discountValue);
-  await db.update(contracts).set({
-    contractValue: newValue.toFixed(2),
-    discountValue: discountValue.toFixed(2),
-  }).where(eq(contracts.id, id));
+  await db.transaction(async (tx) => {
+    const [contract] = await tx.select().from(contracts).where(eq(contracts.id, id)).limit(1);
+    if (!contract) throw new Error("Contract not found");
+    // Only allow applying a discount once — if discountValue is already set, reject.
+    if (Number(contract.discountValue ?? 0) > 0) {
+      throw new Error("A discount has already been applied to this contract and cannot be changed.");
+    }
+
+    const originalValue = Number(contract.contractValue);
+    const newValue = Math.max(0, originalValue - discountValue);
+    await tx.update(contracts).set({
+      contractValue: newValue.toFixed(2),
+      discountValue: discountValue.toFixed(2),
+    }).where(eq(contracts.id, id));
+
+    // A signed contract may already have a unique Client Database row. Keep its
+    // primary EUR value and outstanding balance equal to the newly discounted
+    // contract net, while preserving original metadata, payments, receipts, and
+    // financial history.
+    const [linkedClient] = await tx.select().from(finClients)
+      .where(eq(finClients.contractId, id)).limit(1);
+    if (linkedClient) {
+      const synced = linkedClientContractFinancialState(newValue, Number(linkedClient.paidAmountEur ?? 0));
+      await tx.update(finClients).set({
+        contractValue: synced.contractValueEur,
+        ...synced,
+      }).where(eq(finClients.id, linkedClient.id));
+    }
+  });
 }
 
 export async function updateContractStatus(id: number, status: "pending" | "signed" | "cancelled") {

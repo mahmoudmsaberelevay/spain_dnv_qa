@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const readProjectFile = (relativePath: string) => readFileSync(resolve(projectRoot, relativePath), "utf8");
+const cents = (value: unknown) => Math.round(Number(value ?? 0) * 100);
 
 describe("FinClients Discount Calculation", () => {
   let db: any;
@@ -77,6 +78,25 @@ describe("FinClients Discount Calculation", () => {
     }
   });
 
+  it("keeps every linked Client Database contract value and remaining balance synchronized to its contract", async () => {
+    if (!db) return;
+
+    const linkedRows = await db.select({
+      clientContractValue: finClients.contractValue,
+      clientNetValue: finClients.contractValueEur,
+      clientPaidValue: finClients.paidAmountEur,
+      clientRemainingValue: finClients.remainingAmountEur,
+      contractNetValue: contracts.contractValue,
+    }).from(finClients).innerJoin(contracts, eq(finClients.contractId, contracts.id));
+
+    linkedRows.forEach((row) => {
+      const expectedNet = cents(row.contractNetValue);
+      expect(cents(row.clientContractValue)).toBe(expectedNet);
+      expect(cents(row.clientNetValue)).toBe(expectedNet);
+      expect(cents(row.clientRemainingValue)).toBe(Math.max(0, expectedNet - cents(row.clientPaidValue)));
+    });
+  });
+
   it("should handle clients without contracts gracefully", async () => {
     const clients = await listFinClients({ limit: 10 });
     
@@ -113,5 +133,14 @@ describe("FinClients Discount Calculation", () => {
     expect(finRouter).toContain("escape(c.originalContractValueEur)");
     expect(finRouter).toContain("escape(c.discountValue)");
     expect(finRouter).toContain("escape(c.finalContractValueEur)");
+  });
+
+  it("synchronizes an existing linked Client Database row inside the one-time discount transaction", () => {
+    const dbSource = readProjectFile("server/db.ts");
+
+    expect(dbSource).toContain("await db.transaction(async (tx) => {");
+    expect(dbSource).toContain("eq(finClients.contractId, id)");
+    expect(dbSource).toContain("linkedClientContractFinancialState(newValue");
+    expect(dbSource).toContain("contractValue: synced.contractValueEur");
   });
 });
