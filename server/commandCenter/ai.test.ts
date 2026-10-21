@@ -563,3 +563,25 @@ describe("a render that fails on the Mac while the reel waits", () => {
     expect(r.steps.find((s) => s.action === "compose_reel")).toMatchObject({ status: "failed", error: expect.stringContaining("too long") });
   });
 });
+
+describe("owner rule: weekly ads review", () => {
+  it("reviews 7- and 30-day Meta + CRM data and queues each action with its numbers for owner approval", async () => {
+    const queued = [];
+    const REVIEW = { summary: "Spain DNV costs 449 EGP per lead with 1 qualified lead in 30 days.", actions: [{ kind: "campaign_status", target_id: "120", target_name: "Spain DNV", status_to: "PAUSED", reason: "449 EGP per lead.", evidence: { d30: { spend: 40000, leads: 89, cpl: 449, qualified: 1, cost_per_qualified: 40000 } } }] };
+    const ctx = setup([REVIEW]);
+    ctx.o.__setMeta?.({});
+    const meta = {
+      adsReviewData: async () => ({ windows: { d7: { since: "2026-10-14", until: "2026-10-20" }, d30: { since: "2026-09-21", until: "2026-10-20" } }, campaigns: [{ id: "120", name: "Spain DNV", status: "ACTIVE", d7: { spend: 9000, leads: 20, cpl: 450, crmLeads: 20, qualified: 0, costPerQualified: null }, d30: { spend: 40000, leads: 89, cpl: 449, crmLeads: 85, qualified: 1, costPerQualified: 40000 } }], adsets: [], ads: [] }),
+      adsSnapshot: async () => ({ mtd: 117000, dailyTotal: 3000, campaigns: [], adsets: [], cpl: {} }),
+      enqueue: async (a, by) => { queued.push({ ...a, by }); return { id: queued.length, status: "pending", preview: a.preview }; },
+    };
+    const o = createOrchestrator({ q: ctx.q, mutate: async (_c, fn) => fn(ctx.state), loadState: async () => ({ state: ctx.state }), liveReport: async () => ({}), providers: { claude: async ({ prompt }) => { ctx.calls.claude.push({ prompt }); return { data: REVIEW, text: "" }; } }, E, R, meta });
+    const run = await o.startAdsReview({ email: "autopilot", role: "owner" });
+    const r = await settle(o, run.id);
+    expect(r.status).toBe("done");
+    expect(ctx.calls.claude.at(-1).prompt).toMatch(/cost per QUALIFIED lead/);
+    expect(ctx.calls.claude.at(-1).prompt).toMatch(/Spain DNV/);
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({ kind: "campaign_status", status_to: "PAUSED", source: "weekly_ads_review", evidence: { d30: { cpl: 449 } } });
+  });
+});

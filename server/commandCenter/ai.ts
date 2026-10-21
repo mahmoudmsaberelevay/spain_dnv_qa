@@ -447,6 +447,10 @@ export const PIPELINES = {
     S("claude", "plan", "Claude drafts next month's plan from 6 months of Meta + CRM data"),
     S("system", "to_monthly_plan", "Send to the monthly plan for owner approval"),
   ] },
+  ads_review: { label: "Weekly ads review (automatic, Thursday)", steps: () => [
+    S("claude", "ads_review", "Claude reviews the last 7 and 30 days of Meta + CRM results and drafts ad actions with their numbers"),
+    S("system", "queue_meta", "Queue them in the Meta tab for one-click owner approval (cap and CPL checked)"),
+  ] },
   meta: { label: "Meta campaign change", steps: () => [
     S("claude", "meta_plan", "Claude turns the request into Meta actions using live campaign data"),
     S("system", "queue_meta", "Queue them in the Meta tab (cap and CPL checked; owner approves until autopilot)"),
@@ -1336,10 +1340,45 @@ Return JSON only: {"posts": [one per planned post, in order: {"index": 1, "type"
         const forms = await deps.meta.leadForms().catch(() => []);
         const { state } = await deps.loadState();
         const designs = state.items.filter((i) => ["approved", "scheduled", "published"].includes(i.status) && i.media?.image_url).slice(-12).map((i) => ({ item_id: i.item_id, topic: i.topic, program: i.program, headline: i.design?.headline_en, image_url: i.media.image_url, caption_ar: clip(i.caption_ar, 500) }));
-        const r = await askClaude(run, step, `${programFactsFor(run.request)}\n\nELEVAY Meta ad account now (EGP): month-to-date spend ${Math.round(snap.mtd)}, active daily budgets ${Math.round(snap.dailyTotal)}/day; monthly cap ${state.settings.monthlyAdCapEgp}, max CPL ${state.settings.maxCplEgp}.\nCampaigns: ${JSON.stringify(snap.campaigns.slice(0, 40).map((c) => ({ id: c.id, name: c.name, status: c.status, daily_budget_egp: c.daily, cpl30: snap.cpl[c.id] ? Math.round(snap.cpl[c.id]) : null })))}\nLead forms: ${JSON.stringify(forms.map((f) => ({ id: f.id, name: f.name })))}\nApproved designs: ${JSON.stringify(designs)}\n\nTeam request: """${run.request}"""\n\nTurn it into Meta actions. Allowed kinds:\n- {"kind":"campaign_status","target_id":"<campaign or ad set id>","target_name":"...","status_to":"ACTIVE"|"PAUSED","reason":"..."}\n- {"kind":"campaign_budget","target_id":"...","target_name":"...","daily_budget_egp":number,"reason":"..."}\n- {"kind":"create_campaign","campaign":{"name":"...","daily_budget_egp":number,"countries":["EG"],"age_min":28,"age_max":60,"form_id":"<lead form id>","image_url":"<approved design image_url>","message":"Arabic ad text (MSA, rules apply, no Visa/guarantee/contact details)","headline":"short English headline","item_id":"..."},"reason":"..."} (created paused)\nNever exceed the monthly cap or raise budget on a campaign above the max CPL. Use only ids from the lists. Return JSON: {"actions": [...], "note": "what you did and anything you could not do"}`, { note: `Meta plan for: ${run.request}`, maxTokens: 2500 });
+        const r = await askClaude(run, step, `${programFactsFor(run.request)}\n\nELEVAY Meta ad account now (EGP): month-to-date spend ${Math.round(snap.mtd)}, active daily budgets ${Math.round(snap.dailyTotal)}/day; monthly cap ${state.settings.monthlyAdCapEgp}, max CPL ${state.settings.maxCplEgp}.\nCampaigns: ${JSON.stringify(snap.campaigns.slice(0, 40).map((c) => ({ id: c.id, name: c.name, status: c.status, daily_budget_egp: c.daily, cpl30: snap.cpl[c.id] ? Math.round(snap.cpl[c.id]) : null })))}\nLead forms: ${JSON.stringify(forms.map((f) => ({ id: f.id, name: f.name })))}\nApproved designs: ${JSON.stringify(designs)}\n\nTeam request: """${run.request}"""\n\nTurn it into Meta actions. Allowed kinds:\n- {"kind":"campaign_status","target_id":"<campaign or ad set id>","target_name":"...","status_to":"ACTIVE"|"PAUSED","reason":"..."}\n- {"kind":"campaign_budget","target_id":"...","target_name":"...","daily_budget_egp":number,"reason":"..."}\n- {"kind":"adset_status","target_id":"<ad set id>","target_name":"...","status_to":"ACTIVE"|"PAUSED","reason":"..."}\n- {"kind":"adset_budget","target_id":"<ad set id>","target_name":"...","daily_budget_egp":number,"reason":"..."}\n- {"kind":"ad_status","target_id":"<ad id>","target_name":"...","status_to":"ACTIVE"|"PAUSED","reason":"..."}\n- {"kind":"create_campaign","campaign":{"name":"...","daily_budget_egp":number,"countries":["EG"],"age_min":28,"age_max":60,"form_id":"<lead form id>","image_url":"<approved design image_url>","message":"Arabic ad text (MSA, rules apply, no Visa/guarantee/contact details)","headline":"short English headline","item_id":"..."},"reason":"..."} (created paused)\nNever exceed the monthly cap or raise budget on a campaign above the max CPL. Use only ids from the lists. Return JSON: {"actions": [...], "note": "what you did and anything you could not do"}`, { note: `Meta plan for: ${run.request}`, maxTokens: 2500 });
         A.meta_actions = Array.isArray(r.data?.actions) ? r.data.actions.slice(0, 10) : [];
         A.answer = r.data?.note || "";
         if (!A.meta_actions.length) log(run, "studio", "team", "No Meta action needed: " + (r.data?.note || ""));
+        return;
+      }
+      case "claude.ads_review": {
+        // Owner rule (21 Oct 2026): every Thursday Claude reviews the ads against the targets and queues concrete actions.
+        // Nothing runs on Meta until the owner approves each action (until the 6-week autopilot gate).
+        if (!deps.meta?.adsReviewData) throw new Error("Meta ads data is not available.");
+        const data = await deps.meta.adsReviewData();
+        const snap = await deps.meta.adsSnapshot();
+        const { state } = await deps.loadState();
+        const cap = Number(state.settings.monthlyAdCapEgp || 200000), maxCpl = Number(state.settings.maxCplEgp || 100);
+        const r = await askClaude(run, step, `You are ELEVAY's weekly paid-ads reviewer. Goal: more QUALIFIED leads and signed clients at a lower cost per qualified lead, within a ${cap} EGP monthly cap and a ${maxCpl} EGP maximum cost per lead.
+
+Account now: month-to-date spend ${Math.round(snap.mtd)} EGP; active daily budgets ${Math.round(snap.dailyTotal)} EGP/day.
+Windows: last 7 days ${data.windows.d7.since}..${data.windows.d7.until}; last 30 days ${data.windows.d30.since}..${data.windows.d30.until}.
+Campaigns (Meta spend/leads/CPL plus CRM crmLeads/qualified/clients/costPerQualified, EGP): ${JSON.stringify(data.campaigns)}
+Ad sets: ${JSON.stringify(data.adsets)}
+Ads: ${JSON.stringify(data.ads)}
+${opts.note ? `
+Owner note: """${opts.note}"""
+` : ""}
+Decide what to change this week. Judge by cost per QUALIFIED lead from the CRM first, Meta CPL second; a cheap CPL with few qualified leads is not good. Do not act on tiny samples (under about 1,000 EGP spend in the window) unless the result is extreme. Typical moves: pause campaigns, ad sets or ads that spend without qualified leads or run far above ${maxCpl} EGP per lead; move budget from weak to strong campaigns or ad sets; activate a paused ad or ad set only with a clear reason. Never raise budget where the 30-day CPL is above ${maxCpl} EGP and never exceed the monthly cap. Use only ids from the lists. At most 8 actions; zero is fine if nothing should change.
+
+Allowed actions:
+- {"kind":"campaign_status","target_id":"<campaign id>","target_name":"...","status_to":"ACTIVE"|"PAUSED"}
+- {"kind":"campaign_budget","target_id":"<campaign id with a campaign budget>","target_name":"...","daily_budget_egp":number}
+- {"kind":"adset_status","target_id":"<ad set id>","target_name":"...","campaign_id":"...","status_to":"ACTIVE"|"PAUSED"}
+- {"kind":"adset_budget","target_id":"<ad set id with its own budget>","target_name":"...","campaign_id":"...","daily_budget_egp":number}
+- {"kind":"ad_status","target_id":"<ad id>","target_name":"...","campaign_id":"...","status_to":"ACTIVE"|"PAUSED"}
+Every action also needs "reason" (2–3 plain-English sentences that cite the numbers: 7- and 30-day spend, leads, CPL, qualified leads and cost per qualified lead, and the expected effect) and "evidence" ({"d7":{"spend":..,"leads":..,"cpl":..,"qualified":..,"cost_per_qualified":..},"d30":{...}}).
+
+Return JSON only: {"summary":"3–5 sentences on how the ads did against the targets this week","actions":[...]}`, { note: "Weekly ads review: 7- and 30-day Meta + CRM results", maxTokens: 6000 });
+        A.meta_actions = (Array.isArray(r.data?.actions) ? r.data.actions.slice(0, 8) : []).map((x) => ({ ...x, source: "weekly_ads_review" }));
+        A.answer = String(r.data?.summary || "");
+        A.ads_review = { at: nowIso(), summary: A.answer, proposed: A.meta_actions.length };
+        log(run, "claude", "team", `Weekly ads review: ${A.answer}${A.meta_actions.length ? "" : " No change proposed this week."}`);
         return;
       }
       case "system.queue_meta": {
@@ -1721,6 +1760,7 @@ Return JSON only: {"posts": [one per planned post, in order: {"index": 1, "type"
     // controller. Never start a second Saturday plan from this compatibility
     // tick: it would race the controller and bypass its preflight record.
     if (st.studio?.autonews !== false) await newsDue(nowMs).catch(() => {});
+    if (st.studio?.adsReview !== false) await adsReviewDue(nowMs).catch(() => {});
     if (st.studio?.autoplan === false) return;
     const c = cairoParts(nowMs);
     if (c.day >= 25) {
@@ -1728,6 +1768,21 @@ Return JSON only: {"posts": [one per planned post, in order: {"index": 1, "type"
       await startMonthly(d.toISOString().slice(0, 7), { email: "autopilot", role: "owner" }).catch(() => {});
     }
   }
+  /** Thursday from 10:00 Cairo: one weekly ads review run (Meta + CRM, 7 and 30 days). */
+  async function adsReviewDue(nowMs = Date.now()) {
+    const c = cairoParts(nowMs);
+    if (c.weekday !== "Thu" || c.hour < 10 || !deps.meta?.adsReviewData) return;
+    const key = `ads_review_${c.date}`;
+    const seen = (await q("SELECT value FROM ec_kv WHERE name='ads_review_last'").catch(() => []))[0]?.value;
+    if (seen === key) return;
+    await q("INSERT INTO ec_kv (name, value) VALUES ('ads_review_last', ?) ON DUPLICATE KEY UPDATE value=VALUES(value)", [key]);
+    await startAdsReview({ email: "autopilot", role: "owner" });
+  }
+  async function startAdsReview(user, note = "") {
+    const clean = String(note || "").trim().slice(0, 1000);
+    return create({ kind: "ads_review", request: clean || `Weekly ads review ${cairoParts().date}`, options: { auto: user?.email === "autopilot", note: clean }, user });
+  }
+
   // ---------------------------------------------------------------- weekly news research (runs on the website itself)
   /** Claude searches the web for this week's residency/citizenship-by-investment news and files it in the News tab. */
   async function researchNews(user = { email: "autopilot", role: "owner" }) {
@@ -1935,5 +1990,5 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     return watchdog();
   }
 
-  return { ensureTable, researchNews, create, reviseItem, recreate, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, redo, cancel, tick, watchdog, test: () => providers.test() };
+  return { ensureTable, researchNews, startAdsReview, adsReviewDue, create, reviseItem, recreate, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, redo, cancel, tick, watchdog, test: () => providers.test() };
 }
