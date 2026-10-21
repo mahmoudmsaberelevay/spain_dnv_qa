@@ -37,7 +37,7 @@ function fakeMeta({ mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 15
       if (path === "act_548667060148825/insights" && u.searchParams.get("date_preset") === "this_month") out = { data: [{ spend: String(mtd) }] };
       else if (path === "act_548667060148825/insights") out = { data: Object.entries(cpl).map(([id, v]) => ({ campaign_id: id, spend: String(v * 10), actions: [{ action_type: "lead", value: "10" }] })) };
       else if (path === "act_548667060148825/campaigns") out = { data: [{ id: "c1", name: "Spain DNV", effective_status: "ACTIVE", daily_budget: String(activeDaily * 100) }, { id: "c2", name: "Greece", effective_status: "PAUSED", daily_budget: "200000" }] };
-      else if (path === "act_548667060148825/adsets") out = { data: [] };
+      else if (path === "act_548667060148825/adsets") out = { data: [{ id: "555", campaign_id: "c1", effective_status: "ACTIVE", daily_budget: "100000" }, { id: "556", campaign_id: "c1", effective_status: "PAUSED", daily_budget: "50000" }] };
       else if (path === "111/published_posts") out = { data: [{ id: "111_p1", message: "Spain post", permalink_url: "https://fb/p1" }] };
       else if (path === "111_p1/comments") out = { data: [
         { id: "cm1", message: "كم تكلفة إقامة إسبانيا؟", from: { id: "u1", name: "Ahmed" }, created_time: new Date().toISOString() },
@@ -120,6 +120,24 @@ describe("Meta actions", () => {
     expect(cplHigh.check.reason).toMatch(/CPL/);
     const pause = await h2.enqueue({ kind: "campaign_status", target_id: "c1", status_to: "PAUSED", preview: "x" }, "team");
     expect(pause.status).toBe("pending");
+  });
+
+  it("owner rule: ad set and ad controls go through the same approval, cap and CPL checks", async () => {
+    expect(() => cleanMetaAction({ kind: "adset_budget", target_id: "abc", daily_budget_egp: 500 }, R)).toThrow(/Ad set id/);
+    const pauseAd = cleanMetaAction({ kind: "ad_status", target_id: "777", target_name: "Spain video A", status_to: "PAUSED", reason: "CPL 640 EGP over 30 days, no qualified leads.", evidence: { d30: { spend: 6400, leads: 10, cpl: 640, qualified: 0 } } }, R);
+    expect(pauseAd).toMatchObject({ kind: "ad_status", preview: "Pause ad Spain video A", evidence: { d30: { cpl: 640 } } });
+    const { h, posts } = hub({ meta: { mtd: 10000, activeDaily: 1000, cpl: { c1: 150 } } });
+    const a1 = await h.enqueue(pauseAd, "weekly ads review");
+    expect(a1.status).toBe("pending");
+    await h.approve(a1.id, owner);
+    expect(posts.find((p) => p.path === "777")).toMatchObject({ body: { status: "PAUSED" } });
+    const raise = await h.enqueue(cleanMetaAction({ kind: "adset_budget", target_id: "555", campaign_id: "c1", daily_budget_egp: 2000 }, R), "weekly ads review");
+    expect(raise.status).toBe("blocked");
+    expect(raise.check.reason).toMatch(/CPL/);
+    const pauseSet = await h.enqueue(cleanMetaAction({ kind: "adset_status", target_id: "555", status_to: "PAUSED" }, R), "weekly ads review");
+    expect(pauseSet.status).toBe("pending");
+    await h.approve(pauseSet.id, owner);
+    expect(posts.find((p) => p.path === "555")).toMatchObject({ body: { status: "PAUSED" } });
   });
 
   it("creates new lead campaigns paused, end to end", async () => {

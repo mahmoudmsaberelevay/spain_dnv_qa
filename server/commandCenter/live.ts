@@ -443,3 +443,41 @@ export async function buildLiveReport({ q, fetcher = fetch, settings, now = Date
     },
   };
 }
+
+/**
+ * Weekly ads review input: last 7 and last 30 days at campaign, ad set and ad level from Meta, plus CRM lead quality
+ * per campaign (Meta-sourced leads, current stage). Read-only.
+ */
+export async function buildAdsReviewData({ q, fetcher = fetch, now = Date.now() }) {
+  const graph = makeGraph(fetcher);
+  const token = process.env.META_SYSTEM_USER_ACCESS_TOKEN || "", account = process.env.META_AD_ACCOUNT_ID || "";
+  if (!token || !account) throw new Error("META_SYSTEM_USER_ACCESS_TOKEN or META_AD_ACCOUNT_ID is not set.");
+  const acct = "act_" + String(account).trim().replace(/^act_/i, "");
+  const d7 = lastDays(7, now), d30 = lastDays(30, now);
+  const range = (r) => JSON.stringify({ since: r.since, until: r.until });
+  const level = (lvl, r, extra) => graph.all(`${acct}/insights`, token, { level: lvl, fields: `${extra},spend,impressions,clicks,actions`, time_range: range(r) }, 5);
+  const [camps, sets, ads, c7, c30, s7, s30, a7, a30, crm7raw, crm30raw] = await Promise.all([
+    graph.all(`${acct}/campaigns`, token, { fields: "id,name,effective_status,objective,daily_budget" }, 3),
+    graph.all(`${acct}/adsets`, token, { fields: "id,name,campaign_id,effective_status,daily_budget" }, 5),
+    graph.all(`${acct}/ads`, token, { fields: "id,name,adset_id,campaign_id,effective_status" }, 5),
+    level("campaign", d7, "campaign_id,campaign_name"), level("campaign", d30, "campaign_id,campaign_name"),
+    level("adset", d7, "adset_id,adset_name,campaign_id"), level("adset", d30, "adset_id,adset_name,campaign_id"),
+    level("ad", d7, "ad_id,ad_name,adset_id,campaign_id"), level("ad", d30, "ad_id,ad_name,adset_id,campaign_id"),
+    crmWindow(q, d7.fromMs, d7.toMs).catch(() => null), crmWindow(q, d30.fromMs, d30.toMs).catch(() => null),
+  ]);
+  const metric = (rows, key) => Object.fromEntries(rows.map((r) => { const spend = num(r.spend), leads = leadsFromActions(r.actions); return [r[key], { spend: Math.round(spend), leads, cpl: leads ? Math.round(spend / leads) : null, clicks: num(r.clicks), impressions: num(r.impressions) }]; }));
+  const m = { c7: metric(c7, "campaign_id"), c30: metric(c30, "campaign_id"), s7: metric(s7, "adset_id"), s30: metric(s30, "adset_id"), a7: metric(a7, "ad_id"), a30: metric(a30, "ad_id") };
+  const campKey = campaignKeyResolver(camps.map((c) => ({ id: c.id, name: c.name })));
+  const quality = (raw) => raw ? Object.fromEntries(outcomesBy(raw.created.filter((l) => l.isMeta), campKey).map((o) => [o.key, o])) : {};
+  const q7 = quality(crm7raw), q30 = quality(crm30raw);
+  const withQuality = (base, o) => ({ ...(base || { spend: 0, leads: 0, cpl: null }), crmLeads: o?.leads || 0, qualified: o?.qualifiedOrBetter || 0, clients: o?.clients || 0, costPerQualified: o?.qualifiedOrBetter && base?.spend ? Math.round(base.spend / o.qualifiedOrBetter) : null });
+  const egp = (x) => (x ? num(x) / 100 : null);
+  const campaigns = camps.map((c) => ({ id: c.id, name: c.name, status: c.effective_status, objective: c.objective, daily_budget_egp: egp(c.daily_budget), d7: withQuality(m.c7[c.id], q7[c.id]), d30: withQuality(m.c30[c.id], q30[c.id]) }))
+    .filter((c) => c.status === "ACTIVE" || c.d30.spend > 0).sort((a, b) => b.d30.spend - a.d30.spend).slice(0, 30);
+  const keep = new Set(campaigns.map((c) => c.id));
+  const adsets = sets.filter((x) => keep.has(x.campaign_id)).map((x) => ({ id: x.id, name: x.name, campaign_id: x.campaign_id, status: x.effective_status, daily_budget_egp: egp(x.daily_budget), d7: m.s7[x.id] || { spend: 0, leads: 0, cpl: null }, d30: m.s30[x.id] || { spend: 0, leads: 0, cpl: null } }))
+    .filter((x) => x.status === "ACTIVE" || x.d30.spend > 0).sort((a, b) => b.d30.spend - a.d30.spend).slice(0, 60);
+  const adList = ads.filter((x) => keep.has(x.campaign_id)).map((x) => ({ id: x.id, name: x.name, adset_id: x.adset_id, campaign_id: x.campaign_id, status: x.effective_status, d7: m.a7[x.id] || { spend: 0, leads: 0, cpl: null }, d30: m.a30[x.id] || { spend: 0, leads: 0, cpl: null } }))
+    .filter((x) => x.status === "ACTIVE" || x.d30.spend > 0).sort((a, b) => b.d30.spend - a.d30.spend).slice(0, 80);
+  return { windows: { d7, d30 }, campaigns, adsets, ads: adList };
+}

@@ -18,6 +18,7 @@ import crypto from "node:crypto";
 import { pageCredentials, lastDays } from "./live";
 import { ELEVAY_RULES } from "./ai";
 import { programFactsFor } from "./knowledge";
+import { buildAdsReviewData } from "./live";
 
 const ver = () => process.env.META_GRAPH_API_VERSION || "v26.0";
 const nowIso = () => new Date().toISOString();
@@ -29,7 +30,11 @@ export const META_KINDS = {
   campaign_status: "Pause or activate",
   campaign_budget: "Change daily budget",
   create_campaign: "Create a lead campaign (paused)",
+  adset_status: "Pause or activate an ad set",
+  adset_budget: "Change an ad set's daily budget",
+  ad_status: "Pause or activate an ad",
 };
+const CHANGE_KINDS = ["campaign_status", "campaign_budget", "create_campaign", "adset_status", "adset_budget", "ad_status"];
 
 const SPECIAL_AD_CATEGORIES = new Set(["HOUSING", "EMPLOYMENT", "CREDIT", "ISSUES_ELECTIONS_POLITICS"]);
 
@@ -60,9 +65,23 @@ export function resolveSpecialAdCategories(campaign) {
 /** Validates a campaign action proposed by the team, Claude or Manus. */
 export function cleanMetaAction(b, R) {
   const kind = String(b.kind || "");
-  if (!["campaign_status", "campaign_budget", "create_campaign"].includes(kind)) throw new Error("Unsupported action.");
-  if (kind === "campaign_status") { if (!/^\d+$/.test(String(b.target_id))) throw new Error("Campaign or ad set id required."); if (!["ACTIVE", "PAUSED"].includes(b.status_to)) throw new Error("status_to must be ACTIVE or PAUSED."); return { kind, target_id: String(b.target_id), target_name: String(b.target_name || "").slice(0, 200), status_to: b.status_to, preview: `${b.status_to === "ACTIVE" ? "Activate" : "Pause"} ${b.target_name || b.target_id}`, reason: String(b.reason || "").slice(0, 500) }; }
-  if (kind === "campaign_budget") { const v = Number(b.daily_budget_egp); if (!/^\d+$/.test(String(b.target_id)) || !(v >= 50 && v <= 50000)) throw new Error("Campaign/ad set id and a daily budget between 50 and 50,000 EGP are required."); return { kind, target_id: String(b.target_id), target_name: String(b.target_name || "").slice(0, 200), daily_budget_egp: v, preview: `Set daily budget of ${b.target_name || b.target_id} to ${v.toLocaleString("en-US")} EGP`, reason: String(b.reason || "").slice(0, 500) }; }
+  if (!CHANGE_KINDS.includes(kind)) throw new Error("Unsupported action.");
+  // The numbers behind the proposal (7/30-day spend, leads, CPL, qualified leads, cost per qualified lead), kept small.
+  const evidence = b.evidence && typeof b.evidence === "object" && JSON.stringify(b.evidence).length <= 2000 ? JSON.parse(JSON.stringify(b.evidence)) : null;
+  const extra = { evidence: evidence || undefined, source: b.source ? String(b.source).slice(0, 60) : undefined };
+  if (kind === "adset_status" || kind === "ad_status") {
+    const what = kind === "ad_status" ? "Ad" : "Ad set";
+    if (!/^\d+$/.test(String(b.target_id))) throw new Error(`${what} id required.`);
+    if (!["ACTIVE", "PAUSED"].includes(b.status_to)) throw new Error("status_to must be ACTIVE or PAUSED.");
+    return { kind, target_id: String(b.target_id), target_name: String(b.target_name || "").slice(0, 200), campaign_id: b.campaign_id ? String(b.campaign_id) : undefined, status_to: b.status_to, preview: `${b.status_to === "ACTIVE" ? "Activate" : "Pause"} ${what.toLowerCase()} ${b.target_name || b.target_id}`, reason: String(b.reason || "").slice(0, 700), ...extra };
+  }
+  if (kind === "adset_budget") {
+    const v = Number(b.daily_budget_egp);
+    if (!/^\d+$/.test(String(b.target_id)) || !(v >= 50 && v <= 50000)) throw new Error("Ad set id and a daily budget between 50 and 50,000 EGP are required.");
+    return { kind, target_id: String(b.target_id), target_name: String(b.target_name || "").slice(0, 200), campaign_id: b.campaign_id ? String(b.campaign_id) : undefined, daily_budget_egp: v, preview: `Set ad set ${b.target_name || b.target_id} daily budget to ${v.toLocaleString("en-US")} EGP`, reason: String(b.reason || "").slice(0, 700), ...extra };
+  }
+  if (kind === "campaign_status") { if (!/^\d+$/.test(String(b.target_id))) throw new Error("Campaign or ad set id required."); if (!["ACTIVE", "PAUSED"].includes(b.status_to)) throw new Error("status_to must be ACTIVE or PAUSED."); return { kind, target_id: String(b.target_id), target_name: String(b.target_name || "").slice(0, 200), status_to: b.status_to, preview: `${b.status_to === "ACTIVE" ? "Activate" : "Pause"} ${b.target_name || b.target_id}`, reason: String(b.reason || "").slice(0, 700), ...extra }; }
+  if (kind === "campaign_budget") { const v = Number(b.daily_budget_egp); if (!/^\d+$/.test(String(b.target_id)) || !(v >= 50 && v <= 50000)) throw new Error("Campaign/ad set id and a daily budget between 50 and 50,000 EGP are required."); return { kind, target_id: String(b.target_id), target_name: String(b.target_name || "").slice(0, 200), daily_budget_egp: v, preview: `Set daily budget of ${b.target_name || b.target_id} to ${v.toLocaleString("en-US")} EGP`, reason: String(b.reason || "").slice(0, 700), ...extra }; }
   const c = b.campaign || {};
   const daily = Number(c.daily_budget_egp);
   if (!c.name || !(daily >= 100 && daily <= 50000) || !/^\d+$/.test(String(c.form_id || "")) || !/^https:\/\//.test(String(c.image_url || "")) || !c.message) throw new Error("A new campaign needs a name, a daily budget (100–50,000 EGP), a lead form, an approved design and ad text.");
@@ -151,17 +170,18 @@ export function createMetaHub(deps) {
   }
   /** Projected month-end spend if this action runs, against the cap; CPL ceiling for increases. */
   async function precheck(a) {
-    if (!["campaign_status", "campaign_budget", "create_campaign"].includes(a.kind)) return { ok: true };
+    if (!CHANGE_KINDS.includes(a.kind)) return { ok: true };
+    if (a.kind === "ad_status") return { ok: true, note: "An ad spends from its ad set's budget; pausing or activating it never adds daily budget." };
     const { state } = await deps.loadState();
     const cap = Number(state.settings.monthlyAdCapEgp || 200000), maxCpl = Number(state.settings.maxCplEgp || 100);
     const snap = await adsSnapshot();
     let addDaily = 0;
     const target = snap.campaigns.find((c) => c.id === a.target_id) || snap.adsets.find((s) => s.id === a.target_id);
-    if (a.kind === "campaign_status") {
+    if (a.kind === "campaign_status" || a.kind === "adset_status") {
       if (a.status_to !== "ACTIVE") return { ok: true, note: "Pausing never adds spend." };
       if (target && target.status !== "ACTIVE") addDaily = target.daily || snap.adsets.filter((s) => s.campaign_id === a.target_id).reduce((s, x) => s + x.daily, 0);
     }
-    if (a.kind === "campaign_budget") {
+    if (a.kind === "campaign_budget" || a.kind === "adset_budget") {
       const cur = target?.daily || 0;
       addDaily = Number(a.daily_budget_egp) - cur;
       const campId = target?.campaign_id || a.target_id;
@@ -186,11 +206,14 @@ export function createMetaHub(deps) {
         const r = await graph.post(`${page.pageId}/messages`, page.token, { recipient: { id: a.recipient_id }, messaging_type: "RESPONSE", message: { text: a.text } });
         return { message_id: r.message_id || r.id };
       }
-      case "campaign_status": {
+      case "campaign_status":
+      case "adset_status":
+      case "ad_status": {
         await graph.post(a.target_id, adsToken(), { status: a.status_to });
         return { status: a.status_to };
       }
-      case "campaign_budget": {
+      case "campaign_budget":
+      case "adset_budget": {
         await graph.post(a.target_id, adsToken(), { daily_budget: Math.round(Number(a.daily_budget_egp) * 100) });
         return { daily_budget_egp: Number(a.daily_budget_egp) };
       }
@@ -227,7 +250,7 @@ export function createMetaHub(deps) {
       if (bad.length) throw new Error("Reply breaks the ELEVAY rules: " + bad.join(" "));
       a.text = t; a.edited = true;
     }
-    if (edits.daily_budget_egp !== undefined && a.kind === "campaign_budget") a.daily_budget_egp = Number(edits.daily_budget_egp);
+    if (edits.daily_budget_egp !== undefined && ["campaign_budget", "adset_budget"].includes(a.kind)) { const v = Number(edits.daily_budget_egp); if (!(v >= 50 && v <= 50000)) throw new Error("Daily budget must be between 50 and 50,000 EGP."); a.daily_budget_egp = v; }
     a.check = await precheck(a).catch((e) => ({ ok: false, reason: e.message }));
     if (a.check.ok === false) { a.status = "blocked"; a.log.push({ at: nowIso(), by: user.email, text: a.check.reason }); await saveA(a, g.ver); throw new Error(a.check.reason); }
     a.status = "running"; a.approved_by = user.email; a.approved_at = nowIso();
@@ -576,5 +599,7 @@ export function createMetaHub(deps) {
     return { released, skipped };
   }
 
-  return { ensureTables, enqueue, approve, reject, list, syncInbox, publishDue, publishItem, releaseForPublishing, precheck, checkConnection, leadForms, tick, replyProblems, adsSnapshot };
+  async function adsReviewData() { return buildAdsReviewData({ q, fetcher: deps.fetcher || fetch }); }
+
+  return { adsReviewData, ensureTables, enqueue, approve, reject, list, syncInbox, publishDue, publishItem, releaseForPublishing, precheck, checkConnection, leadForms, tick, replyProblems, adsSnapshot };
 }

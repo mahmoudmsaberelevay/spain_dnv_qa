@@ -528,6 +528,10 @@ route("POST", "/weekly-operations/start-now", "owner", async (ctx) => {
   try { return ok(await startWeeklyCommandCenterNow(week)); }
   catch (error) { return fail(502, `Weekly production start failed: ${String(error?.message || error).slice(0, 300)}`); }
 });
+route("POST", "/ai/ads-review", "owner", async (ctx) => {
+  const run = await (await studio()).startAdsReview(ctx.user, String(ctx.body?.note || ""));
+  return ok({ ok: true, run });
+});
 route("POST", "/ai/news/research", "owner", async () => {
   try { return ok({ ok: true, ...(await (await studio()).researchNews({ email: "owner", role: "owner" })) }); }
   catch (e) { return fail(502, "News research failed: " + String(e?.message || e).slice(0, 300)); }
