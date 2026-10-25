@@ -60,7 +60,7 @@ export const PROGRAMS = [
     facts: `MALTA PERMANENT RESIDENCE — approved ELEVAY source
 - Permanent residence status (not citizenship) for the applicant and family: live in Malta without a fixed time limit; travel within the Schengen Area up to 90 days in any 180-day period.
 - No automatic right to work; a work permit can be applied for later.
-- Main cost: a donation of approximately USD 100,000 covering all family members, plus other government fees (approximate).
+- Main cost: a government donation covering all family members, plus other government fees. The euro amount is awaiting owner confirmation: do NOT state any figure for Malta (and never a US-dollar figure); invite a consultation instead.
 - Family: spouse, unmarried children up to 26, and parents or parents-in-law for additional fees.
 - No requirement to live in Malta to keep the residence, and no visit needed before applying.
 - Process: collect the main applicant's information → gather, authenticate and translate family documents → submit for government approval → after approval pay the donation → permanent residence issued.
@@ -94,7 +94,8 @@ export function fullProgramSource(text: string) {
 // ------------------------------------------------------------------ creative direction
 /** Condensed, binding rules from the ELEVAY creative direction files. */
 export const CREATIVE_DIRECTION = `ELEVAY CREATIVE DIRECTION (binding)
-People: every person Arab/Middle Eastern, modern elegant clothing, complete realistic outfit head to toe; suits always with polished formal shoes or elegant loafers (never slippers, sandals, sneakers or house shoes). No turbans, keffiyeh, ghutra, shemagh or random traditional accessories unless requested. Natural anatomy and hands, grounded feet, believable shadows, no wardrobe changes between shots.
+People: every person Arab/Middle Eastern, in modern clothing that fits the scene — casual, smart-casual or formal (owner rule: casual is fine; not everyone needs to be formal) — always neat, tasteful and complete head to toe with matching footwear; suits always with polished formal shoes or elegant loafers; casual outfits with clean shoes or smart trainers (never slippers or house shoes).
+Currency: for every European country (Spain, Portugal, Greece, Malta…) money amounts are in euros (€ / EUR / يورو), never US dollars. No turbans, keffiyeh, ghutra, shemagh or random traditional accessories unless requested. Natural anatomy and hands, grounded feet, believable shadows, no wardrobe changes between shots.
 Photography: warm natural light, premium editorial (luxury architecture / real-estate / international lifestyle campaign). Authentic European architecture, elegant apartments, terraces, offices, cafés, coastlines, city streets; remote-work, advisory, family and lifestyle moments; quiet confidence. Avoid generic stock travel photos, staged handshakes, impossible camera moves, distorted architecture, duplicated people.
 Never: passports, visa imagery, flags as hero objects, approval seals or stamps, portals, sculptures, museum installations, abstract immigration symbols, QR codes, phone numbers, emails, WhatsApp, URLs, AI-drawn or AI-generated logo, logo on props/clothes/documents.
 Color: ~90% ELEVAY palette in designed elements — off-white #FFEBDA, cream #FFE7D1, dark navy #3D4750, navy #445563, medium navy #4B6475, ELEVAY blue #5BA3B8, light teal #B3CFD4, soft gray #CCDBD5, white; gold (#FFBF5D, #EED38E, #EACA75, #C4985D) only as small accents. No neon, harsh black, fake HDR, heavy grain, busy patterns, glassmorphism, Canva-style templates or collages.

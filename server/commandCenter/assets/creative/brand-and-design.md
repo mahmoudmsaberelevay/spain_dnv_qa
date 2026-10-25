@@ -121,7 +121,7 @@ Never redraw, simplify, recolor, stretch, compress, rotate, crop, distort, anima
 
 ## 6. People, Wardrobe, and Realism Rules
 
-Every person must be Arab/Middle Eastern and presented in modern, elegant clothing appropriate to their age, role, gender presentation, environment, and occasion.
+Every person must be Arab/Middle Eastern and presented in modern clothing — casual, smart-casual or formal (casual is fine; not everyone needs to be formal) — appropriate to their age, role, gender presentation, environment, and occasion.
 
 ### Mandatory wardrobe rule
 

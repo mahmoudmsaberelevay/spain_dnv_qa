@@ -25,12 +25,12 @@ The Malta Permanent Residence Programme grants you and your family permanent res
 **السؤال:** إيه الحد الأدنى للاستثمار أو المساهمة المطلوبة؟
 
 **إجابتك كما وردت في الحوار:**  
-البرنامج يتكون من عدة عناصر، منها تبرع بقيمة تقارب 100,000 دولار يشمل جميع أفراد الأسرة، بالإضافة إلى بعض الرسوم الحكومية الأخرى.
+البرنامج يتكون من عدة عناصر، منها تبرع (المبلغ باليورو بانتظار تأكيد المالك — لا يُذكر أي رقم بالدولار) يشمل جميع أفراد الأسرة، بالإضافة إلى بعض الرسوم الحكومية الأخرى.
 
 **Question:** What is the minimum investment or contribution required?
 
 **Your answer as given in the conversation:**  
-The programme consists of several components, including a donation of approximately USD 100,000 covering all family members, in addition to certain other government fees.
+The programme consists of several components, including a donation (euro amount awaiting owner confirmation — never quote a US-dollar figure) covering all family members, in addition to certain other government fees.
 
 **نقطة تحتاج مراجعة:** الرقم تقريبي كما ذُكر في الحوار، وليس جدولًا رسميًا للتكاليف. لم تُناقش متطلبات العقار أو توزيع المبالغ بين التبرع والمساهمة والرسوم أو اختلافها بحسب عدد المعالين.  
 **Verification required:** The amount is an estimate quoted in the conversation, not an official cost schedule. Property requirements, the breakdown between donation, contribution and fees, and variations based on dependants were not discussed.

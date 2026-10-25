@@ -63,7 +63,7 @@ Gradients: Primary = Dark Navy → Baby Blue. Warm = Deep Gold → Bright Gold. 
 - Style: high-quality luxury lifestyle photography, real/authentic moments, professional people, premium settings. Natural lighting, rule of thirds, shallow depth of field (f/2.8–f/4.0), eye-level or slightly elevated angles, warm inviting color grading matching the palette. Mood: aspirational, optimistic, trustworthy, premium.
 - Approved themes: families (multi-gen, elegant homes, travel), professionals (executives, offices, consultations), European architecture (landmarks, premium residences), business meetings, luxury lifestyle/travel, investment/wealth planning, global mobility/international cities, education, children (educational/family bonding), iconic international city skylines.
 - **Never use:** fake/artificial-posed stock photos, artificial handshakes, passport stamp imagery, overused flag imagery, low-resolution/cheap imagery, overly staged scenes, clichéd business photography.
-- **People shown must appear Arab/Middle Eastern in modern elegant clothing** — do not depict American, African, Asian, or European-looking people as the subjects. Never show passport images.
+- **People shown must appear Arab/Middle Eastern in modern clothing — casual, smart-casual or formal as fits the scene (casual is fine; owner rule 25 Oct 2026)** — do not depict American, African, Asian, or European-looking people as the subjects. Never show passport images.
 - Iconography: outline style, 1.5–2px stroke, 2–3px corner radius, 24×24px grid, monochrome Dark Navy or Baby Blue only.
 - Cards: Cream or Pure White background, 1px Light Teal border, soft shadow `0px 4px 12px rgba(61,71,80,0.1)`, 8–12px radius.
 
@@ -86,7 +86,7 @@ Gradients: Primary = Dark Navy → Baby Blue. Warm = Deep Gold → Bright Gold. 
 - Format: 9:16 vertical, minimum 720×1280 (spec also says 1080p min quality), 15–60 seconds.
 - **No text overlays inside the video** — background music only, unless voice-over is specifically requested.
 - End every reel with the ELEVAY logo centered on a clean white/pure-white background, static, 3 seconds, no animation.
-- People on screen: Arab/Middle Eastern appearance, modern elegant clothing. Staff appearances use official staff photos/AI avatars only. Never show passport images.
+- People on screen: Arab/Middle Eastern appearance, modern casual, smart-casual or formal clothing (casual is fine). Staff appearances use official staff photos/AI avatars only. Never show passport images.
 - Avoid: stock footage, artificial scenes, passport imagery, flag imagery, text overlays.
 
 ### Carousels
@@ -176,7 +176,7 @@ ELEMENTS TO AVOID: stock photo clichés, artificial poses/handshakes, passport
 imagery, flag imagery, low-quality elements, overly staged scenes, text overlays.
 STYLE: [modern/minimalist/editorial/professional]
 MOOD: [aspirational/trustworthy/premium/optimistic]
-People depicted: Arab/Middle Eastern appearance, modern elegant clothing.
+People depicted: Arab/Middle Eastern appearance, modern casual, smart-casual or formal clothing (casual is fine).
 ```
 
 ### Video/reel prompt skeleton

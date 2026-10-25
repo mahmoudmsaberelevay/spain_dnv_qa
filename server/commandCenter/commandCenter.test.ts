@@ -188,3 +188,21 @@ describe("owner-reviewed content revisions", () => {
     expect(E.restoreItemVersion(st, item.item_id, 1, { actor: "marketer@elevay.com", role: "marketer", baseVersion: 24 }).ok).toBe(false);
   });
 });
+
+describe("owner rules (25 Oct 2026): euros for Europe, casual clothing allowed", () => {
+  it("blocks US-dollar amounts for European programmes and allows euros", async () => {
+    const R = (await import("./rules")).default;
+    const base = { type: "static", topic: "Spain DNV", program: "Spain Digital Nomad", disclaimer_used: "x", design: { headline_en: "Live and work in Spain", format: "1080x1350" } };
+    const usd = R.checkBrief({ ...base, caption_ar: "إقامة في إسبانيا بدخل 3000 دولار شهرياً" });
+    expect(usd.blocks.some((b) => b.id === "currency_eur")).toBe(true);
+    const eur = R.checkBrief({ ...base, caption_ar: "إقامة في إسبانيا بدخل 2917 يورو شهرياً" });
+    expect(eur.blocks.some((b) => b.id === "currency_eur")).toBe(false);
+    const nonEu = R.checkBrief({ ...base, topic: "Caribbean CBI", program: "Grenada", design: { headline_en: "A second passport path", format: "1080x1350" }, caption_ar: "استثمار يبدأ من 235,000 دولار في جرينادا" });
+    expect(nonEu.blocks.some((b) => b.id === "currency_eur")).toBe(false);
+  });
+  it("accepts casual outfits as a complete wardrobe", async () => {
+    const R = (await import("./rules")).default;
+    const r = R.checkBrief({ type: "reel", topic: "t", program: "Portugal", caption_ar: "", reel: { storyboard: [{ clip: 1, keyframe_prompt: "An Arab couple in casual jeans and knit sweaters with clean white sneakers walking in Lisbon, no text, no logo, no passports, no flags" }] } });
+    expect(r.warnings.concat(r.blocks).some((x) => x.id === "clip1_wardrobe")).toBe(false);
+  });
+});
