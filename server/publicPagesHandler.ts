@@ -78,7 +78,7 @@ function pageShell(title: string, content: string): string {
 
 const privacyContent = `
 <h1>Privacy Policy</h1>
-<p class="updated">Last updated: August 4, 2026</p>
+<p class="updated">Last updated: October 25, 2026</p>
 
 <h2>1. Introduction</h2>
 <p>ELEVAY ("we," "us," or "our") operates the ELEVAY CRM application and website at elevay.vip. This Privacy Policy explains how we collect, use, store, and protect your personal information when you use our services. ELEVAY provides citizenship and residency consultation services, and our CRM system is used internally by our team to manage client relationships, documentation, contracts, and financial records.</p>
@@ -144,7 +144,7 @@ const privacyContent = `
 <h2>6. Third-Party Services</h2>
 <p>We use the following third-party services in the operation of our platform:</p>
 <ul>
-  <li><strong>Meta Platforms (Facebook and Instagram)</strong> — to receive Lead Ads notifications, support approved business Page and Instagram interactions, measure marketing results, and maintain privacy-safe delivery and security records. We store only the data needed for these purposes and use Meta-provided identifiers and access tokens only on the server.</li>
+  <li><strong>Meta Platforms (Facebook and Instagram)</strong> — to receive Lead Ads webhook notifications and retrieve submitted Lead Ad responses server-to-server so authorized ELEVAY staff can follow up on a person's own request for information. We retain only required form attribution and processing records, and keep Meta-provided identifiers and access tokens on the server. Messaging, Page/Instagram publishing, and interaction features remain inactive until each has completed separate Meta approval and operational validation.</li>
   <li><strong>Google Drive</strong> — for document storage and synchronization</li>
   <li><strong>Amazon S3</strong> — for secure file storage</li>
   <li><strong>Email services (Gmail SMTP)</strong> — for sending notifications and reminders</li>
