@@ -298,7 +298,9 @@ export async function applyClientPayment(clientId: number, amountEgp: number, ac
   const egpAmount = accountCurrency === 'EUR' ? amountEgp * 55.5 : amountEgp;
   const newPaid = Number(client.paidAmountEur ?? 0) + paymentEur;
   const newPaidEgp = Number(client.paidAmountEgp ?? 0) + egpAmount;
-  const newRemaining = Number(client.remainingAmountEur ?? 0) - paymentEur;
+  // A client can validly overpay. Preserve the paid amount but never display a
+  // negative outstanding balance; always derive it from the current net value.
+  const newRemaining = Math.max(0, Number(client.contractValueEur ?? 0) - newPaid);
   await db.update(finClients).set({
     paidAmountEur: newPaid.toFixed(2),
     paidAmountEgp: newPaidEgp.toFixed(2),
@@ -354,7 +356,7 @@ export async function recalcClientPaidAmount(clientId: number) {
   const totalEgp = baseEgp + newTxEgp;
 
   const contractVal = Number(client.contractValueEur ?? 0);
-  const newRemaining = contractVal > 0 ? contractVal - totalEur : Number(client.remainingAmountEur ?? 0);
+  const newRemaining = contractVal > 0 ? Math.max(0, contractVal - totalEur) : Number(client.remainingAmountEur ?? 0);
 
   await db.update(finClients).set({
     paidAmountEur: totalEur.toFixed(2),
@@ -369,7 +371,7 @@ export async function setClientPaidAmount(clientId: number, paidAmountEgp: numbe
   if (!client) return null;
   const newPaidEur = paidAmountEgp / 55.5;
   const contractVal = Number(client.contractValueEur ?? 0);
-  const newRemaining = contractVal - newPaidEur;
+  const newRemaining = Math.max(0, contractVal - newPaidEur);
   await db.update(finClients).set({
     paidAmountEgp: paidAmountEgp.toFixed(2),
     paidAmountEur: newPaidEur.toFixed(2),
@@ -384,7 +386,7 @@ export async function recordClientManualPayment(clientId: number, amountEgp: num
   const paymentEur = amountEgp / 55.5;
   const newPaidEgp = Number(client.paidAmountEgp ?? 0) + amountEgp;
   const newPaidEur = Number(client.paidAmountEur ?? 0) + paymentEur;
-  const newRemaining = Number(client.remainingAmountEur ?? 0) - paymentEur;
+  const newRemaining = Math.max(0, Number(client.contractValueEur ?? 0) - newPaidEur);
   await db.update(finClients).set({
     paidAmountEgp: newPaidEgp.toFixed(2),
     paidAmountEur: newPaidEur.toFixed(2),

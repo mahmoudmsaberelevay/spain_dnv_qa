@@ -19,6 +19,7 @@ Meta documents Page webhook subscription and Lead Ads retrieval in its [Lead Ads
 | Lead retrieval | Full answers are requested server-to-server from `/{leadgen_id}` using the Page access token. |
 | Contact matching | Meta Lead ID is checked first, then normalized phone, then normalized email. Ambiguous matches are routed to manual review rather than merged automatically. |
 | Attribution | Every distinct Meta Lead ID produces an immutable inquiry row. A returning contact can therefore retain multiple Form, Campaign, Ad Set, and Ad inquiries on one CRM Lead. |
+| Consent | A Meta Lead Ads submission does not itself set GDPR consent, data-sharing consent, or marketing opt-in. New Leads begin with all three optional flags false unless a separately verified, form-specific explicit-consent mapping is introduced. |
 | CRM events | Events are queued from genuine Lead stage/activity transitions and signed-contract transitions only. Browser page views and general analytics never create CRM conversions. |
 | Delivery | The outbox enforces deterministic event IDs, prerequisite ordering, retry backoff, the seven-day upload window, dead-letter/manual-review states, and response auditing. |
 | Customer data | Email and phone are normalized and SHA-256 hashed before transmission. Outbox snapshots contain hashes and non-sensitive CRM context, not raw contact data. |

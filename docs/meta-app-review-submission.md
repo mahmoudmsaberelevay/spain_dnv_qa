@@ -1,4 +1,4 @@
-# ELEVAY Marketing Command Center — Meta App Review Pack
+# ELEVAY CRM Integration — Meta App Review Resubmission Pack
 
 **App:** Marketing Command Center (existing ELEVAY CRM Integration app)  
 **Site:** `https://elevay.vip/admin`  
@@ -6,46 +6,51 @@
 **Terms:** `https://elevay.vip/terms`  
 **Data deletion callback:** `https://elevay.vip/api/meta/data-deletion`
 
+## Immediate resubmission scope
+
+Request **only `leads_retrieval`** in this submission. It is needed for the live ELEVAY CRM Lead Ads flow: ELEVAY receives a signed `leadgen` webhook for an Instant Form submission, retrieves that prospective client's submitted form answers server-to-server using the Lead ID, conservatively matches or creates the CRM Lead, preserves the form/campaign attribution, and lets authorized ELEVAY staff follow up on the customer's own request for information.
+
+The integration does not use `leads_retrieval` for Messenger marketing, paid promotional messages, campaign edits, budget changes, or publishing. It improves follow-up because staff can see the information a person voluntarily submitted in ELEVAY's own Lead Ad form instead of asking the person to repeat it. Duplicate or ambiguous contacts are never silently merged.
+
+Do not include `business_management`, Instagram Direct messaging, Instagram publishing, Page publishing, Page engagement management, campaign management, or a Marketing API access-tier request in this submission. Each is either unnecessary for the immediate Lead Ads flow or awaits its own verified evidence gate below.
+
 ## Reviewer access path
 
 1. Sign in to the supplied Meta test account (to be added in the App Dashboard for review).
 2. Open `https://elevay.vip/admin` and sign in with the supplied ELEVAY reviewer account.
 3. Select **Meta** in the Command Center menu.
-4. Use **Check Meta connection** to show read-only Page, lead-form, inbox and Ads connections.
-5. Review queued actions, drafts and audit records. No action is sent to Meta without owner approval during the first six weeks.
+4. Open **Leads → Settings → Meta Ops** to view the signed webhook/reconciliation status and the list of connected Lead Forms.
+5. Use Meta's Lead Ads Testing Tool with the designated test form. Show the webhook audit and the resulting test Lead only. Do not expose a production lead, customer conversation, token, secret, or payment data.
 
-## Permission matrix
+The reviewer account must be a dedicated, least-privilege ELEVAY CRM account containing test data only. Enter its active access instructions in the App Review form, not in this repository or a recording.
 
-| Permission | Capability and data use | Reviewer demonstration |
+## Permission decision register
+
+| Permission or feature | Current decision | Evidence gate |
 |---|---|---|
-| `leads_retrieval` | Fetch a submitted Lead Ad form response after an authenticated `leadgen` webhook. ELEVAY maps name, telephone, email, programme interest and Meta attribution into the CRM, with phone/email deduplication. | Submit a test lead with the Lead Ads Testing Tool; show the webhook audit and the resulting deduplicated CRM lead. |
-| `pages_manage_ads`, `ads_read`, `ads_management`, `business_management` | Read campaign/ad set/ad insights; queue owner-reviewed actions; create new campaigns **paused** only; apply spend/CPL safeguards. | Open **Meta → Campaigns**. Show insights, then create a paused test campaign and delete it without delivery. |
-| `pages_show_list`, `pages_read_engagement`, `pages_read_user_content`, `pages_manage_engagement` | Read Page posts/comments and queue a safe, owner-reviewed Arabic reply or hide action. | Post a test comment. Show the inbox item and owner approval before replying or hiding. |
-| `pages_manage_metadata` | Receive and validate Page webhook subscriptions. | Show the signed `https://elevay.vip/api/meta/webhook` callback subscription and a successful test delivery. |
-| `pages_messaging` | Read Messenger conversations and queue replies within Meta’s 24-hour response policy. | Send a test Page message; show the inbox item, reply draft and the approval gate. |
-| `instagram_basic`, `instagram_manage_comments`, `instagram_manage_messages` | Read professional-account media, comments and DMs; draft owner-reviewed responses. | Add a test Instagram comment/DM; show the Command Center inbox and queued draft. |
-| `instagram_content_publish` | Publish an owner-approved static post, carousel or Reel via the Instagram container flow. | Use an owner-approved test asset; show media container creation, processing status and final publish. |
-| `pages_manage_posts` | Schedule an owner-approved Page post. | Create an unpublished Page test post, then delete it. |
+| `leads_retrieval` | **Request now.** Retrieve submitted Lead Ads form responses after signed `leadgen` webhook delivery. CRM fields are mapped from the submitted form only; contact matching is conservative and attribution is preserved. | Lead Ads Testing Tool → signed webhook audit → test Lead / immutable attribution in ELEVAY CRM. |
+| Supporting Lead Ads Page permissions | Retain only those Meta requires for the exact webhook and form retrieval flow, subject to the App Dashboard's permission requirements. | Same Lead Ads test flow; exact callback is `https://elevay.vip/api/webhooks/meta-leads-v2`. |
+| Marketing API access tier / `ads_read` | **Defer.** The GET-only EGP reporting screen is implemented, but Meta rejected the previous request for insufficient recent application activity. | Establish legitimate successful read-only reporting calls over Meta's required rolling period, retain safe evidence, then submit separately. |
+| `pages_messaging` | **Defer.** The CRM now blocks a reply both when queued and immediately before dispatch if the verified 24-hour window is closed. | Record the selected Page in the CRM, an approved test reply sent from the CRM, and that exact message visible in native Messenger. |
+| Instagram comments / Instagram Direct | **Defer.** Comment handling may be reviewed later; Direct-message sending is intentionally disabled pending a supported separate Instagram Messaging API connection and native-client delivery proof. | Use only a dedicated professional test account and demonstrate a correctly delivered message before requesting any Direct-message permission. |
+| `business_management` | **Do not request.** No current ELEVAY CRM feature requires it. | Not applicable. |
 
-## Safeguards to call out in every submission
+## Safeguards to call out in the Lead Ads submission
 
-- Public comments and DMs use professional Modern Standard Arabic; no guarantees, legal/tax advice, phone numbers, or public links.
-- The system substitutes **إقامة** for prohibited **تأشيرة** terminology in public response templates.
-- Each Meta write has a durable audit record: requestor, approver, timestamps, before/after values and result.
-- Owner approval is mandatory for the first six weeks; later automation stays subject to the 90% first-pass-approval gate.
-- New campaigns remain **PAUSED**. Budget prechecks reject cap breaches, >20% daily budget increases and campaigns over the configured CPL ceiling.
+- The webhook is signed and verified before its notification is stored or processed.
+- Full form details are retrieved only server-to-server. The access token remains on the server and is never sent to the browser.
+- Contact matching checks Meta Lead ID first, then normalized telephone and email. Ambiguous matches remain in manual review.
+- Every submitted Lead Ad receives immutable form/campaign/ad attribution and a durable processing record; retries are idempotent.
+- A form submission does not imply GDPR, data-sharing, or marketing consent. New Leads start with those optional flags false unless a separately verified, explicit form consent mapping is implemented.
 - Lead and webhook processing is asynchronous, signed, idempotent and retried from durable tables.
 - The CAPI integration uses hashed identifiers and `event_id` deduplication; production delivery is disabled until its separate approval gate is intentionally enabled.
 
-## Recording checklist
+## Submission and recording checklist
 
-Record one short continuous video per relevant grouped capability, with visible URLs and test assets:
+1. For `leads_retrieval`, use the exact written use-case above. State that this is a server-to-server Lead Ads retrieval workflow, not a Messenger use case.
+2. Confirm the App Review form names the actual ELEVAY legal controller and every relevant processor accurately. Do not substitute an individual's name or invent a legal entity.
+3. Provide dedicated reviewer access that remains active and contains test data only. Never place credentials in the repository, video, or public documentation.
+4. If Meta requires a recording, make one short, English, high-resolution Lead Ads test recording: testing tool → ELEVAY webhook / Meta Ops status → resulting CRM test Lead. Keep tokens and real contact data off screen.
+5. Before requesting any deferred permission, make a separate recording for that permission's exact feature. For Messenger this must show selected Page → CRM send action → matching native Messenger delivery.
 
-1. **Leads + webhook:** test lead → webhook audit → CRM lead deduplication.
-2. **CAPI:** test event in Events Manager → Command Center evidence.
-3. **Inbox:** Page comment, Instagram comment, Messenger and Instagram DM → safe queued drafts.
-4. **Ads:** insights read → paused campaign proposal → approval gate/audit.
-5. **Publishing:** owner-approved test asset → Page schedule and Instagram container flow.
-6. **Privacy:** privacy page and data-deletion status URL.
-
-Do not include a production lead, customer conversation, token, secret or payment data in recordings.
+Do not include a production lead, customer conversation, token, secret, payment data, or any unimplemented feature in the review submission or recordings.

@@ -37,6 +37,30 @@ export const META_KINDS = {
 const CHANGE_KINDS = ["campaign_status", "campaign_budget", "create_campaign", "adset_status", "adset_budget", "ad_status"];
 
 const SPECIAL_AD_CATEGORIES = new Set(["HOUSING", "EMPLOYMENT", "CREDIT", "ISSUES_ELECTIONS_POLITICS"]);
+const MESSAGE_REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * A reply is eligible only when it is tied to a verified inbound Messenger
+ * message and still falls in the standard customer-service window. The same
+ * check is intentionally repeated immediately before the Graph API call.
+ */
+function messageReplyWindowProblem(action, at = Date.now()) {
+  if (action?.kind !== "reply_message") return null;
+  if (action.platform === "instagram") {
+    return "Instagram Direct replies are disabled until the separate Instagram Messaging API credential and live test-account delivery check are complete.";
+  }
+  const receivedAt = Number(action.incoming_at);
+  if (!Number.isFinite(receivedAt) || receivedAt <= 0) {
+    return "Messenger reply is missing a verifiable inbound-message timestamp, so sending is blocked.";
+  }
+  if (receivedAt > at + 5 * 60 * 1000) {
+    return "Messenger reply has an invalid inbound-message timestamp, so sending is blocked.";
+  }
+  if (at - receivedAt >= MESSAGE_REPLY_WINDOW_MS) {
+    return "Messenger's 24-hour customer-service window has expired; the reply was not sent.";
+  }
+  return null;
+}
 
 /**
  * Meta treats Housing, Employment, Credit and social issues/politics as special
@@ -203,6 +227,8 @@ export function createMetaHub(deps) {
         return { reply_id: r.id };
       }
       case "reply_message": {
+        const windowProblem = messageReplyWindowProblem(a);
+        if (windowProblem) throw new Error(windowProblem);
         const r = await graph.post(`${page.pageId}/messages`, page.token, { recipient: { id: a.recipient_id }, messaging_type: "RESPONSE", message: { text: a.text } });
         return { message_id: r.message_id || r.id };
       }
@@ -249,6 +275,14 @@ export function createMetaHub(deps) {
       const bad = replyProblems(t, a.kind === "reply_comment", (await deps.loadState()).state.settings.meta?.contactPhone);
       if (bad.length) throw new Error("Reply breaks the ELEVAY rules: " + bad.join(" "));
       a.text = t; a.edited = true;
+    }
+    const messageProblem = messageReplyWindowProblem(a);
+    if (messageProblem) {
+      a.status = "blocked";
+      a.error = messageProblem;
+      a.log.push({ at: nowIso(), by: user.email, text: messageProblem });
+      await saveA(a, g.ver);
+      throw new Error(messageProblem);
     }
     if (edits.daily_budget_egp !== undefined && ["campaign_budget", "adset_budget"].includes(a.kind)) { const v = Number(edits.daily_budget_egp); if (!(v >= 50 && v <= 50000)) throw new Error("Daily budget must be between 50 and 50,000 EGP."); a.daily_budget_egp = v; }
     a.check = await precheck(a).catch((e) => ({ ok: false, reason: e.message }));
@@ -343,15 +377,19 @@ export function createMetaHub(deps) {
         }
       }
     } catch (e) { errors.push("Instagram comments: " + e.message); }
-    // Messenger and Instagram direct messages (reply window: 24 h)
-    for (const platform of ["messenger", "instagram"]) {
+    // Messenger direct messages (reply window: 24 h). Instagram Direct is
+    // intentionally excluded until it uses its own supported credentials and
+    // has passed a native-client delivery test; do not route an Instagram DM
+    // through the Facebook Page Messenger endpoint.
+    for (const platform of ["messenger"]) {
       try {
         const convs = await graph.get(`${page.pageId}/conversations`, page.token, { platform, fields: "id,updated_time,messages.limit(3){id,message,from,created_time}", limit: "25" });
         for (const cv of convs.data || []) {
           const last = cv.messages?.data?.[0];
           if (!last || !last.message || last.from?.id === page.pageId || last.from?.id === igId) continue;
-          if (Date.now() - Date.parse(last.created_time) > 23 * 3600000) continue;
-          await consider({ key: "msg_" + last.id, platform: platform === "messenger" ? "facebook" : "instagram", channel: "message", recipient_id: last.from?.id, text: last.message, from: last.from?.name || last.from?.username });
+          const incomingAt = Date.parse(last.created_time);
+          if (!Number.isFinite(incomingAt) || incomingAt > Date.now() + 5 * 60 * 1000 || Date.now() - incomingAt > 23 * 3600000) continue;
+          await consider({ key: "msg_" + last.id, platform: "facebook", channel: "message", recipient_id: last.from?.id, text: last.message, from: last.from?.name || last.from?.username, incoming_at: incomingAt });
         }
       } catch (e) { errors.push(`${platform} messages: ` + e.message); }
     }
@@ -549,12 +587,13 @@ export function createMetaHub(deps) {
       return "Key has required publishing permissions";
     });
     await probe("inbox_key", async () => {
-      const need = ["pages_messaging", "instagram_manage_messages"];
+      const need = ["pages_messaging"];
       const granted = new Set(((await graph.get("me/permissions", adsToken(), {})).data || []).filter((x) => x.status === "granted").map((x) => x.permission));
       const missing = need.filter((x) => !granted.has(x));
       if (missing.length) throw new Error("Inbox/reply permission is pending Meta review: " + missing.join(", "));
-      return "Key has inbox/reply permissions";
+      return "Key has Facebook Messenger reply permission";
     });
+    out.instagram_messages = { ok: false, detail: "Intentionally disabled pending a separate supported Instagram Messaging API integration and live test-account delivery proof." };
     await probe("page", async () => `${(await graph.get(page.pageId, page.token, { fields: "name" })).name} (${page.source === "system_user" ? "key from the system user" : "separate Page key"})`);
     await probe("insights", async () => { const p = await graph.get(page.pageId, page.token, { fields: "instagram_business_account{id}" }); const ig = p.instagram_business_account?.id; if (!ig) throw new Error("No Instagram account linked"); await graph.get(`${ig}/insights`, page.token, { metric: "reach", period: "day" }); return "Instagram insights allowed"; });
     await probe("comments", async () => { await graph.get(`${page.pageId}/published_posts`, page.token, { fields: "id", limit: "1" }); return "Can read posts and comments"; });
@@ -563,6 +602,20 @@ export function createMetaHub(deps) {
     await probe("ads", async () => { const a = await graph.get(account(), adsToken(), { fields: "name,currency" }); return `${a.name} (${a.currency})`; });
     await probe("forms", async () => `${(await graph.get(`${page.pageId}/leadgen_forms`, page.token, { fields: "id", limit: "50" })).data?.length || 0} lead forms`);
     return out;
+  }
+  /** Safe, reviewer-visible asset summary. No token, secret, or credential source is returned. */
+  async function selectedAssets() {
+    const page = await pageCredentials(q, deps.fetcher || fetch);
+    const data = await graph.get(page.pageId, page.token, { fields: "id,name,instagram_business_account{id,username}" });
+    const instagram = data.instagram_business_account?.id ? {
+      id: String(data.instagram_business_account.id),
+      username: data.instagram_business_account.username ? String(data.instagram_business_account.username) : null,
+    } : null;
+    return {
+      page: { id: String(data.id || page.pageId), name: data.name ? String(data.name) : "Configured Facebook Page" },
+      instagram,
+      authorization: "Server-side Meta authorization; credentials are never sent to the browser.",
+    };
   }
   async function leadForms() {
     const page = await pageCredentials(q, deps.fetcher || fetch);
@@ -601,5 +654,5 @@ export function createMetaHub(deps) {
 
   async function adsReviewData() { return buildAdsReviewData({ q, fetcher: deps.fetcher || fetch }); }
 
-  return { adsReviewData, ensureTables, enqueue, approve, reject, list, syncInbox, publishDue, publishItem, releaseForPublishing, precheck, checkConnection, leadForms, tick, replyProblems, adsSnapshot };
+  return { adsReviewData, ensureTables, enqueue, approve, reject, list, syncInbox, publishDue, publishItem, releaseForPublishing, precheck, checkConnection, selectedAssets, leadForms, tick, replyProblems, adsSnapshot };
 }

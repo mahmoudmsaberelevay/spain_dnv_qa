@@ -1017,8 +1017,8 @@
   // ------------------------------------------------------------ Meta (replies, publishing, campaigns)
   const META_PILL = { pending: ['warn', 'Needs approval'], running: ['info', 'Running'], done: ['ok', 'Done'], failed: ['bad', 'Failed'], blocked: ['bad', 'Refused by guardrail'], rejected: ['', 'Rejected'] };
   async function loadMeta() {
-    const [a, c, f, w] = await Promise.all([api.req('GET', 'meta/actions'), api.req('GET', 'meta/campaigns').catch((e) => ({ error: e.message })), S.meta && S.meta.forms ? Promise.resolve({ forms: S.meta.forms }) : api.req('GET', 'meta/forms').catch(() => ({ forms: [] })), api.req('GET', 'meta/webhooks').catch((e) => ({ error: e.message }))]);
-    S.meta = { actions: a.actions, campaigns: c, forms: f.forms || [], webhookHealth: w.health || null, webhookError: w.error || null, checks: S.meta && S.meta.checks };
+    const [a, c, f, w, assets] = await Promise.all([api.req('GET', 'meta/actions'), api.req('GET', 'meta/campaigns').catch((e) => ({ error: e.message })), S.meta && S.meta.forms ? Promise.resolve({ forms: S.meta.forms }) : api.req('GET', 'meta/forms').catch(() => ({ forms: [] })), api.req('GET', 'meta/webhooks').catch((e) => ({ error: e.message })), api.req('GET', 'meta/assets').catch(() => null)]);
+    S.meta = { actions: a.actions, campaigns: c, forms: f.forms || [], webhookHealth: w.health || null, webhookError: w.error || null, assets: assets && assets.assets ? assets.assets : null, checks: S.meta && S.meta.checks };
     return S.meta;
   }
   function webhookHealthCard(h, err) {
@@ -1026,6 +1026,11 @@
     const latest = h.latest ? `${esc(h.latest.field)} · ${esc(h.latest.eventType)} · ${fmtDT(h.latest.receivedAt)}` : 'No signed platform events yet';
     const rows = (h.counts || []).map((x) => `<tr><td>${esc(x.objectType)}</td><td>${esc(x.field)}</td><td>${esc(x.status)}</td><td class="r num">${n0(x.total)}</td></tr>`).join('');
     return `<section class="panel"><div class="panel-h"><h2>Page & Instagram webhooks</h2><span class="small muted">Last ${n0(h.windowDays)} days · signed metadata only</span></div><div class="grid g2"><div class="kpi"><span class="label">Latest event</span><span class="small">${latest}</span></div><div class="kpi"><span class="label">Data deletion requests waiting</span><span class="v">${n0(h.pendingDeletionRequests)}</span></div></div>${rows ? `<div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Object</th><th>Field</th><th>Status</th><th class="r">Events</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="small muted" style="margin-top:10px">Configure subscriptions in Meta after this endpoint is live. Lead Ads deliveries continue in the dedicated Lead inbox.</p>'}</section>`;
+  }
+  function selectedAssetsCard(assets) {
+    if (!assets || !assets.page) return '';
+    const p = assets.page, ig = assets.instagram;
+    return `<section class="panel"><div class="panel-h"><h2>Selected Meta assets</h2><span class="small muted">Review-safe identity only</span></div><div class="grid g2"><div class="kpi"><span class="label">Facebook Page</span><strong>${esc(p.name || 'Configured Facebook Page')}</strong><span class="small muted">Page ID ${esc(p.id || '—')}</span></div><div class="kpi"><span class="label">Linked Instagram professional account</span><strong>${ig ? esc(ig.username ? '@' + ig.username : 'Connected') : 'Not linked'}</strong><span class="small muted">${ig ? 'Instagram ID ' + esc(ig.id || '—') : 'No account returned by Meta'}</span></div></div><p class="small muted" style="margin-top:10px">${esc(assets.authorization || 'Authorization remains server-side. Credentials are never displayed in the dashboard.')}</p></section>`;
   }
   function viewMeta(el) {
     if (S.mode === 'demo') { el.innerHTML = '<div class="empty">Meta actions run on elevay.vip/admin.</div>'; return; }
@@ -1040,8 +1045,9 @@
     const posts = [...S.data.items.filter((i) => ['approved', 'scheduled'].includes(i.status)), ...S.data.items.filter((i) => i.status === 'published').slice(-5).reverse()];
     el.innerHTML = `<div class="stack" style="gap:16px">
       <section class="panel"><div class="panel-h"><h2>Needs your approval</h2><span class="row small muted">${pending.length} waiting ${canEdit() ? '<button class="btn sm" id="mxSync">Check comments & messages now</button>' : ''}</span></div>
-        ${pending.length ? `<div class="stack" style="gap:10px">${pending.map(metaCard).join('')}</div>` : '<div class="empty">Nothing waiting. New comments and messages are checked every 10 minutes; Claude drafts each reply.</div>'}</section>
+        ${pending.length ? `<div class="stack" style="gap:10px">${pending.map(metaCard).join('')}</div>` : '<div class="empty">Nothing waiting. New comments and Messenger messages are checked every 10 minutes; Claude drafts each reply. Instagram Direct remains disabled pending its separate API validation.</div>'}</section>
       ${webhookHealthCard(m.webhookHealth, m.webhookError)}
+      ${owner ? selectedAssetsCard(m.assets) : ''}
       <section class="panel"><div class="panel-h"><h2>Campaigns</h2><span class="small muted">${m.campaigns && m.campaigns.mtd !== undefined ? `Month to date ${n0(m.campaigns.mtd)} EGP · active budgets ${n0(m.campaigns.dailyTotal)} EGP/day · cap ${n0(set.monthlyAdCapEgp)} EGP` : esc((m.campaigns && m.campaigns.error) || '')}</span></div>
         ${camps.length ? `<div class="table-wrap"><table><thead><tr><th>Campaign</th><th>Status</th><th class="r">Daily budget</th><th class="r">30-day CPL</th><th></th></tr></thead><tbody>${camps.map((c) => `<tr><td>${esc(c.name)}</td><td class="small">${esc(c.status)}</td><td class="r num">${c.daily ? n0(c.daily) : '—'}</td><td class="r num" style="color:${c.cpl30 > set.maxCplEgp ? 'var(--bad)' : 'inherit'}">${c.cpl30 ? n0(c.cpl30) : '—'}</td><td class="r">${canEdit() ? `<button class="btn sm" data-mx-status="${c.id}" data-to="${c.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'}" data-name="${esc(c.name)}">${c.status === 'ACTIVE' ? 'Pause' : 'Activate'}</button> ${c.daily ? `<button class="btn sm" data-mx-budget="${c.id}" data-name="${esc(c.name)}" data-cur="${c.daily}">Budget</button>` : ''}` : ''}</td></tr>`).join('')}</tbody></table></div>
         <p class="small muted" style="margin-top:8px">Buttons create an action for owner approval. Activations and budget increases are refused when they would break the monthly cap, and increases are refused on campaigns above the max CPL.</p>` : '<div class="empty">No campaigns loaded.</div>'}
@@ -1086,15 +1092,17 @@
     };
   }
   function metaChecks(c) {
-    const names = { key: 'Meta key permissions', page: 'Facebook Page', comments: 'Comments', messages: 'Messenger', instagram: 'Instagram', insights: 'Instagram insights', ads: 'Ad account', forms: 'Lead forms' };
+    const names = { key: 'Meta key permissions', inbox_key: 'Messenger reply', instagram_messages: 'Instagram Direct', page: 'Facebook Page', comments: 'Comments', messages: 'Messenger', instagram: 'Instagram', insights: 'Instagram insights', ads: 'Ad account', forms: 'Lead forms' };
     return `<div class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(c).map(([k, v]) => `<span class="pill ${v.ok ? 'ok' : 'bad'}" title="${esc(v.detail)}">${esc(names[k] || k)}: ${esc(String(v.detail).slice(0, 80))}</span>`).join('')}</div>`;
   }
   function metaCard(a) {
     const [pc, pl] = META_PILL[a.status] || ['', a.status];
     const reply = ['reply_comment', 'reply_message'].includes(a.kind);
     const editable = a.status === 'pending' && isOwner();
+    const messageWindow = a.kind === 'reply_message' ? (() => { const at = Number(a.incoming_at || 0), ends = at + 24 * 60 * 60 * 1000; return at > 0 ? (Date.now() < ends ? `Messenger reply window ends ${fmtDT(new Date(ends).toISOString())}` : 'Messenger reply window expired; sending is blocked') : 'Messenger reply timestamp unavailable; sending is blocked'; })() : '';
     return `<div class="run"><div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><div><span class="pill ${pc}">${pl}</span> <strong>${esc(a.preview || a.kind)}</strong> <span class="small muted">#${a.id} · ${esc(a.created_by || '')} · ${ago(a.created_at)}${a.category ? ' · ' + esc(a.category) : ''}</span></div>${a.permalink ? `<a class="small" href="${esc(a.permalink)}" target="_blank" rel="noopener">Open post</a>` : ''}</div>
       ${a.incoming ? `<div class="small" style="margin-top:6px"><span class="muted">They wrote:</span> <span dir="auto">${esc(a.incoming)}</span></div>` : ''}
+      ${messageWindow ? `<div class="small muted" style="margin-top:6px">${esc(messageWindow)}</div>` : ''}
       ${reply ? (editable ? `<textarea class="input" id="mxt-${a.id}" rows="3" dir="auto" style="margin-top:6px">${esc(a.text || '')}</textarea>` : a.text ? `<div class="small" style="margin-top:6px"><span class="muted">Reply:</span> <span dir="auto">${esc(a.text)}</span></div>` : '') : ''}
       ${a.evidence ? `<div class="small" style="margin-top:6px"><span class="muted">Numbers:</span> ${['d7','d30'].filter((k) => a.evidence[k]).map((k) => { const e = a.evidence[k]; return `${k === 'd7' ? 'Last 7 days' : 'Last 30 days'}: ${n0(e.spend)} EGP spend · ${e.leads ?? '–'} leads · CPL ${e.cpl != null ? n0(e.cpl) : '–'} · ${e.qualified ?? '–'} qualified · ${e.cost_per_qualified != null ? n0(e.cost_per_qualified) + ' EGP per qualified lead' : 'no qualified leads'}`; }).join('<br>')}</div>` : ''}
       ${['campaign_budget', 'adset_budget'].includes(a.kind) && editable ? `<label class="row small" style="margin-top:6px">Daily budget (EGP) <input class="input" id="mxb-${a.id}" type="number" value="${esc(a.daily_budget_egp)}" style="width:110px"></label>` : ''}

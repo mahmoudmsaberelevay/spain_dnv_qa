@@ -64,6 +64,18 @@ interface MetaFormsResponse {
   error?: { message: string; type: string; code: number };
 }
 
+/**
+ * A Lead Ads form submission does not, on its own, prove consent for CRM
+ * processing, data sharing, or marketing. The legacy pull flow does not yet
+ * have a verified per-form mapping for Meta custom-disclaimer checkbox keys,
+ * so every new Lead must safely begin with all optional consent flags false.
+ */
+export const META_LEAD_CONSENT_DEFAULTS = Object.freeze({
+  gdprConsent: false,
+  dataSharingConsent: false,
+  marketingOptIn: false,
+});
+
 /** Map Meta field names to ELEVAY lead fields */
 function mapMetaFieldsToLead(fieldData: MetaFieldData[]): Record<string, string> {
   const map: Record<string, string> = {};
@@ -410,10 +422,10 @@ async function syncOneIntegration(integration: {
             leadScore: 0,
             createdAt: createdAtMs,
             updatedAt: createdAtMs,
-            // Meta lead form submission implies GDPR consent and data sharing consent
-            gdprConsent: true,
-            dataSharingConsent: true,
-            marketingOptIn: true,
+            // Never infer consent from submitting a Meta Lead Ad. A verified
+            // form-specific custom-disclaimer mapping is required before any
+            // consent flag may be stored as true.
+            ...META_LEAD_CONSENT_DEFAULTS,
             dataRegion: "EG",
             });
           } catch (error) {

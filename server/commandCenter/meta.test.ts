@@ -46,7 +46,7 @@ function fakeMeta({ mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 15
         { id: "cm4", message: "You took my money and nothing happened", from: { id: "u3", name: "Omar" }, created_time: new Date().toISOString() },
       ] };
       else if (path === "me/permissions") out = { data: instagramPermission ? permissions.map((permission) => ({ permission, status: "granted" })) : [] };
-      else if (path === "111") out = { instagram_business_account: { id: "ig1", username: "elevayglobal" } };
+      else if (path === "111") out = { id: "111", name: "Elevay Global", instagram_business_account: { id: "ig1", username: "elevayglobal" } };
       else if (path === "ig1/media") out = { data: [] };
       else if (path === "111/conversations") out = { data: [] };
       else if (path === "igc1") out = { status_code: instagramStatus };
@@ -98,6 +98,32 @@ describe("Meta actions", () => {
     await expect(h.approve(a.id, owner, { text: "احصل على تأشيرة مضمونة" })).rejects.toThrow(/rules/);
     await h.approve(a.id, owner, { text: "شكرًا لك! راسلنا لحجز استشارة مع ELEVAY." });
     expect(posts.find((p) => p.path === "cm1/comments").body.message).toMatch(/استشارة/);
+  });
+
+  it("blocks a Messenger reply at approval when its verified 24-hour window has expired", async () => {
+    const { h, posts } = hub();
+    const action = await h.enqueue({ kind: "reply_message", platform: "facebook", recipient_id: "u1", incoming_at: Date.now() - 24 * 60 * 60 * 1000 - 1, text: "شكرًا لك!" }, "team");
+    await expect(h.approve(action.id, owner)).rejects.toThrow(/24-hour customer-service window has expired/);
+    expect((await h.list()).find((x) => x.id === action.id)).toMatchObject({ status: "blocked" });
+    expect(posts.find((p) => p.path === "111/messages")).toBeUndefined();
+  });
+
+  it("sends an in-window Facebook Messenger reply but never routes Instagram Direct through the Page endpoint", async () => {
+    const { h, posts } = hub();
+    const current = await h.enqueue({ kind: "reply_message", platform: "facebook", recipient_id: "u1", incoming_at: Date.now() - 60_000, text: "شكرًا لك!" }, "team");
+    await h.approve(current.id, owner);
+    expect(posts.find((p) => p.path === "111/messages")).toMatchObject({ body: { recipient: { id: "u1" } } });
+    const instagram = await h.enqueue({ kind: "reply_message", platform: "instagram", recipient_id: "ig-user", incoming_at: Date.now() - 60_000, text: "شكرًا لك!" }, "team");
+    await expect(h.approve(instagram.id, owner)).rejects.toThrow(/Instagram Direct replies are disabled/);
+    expect(posts.filter((p) => p.path === "111/messages")).toHaveLength(1);
+  });
+
+  it("returns a selected Page and linked Instagram asset summary without credentials", async () => {
+    const { h } = hub();
+    await expect(h.selectedAssets()).resolves.toMatchObject({
+      page: { id: "111", name: "Elevay Global" },
+      instagram: { id: "ig1", username: "elevayglobal" },
+    });
   });
 
   it("under autopilot sends clean replies itself but leaves complaints for a person", async () => {

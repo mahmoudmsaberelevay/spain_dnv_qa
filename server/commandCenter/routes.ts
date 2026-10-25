@@ -569,6 +569,7 @@ route("POST", "/meta/actions/:id/approve", "owner", metaAct(async (m, ctx) => ({
 route("POST", "/meta/actions/:id/reject", "owner", metaAct(async (m, ctx) => { await m.reject(Number(ctx.params.id), ctx.user, String(ctx.body.reason || "")); return {}; }));
 route("POST", "/meta/inbox/sync", "marketer", metaAct(async (m) => m.syncInbox()));
 route("GET", "/meta/connection", "owner", metaAct(async (m) => ({ checks: await m.checkConnection() })));
+route("GET", "/meta/assets", "owner", metaAct(async (m) => ({ assets: await m.selectedAssets() })));
 route("POST", "/meta/publish/release", "owner", metaAct(async (m, ctx) => {
   const ids = Array.isArray(ctx.body?.item_ids) ? ctx.body.item_ids.map(String).slice(0, 50) : [];
   if (!ids.length) throw new Error("item_ids is required.");

@@ -27,6 +27,7 @@ import {
   storeMetaWebhookNotifications,
   verifyMetaWebhookSignature,
 } from "./metaLeadsService";
+import { META_LEAD_CONSENT_DEFAULTS } from "./metaLeadSync";
 
 function fakeInboxDb() {
   return {
@@ -77,6 +78,14 @@ describe("Meta Leads safety helpers", () => {
       { name: "email", values: ["person@example.com"] },
       { name: "phone_number", values: ["01001234567"] },
     ])).toMatchObject({ fullName: "Mahmoud Saber", email: "person@example.com", phone: "01001234567" });
+  });
+
+  it("never infers optional consent merely because a person submitted a Meta Lead Ad", () => {
+    expect(META_LEAD_CONSENT_DEFAULTS).toEqual({
+      gdprConsent: false,
+      dataSharingConsent: false,
+      marketingOptIn: false,
+    });
   });
 
   it("creates the same webhook idempotency key on replay and persists no form-answer PII", async () => {
