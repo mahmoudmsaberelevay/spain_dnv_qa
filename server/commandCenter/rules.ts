@@ -87,6 +87,8 @@ Idea: [the reel's idea/objective from the weekly plan]`,
     { id: 'whole_concept', label: 'Whole concept', regenerates: 'Full brief and all media' },
   ];
 
+  const EUROPE_RE = /\b(spain|portugal|greece|malta|italy|france|germany|cyprus|europe|european|schengen|eu)\b|إسبانيا|اسبانيا|البرتغال|اليونان|مالطا|قبرص|أوروبا|اوروبا|أوروبي|اوروبي|شينغن|شنغن/i;
+  const DOLLAR_RE = /\$\s?\d|\d\s?\$|\busd\b|\bus\s?dollars?\b|\bdollars?\b|دولار/i;
   function countWords(text) {
     return (String(text || '').trim().match(/[^\s]+/gu) || []).length;
   }
@@ -122,7 +124,7 @@ Idea: [the reel's idea/objective from the weekly plan]`,
     for (const f of FORBIDDEN_VISUAL) add(`${prefix}_${f.id}`, `${labelPrefix}: no ${f.label.toLowerCase()}`, !f.re.test(yes));
     if (PEOPLE_RE.test(yes)) {
       add(`${prefix}_arab`, `${labelPrefix}: people are Arab / Middle Eastern`, ARAB_RE.test(raw));
-      add(`${prefix}_wardrobe`, `${labelPrefix}: complete elegant outfit described`, /\b(cloth|outfit|wear|dressed|attire|suit|dress|shirt|linen|tailored|elegant)\w*/.test(raw), 'warn');
+      add(`${prefix}_wardrobe`, `${labelPrefix}: complete outfit described (casual, smart-casual or formal)`, /\b(cloth|outfit|wear|dressed|attire|suit|dress|shirt|linen|tailored|elegant|casual|jeans|t-shirt|tee|sweater|hoodie|jacket|chinos|trousers|knit|polo)\w*/.test(raw), 'warn');
     }
     // Shoes may be named anywhere (even after "no tie, …"); casual footwear counts only when affirmed.
     if (SUIT_RE.test(yes)) add(`${prefix}_footwear`, `${labelPrefix}: suits/business wear come with polished formal shoes or loafers`, SHOES_RE.test(raw) && !BAD_SHOES_RE.test(yes));
@@ -181,6 +183,14 @@ Idea: [the reel's idea/objective from the weekly plan]`,
       add('term_' + r.id, r.label, !r.re.test(hay), r.severity);
     }
     for (const r of CONTACT_RULES) add('contact_' + r.id, r.label, !r.re.test(caption));
+    // Owner rule (25 Oct 2026): money for European countries/programmes is always in euros, never US dollars.
+    {
+      const spoken = ((brief.reel && brief.reel.storyboard) || []).map((c) => c.spoken_text_ar || '').join(' ');
+      const all = [caption, spoken, brief.design?.headline_en || '', brief.topic || '', brief.program || ''].join(' ');
+      const europe = EUROPE_RE.test(all);
+      const dollars = DOLLAR_RE.test([caption, spoken, brief.design?.headline_en || ''].join(' '));
+      add('currency_eur', 'European programmes state money in euros (€ / EUR / يورو), never US dollars', !(europe && dollars));
+    }
 
     if (brief.type === 'static') {
       const h = brief.design?.headline_en || '';

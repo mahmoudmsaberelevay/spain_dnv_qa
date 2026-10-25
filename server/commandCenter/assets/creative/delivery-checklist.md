@@ -38,7 +38,8 @@
 
 - [ ] Every person is Arab/Middle Eastern and appropriately styled.
 - [ ] Every person has complete head-to-toe wardrobe continuity.
-- [ ] Formal clothing has matching polished formal footwear.
+- [ ] Clothing may be casual, smart-casual or formal (casual is fine); formal clothing has matching polished formal footwear, casual clothing has clean matching shoes or trainers.
+- [ ] Money amounts for European countries are in euros (€), never US dollars.
 - [ ] No forbidden headwear or random accessories.
 - [ ] No anatomy, hand, shadow, object, movement, or spatial-logic errors.
 
