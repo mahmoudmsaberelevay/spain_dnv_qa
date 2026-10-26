@@ -483,6 +483,14 @@ export default function ClientDocDetail() {
         )}
       </div>
 
+      {caseData.internalTeamComment ? (
+        <aside className="rounded-xl border border-amber-200 bg-amber-50 p-4" aria-label="Internal ELEVAY team comment">
+          <p className="text-sm font-semibold text-amber-950">Internal team comment</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-amber-900">{caseData.internalTeamComment}</p>
+          <p className="mt-2 text-xs text-amber-800">Visible to the ELEVAY team only — never shown in the client portal.</p>
+        </aside>
+      ) : null}
+
       <ClientDocumentationPayments
         clientCaseId={clientId}
         contractDriveLink={caseData.contractDriveLink}

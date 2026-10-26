@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -35,6 +36,7 @@ type FormState = {
   spouseName: string;
   numberOfKids: number;
   children: ChildEntry[];
+  internalTeamComment: string;
   schengenVisaValid: boolean | null; // null = not answered yet
   schengenExpiryDate: string;
   contractDriveLink: string;
@@ -53,6 +55,7 @@ const createEmptyForm = (): FormState => ({
   spouseName: "",
   numberOfKids: 0,
   children: [],
+  internalTeamComment: "",
   schengenVisaValid: null,
   schengenExpiryDate: "",
   contractDriveLink: "",
@@ -225,6 +228,7 @@ export default function ClientDocs() {
       applicationType: form.program === "spain" ? form.applicationType as "freelancer" | "business_owner" : "business_owner",
       maritalStatus: form.maritalStatus as "single" | "family",
       consultant: form.consultant as "Mahmoud" | "Ziad" | "Fouad" | "Kirolos",
+      internalTeamComment: form.internalTeamComment.trim() || undefined,
       spouseName: form.spouseName || undefined,
       children: form.maritalStatus === "family" || isCaribbeanDocumentationProgram(form.program) ? form.children : [],
       schengenVisaValid: form.program === "spain" ? form.schengenVisaValid ?? false : false,
@@ -510,6 +514,19 @@ export default function ClientDocs() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-400">Paralegal can be assigned on the client detail page after creation.</p>
+              </div>
+
+              <div className="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <Label htmlFor="internal-team-comment" className="text-sm font-semibold text-amber-950">Internal team comment <span className="font-normal text-amber-800">(optional)</span></Label>
+                <Textarea
+                  id="internal-team-comment"
+                  value={form.internalTeamComment}
+                  onChange={event => setForm(current => ({ ...current, internalTeamComment: event.target.value }))}
+                  maxLength={4000}
+                  placeholder="Add context for the ELEVAY team…"
+                  className="min-h-24 border-amber-200 bg-white text-gray-900 placeholder:text-gray-400"
+                />
+                <p className="text-xs text-amber-800">Visible to the ELEVAY team only. This comment is not shown in the client portal.</p>
               </div>
 
               <div className="border border-[#1e3a5f]/20 rounded-xl p-4 bg-slate-50 space-y-4">
