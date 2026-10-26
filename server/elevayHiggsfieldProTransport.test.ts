@@ -65,10 +65,11 @@ describe("server-only ELEVAY Higgsfield Pro transport", () => {
     });
     expect(JSON.stringify(options.headers)).not.toContain("Bearer");
     expect(JSON.parse(String(options.body))).toEqual({
-      prompt: input.prompt,
+      prompt: `${input.prompt}\n\nAvoid: speech, dialogue, text, captions, logos, contact details, malformed anatomy or wardrobe.`,
       image_url: input.keyframe.trustedCdnUrl,
       duration: 5,
-      negative_prompt: "speech, dialogue, text, captions, logos, contact details, malformed anatomy or wardrobe",
+      sound: "off",
+      cfg_scale: 0.5,
     });
   });
 

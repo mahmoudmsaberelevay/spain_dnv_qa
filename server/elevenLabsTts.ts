@@ -36,7 +36,8 @@ export const ELEVAY_EGYPTIAN_ACCENT_TAG = "[Egyptian accent]";
 export function prepareElevayEgyptianSpeechScript(text: string, opts: { requireEgyptianMarker?: boolean; egyptianAccent?: boolean } = {}): string {
   try {
     const script = prepareThoughtfulArabicScript(prepareEgyptianReelNarration(text, opts));
-    return opts.egyptianAccent ? script.replace(/^\[thoughtful\]\s*/i, `[thoughtful] ${ELEVAY_EGYPTIAN_ACCENT_TAG} `) : script;
+    // Reels (owner rule 26 Oct 2026): a confident, catchy delivery with the Egyptian accent; the CRM module keeps [thoughtful].
+    return opts.egyptianAccent ? script.replace(/^\[thoughtful\]\s*/i, `[confident] ${ELEVAY_EGYPTIAN_ACCENT_TAG} `) : script;
   } catch (caught) {
     const error = new Error(caught instanceof Error ? caught.message : "Narration must be natural Egyptian Arabic.");
     error.name = "ElevenLabsLanguagePolicyError";

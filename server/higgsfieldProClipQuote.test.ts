@@ -9,7 +9,7 @@ describe("four-clip Higgsfield Pro quote (never generation)", () => {
     expect(output).toMatchObject({ clips: [{ clip: 1, estimatedUsd: 0.298 }, { clip: 2, estimatedUsd: 0.298 }, { clip: 3, estimatedUsd: 0.298 }, { clip: 4, estimatedUsd: 0.298 }], estimatedTotalUsd: 1.192, quoteOnly: true });
     expect(request).toHaveBeenCalledTimes(4);
     const [url, options] = request.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://api.higgsfield.ai/estimate/kling-video/v2.5-turbo/pro/image-to-video");
+    expect(url).toBe("https://api.higgsfield.ai/estimate/kling-video/v3.0/pro/image-to-video");
     expect(options.method).toBe("POST");
     expect(options.headers).toMatchObject({ Authorization: "Key full-unmodified-key" });
     expect(JSON.parse(String(options.body))).toMatchObject({ duration: 5, image_url: scenes[0].keyframeUrl });

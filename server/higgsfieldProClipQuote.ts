@@ -1,7 +1,7 @@
 import { buildHiggsfieldClipRequest, type HiggsfieldClipIntent } from "./higgsfieldClipRequestContract";
 import { HIGGSFIELD_API_BASE } from "./higgsfieldClipPreflight";
 
-export const ELEVAY_HIGGSFIELD_PRO_MODEL = "kling-video/v2.5-turbo/pro/image-to-video";
+export const ELEVAY_HIGGSFIELD_PRO_MODEL = "kling-video/v3.0/pro/image-to-video";
 
 /** Read-only price enquiry. No video task is submitted or charged by this helper. */
 export async function quoteElevayHiggsfieldProClips(
