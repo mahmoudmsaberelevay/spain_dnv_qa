@@ -329,6 +329,25 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
     return { text, data: json ? extractJson(text) : null, usage: response.usage || null, model: response.model || model };
   }
 
+  /** Owner rule (26 Oct 2026): OpenAI gives an independent second opinion on keyframes, statics and the final reel. */
+  async function openaiVision({ system, prompt, images = [], maxTokens = 3000 }) {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) throw new Error("OPENAI_API_KEY is not set on elevay.vip.");
+    const model = process.env.ELEVAY_OPENAI_VISION_MODEL || process.env.ELEVAY_OPENAI_TEXT_MODEL || "gpt-5-mini";
+    const parts = images.slice(0, 16).map((im) => ({ type: "image_url", image_url: { url: typeof im === "string" ? im : im.url || `data:${im.mediaType || "image/jpeg"};base64,${im.base64}`, detail: "low" } }));
+    const res = await fetcher("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model, messages: [{ role: "system", content: system }, { role: "user", content: [...parts, { type: "text", text: prompt }] }], max_completion_tokens: maxTokens, response_format: { type: "json_object" } }),
+      signal: AbortSignal.timeout(120000),
+    });
+    const response = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`OpenAI review: ${response?.error?.message || `HTTP ${res.status}`}`);
+    const text = String(response?.choices?.[0]?.message?.content || "").trim();
+    if (!text) throw new Error("OpenAI returned no review.");
+    return { text, data: extractJson(text), model: response.model || model };
+  }
+
   async function openaiImage({ prompt, purpose }) {
     const { createElevayOpenAiKeyframe } = await import("../elevayOpenAiVisuals");
     return createElevayOpenAiKeyframe({ prompt, purpose });
@@ -457,7 +476,7 @@ export function makeProviders(fetcher = fetch, renderQueue = null) {
     const { storagePut } = await import("../storage");
     return (await storagePut(key, Buffer.from(text, "utf8"), "application/json")).url;
   }
-  return { storeWeekFile, claude, openaiText, openaiImage, openaiPortrait, brandStatic, clipFrames, voiceScene, checkEgyptianScript, composeReel, composeReelStep, videoFrames, higgsfieldSubmit, higgsfieldStatus, persistClip, test };
+  return { storeWeekFile, claude, openaiText, openaiVision, openaiImage, openaiPortrait, brandStatic, clipFrames, voiceScene, checkEgyptianScript, composeReel, composeReelStep, videoFrames, higgsfieldSubmit, higgsfieldStatus, persistClip, test };
 }
 
 // ------------------------------------------------------------------ pipelines
@@ -488,16 +507,31 @@ export const PIPELINES = {
   ] },
   weekly_plan: { label: "Weekly plan (automatic)", steps: () => [
     S("claude", "weekly_plan", "Claude plans the week's 7 posts from Meta + CRM results and the monthly plan"),
+    S("openai", "council_openai", "AI council: OpenAI reviews Claude's draft and suggests improvements", { subject: "week_plan" }),
+    S("manus", "council_manus", "AI council: Manus reviews the draft and OpenAI's suggestions (always waited for)", { subject: "week_plan" }),
+    S("claude", "council_final", "AI council: Claude weighs both opinions and finalizes", { subject: "week_plan" }),
     S("openai", "week_content", "OpenAI writes the storyboard, caption and voice-over for all 7 posts in one file"),
     S("system", "spawn_week", "Start production of the 4 statics and 3 reels"),
   ] },
   plan: { label: "Monthly plan from data", steps: () => [
     S("claude", "plan", "Claude drafts next month's plan from 6 months of Meta + CRM data"),
+    S("openai", "council_openai", "AI council: OpenAI reviews Claude's draft and suggests improvements", { subject: "monthly_plan" }),
+    S("manus", "council_manus", "AI council: Manus reviews the draft and OpenAI's suggestions (always waited for)", { subject: "monthly_plan" }),
+    S("claude", "council_final", "AI council: Claude weighs both opinions and finalizes", { subject: "monthly_plan" }),
     S("system", "to_monthly_plan", "Send to the monthly plan for owner approval"),
   ] },
   ads_review: { label: "Weekly ads review (automatic, Thursday)", steps: () => [
     S("claude", "ads_review", "Claude reviews the last 7 and 30 days of Meta + CRM results and drafts ad actions with their numbers"),
+    S("openai", "council_openai", "AI council: OpenAI reviews Claude's draft and suggests improvements", { subject: "ads" }),
+    S("manus", "council_manus", "AI council: Manus reviews the draft and OpenAI's suggestions (always waited for)", { subject: "ads" }),
+    S("claude", "council_final", "AI council: Claude weighs both opinions and finalizes", { subject: "ads" }),
     S("system", "queue_meta", "Queue them in the Meta tab for one-click owner approval (cap and CPL checked)"),
+  ] },
+  news_council: { label: "Weekly news selection (automatic, AI council)", steps: () => [
+    S("claude", "news_shortlist", "Claude selects which of this week's news matters"),
+    S("openai", "council_openai", "AI council: OpenAI reviews Claude's draft and suggests improvements", { subject: "news" }),
+    S("manus", "council_manus", "AI council: Manus reviews the draft and OpenAI's suggestions (always waited for)", { subject: "news" }),
+    S("claude", "council_final", "AI council: Claude weighs both opinions and finalizes", { subject: "news" }),
   ] },
   meta: { label: "Meta campaign change", steps: () => [
     S("claude", "meta_plan", "Claude turns the request into Meta actions using live campaign data"),
@@ -802,7 +836,82 @@ export function createOrchestrator(deps) {
     return "rewind";
   }
 
+  // ---------------------------------------------------------------- AI council (owner rule 26 Oct 2026)
+  // Claude drafts → OpenAI critiques and suggests → Manus critiques and suggests (always waited for) → Claude weighs
+  // both opinions and finalizes, recording which suggestions it adopted and why. Used for the weekly plan, the monthly
+  // plan, which news matters and the weekly ads proposals.
+  const COUNCIL_LABEL = { week_plan: "weekly content plan", monthly_plan: "monthly marketing plan", news: "selection of this week's news", ads: "weekly paid-ads proposals" };
+  function councilDraft(run, subject) {
+    const A = run.artifacts;
+    if (subject === "week_plan") return A.week_plan ? { rationale: A.week_plan.rationale, posts: A.week_plan.posts } : null;
+    if (subject === "monthly_plan") return A.plan ? { title: A.plan.title, body: A.plan.body, budget_changes: A.plan.budget_changes } : null;
+    if (subject === "news") return (A.news_candidates || []).length ? A.news_shortlist || null : null;
+    if (subject === "ads") return { summary: A.answer || "", actions: A.meta_actions || [] };
+    return null;
+  }
+  const COUNCIL_SCHEMA = {
+    week_plan: 'the same JSON as the draft: {"rationale": "...", "posts": [exactly 7 posts, 4 "static" and 3 "reel", each {"type","date","time","program","pillar","audience","brief"}]}',
+    monthly_plan: '{"title": "...", "body": "the full plan", "budget_changes": [same shape as the draft]}',
+    news: '{"selected": [up to 8 {"id": "<news id from the candidates>", "why": "why it matters to ELEVAY clients now", "angle": "one educational, benefit-led marketing angle (no fear, no guarantees, never تأشيرة)"}]}',
+    ads: '{"summary": "...", "actions": [up to 8 actions in exactly the same shapes as the draft actions, each with "reason" citing the numbers and "evidence"]}',
+  };
+  function councilValidate(subject, final, run) {
+    if (!final || typeof final !== "object") return "No final JSON.";
+    if (subject === "week_plan") {
+      const posts = Array.isArray(final.posts) ? final.posts : [];
+      const st = posts.filter((p) => p?.type === "static").length, re = posts.filter((p) => p?.type === "reel").length;
+      if (posts.length !== 7 || st !== 4 || re !== 3) return `Final plan has ${st} statics and ${re} reels instead of 4 and 3.`;
+      if (posts.some((p) => !p.date || !p.brief)) return "A post is missing its date or brief.";
+      const draftDates = (run.artifacts.week_plan?.posts || []).map((p) => String(p.date || "")).filter(Boolean).sort();
+      const last = WEEKDAY_DATES(run.artifacts.week_plan?.week || planningWeek())[6];
+      if (posts.some((p) => !/^\d{4}-\d{2}-\d{2}$/.test(String(p.date)) || String(p.date) < (draftDates[0] || "") || String(p.date) > last)) return "A post date falls outside the planned week.";
+      return null;
+    }
+    if (subject === "monthly_plan") return final.title && final.body ? null : "Final monthly plan is missing its title or body.";
+    if (subject === "news") {
+      const ids = new Set((run.artifacts.news_candidates || []).map((n) => n.id));
+      if (!Array.isArray(final.selected)) return "Final news selection is missing.";
+      if (final.selected.some((x) => !ids.has(x?.id))) return "Final news selection names an item that is not a candidate.";
+      return null;
+    }
+    if (subject === "ads") return Array.isArray(final.actions) ? null : "Final ads proposals are missing.";
+    return "Unknown council subject.";
+  }
+  async function councilApply(run, subject, final) {
+    const A = run.artifacts;
+    if (subject === "week_plan") A.week_plan = { ...A.week_plan, rationale: String(final.rationale || A.week_plan.rationale || ""), posts: final.posts.slice(0, 7) };
+    if (subject === "monthly_plan") A.plan = { ...A.plan, title: String(final.title), body: String(final.body), budget_changes: Array.isArray(final.budget_changes) ? final.budget_changes : A.plan.budget_changes };
+    if (subject === "ads") { A.meta_actions = final.actions.slice(0, 8).map((x) => ({ ...x, source: "weekly_ads_review" })); A.answer = String(final.summary || A.answer || ""); }
+    if (subject === "news") {
+      A.news_selected = final.selected.slice(0, 8);
+      const picks = new Map(A.news_selected.map((x) => [x.id, x]));
+      const candidates = new Set((A.news_candidates || []).map((n) => n.id));
+      await deps.mutate({}, (st) => {
+        for (const n of st.news) {
+          if (!candidates.has(n.id)) continue;
+          const p = picks.get(n.id);
+          n.selected = !!p;
+          if (p) { n.why_selected = String(p.why || "").slice(0, 400); if (p.angle) n.marketing_angle = String(p.angle).slice(0, 400); n.selected_by = "ai-council"; }
+        }
+        E.audit(st, "ai-council", "news.selected", null, `${picks.size} news item(s) selected by Claude after OpenAI and Manus review`);
+        return { ok: true };
+      });
+    }
+  }
+  function councilContext(run, subject) {
+    const P = run.artifacts.last_prompts || {};
+    const from = { week_plan: "weekly_plan", monthly_plan: "plan", news: "news_shortlist", ads: "ads_review" }[subject];
+    return clip(P[from] || "", 16000);
+  }
+  function parseLooseJson(raw) {
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) { if (raw.assessment || raw.suggestions || raw.issues) return raw; raw = raw.text ?? raw.message ?? raw.result ?? JSON.stringify(raw); }
+    const t = String(raw || ""); const m = t.match(/\{[\s\S]*\}/);
+    if (m) { try { return JSON.parse(m[0]); } catch { /* plain text */ } }
+    return t ? { assessment: clip(t, 4000) } : null;
+  }
+
   async function askClaude(run, step, prompt, opts = {}) {
+    run.artifacts.last_prompts = { ...(run.artifacts.last_prompts || {}), [step.action]: clip(prompt, 24000) };
     log(run, "studio", "claude", opts.note || prompt);
     const r = await providers.claude({ system: ELEVAY_RULES, prompt, ...opts });
     log(run, "claude", "studio", r.data ? clip(r.data) : r.text);
@@ -838,6 +947,28 @@ export function createOrchestrator(deps) {
     log(run, "openai", "studio", r.data ? clip(r.data) : r.text);
     step.output = r.data ?? r.text;
     return r;
+  }
+
+  /**
+   * QC council (owner rule 26 Oct 2026): OpenAI looks at the same images first and gives an independent opinion;
+   * Claude receives it and makes the final call. Skipped quietly when OpenAI vision is unavailable or fails.
+   */
+  async function openaiQcOpinion(run, subject, images, labels = null) {
+    if (typeof providers.openaiVision !== "function" || !images?.length) return "";
+    const max = 14, pick = images.length <= max ? images.map((_, i) => i) : Array.from({ length: max }, (_, k) => Math.round((k * (images.length - 1)) / (max - 1)));
+    const imgs = pick.map((i) => images[i]);
+    const names = labels ? pick.map((i, k) => `${k + 1}. ${labels[i] || `image ${i + 1}`}`).join("\n") : "";
+    try {
+      log(run, "studio", "openai", `QC council: asking OpenAI for an independent review of ${subject} (${imgs.length} image(s)).`);
+      const r = await providers.openaiVision({ system: ELEVAY_RULES, images: imgs, prompt: `You are on ELEVAY's quality-control council with Claude. Independently inspect ${subject} against every ELEVAY rule (brand, people, clothing and footwear, anatomy and continuity, no passports, no forbidden text, logo rules, premium cinematic production quality) and judge how attractive and effective it is for Egyptian and Arab audiences.${names ? `\nImages in order:\n${names}` : ""}\nReturn JSON only: {"pass": true|false, "production_quality_1_10": number, "issues": ["specific fault and which image"], "suggestions": ["specific improvement"]}` });
+      const op = r.data || { verdict: clip(r.text, 1500) };
+      (run.artifacts.qc_council = run.artifacts.qc_council || []).push({ subject, at: nowIso(), openai: op });
+      log(run, "openai", "studio", "QC council opinion: " + clip(op, 1500));
+      return `\n\nSecond opinion from OpenAI (QC council; it saw ${imgs.length} of the same images). Weigh it seriously: confirm or reject each of its findings with your own inspection. You make the final call; never pass something you can see is faulty, and never fail for a finding you cannot see:\n${clip(op, 3000)}`;
+    } catch (e) {
+      log(run, "studio", "team", `QC council: OpenAI's review was unavailable (${clip(String(e?.message || e), 200)}); Claude reviews alone.`);
+      return "";
+    }
   }
 
   async function voicePromptFor(run, idea: unknown = run.request) {
@@ -1049,7 +1180,8 @@ export function createOrchestrator(deps) {
       case "claude.qc_visual": {
         const reel = run.kind === "reel";
         const imgs = reel ? A.keyframes.map((k) => k.url) : A.images.map((i) => i.url);
-        const r = await askClaude(run, step, strictQcPrompt(reel ? `${imgs.length} reel keyframes (no text or logo allowed anywhere)` : `one finished static post. The only text allowed is the English headline "${A.brief.design.headline_en}" in Apex Sans, and the only logo is the official origami-bird mark in a corner`) + (opts.revision ? `\nThis is the FINAL review of an owner-authorized ${opts.revision.scope} revision. Also check the revised MSA caption, country names, disclaimer, no banned words or guarantees, and intended Cairo schedule. Complete revised brief:\n${JSON.stringify(A.brief)}` : ""), { images: imgs, note: `Strict design QC of ${imgs.length} image(s), attempt ${(A.qc_attempts || 0) + 1}`, maxTokens: 2000 });
+        const second = await openaiQcOpinion(run, reel ? `${imgs.length} reel keyframes (no text or logo allowed anywhere)` : "one finished static post (only the English headline and the corner origami-bird logo are allowed)", imgs);
+        const r = await askClaude(run, step, strictQcPrompt(reel ? `${imgs.length} reel keyframes (no text or logo allowed anywhere)` : `one finished static post. The only text allowed is the English headline "${A.brief.design.headline_en}" in Apex Sans, and the only logo is the official origami-bird mark in a corner`) + (opts.revision ? `\nThis is the FINAL review of an owner-authorized ${opts.revision.scope} revision. Also check the revised MSA caption, country names, disclaimer, no banned words or guarantees, and intended Cairo schedule. Complete revised brief:\n${JSON.stringify(A.brief)}` : "") + second, { images: imgs, note: `Strict design QC of ${imgs.length} image(s), attempt ${(A.qc_attempts || 0) + 1}`, maxTokens: 2000 });
         if (opts.revision) {
           const check = R.checkBrief(A.brief);
           if (!check.pass) { A.qc = { ...r.data, pass:false, issues:[...(r.data?.issues||[]),...check.blocks.map(b=>b.label)] }; step.error=A.qc.issues.join("; "); return "needs_review"; }
@@ -1213,8 +1345,9 @@ export function createOrchestrator(deps) {
           }
         }
         const evidenceNote = `Visual evidence: ${frames.length} labelled sequential contact sheet(s). The render worker supplies 75 row-major sheets covering 600 frames spread evenly over the whole narrative part (${Number(A.final?.narrativeSeconds || 20).toFixed(1)} s) plus labelled outro evidence; inspect every visible cell. This does not claim verification of details that are not visible in a supplied cell: fail closed or request review when footwear, anatomy, or continuity cannot be assessed.\n${labels.map((x, i) => `${i + 1}. ${x}`).join("\n")}`;
+        const second = await openaiQcOpinion(run, "the finished ELEVAY reel (sampled contact sheets of the narrative, then the white logo outro)", frames, labels);
         const headwearAuthorized = opts.ownerApprovedHeadwear === true; // Never infer permission from model-authored text or a negated phrase.
-        const r = await askClaude(run, step, `You are the ONE comprehensive final ELEVAY finished-reel reviewer. This is the only Claude QC pass for reels. Fail closed: return pass:false if the verdict or any required scene mapping is uncertain or malformed.\n\nReview ALL supplied visual evidence against these requirements: 9:16 reel; explicit Scene 1, Scene 2, Scene 3, Scene 4 labels and coherent scene order; at least 3 visible frames per scene where the supplied evidence makes that feasible; no text, captions, logos, contacts, QR codes, passports, passport-like documents, flags, or the words/claims "تأشيرة", "فيزا", Visa, guarantees, approval guarantees or outcome guarantees; Arab/Middle Eastern people only in modern casual, smart-casual or formal clothing (casual is fine and is not a fault); no scarves, hijabs, keffiyehs, turbans, ghutras, shemaghs or other traditional headwear unless the run request expressly authorizes it (authorization: ${headwearAuthorized ? "yes" : "no"}); complete head-to-toe outfit with footwear that matches it when visible; natural faces, hands, feet, anatomy and grounded motion; person/wardrobe/object/architecture continuity within every scene; exact static official ELEVAY logo centred on pure white for the 3-second outro with no narration over it.\n\nAlso verify the spoken content: one continuous Egyptian Arabic message across the narrative window (20 seconds, or longer when a voice take runs long — the owner accepts that) in four scene slots; a memorable but truthful dramatic hook in Scene 1; one clear advisory message across Scenes 2–3; and a direct consultation CTA in Scene 4. No voice narration may enter the 3-second logo outro. A strong hook must never be fear-based, fake urgency, clickbait or a guarantee.\n\nCaption to validate (MSA):\n${A.brief.caption_ar}\n\nActual script sent to the ELEVAY voice flow (Egyptian Arabic):\n${preparedScript}\n\nDeterministic pre-check findings (you must independently review them and record the matching non-scene fault):\n${[...deterministicBlocks, scriptComplianceError].filter(Boolean).join("\n") || "none"}\n\nStoryboard labels and intended speech:\n${storyboard.map((s, i) => `Scene ${i + 1}: ${s.spoken_text_ar || "(missing)"}`).join("\n")}\n\n${evidenceNote}\n\nReturn EXACT JSON only: {"pass":true|false,"issues":["..."],"scene_failures":[{"scene":1|2|3|4,"issues":["..."],"fix":"exact keyframe correction"}],"non_scene_failures":["caption"|"outro"|"voice_script"|"unknown"],"verdict":"short explanation"}. Scene failures must name exact scenes 1..4. Do not use image indexes.`, { images: frames, note: `Comprehensive final reel QC (${frames.length} evidence sheet(s))`, maxTokens: 4000 });
+        const r = await askClaude(run, step, `You are the ONE comprehensive final ELEVAY finished-reel reviewer. This is the only Claude QC pass for reels. Fail closed: return pass:false if the verdict or any required scene mapping is uncertain or malformed.\n\nReview ALL supplied visual evidence against these requirements: 9:16 reel; explicit Scene 1, Scene 2, Scene 3, Scene 4 labels and coherent scene order; at least 3 visible frames per scene where the supplied evidence makes that feasible; no text, captions, logos, contacts, QR codes, passports, passport-like documents, flags, or the words/claims "تأشيرة", "فيزا", Visa, guarantees, approval guarantees or outcome guarantees; Arab/Middle Eastern people only in modern casual, smart-casual or formal clothing (casual is fine and is not a fault); no scarves, hijabs, keffiyehs, turbans, ghutras, shemaghs or other traditional headwear unless the run request expressly authorizes it (authorization: ${headwearAuthorized ? "yes" : "no"}); complete head-to-toe outfit with footwear that matches it when visible; natural faces, hands, feet, anatomy and grounded motion; person/wardrobe/object/architecture continuity within every scene; exact static official ELEVAY logo centred on pure white for the 3-second outro with no narration over it.\n\nAlso verify the spoken content: one continuous Egyptian Arabic message across the narrative window (20 seconds, or longer when a voice take runs long — the owner accepts that) in four scene slots; a memorable but truthful dramatic hook in Scene 1; one clear advisory message across Scenes 2–3; and a direct consultation CTA in Scene 4. No voice narration may enter the 3-second logo outro. A strong hook must never be fear-based, fake urgency, clickbait or a guarantee.\n\nCaption to validate (MSA):\n${A.brief.caption_ar}\n\nActual script sent to the ELEVAY voice flow (Egyptian Arabic):\n${preparedScript}\n\nDeterministic pre-check findings (you must independently review them and record the matching non-scene fault):\n${[...deterministicBlocks, scriptComplianceError].filter(Boolean).join("\n") || "none"}\n\nStoryboard labels and intended speech:\n${storyboard.map((s, i) => `Scene ${i + 1}: ${s.spoken_text_ar || "(missing)"}`).join("\n")}\n\n${evidenceNote}\n\nReturn EXACT JSON only: {"pass":true|false,"issues":["..."],"scene_failures":[{"scene":1|2|3|4,"issues":["..."],"fix":"exact keyframe correction"}],"non_scene_failures":["caption"|"outro"|"voice_script"|"unknown"],"verdict":"short explanation"}. Scene failures must name exact scenes 1..4. Do not use image indexes.${second}`, { images: frames, note: `Comprehensive final reel QC (${frames.length} evidence sheet(s))`, maxTokens: 4000 });
         const data = r.data;
         const sceneFailures = Array.isArray(data?.scene_failures) ? data.scene_failures : null;
         const validSceneFailures = sceneFailures && sceneFailures.every((f) => Number.isInteger(f?.scene) && f.scene >= 1 && f.scene <= 4 && Array.isArray(f.issues) && f.issues.length && typeof f.fix === "string" && f.fix.trim());
@@ -1281,13 +1414,72 @@ export function createOrchestrator(deps) {
         log(run, "studio", "team", opts.revision ? `Replaced ${itemId} with an owner-authorized reviewed revision. All previous versions retained; no Meta scheduling or publishing triggered.` : A.qc_blocked ? `Added as ${itemId} marked QC failed; the owner decides.` : auto ? `Added as ${itemId} and approved by autopilot; Manus schedules it.` : `Added to the weekly plan as ${itemId} for approval.`);
         return;
       }
+      case "claude.news_shortlist": {
+        const { state } = await deps.loadState();
+        const cutoff = Date.now() - 9 * 86400000;
+        const candidates = state.news.filter((n) => Date.parse(n.received_at || n.published_date || "") >= cutoff || !n.received_at).slice(0, 30)
+          .map((n) => ({ id: n.id, headline: n.headline, country: n.country, program: n.program, what_changed: n.what_changed, effective_date: n.effective_date, confidence: n.confidence, source: n.source_name || n.source_url, angle: n.marketing_angle }));
+        A.news_candidates = candidates;
+        if (!candidates.length) { A.news_shortlist = { selected: [] }; log(run, "studio", "team", "No new news this week; nothing to select."); return; }
+        const r = await askClaude(run, step, `These are this week's researched news items for ELEVAY (residency and citizenship-by-investment programs; audience: Egyptian and Arab families, professionals and investors).\n${JSON.stringify(candidates)}\n\nSelect up to 8 that matter most for next week's content and the people we advise: real changes to rules, fees, income or investment thresholds, processing, new or closing routes. Prefer verified items; use reported items only with care; drop unconfirmed rumours unless clearly useful. Return JSON: ${COUNCIL_SCHEMA.news}`, { note: "News selection draft", maxTokens: 2500 });
+        A.news_shortlist = { selected: Array.isArray(r.data?.selected) ? r.data.selected.slice(0, 8) : [] };
+        return;
+      }
+      case "openai.council_openai": {
+        const subject = step.subject, draft = councilDraft(run, subject);
+        A.council = A.council || {};
+        A.council[subject] = { ...(A.council[subject] || {}), draft };
+        if (!draft) { A.council[subject].openai = { assessment: "Nothing to review." }; return; }
+        let r;
+        try { r = await askOpenAi(run, step, `You are a senior marketing strategist on ELEVAY's AI council. Claude drafted the ${COUNCIL_LABEL[subject]} below. Review it critically and constructively: what is strong, what is weak or risky, and specific, actionable suggestions that would make it more intelligent, attractive and effective for ELEVAY's goal (more qualified leads and signed clients at a lower cost per qualified lead, within every ELEVAY brand and compliance rule).\n\nWhat Claude worked from:\n${councilContext(run, subject)}\n\nClaude's draft:\n${JSON.stringify(draft)}\n\nReturn JSON only: {"score_1_10": number, "assessment": "3–5 sentences", "issues": ["..."], "suggestions": ["specific change 1", "..."]}`, { note: `OpenAI council review: ${COUNCIL_LABEL[subject]}`, maxTokens: 3000 }); }
+        catch (e) { A.council[subject].openai = { assessment: `OpenAI's review was unavailable: ${clip(String(e?.message || e), 200)}` }; log(run, "studio", "team", `Council: ${A.council[subject].openai.assessment}. Manus and Claude continue.`); return; }
+        A.council[subject].openai = r.data || parseLooseJson(r.text);
+        return;
+      }
+      case "manus.council_manus": {
+        const subject = step.subject, c = (A.council = A.council || {})[subject] || (A.council[subject] = { draft: councilDraft(run, subject) });
+        if (!c.draft) { c.manus = { assessment: "Nothing to review." }; return; }
+        if (c.manus_job && !c.manus) return "waiting"; // already asked (restart or retry): keep waiting for the same job
+        let jobId;
+        const request = [
+          `ELEVAY AI council review (text only). Claude drafted the ${COUNCIL_LABEL[subject]}; OpenAI has reviewed it. Give your own independent opinion and suggestions to make it more intelligent, attractive and effective. You may use your own research and knowledge of ELEVAY's market.`,
+          "Do not publish anything, do not perform any Meta, campaign, budget, Lead or CRM action, do not generate media, and do not read or change any secret.",
+          `What Claude worked from:\n${clip(councilContext(run, subject), 9000)}`,
+          `Claude's draft:\n${clip(JSON.stringify(c.draft), 9000)}`,
+          `OpenAI's review:\n${clip(JSON.stringify(c.openai || {}), 3000)}`,
+          'Reply with JSON only: {"score_1_10": number, "assessment": "3–5 sentences", "agree_with_openai": ["..."], "disagree_with_openai": ["..."], "suggestions": ["specific change 1", "..."]}',
+        ].join("\n\n");
+        const q2 = await deps.mutate({}, (st) => { const j = E.enqueueJob(st, "custom", { request, requested_by: run.created_by, studio_run: run.id, purpose: "council_review", subject }, "ai-studio"); jobId = j.id; return { ok: true }; });
+        if (q2 && q2.ok === false) throw new Error(q2.error);
+        c.manus_job = jobId; c.manus_requested_at = nowIso();
+        log(run, "studio", "manus", `Council: asked Manus to review the ${COUNCIL_LABEL[subject]} (job ${jobId}). Waiting for Manus.`);
+        return "waiting";
+      }
+      case "claude.council_final": {
+        const subject = step.subject, c = (A.council || {})[subject] || {};
+        if (!c.draft) return;
+        let r;
+        try { r = await askClaude(run, step, `You lead ELEVAY's AI council. You drafted the ${COUNCIL_LABEL[subject]}; OpenAI and Manus reviewed it independently. Weigh every suggestion on its merits (evidence, ELEVAY's goals, brand and compliance rules, budget cap and CPL ceiling). Adopt what makes the result more intelligent, attractive and effective; reject what is weaker, risky or non-compliant. Then produce the final version.\n\nWhat you worked from:\n${councilContext(run, subject)}\n\nYour draft:\n${JSON.stringify(c.draft)}\n\nOpenAI's review:\n${JSON.stringify(c.openai || {})}\n\nManus's review:\n${JSON.stringify(c.manus || { assessment: "Manus did not provide a review." })}\n\nReturn JSON only: {"final": ${COUNCIL_SCHEMA[subject]}, "decision_log": [{"suggestion": "...", "from": "openai"|"manus", "adopted": true|false, "why": "..."}], "summary": "2–3 sentences on what changed and why"}`, { note: `Council final decision: ${COUNCIL_LABEL[subject]}`, maxTokens: subject === "monthly_plan" ? 9000 : 6000 }); }
+        catch (e) { c.final_used = "draft"; log(run, "studio", "team", `Council: Claude's final decision failed (${clip(String(e?.message || e), 200)}); the reviewed draft is kept.`); if (subject === "news") await councilApply(run, subject, c.draft); return; }
+        const final = r.data?.final;
+        const problem = councilValidate(subject, final, run);
+        c.decision_log = Array.isArray(r.data?.decision_log) ? r.data.decision_log.slice(0, 40) : [];
+        c.summary = String(r.data?.summary || "");
+        if (problem) { c.final_used = "draft"; log(run, "claude", "team", `Council: the final version was not usable (${problem}); Claude's reviewed draft is kept.`); if (subject === "news") await councilApply(run, subject, c.draft); return; }
+        c.final_used = "council";
+        await councilApply(run, subject, final);
+        const adopted = c.decision_log.filter((d) => d.adopted).length;
+        log(run, "claude", "team", `Council decision for the ${COUNCIL_LABEL[subject]}: ${adopted} of ${c.decision_log.length} suggestion(s) adopted. ${c.summary}`);
+        return;
+      }
       case "claude.weekly_plan": {
         const live = await deps.liveReport(false).catch(() => null);
         const { state } = await deps.loadState();
         const week = opts.week || planningWeek();
         const days = WEEKDAY_DATES(week);
         const monthPlan = state.plans.find((p) => p.status === "approved");
-        const news = state.news.filter((n) => n.selected || n.confidence === "verified").slice(0, 8).map((n) => ({ headline: n.headline, country: n.country, program: n.program, angle: n.marketing_angle }));
+        const councilPicks = state.news.filter((n) => n.selected && n.selected_by === "ai-council");
+        const news = (councilPicks.length ? councilPicks : state.news.filter((n) => n.selected || n.confidence === "verified")).slice(0, 8).map((n) => ({ headline: n.headline, country: n.country, program: n.program, angle: n.marketing_angle, why: n.why_selected || undefined }));
         const recent = state.items.slice(-21).map((i) => ({ id: i.item_id, type: i.type, topic: i.topic, program: i.program, status: i.status }));
         const r = await askClaude(run, step, `Plan ELEVAY's social content for ${week} (Sunday ${days[0]} to Saturday ${days[6]}, Cairo).
 
@@ -1607,6 +1799,19 @@ Return JSON only: {"summary":"3–5 sentences on how the ads did against the tar
       step.status = "pending"; step.output = null;
       return "resubmit";
     }
+    if (step.action === "council_manus") {
+      const c = (A.council || {})[step.subject];
+      if (!c?.manus_job) return true;
+      const { state } = await deps.loadState();
+      const j = state.jobs.find((x) => x.id === c.manus_job);
+      if (!j) { c.manus = { assessment: "The Manus review job is missing; Claude decides with OpenAI's review only." }; log(run, "studio", "team", c.manus.assessment); return true; }
+      if (j.status !== "done" && j.status !== "failed") return false; // owner rule: always wait for Manus
+      if (j.status === "failed") { c.manus = { assessment: "Manus could not complete its review: " + clip(j.result?.error || "", 300) }; log(run, "manus", "studio", c.manus.assessment); return true; }
+      c.manus = parseLooseJson(j.result ?? j.manus?.message) || { assessment: "Manus replied without a review." };
+      c.manus_received_at = nowIso();
+      log(run, "manus", "studio", "Council review: " + clip(c.manus, 3000));
+      return true;
+    }
     if (step.provider === "manus") {
       const { state } = await deps.loadState();
       const j = state.jobs.find((x) => x.id === A.manus_job);
@@ -1875,13 +2080,20 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     const due = (c.weekday === "Thu" && c.hour >= 20) || c.weekday === "Fri" || (c.weekday === "Sat" && c.hour < 9);
     if (!due) return;
     if (!(await claimOnce(`news_${planningWeek(nowMs)}`))) return;
-    try { await researchNews(); }
+    try {
+      await researchNews();
+      await startNewsCouncil().catch(async (e) => { await deps.mutate({}, (st) => { E.audit(st, "autopilot", "news.council_failed", null, String(e?.message || e).slice(0, 300)); return { ok: true }; }).catch(() => {}); });
+    }
     catch (e) {
       const reason = String(e?.message || e).slice(0, 300);
       await deps.mutate({}, (st) => { E.audit(st, "autopilot", "news.research_failed", null, reason); return { ok: true }; }).catch(() => {});
       if (deps.notifyFailure) await deps.notifyFailure({ runId: 0, kind: "news", title: "Weekly news research", stepName: "Claude web search", reason, status: "failed" }).catch(() => {});
       await q("DELETE FROM ec_kv WHERE name = ?", [`news_${planningWeek(nowMs)}`]).catch(() => {}); // try again on the next tick hour
     }
+  }
+  /** Claude shortlists the week's news, then OpenAI and Manus review it and Claude finalizes which items are selected. */
+  async function startNewsCouncil(user = { email: "autopilot", role: "owner" }) {
+    return create({ kind: "news_council", request: `News selection for ${planningWeek()}`, options: {}, user });
   }
   async function claimOnce(key) {
     const res = await q("INSERT IGNORE INTO ec_kv (name, value) VALUES (?, ?)", [key, nowIso()]);
@@ -2042,5 +2254,5 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     return watchdog();
   }
 
-  return { ensureTable, researchNews, startAdsReview, adsReviewDue, create, reviseItem, recreate, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, redo, cancel, tick, watchdog, test: () => providers.test() };
+  return { ensureTable, researchNews, startNewsCouncil, startAdsReview, adsReviewDue, create, reviseItem, recreate, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, redo, cancel, tick, watchdog, test: () => providers.test() };
 }
