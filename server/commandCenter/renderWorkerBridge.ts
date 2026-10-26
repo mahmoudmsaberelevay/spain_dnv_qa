@@ -308,7 +308,7 @@ export function createRenderWorkerBridge({
   }
 
   /** Lowest renderer version that may take jobs (3 = the voice-over fix). Older or unversioned Macs wait. */
-  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 8) || 0);
+  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 9) || 0);
   const workersSeen = new Map<string, { rendererVersion: number | null; at: number; outdated: boolean }>();
   async function lease(workerId: string, rendererVersion?: unknown) {
     await ensure();

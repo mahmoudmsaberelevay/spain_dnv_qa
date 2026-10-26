@@ -8,11 +8,14 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 /** Bumped whenever renderer output changes. Version 4 adds the 20-second / four 5-second narration timeline. */
-export const RENDERER_VERSION = 8;
+export const RENDERER_VERSION = 9;
 const THREADS = 1;
 const FFMPEG = process.env.ELEVAY_FFMPEG_BIN || '/usr/bin/ffmpeg';
 const FFPROBE = process.env.ELEVAY_FFPROBE_BIN || '/usr/bin/ffprobe';
-const encode = ['-an','-c:v','libx264','-preset','veryfast','-tune','zerolatency','-profile:v','baseline','-crf','18','-g','150','-keyint_min','150','-sc_threshold','0','-bf','0','-pix_fmt','yuv420p','-threads',String(THREADS),'-x264-params','rc-lookahead=0:sync-lookahead=0:threads=1','-video_track_timescale','90000','-movflags','+faststart'];
+// Owner rule (26 Oct 2026): master quality. The Mac has the memory for a slow, high-profile x264 encode; every
+// segment uses identical settings so the stream-copy join stays seamless. Instagram/Facebook recompress, so a
+// cleaner source keeps more detail after upload.
+const encode = ['-an','-c:v','libx264','-preset','slow','-tune','film','-profile:v','high','-level','4.2','-crf','15','-maxrate','25M','-bufsize','50M','-g','60','-keyint_min','60','-sc_threshold','0','-bf','2','-pix_fmt','yuv420p','-color_primaries','bt709','-color_trc','bt709','-colorspace','bt709','-threads',String(THREADS),'-video_track_timescale','90000','-movflags','+faststart'];
 const audioFormat = 'aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo';
 
 export async function downloadFile(url, file, maxBytes = 100 * 1024 * 1024) {
@@ -180,7 +183,7 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
         filters.push('[n0][n1][n2][n3]amix=inputs=4:duration=longest:normalize=0[voice]');
         if(withMusic) filters.push('[4:a]'+audioFormat+`,atrim=duration=${T},volume=0.16,afade=t=in:d=0.8,afade=t=out:st=${fadeAt}:d=3[bed]`,`[voice][bed]amix=inputs=2:duration=longest:normalize=0,atrim=duration=${T},alimiter=limit=0.95[a]`);
         else filters.push(`[voice]atrim=duration=${T},alimiter=limit=0.95[a]`);
-        await ff([...args,'-filter_complex',filters.join(';'),'-map','[a]','-t',T,'-c:a','aac','-b:a','192k','-threads','1',path.join(directory,'audio.m4a')]);
+        await ff([...args,'-filter_complex',filters.join(';'),'-map','[a]','-t',T,'-c:a','aac','-b:a','256k','-threads','1',path.join(directory,'audio.m4a')]);
       };
       if(musicFile)try{await mix(true);}catch{musicDropped='Music could not be mixed; finished with saved voice takes only.';await mix(false);}else await mix(false);
       // Never ship a reel without its voice-over: the mixed track must last the full 23 s and be audible.

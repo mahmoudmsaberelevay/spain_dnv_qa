@@ -2,7 +2,7 @@ import { parseHiggsfieldAcceptedClip, parseHiggsfieldClipStatus, type Higgsfield
 
 /** The sole paid-generation endpoint permitted by this server-only transport. */
 export const ELEVAY_HIGGSFIELD_PRO_IMAGE_TO_VIDEO_ENDPOINT =
-  "https://api.higgsfield.ai/kling-video/v2.5-turbo/pro/image-to-video";
+  "https://api.higgsfield.ai/kling-video/v3.0/pro/image-to-video"; // owner rule 26 Oct 2026: top-quality cinematic clips
 
 const HIGGSFIELD_API_ORIGIN = "https://api.higgsfield.ai";
 const NEGATIVE_PROMPT =
@@ -195,10 +195,13 @@ export async function submitElevayHiggsfieldProClip(
         "Idempotency-Key": input.idempotencyKey,
       },
       body: JSON.stringify({
-        prompt: safe.prompt,
+        // Kling 3.0 Pro has no negative_prompt field; the avoid-list travels inside the prompt. Native sound is off:
+        // the reel's voice and music are added by the ELEVAY render.
+        prompt: `${safe.prompt}\n\nAvoid: ${NEGATIVE_PROMPT}.`.slice(0, 2_500),
         image_url: safe.keyframeUrl,
         duration: 5,
-        negative_prompt: NEGATIVE_PROMPT,
+        sound: "off",
+        cfg_scale: 0.5,
       }),
       signal: AbortSignal.timeout(300_000),
     });
