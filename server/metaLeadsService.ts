@@ -56,8 +56,19 @@ export function shouldRefreshLeadFromRepeatMetaInquiry(input: {
   return !input.isTestLead && input.repeatInquiry && input.stage !== "client";
 }
 
-export type MetaEventDeliveryMode = "production" | "test" | "approval_gated" | "legacy_unknown";
+/**
+ * The list of operational leads is ordered by its latest touchpoint. A newly
+ * received Meta form must therefore advance that touchpoint, but a staff
+ * member's later contact must never be backdated by a delayed webhook replay.
+ */
+export function latestMetaInquiryActivityAt(
+  existingLastContactAt: number | null | undefined,
+  inquiryReceivedAt: number,
+): number {
+  return Math.max(existingLastContactAt ?? 0, inquiryReceivedAt);
+}
 
+export type MetaEventDeliveryMode = "production" | "test" | "approval_gated" | "legacy_unknown";
 export function resolveMetaEventDeliveryContext(input: {
   isTestLead: boolean;
   testEventCode?: string | null;
@@ -977,6 +988,10 @@ export async function ingestMetaLeadDetail(
           metaLeadCreatedAt: existing.metaLeadCreatedAt || metaLeadCreatedAt,
           firstReceivedAt: existing.firstReceivedAt || firstReceivedAt,
           ...(reactivated ? { stage: "fresh" as const } : {}),
+          // Keep the original creation date intact, but surface every real
+          // Meta inquiry as current work in the Leads list. An earlier webhook
+          // replay cannot overwrite a consultant's more recent contact.
+          lastContactAt: latestMetaInquiryActivityAt(existing.lastContactAt, firstReceivedAt),
           metaSyncStatus: "pending",
           metaSyncError: null,
           updatedAt: timestamp,
@@ -1021,6 +1036,7 @@ export async function ingestMetaLeadDetail(
           metaSyncStatus: "pending",
           dataRegion: "EG",
           createdAt: metaLeadCreatedAt,
+          lastContactAt: firstReceivedAt,
           updatedAt: firstReceivedAt,
         });
         leadId = Number((insertResult as { insertId?: number }).insertId);

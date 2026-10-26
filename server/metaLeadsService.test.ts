@@ -19,6 +19,7 @@ import {
   hashMetaPhone,
   isMetaEventWithinRetryWindow,
   isMetaWebhookProcessingStale,
+  latestMetaInquiryActivityAt,
   mapMetaFields,
   normalizeMetaEmail,
   normalizeMetaPhone,
@@ -230,6 +231,32 @@ describe("Meta Leads safety helpers", () => {
       repeatInquiry: true,
       stage: "qualified",
     })).toBe(false);
+  });
+
+  it("exact sequence: a later Meta form records the newest activity without erasing a later staff contact", () => {
+    const originalCreatedAt = 1_700_000_000_000;
+    const laterMetaInquiryAt = originalCreatedAt + 60_000;
+    const laterStaffContactAt = laterMetaInquiryAt + 60_000;
+
+    // Contract signed → the record remains a client; an inbound marketing
+    // submission must not reopen it.
+    expect(shouldRefreshLeadFromRepeatMetaInquiry({
+      isTestLead: false,
+      repeatInquiry: true,
+      stage: "client",
+    })).toBe(false);
+
+    // Pre-sale lead → a new Meta Lead ID makes the item Fresh and its latest
+    // activity is the incoming inquiry, so it sorts as current work.
+    expect(shouldRefreshLeadFromRepeatMetaInquiry({
+      isTestLead: false,
+      repeatInquiry: true,
+      stage: "qualified",
+    })).toBe(true);
+    expect(latestMetaInquiryActivityAt(null, laterMetaInquiryAt)).toBe(laterMetaInquiryAt);
+
+    // A delayed reconciliation replay cannot hide a later consultant action.
+    expect(latestMetaInquiryActivityAt(laterStaffContactAt, laterMetaInquiryAt)).toBe(laterStaffContactAt);
   });
 
   it("builds stable event IDs for the same authoritative transition", () => {

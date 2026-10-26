@@ -161,7 +161,7 @@ export default function LeadsList() {
     { key: "meetingDate", label: "Meeting Date" },
     { key: "contractDate", label: "Contract Signed Date" },
   ];
-  const DEFAULT_VISIBLE = ["contact", "program", "source", "stage", "priority", "assigned", "createdAt"];
+  const DEFAULT_VISIBLE = ["contact", "program", "source", "stage", "priority", "assigned", "createdAt", "lastActivity"];
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem("leads_visible_columns");

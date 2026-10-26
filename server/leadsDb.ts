@@ -143,7 +143,10 @@ export async function listLeads(filters?: {
   const [rows, [{ total }]] = await Promise.all([
     db.select().from(leads)
       .where(whereClause)
-      .orderBy(desc(leads.createdAt))
+      // A repeat Meta inquiry is intentionally linked to its original Lead,
+      // not duplicated. Sort by the latest operational touchpoint so renewed
+      // intent is visible immediately while `createdAt` remains immutable.
+      .orderBy(desc(sql`COALESCE(${leads.lastContactAt}, ${leads.createdAt})`), desc(leads.id))
       .limit(pageSize)
       .offset(offset),
     db.select({ total: count() }).from(leads).where(whereClause),
