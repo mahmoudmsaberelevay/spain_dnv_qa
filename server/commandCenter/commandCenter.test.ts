@@ -206,3 +206,14 @@ describe("owner rules (25 Oct 2026): euros for Europe, casual clothing allowed",
     expect(r.warnings.concat(r.blocks).some((x) => x.id === "clip1_wardrobe")).toBe(false);
   });
 });
+
+describe("narration length tolerance (26 Oct 2026)", () => {
+  it("accepts a voice-over a few words outside 45–55 instead of stopping the reel", async () => {
+    const { validateElevay20SecondReelNarration: v } = await import("../../shared/elevayReelNarrationPolicy");
+    const w = (n, first = "") => (first + " " + Array.from({ length: n }, (_, i) => "كلمة" + i).join(" ")).trim();
+    const at44 = [w(9, "لو"), w(11), w(11), w(8, "احجز استشارتك مع Elevay")].map((t) => ({ spoken_text_ar: t }));
+    expect(v(at44)).toBeNull();
+    const at37 = [w(8, "لو"), w(10), w(10), w(5, "احجز استشارتك مع Elevay")].map((t) => ({ spoken_text_ar: t }));
+    expect(v(at37)).toMatch(/40–62 accepted/);
+  });
+});
