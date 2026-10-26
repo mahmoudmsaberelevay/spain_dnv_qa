@@ -31,6 +31,30 @@ const DEFAULT_DATASET_ID = "1944021856148780";
 const DEFAULT_PAGE_ID = "100123051604258";
 const MAX_ATTEMPTS = 5;
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 60 * 60_000, 12 * 60 * 60_000];
+/** A process crash or deployment must never leave a durable webhook item held forever. */
+export const META_WEBHOOK_PROCESSING_STALE_MS = 10 * 60 * 1000;
+
+function affectedMetaInboxRows(result: unknown): number {
+  const metadata = Array.isArray(result) ? result[0] : result;
+  return Number((metadata as { affectedRows?: number } | undefined)?.affectedRows ?? 0);
+}
+
+export function isMetaWebhookProcessingStale(updatedAt: number | null | undefined, nowMs = Date.now()): boolean {
+  return Number.isFinite(updatedAt) && Number(updatedAt) <= nowMs - META_WEBHOOK_PROCESSING_STALE_MS;
+}
+
+/**
+ * A repeat Meta Instant Form inquiry represents renewed sales intent. Reopen
+ * pre-sale Lead stages only; a signed client must remain a client so contract
+ * reporting and the client lifecycle cannot be overwritten by an ad response.
+ */
+export function shouldRefreshLeadFromRepeatMetaInquiry(input: {
+  isTestLead: boolean;
+  repeatInquiry: boolean;
+  stage: string | null | undefined;
+}): boolean {
+  return !input.isTestLead && input.repeatInquiry && input.stage !== "client";
+}
 
 export type MetaEventDeliveryMode = "production" | "test" | "approval_gated" | "legacy_unknown";
 
@@ -916,69 +940,91 @@ export async function ingestMetaLeadDetail(
     firstReceivedAt,
   };
 
-  let transactionResult: { leadId: number; repeatInquiry: boolean; assignment: Awaited<ReturnType<typeof applyMetaAssignment>>; created: boolean };
+  let transactionResult: { leadId: number; repeatInquiry: boolean; reactivated: boolean; assignment: Awaited<ReturnType<typeof applyMetaAssignment>>; created: boolean };
   try {
     transactionResult = await db.transaction(async tx => {
       const existing = match.lead;
       let leadId: number;
       let repeatInquiry = false;
+      let reactivated = false;
       if (existing) {
-      leadId = existing.id;
-      const [{ count: attributionCount }] = await tx.select({ count: sql<number>`COUNT(*)` })
-        .from(leadMetaAttributions).where(eq(leadMetaAttributions.leadId, leadId));
-      const isPrimary = Number(attributionCount) === 0;
-      repeatInquiry = !isPrimary;
-      await addAttribution(leadId, attribution, isPrimary, tx);
-      await tx.update(leads).set({
-        normalizedPhone: existing.normalizedPhone || normalizedPhone,
-        normalizedEmail: existing.normalizedEmail || normalizedEmail,
-        metaLeadId: existing.metaLeadId || meta.id,
-        metaFormId: existing.metaFormId || formId,
-        metaFormName: existing.metaFormName || formName,
-        metaCampaign: existing.metaCampaign || meta.campaign_name || meta.campaign_id || null,
-        metaAdset: existing.metaAdset || meta.adset_name || meta.adset_id || null,
-        metaAd: existing.metaAd || meta.ad_name || meta.ad_id || null,
-        isMetaTestLead: existing.isMetaTestLead || isTestLead,
-        metaLeadCreatedAt: existing.metaLeadCreatedAt || metaLeadCreatedAt,
-        firstReceivedAt: existing.firstReceivedAt || firstReceivedAt,
-        metaSyncStatus: "pending",
-        metaSyncError: null,
-        updatedAt: now(),
-      }).where(eq(leads.id, leadId));
+        leadId = existing.id;
+        const [{ count: attributionCount }] = await tx.select({ count: sql<number>`COUNT(*)` })
+          .from(leadMetaAttributions).where(eq(leadMetaAttributions.leadId, leadId));
+        const [knownInquiry] = await tx.select({ id: leadMetaAttributions.id })
+          .from(leadMetaAttributions).where(eq(leadMetaAttributions.metaLeadId, meta.id)).limit(1);
+        const isPrimary = Number(attributionCount) === 0;
+        // A webhook/reconciliation replay has the same immutable Meta Lead ID;
+        // it must not reset a consultant's later work back to Fresh.
+        repeatInquiry = !knownInquiry;
+        reactivated = shouldRefreshLeadFromRepeatMetaInquiry({
+          isTestLead,
+          repeatInquiry,
+          stage: existing.stage,
+        });
+        await addAttribution(leadId, attribution, isPrimary, tx);
+        const timestamp = now();
+        await tx.update(leads).set({
+          normalizedPhone: existing.normalizedPhone || normalizedPhone,
+          normalizedEmail: existing.normalizedEmail || normalizedEmail,
+          metaLeadId: existing.metaLeadId || meta.id,
+          metaFormId: existing.metaFormId || formId,
+          metaFormName: existing.metaFormName || formName,
+          metaCampaign: existing.metaCampaign || meta.campaign_name || meta.campaign_id || null,
+          metaAdset: existing.metaAdset || meta.adset_name || meta.adset_id || null,
+          metaAd: existing.metaAd || meta.ad_name || meta.ad_id || null,
+          isMetaTestLead: existing.isMetaTestLead || isTestLead,
+          metaLeadCreatedAt: existing.metaLeadCreatedAt || metaLeadCreatedAt,
+          firstReceivedAt: existing.firstReceivedAt || firstReceivedAt,
+          ...(reactivated ? { stage: "fresh" as const } : {}),
+          metaSyncStatus: "pending",
+          metaSyncError: null,
+          updatedAt: timestamp,
+        }).where(eq(leads.id, leadId));
+        if (reactivated) {
+          await tx.insert(leadActivities).values({
+            leadId,
+            userId: null,
+            activityType: "stage_changed",
+            description: `Stage reset from ${existing.stage} to Fresh after a new Meta Lead Ads inquiry. Existing Lead, assignment, payments, contracts, and prior inquiry attribution were preserved.`,
+            score: 0,
+            createdAt: timestamp,
+          });
+        }
       } else {
-      const [insertResult] = await tx.insert(leads).values({
-        fullName: mapped.fullName || `Meta Lead ${meta.id.slice(-6)}`,
-        email,
-        phone,
-        whatsapp: mapped.whatsapp || phone,
-        normalizedPhone,
-        normalizedEmail,
-        nationality: mapped.nationality || null,
-        interestedProgram: program,
-        budgetRange: mapped.budgetRange || null,
-        leadSource: config.leadSource,
-        metaLeadId: meta.id,
-        metaFormId: formId,
-        metaFormName: formName,
-        metaCampaign: meta.campaign_name || meta.campaign_id || null,
-        metaAdset: meta.adset_name || meta.adset_id || null,
-        metaAd: meta.ad_name || meta.ad_id || null,
-        isMetaTestLead: isTestLead,
-        metaLeadCreatedAt,
-        firstReceivedAt,
-        stage: "fresh",
-        assignedTo: null,
-        assignedConsultantUserId: null,
-        metaAssignmentStatus: isTestLead ? "not_applicable" : "pending",
-        notes: mapped.notes || null,
-        leadScore: 0,
-        metaSyncStatus: "pending",
-        dataRegion: "EG",
-        createdAt: metaLeadCreatedAt,
-        updatedAt: firstReceivedAt,
-      });
-      leadId = Number((insertResult as { insertId?: number }).insertId);
-      await addAttribution(leadId, attribution, true, tx);
+        const [insertResult] = await tx.insert(leads).values({
+          fullName: mapped.fullName || `Meta Lead ${meta.id.slice(-6)}`,
+          email,
+          phone,
+          whatsapp: mapped.whatsapp || phone,
+          normalizedPhone,
+          normalizedEmail,
+          nationality: mapped.nationality || null,
+          interestedProgram: program,
+          budgetRange: mapped.budgetRange || null,
+          leadSource: config.leadSource,
+          metaLeadId: meta.id,
+          metaFormId: formId,
+          metaFormName: formName,
+          metaCampaign: meta.campaign_name || meta.campaign_id || null,
+          metaAdset: meta.adset_name || meta.adset_id || null,
+          metaAd: meta.ad_name || meta.ad_id || null,
+          isMetaTestLead: isTestLead,
+          metaLeadCreatedAt,
+          firstReceivedAt,
+          stage: "fresh",
+          assignedTo: null,
+          assignedConsultantUserId: null,
+          metaAssignmentStatus: isTestLead ? "not_applicable" : "pending",
+          notes: mapped.notes || null,
+          leadScore: 0,
+          metaSyncStatus: "pending",
+          dataRegion: "EG",
+          createdAt: metaLeadCreatedAt,
+          updatedAt: firstReceivedAt,
+        });
+        leadId = Number((insertResult as { insertId?: number }).insertId);
+        await addAttribution(leadId, attribution, true, tx);
       }
       const assignment = await applyMetaAssignment({
         leadId,
@@ -987,7 +1033,7 @@ export async function ingestMetaLeadDetail(
         matchMethod,
         routingConsultant,
       }, tx);
-      return { leadId, repeatInquiry, assignment, created: !existing };
+      return { leadId, repeatInquiry, reactivated, assignment, created: !existing };
     });
   } catch (error) {
     if (!contactRaceRetried && isLeadContactUniqueViolation(error)) {
@@ -1033,6 +1079,18 @@ export async function processMetaWebhookInboxBatch(limit = 25) {
   if (!db) throw new Error("Database unavailable");
   const ts = now();
   const config = await getActiveMetaConfig();
+  // Deployments or process crashes can leave a durable item at `processing`.
+  // Recover only a stale lease; an active worker refreshes updatedAt below.
+  const recovered = await db.update(metaWebhookInbox).set({
+    status: "retrying",
+    nextAttemptAt: ts,
+    lastErrorCode: "META_PROCESSING_RECOVERED",
+    lastError: "Recovered after an interrupted Meta Lead Ads inbox processing attempt",
+    updatedAt: ts,
+  }).where(and(
+    eq(metaWebhookInbox.status, "processing"),
+    lte(metaWebhookInbox.updatedAt, ts - META_WEBHOOK_PROCESSING_STALE_MS),
+  ));
   const items = await db.select().from(metaWebhookInbox)
     .where(and(
       inArray(metaWebhookInbox.status, ["pending", "retrying"]),
@@ -1045,8 +1103,27 @@ export async function processMetaWebhookInboxBatch(limit = 25) {
   let failed = 0;
   for (const item of items) {
     const attempt = item.attempts + 1;
+    const claim = await db.update(metaWebhookInbox).set({
+      status: "processing",
+      attempts: attempt,
+      nextAttemptAt: null,
+      updatedAt: now(),
+    }).where(and(
+      eq(metaWebhookInbox.id, item.id),
+      eq(metaWebhookInbox.status, item.status),
+      eq(metaWebhookInbox.attempts, item.attempts),
+    ));
+    // Another process owns this inbox item now. Never run the same Meta lead
+    // through a second ingestion path, even during a deployment overlap.
+    if (affectedMetaInboxRows(claim) !== 1) continue;
+    const keepAlive = setInterval(() => {
+      void db.update(metaWebhookInbox).set({ updatedAt: now() }).where(and(
+        eq(metaWebhookInbox.id, item.id),
+        eq(metaWebhookInbox.status, "processing"),
+        eq(metaWebhookInbox.attempts, attempt),
+      ));
+    }, 60_000);
     try {
-      await db.update(metaWebhookInbox).set({ status: "processing", attempts: attempt, updatedAt: now() }).where(eq(metaWebhookInbox.id, item.id));
       const meta = await fetchMetaLeadDetail(item.metaLeadId, config.accessToken);
       const formId = meta.form_id || item.metaFormId || null;
       const isTestLead = await classifyMetaTestLead(meta.id, formId, config.accessToken);
@@ -1062,7 +1139,11 @@ export async function processMetaWebhookInboxBatch(limit = 25) {
         lastError: null,
         lastErrorCode: null,
         updatedAt: now(),
-      }).where(eq(metaWebhookInbox.id, item.id));
+      }).where(and(
+        eq(metaWebhookInbox.id, item.id),
+        eq(metaWebhookInbox.status, "processing"),
+        eq(metaWebhookInbox.attempts, attempt),
+      ));
       processed += 1;
     } catch (error) {
       if (error instanceof MetaManualReviewError) {
@@ -1076,11 +1157,17 @@ export async function processMetaWebhookInboxBatch(limit = 25) {
         lastError: safeMetaError(error),
         lastErrorCode: "META_INGESTION_FAILED",
         updatedAt: now(),
-      }).where(eq(metaWebhookInbox.id, item.id));
+      }).where(and(
+        eq(metaWebhookInbox.id, item.id),
+        eq(metaWebhookInbox.status, "processing"),
+        eq(metaWebhookInbox.attempts, attempt),
+      ));
       failed += 1;
+    } finally {
+      clearInterval(keepAlive);
     }
   }
-  return { selected: items.length, processed, failed };
+  return { selected: items.length, claimed: processed + failed, recovered: affectedMetaInboxRows(recovered), processed, failed };
 }
 
 export function buildMetaCrmEventId(input: {

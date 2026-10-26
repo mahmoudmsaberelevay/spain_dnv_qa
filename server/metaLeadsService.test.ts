@@ -18,10 +18,12 @@ import {
   hashMetaEmail,
   hashMetaPhone,
   isMetaEventWithinRetryWindow,
+  isMetaWebhookProcessingStale,
   mapMetaFields,
   normalizeMetaEmail,
   normalizeMetaPhone,
   requiredEarlierMetaEvents,
+  shouldRefreshLeadFromRepeatMetaInquiry,
   safeMetaError,
   shouldEnqueueMetaConverted,
   storeMetaWebhookNotifications,
@@ -193,6 +195,41 @@ describe("Meta Leads safety helpers", () => {
     expect(mocks.insertedInboxRows.map(row => row.metaLeadId)).toEqual(["1111111111111111", "2222222222222222"]);
     expect(mocks.insertedInboxRows.map(row => row.leadId)).toEqual([77, 77]);
     expect(mocks.insertedInboxRows.map(row => row.isPrimary)).toEqual([true, false]);
+  });
+
+  it("recovers only webhook inbox processing that is stale for more than ten minutes", () => {
+    const nowMs = 1_800_000_000_000;
+    expect(isMetaWebhookProcessingStale(nowMs - 10 * 60 * 1000, nowMs)).toBe(true);
+    expect(isMetaWebhookProcessingStale(nowMs - 10 * 60 * 1000 + 1, nowMs)).toBe(false);
+    expect(isMetaWebhookProcessingStale(null, nowMs)).toBe(false);
+  });
+
+  it("exact sequence: a later Meta duplicate returns a pre-sale Lead to Fresh but cannot overwrite a signed client", () => {
+    // Contract signed → the linked Lead is a client. A later marketing form
+    // response must retain that commercial status and all client reporting.
+    expect(shouldRefreshLeadFromRepeatMetaInquiry({
+      isTestLead: false,
+      repeatInquiry: true,
+      stage: "client",
+    })).toBe(false);
+
+    // Existing Lead row → new Meta Lead ID/contact match later: re-open it as
+    // Fresh without creating a duplicate or deleting prior attribution.
+    expect(shouldRefreshLeadFromRepeatMetaInquiry({
+      isTestLead: false,
+      repeatInquiry: true,
+      stage: "dormant",
+    })).toBe(true);
+    expect(shouldRefreshLeadFromRepeatMetaInquiry({
+      isTestLead: false,
+      repeatInquiry: false,
+      stage: "contacted",
+    })).toBe(false);
+    expect(shouldRefreshLeadFromRepeatMetaInquiry({
+      isTestLead: true,
+      repeatInquiry: true,
+      stage: "qualified",
+    })).toBe(false);
   });
 
   it("builds stable event IDs for the same authoritative transition", () => {

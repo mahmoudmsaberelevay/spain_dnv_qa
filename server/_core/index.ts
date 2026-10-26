@@ -16,6 +16,7 @@ import path from "path";
 import { startReminderScheduler } from "../reminderScheduler";
 import { startMonthlyReportScheduler } from "../monthlyReportScheduler";
 import { startRateScheduler } from "../rateScheduler";
+import { startMetaLeadSyncScheduler } from "../metaLeadSyncScheduler";
 import rateLimit from "express-rate-limit";
 import { requireBackupAdmin } from "../backupAccess";
 
@@ -691,3 +692,6 @@ startServer().catch(console.error);
 startReminderScheduler();
 startMonthlyReportScheduler();
 startRateScheduler();
+// Webhooks request immediate processing; this durable reconciliation loop is
+// the backstop for missed events and rows interrupted by a deployment.
+startMetaLeadSyncScheduler();

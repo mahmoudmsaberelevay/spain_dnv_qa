@@ -1,7 +1,7 @@
 /**
  * Meta Lead Sync Scheduler
  *
- * - Runs syncAllMetaIntegrations() every 4 hours automatically.
+ * - Runs syncAllMetaIntegrations() every 15 minutes automatically.
  * - Accumulates daily sync results and sends a summary email to Mahmoud
  *   every day at 08:00 Cairo time (UTC+3 / UTC+2 depending on DST).
  */
@@ -9,8 +9,10 @@
 import { syncAllMetaIntegrations, SyncResult } from "./metaLeadSync";
 import { sendLeadSyncSummaryEmail, sendMetaLeadAlert } from "./emailService";
 
-const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+export const META_LEAD_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 const ONE_MINUTE_MS = 60 * 1000;
+let schedulerStarted = false;
+let syncInFlight = false;
 
 // Accumulate results across all syncs in the current day
 let dailyAccumulator: {
@@ -71,6 +73,11 @@ function accumulateResults(results: SyncResult[]): void {
 }
 
 async function runSync(): Promise<void> {
+  if (syncInFlight) {
+    console.log("[MetaLeadSync] Skipping overlapping reconciliation; the prior run is still active.");
+    return;
+  }
+  syncInFlight = true;
   console.log("[MetaLeadSync] Starting scheduled sync...");
   try {
     const results = await syncAllMetaIntegrations();
@@ -106,6 +113,8 @@ async function runSync(): Promise<void> {
   } catch (err) {
     console.error("[MetaLeadSync] Scheduler error:", err);
     dailyAccumulator.errors.push(`Scheduler error: ${String(err)}`);
+  } finally {
+    syncInFlight = false;
   }
 }
 
@@ -147,17 +156,21 @@ async function checkAndSendDailySummary(): Promise<void> {
 }
 
 export function startMetaLeadSyncScheduler(): void {
-  console.log("[MetaLeadSync] Scheduler initialized. Will sync every 4 hours. Daily summary at 08:00 Cairo.");
+  if (schedulerStarted) return;
+  schedulerStarted = true;
+  console.log("[MetaLeadSync] Scheduler initialized. Will reconcile every 15 minutes. Daily summary at 08:00 Cairo.");
 
-  // Run once at startup (after a short delay to let DB connect)
+  // Run shortly after startup so durable inbox rows that survived a deployment
+  // are reclaimed without waiting for the next scheduled reconciliation.
   setTimeout(() => {
-    runSync();
-  }, 30_000); // 30 seconds after server start
+    void runSync();
+  }, 5_000);
 
-  // Sync every 4 hours
+  // Reconciliation is the backstop for missed webhooks; webhooks still request
+  // immediate best-effort processing independently.
   setInterval(() => {
-    runSync();
-  }, FOUR_HOURS_MS);
+    void runSync();
+  }, META_LEAD_SYNC_INTERVAL_MS);
 
   // Check every minute if it's time to send the daily summary
   setInterval(() => {
