@@ -19,6 +19,9 @@ import { storagePutFile } from "../storage";
 import { ENV } from "../_core/env";
 import { notifyAiFailure } from "./alerts";
 
+/** Largest single request body the Mac sends; bigger artifacts go in chunks (hosting proxy returns 413 above its limit). */
+export const CHUNK_BYTES = 8 * 1024 * 1024;
+
 const LEASE_MS = 15 * 60_000;
 const RETRY_DELAY_MS = 2 * 60_000;
 const WORKER_ONLINE_MS = 150_000;
@@ -308,7 +311,7 @@ export function createRenderWorkerBridge({
   }
 
   /** Lowest renderer version that may take jobs (3 = the voice-over fix). Older or unversioned Macs wait. */
-  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 9) || 0);
+  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 10) || 0);
   const workersSeen = new Map<string, { rendererVersion: number | null; at: number; outdated: boolean }>();
   async function lease(workerId: string, rendererVersion?: unknown) {
     await ensure();
@@ -577,7 +580,63 @@ export function createRenderWorkerBridge({
     }
   }
 
-  return { authenticate, ensure, lease, renew, progress, commitArtifact, complete, fail, status, checkOfflineWaiting, uploadRequest };
+  /**
+   * Chunked upload (renderer v10): the hosting proxy refuses large request bodies with HTTP 413, so the Mac sends
+   * every artifact above CHUNK_BYTES in parts of at most CHUNK_BYTES. Parts are kept on disk until the last one
+   * arrives; the whole file is then checked (size, SHA-256, media signature), stored and committed exactly like a
+   * single upload. Re-sending a part is safe (it overwrites the same part file).
+   */
+  async function chunkRequest(req: any, { jobId, kind }: { jobId: string, kind: string }) {
+    await ensure();
+    limit(`chunk:${jobId}`, 1500, 15 * 60_000);
+    const workerId = header(req, "x-render-worker-id");
+    const leaseId = header(req, "x-render-worker-lease");
+    const expectedSha = header(req, "x-artifact-sha256").toLowerCase();
+    const index = header(req, "x-artifact-index") || undefined;
+    const part = Number(header(req, "x-chunk-index"));
+    const total = Number(header(req, "x-chunk-total"));
+    const totalBytes = Number(header(req, "x-artifact-bytes"));
+    const rule = artifactRule(kind, index);
+    if (!isWorkerId(workerId) || !isLeaseId(leaseId) || !/^[a-f0-9]{64}$/.test(expectedSha)) throw new RenderWorkerBridgeError(400, "Artifact request headers are invalid.");
+    if (!Number.isSafeInteger(total) || total < 1 || total > 200 || !Number.isSafeInteger(part) || part < 0 || part >= total) throw new RenderWorkerBridgeError(400, "Chunk headers are invalid.");
+    if (!Number.isSafeInteger(totalBytes) || totalBytes <= 0 || totalBytes > rule.maxBytes || totalBytes > total * CHUNK_BYTES) throw new RenderWorkerBridgeError(413, "Artifact exceeds its size limit.");
+    if (header(req, "content-type").split(";", 1)[0].trim().toLowerCase() !== "application/octet-stream") throw new RenderWorkerBridgeError(415, "Chunk media type must be application/octet-stream.");
+    await leased(jobId, workerId, leaseId);
+    const dir = path.join(os.tmpdir(), "elevay-render-chunks", `${jobId.replace(/[^A-Za-z0-9_-]/g, "")}-${kind}-${index || "0"}-${expectedSha.slice(0, 16)}`);
+    await fsp.mkdir(dir, { recursive: true });
+    const partFile = path.join(dir, `part-${String(part).padStart(4, "0")}`);
+    let bytes = 0;
+    await pipeline(req, new Transform({ transform(chunk, _encoding, callback) {
+      bytes += chunk.length;
+      callback(bytes > CHUNK_BYTES ? new RenderWorkerBridgeError(413, "Chunk exceeds its size limit.") : null, chunk);
+    } }), fs.createWriteStream(partFile + ".tmp"));
+    if (bytes <= 0) throw new RenderWorkerBridgeError(400, "Chunk is empty.");
+    await fsp.rename(partFile + ".tmp", partFile);
+    const present = (await fsp.readdir(dir)).filter((n) => /^part-\d{4}$/.test(n)).sort();
+    if (present.length < total) return { ok: true, received: part, remaining: total - present.length };
+    const uploadKey = `${jobId}:${kind}:${index || ""}:assemble`;
+    if (activeUploads.has(uploadKey)) return { ok: true, received: part, remaining: 0, assembling: true };
+    activeUploads.add(uploadKey);
+    const file = path.join(dir, `artifact.${rule.extension}`);
+    try {
+      await fsp.writeFile(file, Buffer.alloc(0));
+      for (let k = 0; k < total; k++) await fsp.appendFile(file, await fsp.readFile(path.join(dir, `part-${String(k).padStart(4, "0")}`)));
+      const size = (await fsp.stat(file)).size;
+      if (size !== totalBytes) throw new RenderWorkerBridgeError(400, "Assembled artifact size does not match the declared size.");
+      const sha256 = await sha256File(file);
+      if (!timingSafeEqual(sha256, expectedSha)) throw new RenderWorkerBridgeError(400, "Artifact SHA-256 does not match the declared value.");
+      await verifyArtifactSignature(file, rule.type);
+      const suffix = kind === "qc" ? `qc-${rule.index}` : kind;
+      const key = `marketing/command-center/render-worker/${jobId}/${sha256.slice(0, 24)}-${suffix}.${rule.extension}`;
+      const stored = await putFile(key, file, rule.type);
+      return await commitArtifact(jobId, workerId, leaseId, { kind, index: rule.index, url: stored.url, sha256, bytes: size, mime: rule.type });
+    } finally {
+      activeUploads.delete(uploadKey);
+      await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  return { authenticate, ensure, lease, renew, progress, commitArtifact, complete, fail, status, checkOfflineWaiting, uploadRequest, chunkRequest };
 }
 
 let uploadBridgePromise: Promise<any> | null = null;
@@ -594,6 +653,19 @@ async function uploadBridge() {
 
 /** Must be registered before express.json() so an MP4 is never buffered by the website process. */
 export function registerRenderWorkerUploadRoute(app: any) {
+  app.post("/admin/api/render-worker/jobs/:jobId/artifacts/:kind/chunks", async (req: any, res: any) => {
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const bridge = await uploadBridge();
+      if (!bridge.authenticate(header(req, "authorization"))) return res.status(401).json({ ok: false, error: "Worker token missing or invalid." });
+      const result = await bridge.chunkRequest(req, { jobId: String(req.params.jobId || ""), kind: String(req.params.kind || "") });
+      return res.status(200).json(result);
+    } catch (error) {
+      const status = error instanceof RenderWorkerBridgeError ? error.status : 500;
+      const message = error instanceof RenderWorkerBridgeError ? error.message : "Artifact chunk upload failed.";
+      return res.status(status).json({ ok: false, error: message });
+    }
+  });
   app.post("/admin/api/render-worker/jobs/:jobId/artifacts/:kind", async (req: any, res: any) => {
     res.setHeader("Cache-Control", "no-store");
     try {

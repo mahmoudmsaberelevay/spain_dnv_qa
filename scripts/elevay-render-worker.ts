@@ -105,9 +105,54 @@ async function jsonRequest(method: string, pathname: string, body?: unknown) {
   if (!response.ok) throw Object.assign(new Error(cleanError(data?.error || `Bridge HTTP ${response.status}`)), { status: response.status });
   return data;
 }
+/** Renderer v10: the website's hosting proxy refuses big request bodies (HTTP 413), so big files go in 8 MB parts. */
+const CHUNK_BYTES = 8 * 1024 * 1024;
+async function uploadArtifactInChunks(jobId: string, leaseId: string, kind: string, file: string, sha256: string, bytes: number, index?: number) {
+  const total = Math.ceil(bytes / CHUNK_BYTES);
+  const handle = await fsp.open(file, "r");
+  try {
+    let last: any = null;
+    for (let part = 0; part < total; part++) {
+      const size = Math.min(CHUNK_BYTES, bytes - part * CHUNK_BYTES);
+      const buf = Buffer.alloc(size);
+      await handle.read(buf, 0, size, part * CHUNK_BYTES);
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const response = await fetch(`${baseUrl}/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(kind)}/chunks`, {
+            method: "POST",
+            headers: headers({
+              "Content-Type": "application/octet-stream",
+              "Content-Length": String(size),
+              "X-Render-Worker-Lease": leaseId,
+              "X-Artifact-Sha256": sha256,
+              "X-Artifact-Bytes": String(bytes),
+              "X-Chunk-Index": String(part),
+              "X-Chunk-Total": String(total),
+              ...(index ? { "X-Artifact-Index": String(index) } : {}),
+            }),
+            body: buf,
+            signal: AbortSignal.timeout(5 * 60_000),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data?.ok) throw Object.assign(new Error(cleanError(data?.error || `Artifact chunk ${part + 1}/${total} upload failed (${response.status})`)), { status: response.status });
+          last = data;
+          break;
+        } catch (error: any) {
+          if (attempt >= 3 || [400, 401, 403, 409, 415].includes(Number(error?.status))) throw error;
+          await new Promise((r) => setTimeout(r, 3000 * attempt));
+        }
+      }
+    }
+    if (!last?.artifact) throw new Error("The website did not confirm the assembled artifact.");
+    return last.artifact;
+  } finally {
+    await handle.close();
+  }
+}
 async function uploadArtifact(jobId: string, leaseId: string, kind: string, file: string, mime: string, index?: number) {
   const sha256 = await shaFile(file);
   const bytes = Number((await fsp.stat(file)).size);
+  if (bytes > CHUNK_BYTES) return uploadArtifactInChunks(jobId, leaseId, kind, file, sha256, bytes, index);
   const response = await fetch(`${baseUrl}/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(kind)}`, {
     method: "POST",
     headers: headers({
@@ -122,6 +167,7 @@ async function uploadArtifact(jobId: string, leaseId: string, kind: string, file
     signal: AbortSignal.timeout(10 * 60_000),
   } as any);
   const data = await response.json().catch(() => ({}));
+  if (response.status === 413) return uploadArtifactInChunks(jobId, leaseId, kind, file, sha256, bytes, index);
   if (!response.ok || !data?.ok) throw Object.assign(new Error(cleanError(data?.error || `Artifact upload failed (${response.status})`)), { status: response.status });
   return data.artifact;
 }
