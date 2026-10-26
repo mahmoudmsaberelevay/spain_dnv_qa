@@ -113,6 +113,20 @@ function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = n
   return { o, q, state, calls, finishClips: () => { clipsDone = true; }, setClipsDone: (value) => { clipsDone = value; }, failRequest: (id) => { failedRequestId = id; }, completeRender };
 }
 
+/** Answers every pending AI-council review job the way Manus would, then lets the run continue until it settles. */
+const MANUS_REVIEW = { score_1_10: 8, assessment: "Solid draft.", agree_with_openai: ["Stronger hook"], disagree_with_openai: [], suggestions: ["Lead with the family benefit"] };
+async function throughCouncil(ctx, o, id, review = MANUS_REVIEW) {
+  let r = await settle(o, id);
+  for (let i = 0; i < 60 && !["done", "failed", "needs_review"].includes(r.status); i++) {
+    for (const j of ctx.state.jobs) if (j.payload?.purpose === "council_review" && j.status === "pending") { j.status = "done"; j.result = { message: "```json\n" + JSON.stringify(review) + "\n```" }; }
+    await o.tick();
+    r = await settle(o, id);
+    if (r.status === "waiting" && !ctx.state.jobs.some((j) => j.payload?.purpose === "council_review" && j.status === "pending")) break;
+  }
+  return r;
+}
+const OPENAI_REVIEW = { score_1_10: 7, assessment: "Good, could be sharper.", issues: ["Hook is soft"], suggestions: ["Stronger hook"] };
+
 const settle = async (o, id, busy = ["running", "queued"]) => {
   for (let i = 0; i < 300; i++) {
     const r = await o.get(id);
@@ -509,13 +523,22 @@ describe("owner rule: one week content file from OpenAI", () => {
     : { index: i + 1, type, topic: `Static ${i + 1}`, pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, headline_en: "Plan your next chapter", image_prompt: "Arab family in Lisbon, elegant clothing and shoes, no text, no logo, no passports, no flags, no contact details", format: "1080x1350" }) };
 
   it("sends Claude's week plan to OpenAI once and hands each post its own part", async () => {
-    const ctx = setup([WEEK_PLAN, WEEK_FILE]);
+    const FINAL = { final: { rationale: "Council mix", posts: WEEK_PLAN.posts }, decision_log: [{ suggestion: "Stronger hook", from: "openai", adopted: true, why: "Better reach" }], summary: "Hooks sharpened." };
+    const ctx = setup([WEEK_PLAN, OPENAI_REVIEW, FINAL, WEEK_FILE]);
     const run = await ctx.o.create({ kind: "weekly_plan", request: "Plan the week", options: { week: "2026-W45" }, user: owner });
-    const r = await settle(ctx.o, run.id);
-    expect(r.steps.map((x) => x.action)).toEqual(["weekly_plan", "week_content", "spawn_week"]);
-    expect(ctx.calls.openaiText).toHaveLength(1);
-    expect(ctx.calls.openaiText[0].prompt).toMatch(/Idea 1/);
-    expect(ctx.calls.openaiText[0].prompt).toMatch(/cover 20 seconds/);
+    const first = await settle(ctx.o, run.id);
+    expect(first.status).toBe("waiting"); // owner rule: always wait for Manus's council review
+    const r = await throughCouncil(ctx, ctx.o, run.id);
+    expect(r.steps.map((x) => x.action)).toEqual(["weekly_plan", "council_openai", "council_manus", "council_final", "week_content", "spawn_week"]);
+    expect(r.artifacts.council.week_plan).toMatchObject({ final_used: "council", openai: { suggestions: ["Stronger hook"] }, manus: { suggestions: ["Lead with the family benefit"] } });
+    expect(r.artifacts.week_plan.rationale).toBe("Council mix");
+    const finalPrompt = ctx.calls.claude.find((c) => /You lead ELEVAY's AI council/.test(c.prompt)).prompt;
+    expect(finalPrompt).toMatch(/Hook is soft/);
+    expect(finalPrompt).toMatch(/Lead with the family benefit/);
+    expect(ctx.calls.openaiText).toHaveLength(2);
+    expect(ctx.calls.openaiText[0].prompt).toMatch(/AI council/);
+    expect(ctx.calls.openaiText[1].prompt).toMatch(/Idea 1/);
+    expect(ctx.calls.openaiText[1].prompt).toMatch(/cover 20 seconds/);
     expect(r.artifacts.week_content.missing).toEqual([]);
     const children = await Promise.all(r.artifacts.children.map((id) => ctx.o.get(id)));
     expect(children[1].options.prewritten.scenes.map((x) => x.spoken_text_ar)).toEqual(sceneScripts);
@@ -523,7 +546,7 @@ describe("owner rule: one week content file from OpenAI", () => {
     let reel;
     for (let i = 0; i < 200; i++) { reel = await ctx.o.get(r.artifacts.children[1]); if (reel.artifacts?.brief?.reel) break; await ctx.o.tick(); await new Promise((res) => setTimeout(res, 3)); }
     expect(reel.artifacts.brief.reel.storyboard.map((x) => x.spoken_text_ar)).toEqual(sceneScripts);
-    expect(ctx.calls.openaiText).toHaveLength(1); // no separate storyboard request per reel
+    expect(ctx.calls.openaiText).toHaveLength(2); // council review + one week file; no separate storyboard request per reel
   });
 });
 
@@ -535,9 +558,10 @@ describe("owner rule: Manus writes the week file when OpenAI cannot", () => {
     : { index: i + 1, type, topic: "S", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, headline_en: "Plan your next chapter", image_prompt: "Arab family, elegant clothing and shoes, no text, no logo" }) };
 
   it("asks Manus with the same instructions, waits, then starts production from Manus's file", async () => {
-    const ctx = setup([WEEK_PLAN, { posts: [] }]);
+    const ctx = setup([WEEK_PLAN, OPENAI_REVIEW, { final: { posts: [] } }, { posts: [] }]); // invalid council final → draft kept
     const run = await ctx.o.create({ kind: "weekly_plan", request: "Plan", options: { week: "2026-W45" }, user: owner });
-    let r = await settle(ctx.o, run.id);
+    let r = await throughCouncil(ctx, ctx.o, run.id);
+    expect(r.artifacts.council.week_plan.final_used).toBe("draft");
     expect(r.status).toBe("waiting");
     expect(r.artifacts.children || []).toHaveLength(0);
     const job = ctx.state.jobs.find((j) => j.id === r.artifacts.week_manus.job);
@@ -578,14 +602,59 @@ describe("owner rule: weekly ads review", () => {
       adsSnapshot: async () => ({ mtd: 117000, dailyTotal: 3000, campaigns: [], adsets: [], cpl: {} }),
       enqueue: async (a, by) => { queued.push({ ...a, by }); return { id: queued.length, status: "pending", preview: a.preview }; },
     };
-    const o = createOrchestrator({ q: ctx.q, mutate: async (_c, fn) => fn(ctx.state), loadState: async () => ({ state: ctx.state }), liveReport: async () => ({}), providers: { claude: async ({ prompt }) => { ctx.calls.claude.push({ prompt }); return { data: REVIEW, text: "" }; } }, E, R, meta });
+    const FINAL = { final: { summary: REVIEW.summary, actions: REVIEW.actions }, decision_log: [], summary: "Kept the pause." };
+    const o = createOrchestrator({ q: ctx.q, mutate: async (_c, fn) => fn(ctx.state), loadState: async () => ({ state: ctx.state }), liveReport: async () => ({}), providers: { claude: async ({ prompt }) => { ctx.calls.claude.push({ prompt }); const data = /AI council/.test(prompt) ? FINAL : REVIEW; return { data, text: "" }; } }, E, R, meta });
     const run = await o.startAdsReview({ email: "autopilot", role: "owner" });
-    const r = await settle(o, run.id);
+    const r = await throughCouncil(ctx, o, run.id);
     expect(r.status).toBe("done");
-    expect(ctx.calls.claude.at(-1).prompt).toMatch(/cost per QUALIFIED lead/);
-    expect(ctx.calls.claude.at(-1).prompt).toMatch(/Spain DNV/);
+    expect(r.artifacts.council.ads.openai.assessment).toMatch(/unavailable/); // OpenAI not configured here: Manus and Claude continue
+    expect(ctx.calls.claude[0].prompt).toMatch(/cost per QUALIFIED lead/);
+    expect(ctx.calls.claude[0].prompt).toMatch(/Spain DNV/);
+    expect(ctx.calls.claude.at(-1).prompt).toMatch(/Lead with the family benefit/);
     expect(queued).toHaveLength(1);
     expect(queued[0]).toMatchObject({ kind: "campaign_status", status_to: "PAUSED", source: "weekly_ads_review", evidence: { d30: { cpl: 449 } } });
+  });
+});
+
+describe("owner rule: AI council (Claude ⇄ OpenAI ⇄ Manus)", () => {
+  it("selects the week's news only after OpenAI and Manus review Claude's shortlist", async () => {
+    const SHORT = () => ({ selected: [{ id: ctxNews().find((n) => /Portugal/.test(n.headline)).id, why: "Threshold changed", angle: "What it means for families" }] });
+    let greeceId = "";
+    const FINAL = () => { return { final: { selected: [{ id: greeceId, why: "Manus: bigger impact", angle: "Plan early" }] }, decision_log: [{ suggestion: "Use the Greece item", from: "manus", adopted: true, why: "Larger audience" }], summary: "Switched to Greece." }; };
+    const ctx = setup([SHORT, OPENAI_REVIEW, FINAL]);
+    const ctxNews = () => ctx.state.news;
+    E.addNews(ctx.state, [
+      { headline: "Portugal D7 income update", country: "Portugal", program: "Portugal D7", what_changed: "Income threshold updated", source_url: "https://a.example/1", source_name: "A", confidence: "verified", published_date: "2026-10-20", effective_date: "2026-11-01" },
+      { headline: "Greece Golden Visa zones", country: "Greece", program: "Greece Golden Visa", what_changed: "Zones revised", source_url: "https://a.example/2", source_name: "A", confidence: "verified", published_date: "2026-10-21", effective_date: "2026-12-01" },
+    ], "claude");
+    greeceId = ctx.state.news.find((n) => /Greece/.test(n.headline)).id;
+    const run = await ctx.o.startNewsCouncil();
+    const r = await throughCouncil(ctx, ctx.o, run.id);
+    expect(r.status).toBe("done");
+    expect(r.steps.map((x) => x.action)).toEqual(["news_shortlist", "council_openai", "council_manus", "council_final"]);
+    const greece = ctx.state.news.find((n) => /Greece/.test(n.headline)), portugal = ctx.state.news.find((n) => /Portugal/.test(n.headline));
+    expect(greece).toMatchObject({ selected: true, selected_by: "ai-council", why_selected: "Manus: bigger impact" });
+    expect(portugal.selected).toBe(false);
+    const job = ctx.state.jobs.find((j) => j.payload?.purpose === "council_review");
+    expect(job.payload.request).toMatch(/OpenAI's review/);
+    expect(job.payload.request).toMatch(/Do not publish anything/);
+  });
+
+  it("finalizes the monthly plan after both reviews and keeps Claude's draft when the final is unusable", async () => {
+    const live = { };
+    const DRAFT = { title: "November plan", body: "Draft body", budget_changes: [] };
+    const ctx = setup([DRAFT, OPENAI_REVIEW, { final: { title: "November plan v2", body: "Council body", budget_changes: [{ campaign: "Spain DNV", change: "-20%", reason: "High CPL" }] }, decision_log: [], summary: "Tighter budget." }]);
+    const run = await ctx.o.create({ kind: "plan", request: "", options: {}, user: owner });
+    const r = await throughCouncil(ctx, ctx.o, run.id);
+    expect(r.status).toBe("done");
+    expect(r.artifacts.plan).toMatchObject({ title: "November plan v2", body: "Council body" });
+    expect(ctx.state.plans.at(-1)?.title || ctx.state.plans[0]?.title).toMatch(/v2/);
+
+    const ctx2 = setup([DRAFT, OPENAI_REVIEW, { final: { title: "" } }]);
+    const run2 = await ctx2.o.create({ kind: "plan", request: "", options: {}, user: owner });
+    const r2 = await throughCouncil(ctx2, ctx2.o, run2.id);
+    expect(r2.artifacts.plan.title).toBe("November plan");
+    expect(r2.artifacts.council.monthly_plan.final_used).toBe("draft");
   });
 });
 
