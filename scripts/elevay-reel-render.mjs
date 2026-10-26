@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 /** Bumped whenever renderer output changes. Version 4 adds the 20-second / four 5-second narration timeline. */
-export const RENDERER_VERSION = 9;
+export const RENDERER_VERSION = 10; // v10: chunked artifact uploads (no more HTTP 413 from the hosting proxy)
 const THREADS = 1;
 const FFMPEG = process.env.ELEVAY_FFMPEG_BIN || '/usr/bin/ffmpeg';
 const FFPROBE = process.env.ELEVAY_FFPROBE_BIN || '/usr/bin/ffprobe';
