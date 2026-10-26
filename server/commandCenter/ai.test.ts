@@ -228,6 +228,9 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.openaiText[0].prompt).toMatch(/Egyptian Arabic voice-over/);
     expect(ctx.calls.openaiText[0].prompt).toMatch(/cover 20 seconds/);
     expect(ctx.calls.openaiText[0].prompt).toMatch(/direct spoken consultation call to action/);
+    expect(ctx.calls.openaiText[0].prompt).toMatch(/OWNER VOICE-OVER REQUIREMENTS/);
+    expect(ctx.calls.openaiText[0].prompt).toMatch(/smart, ethical selling technique/);
+    expect(ctx.calls.openaiText[0].prompt).toMatch(/amazing hook/);
     expect(ctx.calls.claude).toHaveLength(2); // keyframe check before Higgsfield + sole final QC
     expect(ctx.calls.keyframeQc).toBe(1);
     expect(ctx.calls.claude.at(-1).prompt).toMatch(/ALL supplied visual evidence/);
