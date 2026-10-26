@@ -243,7 +243,28 @@ Idea: [the reel's idea/objective from the weekly plan]`;
 
 function voicePromptTemplate(value: unknown) {
   const template = String(value || ELEVAY_VOICE_OVER_PROMPT_DEFAULT).trim();
-  return template.includes("[the reel's idea/objective from the weekly plan]") ? template : ELEVAY_VOICE_OVER_PROMPT_DEFAULT;
+  return template.includes("[the reel's idea/objective from the weekly plan]") || /\[Insert[^\]]*idea[^\]]*\]/i.test(template) ? template : ELEVAY_VOICE_OVER_PROMPT_DEFAULT;
+}
+
+const COUNTRY_OF_CONTENT: Array<[RegExp, string]> = [
+  [/spain|إسبانيا|اسبانيا/i, "Spain"], [/portugal|البرتغال/i, "Portugal"], [/greece|اليونان/i, "Greece"], [/malta|مالطا/i, "Malta"],
+  [/\buk\b|united kingdom|britain|المملكة المتحدة|بريطانيا/i, "United Kingdom"], [/canada|كندا/i, "Canada"], [/australia|أستراليا|استراليا/i, "Australia"],
+  [/\b(usa|united states|america)\b|أمريكا|الولايات المتحدة/i, "USA"],
+  [/antigua|dominica|grenada|st\.? lucia|saint lucia|st\.? kitts|saint kitts|vanuatu|caribbean|الكاريبي/i, "the Caribbean"],
+];
+/**
+ * Fills every placeholder in the owner's Voice-Over Prompt (Settings): the reel's idea, the target country and the
+ * approved service details. Any other "[Insert …]" placeholder is removed so OpenAI never receives an unfilled field.
+ */
+export function fillVoicePrompt(template: string, { idea, program = "", facts = "" }: { idea: string; program?: string; facts?: string }) {
+  const hay = `${program} ${idea}`;
+  const country = COUNTRY_OF_CONTENT.find(([re]) => re.test(program))?.[1] || COUNTRY_OF_CONTENT.find(([re]) => re.test(hay))?.[1] || "the country named in the idea";
+  return template
+    .split("[the reel's idea/objective from the weekly plan]").join(idea)
+    .replace(/\[Insert[^\]]*idea[^\]]*\]/gi, () => idea)
+    .replace(/\[Insert[^\]]*country[^\]]*\]/gi, () => country)
+    .replace(/\[Insert[^\]]*(?:service|detail|price|benefit)[^\]]*\]/gi, () => facts || "Use only approved ELEVAY facts; if none are confirmed, state no figures and invite a consultation.")
+    .replace(/\[Insert[^\]]*\]/gi, "(not specified)");
 }
 
 /** Reads Manus's reply to a voice-over rewrite job: {"scenes":[4 lines]} (object or JSON text) or 4 plain lines. */
@@ -987,7 +1008,9 @@ export function createOrchestrator(deps) {
     const { state } = await deps.loadState();
     const template = voicePromptTemplate(state.settings?.voiceOverPrompt);
     run.artifacts.voice_over_prompt = template;
-    return template.replace("[the reel's idea/objective from the weekly plan]", String(idea || run.request || "ELEVAY reel objective").trim());
+    const program = String(run.options?.program || "");
+    const ideaText = String(idea || run.request || "ELEVAY reel objective").trim();
+    return fillVoicePrompt(template, { idea: ideaText, program, facts: clip(programFactsFor(`${ideaText} ${program}`), 2500) });
   }
 
   function currentNarrationTiming(brief: any) {
