@@ -21,6 +21,7 @@
 import { ELEVAY_LOCKED_VOICE_POLICY as ELEVAY_ARABIC_VOICE_DEFAULTS } from "../../shared/elevayVoicePolicy";
 import { ELEVAY_REEL_NARRATION_STANDARD, validateElevay20SecondReelNarration, rebalanceElevay20SecondNarration } from "../../shared/elevayReelNarrationPolicy";
 import crypto from "crypto";
+import RULES from "./rules";
 import { ELEVAY_AGENTIC_DESIGN_STANDARD } from "@shared/elevayAgenticDesignStandard";
 import { spawn } from "child_process";
 import fsp from "fs/promises";
@@ -72,7 +73,8 @@ const OWNER_VOICE_REQUIREMENTS = `OWNER VOICE-OVER REQUIREMENTS (all must be met
 3. Tell a short, catchy story: open with an amazing hook in the first seconds that grabs attention and makes the viewer watch to the end (a sharp question, a relatable moment or a bold truthful promise — never fear, fake urgency or a guarantee), then build to a satisfying payoff.
 4. Informative, friendly and slightly formal: warm and respectful like a trusted senior advisor speaking Egyptian Arabic — useful facts in plain words, no slang that cheapens the brand, no formal MSA.
 5. Cover all four clips, about 5 seconds each: four spoken lines of 10–14 words, 45–55 words in total, one continuous story across the four lines.
-6. Use a smart, ethical selling technique so viewers want to know more and talk to us: e.g. hook → the dream or the problem they feel → how Elevay makes the path clear and personal → an irresistible, direct invitation to book a consultation (curiosity, clear value, credibility; never pressure, false scarcity or promises of approval).`;
+6. Use a smart, ethical selling technique so viewers want to know more and talk to us: e.g. hook → the dream or the problem they feel → how Elevay makes the path clear and personal → an irresistible, direct invitation to book a consultation (curiosity, clear value, credibility; never pressure, false scarcity or promises of approval).
+7. Money amounts in the country's currency: USA, Canada, Australia → دولار أمريكي; United Kingdom → جنيه إسترليني (or باوند), never a bare جنيه; EU countries → يورو.`;
 
 /** Owner rule (26 Oct 2026): top-of-market media production quality for every static and reel. */
 const CINEMATIC_LOOK = "Look and craft: top-tier commercial production, as if shot by a high-end advertising crew on an ARRI Alexa with prime lenses (35–85 mm), shallow depth of field, natural cinematic lighting (golden hour or soft window light with gentle rim light), rich but natural colour grade (warm highlights, deep navy-teal shadows, true skin tones, no oversaturation), crisp focus on faces and hands, realistic textures, premium real locations, balanced editorial composition with clear foreground, subject and background depth. Photorealistic, ultra-detailed, magazine-cover quality. No AI artefacts, no plastic skin, no warped hands or faces, no distorted architecture.";
@@ -87,7 +89,7 @@ Tone: professional, premium, trustworthy, educational, warm. Never exaggerate, n
 Hard rules:
 - Never use the word "تأشيرة" or "فيزا" or "Visa"; always say "إقامة" / "Residency" (official program names may be quoted).
 - Never guarantee approval, timelines or outcomes. No legal or tax advice; recommend a consultation.
-- Currency (owner rule): for Spain, Portugal, Greece, Malta and every other European country, write all money amounts in euros (€ / EUR / يورو), never US dollars. If an approved source gives a European amount only in dollars, do not state that amount; invite a consultation instead.
+- Currency (owner rule), above all in the voice-over text: the currency follows the content's country. USA, Canada and Australia → US dollars (in the Egyptian voice-over say "دولار أمريكي" / "دولار"; never Canadian or Australian dollars). United Kingdom → pounds sterling (say "جنيه إسترليني" or "باوند", never a bare "جنيه", which Egyptians hear as Egyptian pounds). EU member countries (Spain, Portugal, Greece, Malta, Cyprus, Italy…) → euros ("يورو"). If an approved source gives the amount in another currency, do not convert it yourself and do not state it; invite a consultation instead.
 - Captions: Modern Standard Arabic, 100–150 words, first line is a short hook (≤ 12 words), end with a call to action (تواصل مع ELEVAY / احجز استشارة), include a disclaimer such as "تخضع جميع الطلبات لموافقة الجهات المختصة وتختلف حسب الظروف الفردية".
 - No phone numbers, emails, WhatsApp, URLs or QR codes in captions, images or videos.
 - Text inside images is English only. People shown are Arab / Middle Eastern in modern clothing that fits the scene: casual, smart-casual or formal are all fine (casual is welcome, not everyone needs to be formal), always neat, tasteful and complete head to toe with matching footwear. Never show passports, flags as hero objects, or an AI-drawn logo (the official logo is added afterwards).
@@ -255,12 +257,13 @@ export function parseManusVoiceoverLines(raw: unknown): string[] | null {
   return lines.length === 4 ? lines : null;
 }
 
-function lockedVoiceTextIssue(value: unknown) {
+function lockedVoiceTextIssue(value: unknown, context = "") {
   const text = String(value || "").trim();
   if (!text) return "Voice-over text is missing.";
   if (/(?:إسبانيا|اسبانيا|مالطا|البرتغال|اليونان|كندا|غرينادا|جرينادا|دومينيكا|سانت لوسيا|سانت كيتس|أنتيغوا|بربودا|المملكة المتحدة|بريطانيا)/.test(text)) return "Country names must be written in English only.";
   if (/(?:إيليفاي|إليفاي|اليفاي|\bELEVAY\b)/.test(text)) return 'The company name must be written exactly as "Elevay".';
-  if (/دولار|\$\s?\d|\d\s?\$|\bUSD\b/i.test(text) && /\b(Spain|Portugal|Greece|Malta|Italy|France|Germany|Cyprus|Europe)\b|أوروبا|اوروبا|أوروبي|اوروبي|شينغن/.test(text)) return "European amounts must be in euros (يورو), never dollars.";
+  const money = RULES.currencyIssue(text, context);
+  if (money) return money;
   if (/(?:^|[\s،.!؟])(?:هل|سوف|إنه|إنها|يمكنك|يمكن أن|من دون)(?=[\s،.!؟]|$)/.test(text)) return "Voice-over text must use Egyptian Arabic, not Modern Standard Arabic.";
   return null;
 }
@@ -901,6 +904,7 @@ export function createOrchestrator(deps) {
         if (pre) log(run, "studio", "openai", "Using this reel's part of the week content file (no separate OpenAI storyboard request).");
         const r = fromManus ? { data: JSON.parse(JSON.stringify(A.storyboard_draft)) } : pre ? { data: JSON.parse(JSON.stringify(pre)) } : await askOpenAi(run, step, `${voicePrompt}\n\n${programFactsFor(run.request + " " + (opts.program || ""))}\n\nWrite one ELEVAY reel for this request:\n\"\"\"${run.request}\"\"\"\n${opts.program ? "Program: " + opts.program + "\n" : ""}Every sentence must be written fully in Egyptian colloquial Arabic — Egyptian wording, grammar and pronunciation, never Modern Standard Arabic words or grammar. The four spoken_text_ar values are recorded separately for timing, but together they MUST read as one complete, connected Egyptian Arabic voice-over narration—not numbered points, disconnected bullets or four standalone statements. Keep the complete narration within 45–55 Egyptian Arabic spoken words and split it into four approximately 5-second scene takes.\n\n${VOICE_CRAFT}\n${OWNER_VOICE_REQUIREMENTS}\n${CAPTION_CRAFT}\n\nNarrative communication structure: Scene 1 is a striking, cinematic but truthful dramatic hook about a real ambition, decision or uncertainty—never fake urgency, fear, clickbait or a guarantee. Scenes 2–3 clearly explain one valuable advisory message and why Elevay helps. Scene 4 finishes with a direct spoken consultation call to action such as \"احجز استشارتك مع Elevay دلوقتي\" or \"تواصل مع Elevay واحجز استشارتك\".\n\nReturn JSON:\n{"topic": "...", "pillar": "...", "program": "...", "caption_ar": "MSA caption following every rule", "music_direction": "royalty-free mood", "final_edit_direction": "one concise editing direction for the external renderer: pacing, clean scene joins, voice through the first 20 seconds only, and a silent white-logo outro; never request text or logo changes", "scenes": [4 scenes in order dramatic hook → clear message → trust/proof → direct consultation CTA, each {"keyframe_prompt": "Detailed English 9:16 photo description of the first frame: setting, Arab/Middle Eastern people in modern casual, smart-casual or formal clothing as fits the scene (casual is fine) incl. footwear, light. No text, no logo, no passports, no flags.", "motion_prompt": "one-line English summary of the camera and subject motion for 5 seconds", ${SHOT_SCHEMA}, "spoken_text_ar": "natural Egyptian Arabic continuation; only country names and Elevay in English letters, everything else in Arabic; write شينغن rather than Schengen"}]}`, { maxTokens: 5000 });
         const scenes = (r.data.scenes || []).slice(0, 4);
+        const voiceContext = [run.request, opts.program, r.data.topic, r.data.program, r.data.caption_ar].filter(Boolean).join(" "); // which country → which currency
         if (fromManus) { scenes.forEach((sc, k) => { sc.spoken_text_ar = A.voiceover_manus.lines[k]; }); log(run, "studio", "manus", "Using Manus's rewritten Egyptian voice-over with the saved storyboard."); }
         if (scenes.length !== 4) throw new Error("OpenAI did not return 4 scenes.");
         // Each 5-second line is checked for formal/non-Egyptian words, English and spelling; the "sounds Egyptian"
@@ -908,7 +912,7 @@ export function createOrchestrator(deps) {
         let scriptReasons = [];
         const invalidScripts = async () => {
           const invalid = []; scriptReasons = [];
-          for (let i = 0; i < 4; i++) { try { const lockedIssue = lockedVoiceTextIssue(scenes[i].spoken_text_ar); if (lockedIssue) throw new Error(lockedIssue); if (!scenes[i].spoken_text_ar) throw new Error("Missing spoken line"); await providers.checkEgyptianScript(scenes[i].spoken_text_ar, { requireEgyptianMarker: false }); } catch (e) { invalid.push(i); scriptReasons.push(`scene ${i + 1}: ${String(e?.message || e)}`); } }
+          for (let i = 0; i < 4; i++) { try { const lockedIssue = lockedVoiceTextIssue(scenes[i].spoken_text_ar, voiceContext); if (lockedIssue) throw new Error(lockedIssue); if (!scenes[i].spoken_text_ar) throw new Error("Missing spoken line"); await providers.checkEgyptianScript(scenes[i].spoken_text_ar, { requireEgyptianMarker: false }); } catch (e) { invalid.push(i); scriptReasons.push(`scene ${i + 1}: ${String(e?.message || e)}`); } }
           if (!invalid.length) {
             try { await providers.checkEgyptianScript(scenes.map((s) => s.spoken_text_ar).join(" ")); }
             catch (e) { invalid.push(0, 1, 2, 3); scriptReasons.push(`whole voice-over: ${String(e?.message || e)} Use clear Egyptian colloquial words such as اللي، علشان، محتاج، دلوقتي، مش، إزاي، خلينا، معاك.`); }
@@ -953,7 +957,7 @@ export function createOrchestrator(deps) {
         if (narrationFormatError) throw new Error(`OpenAI could not produce the required 20-second dramatic hook and direct CTA narration after one correction: ${narrationFormatError} No media generation started.`);
         // The animation prompt sent to Higgsfield is the full shot sheet (owner rule 26 Oct 2026).
         for (const s of scenes) { if (s.shot || s.motion_prompt) { s.motion_summary = s.motion_summary || s.motion_prompt || ""; s.motion_prompt = cinematicShotPrompt(s); } }
-        for (const s of scenes) { if (!s.keyframe_prompt || !s.motion_prompt || !s.spoken_text_ar) throw new Error("Storyboard is incomplete; no generation started."); const issue = lockedVoiceTextIssue(s.spoken_text_ar); if (issue) throw new Error(`${issue} No media generation started.`); await providers.checkEgyptianScript(s.spoken_text_ar, { requireEgyptianMarker: false }); }
+        for (const s of scenes) { if (!s.keyframe_prompt || !s.motion_prompt || !s.spoken_text_ar) throw new Error("Storyboard is incomplete; no generation started."); const issue = lockedVoiceTextIssue(s.spoken_text_ar, voiceContext); if (issue) throw new Error(`${issue} No media generation started.`); await providers.checkEgyptianScript(s.spoken_text_ar, { requireEgyptianMarker: false }); }
         await providers.checkEgyptianScript(scenes.map((s) => s.spoken_text_ar).join(" "));
         A.brief = { type: "reel", topic: r.data.topic, pillar: r.data.pillar, program: r.data.program, caption_ar: r.data.caption_ar, disclaimer_used: "", talent: { mode: "voiceover_elevay_vip", voice_source: "elevay_vip_module", speech_language: "egyptian_arabic" }, reel: { storyboard: scenes.map((s, i) => ({ clip: i + 1, keyframe_prompt: s.keyframe_prompt, motion_prompt: s.motion_prompt, shot: s.shot && typeof s.shot === "object" ? s.shot : undefined, motion_summary: s.motion_summary || undefined, spoken_text_ar: s.spoken_text_ar, delivery_direction_en: "Warm, premium, friendly professional Egyptian Arabic delivery; build cinematic tension in the truthful hook and finish with a confident direct consultation CTA." })), music_direction: r.data.music_direction || "Soft cinematic, royalty-free", final_edit_direction: String(r.data.final_edit_direction || "Clean direct joins; place the four voice takes across the first 20 seconds and keep the 3-second white logo outro silent.").slice(0, 600), duration_s: 23, narration_target_seconds: ELEVAY_REEL_NARRATION_STANDARD.targetSeconds, narration_target_scene_seconds: ELEVAY_REEL_NARRATION_STANDARD.targetSceneSeconds }, publish: { channel: "both", datetime_cairo: opts.datetime_cairo || "" } };
         return;
@@ -1126,7 +1130,7 @@ export function createOrchestrator(deps) {
         await providers.checkEgyptianScript(sb.map((c) => c.spoken_text_ar).join(" ")); // whole script must be natural Egyptian Arabic
         const narrationError = validateElevay20SecondReelNarration(sb);
         if (narrationError) throw new Error(`The 20-second reel narration needs correction before speech generation: ${narrationError}`);
-        for (const scene of sb) { const issue = lockedVoiceTextIssue(scene?.spoken_text_ar); if (issue) throw new Error(`Voice-over template validation failed before speech generation: ${issue}`); }
+        for (const scene of sb) { const issue = lockedVoiceTextIssue(scene?.spoken_text_ar, [run.request, opts.program, A.brief?.topic, A.brief?.program, A.brief?.caption_ar].filter(Boolean).join(" ")); if (issue) throw new Error(`Voice-over template validation failed before speech generation: ${issue}`); }
         A.voices = A.voices || [];
         for (let i = 0; i < 4; i++) {
           if (A.voices[i]) {

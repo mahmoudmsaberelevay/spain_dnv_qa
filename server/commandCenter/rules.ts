@@ -87,8 +87,45 @@ Idea: [the reel's idea/objective from the weekly plan]`,
     { id: 'whole_concept', label: 'Whole concept', regenerates: 'Full brief and all media' },
   ];
 
-  const EUROPE_RE = /\b(spain|portugal|greece|malta|italy|france|germany|cyprus|europe|european|schengen|eu)\b|إسبانيا|اسبانيا|البرتغال|اليونان|مالطا|قبرص|أوروبا|اوروبا|أوروبي|اوروبي|شينغن|شنغن/i;
-  const DOLLAR_RE = /\$\s?\d|\d\s?\$|\busd\b|\bus\s?dollars?\b|\bdollars?\b|دولار/i;
+  // Owner rule (26 Oct 2026): the currency follows the content's country.
+  // USA, Canada, Australia → US dollars · United Kingdom → pounds sterling · EU member countries (and "Europe"/Schengen) → euros.
+  const CURRENCY_REGIONS = [
+    { id: 'usd', label: 'US dollars (USD / $ / دولار أمريكي)', re: /\b(usa|united states|america|american|canada|canadian|australia|australian|new york|toronto|sydney|melbourne|vancouver)\b|أمريكا|امريكا|الولايات المتحدة|كندا|أستراليا|استراليا|تورنتو|سيدني/i },
+    { id: 'gbp', label: 'pounds sterling (GBP / £ / جنيه إسترليني)', re: /\b(uk|united kingdom|britain|british|england|english|london|manchester|scotland)\b|المملكة المتحدة|بريطانيا|البريطاني|إنجلترا|انجلترا|لندن/i },
+    { id: 'eur', label: 'euros (EUR / € / يورو)', re: /\b(eu|europe|european|schengen|eurozone|spain|portugal|greece|malta|italy|france|germany|cyprus|ireland|netherlands|belgium|austria|luxembourg|finland|sweden|denmark|estonia|latvia|lithuania|poland|czechia|czech republic|slovakia|slovenia|croatia|hungary|romania|bulgaria|madrid|barcelona|lisbon|porto|athens|valletta|rome|paris|berlin|dublin)\b|إسبانيا|اسبانيا|البرتغال|اليونان|مالطا|قبرص|إيطاليا|ايطاليا|فرنسا|ألمانيا|المانيا|أيرلندا|ايرلندا|هولندا|بلجيكا|النمسا|أوروبا|اوروبا|أوروبي|اوروبي|الأوروبي|الاوروبي|شينغن|شنغن|لشبونة|مدريد|برشلونة|أثينا|اثينا|فاليتا/i },
+  ];
+  const CURRENCY_MENTIONS = {
+    usd_wrong: /\b(cad|aud)\b|c\$|a\$|canadian dollars?|australian dollars?|دولار(?:ات)? (?:كندي|استرالي|أسترالي)/i,
+    usd: /\$\s?\d|\d\s?\$|\busd\b|\bdollars?\b|دولار/i,
+    gbp: /£|\bgbp\b|\bsterling\b|\bpounds?\b|إسترليني|استرليني|باوند/i,
+    eur: /€|\beur\b|\beuros?\b|يورو/i,
+  };
+  // Currency names ("US dollars", "British pounds", "الدولار الأمريكي") must not count as a country of the content.
+  const CURRENCY_PHRASES_RE = /\b(?:us|american|canadian|australian)\s+dollars?\b|\bbritish\s+pounds?\b|\bpounds?\s+sterling\b|\beuropean\s+euros?\b|(?:ال)?دولار(?:ات)?\s+(?:ال)?(?:أمريكي|امريكي|الأمريكية|كندي|أسترالي|استرالي)|(?:ال)?جنيه\s+(?:ال)?(?:إسترليني|استرليني)|\b(?:usd|gbp|eur)\b/gi;
+  /**
+   * Returns null when every money amount uses the currency of a country in the content, otherwise a short reason.
+   * `text` is what will be said or shown; `context` adds topic/program so the country is known even when unnamed.
+   */
+  function currencyIssue(text, context) {
+    const said = String(text || '');
+    const mentions = {
+      usd: CURRENCY_MENTIONS.usd.test(said) && !CURRENCY_MENTIONS.usd_wrong.test(said.replace(/(?:ال)?دولار(?:ات)?\s+(?:ال)?(?:أمريكي|امريكي)/g, '')),
+      cadAud: CURRENCY_MENTIONS.usd_wrong.test(said),
+      gbp: CURRENCY_MENTIONS.gbp.test(said),
+      eur: CURRENCY_MENTIONS.eur.test(said),
+    };
+    if (!mentions.usd && !mentions.cadAud && !mentions.gbp && !mentions.eur) return null;
+    const where = (said + ' ' + String(context || '')).replace(CURRENCY_PHRASES_RE, ' ');
+    const regions = CURRENCY_REGIONS.filter((r) => r.re.test(where));
+    if (!regions.length) return null; // no USA/Canada/Australia, UK or EU country in the content (e.g. Caribbean): no rule applies
+    const allowed = new Set(regions.map((r) => r.id));
+    const need = regions.map((r) => r.label).join(' or ');
+    if (mentions.cadAud) return `Use US dollars for USA, Canada and Australia, never Canadian or Australian dollars (content needs ${need}).`;
+    if (mentions.usd && !allowed.has('usd')) return `US dollars are only for USA, Canada and Australia; this content needs ${need}.`;
+    if (mentions.gbp && !allowed.has('gbp')) return `Pounds sterling are only for the United Kingdom; this content needs ${need}.`;
+    if (mentions.eur && !allowed.has('eur')) return `Euros are only for EU member countries; this content needs ${need}.`;
+    return null;
+  }
   function countWords(text) {
     return (String(text || '').trim().match(/[^\s]+/gu) || []).length;
   }
@@ -183,13 +220,14 @@ Idea: [the reel's idea/objective from the weekly plan]`,
       add('term_' + r.id, r.label, !r.re.test(hay), r.severity);
     }
     for (const r of CONTACT_RULES) add('contact_' + r.id, r.label, !r.re.test(caption));
-    // Owner rule (25 Oct 2026): money for European countries/programmes is always in euros, never US dollars.
+    // Owner rule (26 Oct 2026): money uses the content country's currency — USD for USA/Canada/Australia,
+    // GBP for the UK, EUR for EU member countries — in the caption, headline and especially the voice-over.
     {
       const spoken = ((brief.reel && brief.reel.storyboard) || []).map((c) => c.spoken_text_ar || '').join(' ');
-      const all = [caption, spoken, brief.design?.headline_en || '', brief.topic || '', brief.program || ''].join(' ');
-      const europe = EUROPE_RE.test(all);
-      const dollars = DOLLAR_RE.test([caption, spoken, brief.design?.headline_en || ''].join(' '));
-      add('currency_eur', 'European programmes state money in euros (€ / EUR / يورو), never US dollars', !(europe && dollars));
+      const ctx = [brief.topic || '', brief.program || ''].join(' ');
+      const voiceProblem = currencyIssue(spoken, ctx + ' ' + caption);
+      const textProblem = currencyIssue([caption, brief.design?.headline_en || ''].join(' '), ctx);
+      add('currency_country', 'Money is in the country\'s currency: USD for USA/Canada/Australia, GBP (جنيه إسترليني) for the UK, EUR (يورو) for EU countries' + (voiceProblem ? ' — voice-over: ' + voiceProblem : textProblem ? ' — ' + textProblem : ''), !(voiceProblem || textProblem));
     }
 
     if (brief.type === 'static') {
@@ -321,7 +359,7 @@ Idea: [the reel's idea/objective from the weekly plan]`,
   return {
     affirmative, isSentenceCase, withFootwear, cleanMotion,
     DEFAULT_SETTINGS, TERM_RULES, CONTACT_RULES, DISCLAIMERS, PILLARS, PROGRAMS, STATUSES, CHANGE_SCOPES,
-    checkBrief, classifyChange, approvalStats, guardrails, countWords, hasArabic, weekOf,
+    checkBrief, classifyChange, approvalStats, guardrails, countWords, hasArabic, weekOf, currencyIssue,
   };
 });
 
