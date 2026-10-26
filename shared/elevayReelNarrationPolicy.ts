@@ -6,6 +6,12 @@ export const ELEVAY_REEL_NARRATION_STANDARD = Object.freeze({
   maxWordsPerScene: 14,
   minTotalWords: 45,
   maxTotalWords: 55,
+  // Writers aim for 45–55 words (10–14 per scene). Since the renderer adapts to any voice length (owner rule:
+  // proceed whatever the length), a few words over or under must not stop a reel: these are the accepted limits.
+  acceptMinWordsPerScene: 8,
+  acceptMaxWordsPerScene: 16,
+  acceptMinTotalWords: 40,
+  acceptMaxTotalWords: 62,
   hookScene: 1,
   ctaScene: 4,
 } as const);
@@ -38,14 +44,14 @@ export function validateElevay20SecondReelNarration(scenes: Array<{ spoken_text_
       return `Scene ${index + 1} narration must be continuous spoken text, never a numbered point or bullet.`;
     }
     const words = elevayNarrationWordCount(line);
-    if (words < ELEVAY_REEL_NARRATION_STANDARD.minWordsPerScene || words > ELEVAY_REEL_NARRATION_STANDARD.maxWordsPerScene) {
-      return `Scene ${index + 1} must contain ${ELEVAY_REEL_NARRATION_STANDARD.minWordsPerScene}–${ELEVAY_REEL_NARRATION_STANDARD.maxWordsPerScene} spoken words to fit its 5-second share of the 20-second voice-over.`;
+    if (words < ELEVAY_REEL_NARRATION_STANDARD.acceptMinWordsPerScene || words > ELEVAY_REEL_NARRATION_STANDARD.acceptMaxWordsPerScene) {
+      return `Scene ${index + 1} must contain ${ELEVAY_REEL_NARRATION_STANDARD.minWordsPerScene}–${ELEVAY_REEL_NARRATION_STANDARD.maxWordsPerScene} spoken words (${ELEVAY_REEL_NARRATION_STANDARD.acceptMinWordsPerScene}–${ELEVAY_REEL_NARRATION_STANDARD.acceptMaxWordsPerScene} accepted); it has ${words}, too far to fit its 5-second share of the 20-second voice-over.`;
     }
   }
 
   const totalWords = lines.reduce((total, line) => total + elevayNarrationWordCount(line), 0);
-  if (totalWords < ELEVAY_REEL_NARRATION_STANDARD.minTotalWords || totalWords > ELEVAY_REEL_NARRATION_STANDARD.maxTotalWords) {
-    return `The full reel narration must contain ${ELEVAY_REEL_NARRATION_STANDARD.minTotalWords}–${ELEVAY_REEL_NARRATION_STANDARD.maxTotalWords} words for the 20-second target; it has ${totalWords}.`;
+  if (totalWords < ELEVAY_REEL_NARRATION_STANDARD.acceptMinTotalWords || totalWords > ELEVAY_REEL_NARRATION_STANDARD.acceptMaxTotalWords) {
+    return `The full reel narration must contain ${ELEVAY_REEL_NARRATION_STANDARD.minTotalWords}–${ELEVAY_REEL_NARRATION_STANDARD.maxTotalWords} words for the 20-second target (${ELEVAY_REEL_NARRATION_STANDARD.acceptMinTotalWords}–${ELEVAY_REEL_NARRATION_STANDARD.acceptMaxTotalWords} accepted); it has ${totalWords}.`;
   }
 
   if (!/(?:تخيل|لو|قرار|حلم|حيرة|مستقبل|خطة|ليه|مش لازم|قبل ما)/.test(lines[0])) {
@@ -74,8 +80,10 @@ export function rebalanceElevay20SecondNarration(scenes: Array<{ spoken_text_ar?
   if (lines.some((l) => !l)) return false;
   const counts = lines.map(elevayNarrationWordCount);
   const total = counts.reduce((a, b) => a + b, 0);
-  if (total < S.minTotalWords || total > S.maxTotalWords) return false;
-  if (counts.every((c) => c >= S.minWordsPerScene && c <= S.maxWordsPerScene)) return false;
+  if (total < S.acceptMinTotalWords || total > S.acceptMaxTotalWords) return false;
+  if (counts.every((c) => c >= S.acceptMinWordsPerScene && c <= S.acceptMaxWordsPerScene)) return false;
+  const lo = total >= S.sceneCount * S.minWordsPerScene && total <= S.sceneCount * S.maxWordsPerScene ? S.minWordsPerScene : S.acceptMinWordsPerScene;
+  const hi = total >= S.sceneCount * S.minWordsPerScene && total <= S.sceneCount * S.maxWordsPerScene ? S.maxWordsPerScene : S.acceptMaxWordsPerScene;
   const words = lines.join(" ").split(/\s+/).filter(Boolean);
   const breaks: number[] = [];
   let start = 0;
@@ -85,8 +93,8 @@ export function rebalanceElevay20SecondNarration(scenes: Array<{ spoken_text_ar?
     let best = ideal, bestScore = Infinity;
     for (let k = ideal - 2; k <= ideal + 2; k++) {
       const size = k - start, rest = words.length - k;
-      if (size < S.minWordsPerScene || size > S.maxWordsPerScene) continue;
-      if (rest < left * S.minWordsPerScene || rest > left * S.maxWordsPerScene) continue;
+      if (size < lo || size > hi) continue;
+      if (rest < left * lo || rest > left * hi) continue;
       const score = Math.abs(k - ideal) + (/[.،,!؟?؛…]$/.test(words[k - 1]) ? 0 : 1.5);
       if (score < bestScore) { bestScore = score; best = k; }
     }
