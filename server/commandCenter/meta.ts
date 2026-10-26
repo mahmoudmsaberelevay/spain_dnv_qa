@@ -652,7 +652,66 @@ export function createMetaHub(deps) {
     return { released, skipped };
   }
 
+  /**
+   * Owner button "Override & publish now" (26 Oct 2026): approves the item (overriding QC and compliance flags,
+   * logged with the owner's reason), lifts the weekly-review and revision holds, moves its time to now and publishes
+   * it straight away on Facebook and Instagram through the same duplicate-safe publisher. Never re-sends a post whose
+   * previous outcome is unknown, and never re-publishes a channel that already has a post ID.
+   */
+  async function publishNow(itemId, actor, reason = "") {
+    const why = String(reason || "").trim() || "Owner override: publish now.";
+    let prep = null;
+    await deps.mutate({}, (st) => {
+      const item = st.items.find((x) => x.item_id === itemId);
+      if (!item) { prep = { ok: false, error: "Item not found." }; return { ok: true }; }
+      const d0 = item.publish?.direct || {};
+      if (item.status === "published" || (d0.done && !d0.manual_review && (d0.facebook || d0.instagram) && !d0.instagram_waiting)) { prep = { ok: false, error: "This post is already published." }; return { ok: true }; }
+      if (d0.manual_review) { prep = { ok: false, error: "The last publish attempt has an unknown outcome. Check the Facebook Page and Instagram first so nothing is posted twice." }; return { ok: true }; }
+      if (d0.lease?.until && Number(d0.lease.until) > Date.now()) { prep = { ok: false, error: "This post is being published right now." }; return { ok: true }; }
+      const m = item.media || {};
+      if (item.type === "reel" ? !m.video_url : !m.image_url) { prep = { ok: false, error: item.type === "reel" ? "The final reel video is not ready yet." : "The design image is not ready yet." }; return { ok: true }; }
+      if (item.status === "rejected") { prep = { ok: false, error: "This item was rejected. Restore or recreate it first." }; return { ok: true }; }
+      if (!["approved", "scheduled"].includes(item.status)) {
+        const r = E.decideItem(st, itemId, "approve", { override: true, reason: why }, actor, "owner");
+        if (!r?.ok) { prep = { ok: false, error: r?.error || "Could not approve the item." }; return { ok: true }; }
+      }
+      if (item.status === "scheduled") item.status = "approved";
+      const original = item.publish?.datetime_cairo || "";
+      const d = { ...(item.publish?.direct || {}) };
+      delete d.done; delete d.retry_after; delete d.error; delete d.lease; d.tries = 0; d.publish_now_by = actor; d.publish_now_at = nowIso();
+      item.review = item.review?.required ? { ...item.review, release: { week: item.review.week, version: item.version, approved_at: nowIso(), approved_by: actor } } : item.review;
+      item.publish = {
+        ...item.publish,
+        channel: "both",
+        original_datetime_cairo: item.publish?.original_datetime_cairo || original,
+        datetime_cairo: cairoNowLocal(),
+        direct: d,
+        weekly_review_hold: item.publish?.weekly_review_hold ? { ...item.publish.weekly_review_hold, active: false, cleared_at: nowIso(), cleared_by: actor } : undefined,
+        revision_hold: item.publish?.revision_hold ? { ...item.publish.revision_hold, active: false, cleared_at: nowIso(), cleared_by: actor, reason: "Owner override: publish now." } : undefined,
+      };
+      E.audit(st, actor, "publish.now", itemId, `Override & publish now on Facebook and Instagram. Reason: ${why}`);
+      prep = { ok: true };
+      return { ok: true };
+    });
+    if (!prep?.ok) throw new Error(prep?.error || "Could not prepare the post.");
+    const { state } = await deps.loadState();
+    const item = state.items.find((x) => x.item_id === itemId);
+    let error = null, done = false;
+    try { done = await publishItem(item); } catch (e) { error = e?.message || String(e); }
+    const after = (await deps.loadState()).state.items.find((x) => x.item_id === itemId);
+    const d = after?.publish?.direct || {};
+    return {
+      item_id: itemId,
+      facebook: d.facebook || null,
+      instagram: d.instagram || null,
+      published: !!done,
+      instagram_processing: !done && !error && !!d.ig_container && !d.instagram,
+      instagram_waiting: d.instagram_waiting || null,
+      error,
+    };
+  }
+
   async function adsReviewData() { return buildAdsReviewData({ q, fetcher: deps.fetcher || fetch }); }
 
-  return { adsReviewData, ensureTables, enqueue, approve, reject, list, syncInbox, publishDue, publishItem, releaseForPublishing, precheck, checkConnection, selectedAssets, leadForms, tick, replyProblems, adsSnapshot };
+  return { adsReviewData, ensureTables, enqueue, approve, reject, list, syncInbox, publishDue, publishItem, publishNow, releaseForPublishing, precheck, checkConnection, selectedAssets, leadForms, tick, replyProblems, adsSnapshot };
 }

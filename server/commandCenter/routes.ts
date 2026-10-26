@@ -575,6 +575,7 @@ route("POST", "/meta/publish/release", "owner", metaAct(async (m, ctx) => {
   if (!ids.length) throw new Error("item_ids is required.");
   return await m.releaseForPublishing(ids, ctx.user.email);
 }));
+route("POST", "/items/:id/publish-now", "owner", metaAct(async (m, ctx) => ({ result: await m.publishNow(String(ctx.params.id), ctx.user.email, String(ctx.body?.reason || "")) })));
 route("GET", "/meta/webhooks", "team", async () => ok({ ok: true, health: await getMetaPlatformWebhookHealth() }));
 route("GET", "/meta/forms", "team", metaAct(async (m) => ({ forms: await m.leadForms() })));
 route("GET", "/meta/campaigns", "team", metaAct(async (m) => { const s = await m.adsSnapshot(); return { campaigns: s.campaigns.map((c) => ({ ...c, cpl30: s.cpl[c.id] ?? null })), mtd: s.mtd, dailyTotal: s.dailyTotal }; }));
