@@ -2022,9 +2022,14 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
         // The join is the only heavy piece: if it brought the server down, join with straight cuts instead.
         if (REEL_STAGES.every((k) => k === "final" || C.parts?.[k]) && C.mode !== "cuts") { C.join_crashes = Number(C.join_crashes || 0) + 1; if (C.join_crashes >= 1) C.mode = "cuts"; }
       }
-      const reason = `${step.title} had ${hasExternalId ? "no progress" : "no provider job ID"} for ${hasExternalId ? "20" : "5"} minutes`;
+      // A Claude step (plan, brief, QC, review) found "running" here is no longer executing in this process —
+      // usually the site restarted for a deploy in the middle of it. It has no paid side effects, so run it again.
+      const restartable = step.provider === "claude";
+      const reason = restartable
+        ? `${step.title} was interrupted (the site restarted or the request stopped) and showed no activity for 5 minutes`
+        : `${step.title} had ${hasExternalId ? "no progress" : "no provider job ID"} for ${hasExternalId ? "20" : "5"} minutes`;
       const retries = Number(step.watchdog_retry_count || 0);
-      if (external && retries < EXTERNAL_MAX_AUTO_RETRIES) {
+      if ((external || restartable) && retries < EXTERNAL_MAX_AUTO_RETRIES) {
         const nextRetry = retries + 1;
         const delayMs = externalRetryDelayMs(nextRetry);
         step.status = "pending";
@@ -2038,7 +2043,9 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
         continue;
       }
       step.status = "failed";
-      step.error = `External-step watchdog: ${reason}. Automatic retry limit exhausted after ${EXTERNAL_MAX_AUTO_RETRIES} of ${EXTERNAL_MAX_AUTO_RETRIES} retries (1m, 5m, 15m backoff).`;
+      step.error = external || restartable
+        ? `External-step watchdog: ${reason}. Automatic retry limit exhausted after ${EXTERNAL_MAX_AUTO_RETRIES} of ${EXTERNAL_MAX_AUTO_RETRIES} retries (1m, 5m, 15m backoff).`
+        : `Watchdog: ${step.title} was interrupted (site restart) for 5 minutes. Press Retry to continue from this step; earlier results are kept.`;
       g.run.status = "failed";
       await notifyFailureOnce(g.run, step?.error || "Interrupted (server restart).");
       await save(g.run, g.ver).catch(() => {});

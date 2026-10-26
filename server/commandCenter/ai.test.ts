@@ -146,6 +146,24 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.openaiText[0].prompt.startsWith("i need a strong text for voice over to be strongly spoken at arabic egyptian language")).toBe(true);
   });
 
+  it("re-runs a Claude keyframe check interrupted by a site restart instead of failing the reel", async () => {
+    const ctx = setup([STORYBOARD]);
+    const run = await ctx.o.create({ kind: "reel", request: "Restart during keyframe QC", user: marketer });
+    await settle(ctx.o, run.id, ["running", "queued"]);
+    const row = ctx.q.rows.get(run.id), doc = JSON.parse(row.doc);
+    const qc = doc.steps.find((s) => s.action === "qc_visual");
+    qc.status = "running"; qc.started_at = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+    for (const s of doc.steps.filter((x) => x.n > qc.n)) { s.status = "pending"; s.error = null; }
+    row.doc = JSON.stringify(doc); row.status = "running";
+    await ctx.o.watchdog();
+    const r = await ctx.o.get(run.id);
+    const step = r.steps.find((s) => s.action === "qc_visual");
+    expect(r.status).not.toBe("failed");
+    expect(step.status).toBe("pending");
+    expect(step.watchdog_retry_count).toBe(1);
+    expect(step.watchdog_retry_reason).toMatch(/interrupted/);
+  });
+
   it("recovers a persisted Higgsfield clip with no provider receipt using its original idempotency key after backoff", async () => {
     const ctx = setup([STORYBOARD]);
     const run = await ctx.o.create({ kind: "reel", request: "Receipt recovery", user: marketer });
