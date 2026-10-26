@@ -194,11 +194,38 @@ describe("owner rules (25 Oct 2026): euros for Europe, casual clothing allowed",
     const R = (await import("./rules")).default;
     const base = { type: "static", topic: "Spain DNV", program: "Spain Digital Nomad", disclaimer_used: "x", design: { headline_en: "Live and work in Spain", format: "1080x1350" } };
     const usd = R.checkBrief({ ...base, caption_ar: "إقامة في إسبانيا بدخل 3000 دولار شهرياً" });
-    expect(usd.blocks.some((b) => b.id === "currency_eur")).toBe(true);
+    expect(usd.blocks.some((b) => b.id === "currency_country")).toBe(true);
     const eur = R.checkBrief({ ...base, caption_ar: "إقامة في إسبانيا بدخل 2917 يورو شهرياً" });
-    expect(eur.blocks.some((b) => b.id === "currency_eur")).toBe(false);
+    expect(eur.blocks.some((b) => b.id === "currency_country")).toBe(false);
     const nonEu = R.checkBrief({ ...base, topic: "Caribbean CBI", program: "Grenada", design: { headline_en: "A second passport path", format: "1080x1350" }, caption_ar: "استثمار يبدأ من 235,000 دولار في جرينادا" });
-    expect(nonEu.blocks.some((b) => b.id === "currency_eur")).toBe(false);
+    expect(nonEu.blocks.some((b) => b.id === "currency_country")).toBe(false);
+  });
+  it("owner rule (26 Oct 2026): voice-over money follows the country — USD for USA/Canada/Australia, GBP for the UK, EUR for the EU", async () => {
+    const R = (await import("./rules")).default;
+    const c = R.currencyIssue;
+    // EU → euros
+    expect(c("في Spain الدخل المطلوب حوالي 2,700 يورو في الشهر", "Spain DNV")).toBeNull();
+    expect(c("في Portugal محتاج دخل 3000 دولار في الشهر", "Portugal D7")).toMatch(/euros/);
+    expect(c("في Malta الاستثمار بالجنيه الإسترليني", "Malta PR")).toMatch(/euros/);
+    // UK → pounds sterling
+    expect(c("في UK الراتب المطلوب 38,700 جنيه إسترليني", "UK Expansion Worker")).toBeNull();
+    expect(c("في UK الراتب المطلوب 38,700 باوند", "UK Expansion Worker")).toBeNull();
+    expect(c("في UK الراتب حوالي 45,000 يورو", "UK Expansion Worker")).toMatch(/pounds sterling/);
+    expect(c("في UK الراتب حوالي 50,000 دولار", "UK Expansion Worker")).toMatch(/pounds sterling/);
+    // USA / Canada / Australia → US dollars
+    expect(c("في Canada ممكن تبدأ بمدخرات حوالي 15,000 دولار", "Canada Skilled Migration")).toBeNull();
+    expect(c("في Canada محتاج 20,000 دولار كندي", "Canada Express Entry")).toMatch(/never Canadian/);
+    expect(c("في Australia الدخل 60,000 يورو", "Australia")).toMatch(/US dollars/);
+    expect(c("الحياة في America بتبدأ بخطة 50,000 دولار", "USA")).toBeNull();
+    // "US dollars" is a currency name, not a US country mention
+    expect(c("Spain income of 3,000 US dollars", "Spain DNV")).toMatch(/euros/);
+    // Comparisons mention both countries; each currency is allowed for its country
+    expect(c("Spain بـ 2,700 يورو و UK بـ 38,700 جنيه إسترليني", "")).toBeNull();
+    // Caribbean or no country: no currency rule applies
+    expect(c("استثمار يبدأ من 235,000 دولار في Grenada", "Caribbean CBI")).toBeNull();
+    // The brief check applies it to the reel voice-over
+    const reel = R.checkBrief({ type: "reel", topic: "UK Expansion Worker", program: "UK Expansion Worker", caption_ar: "", reel: { storyboard: [{ clip: 1, spoken_text_ar: "في UK ممكن تبدأ بميزانية 50,000 يورو" }] } });
+    expect(reel.blocks.find((b) => b.id === "currency_country")?.label).toMatch(/voice-over/);
   });
   it("accepts casual outfits as a complete wardrobe", async () => {
     const R = (await import("./rules")).default;
