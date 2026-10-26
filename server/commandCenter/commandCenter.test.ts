@@ -244,3 +244,22 @@ describe("narration length tolerance (26 Oct 2026)", () => {
     expect(v(at37)).toMatch(/40–62 accepted/);
   });
 });
+
+describe("owner voice prompt placeholders and hook check (26 Oct 2026)", () => {
+  it("fills [Insert …] fields of the owner's Voice-Over Prompt so OpenAI never sees an empty field", async () => {
+    const { fillVoicePrompt } = await import("./ai");
+    const t = "Reel idea/objective: [Insert the reel's idea or objective from the weekly plan]\nTarget country: [Insert country]\nService and verified details: [Insert relevant service information, benefits, and any confirmed prices]\nExtra: [Insert anything]";
+    const out = fillVoicePrompt(t, { idea: "Spain lifestyle for families", program: "SPAIN DIGITAL NOMAD RESIDENCE", facts: "FACTS-OK" });
+    expect(out).toContain("Reel idea/objective: Spain lifestyle for families");
+    expect(out).toContain("Target country: Spain");
+    expect(out).toContain("FACTS-OK");
+    expect(out).not.toMatch(/\[Insert/);
+    expect(fillVoicePrompt("Idea: [the reel's idea/objective from the weekly plan]", { idea: "X" })).toBe("Idea: X");
+  });
+  it("accepts a natural hook (question or curiosity) instead of only a fixed word list", async () => {
+    const { validateElevay20SecondReelNarration: v } = await import("../../shared/elevayReelNarrationPolicy");
+    const s = (first) => [first, "كلمة ".repeat(11).trim(), "كلمة ".repeat(11).trim(), "احجز استشارتك مع Elevay دلوقتي علشان نرتب خطوتك الجاية سوا بهدوء"].map((t) => ({ spoken_text_ar: t }));
+    expect(v(s("بتصحى على شمس Spain وولادك في مدرسة أحسن، تيجي نشوفها سوا؟"))).toBeNull();
+    expect(v(s("إقامة Spain للعائلات اللي بتشتغل أونلاين من مصر كويسة جدًا"))).toMatch(/hook/);
+  });
+});

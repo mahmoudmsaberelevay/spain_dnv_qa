@@ -54,11 +54,13 @@ export function validateElevay20SecondReelNarration(scenes: Array<{ spoken_text_
     return `The full reel narration must contain ${ELEVAY_REEL_NARRATION_STANDARD.minTotalWords}–${ELEVAY_REEL_NARRATION_STANDARD.maxTotalWords} words for the 20-second target (${ELEVAY_REEL_NARRATION_STANDARD.acceptMinTotalWords}–${ELEVAY_REEL_NARRATION_STANDARD.acceptMaxTotalWords} accepted); it has ${totalWords}.`;
   }
 
-  if (!/(?:تخيل|لو|قرار|حلم|حيرة|مستقبل|خطة|ليه|مش لازم|قبل ما)/.test(lines[0])) {
+  // The hook's quality is judged by the reviewers; this only refuses a first line with no hook at all
+  // (no question, exclamation, "imagine/what if", dream, decision, future or curiosity word).
+  if (!/[؟?!]|(?:تخيل|تخيّل|لو|قرار|حلم|حيرة|مستقبل|خطة|ليه|إزاي|ازاي|إيه|ايه|عايز|عاوز|نفسك|فكرت|فكّرت|مش لازم|قبل ما|تعرف|صدق|بجد|السر|فرصة|بداية|حياة|يوم|أخيرًا|أخيرا|مين)/.test(lines[0])) {
     return "Scene 1 needs a high-impact, truthful dramatic hook about the viewer's decision, ambition, or uncertainty.";
   }
 
-  if (!/(?:احجز\s+(?:استشارتك|استشارة)|تواصل\s+مع|كلّمنا|كلمنا|ابعتلنا|ابدأ\s+استشارتك|تعالى\s+نتكلم)/.test(lines[3])) {
+  if (!/(?:احجز|تواصل|كلّمنا|كلمنا|ابعتلنا|ابعت\s+لنا|ابدأ|تعالى|اتصل|كلم\s+Elevay|سجّل|سجل|استشارتك|استشارة)/.test(lines[3])) {
     return "Scene 4 must end with a direct consultation call to action, such as احجز استشارتك مع Elevay or تواصل مع Elevay.";
   }
 
