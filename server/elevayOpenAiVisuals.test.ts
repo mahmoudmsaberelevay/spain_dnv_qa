@@ -26,6 +26,19 @@ describe("server-only direct OpenAI visuals", () => {
     expect(JSON.stringify(output)).not.toContain("test-openai-key");
   });
 
+  it("makes a later reel keyframe from an earlier ELEVAY keyframe through the edits endpoint, ignoring foreign URLs", async () => {
+    const save = vi.fn(async (key: string) => ({ key, url: "https://d2xsxph8kpxj0f.cloudfront.net/frame.png" }));
+    const request = vi.fn(async (url: string) => String(url).endsWith("/edits")
+      ? new Response(JSON.stringify({ data: [{ b64_json: image().toString("base64") }] }), { status: 200 })
+      : new Response(image(), { status: 200 }));
+    await createElevayOpenAiKeyframe({ purpose: "reel_keyframe", prompt, referenceUrls: ["https://d2xsxph8kpxj0f.cloudfront.net/marketing/openai/reel_keyframe/one.png", "https://evil.example/x.png"] }, { request: request as typeof fetch, save: save as any, apiKey: "k" });
+    const urls = request.mock.calls.map((c: any) => String(c[0]));
+    expect(urls).toEqual(["https://d2xsxph8kpxj0f.cloudfront.net/marketing/openai/reel_keyframe/one.png", "https://api.openai.com/v1/images/edits"]);
+    const body = (request.mock.calls[1] as any)[1].body as FormData;
+    expect(body.get("input_fidelity")).toBe("high");
+    expect(body.getAll("image[]")).toHaveLength(1);
+  });
+
   it("fails closed on wrong aspect or an invalid response before storage", async () => {
     const save = vi.fn();
     const request = vi.fn(async () => new Response(JSON.stringify({ data: [{ b64_json: image(1024, 1024).toString("base64") }] }), { status: 200 }));

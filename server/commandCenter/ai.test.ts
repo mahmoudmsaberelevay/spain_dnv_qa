@@ -22,12 +22,14 @@ const sceneScripts = [
   "مع Elevay بنرتب التفاصيل بوضوح ونشرح الصورة كاملة علشان قرارك يبقى أهدى.",
   "تواصل مع Elevay دلوقتي واحجز استشارتك وخد خطوتك الجاية برؤية أوضح.",
 ];
+const CAST = [{ id: "A", role: "father", age: "about 40", look: "Arab man, short dark hair, trimmed beard", outfit: "navy linen shirt, beige chinos, brown leather loafers" }, { id: "B", role: "mother", age: "about 38", look: "Arab woman, long dark hair", outfit: "cream blouse, light grey trousers, tan flats" }];
 const scene = (i) => ({
+  cast_ids: ["A", "B"],
   keyframe_prompt: `Arab couple in Lisbon, scene ${i}, modern elegant clothing and polished leather shoes, no text, no logo, no passports, no flags`,
   motion_prompt: "Slow cinematic dolly forward with restrained natural movement",
   spoken_text_ar: sceneScripts[i - 1],
 });
-const STORYBOARD = { topic: "Lisbon", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) };
+const STORYBOARD = { topic: "Lisbon", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, cast: CAST, scenes: [1, 2, 3, 4].map(scene) };
 const PASS = { pass: true, issues: [], scene_failures: [], non_scene_failures: [], verdict: "All supplied evidence complies." };
 const failScene = (n, fix = "Replace the visible passport with a clean side table and keep the same people and wardrobe.") => ({ pass: false, issues: [`Scene ${n} has a visible visual compliance issue.`], scene_failures: [{ scene: n, issues: ["visible compliance issue"], fix }], non_scene_failures: [], verdict: "Repair only the named scene." });
 
@@ -73,9 +75,9 @@ function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = n
       const data = typeof next === "function" ? next(prompt) : next;
       return { text: JSON.stringify(data), data, model: "gpt-5-mini" };
     },
-    openaiImage: async ({ prompt, purpose }) => {
+    openaiImage: async ({ prompt, purpose, referenceUrls }) => {
       const n = calls.openai.length + 1;
-      calls.openai.push({ prompt, purpose });
+      calls.openai.push({ prompt, purpose, referenceUrls });
       return { url: `https://cdn.example/${purpose}-${n}.png`, sha256: String(n).padStart(64, "a"), width: 864, height: 1536, measuredCostUsd: 0.1 };
     },
     openaiPortrait: async () => { throw new Error("not used by reel tests"); },
@@ -176,6 +178,29 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(step.status).toBe("pending");
     expect(step.watchdog_retry_count).toBe(1);
     expect(step.watchdog_retry_reason).toMatch(/interrupted/);
+  });
+
+  it("owner rule: keeps one cast — keyframes 2–4 are made from keyframe 1 with the fixed cast sheet", async () => {
+    const ctx = setup([STORYBOARD]);
+    const run = await ctx.o.create({ kind: "reel", request: "Cast continuity", user: marketer });
+    await settle(ctx.o, run.id, ["running", "queued"]);
+    const kf = ctx.calls.openai.filter((c) => c.purpose === "reel_keyframe");
+    expect(kf).toHaveLength(4);
+    expect(kf[0].referenceUrls || []).toHaveLength(0);
+    for (const c of kf.slice(1)) { expect(c.referenceUrls).toEqual([expect.stringContaining("reel_keyframe-1")]); expect(c.prompt).toMatch(/REFERENCE IMAGE/); }
+    for (const c of kf) { expect(c.prompt).toMatch(/FIXED CAST/); expect(c.prompt).toContain("navy linen shirt, beige chinos, brown leather loafers"); }
+    const qc = ctx.calls.claude.find((c) => /reel keyframes \(no text or logo/.test(c.prompt));
+    expect(qc.prompt).toMatch(/a frame may show only part of the cast/);
+  });
+
+  it("owner rule: writes a cast sheet first when the storyboard has none", async () => {
+    const noCast = { ...STORYBOARD, cast: undefined, scenes: STORYBOARD.scenes.map(({ cast_ids, ...x }) => x) };
+    const ctx = setup([noCast, (p) => /Define ONE fixed cast/.test(p) ? { cast: CAST, scenes: [1, 2, 3, 4].map((scene) => ({ scene, cast_ids: ["A", "B"] })) } : {}]);
+    const run = await ctx.o.create({ kind: "reel", request: "Cast lock", user: marketer });
+    const r = await settle(ctx.o, run.id, ["running", "queued"]);
+    expect(ctx.calls.openaiText.some((c) => /Define ONE fixed cast/.test(c.prompt))).toBe(true);
+    expect(r.artifacts.brief.reel.cast.map((c) => c.id)).toEqual(["A", "B"]);
+    expect(ctx.calls.openai.filter((c) => c.purpose === "reel_keyframe").every((c) => /FIXED CAST/.test(c.prompt))).toBe(true);
   });
 
   it("recovers a persisted Higgsfield clip with no provider receipt using its original idempotency key after backoff", async () => {
@@ -537,7 +562,7 @@ describe("owner rule: one week content file from OpenAI", () => {
   const types = ["static", "reel", "static", "reel", "static", "reel", "static"];
   const WEEK_PLAN = { rationale: "Mix for test", posts: types.map((type, i) => ({ type, date: "2026-11-0" + (i + 1), time: "19:00", program: "Portugal D7", pillar: "Family Security", audience: "Families", brief: `Idea ${i + 1}` })) };
   const WEEK_FILE = { posts: types.map((type, i) => type === "reel"
-    ? { index: i + 1, type, topic: `Reel ${i + 1}`, pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, music_direction: "Soft", final_edit_direction: "Clean joins", scenes: [1, 2, 3, 4].map(scene) }
+    ? { index: i + 1, type, topic: `Reel ${i + 1}`, pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, music_direction: "Soft", final_edit_direction: "Clean joins", cast: CAST, scenes: [1, 2, 3, 4].map(scene) }
     : { index: i + 1, type, topic: `Static ${i + 1}`, pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, headline_en: "Plan your next chapter", image_prompt: "Arab family in Lisbon, elegant clothing and shoes, no text, no logo, no passports, no flags, no contact details", format: "1080x1350" }) };
 
   it("sends Claude's week plan to OpenAI once and hands each post its own part", async () => {
@@ -572,7 +597,7 @@ describe("owner rule: Manus writes the week file when OpenAI cannot", () => {
   const types = ["static", "reel", "static", "reel", "static", "reel", "static"];
   const WEEK_PLAN = { rationale: "Mix", posts: types.map((type, i) => ({ type, date: "2026-11-0" + (i + 1), time: "19:00", program: "Portugal D7", pillar: "Family Security", audience: "Families", brief: `Idea ${i + 1}` })) };
   const FILE = { posts: types.map((type, i) => type === "reel"
-    ? { index: i + 1, type, topic: "R", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, scenes: [1, 2, 3, 4].map(scene) }
+    ? { index: i + 1, type, topic: "R", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, cast: CAST, scenes: [1, 2, 3, 4].map(scene) }
     : { index: i + 1, type, topic: "S", pillar: "Family Security", program: "Portugal D7", caption_ar: CAPTION, headline_en: "Plan your next chapter", image_prompt: "Arab family, elegant clothing and shoes, no text, no logo" }) };
 
   it("asks Manus with the same instructions, waits, then starts production from Manus's file", async () => {
