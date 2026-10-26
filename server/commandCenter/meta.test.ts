@@ -212,6 +212,29 @@ describe("Meta actions", () => {
     expect(posts.filter((p) => p.path === "111/photos")).toHaveLength(1);
   });
 
+  it("Override & publish now: approves a QC-failed future post with a logged override and posts it on Facebook and Instagram at once", async () => {
+    const { h, state, posts } = hub();
+    state.items.push({ item_id: "2026-W45-03", type: "static", status: "qc_failed", version: 1, caption_ar: "نص", compliance: { pass: false, blocks: [{ label: "flag" }] }, media: { image_url: "https://cdn/final.png" }, publish: { channel: "instagram", datetime_cairo: "2099-01-01T19:00", weekly_review_hold: { active: true } }, review: { required: true, week: "2026-W45" }, owner_comments: [], first_pass: null });
+    const r = await h.publishNow("2026-W45-03", "o@elevay.com", "");
+    expect(r).toMatchObject({ facebook: "111_post9", instagram: "igpost1", published: true, error: null });
+    expect(posts.map((p) => p.path)).toEqual(["111/photos", "ig1/media", "ig1/media_publish"]);
+    const it = state.items[0];
+    expect(it.status).toBe("published");
+    expect(it.publish.original_datetime_cairo).toBe("2099-01-01T19:00");
+    expect(it.owner_comments.some((c) => c.kind === "override")).toBe(true);
+    expect(state.audit.some((a) => a.action === "publish.now")).toBe(true);
+    await expect(h.publishNow("2026-W45-03", "o@elevay.com")).rejects.toThrow(/already published/);
+  });
+
+  it("Override & publish now refuses an unknown-outcome post and a reel without its final video", async () => {
+    const { h, state, posts } = hub();
+    state.items.push({ item_id: "A", type: "static", status: "approved", caption_ar: "نص", media: { image_url: "https://cdn/a.png" }, publish: { direct: { manual_review: true, done: true } }, owner_comments: [] });
+    state.items.push({ item_id: "B", type: "reel", status: "pending_approval", caption_ar: "نص", media: {}, publish: {}, owner_comments: [] });
+    await expect(h.publishNow("A", "o@elevay.com")).rejects.toThrow(/unknown outcome/);
+    await expect(h.publishNow("B", "o@elevay.com")).rejects.toThrow(/not ready/);
+    expect(posts).toHaveLength(0);
+  });
+
   it("owner release lets a stopped post publish again but never touches an unknown-outcome post", async () => {
     const { h, state } = hub({});
     state.items.push({ item_id: "A", type: "static", status: "approved", publish: { channel: "both", direct: { done: true, error: "old", tries: 4 } }, owner_comments: [] });

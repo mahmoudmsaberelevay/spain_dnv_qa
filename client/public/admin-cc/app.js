@@ -593,6 +593,13 @@
     });
   }
 
+  function canPublishNow(i) {
+    if (!['reel', 'static'].includes(i.type)) return false;
+    if (['published', 'rejected'].includes(i.status)) return false;
+    const d = (i.publish && i.publish.direct) || {};
+    if (d.manual_review || (d.facebook && d.instagram)) return false;
+    return i.type === 'reel' ? !!(i.media && i.media.video_url) : !!(i.media && i.media.image_url);
+  }
   function decideBlock(i) {
     const blocked = i.compliance && !i.compliance.pass;
     const id = esc(i.item_id);
@@ -603,6 +610,7 @@
         <button class="btn" data-do="toggle-changes">Request changes</button>
         ${isOwner() ? '<button class="btn danger" data-do="toggle-reject">Reject</button>' : ''}
         ${isOwner() && canApprove && blocked ? '<button class="btn ghost sm" data-do="toggle-override">Approve with override…</button>' : ''}
+        ${isOwner() && canPublishNow(i) ? '<button class="btn sm" data-do="publish-now" style="margin-left:auto;border-color:#C9A84C;color:#8a6d1f" title="Approve (overriding any QC or compliance flag) and publish on Facebook and Instagram immediately">Override &amp; publish now</button>' : ''}
       </div>
       <div class="stack" data-panel="changes" hidden>
         <label class="field"><span>What should change? Only the affected scope regenerates; your request approves the checked revision.</span><textarea class="input" id="cr-${id}" placeholder="e.g. Shorten the hook and mention that family members can be included."></textarea></label>
@@ -635,6 +643,16 @@
         if (d === 'approve') return act(() => api.decideItem(id, { decision: 'approve' }), 'Approved. Manus will schedule it.');
         if (d === 'send-changes') { const body = { decision: 'request_changes', comment: ta.value, scope: sc.value, clip: cl && cl.value ? Number(cl.value) : null }; return act(() => isOwner() ? api.reviseItem(id, body) : api.decideItem(id, body), isOwner() ? 'Owner-authorized revision started. The current active version stays in place until final Claude QC passes.' : 'Change request sent to Manus.'); }
         if (d === 'send-reject') return act(() => api.decideItem(id, { decision: 'reject', comment: box.querySelector(`#rj-${CSS.escape(id)}`).value }), 'Rejected.');
+        if (d === 'publish-now') {
+          const label = item ? `${item.item_id} (${item.type})` : id;
+          if (!confirm(`Publish ${label} NOW on Facebook and Instagram?\n\nThis approves it (overriding any QC or compliance flag, logged in the audit trail) and posts it publicly right away instead of at its scheduled time. It cannot be undone from here.`)) return;
+          return act(async () => {
+            const r = await api.run(() => api.req('POST', `items/${encodeURIComponent(id)}/publish-now`, { reason: 'Owner override: publish now from the weekly plan.' }), () => ({ ok: false, error: 'Publishing works only on the live site.' }));
+            const x = (r && r.result) || {};
+            if (x.error && !x.facebook && !x.instagram) throw new Error(x.error);
+            return x;
+          }, 'Publishing now. Facebook posts immediately; an Instagram reel can take a minute or two to process and then posts automatically. Status updates on the card.');
+        }
         if (d === 'send-override') return act(() => api.decideItem(id, { decision: 'approve', override: true, reason: box.querySelector(`#ov-${CSS.escape(id)}`).value }), 'Approved with override. Logged in the audit trail.');
       });
     });
