@@ -585,3 +585,15 @@ describe("owner rule: weekly ads review", () => {
     expect(queued[0]).toMatchObject({ kind: "campaign_status", status_to: "PAUSED", source: "weekly_ads_review", evidence: { d30: { cpl: 449 } } });
   });
 });
+
+describe("owner rule: cinematographer shot sheet for every clip", () => {
+  it("builds the Higgsfield animation prompt from the shot sheet with camera, lens, aperture, ISO, shutter and lighting", async () => {
+    const { cinematicShotPrompt } = await import("./ai");
+    const p = cinematicShotPrompt({ shot: { scene: "Arab family on a Valletta balcony at sunset", action: "0–2 s the father points; 2–4 s the children lean in; 4–5 s they smile", shot_type: "medium wide", camera_movement: "slow push-in", camera: "ARRI Alexa 35", lens: "Zeiss Supreme 35 mm", aperture: "T1.8", iso: "EI 640", shutter: "172.8° (1/50 s)", support: "slider", focus: "father's eyes", lighting: "low sun key from camera-left, white bounce fill, warm practical lanterns", color_atmosphere: "warm amber, soft haze", written_content: "none" } });
+    for (const s of ["ANIMATION METHOD", "SCENE: Arab family on a Valletta balcony", "ACTION (5 seconds)", "CAMERA MOVE: slow push-in", "ARRI Alexa 35", "Zeiss Supreme 35 mm", "aperture T1.8", "EI 640", "1/50 s", "LIGHTING SETUP: low sun key", "WRITTEN CONTENT IN FRAME: none"]) expect(p).toContain(s);
+    expect(p.length).toBeLessThanOrEqual(2300);
+    const fallback = cinematicShotPrompt({ motion_summary: "slow dolly forward" });
+    expect(fallback).toContain("CAMERA SETUP: ARRI Alexa Mini LF");
+    expect(fallback).toContain("ACTION (5 seconds): slow dolly forward");
+  });
+});
