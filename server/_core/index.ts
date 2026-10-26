@@ -343,6 +343,8 @@ async function startServer() {
   app.post("/api/scheduled/metaReconciliation", scheduledMetaReconciliationHandler);
   const { scheduledMetaMonitoringHandler } = await import("../scheduledMetaMonitoringHandler");
   app.post("/api/scheduled/metaMonitoring", scheduledMetaMonitoringHandler);
+  const { scheduledWeeklyMetaLeadAuditHandler } = await import("../scheduledWeeklyMetaLeadAuditHandler");
+  app.post("/api/scheduled/weeklyMetaLeadAudit", scheduledWeeklyMetaLeadAuditHandler);
   const { scheduledPublicContentSyncHandler } = await import("../scheduledPublicContentSyncHandler");
   app.post("/api/scheduled/publicContentSync", scheduledPublicContentSyncHandler);
   const { scheduledClientLifecycleRemindersHandler } = await import("../scheduledClientLifecycleRemindersHandler");

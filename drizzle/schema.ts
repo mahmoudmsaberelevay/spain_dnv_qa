@@ -1406,6 +1406,41 @@ export const metaReconciliationState = mysqlTable("meta_reconciliation_state", {
 export type MetaReconciliationState = typeof metaReconciliationState.$inferSelect;
 export type InsertMetaReconciliationState = typeof metaReconciliationState.$inferInsert;
 
+/** Owner-configured, cron-owned Saturday verification of the Meta Lead Ads to CRM intake path. */
+export const metaWeeklyLeadAuditSettings = mysqlTable("meta_weekly_lead_audit_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  auditKey: varchar("auditKey", { length: 100 }).notNull().unique(),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }).unique(),
+  isEnabled: boolean("isEnabled").default(true).notNull(),
+  lastAttemptAt: bigint("lastAttemptAt", { mode: "number" }),
+  lastSuccessAt: bigint("lastSuccessAt", { mode: "number" }),
+  lastFailureAt: bigint("lastFailureAt", { mode: "number" }),
+  lastErrorCode: varchar("lastErrorCode", { length: 100 }),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type MetaWeeklyLeadAuditSetting = typeof metaWeeklyLeadAuditSettings.$inferSelect;
+
+/** Idempotent aggregate-only evidence for each scheduled weekly Meta Lead Ads intake review. */
+export const metaWeeklyLeadAuditRuns = mysqlTable("meta_weekly_lead_audit_runs", {
+  id: int("id").autoincrement().primaryKey(),
+  runKey: varchar("runKey", { length: 160 }).notNull().unique(),
+  taskUid: varchar("taskUid", { length: 65 }).notNull(),
+  status: mysqlEnum("status", ["processing", "success", "failed", "skipped"]).default("processing").notNull(),
+  integrationsChecked: int("integrationsChecked").default(0).notNull(),
+  leadsScanned: int("leadsScanned").default(0).notNull(),
+  leadsImported: int("leadsImported").default(0).notNull(),
+  inboxProcessed: int("inboxProcessed").default(0).notNull(),
+  inboxFailed: int("inboxFailed").default(0).notNull(),
+  manualReviewCount: int("manualReviewCount").default(0).notNull(),
+  ambiguousMatchCount: int("ambiguousMatchCount").default(0).notNull(),
+  duplicateAttributionCount: int("duplicateAttributionCount").default(0).notNull(),
+  errorCode: varchar("errorCode", { length: 100 }),
+  startedAt: bigint("startedAt", { mode: "number" }).notNull(),
+  completedAt: bigint("completedAt", { mode: "number" }),
+  durationMs: int("durationMs"),
+});
+export type MetaWeeklyLeadAuditRun = typeof metaWeeklyLeadAuditRuns.$inferSelect;
+
 export const databaseBackupSettings = mysqlTable("database_backup_settings", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 100 }).notNull().unique(),

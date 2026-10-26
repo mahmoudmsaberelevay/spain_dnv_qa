@@ -23,6 +23,7 @@ import {
   mapMetaFields,
   normalizeMetaEmail,
   normalizeMetaPhone,
+  refreshedMetaLeadCreatedAt,
   requiredEarlierMetaEvents,
   shouldRefreshLeadFromRepeatMetaInquiry,
   safeMetaError,
@@ -233,7 +234,7 @@ describe("Meta Leads safety helpers", () => {
     })).toBe(false);
   });
 
-  it("exact sequence: a later Meta form records the newest activity without erasing a later staff contact", () => {
+  it("exact sequence: a later Meta form makes a pre-sale record Fresh with the current creation date without erasing history", () => {
     const originalCreatedAt = 1_700_000_000_000;
     const laterMetaInquiryAt = originalCreatedAt + 60_000;
     const laterStaffContactAt = laterMetaInquiryAt + 60_000;
@@ -253,7 +254,11 @@ describe("Meta Leads safety helpers", () => {
       repeatInquiry: true,
       stage: "qualified",
     })).toBe(true);
+    expect(refreshedMetaLeadCreatedAt(originalCreatedAt, true, laterMetaInquiryAt)).toBe(laterMetaInquiryAt);
     expect(latestMetaInquiryActivityAt(null, laterMetaInquiryAt)).toBe(laterMetaInquiryAt);
+
+    // Signed clients never receive the operational creation-date reset.
+    expect(refreshedMetaLeadCreatedAt(originalCreatedAt, false, laterMetaInquiryAt)).toBe(originalCreatedAt);
 
     // A delayed reconciliation replay cannot hide a later consultant action.
     expect(latestMetaInquiryActivityAt(laterStaffContactAt, laterMetaInquiryAt)).toBe(laterStaffContactAt);

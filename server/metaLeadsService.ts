@@ -57,6 +57,20 @@ export function shouldRefreshLeadFromRepeatMetaInquiry(input: {
 }
 
 /**
+ * A repeated pre-sale Meta inquiry intentionally refreshes the operational
+ * Lead creation date. The original submission, attribution, payments and all
+ * historic activities remain in their own durable records; signed clients are
+ * excluded by shouldRefreshLeadFromRepeatMetaInquiry().
+ */
+export function refreshedMetaLeadCreatedAt(
+  existingCreatedAt: number | null | undefined,
+  reactivated: boolean,
+  inquiryReceivedAt: number,
+) {
+  return reactivated ? inquiryReceivedAt : existingCreatedAt ?? undefined;
+}
+
+/**
  * The list of operational leads is ordered by its latest touchpoint. A newly
  * received Meta form must therefore advance that touchpoint, but a staff
  * member's later contact must never be backdated by a delayed webhook replay.
@@ -987,10 +1001,16 @@ export async function ingestMetaLeadDetail(
           isMetaTestLead: existing.isMetaTestLead || isTestLead,
           metaLeadCreatedAt: existing.metaLeadCreatedAt || metaLeadCreatedAt,
           firstReceivedAt: existing.firstReceivedAt || firstReceivedAt,
-          ...(reactivated ? { stage: "fresh" as const } : {}),
-          // Keep the original creation date intact, but surface every real
-          // Meta inquiry as current work in the Leads list. An earlier webhook
-          // replay cannot overwrite a consultant's more recent contact.
+          ...(reactivated ? {
+            stage: "fresh" as const,
+            // Owner policy: a new Meta Lead ID for a pre-sale contact renews
+            // its operational creation date. Historical attribution and
+            // activities remain immutable, and client-stage Leads never reach
+            // this branch.
+            createdAt: refreshedMetaLeadCreatedAt(existing.createdAt, true, firstReceivedAt),
+          } : {}),
+          // Surface every real Meta inquiry as current work in the Leads list.
+          // An earlier webhook replay cannot overwrite a consultant's later contact.
           lastContactAt: latestMetaInquiryActivityAt(existing.lastContactAt, firstReceivedAt),
           metaSyncStatus: "pending",
           metaSyncError: null,
