@@ -215,7 +215,7 @@ Idea: [the reel's idea/objective from the weekly plan]`,
         if (c.keyframe_prompt) checkVisualPrompt(c.keyframe_prompt, add, `clip${i + 1}`, `Clip ${i + 1} keyframe`);
         const motion = affirmative(c.motion_prompt);
         if (c.motion_prompt) add(`clip${i + 1}_motion_text`, `Clip ${i + 1} motion: no on-screen text, captions or logos`, !/\b(text|caption|captions|title|titles|subtitle|subtitles|logo|lettering|typography|sign reading)\b/.test(motion));
-        if (c.motion_prompt) add(`clip${i + 1}_motion_style`, `Clip ${i + 1} motion: restrained and cinematic (no flashy effects)`, !/\b(whip pan|spin|glitch|zoom burst|bounce|flash|strobe|parallax|warp|morph)\w*/.test(motion), 'warn');
+        if (c.motion_prompt) add(`clip${i + 1}_motion_style`, `Clip ${i + 1} motion: restrained and cinematic (no flashy effects)`, !/\b(whip pan|spin|glitch|zoom burst|bouncy|camera bounce|flash|strobe|parallax|warp|morph)\w*/.test(motion), 'warn');
       });
       const mode = brief.talent?.mode || 'none';
       if (mode !== 'none') {
