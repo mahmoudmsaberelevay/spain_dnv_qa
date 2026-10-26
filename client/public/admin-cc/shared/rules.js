@@ -71,7 +71,7 @@ Idea: [the reel's idea/objective from the weekly plan]`,
   const PROGRAMS = [
     'Spain Digital Nomad Residency', 'Portugal D7', 'Portugal D8', 'Portugal D2', 'Portugal Golden Residency',
     'Greece Golden Residency', 'Malta Permanent Residency', 'UK Expansion Worker', 'Canada Skilled Migration',
-    'Caribbean Citizenship by Investment', 'Vanuatu Citizenship', 'Evergreen / multi-program',
+    'Caribbean Citizenship by Investment', 'Antigua & Barbuda Citizenship', 'Dominica Citizenship', 'Egypt Citizenship & Residence', 'Nauru Citizenship', 'São Tomé & Príncipe Citizenship', 'Vanuatu Citizenship', 'Evergreen / multi-program',
   ];
   const STATUSES = ['draft', 'qc_failed', 'pending_approval', 'changes_requested', 'revision_approved', 'approved', 'scheduled', 'published', 'rejected'];
   const CHANGE_SCOPES = [
@@ -87,6 +87,8 @@ Idea: [the reel's idea/objective from the weekly plan]`,
   // USA, Canada, Australia → US dollars · United Kingdom → pounds sterling · EU member countries (and "Europe"/Schengen) → euros.
   const CURRENCY_REGIONS = [
     { id: 'usd', label: 'US dollars (USD / $ / دولار أمريكي)', re: /\b(usa|united states|america|american|canada|canadian|australia|australian|new york|toronto|sydney|melbourne|vancouver)\b|أمريكا|امريكا|الولايات المتحدة|كندا|أستراليا|استراليا|تورنتو|سيدني/i },
+    // Citizenship/residence programmes whose approved ELEVAY sources are priced in US dollars (26 Oct 2026).
+    { id: 'usd', label: 'US dollars (USD / $ / دولار أمريكي)', re: /\b(antigua|barbuda|dominica|grenada|st\.? kitts|saint kitts|st\.? lucia|saint lucia|caribbean|s[aã]o\s*tom[eé])\b|egypt(?:ian)?\s+(?:citizenship|residence|residency|passport)|أنتيغوا|انتيغوا|باربودا|دومينيكا|الكاريبي|ساو تومي|الجنسية المصرية|الإقامة في مصر|الاقامة في مصر/i },
     { id: 'gbp', label: 'pounds sterling (GBP / £ / جنيه إسترليني)', re: /\b(uk|united kingdom|britain|british|england|english|london|manchester|scotland)\b|المملكة المتحدة|بريطانيا|البريطاني|إنجلترا|انجلترا|لندن/i },
     { id: 'eur', label: 'euros (EUR / € / يورو)', re: /\b(eu|europe|european|schengen|eurozone|spain|portugal|greece|malta|italy|france|germany|cyprus|ireland|netherlands|belgium|austria|luxembourg|finland|sweden|denmark|estonia|latvia|lithuania|poland|czechia|czech republic|slovakia|slovenia|croatia|hungary|romania|bulgaria|madrid|barcelona|lisbon|porto|athens|valletta|rome|paris|berlin|dublin)\b|إسبانيا|اسبانيا|البرتغال|اليونان|مالطا|قبرص|إيطاليا|ايطاليا|فرنسا|ألمانيا|المانيا|أيرلندا|ايرلندا|هولندا|بلجيكا|النمسا|أوروبا|اوروبا|أوروبي|اوروبي|الأوروبي|الاوروبي|شينغن|شنغن|لشبونة|مدريد|برشلونة|أثينا|اثينا|فاليتا/i },
   ];

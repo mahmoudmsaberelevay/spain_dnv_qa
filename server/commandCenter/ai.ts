@@ -250,7 +250,10 @@ const COUNTRY_OF_CONTENT: Array<[RegExp, string]> = [
   [/spain|إسبانيا|اسبانيا/i, "Spain"], [/portugal|البرتغال/i, "Portugal"], [/greece|اليونان/i, "Greece"], [/malta|مالطا/i, "Malta"],
   [/\buk\b|united kingdom|britain|المملكة المتحدة|بريطانيا/i, "United Kingdom"], [/canada|كندا/i, "Canada"], [/australia|أستراليا|استراليا/i, "Australia"],
   [/\b(usa|united states|america)\b|أمريكا|الولايات المتحدة/i, "USA"],
-  [/antigua|dominica|grenada|st\.? lucia|saint lucia|st\.? kitts|saint kitts|vanuatu|caribbean|الكاريبي/i, "the Caribbean"],
+  [/antigua|barbuda|أنتيغوا|انتيغوا/i, "Antigua and Barbuda"], [/\bdominica\b|دومينيكا/i, "Dominica"],
+  [/nauru|ناورو/i, "Nauru"], [/s[aã]o\s*tom[eé]|ساو تومي/i, "São Tomé and Príncipe"],
+  [/egypt(?:ian)?\s+(?:citizenship|residence|residency|passport)|الجنسية المصرية|الإقامة في مصر/i, "Egypt"],
+  [/grenada|st\.? lucia|saint lucia|st\.? kitts|saint kitts|vanuatu|caribbean|الكاريبي/i, "the Caribbean"],
 ];
 /**
  * Fills every placeholder in the owner's Voice-Over Prompt (Settings): the reel's idea, the target country and the
@@ -281,7 +284,7 @@ export function parseManusVoiceoverLines(raw: unknown): string[] | null {
 function lockedVoiceTextIssue(value: unknown, context = "") {
   const text = String(value || "").trim();
   if (!text) return "Voice-over text is missing.";
-  if (/(?:إسبانيا|اسبانيا|مالطا|البرتغال|اليونان|كندا|غرينادا|جرينادا|دومينيكا|سانت لوسيا|سانت كيتس|أنتيغوا|بربودا|المملكة المتحدة|بريطانيا)/.test(text)) return "Country names must be written in English only.";
+  if (/(?:إسبانيا|اسبانيا|مالطا|البرتغال|اليونان|كندا|غرينادا|جرينادا|دومينيكا|سانت لوسيا|سانت كيتس|أنتيغوا|بربودا|المملكة المتحدة|بريطانيا|ناورو|ساو تومي|ساوتومي|برينسيبي|باربودا)/.test(text)) return "Country names must be written in English only.";
   if (/(?:إيليفاي|إليفاي|اليفاي|\bELEVAY\b)/.test(text)) return 'The company name must be written exactly as "Elevay".';
   const money = RULES.currencyIssue(text, context);
   if (money) return money;
@@ -1534,7 +1537,7 @@ ${JSON.stringify(news)}
 Recent posts (avoid repeating):
 ${JSON.stringify(recent)}
 
-Today is ${cairoParts().date}; never schedule a date before today or after ${days[6]} (if fewer days remain, use two slots per day).\n\nApproved program sources (programs with confirmed facts):\n${allProgramFacts()}\nELEVAY also offers Portugal D7/D8/D2/Golden Visa, Greece Golden Visa, UK Expansion Worker, Canada Skilled Migration and Caribbean Citizenship by Investment; for those, plan benefit-led posts without figures until approved sources exist.\n\nReturn JSON: {"rationale": "2–4 sentences on why this mix", "posts": [exactly 7 items, exactly 4 with "type":"static" and 3 with "type":"reel": {"type": "static"|"reel", "date": "YYYY-MM-DD within the week", "time": "HH:MM Cairo, evening slots perform best unless the data says otherwise", "program": "...", "pillar": "...", "audience": "...", "brief": "2–3 sentences: the angle, the scene, the message and the call to action"}]}`, { note: `Weekly plan for ${week} with live data, monthly plan and news attached`, maxTokens: 4000 });
+Today is ${cairoParts().date}; never schedule a date before today or after ${days[6]} (if fewer days remain, use two slots per day).\n\nApproved program sources (programs with confirmed facts):\n${allProgramFacts()}\nPrograms with approved sources above: Spain DNV, Malta PR, and the citizenship/residence programs of Antigua & Barbuda, Dominica, Egypt (for non-Egyptian nationals), Nauru and São Tomé and Príncipe — plan posts for them using only their approved facts and public-content rules. Across the month, rotate these programs with the residence programs according to the data and the approved monthly plan. ELEVAY also offers Portugal D7/D8/D2/Golden Visa, Greece Golden Visa, UK Expansion Worker, Canada Skilled Migration and other Caribbean citizenship programs (Grenada, St Kitts, St Lucia); for those, plan benefit-led posts without figures until approved sources exist.\n\nReturn JSON: {"rationale": "2–4 sentences on why this mix", "posts": [exactly 7 items, exactly 4 with "type":"static" and 3 with "type":"reel": {"type": "static"|"reel", "date": "YYYY-MM-DD within the week", "time": "HH:MM Cairo, evening slots perform best unless the data says otherwise", "program": "...", "pillar": "...", "audience": "...", "brief": "2–3 sentences: the angle, the scene, the message and the call to action"}]}`, { note: `Weekly plan for ${week} with live data, monthly plan and news attached`, maxTokens: 4000 });
         const posts = (r.data.posts || []).slice(0, 7);
         const statics = posts.filter((p) => p.type === "static").length, reels = posts.filter((p) => p.type === "reel").length;
         if (posts.length !== 7 || statics !== 4 || reels !== 3) throw new Error(`Claude returned ${statics} statics and ${reels} reels instead of 4 and 3.`);
@@ -2085,7 +2088,7 @@ Return JSON only: {"summary":"3–5 sentences on how the ads did against the tar
       system: ELEVAY_RULES,
       tools: [{ type: "web_search_20250305", name: "web_search", max_uses: Number(process.env.ELEVAY_NEWS_SEARCHES) || 15 }],
       maxTokens: 8000,
-      prompt: `You are ELEVAY's weekly news researcher. Today is ${cairoParts().date} (Cairo). Search the web for news published since ${since} that matters to Egyptian and Middle Eastern clients of these programs: Spain Digital Nomad Residence, Portugal D7 / D8 / D2 / Golden Visa, Greece Golden Visa, Malta Permanent Residence, UK Expansion Worker, Canada Express Entry and Provincial Nominee Programs, and Caribbean Citizenship by Investment (Antigua, Dominica, Grenada, St Kitts, St Lucia) and Vanuatu.
+      prompt: `You are ELEVAY's weekly news researcher. Today is ${cairoParts().date} (Cairo). Search the web for news published since ${since} that matters to Egyptian and Middle Eastern clients of these programs: Spain Digital Nomad Residence, Portugal D7 / D8 / D2 / Golden Visa, Greece Golden Visa, Malta Permanent Residence, UK Expansion Worker, Canada Express Entry and Provincial Nominee Programs, Caribbean Citizenship by Investment (Antigua & Barbuda, Dominica, Grenada, St Kitts, St Lucia), Vanuatu, Nauru (ECRCP), São Tomé and Príncipe, and Egypt citizenship and residence by investment.
 Look for: rule, fee, income or investment-threshold changes; processing changes; new or closing routes; official announcements; credible reports of upcoming changes.
 For each item, open and rely on the most authoritative source you can find. Confidence: "verified" only when an official government or programme source states it; "reported" when reputable media report it but no official source was found; "unconfirmed" for anything else. Never invent a URL, date or figure. Skip items older than ${since} and skip duplicates. Prefer 4–10 strong items over many weak ones; return an empty list if nothing relevant happened.
 Marketing angle: one sentence, educational and benefit-led, never fear-based, never a guarantee, never legal or tax advice. Never use the word "visa" in Arabic or "تأشيرة".

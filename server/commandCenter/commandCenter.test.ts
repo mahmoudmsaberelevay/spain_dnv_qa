@@ -263,3 +263,27 @@ describe("owner voice prompt placeholders and hook check (26 Oct 2026)", () => {
     expect(v(s("إقامة Spain للعائلات اللي بتشتغل أونلاين من مصر كويسة جدًا"))).toMatch(/hook/);
   });
 });
+
+describe("new approved program sources (26 Oct 2026)", () => {
+  it("matches Antigua & Barbuda, Dominica, Egypt, Nauru and São Tomé and Príncipe to their fact sheets", async () => {
+    const { matchPrograms, programFactsFor, allProgramFacts } = await import("./knowledge");
+    expect(matchPrograms("Antigua & Barbuda citizenship for families").map((p) => p.key)).toEqual(["antigua_cbi"]);
+    expect(matchPrograms("Dominica CBI real estate").map((p) => p.key)).toEqual(["dominica_cbi"]);
+    expect(matchPrograms("Dominican Republic beach").map((p) => p.key)).toEqual([]);
+    expect(matchPrograms("Egypt citizenship by investment for Gulf investors").map((p) => p.key)).toEqual(["egypt_cbi"]);
+    expect(matchPrograms("Spain DNV for Egyptian families applying from Egypt").map((p) => p.key)).toEqual(["spain_dnv"]);
+    expect(matchPrograms("Nauru ECRCP").map((p) => p.key)).toEqual(["nauru_cbi"]);
+    expect(matchPrograms("São Tomé and Príncipe citizenship").map((p) => p.key)).toEqual(["sao_tome_cbi"]);
+    expect(programFactsFor("Antigua")).toContain("$230,000");
+    expect(programFactsFor("Nauru")).toMatch(/do NOT state any Nauru amount/);
+    expect(programFactsFor("São Tomé")).toContain("from $90,000");
+    expect(programFactsFor("Egypt residence by investment")).toContain("$50,000 → 1-year permit");
+    expect(allProgramFacts()).toMatch(/never write تأشيرة/);
+  });
+  it("keeps US-dollar prices valid for these programs even when Schengen or Europe is mentioned", async () => {
+    const R = (await import("./rules")).default;
+    expect(R.currencyIssue("جنسية Antigua تبدأ من 230,000 دولار مع سفر ميسّر لدول شينغن", "Antigua & Barbuda Citizenship")).toBeNull();
+    expect(R.currencyIssue("جنسية Dominica تبدأ من 200,000 دولار", "Dominica Citizenship")).toBeNull();
+    expect(R.currencyIssue("في Spain الدخل 3000 دولار", "Spain DNV")).toMatch(/euros/);
+  });
+});
