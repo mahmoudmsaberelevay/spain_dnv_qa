@@ -8,7 +8,7 @@ const { getDbMock, enqueueMock } = vi.hoisted(() => ({
 vi.mock("./db", () => ({ getDb: getDbMock }));
 vi.mock("./metaLeadsService", () => ({ enqueueMappedMetaCrmEvent: enqueueMock }));
 
-import { createContractWithClientOrigin } from "./contractLeadService";
+import { createContractWithClientOrigin, transitionContractStatusWithLeadConversion } from "./contractLeadService";
 
 function queryResult(value: unknown[]) {
   const builder: any = {
@@ -50,39 +50,94 @@ beforeEach(() => {
   enqueueMock.mockResolvedValue(undefined);
 });
 
-describe("createContractWithClientOrigin", () => {
+describe("Marketing Lead contract lifecycle", () => {
   it("creates a Referral Contract without touching Leads or Meta synchronization", async () => {
     const created = { ...contract, id: 55, clientOrigin: "referral", marketingLeadId: null };
     const state = createDb([[created]]);
     getDbMock.mockResolvedValue(state.db);
 
-    const result = await createContractWithClientOrigin({ contract, clientOrigin: "referral", actorUserId: 1, actorName: "Tester" });
+    const result = await createContractWithClientOrigin({ contract, clientOrigin: "referral" });
 
-    expect(result).toMatchObject({ contract: created, linkedLeadId: null, leadStageChanged: false });
+    expect(result).toMatchObject({ contract: created, linkedLeadId: null });
     expect(state.inserted[0]).toMatchObject({ clientOrigin: "referral", marketingLeadId: null });
     expect(state.updated).toHaveLength(0);
     expect(enqueueMock).not.toHaveBeenCalled();
   });
 
-  it("atomically links a Marketing Lead, changes its stage to Client, records history, and enqueues Meta after commit", async () => {
+  it("links a Marketing Lead when a pending Contract is created without converting the Lead", async () => {
     const created = { ...contract, id: 56, clientOrigin: "marketing", marketingLeadId: 101 };
-    const state = createDb([[{ id: 101, stage: "qualified" }], [], [created]]);
+    const state = createDb([[{ id: 101 }], [], [created]]);
     getDbMock.mockResolvedValue(state.db);
 
-    const result = await createContractWithClientOrigin({ contract, clientOrigin: "marketing", marketingLeadId: 101, actorUserId: 7, actorName: "Tester" });
+    const result = await createContractWithClientOrigin({ contract, clientOrigin: "marketing", marketingLeadId: 101 });
 
-    expect(result).toMatchObject({ contract: created, linkedLeadId: 101, leadStageChanged: true });
+    expect(result).toMatchObject({ contract: created, linkedLeadId: 101 });
     expect(state.inserted[0]).toMatchObject({ clientOrigin: "marketing", marketingLeadId: 101 });
-    expect(state.updated[0]).toMatchObject({ stage: "client" });
-    expect(state.inserted[1]).toMatchObject({ leadId: 101, userId: 7, activityType: "stage_changed" });
+    expect(state.updated).toHaveLength(0);
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  it("converts the linked Marketing Lead only when its pending Contract is marked Signed", async () => {
+    const pendingMarketingContract = { ...contract, id: 56, clientOrigin: "marketing", marketingLeadId: 101, status: "pending" };
+    const state = createDb([[pendingMarketingContract], [{ id: 101, stage: "qualified" }]]);
+    getDbMock.mockResolvedValue(state.db);
+
+    const result = await transitionContractStatusWithLeadConversion({
+      contractId: 56,
+      status: "signed",
+      actorUserId: 7,
+      actorName: "Tester",
+    });
+
+    expect(result).toMatchObject({ contract: pendingMarketingContract, statusChanged: true, linkedLeadId: 101, leadStageChanged: true });
+    expect(state.updated[0]).toMatchObject({ status: "signed" });
+    expect(state.updated[1]).toMatchObject({ stage: "client" });
+    expect(state.inserted[0]).toMatchObject({ leadId: 101, userId: 7, activityType: "stage_changed" });
+    expect(state.inserted[0]).toMatchObject({ description: expect.stringContaining("marked Signed") });
     expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ leadId: 101, mappingValue: "client", sourceType: "lead_stage" }));
   });
 
-  it("blocks a Marketing Lead already linked to a non-cancelled Contract before any write", async () => {
-    const state = createDb([[{ id: 101, stage: "qualified" }], [{ contractCode: "EXISTING" }]]);
+  it("does not convert a linked Marketing Lead when the Contract is cancelled", async () => {
+    const pendingMarketingContract = { ...contract, id: 56, clientOrigin: "marketing", marketingLeadId: 101, status: "pending" };
+    const state = createDb([[pendingMarketingContract]]);
     getDbMock.mockResolvedValue(state.db);
 
-    await expect(createContractWithClientOrigin({ contract, clientOrigin: "marketing", marketingLeadId: 101, actorUserId: 7, actorName: "Tester" }))
+    const result = await transitionContractStatusWithLeadConversion({
+      contractId: 56,
+      status: "cancelled",
+      actorUserId: 7,
+      actorName: "Tester",
+    });
+
+    expect(result).toMatchObject({ statusChanged: true, linkedLeadId: null, leadStageChanged: false });
+    expect(state.updated).toEqual([expect.objectContaining({ status: "cancelled" })]);
+    expect(state.inserted).toHaveLength(0);
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  it("does not repeat Lead conversion, history, or Meta synchronization for an already Signed Contract", async () => {
+    const signedMarketingContract = { ...contract, id: 56, clientOrigin: "marketing", marketingLeadId: 101, status: "signed" };
+    const state = createDb([[signedMarketingContract]]);
+    getDbMock.mockResolvedValue(state.db);
+
+    const result = await transitionContractStatusWithLeadConversion({
+      contractId: 56,
+      status: "signed",
+      actorUserId: 7,
+      actorName: "Tester",
+    });
+
+    expect(result).toMatchObject({ statusChanged: false, linkedLeadId: null, leadStageChanged: false });
+    expect(state.updated).toHaveLength(0);
+    expect(state.inserted).toHaveLength(0);
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks a Marketing Lead already linked to a non-cancelled Contract before any write", async () => {
+    const state = createDb([[{ id: 101 }], [{ contractCode: "EXISTING" }]]);
+    getDbMock.mockResolvedValue(state.db);
+
+    await expect(createContractWithClientOrigin({ contract, clientOrigin: "marketing", marketingLeadId: 101 }))
       .rejects.toThrow("MARKETING_LEAD_ALREADY_LINKED");
     expect(state.inserted).toHaveLength(0);
     expect(state.updated).toHaveLength(0);

@@ -37,8 +37,10 @@ describe("event-specific executive notification coverage", () => {
   it("filters the CRM notification bell by the signed-in executive", () => {
     const router = read("server/routers.ts");
     const leadRouter = read("server/routers/leads.ts");
+    const contractLeadService = read("server/contractLeadService.ts");
     expect(router).toContain("isSystemNotificationVisibleToExecutive(ctx.user.email, row.type)");
-    expect(router).toContain("const statusChanged = contract.status !== input.status");
+    expect(router).toContain("transitionContractStatusWithLeadConversion");
+    expect(contractLeadService).toContain("const statusChanged = contract.status !== input.status");
     expect(router).toContain('if (statusChanged && input.status === "signed")');
     expect(leadRouter).toContain('type: "lead_assigned"');
   });

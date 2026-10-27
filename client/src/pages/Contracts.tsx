@@ -599,6 +599,11 @@ export default function Contracts() {
               <strong>{confirmStatus?.contractCode}</strong> for{" "}
               <strong>{confirmStatus?.clientName}</strong> to{" "}
               <strong className="capitalize">{confirmStatus?.newStatus}</strong>?
+              {confirmStatus?.newStatus === "signed" && (
+                <span className="mt-2 block text-emerald-700">
+                  If this Contract is linked to a Marketing Lead, that Lead will become a Client now and its Financial Client record will be created.
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

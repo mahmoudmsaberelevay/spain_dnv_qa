@@ -13,7 +13,7 @@ import {
   createCase, getCasesByUserId, getCaseById, updateCase, deleteCase,
   createDocument, getDocumentsByCaseId, getDocumentById, updateDocument, deleteDocument,
   upsertAnalysisResult, getAnalysisResultByCaseId,
-  createContract, getAllContracts, getContractById, updateContractStatus, updateContractConsultant, updateContractDocUrl, applyContractDiscount, createInvoice, getAllInvoices, getInvoicesByContractId,
+  createContract, getAllContracts, getContractById, updateContractConsultant, updateContractDocUrl, applyContractDiscount, createInvoice, getAllInvoices, getInvoicesByContractId,
   getInvoiceById, markInvoicePaidAndSyncFinancial, updateInvoiceReceiptDate, updateInvoicePdfUrl, deleteInvoice,
   getTotalPaidByContractId, getContractStats, getFamilyMemberDistribution,
   getRecentContracts, getPaymentsByContractId, getNextContractSequence, getNextContractSequenceForYear,
@@ -66,7 +66,7 @@ import {
   setClientDocumentationContractDriveLink,
   updateClientDocumentationPayment,
 } from "./clientDocumentationPaymentsService";
-import { createContractWithClientOrigin, getMarketingLeadForContract } from "./contractLeadService";
+import { createContractWithClientOrigin, getMarketingLeadForContract, transitionContractStatusWithLeadConversion } from "./contractLeadService";
 import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
 import {
   recordClientDocumentAuthorityMilestone,
@@ -962,8 +962,6 @@ const contractingRouter = router({
             },
             clientOrigin: input.clientOrigin,
             marketingLeadId: input.clientOrigin === "marketing" ? input.marketingLeadId : null,
-            actorUserId: ctx.user.id,
-            actorName: ctx.user.name || ctx.user.email || "ELEVAY Team",
           });
           contract = created.contract;
         } catch (error) {
@@ -981,11 +979,22 @@ const contractingRouter = router({
     getCountries: protectedProcedure.query(() => CONTRACT_COUNTRIES),
     updateStatus: protectedProcedure
       .input(z.object({ id: z.number(), status: z.enum(["pending", "signed", "cancelled"]) }))
-      .mutation(async ({ input }) => {
-        const contract = await getContractById(input.id);
-        if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
-        const statusChanged = contract.status !== input.status;
-        await updateContractStatus(input.id, input.status);
+      .mutation(async ({ ctx, input }) => {
+        let transition;
+        try {
+          transition = await transitionContractStatusWithLeadConversion({
+            contractId: input.id,
+            status: input.status,
+            actorUserId: ctx.user.id,
+            actorName: ctx.user.name || ctx.user.email || "ELEVAY Team",
+          });
+        } catch (error) {
+          if (error instanceof Error && error.message === "CONTRACT_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND" });
+          if (error instanceof Error && error.message === "MARKETING_LEAD_NOT_FOUND") throw new TRPCError({ code: "CONFLICT", message: "The linked Marketing Lead no longer exists. The Contract status was not changed." });
+          throw error;
+        }
+        const contract = transition.contract;
+        const statusChanged = transition.statusChanged;
         if (statusChanged) await notifyContractStatusChange(contract.contractCode, contract.clientName, input.status);
         if (statusChanged && input.status === "signed") {
           const { createNotification: cn } = await import("./db");
@@ -1005,6 +1014,7 @@ const contractingRouter = router({
               const extractedCode = codeMatch ? codeMatch[1] : undefined;
               // contractValue is already the net value (applyContractDiscount reduces it in-place)
               const netCvEur = Number(contract.contractValue ?? 0);
+              const signedAt = new Date();
               const finClient = await createFinClient({
                 name: contract.invoicingName ?? contract.clientName,
                 contractId: contract.id,
@@ -1014,7 +1024,7 @@ const contractingRouter = router({
                 clientCode: extractedCode,
                 phone: contract.clientMobile ?? undefined,
                 program: "Spain Nomad",
-                signingDate: undefined, // Will be set when first receipt is marked as paid
+                signingDate: signedAt,
                 contractValueEur: netCvEur.toFixed(2),
                 paidAmountEur: "0.00",
                 remainingAmountEur: netCvEur.toFixed(2),
@@ -1031,7 +1041,7 @@ const contractingRouter = router({
                   contractValue: contract.contractValue,
                   seqNumber: existingCount + 1,
                   status: "Pending",
-                  signingDate: undefined, // Will be set when first receipt is marked as paid
+                  signingDate: signedAt,
                   leaderName: "Mahmoud Saber",
                 });
               }
@@ -1207,6 +1217,7 @@ const contractingRouter = router({
           const message = error instanceof Error ? error.message : String(error);
           if (message === "INVOICE_ALREADY_PAID") throw new TRPCError({ code: "CONFLICT", message: "Invoice already paid" });
           if (message === "INVOICE_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND" });
+          if (message === "INVOICE_CONTRACT_NOT_SIGNED") throw new TRPCError({ code: "BAD_REQUEST", message: "Mark the linked Contract as Signed before recording a receipt payment." });
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Receipt payment could not be recorded. No partial financial update was saved." });
         }
         // Notifications run only after commit, so their failure cannot roll back a settled payment.

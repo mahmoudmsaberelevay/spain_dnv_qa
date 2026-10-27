@@ -400,6 +400,11 @@ export async function markInvoicePaidAndSyncFinancial(invoiceId: number) {
       ? null
       : (await tx.select().from(contracts).where(eq(contracts.id, invoice.contractId)).limit(1))[0] ?? null;
     if (invoice.contractId != null && !contract) throw new Error("INVOICE_CONTRACT_NOT_FOUND");
+    // A Financial Client is created only when its linked Contract is marked
+    // Signed. Do not let an early receipt payment bypass that lifecycle rule.
+    if (!invoice.isLegacyReceipt && contract && contract.status !== "signed") {
+      throw new Error("INVOICE_CONTRACT_NOT_SIGNED");
+    }
 
     const paidAt = new Date();
     const statusUpdate = await tx.update(invoices).set({ status: "paid", paidAt })
