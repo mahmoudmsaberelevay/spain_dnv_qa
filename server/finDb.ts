@@ -518,6 +518,8 @@ export async function deleteCommission(id: number) {
 export async function listTransactions(filters?: {
   type?: "income" | "expense" | "transfer";
   accountId?: number;
+  fromAccountId?: number;
+  toAccountId?: number;
   from?: Date; to?: Date;
   limit?: number;
   offset?: number;
@@ -536,6 +538,8 @@ export async function listTransactions(filters?: {
       sql`(${finTransactions.accountId} = ${filters.accountId} OR ${finTransactions.fromAccountId} = ${filters.accountId} OR ${finTransactions.toAccountId} = ${filters.accountId})`
     );
   }
+  if (filters?.fromAccountId) conditions.push(eq(finTransactions.fromAccountId, filters.fromAccountId));
+  if (filters?.toAccountId) conditions.push(eq(finTransactions.toAccountId, filters.toAccountId));
   if (filters?.from) conditions.push(gte(finTransactions.transactionDate, filters.from));
   if (filters?.to) conditions.push(lte(finTransactions.transactionDate, filters.to));
   if (filters?.categoryId) conditions.push(eq(finTransactions.categoryId, filters.categoryId));
@@ -570,6 +574,8 @@ export async function listTransactions(filters?: {
 export async function countTransactions(filters?: {
   type?: "income" | "expense" | "transfer";
   accountId?: number;
+  fromAccountId?: number;
+  toAccountId?: number;
   from?: Date; to?: Date;
   categoryId?: number;
   employeeId?: number;
@@ -584,6 +590,8 @@ export async function countTransactions(filters?: {
       sql`(${finTransactions.accountId} = ${filters.accountId} OR ${finTransactions.fromAccountId} = ${filters.accountId} OR ${finTransactions.toAccountId} = ${filters.accountId})`
     );
   }
+  if (filters?.fromAccountId) conditions.push(eq(finTransactions.fromAccountId, filters.fromAccountId));
+  if (filters?.toAccountId) conditions.push(eq(finTransactions.toAccountId, filters.toAccountId));
   if (filters?.from) conditions.push(gte(finTransactions.transactionDate, filters.from));
   if (filters?.to) conditions.push(lte(finTransactions.transactionDate, filters.to));
   if (filters?.categoryId) conditions.push(eq(finTransactions.categoryId, filters.categoryId));

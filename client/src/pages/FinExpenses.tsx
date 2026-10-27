@@ -30,6 +30,7 @@ export default function FinExpenses() {
     type: "expense" as const,
     from: filters.from,
     to: filters.to,
+    accountId: filters.accountId,
     categoryId: filters.categoryId,
     employeeId: filters.employeeId,
     finClientId: filters.finClientId,
@@ -45,6 +46,7 @@ export default function FinExpenses() {
     type: "expense",
     from: filters.from,
     to: filters.to,
+    accountId: filters.accountId,
     categoryId: filters.categoryId,
     employeeId: filters.employeeId,
     finClientId: filters.finClientId,
@@ -141,7 +143,7 @@ export default function FinExpenses() {
   const pageTotal = transactions?.reduce((s, t) => s + Number(t.amount), 0) ?? 0;
 
   const getExportData = async () => utils.financial.transactions.list.fetch({
-    type: "expense", from: filters.from, to: filters.to, categoryId: filters.categoryId,
+    type: "expense", from: filters.from, to: filters.to, accountId: filters.accountId, categoryId: filters.categoryId,
     employeeId: filters.employeeId, finClientId: filters.finClientId, descriptionSearch: filters.descriptionSearch, sortField: filters.sortField, sortDir: filters.sortDir,
   });
 
@@ -217,7 +219,7 @@ export default function FinExpenses() {
       <Card className="border-0 shadow-sm">
         <CardHeader className="pb-4">
           <CardTitle className="text-base mb-3">Expense Transactions</CardTitle>
-          <FinFilterBar filters={filters} onChange={(f) => { setFilters(f); setPage(0); }} show={{ dateRange: true, category: true, employee: true, client: true, sort: true, descriptionSearch: true }} />
+          <FinFilterBar filters={filters} onChange={(f) => { setFilters(f); setPage(0); }} show={{ dateRange: true, account: true, category: true, employee: true, client: true, sort: true, descriptionSearch: true }} />
         </CardHeader>
         <CardContent>
           {isLoading ? (

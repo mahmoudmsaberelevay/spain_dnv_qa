@@ -533,6 +533,8 @@ const transactionsRouter = router({
     .input(z.object({
       type: z.enum(["income", "expense", "transfer"]).optional(),
       accountId: z.number().optional(),
+      fromAccountId: z.number().optional(),
+      toAccountId: z.number().optional(),
       from: financialDateBoundarySchema,
       to: financialDateBoundarySchema,
       limit: z.number().optional(),
@@ -553,6 +555,8 @@ const transactionsRouter = router({
     .input(z.object({
       type: z.enum(["income", "expense", "transfer"]).optional(),
       accountId: z.number().optional(),
+      fromAccountId: z.number().optional(),
+      toAccountId: z.number().optional(),
       from: financialDateBoundarySchema,
       to: financialDateBoundarySchema,
       categoryId: z.number().optional(),

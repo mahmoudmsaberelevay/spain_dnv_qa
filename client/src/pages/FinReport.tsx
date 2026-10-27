@@ -38,9 +38,11 @@ export default function FinReport() {
     type: txType === "all" ? undefined : txType as "income" | "expense",
     from: calendarDateToDateOnly(filters.from),
     to: calendarDateToDateOnly(filters.to),
+    accountId: filters.accountId,
     categoryId: entityType === "category" && entityId ? Number(entityId) : filters.categoryId,
     employeeId: entityType === "employee" && entityId ? Number(entityId) : filters.employeeId,
     finClientId: entityType === "client" && entityId ? Number(entityId) : filters.finClientId,
+    descriptionSearch: filters.descriptionSearch,
     sortField: filters.sortField,
     sortDir: filters.sortDir,
   }), [entityType, entityId, txType, filters]);
@@ -293,7 +295,7 @@ export default function FinReport() {
             <FinFilterBar
               filters={filters}
               onChange={setFilters}
-              show={{ dateRange: true, sort: true }}
+              show={{ dateRange: true, account: true, descriptionSearch: true, sort: true }}
             />
           </div>
         </CardHeader>

@@ -29,6 +29,9 @@ export default function FinTransfers() {
     type: "transfer" as const,
     from: filters.from,
     to: filters.to,
+    fromAccountId: filters.fromAccountId,
+    toAccountId: filters.toAccountId,
+    descriptionSearch: filters.descriptionSearch,
     sortField: filters.sortField,
     sortDir: filters.sortDir,
     limit: pageSize > 0 ? pageSize : undefined,
@@ -36,7 +39,14 @@ export default function FinTransfers() {
   }), [filters, page, pageSize]);
 
   const { data: transactions, isLoading } = trpc.financial.transactions.list.useQuery(queryParams);
-  const { data: totalCount } = trpc.financial.transactions.count.useQuery({ type: "transfer", from: filters.from, to: filters.to });
+  const { data: totalCount } = trpc.financial.transactions.count.useQuery({
+    type: "transfer",
+    from: filters.from,
+    to: filters.to,
+    fromAccountId: filters.fromAccountId,
+    toAccountId: filters.toAccountId,
+    descriptionSearch: filters.descriptionSearch,
+  });
   const { data: accounts } = trpc.financial.accounts.list.useQuery();
 
   const createMut = trpc.financial.transactions.createTransfer.useMutation({
@@ -156,7 +166,14 @@ export default function FinTransfers() {
   };
 
   const getExportData = async () => utils.financial.transactions.list.fetch({
-    type: "transfer", from: filters.from, to: filters.to, sortField: filters.sortField, sortDir: filters.sortDir,
+    type: "transfer",
+    from: filters.from,
+    to: filters.to,
+    fromAccountId: filters.fromAccountId,
+    toAccountId: filters.toAccountId,
+    descriptionSearch: filters.descriptionSearch,
+    sortField: filters.sortField,
+    sortDir: filters.sortDir,
   });
 
   const handleExportExcel = async () => {
@@ -237,7 +254,7 @@ export default function FinTransfers() {
           <FinFilterBar
             filters={filters}
             onChange={(f) => { setFilters(f); setPage(0); }}
-            show={{ dateRange: true, sort: true }}
+            show={{ dateRange: true, fromAccount: true, toAccount: true, descriptionSearch: true, sort: true }}
           />
         </CardHeader>
         <CardContent>

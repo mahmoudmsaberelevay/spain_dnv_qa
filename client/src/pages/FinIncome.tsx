@@ -30,6 +30,7 @@ export default function FinIncome() {
     type: "income" as const,
     from: filters.from,
     to: filters.to,
+    accountId: filters.accountId,
     categoryId: filters.categoryId,
     finClientId: filters.finClientId,
     descriptionSearch: filters.descriptionSearch,
@@ -44,6 +45,7 @@ export default function FinIncome() {
     type: "income",
     from: filters.from,
     to: filters.to,
+    accountId: filters.accountId,
     categoryId: filters.categoryId,
     finClientId: filters.finClientId,
     descriptionSearch: filters.descriptionSearch,
@@ -53,6 +55,7 @@ export default function FinIncome() {
     type: "income",
     from: filters.from,
     to: filters.to,
+    accountId: filters.accountId,
     categoryId: filters.categoryId,
     finClientId: filters.finClientId,
     descriptionSearch: filters.descriptionSearch,
@@ -179,6 +182,7 @@ export default function FinIncome() {
       type: "income",
       from: filters.from,
       to: filters.to,
+      accountId: filters.accountId,
       categoryId: filters.categoryId,
       finClientId: filters.finClientId,
       descriptionSearch: filters.descriptionSearch,
@@ -278,7 +282,7 @@ export default function FinIncome() {
           <FinFilterBar
             filters={filters}
             onChange={(f) => { setFilters(f); setPage(0); }}
-            show={{ dateRange: true, category: true, client: true, sort: true, descriptionSearch: true }}
+            show={{ dateRange: true, account: true, category: true, client: true, sort: true, descriptionSearch: true }}
           />
         </CardHeader>
         <CardContent>
