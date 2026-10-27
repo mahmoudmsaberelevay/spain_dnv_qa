@@ -13,6 +13,7 @@ import { runPublicContentSync } from "./publicContentService";
 import { replaceClientPortalAssignments } from "./clientPortalAssignmentService";
 import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPolicy";
 import { clientDocumentationProgramLabel } from "../shared/clientDocumentationPrograms";
+import { CLIENT_PORTAL_MAX_DOCUMENTATION_ASSIGNMENTS } from "../shared/clientPortalDocumentationAssignments";
 import { decodeProviderCoverUpload, MAX_PROVIDER_COVER_BYTES, providerCoverStorageKey } from "./clientPortalProviderMedia";
 import { listStaffMessages, sendStaffMessage } from "./clientChatService";
 import {
@@ -84,7 +85,7 @@ const afterSettlementServiceInput = z.object({
 });
 
 export const clientPortalCreateAccountInput = z.object({
-  caseIds: z.array(z.number().int().positive()).min(1).max(10),
+  caseIds: z.array(z.number().int().positive()).min(1).max(CLIENT_PORTAL_MAX_DOCUMENTATION_ASSIGNMENTS),
   primaryCaseId: z.number().int().positive(),
   username: z.string().trim().min(4).max(100).regex(/^[A-Za-z0-9._-]+$/),
   email: z.string().trim().email().max(320),
@@ -98,11 +99,17 @@ export const clientPortalSetPasswordInput = z.object({
   password: z.string().min(10).max(72).refine(isStrongClientPortalPassword, "Password must include uppercase, lowercase, number, and symbol with no spaces"),
 });
 
+export const clientPortalDocumentationAssignmentInput = z.object({
+  portalUserPublicId: z.string().uuid(),
+  caseIds: z.array(z.number().int().positive()).min(1).max(CLIENT_PORTAL_MAX_DOCUMENTATION_ASSIGNMENTS),
+  primaryCaseId: z.number().int().positive(),
+});
+
 export const clientPortalAdminRouter = router({
   listClientCases: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-    return db.select({ id: clientCases.id, clientCode: clientCases.clientCode, clientName: clientCases.clientName, program: clientCases.program, applicationType: clientCases.applicationType, consultant: clientCases.consultant, paralegal: clientCases.paralegal, stage: clientCases.stage, caribbeanJourneyStage: clientCases.caribbeanJourneyStage }).from(clientCases).orderBy(asc(clientCases.clientName)).limit(1000);
+    return db.select({ id: clientCases.id, clientCode: clientCases.clientCode, clientName: clientCases.clientName, program: clientCases.program, applicationType: clientCases.applicationType, consultant: clientCases.consultant, paralegal: clientCases.paralegal, stage: clientCases.stage, caribbeanJourneyStage: clientCases.caribbeanJourneyStage }).from(clientCases).orderBy(asc(clientCases.clientName)).limit(CLIENT_PORTAL_MAX_DOCUMENTATION_ASSIGNMENTS);
   }),
 
   listAccounts: adminProcedure.query(async () => {
@@ -179,11 +186,7 @@ export const clientPortalAdminRouter = router({
     return { publicId: portalUser.publicId, username: portalUser.username, email: portalUser.email, assignedCount: cases.length };
   }),
 
-  replaceDocumentationAssignments: adminProcedure.input(z.object({
-    portalUserPublicId: z.string().uuid(),
-    caseIds: z.array(z.number().int().positive()).min(1).max(10),
-    primaryCaseId: z.number().int().positive(),
-  })).mutation(async ({ ctx, input }) => {
+  replaceDocumentationAssignments: adminProcedure.input(clientPortalDocumentationAssignmentInput).mutation(async ({ ctx, input }) => {
     const result = await replaceClientPortalAssignments({
       ...input,
       actorUserId: ctx.user.id,

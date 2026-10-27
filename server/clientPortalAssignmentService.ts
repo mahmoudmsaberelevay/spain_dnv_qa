@@ -11,6 +11,7 @@ import {
   clientPortalUsers,
 } from "../drizzle/schema";
 import { clientDocumentationProgramLabel } from "../shared/clientDocumentationPrograms";
+import { CLIENT_PORTAL_MAX_DOCUMENTATION_ASSIGNMENTS, isValidClientPortalDocumentationAssignment } from "../shared/clientPortalDocumentationAssignments";
 
 export type ReplaceClientPortalAssignmentsInput = {
   portalUserPublicId: string;
@@ -37,8 +38,12 @@ export function planClientPortalAssignmentChanges(existing: ClientPortalAssignme
 
 export async function replaceClientPortalAssignments(input: ReplaceClientPortalAssignmentsInput) {
   const uniqueCaseIds = Array.from(new Set(input.caseIds));
-  if (!uniqueCaseIds.length || uniqueCaseIds.length > 10) throw new TRPCError({ code: "BAD_REQUEST", message: "Select between 1 and 10 documentation folders" });
-  if (!uniqueCaseIds.includes(input.primaryCaseId)) throw new TRPCError({ code: "BAD_REQUEST", message: "Primary documentation folder must be selected" });
+  if (!isValidClientPortalDocumentationAssignment(uniqueCaseIds, input.primaryCaseId)) {
+    if (!uniqueCaseIds.length || uniqueCaseIds.length > CLIENT_PORTAL_MAX_DOCUMENTATION_ASSIGNMENTS) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: `Select between 1 and ${CLIENT_PORTAL_MAX_DOCUMENTATION_ASSIGNMENTS} documentation folders` });
+    }
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Primary documentation folder must be selected" });
+  }
 
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });

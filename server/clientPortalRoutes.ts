@@ -40,6 +40,7 @@ import { getClientNotificationAttachment } from "./clientNotificationAttachments
 import { sendClientPortalActivityEmail, sendClientPortalPasswordResetEmail } from "./emailService";
 import { resolveSystemNotificationRecipients } from "./systemNotificationRecipients";
 import { replaceClientPortalAssignments } from "./clientPortalAssignmentService";
+import { isValidClientPortalDocumentationAssignment } from "../shared/clientPortalDocumentationAssignments";
 import { isStrongClientPortalPassword } from "../shared/clientPortalPasswordPolicy";
 import { clientDocumentationProgramLabel, isCaribbeanDocumentationProgram } from "../shared/clientDocumentationPrograms";
 import { CARIBBEAN_QUESTIONNAIRE_VERSION } from "../shared/caribbeanQuestionnaire";
@@ -865,7 +866,7 @@ export function registerClientPortalRoutes(app: Express) {
     const body = safeBody<{ clientCaseIds: number[]; primaryClientCaseId: number }>(req);
     const clientCaseIds = Array.isArray(body.clientCaseIds) ? Array.from(new Set(body.clientCaseIds.map(Number).filter(value => Number.isInteger(value) && value > 0))) : [];
     const primaryClientCaseId = Number(body.primaryClientCaseId);
-    if (!clientCaseIds.length || clientCaseIds.length > 10 || !clientCaseIds.includes(primaryClientCaseId)) return error(res, 400, "invalid_documentation_assignments");
+    if (!isValidClientPortalDocumentationAssignment(clientCaseIds, primaryClientCaseId)) return error(res, 400, "invalid_documentation_assignments");
     const db = await getDb();
     if (!db) return error(res, 503, "service_unavailable");
     if (req.portal!.user.isReviewAccount) {
