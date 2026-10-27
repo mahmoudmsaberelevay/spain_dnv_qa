@@ -16,7 +16,7 @@ const manifest = {
 };
 const MAC_WORKER = "mahmouds-macbook-pro-render-worker";
 
-function harness(start = 1_000_000) {
+function harness(start = 1_000_000, extra: any = {}) {
   let clock = start;
   const rows = new Map<string, any>();
   const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -78,7 +78,7 @@ function harness(start = 1_000_000) {
     }
     throw new Error(`Unexpected SQL: ${sql}`);
   };
-  const bridge = createRenderWorkerBridge({ q, token: "test-worker-token", now: () => clock, notifyFailure: async () => true, putFile: async (_key: string, _file: string, type: string) => ({ url: `https://storage.example/${type.replace("/", "-")}` }) });
+  const bridge = createRenderWorkerBridge({ q, token: "test-worker-token", now: () => clock, notifyFailure: async () => true, putFile: async (_key: string, _file: string, type: string) => ({ url: `https://storage.example/${type.replace("/", "-")}` }), ...extra });
   const enqueue = (id = "reel-bridge-security-90007", manifestOverride = {}) => rows.set(id, { id, run_id: 90007, status: "pending", created_at: clock, updated_at: clock, lease_until: 0, lease_owner: null, attempts: 0, doc: JSON.stringify({ manifest: { ...manifest, ...manifestOverride }, parts: { _version: manifest.version, privateServerOnly: "not-a-render-part" }, stage: "queued" }) });
   return { bridge, rows, enqueue, advance: (ms: number) => { clock += ms; } };
 }
@@ -104,7 +104,7 @@ describe("render worker bridge", () => {
 
   it("leases exactly one saved-input job without disclosing server-only fields", async () => {
     const { bridge, enqueue } = harness(); enqueue();
-    const result = await bridge.lease(MAC_WORKER, 10);
+    const result = await bridge.lease(MAC_WORKER, 11);
     expect(result.job).toMatchObject({ id: "reel-bridge-security-90007", runId: 90007, manifest: { narrationTargetSeconds: 18, narrationSceneSeconds: 4.5, threads: 1 } });
     expect(result.job.manifest).not.toHaveProperty("ignoredServerCredential");
     expect(result.job.parts).not.toHaveProperty("privateServerOnly");
@@ -115,7 +115,7 @@ describe("render worker bridge", () => {
     const { bridge, enqueue, rows } = harness();
     enqueue("reel-legacy-invalid-90007", { outroUrl: null });
     enqueue("reel-valid-next-90007");
-    const result = await bridge.lease(MAC_WORKER, 10);
+    const result = await bridge.lease(MAC_WORKER, 11);
     expect(result.job.id).toBe("reel-valid-next-90007");
     const invalid = rows.get("reel-legacy-invalid-90007");
     expect(invalid.status).toBe("failed");
@@ -124,7 +124,7 @@ describe("render worker bridge", () => {
 
   it("rejects a second worker’s progress or completion attempts on an active lease", async () => {
     const { bridge, enqueue } = harness(); enqueue();
-    const lease = await bridge.lease(MAC_WORKER, 10);
+    const lease = await bridge.lease(MAC_WORKER, 11);
     await expect(bridge.progress(lease.job.id, "other-worker-02", lease.lease.id, { stage: "rendering" })).rejects.toMatchObject({ status: 403 });
     await expect(bridge.complete(lease.job.id, "other-worker-02", lease.lease.id, { final: {} })).rejects.toMatchObject({ status: 403 });
   });
@@ -133,47 +133,47 @@ describe("render worker bridge", () => {
     const { bridge, enqueue } = harness(); enqueue();
     await expect(bridge.lease("mahmoud-mac-render-worker", 9)).rejects.toMatchObject({ status: 403 });
     await expect(bridge.lease("other-mac-worker-02", 9)).rejects.toMatchObject({ status: 403 });
-    await expect(bridge.lease(MAC_WORKER, 10)).resolves.toMatchObject({ ok: true, job: { id: expect.any(String) } });
+    await expect(bridge.lease(MAC_WORKER, 11)).resolves.toMatchObject({ ok: true, job: { id: expect.any(String) } });
   });
 
   it("allows an expired lease to be reclaimed, but not a live lease", async () => {
     const { bridge, enqueue, advance } = harness(); enqueue();
-    const first = await bridge.lease(MAC_WORKER, 10);
-    await expect(bridge.lease(MAC_WORKER, 10)).resolves.toMatchObject({ job: null });
+    const first = await bridge.lease(MAC_WORKER, 11);
+    await expect(bridge.lease(MAC_WORKER, 11)).resolves.toMatchObject({ job: null });
     advance(15 * 60_000 + 1);
-    const second = await bridge.lease(MAC_WORKER, 10);
+    const second = await bridge.lease(MAC_WORKER, 11);
     expect(second.job.id).toBe(first.job.id);
     expect(second.lease.id).not.toBe(first.lease.id);
   });
 
   it("gives jobs only to Mahmoud's MacBook Pro on the current renderer version", async () => {
     const { bridge, enqueue } = harness(); enqueue();
-    await expect(bridge.lease(MAC_WORKER, undefined)).resolves.toMatchObject({ ok: true, job: null, outdated: true, requiredVersion: 10 });
-    await expect(bridge.lease(MAC_WORKER, 9)).resolves.toMatchObject({ job: null, outdated: true });
-    await expect(bridge.lease(MAC_WORKER, 10)).resolves.toMatchObject({ ok: true, job: { id: expect.any(String) } });
+    await expect(bridge.lease(MAC_WORKER, undefined)).resolves.toMatchObject({ ok: true, job: null, outdated: true, requiredVersion: 11 });
+    await expect(bridge.lease(MAC_WORKER, 10)).resolves.toMatchObject({ job: null, outdated: true });
+    await expect(bridge.lease(MAC_WORKER, 11)).resolves.toMatchObject({ ok: true, job: { id: expect.any(String) } });
     const st = await bridge.status();
-    expect(st.workers[0]).toMatchObject({ id: MAC_WORKER, name: "Mahmoud's MacBook Pro", outdated: false, rendererVersion: 10 });
+    expect(st.workers[0]).toMatchObject({ id: MAC_WORKER, name: "Mahmoud's MacBook Pro", outdated: false, rendererVersion: 11 });
   });
 
   it("allows only one active lease for a worker identity even if a stale process polls", async () => {
     const { bridge, enqueue } = harness();
     enqueue("reel-one-active-90007"); enqueue("reel-two-active-90008");
-    const first = await bridge.lease(MAC_WORKER, 10);
-    await expect(bridge.lease(MAC_WORKER, 10)).resolves.toMatchObject({ ok: true, job: null });
+    const first = await bridge.lease(MAC_WORKER, 11);
+    await expect(bridge.lease(MAC_WORKER, 11)).resolves.toMatchObject({ ok: true, job: null });
     await expect(bridge.lease("other-worker-02", 9)).rejects.toMatchObject({ status: 403 });
     expect(first.job.id).toBe("reel-one-active-90007");
   });
 
   it("stops a permanently untimable saved voice without consuming automatic render retries", async () => {
     const { bridge, enqueue, rows } = harness(); enqueue();
-    const lease = await bridge.lease(MAC_WORKER, 10);
+    const lease = await bridge.lease(MAC_WORKER, 11);
     await expect(bridge.fail(lease.job.id, MAC_WORKER, lease.lease.id, { stage: "rendering", error: "Scene 1 saved narration cannot be naturally timed to the locked slot." })).resolves.toMatchObject({ retry: false });
     expect(rows.get(lease.job.id).status).toBe("failed");
   });
 
   it("validates artifact kind, MIME, size, SHA-256 and active lease before committing", async () => {
     const { bridge, enqueue, advance } = harness(); enqueue();
-    const lease = await bridge.lease(MAC_WORKER, 10);
+    const lease = await bridge.lease(MAC_WORKER, 11);
     const base = { kind: "final", url: "https://storage.example/final.mp4", sha256: "a".repeat(64), bytes: 100, mime: "video/mp4" };
     await expect(bridge.commitArtifact(lease.job.id, MAC_WORKER, lease.lease.id, { ...base, kind: "unexpected" })).rejects.toBeInstanceOf(RenderWorkerBridgeError);
     await expect(bridge.commitArtifact(lease.job.id, MAC_WORKER, lease.lease.id, { ...base, mime: "image/jpeg" })).rejects.toMatchObject({ status: 400 });
@@ -185,7 +185,7 @@ describe("render worker bridge", () => {
 
   it("accepts a large final MP4 in 8 MB chunks and assembles, verifies and stores it once (no proxy 413)", async () => {
     const { bridge, enqueue } = harness(); enqueue();
-    const lease = await bridge.lease(MAC_WORKER, 10);
+    const lease = await bridge.lease(MAC_WORKER, 11);
     const payload = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), Buffer.alloc(CHUNK_BYTES * 2 + 1234, 7)]);
     const sha = crypto.createHash("sha256").update(payload).digest("hex");
     const total = Math.ceil(payload.length / CHUNK_BYTES);
@@ -199,13 +199,37 @@ describe("render worker bridge", () => {
     await expect(bridge.chunkRequest(part(1), { jobId: lease.job.id, kind: "final" })).resolves.toMatchObject({ ok: true, remaining: 2 }); // resend is safe
     await expect(bridge.chunkRequest(part(0), { jobId: lease.job.id, kind: "final" })).resolves.toMatchObject({ ok: true, remaining: 1 });
     await expect(bridge.chunkRequest(part(2), { jobId: lease.job.id, kind: "final" })).resolves.toMatchObject({ ok: true, artifact: { kind: "final", url: "https://storage.example/video-mp4" } });
+    // A re-send of the last part after the website already stored it returns the same artifact (no second copy).
+    await expect(bridge.chunkRequest(part(2), { jobId: lease.job.id, kind: "final" })).resolves.toMatchObject({ ok: true, artifact: { kind: "final", url: "https://storage.example/video-mp4" } });
     const tooBig = Object.assign(Readable.from([Buffer.alloc(CHUNK_BYTES + 1)]), { headers: { ...part(0).headers, "x-artifact-sha256": "a".repeat(64) } });
     await expect(bridge.chunkRequest(tooBig, { jobId: lease.job.id, kind: "final" })).rejects.toMatchObject({ status: 413 });
   });
 
+  it("keeps storing a big final in the background and answers the re-sent last part when it is done (no proxy timeout loop)", async () => {
+    let release: null | (() => void) = null;
+    const slowPut = (_k: string, _f: string, type: string) => new Promise((r) => { release = () => r({ url: `https://storage.example/slow-${type.replace("/", "-")}` }); });
+    const { bridge, enqueue } = harness(1_000_000, { putFile: slowPut, assemblyWaitMs: 20 });
+    enqueue();
+    const lease = await bridge.lease(MAC_WORKER, 11);
+    const payload = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), Buffer.alloc(CHUNK_BYTES + 99, 3)]);
+    const sha = crypto.createHash("sha256").update(payload).digest("hex");
+    const part = (k: number) => { const bytes = payload.subarray(k * CHUNK_BYTES, (k + 1) * CHUNK_BYTES); return Object.assign(Readable.from([bytes]), { headers: {
+      "x-render-worker-id": MAC_WORKER, "x-render-worker-lease": lease.lease.id, "x-artifact-sha256": sha,
+      "x-artifact-bytes": String(payload.length), "x-chunk-index": String(k), "x-chunk-total": "2",
+      "content-type": "application/octet-stream", "content-length": String(bytes.length),
+    } }); };
+    await bridge.chunkRequest(part(0), { jobId: lease.job.id, kind: "final" });
+    await expect(bridge.chunkRequest(part(1), { jobId: lease.job.id, kind: "final" })).resolves.toMatchObject({ ok: true, assembling: true });
+    await expect(bridge.chunkRequest(part(1), { jobId: lease.job.id, kind: "final" })).resolves.toMatchObject({ ok: true, assembling: true });
+    for (let i = 0; i < 200 && !release; i++) await new Promise((r) => setTimeout(r, 10));
+    release!();
+    await new Promise((r) => setTimeout(r, 30));
+    await expect(bridge.chunkRequest(part(1), { jobId: lease.job.id, kind: "final" })).resolves.toMatchObject({ ok: true, artifact: { kind: "final", url: "https://storage.example/slow-video-mp4" } });
+  });
+
   it("streams an allowlisted artifact to server-side storage and rejects mismatched bytes", async () => {
     const { bridge, enqueue } = harness(); enqueue();
-    const lease = await bridge.lease(MAC_WORKER, 10);
+    const lease = await bridge.lease(MAC_WORKER, 11);
     const payload = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), Buffer.alloc(64)]);
     const goodRequest: any = Object.assign(Readable.from([payload]), { headers: {
       "x-render-worker-id": MAC_WORKER, "x-render-worker-lease": lease.lease.id,
