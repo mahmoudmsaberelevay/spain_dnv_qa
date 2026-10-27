@@ -116,6 +116,9 @@ async function uploadArtifactInChunks(jobId: string, leaseId: string, kind: stri
       const size = Math.min(CHUNK_BYTES, bytes - part * CHUNK_BYTES);
       const buf = Buffer.alloc(size);
       await handle.read(buf, 0, size, part * CHUNK_BYTES);
+      const isLast = part === total - 1;
+      // The last part triggers assembly on the website, which can take longer than one request: keep re-sending it
+      // (safe and idempotent) until the website answers with the stored artifact — up to about 10 minutes.
       for (let attempt = 1; ; attempt++) {
         try {
           const response = await fetch(`${baseUrl}/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(kind)}/chunks`, {
@@ -136,10 +139,15 @@ async function uploadArtifactInChunks(jobId: string, leaseId: string, kind: stri
           const data = await response.json().catch(() => ({}));
           if (!response.ok || !data?.ok) throw Object.assign(new Error(cleanError(data?.error || `Artifact chunk ${part + 1}/${total} upload failed (${response.status})`)), { status: response.status });
           last = data;
-          break;
+          if (data.artifact) break;
+          if (!isLast || !data.assembling) break;
+          if (attempt >= 120) throw new Error("The website did not finish storing the artifact within 10 minutes.");
+          await new Promise((r) => setTimeout(r, 5000));
         } catch (error: any) {
-          if (attempt >= 3 || [400, 401, 403, 409, 415].includes(Number(error?.status))) throw error;
-          await new Promise((r) => setTimeout(r, 3000 * attempt));
+          const status = Number(error?.status);
+          if ([400, 401, 403, 409, 413, 415].includes(status)) throw error;
+          if (attempt >= (isLast ? 120 : 4)) throw error;
+          await new Promise((r) => setTimeout(r, isLast ? 5000 : 3000 * attempt));
         }
       }
     }
@@ -259,6 +267,7 @@ async function processJob(leased: any) {
     await fsp.rm(directory, { recursive: true, force: true });
   } catch (error) {
     const message = cleanError(error);
+    console.log(`Render #${job.runId}: stopped — ${message}${(error as any)?.status ? ` (HTTP ${(error as any).status})` : ""}`);
     if (!leaseLost && (error as any)?.status !== 409) {
       try { await jsonRequest("POST", `/jobs/${encodeURIComponent(job.id)}/fail`, { workerId, leaseId, stage: "rendering", error: message }); }
       catch { /* A stale or unavailable bridge must not be overwritten by this worker. */ }

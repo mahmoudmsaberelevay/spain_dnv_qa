@@ -228,6 +228,7 @@ export function createRenderWorkerBridge({
   now = () => Date.now(),
   putFile = storagePutFile,
   notifyFailure = notifyAiFailure,
+  assemblyWaitMs = 20_000,
 }: any) {
   let ensurePromise: Promise<any> | null = null;
   const rate = new Map<string, number[]>();
@@ -311,7 +312,7 @@ export function createRenderWorkerBridge({
   }
 
   /** Lowest renderer version that may take jobs (3 = the voice-over fix). Older or unversioned Macs wait. */
-  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 10) || 0);
+  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 11) || 0);
   const workersSeen = new Map<string, { rendererVersion: number | null; at: number; outdated: boolean }>();
   async function lease(workerId: string, rendererVersion?: unknown) {
     await ensure();
@@ -544,7 +545,7 @@ export function createRenderWorkerBridge({
     // Final QC evidence is deliberately extensive (75 sheets plus 2 outro
     // frames). Rate-limit uploads per job rather than globally so one valid
     // completed render cannot make the next leased render fail closed.
-    limit(`artifact:${jobId}`, 120, 15 * 60_000);
+    limit(`artifact:${jobId}`, 600, 15 * 60_000);
     const workerId = header(req, "x-render-worker-id");
     const leaseId = header(req, "x-render-worker-lease");
     const expectedSha = header(req, "x-artifact-sha256").toLowerCase();
@@ -586,9 +587,12 @@ export function createRenderWorkerBridge({
    * arrives; the whole file is then checked (size, SHA-256, media signature), stored and committed exactly like a
    * single upload. Re-sending a part is safe (it overwrites the same part file).
    */
+  // Assembling and storing a large final MP4 can outlast the hosting proxy's request timeout. Assembly therefore runs in
+  // the background; the Mac re-sends the last part to ask for the result until the artifact is committed.
+  const assemblies = new Map<string, { started: number; done?: any; error?: any }>();
   async function chunkRequest(req: any, { jobId, kind }: { jobId: string, kind: string }) {
     await ensure();
-    limit(`chunk:${jobId}`, 1500, 15 * 60_000);
+    limit(`chunk:${jobId}`, 3000, 15 * 60_000);
     const workerId = header(req, "x-render-worker-id");
     const leaseId = header(req, "x-render-worker-lease");
     const expectedSha = header(req, "x-artifact-sha256").toLowerCase();
@@ -601,7 +605,23 @@ export function createRenderWorkerBridge({
     if (!Number.isSafeInteger(total) || total < 1 || total > 200 || !Number.isSafeInteger(part) || part < 0 || part >= total) throw new RenderWorkerBridgeError(400, "Chunk headers are invalid.");
     if (!Number.isSafeInteger(totalBytes) || totalBytes <= 0 || totalBytes > rule.maxBytes || totalBytes > total * CHUNK_BYTES) throw new RenderWorkerBridgeError(413, "Artifact exceeds its size limit.");
     if (header(req, "content-type").split(";", 1)[0].trim().toLowerCase() !== "application/octet-stream") throw new RenderWorkerBridgeError(415, "Chunk media type must be application/octet-stream.");
-    await leased(jobId, workerId, leaseId);
+    const current = await leased(jobId, workerId, leaseId);
+    const drain = async () => { try { for await (const _ of req) { /* discard a re-sent part */ } } catch { /* ignore */ } };
+    // Already committed (a re-send after a timeout): answer with the stored artifact; never store it twice.
+    const committed = kind === "qc" ? current.doc.evidence?.[String(rule.index)] : current.doc.artifacts?.[kind];
+    if (committed?.sha256 && timingSafeEqual(String(committed.sha256), expectedSha)) {
+      await drain();
+      return { ok: true, artifact: kind === "qc" ? { kind, index: rule.index, url: committed.url } : { kind, url: committed.url } };
+    }
+    const key = `${jobId}:${kind}:${index || ""}:${expectedSha}`;
+    for (const [k, v] of assemblies) if (Date.now() - v.started > 60 * 60_000) assemblies.delete(k);
+    const running = assemblies.get(key);
+    if (running) {
+      await drain();
+      if (running.done) return running.done;
+      if (running.error) { assemblies.delete(key); throw running.error; }
+      return { ok: true, received: part, remaining: 0, assembling: true };
+    }
     const dir = path.join(os.tmpdir(), "elevay-render-chunks", `${jobId.replace(/[^A-Za-z0-9_-]/g, "")}-${kind}-${index || "0"}-${expectedSha.slice(0, 16)}`);
     await fsp.mkdir(dir, { recursive: true });
     const partFile = path.join(dir, `part-${String(part).padStart(4, "0")}`);
@@ -614,26 +634,33 @@ export function createRenderWorkerBridge({
     await fsp.rename(partFile + ".tmp", partFile);
     const present = (await fsp.readdir(dir)).filter((n) => /^part-\d{4}$/.test(n)).sort();
     if (present.length < total) return { ok: true, received: part, remaining: total - present.length };
-    const uploadKey = `${jobId}:${kind}:${index || ""}:assemble`;
-    if (activeUploads.has(uploadKey)) return { ok: true, received: part, remaining: 0, assembling: true };
-    activeUploads.add(uploadKey);
-    const file = path.join(dir, `artifact.${rule.extension}`);
-    try {
-      await fsp.writeFile(file, Buffer.alloc(0));
-      for (let k = 0; k < total; k++) await fsp.appendFile(file, await fsp.readFile(path.join(dir, `part-${String(k).padStart(4, "0")}`)));
-      const size = (await fsp.stat(file)).size;
-      if (size !== totalBytes) throw new RenderWorkerBridgeError(400, "Assembled artifact size does not match the declared size.");
-      const sha256 = await sha256File(file);
-      if (!timingSafeEqual(sha256, expectedSha)) throw new RenderWorkerBridgeError(400, "Artifact SHA-256 does not match the declared value.");
-      await verifyArtifactSignature(file, rule.type);
-      const suffix = kind === "qc" ? `qc-${rule.index}` : kind;
-      const key = `marketing/command-center/render-worker/${jobId}/${sha256.slice(0, 24)}-${suffix}.${rule.extension}`;
-      const stored = await putFile(key, file, rule.type);
-      return await commitArtifact(jobId, workerId, leaseId, { kind, index: rule.index, url: stored.url, sha256, bytes: size, mime: rule.type });
-    } finally {
-      activeUploads.delete(uploadKey);
-      await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
-    }
+    if (assemblies.has(key)) return { ok: true, received: part, remaining: 0, assembling: true };
+    const entry: { started: number; done?: any; error?: any } = { started: Date.now() };
+    assemblies.set(key, entry);
+    const work = (async () => {
+      const file = path.join(dir, `artifact.${rule.extension}`);
+      try {
+        await fsp.writeFile(file, Buffer.alloc(0));
+        for (let k = 0; k < total; k++) await fsp.appendFile(file, await fsp.readFile(path.join(dir, `part-${String(k).padStart(4, "0")}`)));
+        const size = (await fsp.stat(file)).size;
+        if (size !== totalBytes) throw new RenderWorkerBridgeError(400, "Assembled artifact size does not match the declared size.");
+        const sha256 = await sha256File(file);
+        if (!timingSafeEqual(sha256, expectedSha)) throw new RenderWorkerBridgeError(400, "Artifact SHA-256 does not match the declared value.");
+        await verifyArtifactSignature(file, rule.type);
+        const suffix = kind === "qc" ? `qc-${rule.index}` : kind;
+        const storeKey = `marketing/command-center/render-worker/${jobId}/${sha256.slice(0, 24)}-${suffix}.${rule.extension}`;
+        const stored = await putFile(storeKey, file, rule.type);
+        entry.done = await commitArtifact(jobId, workerId, leaseId, { kind, index: rule.index, url: stored.url, sha256, bytes: size, mime: rule.type });
+      } catch (error) {
+        entry.error = error instanceof RenderWorkerBridgeError ? error : new RenderWorkerBridgeError(500, "Artifact assembly failed; send the artifact again.");
+      } finally {
+        await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
+      }
+    })();
+    await Promise.race([work, new Promise((r) => setTimeout(r, assemblyWaitMs))]);
+    if (entry.done) return entry.done;
+    if (entry.error) { assemblies.delete(key); throw entry.error; }
+    return { ok: true, received: part, remaining: 0, assembling: true };
   }
 
   return { authenticate, ensure, lease, renew, progress, commitArtifact, complete, fail, status, checkOfflineWaiting, uploadRequest, chunkRequest };
