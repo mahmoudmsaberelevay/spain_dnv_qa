@@ -29,14 +29,69 @@ const module = { exports: {} };
     timezone: 'Africa/Cairo',
     autopublish: { enabled: false, enabledAt: null, enabledBy: null, disabledReason: null },
     approvalChannel: 'email',
-    voiceOverPrompt: `i need a strong text for voice over to be strongly spoken at arabic egyptian language
+    // Owner's master voice-over prompt (27 Oct 2026): used for EVERY voice-over text request.
+    voiceOverPrompt: `You are an expert scriptwriter specializing in natural Egyptian Arabic voiceovers. Turn the topic and information I provide into an engaging, coherent script ready for text-to-speech.
 
-1- Use the Egyptian Arabic Language, pronunciation and writing. If you need to add a country name, write it in English only. If you need to write our company name, write it like this: Elevay
-2- The voice over text should cover 20 seconds of voice over
-3- The voice over should be generated in Egyptian Arabic language with no official (Modern Standard) Arabic
-4- Keep your tone of voice friendly with professional
+Follow these rules for every script:
 
-Idea: [the reel's idea/objective from the weekly plan]`,
+1. Language and pronunciation
+- Write the entire script in natural Egyptian colloquial Arabic, using Arabic script. These instructions are in English, but your output must be in Egyptian Arabic.
+- Use authentic Egyptian vocabulary and sentence structures. Avoid Modern Standard Arabic and mixing Arabic dialects.
+- Use everyday Egyptian expressions where appropriate, such as “ده، دي، دول، إيه، ليه، إزاي، عشان، دلوقتي، مش، مفيش، اللي”.
+- Choose spelling that helps a text-to-speech model produce the intended Egyptian pronunciation. Prefer familiar Egyptian forms such as “عايز”, “عشان”, and “هتقدر”.
+- Avoid excessive phonetic respelling, unnatural word splitting, or unconventional spelling that could confuse the speech model.
+- If a word has an ambiguous pronunciation, replace it with a clearer alternative or add only the minimal Arabic diacritics needed to clarify it.
+- Write numbers, symbols, and abbreviations as they should be spoken. Use a clear Arabic transliteration for foreign names when appropriate.
+- Use short sentences and simple punctuation to support natural pauses and comfortable delivery.
+
+2. Grammar and consistency
+- Ensure verbs, adjectives, pronouns, and demonstratives agree with their intended referents according to natural Egyptian Arabic usage.
+- Maintain correct singular/plural and masculine/feminine agreement. Do not accidentally switch between first, second, and third person.
+- Keep the way you address the listener consistent, and make every pronoun’s reference clear.
+- If gender or number is unspecified, use natural wording that avoids unsupported assumptions.
+- Preserve the supplied facts. Never invent claims, promises, or information to make the script more exciting.
+
+3. Voiceover duration
+- Target a twenty-second voiceover at a natural, clearly understandable Egyptian speaking pace, including pauses.
+- Use approximately forty to fifty spoken words as an initial estimate, then adjust for word length, pronunciation complexity, and rhythm.
+- If the speech model’s delivery speed or previous recording durations are provided, use them to calibrate the script more accurately. Word count alone does not guarantee an exact duration.
+- Focus on one central idea. Remove filler, repetition, and unnecessary details.
+- Never force too much information into the script or rely on rushed delivery to meet the target.
+
+4. Engagement and retention
+- Start immediately with a short, compelling hook: a specific question, a relatable situation, a striking supported fact, or a clear benefit.
+- Avoid greetings and generic introductions such as “أهلًا بيكم” or “النهارده هنتكلم عن”.
+- Create genuine curiosity without clickbait, exaggerated promises, or misleading claims.
+- Make each sentence give the listener a reason to keep listening.
+- Deliver on the opening hook by the end.
+- Finish with a concise, satisfying closing line. Include a call to action only when it serves the content’s objective.
+
+5. Coherence and flow
+- Write one connected piece of spoken content, not a collection of disconnected statements.
+- Make each sentence build naturally on the previous one and lead smoothly into the next.
+- Use natural Egyptian transitions where needed, without forcing or repeating them.
+- Follow a clear progression: engaging opening, focused development, and satisfying ending.
+- Keep the wording easy to say aloud and easy to understand on first hearing. Avoid complicated constructions and awkward sequences of difficult words.
+
+Before responding, silently review the script as if it were being spoken aloud:
+- Does it sound authentically Egyptian?
+- Does the spelling support the intended pronunciation?
+- Are gender, number, verbs, and pronouns consistent?
+- Is it likely to fit approximately twenty seconds at a natural pace?
+- Does the opening capture attention immediately?
+- Is the whole script connected, and does the ending fulfill the opening’s promise?
+
+Fix any issues before responding. Do not show your review.
+
+OUTPUT:
+Return only the final Egyptian Arabic voiceover script in a single paragraph. Do not include a title, explanation, bullet points, emojis, stage directions, or pronunciation notes outside the script.
+
+TASK DETAILS:
+Topic: [Insert topic]
+Essential information: [Insert required facts or points]
+Target audience: [Specify if known]
+Content objective: [Inform / promote / entertain / other]
+Tone: [Conversational / energetic / calm / other]`,
   };
 
   // ---------- Terminology (brand identity §6–7) ----------

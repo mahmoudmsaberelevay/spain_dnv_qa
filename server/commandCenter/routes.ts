@@ -348,7 +348,7 @@ route("PUT", "/settings", "owner", (ctx) => mutate(ctx, (st) => {
   if ("studio" in ctx.body) ctx.body.studio = { autoplan: ctx.body.studio?.autoplan !== false, autoClips: ctx.body.studio?.autoClips !== false, reelLimitPerWeek: Math.max(0, Math.min(30, Math.round(Number(ctx.body.studio?.reelLimitPerWeek ?? 6)))) };
   if ("voiceOverPrompt" in ctx.body) {
     const prompt = String(ctx.body.voiceOverPrompt || "").trim();
-    if (prompt.length < 80 || prompt.length > 3000 || !prompt.includes("[the reel's idea/objective from the weekly plan]")) return { ok: false, error: "ELEVAY Voice-Over Prompt must retain the [the reel's idea/objective from the weekly plan] placeholder." };
+    if (prompt.length < 80 || prompt.length > 8000 || !prompt.includes("[Insert topic]")) return { ok: false, error: "The master voice-over prompt must keep its [Insert topic] placeholder (the system fills the topic, facts, audience, objective and tone)." };
     ctx.body.voiceOverPrompt = prompt;
   }
   if (Number(ctx.body.monthlyAdCapEgp) > R.DEFAULT_SETTINGS.monthlyAdCapEgp && !ctx.body.confirmRaiseCap) return { ok: false, error: "Raising the monthly cap above 200,000 EGP needs confirmRaiseCap: true." };

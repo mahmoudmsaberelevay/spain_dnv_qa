@@ -159,7 +159,11 @@ describe("seven-step ELEVAY reel flow", () => {
     const ctx = setup([STORYBOARD]);
     const run = await ctx.o.create({ kind: "reel", request: "Strong voice test", user: marketer });
     await settle(ctx.o, run.id, ["running", "queued"]);
-    expect(ctx.calls.openaiText[0].prompt.startsWith("i need a strong text for voice over to be strongly spoken at arabic egyptian language")).toBe(true);
+    const p = ctx.calls.openaiText[0].prompt;
+    expect(p.startsWith("You are an expert scriptwriter specializing in natural Egyptian Arabic voiceovers.")).toBe(true);
+    expect(p).toContain("Topic: Strong voice test");
+    expect(p).not.toMatch(/\[Insert |\[Specify if known\]|\[Inform \/ promote/);
+    expect(p).toContain("ELEVAY PIPELINE ADAPTATION");
   });
 
   it("re-runs a Claude keyframe check interrupted by a site restart instead of failing the reel", async () => {
@@ -283,7 +287,7 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.voice).toBe(4);
     expect(ctx.calls.openaiText).toHaveLength(1); // storyboard and Egyptian Arabic narration
     expect(ctx.calls.openaiText[0].prompt).toMatch(/Egyptian Arabic voice-over/);
-    expect(ctx.calls.openaiText[0].prompt).toMatch(/cover 20 seconds/);
+    expect(ctx.calls.openaiText[0].prompt).toMatch(/Target a twenty-second voiceover/);
     expect(ctx.calls.openaiText[0].prompt).toMatch(/direct spoken consultation call to action/);
     expect(ctx.calls.openaiText[0].prompt).toMatch(/OWNER VOICE-OVER REQUIREMENTS/);
     expect(ctx.calls.openaiText[0].prompt).toMatch(/smart, ethical selling technique/);
@@ -597,7 +601,7 @@ describe("owner rule: one week content file from OpenAI", () => {
     expect(ctx.calls.openaiText).toHaveLength(2);
     expect(ctx.calls.openaiText[0].prompt).toMatch(/AI council/);
     expect(ctx.calls.openaiText[1].prompt).toMatch(/Idea 1/);
-    expect(ctx.calls.openaiText[1].prompt).toMatch(/cover 20 seconds/);
+    expect(ctx.calls.openaiText[1].prompt).toMatch(/Target a twenty-second voiceover/);
     expect(r.artifacts.week_content.missing).toEqual([]);
     const children = await Promise.all(r.artifacts.children.map((id) => ctx.o.get(id)));
     expect(children[1].options.prewritten.scenes.map((x) => x.spoken_text_ar)).toEqual(sceneScripts);

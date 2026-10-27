@@ -2,16 +2,16 @@ export const ELEVAY_REEL_NARRATION_STANDARD = Object.freeze({
   sceneCount: 4,
   targetSeconds: 20,
   targetSceneSeconds: 5,
-  minWordsPerScene: 10,
-  maxWordsPerScene: 14,
-  minTotalWords: 45,
-  maxTotalWords: 55,
-  // Writers aim for 45–55 words (10–14 per scene). Since the renderer adapts to any voice length (owner rule:
+  minWordsPerScene: 9,
+  maxWordsPerScene: 13,
+  minTotalWords: 40,
+  maxTotalWords: 50,
+  // Writers aim for about 40–50 words (owner's master prompt, 27 Oct 2026; about 9–13 per scene). Since the renderer adapts to any voice length (owner rule:
   // proceed whatever the length), a few words over or under must not stop a reel: these are the accepted limits.
-  acceptMinWordsPerScene: 8,
+  acceptMinWordsPerScene: 6,
   acceptMaxWordsPerScene: 16,
-  acceptMinTotalWords: 40,
-  acceptMaxTotalWords: 62,
+  acceptMinTotalWords: 34,
+  acceptMaxTotalWords: 60,
   hookScene: 1,
   ctaScene: 4,
 } as const);
@@ -71,7 +71,7 @@ export function validateElevay20SecondReelNarration(scenes: Array<{ spoken_text_
 export const validateElevay18SecondReelNarration = validateElevay20SecondReelNarration;
 
 /**
- * When the whole narration already fits 20 seconds (45–55 words) but one scene's share is outside 10–14 words,
+ * When the whole narration already fits 20 seconds (40–50 words) but one scene's share is outside 9–13 words,
  * re-divide the same words into four near-equal takes instead of failing the reel. Breaks prefer sentence or
  * comma pauses. The text itself is unchanged, only where each 5-second take starts. Returns true if it changed.
  */
