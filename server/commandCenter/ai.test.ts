@@ -354,6 +354,22 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(ctx.calls.notify).toHaveLength(1);
   });
 
+  it("owner can send a reel flagged by the final check to the weekly plan, marked QC failed with Claude's findings", async () => {
+    const VOICE_FAULT = { pass: false, issues: ["Voice-over line 3 sounds formal (تخضع)"], scene_failures: [], non_scene_failures: ["voice_script"], verdict: "Voice script needs a softer Egyptian line." };
+    const ctx = setup([STORYBOARD, VOICE_FAULT]);
+    const run = await ctx.o.create({ kind: "reel", request: "Caribbean reel", user: marketer });
+    let r = await approveAndFinish(ctx, run.id);
+    expect(r.status).toBe("needs_review");
+    await expect(ctx.o.acceptReview(run.id, marketer)).rejects.toThrow(/Only the owner/);
+    await ctx.o.acceptReview(run.id, owner, "Watched it; I'll decide.");
+    r = await settle(ctx.o, run.id);
+    expect(r.status).toBe("done");
+    expect(r.steps.find((s) => s.action === "qc_final")).toMatchObject({ status: "done", owner_override: { by: owner.email } });
+    const item = ctx.state.items.find((i) => i.item_id === r.artifacts.item_id);
+    expect(item).toMatchObject({ status: "qc_failed", media: { video_url: expect.any(String) }, qc: { pass: false, issues: ["Voice-over line 3 sounds formal (تخضع)"] } });
+    expect(ctx.calls.voice).toBe(4); // nothing regenerated
+  });
+
   it("fails closed on malformed final Claude JSON and never regenerates a scene", async () => {
     const ctx = setup([STORYBOARD, { pass: false, issues: ["bad"] }]);
     const run = await ctx.o.create({ kind: "reel", request: "Portugal family reel", options: { noSceneRegeneration: true, preserveVoiceTakes: true, manualReviewOnly: true }, user: marketer });

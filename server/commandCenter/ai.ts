@@ -1914,6 +1914,34 @@ Return JSON only: {"summary":"3–5 sentences on how the ads did against the tar
     kick(id);
   }
 
+  /**
+   * Owner decision on a run stopped for manual review (26–27 Oct 2026): the owner has looked at the finished reel or
+   * design and wants it in the weekly plan anyway. It goes in marked "QC failed" with Claude's findings attached, so
+   * the owner can then approve, "Override & publish now", or request a scoped change (e.g. Voice / script).
+   */
+  async function acceptReview(id, user, note = "") {
+    if (user.role !== "owner") throw new Error("Only the owner can send a reviewed item to the weekly plan.");
+    const g = await get(id);
+    if (!g) throw new Error("Run not found.");
+    const run = g.run;
+    if (run.status !== "needs_review") throw new Error("This run is not waiting for a review decision.");
+    if (run.options?.revision) throw new Error("A revision only replaces the live version after it passes final QC. Recreate the revision instead.");
+    const step = run.steps.find((s) => s.status === "needs_review");
+    const toPlan = run.steps.find((s) => s.action === "to_weekly_plan");
+    if (!step || !toPlan) throw new Error("Nothing to send to the weekly plan.");
+    if (run.kind === "reel" && !run.artifacts.final?.url) throw new Error("The finished reel is missing.");
+    const why = String(note || "").trim() || "Owner reviewed the result and sent it to the weekly plan.";
+    step.status = "done";
+    step.owner_override = { by: user.email, at: nowIso(), note: why, error: step.error || null };
+    run.artifacts.qc_blocked = true; // lands as "QC failed" with Claude's findings, so nothing is approved silently
+    run.artifacts.owner_review = { by: user.email, at: nowIso(), note: why, step: step.action };
+    for (const s of run.steps) if (s.n > step.n && s.status === "skipped" && s.action === "to_weekly_plan") s.status = "pending";
+    run.status = "queued";
+    log(run, user.email, "studio", `Owner review: ${why} (Claude's finding kept on the item: ${clip(step.error || "", 300)})`);
+    await save(run, g.ver);
+    kick(id);
+  }
+
   async function retry(id, user) {
     const g = await get(id);
     if (!g) throw new Error("Run not found.");
@@ -2337,5 +2365,5 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     return watchdog();
   }
 
-  return { ensureTable, researchNews, startNewsCouncil, startAdsReview, adsReviewDue, create, reviseItem, recreate, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, redo, cancel, tick, watchdog, test: () => providers.test() };
+  return { ensureTable, researchNews, startNewsCouncil, startAdsReview, adsReviewDue, create, reviseItem, recreate, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, acceptReview, redo, cancel, tick, watchdog, test: () => providers.test() };
 }
