@@ -11,9 +11,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Plus, FolderOpen, User, ChevronRight, FileText, Briefcase, Users, Search, Link2, CreditCard, MessageCircle, BellOff, Globe2, MapPin, Phone } from "lucide-react";
+import { Plus, FolderOpen, User, ChevronRight, FileText, Briefcase, Users, Search, Link2, CreditCard, MessageCircle, BellOff, Globe2, MapPin, Phone, X } from "lucide-react";
 import { CLIENT_DOCUMENTATION_PROGRAMS, CLIENT_DOCUMENTATION_PROGRAM_LABELS, clientDocumentationProgramLabel, isCaribbeanDocumentationProgram, type ClientDocumentationProgram } from "@shared/clientDocumentationPrograms";
 import { CLIENT_DOCUMENTATION_ORIGIN_LABELS, isValidClientDocumentationMobile, type ClientDocumentationOrigin } from "@shared/clientDocumentationOrigins";
+import { clientDocumentationMatchesClientCode } from "@shared/clientDocumentationClientCodeFilter";
 
 type ChildEntry = { name: string; age: number; relationship: "child" | "dependent_parent" | "other" };
 type PaymentDraft = { paymentName: "First payment" | "Second payment" | "Third payment"; amountEur: string; paymentMilestone: "signed" | "submission" | "approval" };
@@ -70,6 +71,7 @@ export default function ClientDocs() {
   const [clientSearch, setClientSearch] = useState("");
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [clientCodeFilter, setClientCodeFilter] = useState("");
   const clientSearchRef = useRef<HTMLDivElement>(null);
 
   // Search finClients for the dropdown
@@ -97,6 +99,8 @@ export default function ClientDocs() {
     refetchInterval: 10_000,
   });
   const chatSummaryByCase = new Map(chatSummaries.map(summary => [summary.clientCaseId, summary]));
+  const filteredClients = (clients ?? []).filter(client => clientDocumentationMatchesClientCode(client, clientCodeFilter));
+  const hasClientCodeFilter = clientCodeFilter.trim().length > 0;
 
   const createMutation = trpc.clientDocs.create.useMutation({
     onSuccess: (data) => {
@@ -658,6 +662,39 @@ export default function ClientDocs() {
         </div>
       )}
 
+      {/* Client code filter */}
+      {!isLoading && clients && clients.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Clients</h2>
+            <p className="text-xs text-gray-500">
+              {hasClientCodeFilter ? `Showing ${filteredClients.length} of ${clients.length} clients` : `${clients.length} clients`}
+            </p>
+          </div>
+          <div className="relative w-full sm:max-w-xs">
+            <Label htmlFor="client-documentation-code-filter" className="sr-only">Filter by Client Code</Label>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+            <Input
+              id="client-documentation-code-filter"
+              value={clientCodeFilter}
+              onChange={event => setClientCodeFilter(event.target.value)}
+              placeholder="Filter by Client Code…"
+              className="h-10 border-gray-300 bg-white pl-9 pr-9 font-mono text-sm text-gray-900 placeholder:font-sans placeholder:text-gray-400 focus:border-[#1e3a5f] focus:ring-[#1e3a5f]"
+            />
+            {hasClientCodeFilter && (
+              <button
+                type="button"
+                onClick={() => setClientCodeFilter("")}
+                className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-100 hover:text-[#1e3a5f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f]"
+                aria-label="Clear Client Code filter"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Client list */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -666,8 +703,9 @@ export default function ClientDocs() {
           ))}
         </div>
       ) : clients && clients.length > 0 ? (
+        filteredClients.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {clients.map(client => {
+          {filteredClients.map(client => {
             const chat = chatSummaryByCase.get(client.id);
             return (
             <button
@@ -723,6 +761,16 @@ export default function ClientDocs() {
             </button>
           );})}
         </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 py-14 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#1e3a5f]/10">
+              <Search className="h-5 w-5 text-[#1e3a5f]" />
+            </div>
+            <h3 className="text-sm font-semibold text-gray-900">No clients match this Client Code</h3>
+            <p className="mt-1 max-w-sm text-sm text-gray-500">Try another full or partial Client Code.</p>
+            <Button type="button" variant="outline" size="sm" className="mt-4 border-gray-300 text-[#1e3a5f]" onClick={() => setClientCodeFilter("")}>Clear filter</Button>
+          </div>
+        )
       ) : (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="w-16 h-16 rounded-full bg-[#1e3a5f]/10 flex items-center justify-center mb-4">
