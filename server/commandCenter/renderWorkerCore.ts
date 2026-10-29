@@ -13,7 +13,7 @@ import { notifyAiFailure } from './alerts';
 
 export function createRenderWorker({ q, root, renderReel, owner = crypto.randomUUID(), log = console.log, logError = console.error }) {
   const console = { log, error: logError };
-  async function sheets(file, directory, narrativeSeconds = 20) {
+  async function sheets(file, directory, narrativeSeconds = 20, outroSeconds = 3) {
     const N=Math.max(20,Number(narrativeSeconds)||20), sampleFps=(600/N).toFixed(5);
     const pattern=path.join(directory,'qc-%03d.jpg');
     const bin=process.env.ELEVAY_FFMPEG_BIN||'/usr/bin/ffmpeg';
@@ -25,13 +25,14 @@ export function createRenderWorker({ q, root, renderReel, owner = crypto.randomU
     const names=(await fsp.readdir(directory)).filter(n=>/^qc-\d+\.jpg$/.test(n)).sort();
     if(names.length!==75)throw new Error('All 600 narrative frames must be represented in 75 QC sheets.');
     const evidence = names.map((n,i)=>({file:path.join(directory,n),label:`Sheet ${i+1}: chronological frames ${i*8+1}–${i*8+8}, row-major, t=${(i*8/30).toFixed(3)}–${((i*8+7)/30).toFixed(3)} s. Scene = floor(t/5)+1.`}));
-    for (const [index,time] of [N+0.1,N+2.8].entries()) {
+    const O=Math.max(2,Math.min(8,Number(outroSeconds)||3));
+    for (const [index,time] of [N+0.4,N+O-0.3].entries()) {
       const f = path.join(directory, `outro-qc-${index}.jpg`);
       await new Promise((resolve,reject)=>{
         const c=spawn(bin,['-y','-hide_banner','-loglevel','error','-threads','1','-ss',String(time),'-i',file,'-frames:v','1','-vf','scale=540:960','-threads','1','-filter_threads','1',f],{stdio:'ignore'});
         c.on('error',reject);c.on('close',code=>code===0?resolve(undefined):reject(new Error('Outro review extraction failed.')));
       });
-      evidence.push({file:f,label:`Outro frame at ${time}s: exact official logo centered on pure white; no narration here.`});
+      evidence.push({file:f,label:`Outro frame at ${time.toFixed(1)}s: official animated ELEVAY outro on white (${index===0?'start':'end: complete logo and wordmark'}); no narration here.`});
     }
     return evidence;
   }
@@ -55,7 +56,7 @@ export function createRenderWorker({ q, root, renderReel, owner = crypto.randomU
       });
       const stored=await storagePutFile(`marketing/command-center/render-worker/${row.id}/${result.final.sha256.slice(0,24)}-final.mp4`,result.final.file,'video/mp4');
       doc.stage='final visual evidence';await persist();
-      const evidence=await sheets(result.final.file,dir,result.final.narrativeSeconds);
+      const evidence=await sheets(result.final.file,dir,result.final.narrativeSeconds,result.final.outroSeconds);
       const qcFrames=[];
       const previousFrames = doc.final?.qcFrames || [];
       for(let i=0;i<evidence.length;i++){

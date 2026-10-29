@@ -43,7 +43,7 @@ const ARTIFACTS = {
 const PART_NAMES = new Set(["seg0", "seg1", "seg2", "seg3", "outro", "audio"]);
 const SAFE_STAGES = new Set([
   "queued", "rendering", "normalize scene 1", "normalize scene 2", "normalize scene 3", "normalize scene 4",
-  "fixed ELEVAYEXTRO.mov outro", "voice and music audio mix", "stream-copy concat", "final audio mux (no video encoding)",
+  "fixed ELEVAYEXTRO.mov outro", "official ELEVAY animated outro", "voice and music audio mix", "stream-copy concat", "final audio mux (no video encoding)",
   "final visual evidence", "uploading artifacts", "done", "retry_wait",
 ]);
 
@@ -123,7 +123,7 @@ function qcLabel(index: number) {
     const last = first + 7;
     return `Sheet ${index}: chronological frames ${first}–${last}, row-major, t=${((first - 1) / 30).toFixed(3)}–${((last - 1) / 30).toFixed(3)} s. Scene = floor(t/5)+1.`;
   }
-  return `Outro frame at ${index === 76 ? "20.1" : "22.8"}s: exact official logo centered on pure white; no narration here.`;
+  return index === 76 ? "Outro frame 1 (start of the official animated ELEVAY outro on white; no narration)." : "Outro frame 2 (end of the outro: the complete official origami-bird logo with the ELEVAY wordmark on white; no narration).";
 }
 
 function assetUrl(value: unknown) {
@@ -192,7 +192,8 @@ function safeManifest(value: unknown) {
     height: 1920,
     fps: 30,
     sceneSeconds: 5,
-    outroSeconds: 3,
+    // Animated owner outro (29 Oct 2026) is 5 s; older queued jobs keep their 3-second outro.
+    outroSeconds: Number(input.outroSeconds) >= 2 && Number(input.outroSeconds) <= 8 ? Number(input.outroSeconds) : 3,
     narrationTargetSeconds: current ? 20 : 18,
     narrationSceneSeconds: current ? 5 : 4.5,
   };
@@ -312,7 +313,7 @@ export function createRenderWorkerBridge({
   }
 
   /** Lowest renderer version that may take jobs (3 = the voice-over fix). Older or unversioned Macs wait. */
-  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 11) || 0);
+  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 12) || 0);
   const workersSeen = new Map<string, { rendererVersion: number | null; at: number; outdated: boolean }>();
   async function lease(workerId: string, rendererVersion?: unknown) {
     await ensure();
@@ -434,10 +435,11 @@ export function createRenderWorkerBridge({
     if (qcFrames.length !== MAX_QC_FRAMES) throw new RenderWorkerBridgeError(400, "All 75 narrative QC sheets and 2 outro frames are required before completion.");
     const seconds = Number(final.seconds);
     const manifest = safeManifest(current.doc.manifest);
-    // Owner rule (20 Oct 2026): 20 s of narrative + 3 s outro normally; longer when a voice take runs long.
+    // Owner rule (20 Oct 2026): 20 s of narrative + the outro (5 s animated outro since 29 Oct 2026); longer when a voice take runs long.
+    const outroSeconds = Number(manifest.outroSeconds) || 3;
     const narrativeSeconds = Number(final.narrativeSeconds ?? 20);
-    if (!Number.isFinite(seconds) || !(narrativeSeconds >= 20 - 0.01 && narrativeSeconds <= 90) || Math.abs(seconds - (narrativeSeconds + 3)) > 0.1 || final.mode !== "cuts" || Number(final.narrationTargetSeconds) !== manifest.narrationTargetSeconds || Number(final.narrationSceneSeconds) !== manifest.narrationSceneSeconds) {
-      throw new RenderWorkerBridgeError(400, "Final render does not meet the ELEVAY output contract (narrative of at least 20 s + 3 s silent logo outro).");
+    if (!Number.isFinite(seconds) || !(narrativeSeconds >= 20 - 0.01 && narrativeSeconds <= 90) || Math.abs(seconds - (narrativeSeconds + outroSeconds)) > 0.15 || final.mode !== "cuts" || Number(final.narrationTargetSeconds) !== manifest.narrationTargetSeconds || Number(final.narrationSceneSeconds) !== manifest.narrationSceneSeconds) {
+      throw new RenderWorkerBridgeError(400, "Final render does not meet the ELEVAY output contract (narrative of at least 20 s + the official ELEVAY outro).");
     }
     const rawVoiceSeconds = Array.isArray(final.rawVoiceSeconds) ? final.rawVoiceSeconds.slice(0, 4).map(Number) : [];
     if (rawVoiceSeconds.length !== 4 || rawVoiceSeconds.some((n) => !Number.isFinite(n) || n <= 0.2 || n > 30)) throw new RenderWorkerBridgeError(400, "Final render voice timing metadata is invalid.");

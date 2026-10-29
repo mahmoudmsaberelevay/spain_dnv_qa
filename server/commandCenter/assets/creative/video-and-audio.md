@@ -4,19 +4,15 @@
 
 The ELEVAY outro must be clean, minimal, exact, and consistent across reels and branded videos.
 
-### Standard outro
+### Standard outro (owner update, 29 Oct 2026)
 
-1. Use a **pure white background `#FFFFFF`**.
-2. Place the **exact official ELEVAY logo centered horizontally and vertically**.
-3. Keep the logo completely static for **3 seconds**.
-4. Do not add animation, particles, lens flare, glow, camera movement, or sound effects that compete with the logo.
-5. If the video is a 25-second reel with a 5-second outro, use:
-   - `0:00–0:03`: logo static on white
-   - `0:03–0:05`: smooth fade from white/logo to black
-6. Use the official ELEVAY logo file exactly as supplied (owner-confirmed 5 Oct 2026: the origami-bird mark is the official logo for the outro); preserve its proportions and colors.
-7. Do not generate the logo with an AI model; composite the approved official source asset.
-8. Keep the logo sharp, centered, and comfortably separated from all edges.
-9. Music should resolve gently and fade with the outro. Narration should finish before the outro whenever possible.
+1. Use the owner's official animated ELEVAY outro files exactly as supplied — never recreate, re-animate or AI-generate them:
+   - **Reels / vertical videos (9:16):** `elevay-outro-9x16.mp4` (1080×1920).
+   - **Landscape videos (16:9):** `elevay-outro-16x9.mp4` (1920×1080).
+2. Length: about **5 seconds**. White background; origami pieces assemble into the bird logo, then the ELEVAY wordmark appears.
+3. The outro carries its own short **sound logo**: keep it. Music fades out as the outro begins; no narration over the outro.
+4. Do not add text, extra logos, effects or a fade to black on top of the outro.
+5. Music should resolve gently and fade out as the outro begins. Narration should finish before the outro whenever possible.
 
 ### Narrative video rules
 

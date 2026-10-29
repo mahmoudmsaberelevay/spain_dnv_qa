@@ -1,6 +1,10 @@
 import crypto from "node:crypto";
 
 /** The web process only persists jobs. Rendering is deliberately external. */
+export const ELEVAY_OUTRO_9X16 = "elevay-outro-9x16.mp4";
+export const ELEVAY_OUTRO_16X9 = "elevay-outro-16x9.mp4";
+export const ELEVAY_OUTRO_SECONDS = 5;
+
 export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<any>, opts: { pendingReason?: () => string, fixedOutroUrl?: string } = {}) {
   let ready: Promise<any> | undefined;
   const ensure = () => ready ??= q(`CREATE TABLE IF NOT EXISTS ec_render_jobs (
@@ -14,9 +18,12 @@ export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<
     for (const [label, urls] of [["clips", input.clipUrls], ["voices", input.voiceUrls]] as const) {
       if (!Array.isArray(urls) || urls.length !== 4 || urls.some((u: unknown) => typeof u !== "string" || !/^https:\/\//.test(u))) throw new Error(`Four saved HTTPS ${label} are required; nothing will be regenerated.`);
     }
-    const outroUrl = String(opts.fixedOutroUrl || process.env.ELEVAY_FIXED_OUTRO_URL || "").trim();
-    if (!outroUrl) return { pending: true, jobId: null, parts: input.parts || {}, stage: "waiting_for_fixed_outro", waitReason: "Waiting for the required fixed ELEVAYEXTRO.mov; no fallback outro will be created.", metrics: {} };
-    if (!/^https:\/\//.test(outroUrl)) throw new Error("ELEVAY_FIXED_OUTRO_URL must be a public HTTPS stored ELEVAYEXTRO.mov URL.");
+    // Owner rule (29 Oct 2026): the official animated ELEVAY outro supplied by the owner (5 s, with its sound logo),
+    // served from the website: 9:16 for reels, 16:9 for landscape videos. The older fixed outro is no longer used.
+    const base = String(process.env.ELEVAY_PUBLIC_BASE_URL || "https://elevay.vip").replace(/\/$/, "");
+    const landscape = Number(input.width) > Number(input.height || 0);
+    const outroUrl = String(opts.fixedOutroUrl || `${base}/brand/${landscape ? ELEVAY_OUTRO_16X9 : ELEVAY_OUTRO_9X16}`).trim();
+    if (!/^https:\/\//.test(outroUrl)) throw new Error("The ELEVAY outro must be a public HTTPS URL.");
     const narrationTargetSeconds = Number(input.narrationTargetSeconds);
     const narrationSceneSeconds = Number(input.narrationSceneSeconds);
     const legacyNarration = narrationTargetSeconds === 18 && narrationSceneSeconds === 4.5;
@@ -24,7 +31,7 @@ export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<
     if (!legacyNarration && !currentNarration) {
       throw new Error("ELEVAY reels require four saved voice takes using either the legacy 18-second/4.5-second contract or the current 20-second/5-second contract.");
     }
-    const manifest = { version: currentNarration ? "disk-concat-v5-20s-narration-fixed-elevayoutro-hq" : "disk-concat-v3-18s-narration-fixed-elevayoutro", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, outroUrl, editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: 3, narrationTargetSeconds, narrationSceneSeconds };
+    const manifest = { version: currentNarration ? "disk-concat-v6-20s-narration-elevay-animated-outro-5s" : "disk-concat-v3-18s-narration-fixed-elevayoutro", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, outroUrl, editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: ELEVAY_OUTRO_SECONDS, narrationTargetSeconds, narrationSceneSeconds };
     const id = "reel-" + crypto.createHash("sha256").update(JSON.stringify(manifest)).digest("hex").slice(0, 40);
     const now = Date.now();
     const reusable = input.parts?._version === manifest.version ? Object.fromEntries(Object.entries(input.parts).filter(([k]) => ["seg0", "seg1", "seg2", "seg3", "outro", "audio", "music", "musicDropped", "narrationTargetSeconds", "narrationSceneSeconds", "rawVoiceSeconds", "sceneSeconds", "appliedVoiceTempos", "voicePaddingSeconds"].includes(k))) : {};

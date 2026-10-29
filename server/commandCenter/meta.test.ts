@@ -136,7 +136,8 @@ describe("Meta actions", () => {
   });
 
   it("refuses budget changes that would break the cap or raise a campaign above the max CPL", async () => {
-    const { h } = hub({ meta: { mtd: 150000, activeDaily: 3000 } });
+    // mtd close to the cap so the projection breaks it on any day of the month (even the last one).
+    const { h } = hub({ meta: { mtd: 190000, activeDaily: 3000 } });
     const over = await h.enqueue(cleanMetaAction({ kind: "campaign_budget", target_id: "1", target_name: "x", daily_budget_egp: 9000 }, R), "team");
     // target "1" unknown → +9000/day on top of 3000/day for the rest of the month
     expect(over.status).toBe("blocked");

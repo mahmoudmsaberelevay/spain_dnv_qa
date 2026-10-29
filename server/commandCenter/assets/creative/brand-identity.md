@@ -21,7 +21,7 @@ This is the authoritative, complete ELEVAY brand identity. It supersedes any oth
 - Never modify colors, shape, or design. Never stretch/compress/rotate. Never add shadows/glows/gradients. Never crop or remove parts. Never redesign or simplify. Always keep 1:1 ratio and minimum 10px clear space.
 - Sizing: Web 80–500px (profile 200px), Social 100–400px, Business card 0.5–2in @300DPI, Letterhead 1–3in @300DPI, Video/reel outro 200–400px centered on white, Favicon 16–64px, Signage 4–24in.
 - Approved backgrounds: Pure White #FFFFFF (best), Off-White #FFEBDA, Cream #FFE7D1, transparent, Light Teal #B3CFD4 (acceptable), Dark Navy #3D4750 (use white/light logo version). Avoid busy patterns, low contrast, unfiltered photos, unapproved gradients, non-brand colors.
-- Reel/video outro: static logo, 3 seconds, centered on pure white background, no animation.
+- Reel/video outro: the owner's official animated ELEVAY outro (about 5 s, white background, with its sound logo) — 9:16 file for reels, 16:9 file for landscape videos; never recreated.
 
 ## 3. Color System
 

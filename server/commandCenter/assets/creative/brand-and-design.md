@@ -108,7 +108,7 @@ Never redraw, simplify, recolor, stretch, compress, rotate, crop, distort, anima
 | **Carousel** | Use the first or final slide as the primary branded slide; keep placement consistent across the set. |
 | **PDF/program summary** | Use the approved header position, normally top-left, with the exact wordmark and tagline when the template requires the full logo. |
 | **Video/reel narrative scenes** | Do not add a floating or AI-generated logo over narrative footage unless explicitly approved. Keep narrative frames clean. |
-| **Video/reel outro** | Use the exact official logo centered on a pure white background. This is the primary video-branding location. |
+| **Video/reel outro** | Use the owner's official animated ELEVAY outro file (9:16 for reels, 16:9 for landscape videos), unchanged. This is the primary video-branding location. |
 
 ### Logo prohibitions
 

@@ -23,12 +23,14 @@ describe('external render queue', () => {
     expect(d.manifest.outroUrl).toBe('https://cdn.example/ELEVAYEXTRO.mov');
     expect(d.manifest).toMatchObject({ narrationTargetSeconds: 20, narrationSceneSeconds: 5 });
   });
-  it('waits fail-closed for ELEVAYEXTRO.mov rather than generating a logo substitute', async () => {
-    // A whitespace override is intentionally truthy before trimming, so this
-    // remains a fail-closed test even when the test environment has an outro URL.
-    const { queue, rows } = setup({ fixedOutroUrl: " " });
-    await expect(queue.compose(input)).resolves.toMatchObject({ stage: 'waiting_for_fixed_outro', jobId: null });
-    expect(rows.size).toBe(0);
+  it("uses the owner's animated ELEVAY outro: 9:16 for reels (5 s), 16:9 for landscape videos", async () => {
+    const { queue, rows } = setup({ fixedOutroUrl: "" });
+    const a = await queue.compose(input);
+    const doc = JSON.parse(rows.get(a.jobId).doc);
+    expect(doc.manifest.outroUrl).toBe("https://elevay.vip/brand/elevay-outro-9x16.mp4");
+    expect(doc.manifest.outroSeconds).toBe(5);
+    const b = await queue.compose({ ...input, width: 1920, height: 1080 });
+    expect(JSON.parse(rows.get(b.jobId).doc).manifest.outroUrl).toBe("https://elevay.vip/brand/elevay-outro-16x9.mp4");
   });
   it('returns existing completed output instead of regenerating or rendering it again', async () => {
     const { queue, rows } = setup(); const a = await queue.compose(input);

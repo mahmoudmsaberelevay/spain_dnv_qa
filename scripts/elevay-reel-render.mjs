@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 /** Bumped whenever renderer output changes. Version 4 adds the 20-second / four 5-second narration timeline. */
-export const RENDERER_VERSION = 11; // v11: chunked uploads wait for the website to finish storing big files (v10: chunked uploads)
+export const RENDERER_VERSION = 12; // v12: owner's animated 5 s ELEVAY outro with its sound logo (v11: chunked uploads wait; v10: chunked uploads)
 const THREADS = 1;
 const FFMPEG = process.env.ELEVAY_FFMPEG_BIN || '/usr/bin/ffmpeg';
 const FFPROBE = process.env.ELEVAY_FFPROBE_BIN || '/usr/bin/ffprobe';
@@ -105,17 +105,31 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       await publish(`seg${i}`, out, 'video/mp4');
       await fsp.rm(source, { force: true });
     }
-    stage = 'fixed ELEVAYEXTRO.mov outro';
+    stage = 'official ELEVAY animated outro';
+    // Owner rule (29 Oct 2026): the owner's animated ELEVAY outro (about 5 s, white background, its own sound logo).
+    // The picture is normalized to 1080x1920 / 30 fps; its sound is kept and mixed in after the narration.
+    const OUTRO = Number(manifest.outroSeconds) >= 2 && Number(manifest.outroSeconds) <= 8 ? Number(manifest.outroSeconds) : 3;
+    const outroAudio = path.join(directory, 'outro-audio.wav');
     if (!(await restore('outro', 'mp4'))) {
-      if (!manifest.outroUrl) throw new Error('Fixed ELEVAYEXTRO.mov is missing from the render manifest; no generated logo fallback is permitted.');
-      const source = path.join(directory, 'ELEVAYEXTRO.mov'), out = path.join(directory, 'outro.mp4');
+      if (!manifest.outroUrl) throw new Error('The official ELEVAY outro is missing from the render manifest; no generated logo fallback is permitted.');
+      const source = path.join(directory, 'outro.src'), out = path.join(directory, 'outro.mp4');
       await downloadFile(manifest.outroUrl, source, 100 * 1024 * 1024);
-      await ff(['-threads','1','-i',source,'-vf','scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=white,setsar=1,fps=30,trim=duration=3,setpts=PTS-STARTPTS,format=yuv420p','-map','0:v:0','-an','-t','3',...encode,out]);
+      const videoOnly = encode.filter((x) => x !== '-an');
+      await ff(['-threads','1','-i',source,'-vf',`scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=white,setsar=1,fps=30,trim=duration=${OUTRO},setpts=PTS-STARTPTS,format=yuv420p`,'-af',`${audioFormat},atrim=duration=${OUTRO},apad=whole_dur=${OUTRO}`,'-map','0:v:0','-map','0:a:0?','-t',String(OUTRO),...videoOnly,'-c:a','aac','-b:a','192k',out]);
       const p = await probe(out), v = p.streams.find(s => s.codec_type === 'video');
-      if (v?.width !== 1080 || v?.height !== 1920 || v.r_frame_rate !== '30/1' || Math.abs(Number(p.format.duration)-3) > 0.05) throw new Error('Fixed ELEVAYEXTRO.mov did not normalize to 1080x1920 / 30fps / 3 seconds.');
+      if (v?.width !== 1080 || v?.height !== 1920 || v.r_frame_rate !== '30/1' || Math.abs(Number(p.format.duration)-OUTRO) > 0.1) throw new Error(`The ELEVAY outro did not normalize to 1080x1920 / 30fps / ${OUTRO} seconds.`);
       await publish('outro', out, 'video/mp4');
       await fsp.rm(source, { force: true });
     }
+    // Video-only copy of the outro for the stream-copy join (its sound goes into the audio mix instead).
+    {
+      const vOnly = path.join(directory, 'outro.video.mp4');
+      await ff(['-i', files.outro, '-map', '0:v:0', '-c:v', 'copy', '-an', '-movflags', '+faststart', vOnly]);
+      files.outroVideo = vOnly;
+    }
+    // The outro's own sound (if any) for the final mix; a silent outro simply contributes silence.
+    let hasOutroAudio = false;
+    try { await ff(['-threads','1','-i',files.outro,'-vn','-af',`${audioFormat},atrim=duration=${OUTRO},apad=whole_dur=${OUTRO}`,'-c:a','pcm_s16le',outroAudio]); hasOutroAudio = true; } catch { hasOutroAudio = false; }
     stage = 'voice and music audio mix';
     let musicDropped = null;
     // Timing is evidence for the current audio mix, not a reusable source
@@ -150,7 +164,7 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       const room=END-LEAD-3*GAP, spoken=rawVoiceSeconds.reduce((a,b)=>a+b,0);
       // Owner rule (20 Oct 2026): each scene aims for 5 s, but a longer voice never stops production. Up to 1.12x
       // speed keeps 20 s; beyond that the scenes whose voice runs long are lengthened (gentle slow motion) and the
-      // reel simply runs longer. The 3-second logo outro always stays silent at the end.
+      // reel simply runs longer. No narration ever enters the outro at the end.
       const tempo=Math.min(1.12, Math.max(1, spoken/room));
       const len=rawVoiceSeconds.map(d=>d/tempo), starts=[];
       const fits = len.reduce((a,b)=>a+b,0) + LEAD + 3*GAP <= END + 0.001;
@@ -176,21 +190,28 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       let musicFile=null;
       if(manifest.musicUrl) try { musicFile=path.join(directory,'music.src');await downloadFile(manifest.musicUrl,musicFile,25*1024*1024); } catch { musicDropped='Music source unavailable; saved voice takes retained.';musicFile=null; }
       const mix=async withMusic => {
-        const T=(narrativeSeconds+3).toFixed(3), fadeAt=narrativeSeconds.toFixed(3);
+        const T=(narrativeSeconds+OUTRO).toFixed(3), fadeAt=Math.max(0, narrativeSeconds-0.6).toFixed(3), outroAt=Math.round(narrativeSeconds*1000);
         const args=voices.flatMap(f=>['-threads','1','-i',f]);
+        let k=4;
+        const musicIdx = withMusic ? k++ : -1;
         if(withMusic)args.push('-stream_loop','-1','-threads','1','-i',musicFile);
+        const outroIdx = hasOutroAudio ? k++ : -1;
+        if(hasOutroAudio)args.push('-threads','1','-i',outroAudio);
         const filters=voices.map((_,i)=>`[${i}:a]${audioFormat},adelay=${voiceStarts[i]}|${voiceStarts[i]},apad=whole_dur=${T}[n${i}]`);
         filters.push('[n0][n1][n2][n3]amix=inputs=4:duration=longest:normalize=0[voice]');
-        if(withMusic) filters.push('[4:a]'+audioFormat+`,atrim=duration=${T},volume=0.16,afade=t=in:d=0.8,afade=t=out:st=${fadeAt}:d=3[bed]`,`[voice][bed]amix=inputs=2:duration=longest:normalize=0,atrim=duration=${T},alimiter=limit=0.95[a]`);
-        else filters.push(`[voice]atrim=duration=${T},alimiter=limit=0.95[a]`);
+        let bus='voice';
+        // Music fades out as the outro begins, so the outro's own sound logo is heard cleanly.
+        if(withMusic){ filters.push(`[${musicIdx}:a]${audioFormat},atrim=duration=${T},volume=0.16,afade=t=in:d=0.8,afade=t=out:st=${fadeAt}:d=1.2[bed]`,`[${bus}][bed]amix=inputs=2:duration=longest:normalize=0[vb]`); bus='vb'; }
+        if(hasOutroAudio){ filters.push(`[${outroIdx}:a]${audioFormat},adelay=${outroAt}|${outroAt},apad=whole_dur=${T}[ob]`,`[${bus}][ob]amix=inputs=2:duration=longest:normalize=0[vo]`); bus='vo'; }
+        filters.push(`[${bus}]atrim=duration=${T},alimiter=limit=0.95[a]`);
         await ff([...args,'-filter_complex',filters.join(';'),'-map','[a]','-t',T,'-c:a','aac','-b:a','256k','-threads','1',path.join(directory,'audio.m4a')]);
       };
       if(musicFile)try{await mix(true);}catch{musicDropped='Music could not be mixed; finished with saved voice takes only.';await mix(false);}else await mix(false);
-      // Never ship a reel without its voice-over: the mixed track must last the full 23 s and be audible.
+      // Never ship a reel without its voice-over: the mixed track must last the full reel and be audible.
       {
         const am=path.join(directory,'audio.m4a');
         const ad=Number((await probe(am)).format.duration);
-        if(!(ad>=narrativeSeconds+3-0.1))throw new Error(`Voice-over mix is ${ad.toFixed(2)}s instead of ${(narrativeSeconds+3).toFixed(1)}s; the reel was not finished without its voice.`);
+        if(!(ad>=narrativeSeconds+OUTRO-0.1))throw new Error(`Voice-over mix is ${ad.toFixed(2)}s instead of ${(narrativeSeconds+OUTRO).toFixed(1)}s; the reel was not finished without its voice.`);
         const peakFile=path.join(directory,'audio-peak.txt');
         await ff(['-i',am,'-af',`astats=metadata=1:reset=0,ametadata=mode=print:key=lavfi.astats.Overall.Peak_level:file=${peakFile}`,'-f','null','-']);
         const peaks=[...(await fsp.readFile(peakFile,'utf8')).matchAll(/Peak_level=(-?inf|-?[\d.]+)/g)];
@@ -215,16 +236,16 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
     }
     stage = 'stream-copy concat';
     const concat=path.join(directory,'concat.txt');
-    await fsp.writeFile(concat,['seg0','seg1','seg2','seg3','outro'].map(n=>`file '${files[n].replace(/'/g,"'\\''")}'`).join('\n')+'\n');
+    await fsp.writeFile(concat,['seg0','seg1','seg2','seg3','outroVideo'].map(n=>`file '${files[n].replace(/'/g,"'\\''")}'`).join('\n')+'\n');
     const joined=path.join(directory,'joined.mp4');
     await ff(['-f','concat','-safe','0','-i',concat,'-map','0:v:0','-c:v','copy','-an','-movflags','+faststart',joined]);
     stage = 'final audio mux (no video encoding)';
     const out=path.join(directory,'final.mp4');
-    await ff(['-i',joined,'-i',files.audio,'-map','0:v:0','-map','1:a:0','-c:v','copy','-c:a','copy','-t',(narrativeSeconds+3).toFixed(3),'-movflags','+faststart',out]);
+    await ff(['-i',joined,'-i',files.audio,'-map','0:v:0','-map','1:a:0','-c:v','copy','-c:a','copy','-t',(narrativeSeconds+OUTRO).toFixed(3),'-movflags','+faststart',out]);
     const p=await probe(out),v=p.streams.find(s=>s.codec_type==='video'),a=p.streams.find(s=>s.codec_type==='audio');
-    if(v?.width!==1080||v?.height!==1920||v.r_frame_rate!=='30/1'||!a||Math.abs(Number(p.format.duration)-(narrativeSeconds+3))>0.1)throw new Error(`Final MP4 failed dimensions, frame rate, audio or ${(narrativeSeconds+3).toFixed(1)}-second duration checks.`);
+    if(v?.width!==1080||v?.height!==1920||v.r_frame_rate!=='30/1'||!a||Math.abs(Number(p.format.duration)-(narrativeSeconds+OUTRO))>0.15)throw new Error(`Final MP4 failed dimensions, frame rate, audio or ${(narrativeSeconds+OUTRO).toFixed(1)}-second duration checks.`);
     sample();
-    const final={file:out,seconds:Number(p.format.duration),sha256:await shaFile(out),music:!!parts.music,musicDropped:parts.musicDropped||musicDropped,mode:'cuts',narrativeSeconds,sceneSeconds,narrationTargetSeconds,narrationSceneSeconds,spokenNarrationSeconds:narrationTargetSeconds,rawVoiceSeconds:parts.rawVoiceSeconds||rawVoiceSeconds,peakRssBytes:metrics.peakRssBytes,peakFfmpegRssBytes:metrics.peakFfmpegRssBytes,metrics};
+    const final={file:out,seconds:Number(p.format.duration),sha256:await shaFile(out),music:!!parts.music,musicDropped:parts.musicDropped||musicDropped,mode:'cuts',narrativeSeconds,outroSeconds:OUTRO,sceneSeconds,narrationTargetSeconds,narrationSceneSeconds,spokenNarrationSeconds:narrationTargetSeconds,rawVoiceSeconds:parts.rawVoiceSeconds||rawVoiceSeconds,peakRssBytes:metrics.peakRssBytes,peakFfmpegRssBytes:metrics.peakFfmpegRssBytes,metrics};
     return {parts,final};
   }finally{clearInterval(timer);}
 }

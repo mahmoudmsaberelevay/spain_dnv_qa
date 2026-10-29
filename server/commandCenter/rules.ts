@@ -305,7 +305,7 @@ Tone: [Conversational / energetic / calm / other]`,
     if (brief.type === 'reel') {
       const sb = brief.reel?.storyboard || [];
       add('reel_clips', `Reel has 4 clips of 5 s (now ${sb.length})`, sb.length === 4, 'warn');
-      add('reel_duration', 'Reel totals 23 s (4×5 s + 3 s white logo outro)', Number(brief.reel?.duration_s) === 23, 'warn');
+      add('reel_duration', 'Reel totals 25 s (4×5 s + the 5 s official ELEVAY outro)', [23, 25].includes(Number(brief.reel?.duration_s)), 'warn');
       sb.forEach((c, i) => {
         if (c.keyframe_prompt) checkVisualPrompt(c.keyframe_prompt, add, `clip${i + 1}`, `Clip ${i + 1} keyframe`);
         const motion = affirmative(c.motion_prompt);

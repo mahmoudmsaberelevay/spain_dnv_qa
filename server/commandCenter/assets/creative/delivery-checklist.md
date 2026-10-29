@@ -21,7 +21,7 @@
 
 - [ ] Vertical 9:16 format for reels.
 - [ ] No narrative on-screen text unless explicitly requested.
-- [ ] Outro holds the exact logo statically for 3 seconds.
+- [ ] The reel ends with the official animated ELEVAY outro (about 5 s, 9:16 file for reels, 16:9 for landscape), uncut.
 - [ ] Transitions are smooth and restrained.
 - [ ] Music, ambience, and narration are balanced.
 
@@ -55,7 +55,7 @@
 - [ ] Master palette, format, typography, icon, and card rules are applied where relevant.
 - [ ] Static layouts avoid rectangular photo frames and decorative basic geometric shapes.
 - [ ] Native logo proportions are preserved; a square canvas uses padding, not distortion.
-- [ ] The default outro ends with the static logo on white.
+- [ ] The outro ends with the complete logo and ELEVAY wordmark on white, with its sound logo.
 - [ ] Marketing terminology is on-brand without misrepresenting official program categories.
 - [ ] Current program claims are verified; source figures and contrast labels are not assumed accurate.
 - [ ] Relevant disclaimers are placed appropriately; no guarantees or unverified testimonials appear.

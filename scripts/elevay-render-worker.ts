@@ -180,7 +180,7 @@ async function uploadArtifact(jobId: string, leaseId: string, kind: string, file
   return data.artifact;
 }
 
-async function qcSheets(file: string, directory: string, narrativeSeconds = 20) {
+async function qcSheets(file: string, directory: string, narrativeSeconds = 20, outroSeconds = 3) {
   // 600 frames spread evenly over the narrative part, whatever its length (20 s normally, longer when a voice runs long).
   const N = Math.max(20, Number(narrativeSeconds) || 20), sampleFps = (600 / N).toFixed(5);
   const pattern = path.join(directory, "qc-%03d.jpg");
@@ -196,7 +196,8 @@ async function qcSheets(file: string, directory: string, narrativeSeconds = 20) 
   await run(["-y", "-hide_banner", "-loglevel", "error", "-threads", "1", "-i", file, "-vf", `trim=duration=${N.toFixed(3)},fps=${sampleFps},scale=360:640:flags=bicubic,tile=4x2:nb_frames=8`, "-frames:v", "75", "-q:v", "3", "-threads", "1", "-filter_threads", "1", pattern]);
   const sheets = (await fsp.readdir(directory)).filter((name) => /^qc-\d+\.jpg$/.test(name)).sort().map((name) => path.join(directory, name));
   if (sheets.length !== 75) throw new Error("All 600 narrative frames must be represented in 75 QC sheets.");
-  for (const [offset, time] of [N + 0.1, N + 2.8].entries()) {
+  const O = Math.max(2, Math.min(8, Number(outroSeconds) || 3));
+  for (const [offset, time] of [N + 0.4, N + O - 0.3].entries()) {
     const frame = path.join(directory, `outro-qc-${offset + 1}.jpg`);
     await run(["-y", "-hide_banner", "-loglevel", "error", "-threads", "1", "-ss", String(time), "-i", file, "-frames:v", "1", "-vf", "scale=540:960", "-threads", "1", "-filter_threads", "1", frame]);
     sheets.push(frame);
@@ -254,7 +255,7 @@ async function processJob(leased: any) {
     requireLease();
     await uploadArtifact(job.id, leaseId, "final", rendered.final.file, "video/mp4");
     await jsonRequest("POST", `/jobs/${encodeURIComponent(job.id)}/progress`, { workerId, leaseId, stage: "final visual evidence", metrics: rendered.final.metrics });
-    const evidence = await qcSheets(rendered.final.file, directory, rendered.final.narrativeSeconds);
+    const evidence = await qcSheets(rendered.final.file, directory, rendered.final.narrativeSeconds, rendered.final.outroSeconds);
     for (let index = 0; index < evidence.length; index++) {
       requireLease();
       await uploadArtifact(job.id, leaseId, "qc", evidence[index], "image/jpeg", index + 1);
@@ -263,7 +264,7 @@ async function processJob(leased: any) {
     requireLease();
     const { file, ...final } = rendered.final;
     await jsonRequest("POST", `/jobs/${encodeURIComponent(job.id)}/complete`, { workerId, leaseId, final });
-    console.log(`Render #${job.runId}: done; 23-second final edit returned for Claude QC.`);
+    console.log(`Render #${job.runId}: done; ${Number(rendered.final.seconds || 0).toFixed(1)}-second final edit returned for Claude QC.`);
     await fsp.rm(directory, { recursive: true, force: true });
   } catch (error) {
     const message = cleanError(error);
