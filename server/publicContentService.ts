@@ -3,10 +3,12 @@ import { createHash, randomUUID } from "crypto";
 import rateLimit from "express-rate-limit";
 import { ZodError } from "zod";
 import { load } from "cheerio";
-import { and, asc, desc, eq, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, notInArray } from "drizzle-orm";
 import { getDb } from "./db";
-import { publicAfterSettlementServices, publicContentSyncRuns, publicContentSyncSettings, publicPrograms, publicServiceProviders } from "../drizzle/schema";
+import { marketingReadySummaries, publicAfterSettlementServices, publicContentSyncRuns, publicContentSyncSettings, publicPrograms, publicServiceProviders, type PublicProgram } from "../drizzle/schema";
 import { chatWithLayla } from "./clientAppAiAdvisor";
+import { storageGet } from "./storage";
+import { hasReadySummaryForProgram, parseReadySummaryIdentity, publicReadySummaryFromRecord } from "./publicProgramReadySummaries";
 
 const SOURCES = [
   { category: "residency" as const, url: "https://elevay.com/residency-by-investment/", path: "/residency-by-investment/" },
@@ -37,6 +39,91 @@ const ARABIC_PROGRAM_NAMES: Record<string, string> = {
   "United States": "الولايات المتحدة",
   "Vanuatu": "فانواتو",
 };
+
+type ReadySummaryTextCacheEntry = { createdAt: number; text: string | null; pdfUrl: string | null };
+const readySummaryTextCache = new Map<string, ReadySummaryTextCacheEntry>();
+
+async function extractReadySummaryText(storageKey: string, createdAt: number) {
+  const cached = readySummaryTextCache.get(storageKey);
+  if (cached?.createdAt === createdAt) {
+    try {
+      return { ...cached, pdfUrl: (await storageGet(storageKey)).url };
+    } catch {
+      return { ...cached, pdfUrl: null };
+    }
+  }
+  let pdfUrl: string | null = null;
+  try {
+    const stored = await storageGet(storageKey);
+    pdfUrl = stored.url;
+    const response = await fetch(stored.url, { signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`ready summary download failed: ${response.status}`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const pdfParseModule: any = await import("pdf-parse");
+    const pdfParse = pdfParseModule.default || pdfParseModule;
+    const text = String((await pdfParse(bytes)).text || "").replace(/\u0000/g, "").replace(/\s+\n/g, "\n").trim().slice(0, 120_000) || null;
+    const entry = { createdAt, text, pdfUrl };
+    readySummaryTextCache.set(storageKey, entry);
+    return entry;
+  } catch (error) {
+    console.warn("[PublicContent] Ready Summary extraction failed:", error instanceof Error ? error.message : String(error));
+    const entry = { createdAt, text: null, pdfUrl };
+    readySummaryTextCache.set(storageKey, entry);
+    return entry;
+  }
+}
+
+function serializePublicProgram(row: PublicProgram) {
+  return {
+    publicId: row.publicId,
+    slug: row.slug,
+    category: row.category,
+    nameEn: row.nameEn,
+    nameAr: row.nameAr,
+    country: row.country,
+    summaryEn: row.summaryEn,
+    summaryAr: row.summaryAr,
+    details: row.details,
+    imageUrl: row.imageUrl,
+    sourceUrl: row.sourceUrl,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+  };
+}
+
+async function getPublicProgramPayload(db: any, category?: "residency" | "citizenship") {
+  const programs: PublicProgram[] = category === "residency" || category === "citizenship"
+    ? await db.select().from(publicPrograms).where(and(eq(publicPrograms.isActive, true), eq(publicPrograms.category, category))).orderBy(asc(publicPrograms.displayOrder), asc(publicPrograms.nameEn))
+    : await db.select().from(publicPrograms).where(eq(publicPrograms.isActive, true)).orderBy(asc(publicPrograms.category), asc(publicPrograms.displayOrder), asc(publicPrograms.nameEn));
+  const summaryRows = await db.select({
+    id: marketingReadySummaries.id,
+    title: marketingReadySummaries.title,
+    category: marketingReadySummaries.category,
+    originalFileName: marketingReadySummaries.originalFileName,
+    storageKey: marketingReadySummaries.storageKey,
+    createdAt: marketingReadySummaries.createdAt,
+  }).from(marketingReadySummaries).where(isNull(marketingReadySummaries.deletedAt)).orderBy(asc(marketingReadySummaries.createdAt), asc(marketingReadySummaries.id));
+
+  const latestByTitle = new Map<string, typeof summaryRows[number]>();
+  for (const row of summaryRows) latestByTitle.set(`${row.category}:${row.title.trim().toLowerCase()}`, row);
+  const currentSummaries = Array.from(latestByTitle.values());
+  const readyPayload = (await Promise.all(currentSummaries.map(async row => {
+    const identity = parseReadySummaryIdentity(row.title, row.originalFileName, row.category);
+    const identityCategory = identity?.category ?? null;
+    if (!identity || !identityCategory || (category && identityCategory !== category)) return null;
+    const fallback = programs.find(program => program.category === identityCategory && program.country.toLowerCase() === identity.country.toLowerCase());
+    const extracted = await extractReadySummaryText(row.storageKey, row.createdAt);
+    return publicReadySummaryFromRecord(row, extracted.text, extracted.pdfUrl, fallback ? { imageUrl: fallback.imageUrl, sourceUrl: fallback.sourceUrl, details: fallback.details } : undefined);
+  }))).filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+  const fallbackPayload = programs
+    .filter(program => !hasReadySummaryForProgram(program, readyPayload))
+    .map(serializePublicProgram);
+  return [...readyPayload, ...fallbackPayload];
+}
 
 function normalizeName(value: string) {
   const name = value.replace(/\s+/g, " ").trim();
@@ -194,11 +281,9 @@ export function registerPublicContentRoutes(app: Express) {
       const db = await getDb();
       if (!db) return res.status(503).json({ error: "service_unavailable" });
       const category = req.query.category;
-      const rows = category === "residency" || category === "citizenship"
-        ? await db.select().from(publicPrograms).where(and(eq(publicPrograms.isActive, true), eq(publicPrograms.category, category))).orderBy(asc(publicPrograms.displayOrder), asc(publicPrograms.nameEn))
-        : await db.select().from(publicPrograms).where(eq(publicPrograms.isActive, true)).orderBy(asc(publicPrograms.category), asc(publicPrograms.displayOrder), asc(publicPrograms.nameEn));
+      const rows = await getPublicProgramPayload(db, category === "residency" || category === "citizenship" ? category : undefined);
       res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
-      return res.json(rows.map(row => ({ publicId: row.publicId, slug: row.slug, category: row.category, nameEn: row.nameEn, nameAr: row.nameAr, country: row.country, summaryEn: row.summaryEn, summaryAr: row.summaryAr, details: row.details, imageUrl: row.imageUrl, sourceUrl: row.sourceUrl })));
+      return res.json(rows);
     } catch (error) {
       console.error("[PublicContent] programs failed:", error);
       return res.status(500).json({ error: "programs_unavailable" });
@@ -208,9 +293,10 @@ export function registerPublicContentRoutes(app: Express) {
   app.get("/public-api/programs/:publicId", async (req: Request, res: Response) => {
     const db = await getDb();
     if (!db) return res.status(503).json({ error: "service_unavailable" });
-    const [row] = await db.select().from(publicPrograms).where(and(eq(publicPrograms.publicId, req.params.publicId), eq(publicPrograms.isActive, true))).limit(1);
+    const rows = await getPublicProgramPayload(db);
+    const row = rows.find(program => program.publicId === req.params.publicId);
     if (!row) return res.status(404).json({ error: "not_found" });
-    return res.json({ publicId: row.publicId, slug: row.slug, category: row.category, nameEn: row.nameEn, nameAr: row.nameAr, country: row.country, summaryEn: row.summaryEn, summaryAr: row.summaryAr, details: row.details, imageUrl: row.imageUrl, sourceUrl: row.sourceUrl });
+    return res.json(row);
   });
 
   app.get("/public-api/service-providers", async (req: Request, res: Response) => {

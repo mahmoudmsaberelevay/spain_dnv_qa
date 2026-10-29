@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 /** The web process only persists jobs. Rendering is deliberately external. */
 export const ELEVAY_OUTRO_9X16 = "elevay-outro-9x16.mp4";
 export const ELEVAY_OUTRO_16X9 = "elevay-outro-16x9.mp4";
+export const ELEVAY_OUTRO_16X9_STORAGE_URL = "https://elevay.vip/manus-storage/elevay-outro-16x9_607de281.mp4";
 export const ELEVAY_OUTRO_SECONDS = 5;
 
 export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<any>, opts: { pendingReason?: () => string, fixedOutroUrl?: string } = {}) {
@@ -22,7 +23,7 @@ export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<
     // served from the website: 9:16 for reels, 16:9 for landscape videos. The older fixed outro is no longer used.
     const base = String(process.env.ELEVAY_PUBLIC_BASE_URL || "https://elevay.vip").replace(/\/$/, "");
     const landscape = Number(input.width) > Number(input.height || 0);
-    const outroUrl = String(opts.fixedOutroUrl || `${base}/brand/${landscape ? ELEVAY_OUTRO_16X9 : ELEVAY_OUTRO_9X16}`).trim();
+    const outroUrl = String(opts.fixedOutroUrl || (landscape ? ELEVAY_OUTRO_16X9_STORAGE_URL : `${base}/brand/${ELEVAY_OUTRO_9X16}`)).trim();
     if (!/^https:\/\//.test(outroUrl)) throw new Error("The ELEVAY outro must be a public HTTPS URL.");
     const narrationTargetSeconds = Number(input.narrationTargetSeconds);
     const narrationSceneSeconds = Number(input.narrationSceneSeconds);
