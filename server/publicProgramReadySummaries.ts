@@ -261,6 +261,8 @@ const DOMINICA_ENGLISH_SOURCE = "knowledge/summaries/dominica.md";
 const DOMINICA_ARABIC_SOURCE = "knowledge/summaries/dominica.ar.md";
 const GRENADA_ENGLISH_SOURCE = "knowledge/summaries/grenada.md";
 const GRENADA_ARABIC_SOURCE = "knowledge/summaries/grenada.ar.md";
+const EGYPT_ENGLISH_SOURCE = "knowledge/summaries/egypt.md";
+const EGYPT_ARABIC_SOURCE = "knowledge/summaries/egypt.ar.md";
 
 function displayMarkdownText(value: string) {
   return value
@@ -549,6 +551,45 @@ function latestApprovedGrenadaProgramme(
   };
 }
 
+/**
+ * Serves the latest active Egypt Ready Summary through the existing mobile
+ * programme fields, with one language selected from the phone request header.
+ */
+function latestApprovedEgyptProgramme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+  locale: PublicProgramLocale,
+): PublicReadySummary | null {
+  const english = assetText(EGYPT_ENGLISH_SOURCE);
+  const arabic = assetText(EGYPT_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyLocalizedFields(programmeSections, locale);
+
+  return {
+    ...identity,
+    nameEn: "Egypt",
+    nameAr: "مصر",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: legacy.details,
+    programmeSections,
+  };
+}
+
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
@@ -560,6 +601,7 @@ export function publicReadySummaryFromRecord(
   if (identity.country === "Saint Kitts & Nevis") return latestApprovedStKittsProgramme(identity, summary.id, locale);
   if (identity.country === "Dominica") return latestApprovedDominicaProgramme(identity, summary.id, locale);
   if (identity.country === "Grenada") return latestApprovedGrenadaProgramme(identity, summary.id, locale);
+  if (identity.country === "Egypt") return latestApprovedEgyptProgramme(identity, summary.id, locale);
   if (!extractedText) return null;
   const information = buildPublicProgramInformation(extractedText);
   if (!information) return null;

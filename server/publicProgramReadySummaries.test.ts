@@ -355,6 +355,74 @@ describe("public Ready Summary programme adapter", () => {
     expect(JSON.stringify(payload?.details)).not.toContain("National Transformation Fund");
   });
 
+  it("serves the latest Egypt Ready Summary through all nine English sections and installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30006,
+        title: "Elevay Egypt Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Egypt_Summary.pdf",
+        createdAt: 1793263680359,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30006",
+      slug: "ready-summary-30006",
+      nameEn: "Egypt",
+      nameAr: "مصر",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("Egyptian citizenship can be granted by the Prime Minister");
+    expect(Object.keys(payload?.details ?? {})).toHaveLength(9);
+    expect(payload?.details["3. Investment routes"]).toContain("US$300,000");
+    expect(payload?.details["3. Investment routes"]).toContain("US$500,000");
+    expect(payload?.details["4. Contribution options"]).toContain("US$100,000 donation");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$10,000");
+    expect(payload?.details["6. Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["7. Country At glance"]).toContain("118,365,995");
+    expect(payload?.details["8. Passport access"]).toContain("Total including eTA | 61");
+    expect(payload?.details["9. About Elevay"]).toContain("T +20 128 498 1717");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.passportindex.org/passport/egypt/");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("118,365,995");
+  });
+
+  it("returns Arabic-only Egypt legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30006,
+        title: "Elevay Egypt Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Egypt_Summary.pdf",
+        createdAt: 1793263680359,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("يمكن لرئيس مجلس الوزراء منح الجنسية المصرية");
+    expect(payload?.summaryAr).toContain("يمكن لرئيس مجلس الوزراء منح الجنسية المصرية");
+    expect(payload?.details["3. مسارات الاستثمار"]).toContain("US$500,000");
+    expect(payload?.details["5. رسوم المعالجة الحكومية"]).toContain("US$10,000");
+    expect(payload?.details["6. رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["3. Investment routes"]).toBeUndefined();
+    expect(Object.keys(payload?.details ?? {})).toHaveLength(9);
+    expect(JSON.stringify(payload?.details)).not.toContain("Property purchase");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("returns Arabic-only legacy detail headings and text when the phone language is Arabic", () => {
     const payload = publicReadySummaryFromRecord(
       {
