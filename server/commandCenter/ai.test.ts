@@ -749,6 +749,31 @@ describe("owner reset of a month and a week (1 Nov 2026)", () => {
   });
 });
 
+describe("weekly plan whose step-1 result was lost (run #660003, 1 Nov 2026)", () => {
+  it("plans the week again instead of reviewing nothing and crashing in the content step", async () => {
+    const posts = [0, 1, 2, 3, 4, 5, 6].map((i) => ({ type: i < 4 ? "static" : "reel", date: "2026-11-0" + (i + 1), time: "20:00", program: "Spain DNV", pillar: "Global Mobility", audience: "families", brief: "idea " + i }));
+    const router = (p) => /Plan ELEVAY's social content/.test(p) ? { rationale: "fresh plan", posts }
+      : /lead ELEVAY's AI council/.test(p) ? { final: { rationale: "council plan", posts }, decision_log: [], summary: "ok" }
+      : { score_1_10: 7, assessment: "ok", issues: [], suggestions: [] };
+    const ctx = setup(Array(30).fill(router));
+    const { PIPELINES } = await import("./ai");
+    const steps = PIPELINES.weekly_plan.steps();
+    // Exactly the broken state: step 1 shows done, the council passed with nothing to review, no week_plan saved.
+    steps.forEach((st) => { if (st.action !== "week_content" && st.action !== "spawn_week") st.status = "done"; });
+    steps.find((st) => st.action === "week_content").status = "failed";
+    steps.find((st) => st.action === "week_content").error = "Cannot destructure property 'week' of 'A.week_plan' as it is undefined.";
+    const run = await ctx.o.create({ kind: "weekly_plan", request: "Weekly content plan 2026-W45", options: { week: "2026-W45" }, user: owner, initialSteps: steps, initialArtifacts: { council: { week_plan: { draft: null } } } });
+    const failed = await settle(ctx.o, run.id);
+    expect(failed.status).toBe("failed");
+    await ctx.o.retry(run.id, owner);
+    const r = await throughCouncil(ctx, ctx.o, run.id);
+    expect(ctx.calls.claude.some((c) => /Plan ELEVAY's social content/.test(c.prompt))).toBe(true);
+    expect(r.artifacts.week_plan.posts).toHaveLength(7);
+    expect(r.steps.find((st) => st.action === "week_content").error || "").not.toMatch(/destructure/);
+    expect(r.messages.some((m) => /week plan from step 1 was missing/.test(m.text))).toBe(true);
+  });
+});
+
 describe("owner rule: cinematographer shot sheet for every clip", () => {
   it("builds the Higgsfield animation prompt from the shot sheet with camera, lens, aperture, ISO, shutter and lighting", async () => {
     const { cinematicShotPrompt } = await import("./ai");
