@@ -265,6 +265,8 @@ const EGYPT_ENGLISH_SOURCE = "knowledge/summaries/egypt.md";
 const EGYPT_ARABIC_SOURCE = "knowledge/summaries/egypt.ar.md";
 const TURKIYE_ENGLISH_SOURCE = "knowledge/summaries/turkiye.md";
 const TURKIYE_ARABIC_SOURCE = "knowledge/summaries/turkiye.ar.md";
+const NAURU_ENGLISH_SOURCE = "knowledge/summaries/naoero-nauru.md";
+const NAURU_ARABIC_SOURCE = "knowledge/summaries/naoero-nauru.ar.md";
 
 function displayMarkdownText(value: string) {
   return value
@@ -631,6 +633,45 @@ function latestApprovedTurkiyeProgramme(
   };
 }
 
+/**
+ * Serves the latest active Naoero/Nauru Ready Summary through the installed
+ * app's legacy fields, with only the phone-system-language-selected content.
+ */
+function latestApprovedNauruProgramme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+  locale: PublicProgramLocale,
+): PublicReadySummary | null {
+  const english = assetText(NAURU_ENGLISH_SOURCE);
+  const arabic = assetText(NAURU_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyLocalizedFields(programmeSections, locale);
+
+  return {
+    ...identity,
+    nameEn: "Nauru",
+    nameAr: "ناورو",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: legacy.details,
+    programmeSections,
+  };
+}
+
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
@@ -644,6 +685,7 @@ export function publicReadySummaryFromRecord(
   if (identity.country === "Grenada") return latestApprovedGrenadaProgramme(identity, summary.id, locale);
   if (identity.country === "Egypt") return latestApprovedEgyptProgramme(identity, summary.id, locale);
   if (identity.country === "Turkey") return latestApprovedTurkiyeProgramme(identity, summary.id, locale);
+  if (identity.country === "Nauru") return latestApprovedNauruProgramme(identity, summary.id, locale);
   if (!extractedText) return null;
   const information = buildPublicProgramInformation(extractedText);
   if (!information) return null;

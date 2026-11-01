@@ -518,6 +518,104 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Naoero/Nauru Ready Summary through all nine English sections and installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30008,
+        title: "Elevay Naoero Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Naoero_Summary.pdf",
+        createdAt: 1793263909404,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30008",
+      slug: "ready-summary-30008",
+      nameEn: "Nauru",
+      nameAr: "ناورو",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("The Naoero Economic and Climate Resilience Citizenship Program (ECRCP)");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.details["2. Who Can be Included"]).toContain("Siblings of the main applicant or of the spouse");
+    expect(payload?.details["3. Investment routes"]).toContain("One route is offered");
+    expect(payload?.details["4. Contribution options"]).toContain("US$90,000 until 31 December 2026");
+    expect(payload?.details["4. Contribution options"]).toContain("US$115,000 from 1 January 2027");
+    expect(payload?.details["4. Contribution options"]).toContain("US$15,000 each");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$5,000");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$2,000 each eligible dependant");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$500 per passport");
+    expect(payload?.details["6. Due diligence fees"]).toContain("US$6,000");
+    expect(payload?.details["6. Due diligence fees"]).toContain("US$3,000 each dependant aged 16 and above");
+    expect(payload?.details["6. Due diligence fees"]).toContain("US$2,200");
+    expect(payload?.details["7. Country At glance"]).toContain("12,025");
+    expect(payload?.details["7. Country At glance"]).toContain("US$14,640");
+    expect(payload?.details["8. Passport access"]).toContain("Visa-free destinations | 42");
+    expect(payload?.details["8. Passport access"]).toContain("Total including eTA | 87");
+    expect(payload?.details["9. About Elevay"]).toContain("T +94 77 246 8516");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.passportindex.org/passport/nauru/");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.ecrcp.gov.nr");
+  });
+
+  it("returns Arabic-only Nauru legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30008,
+        title: "Elevay Naoero Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Naoero_Summary.pdf",
+        createdAt: 1793263909404,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("يمنح برنامج ناورو للمواطنة");
+    expect(payload?.summaryAr).toContain("يمنح برنامج ناورو للمواطنة");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "1. نظرة عامة على البرنامج",
+      "2. الأشخاص الذين يمكن إدراجهم في الطلب",
+      "3. مسارات الاستثمار",
+      "4. خيارات المساهمة",
+      "5. رسوم المعالجة الحكومية",
+      "6. رسوم العناية الواجبة",
+      "7. لمحة عن الدولة",
+      "8. إمكانية السفر بجواز السفر",
+      "9. عن إيليفاي",
+    ]);
+    expect(payload?.details["4. خيارات المساهمة"]).toContain("115,000 دولار أمريكي");
+    expect(payload?.details["5. رسوم المعالجة الحكومية"]).toContain("5,000 دولار أمريكي");
+    expect(payload?.details["6. رسوم العناية الواجبة"]).toContain("2,200 دولار أمريكي");
+    expect(payload?.details["8. إمكانية السفر بجواز السفر"]).toContain("الإجمالي بما في ذلك تصريح السفر الإلكتروني | 87");
+    expect(payload?.details["3. Investment routes"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("One route is offered");
+    expect(JSON.stringify(payload?.details)).not.toContain("Application fee");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("returns Arabic-only legacy detail headings and text when the phone language is Arabic", () => {
     const payload = publicReadySummaryFromRecord(
       {
