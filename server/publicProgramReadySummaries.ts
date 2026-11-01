@@ -259,6 +259,8 @@ const ST_KITTS_ENGLISH_SOURCE = "knowledge/summaries/st-kitts-nevis.md";
 const ST_KITTS_ARABIC_SOURCE = "knowledge/summaries/st-kitts-nevis.ar.md";
 const DOMINICA_ENGLISH_SOURCE = "knowledge/summaries/dominica.md";
 const DOMINICA_ARABIC_SOURCE = "knowledge/summaries/dominica.ar.md";
+const GRENADA_ENGLISH_SOURCE = "knowledge/summaries/grenada.md";
+const GRENADA_ARABIC_SOURCE = "knowledge/summaries/grenada.ar.md";
 
 function displayMarkdownText(value: string) {
   return value
@@ -507,6 +509,46 @@ function latestApprovedDominicaProgramme(
   };
 }
 
+/**
+ * Presents the active Grenada Ready Summary under the same nine bilingual
+ * sections as the other Caribbean programmes. The legacy fields keep the
+ * existing iOS and Android builds populated without a native rebuild.
+ */
+function latestApprovedGrenadaProgramme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+  locale: PublicProgramLocale,
+): PublicReadySummary | null {
+  const english = assetText(GRENADA_ENGLISH_SOURCE);
+  const arabic = assetText(GRENADA_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyLocalizedFields(programmeSections, locale);
+
+  return {
+    ...identity,
+    nameEn: "Grenada",
+    nameAr: "غرينادا",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: legacy.details,
+    programmeSections,
+  };
+}
+
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
@@ -517,6 +559,7 @@ export function publicReadySummaryFromRecord(
   if (identity.country === "Antigua & Barbuda") return userApprovedAntiguaProgramme(identity, locale);
   if (identity.country === "Saint Kitts & Nevis") return latestApprovedStKittsProgramme(identity, summary.id, locale);
   if (identity.country === "Dominica") return latestApprovedDominicaProgramme(identity, summary.id, locale);
+  if (identity.country === "Grenada") return latestApprovedGrenadaProgramme(identity, summary.id, locale);
   if (!extractedText) return null;
   const information = buildPublicProgramInformation(extractedText);
   if (!information) return null;

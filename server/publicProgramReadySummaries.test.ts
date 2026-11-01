@@ -284,6 +284,77 @@ describe("public Ready Summary programme adapter", () => {
     expect(JSON.stringify(payload?.details)).not.toContain("Economic Diversification Fund");
   });
 
+  it("serves the active Grenada summary through nine source-only bilingual sections and existing-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30003,
+        title: "Elevay Grenada Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Grenada_Summary.pdf",
+        createdAt: 1793263059957,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30003",
+      slug: "ready-summary-30003",
+      nameEn: "Grenada",
+      nameAr: "غرينادا",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("Citizenship of Grenada can be obtained through a contribution");
+    expect(payload?.summaryAr).toContain("Citizenship of Grenada can be obtained through a contribution");
+    expect(Object.keys(payload?.details ?? {})).toHaveLength(9);
+    expect(payload?.details["3. Investment routes"]).toContain("US$235,000");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$1,500 per person");
+    expect(payload?.details["6. Due diligence fees"]).toContain("US$5,000 per person");
+    expect(payload?.details["8. Passport access"]).toContain("Total including eTA | 139");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    const investmentTable = payload?.programmeSections?.en[2]?.blocks.find(block => block.type === "table");
+    expect(investmentTable).toEqual({
+      type: "table",
+      headers: ["Route", "Minimum investment", "Holding period"],
+      rows: [
+        ["Option 1: National Transformation Fund (NTF)", "US$235,000 (main applicant plus up to three dependants)", "N/A"],
+        ["Option 2: Approved real estate (single owner)", "US$350,000, plus a US$50,000 government contribution", "5 years"],
+        ["Option 3: Approved real estate (shared tourism accommodation unit)", "US$270,000 per share, plus a US$50,000 government contribution", "5 years"],
+      ],
+    });
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.passportindex.org/passport/grenada/");
+  });
+
+  it("returns Arabic-only Grenada legacy details when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30003,
+        title: "Elevay Grenada Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Grenada_Summary.pdf",
+        createdAt: 1793263059957,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("يمكن الحصول على جنسية غرينادا");
+    expect(payload?.summaryAr).toContain("يمكن الحصول على جنسية غرينادا");
+    expect(payload?.details["3. مسارات الاستثمار"]).toContain("235,000");
+    expect(payload?.details["3. Investment routes"]).toBeUndefined();
+    expect(Object.keys(payload?.details ?? {})).toHaveLength(9);
+    expect(JSON.stringify(payload?.details)).not.toContain("National Transformation Fund");
+  });
+
   it("returns Arabic-only legacy detail headings and text when the phone language is Arabic", () => {
     const payload = publicReadySummaryFromRecord(
       {
