@@ -214,6 +214,76 @@ describe("public Ready Summary programme adapter", () => {
     expect(renderedContent).toContain("https://www.henleyglobal.com/passport-index/ranking");
   });
 
+  it("serves the latest approved Dominica summary through all nine source-only sections and installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30005,
+        title: "Elevay Dominica Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Dominica_Summary.pdf",
+        createdAt: 1793263299037,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30005",
+      slug: "ready-summary-30005",
+      nameEn: "Dominica",
+      nameAr: "دومينيكا",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("Citizenship of Dominica can be obtained through a contribution to the Economic Diversification Fund");
+    expect(payload?.summaryAr).toContain("Citizenship of Dominica can be obtained through a contribution to the Economic Diversification Fund");
+    expect(Object.keys(payload?.details ?? {})).toHaveLength(9);
+    expect(payload?.details["3. Investment routes"]).toContain("US$250,000 (main applicant plus up to three dependants)");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$100,000");
+    expect(payload?.details["6. Due diligence fees"]).toContain("US$7,500");
+    expect(payload?.details["8. Passport access"]).toContain("Total including eTA | 135");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    const investmentTable = payload?.programmeSections?.en[2]?.blocks.find(block => block.type === "table");
+    expect(investmentTable).toEqual({
+      type: "table",
+      headers: ["Route", "Minimum investment", "Holding period"],
+      rows: [
+        ["Economic Diversification Fund (EDF)", "US$200,000 (single) or US$250,000 (main applicant plus up to three dependants)", "N/A"],
+        ["Approved real estate", "US$200,000, plus government fees from US$75,000", "3 or 5 years"],
+      ],
+    });
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.passportindex.org/passport/dominica/");
+  });
+
+  it("returns Arabic-only Dominica legacy details when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30005,
+        title: "Elevay Dominica Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Dominica_Summary.pdf",
+        createdAt: 1793263299037,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("يمكن الحصول على مواطنة دومينيكا");
+    expect(payload?.summaryAr).toContain("يمكن الحصول على مواطنة دومينيكا");
+    expect(payload?.details["3. مسارات الاستثمار"]).toContain("US$250,000");
+    expect(payload?.details["3. Investment routes"]).toBeUndefined();
+    expect(Object.keys(payload?.details ?? {}).some(heading => heading.includes(" / "))).toBe(false);
+    expect(JSON.stringify(payload?.details)).not.toContain("Economic Diversification Fund");
+  });
+
   it("returns Arabic-only legacy detail headings and text when the phone language is Arabic", () => {
     const payload = publicReadySummaryFromRecord(
       {

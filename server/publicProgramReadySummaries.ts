@@ -257,6 +257,8 @@ const ANTIGUA_ENGLISH_SOURCE = "knowledge/summaries/antigua-barbuda.md";
 const ANTIGUA_ARABIC_SOURCE = "knowledge/summaries/antigua-barbuda.ar.md";
 const ST_KITTS_ENGLISH_SOURCE = "knowledge/summaries/st-kitts-nevis.md";
 const ST_KITTS_ARABIC_SOURCE = "knowledge/summaries/st-kitts-nevis.ar.md";
+const DOMINICA_ENGLISH_SOURCE = "knowledge/summaries/dominica.md";
+const DOMINICA_ARABIC_SOURCE = "knowledge/summaries/dominica.ar.md";
 
 function displayMarkdownText(value: string) {
   return value
@@ -465,6 +467,46 @@ function latestApprovedStKittsProgramme(
   };
 }
 
+/**
+ * Presents the selected latest approved Dominica Ready Summary under the
+ * requested nine headings. The legacy fields keep already-installed apps full
+ * without exposing mixed-language content or requiring a native rebuild.
+ */
+function latestApprovedDominicaProgramme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+  locale: PublicProgramLocale,
+): PublicReadySummary | null {
+  const english = assetText(DOMINICA_ENGLISH_SOURCE);
+  const arabic = assetText(DOMINICA_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyLocalizedFields(programmeSections, locale);
+
+  return {
+    ...identity,
+    nameEn: "Dominica",
+    nameAr: "دومينيكا",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: legacy.details,
+    programmeSections,
+  };
+}
+
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
@@ -474,6 +516,7 @@ export function publicReadySummaryFromRecord(
   if (!identity) return null;
   if (identity.country === "Antigua & Barbuda") return userApprovedAntiguaProgramme(identity, locale);
   if (identity.country === "Saint Kitts & Nevis") return latestApprovedStKittsProgramme(identity, summary.id, locale);
+  if (identity.country === "Dominica") return latestApprovedDominicaProgramme(identity, summary.id, locale);
   if (!extractedText) return null;
   const information = buildPublicProgramInformation(extractedText);
   if (!information) return null;
