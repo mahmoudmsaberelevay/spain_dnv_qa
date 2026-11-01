@@ -8,7 +8,7 @@ import { getDb } from "./db";
 import { marketingReadySummaries, publicAfterSettlementServices, publicContentSyncRuns, publicContentSyncSettings, publicPrograms, publicServiceProviders, type PublicProgram } from "../drizzle/schema";
 import { chatWithLayla } from "./clientAppAiAdvisor";
 import { storageGet } from "./storage";
-import { parseReadySummaryIdentity, publicReadySummaryFromRecord } from "./publicProgramReadySummaries";
+import { parseReadySummaryIdentity, publicProgramLocaleFromAcceptLanguage, publicReadySummaryFromRecord } from "./publicProgramReadySummaries";
 
 const SOURCES = [
   { category: "residency" as const, url: "https://elevay.com/residency-by-investment/", path: "/residency-by-investment/" },
@@ -71,7 +71,7 @@ async function extractReadySummaryText(storageKey: string, createdAt: number) {
   }
 }
 
-async function getPublicProgramPayload(db: any, category?: "residency" | "citizenship") {
+async function getPublicProgramPayload(db: any, category?: "residency" | "citizenship", locale: "en" | "ar" = "en") {
   const summaryRows = await db.select({
     id: marketingReadySummaries.id,
     title: marketingReadySummaries.title,
@@ -92,7 +92,7 @@ async function getPublicProgramPayload(db: any, category?: "residency" | "citize
     const identityCategory = identity?.category ?? null;
     if (!identity || !identityCategory || (category && identityCategory !== category)) return null;
     const extracted = await extractReadySummaryText(row.storageKey, row.createdAt);
-    return publicReadySummaryFromRecord(row, extracted.text);
+    return publicReadySummaryFromRecord(row, extracted.text, locale);
   }))).filter((item): item is NonNullable<typeof item> => Boolean(item));
   return readyPayload.sort((left, right) => left.category.localeCompare(right.category) || left.nameEn.localeCompare(right.nameEn));
 }
@@ -253,7 +253,9 @@ export function registerPublicContentRoutes(app: Express) {
       const db = await getDb();
       if (!db) return res.status(503).json({ error: "service_unavailable" });
       const category = req.query.category;
-      const rows = await getPublicProgramPayload(db, category === "residency" || category === "citizenship" ? category : undefined);
+      const locale = publicProgramLocaleFromAcceptLanguage(req.headers["accept-language"]);
+      const rows = await getPublicProgramPayload(db, category === "residency" || category === "citizenship" ? category : undefined, locale);
+      res.vary("Accept-Language");
       res.setHeader("Cache-Control", "no-store");
       return res.json(rows);
     } catch (error) {
@@ -265,9 +267,11 @@ export function registerPublicContentRoutes(app: Express) {
   app.get("/public-api/programs/:publicId", async (req: Request, res: Response) => {
     const db = await getDb();
     if (!db) return res.status(503).json({ error: "service_unavailable" });
-    const rows = await getPublicProgramPayload(db);
+    const locale = publicProgramLocaleFromAcceptLanguage(req.headers["accept-language"]);
+    const rows = await getPublicProgramPayload(db, undefined, locale);
     const row = rows.find(program => program.publicId === req.params.publicId);
     if (!row) return res.status(404).json({ error: "not_found" });
+    res.vary("Accept-Language");
     res.setHeader("Cache-Control", "no-store");
     return res.json(row);
   });

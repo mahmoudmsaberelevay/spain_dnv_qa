@@ -2,6 +2,26 @@ import type { MarketingReadySummary } from "../drizzle/schema";
 import { assetText } from "./commandCenter/knowledge";
 
 export type PublicProgramCategory = "residency" | "citizenship";
+export type PublicProgramLocale = "en" | "ar";
+
+/**
+ * Existing mobile builds do not send their in-app language on public programme
+ * requests. Use the platform/browser Accept-Language preference as a safe
+ * approximation, preferring the highest-q supported language and English by
+ * default.
+ */
+export function publicProgramLocaleFromAcceptLanguage(header: string | string[] | undefined): PublicProgramLocale {
+  const value = Array.isArray(header) ? header.join(",") : header ?? "";
+  const supported = value.split(",").map((entry, index) => {
+    const [tag, ...parameters] = entry.trim().split(";");
+    const qualityParameter = parameters.find(parameter => /^\s*q\s*=/i.test(parameter));
+    const quality = qualityParameter ? Number(qualityParameter.split("=")[1]) : 1;
+    const language = tag?.trim().toLowerCase().split(/[-_]/)[0];
+    return { language, quality: Number.isFinite(quality) ? quality : 0, index };
+  }).filter(item => (item.language === "ar" || item.language === "en") && item.quality > 0)
+    .sort((left, right) => right.quality - left.quality || left.index - right.index);
+  return supported[0]?.language === "ar" ? "ar" : "en";
+}
 
 export type ReadySummaryIdentity = {
   country: string;
@@ -270,10 +290,10 @@ function legacyBlockText(block: ProgrammeContentBlock): string {
 
 /**
  * The installed app understands summaryEn/summaryAr and details, not the new
- * programmeSections field. Populate both contracts to deliver content through
- * a server update without requiring a new client build.
+ * programmeSections field. Keep the summary translations separate and return
+ * details in only the language selected from the phone's request header.
  */
-function legacyBilingualFields(programmeSections: BilingualProgrammeContent) {
+function legacyLocalizedFields(programmeSections: BilingualProgrammeContent, locale: PublicProgramLocale) {
   const overviewText = (section: ProgrammeContentSection | undefined) => {
     const paragraphs = section?.blocks.filter((block): block is Extract<ProgrammeContentBlock, { text: string }> => block.type === "paragraph") ?? [];
     const substantive = paragraphs.filter(block => !/^(?:programme details checked against|sources?:|passport index, accessed|تم التحقق من تفاصيل البرنامج|المصادر:)/i.test(block.text.trim()));
@@ -282,17 +302,15 @@ function legacyBilingualFields(programmeSections: BilingualProgrammeContent) {
       || section?.blocks.map(legacyBlockText).filter(Boolean).join("\n")
       || "";
   };
-  const details: Record<string, string> = {};
-  programmeSections.en.forEach((section, index) => {
-    const arabicSection = programmeSections.ar[index];
-    const englishText = section.blocks.map(legacyBlockText).filter(Boolean).join("\n\n");
-    const arabicText = arabicSection?.blocks.map(legacyBlockText).filter(Boolean).join("\n\n") ?? "";
-    details[`${section.heading}${arabicSection ? ` / ${arabicSection.heading}` : ""}`] =
-      [englishText, arabicText].filter(Boolean).join("\n\n");
-  });
+  const selectedSections = locale === "ar" ? programmeSections.ar : programmeSections.en;
+  const localizedOverview = overviewText(selectedSections[0]);
+  const details = Object.fromEntries(selectedSections.map(section => [
+    section.heading,
+    section.blocks.map(legacyBlockText).filter(Boolean).join("\n\n"),
+  ]));
   return {
-    summaryEn: overviewText(programmeSections.en[0]),
-    summaryAr: overviewText(programmeSections.ar[0]),
+    summaryEn: localizedOverview,
+    summaryAr: localizedOverview,
     details,
   };
 }
@@ -375,7 +393,7 @@ export function parseProgrammeContent(markdown: string): ProgrammeContentSection
   return sections.filter(item => item.heading.length > 0);
 }
 
-function userApprovedAntiguaProgramme(identity: ReadySummaryIdentity): PublicReadySummary | null {
+function userApprovedAntiguaProgramme(identity: ReadySummaryIdentity, locale: PublicProgramLocale): PublicReadySummary | null {
   const english = assetText(ANTIGUA_ENGLISH_SOURCE);
   const arabic = assetText(ANTIGUA_ARABIC_SOURCE);
   if (!english || !arabic) return null;
@@ -384,7 +402,7 @@ function userApprovedAntiguaProgramme(identity: ReadySummaryIdentity): PublicRea
     ar: parseProgrammeContent(arabic),
   };
   if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
-  const legacy = legacyBilingualFields(programmeSections);
+  const legacy = legacyLocalizedFields(programmeSections, locale);
 
   return {
     ...identity,
@@ -415,6 +433,7 @@ function userApprovedAntiguaProgramme(identity: ReadySummaryIdentity): PublicRea
 function latestApprovedStKittsProgramme(
   identity: ReadySummaryIdentity,
   summaryId: number,
+  locale: PublicProgramLocale,
 ): PublicReadySummary | null {
   const english = assetText(ST_KITTS_ENGLISH_SOURCE);
   const arabic = assetText(ST_KITTS_ARABIC_SOURCE);
@@ -424,7 +443,7 @@ function latestApprovedStKittsProgramme(
     ar: parseProgrammeContent(arabic),
   };
   if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
-  const legacy = legacyBilingualFields(programmeSections);
+  const legacy = legacyLocalizedFields(programmeSections, locale);
 
   return {
     ...identity,
@@ -449,11 +468,12 @@ function latestApprovedStKittsProgramme(
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
+  locale: PublicProgramLocale = "en",
 ): PublicReadySummary | null {
   const identity = parseReadySummaryIdentity(summary.title, summary.originalFileName, summary.category);
   if (!identity) return null;
-  if (identity.country === "Antigua & Barbuda") return userApprovedAntiguaProgramme(identity);
-  if (identity.country === "Saint Kitts & Nevis") return latestApprovedStKittsProgramme(identity, summary.id);
+  if (identity.country === "Antigua & Barbuda") return userApprovedAntiguaProgramme(identity, locale);
+  if (identity.country === "Saint Kitts & Nevis") return latestApprovedStKittsProgramme(identity, summary.id, locale);
   if (!extractedText) return null;
   const information = buildPublicProgramInformation(extractedText);
   if (!information) return null;

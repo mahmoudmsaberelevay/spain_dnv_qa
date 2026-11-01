@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPublicProgramInformation, parseProgrammeContent, parseReadySummaryIdentity, publicReadySummaryFromRecord } from "./publicProgramReadySummaries";
+import { buildPublicProgramInformation, parseProgrammeContent, parseReadySummaryIdentity, publicProgramLocaleFromAcceptLanguage, publicReadySummaryFromRecord } from "./publicProgramReadySummaries";
 
 const SAMPLE_D7_SUMMARY = `R E S I D E N C Y P R O G R A M M E
 PORTUGAL
@@ -44,6 +44,14 @@ describe("public Ready Summary programme adapter", () => {
 
   it("ignores non-public Ready Summary categories", () => {
     expect(parseReadySummaryIdentity("Internal operating guide", "internal.pdf", "Other")).toBeNull();
+  });
+
+  it("selects a supported programme language from the highest-priority Accept-Language entry", () => {
+    expect(publicProgramLocaleFromAcceptLanguage("ar-EG,ar;q=0.9,en-US;q=0.8")).toBe("ar");
+    expect(publicProgramLocaleFromAcceptLanguage("en-US,en;q=0.9,ar;q=0.8")).toBe("en");
+    expect(publicProgramLocaleFromAcceptLanguage("fr-FR,ar;q=0.7")).toBe("ar");
+    expect(publicProgramLocaleFromAcceptLanguage(undefined)).toBe("en");
+    expect(publicProgramLocaleFromAcceptLanguage(["ar;q=0.6", "en-US;q=0.4"])).toBe("ar");
   });
 
   it("projects only cleaned programme information, with source labels and PDF actions removed", () => {
@@ -92,10 +100,12 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.nameEn).toBe("Antigua & Barbuda");
     expect(payload?.nameAr).toBe("أنتيغوا وبربودا");
     expect(payload?.summaryEn).toContain("Citizenship of Antigua & Barbuda can be obtained");
-    expect(payload?.summaryAr).toContain("يمكن الحصول على جنسية أنتيغوا وبربودا");
+    expect(payload?.summaryAr).toContain("Citizenship of Antigua & Barbuda can be obtained");
     expect(Object.keys(payload?.details ?? {})).toHaveLength(9);
-    expect(payload?.details["3. Investment Routes / 3. مسارات الاستثمار"]).toContain("US$1,500,000");
-    expect(payload?.details["3. Investment Routes / 3. مسارات الاستثمار"]).toContain("US$230,000");
+    expect(payload?.details["3. Investment Routes"]).toContain("US$1,500,000");
+    expect(payload?.details["3. Investment Routes"]).toContain("US$230,000");
+    expect(Object.keys(payload?.details ?? {}).some(heading => heading.includes(" / "))).toBe(false);
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
     expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
       "1. Program Overview",
       "2. Who Can Be Included",
@@ -163,10 +173,12 @@ describe("public Ready Summary programme adapter", () => {
       readySummaryPdfUrl: null,
     });
     expect(payload?.summaryEn).toContain("Citizenship of St. Kitts & Nevis can be obtained through a non-refundable contribution");
-    expect(payload?.summaryAr).toContain("يمكن الحصول على جنسية سانت كيتس ونيفيس");
+    expect(payload?.summaryAr).toContain("Citizenship of St. Kitts & Nevis can be obtained through a non-refundable contribution");
     expect(Object.keys(payload?.details ?? {})).toHaveLength(9);
-    expect(payload?.details["3. Investment routes / 3. مسارات الاستثمار"]).toContain("US$250,000");
-    expect(payload?.details["5. Government Processing fees / 5. رسوم المعالجة الحكومية"]).toContain("US$10,000");
+    expect(payload?.details["3. Investment routes"]).toContain("US$250,000");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$10,000");
+    expect(Object.keys(payload?.details ?? {}).some(heading => heading.includes(" / "))).toBe(false);
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
     expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
       "1. Program Overview",
       "2. Who Can be Included",
@@ -200,6 +212,47 @@ describe("public Ready Summary programme adapter", () => {
     expect(renderedContent).toContain("148");
     expect(renderedContent).toContain("يمكن الحصول على جنسية سانت كيتس ونيفيس");
     expect(renderedContent).toContain("https://www.henleyglobal.com/passport-index/ranking");
+  });
+
+  it("returns Arabic-only legacy detail headings and text when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30001,
+        title: "Elevay St Kitts Nevis Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_St_Kitts_Nevis_Summary.pdf",
+        createdAt: 1793262974291,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("يمكن الحصول على جنسية سانت كيتس ونيفيس");
+    expect(payload?.summaryAr).toContain("يمكن الحصول على جنسية سانت كيتس ونيفيس");
+    expect(payload?.summaryEn).not.toContain("Citizenship of St. Kitts");
+    expect(payload?.details["3. مسارات الاستثمار"]).toContain("US$250,000");
+    expect(payload?.details["3. مسارات الاستثمار"]).toContain("مساهمة الدولة الجزرية المستدامة");
+    expect(payload?.details["3. Investment routes"]).toBeUndefined();
+    expect(Object.keys(payload?.details ?? {}).some(heading => heading.includes(" / "))).toBe(false);
+    expect(JSON.stringify(payload?.details)).not.toContain("Sustainable Island State Contribution");
+    expect(payload?.programmeSections?.en).toHaveLength(9);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
+  it("also returns Arabic-only Antigua legacy detail headings when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30002,
+        title: "Elevay Antigua Barbuda Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Antigua_Barbuda_Summary.pdf",
+        createdAt: 1793263017260,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.details["3. مسارات الاستثمار"]).toBeTruthy();
+    expect(payload?.details["3. Investment Routes"]).toBeUndefined();
+    expect(Object.keys(payload?.details ?? {}).some(heading => heading.includes(" / "))).toBe(false);
   });
 
   it("renders authored Markdown tables and normalizes only formatting, not the cell text", () => {

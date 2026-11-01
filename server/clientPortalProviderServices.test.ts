@@ -87,7 +87,9 @@ describe("Client Portal provider and After Settlement Services integration", () 
       'app.get("/public-api/programs/:publicId"',
       '\n  app.get("/public-api/service-providers"',
     );
-    expect(programDetailHandler).toContain("const rows = await getPublicProgramPayload(db)");
+    expect(programDetailHandler).toContain('publicProgramLocaleFromAcceptLanguage(req.headers["accept-language"])');
+    expect(programDetailHandler).toContain("const rows = await getPublicProgramPayload(db, undefined, locale)");
+    expect(programDetailHandler).toContain('res.vary("Accept-Language")');
     expect(programDetailHandler).toContain("return res.json(row);");
     expect(programDetailHandler).not.toContain("res.json(await db");
     const serializerStart = readySummarySerializer.indexOf("export function publicReadySummaryFromRecord");
