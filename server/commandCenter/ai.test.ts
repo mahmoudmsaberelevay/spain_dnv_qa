@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import E from "./engine";
 import R from "./rules";
 import { createOrchestrator, extractJson, PIPELINES, parseManusVoiceoverLines } from "./ai";
@@ -544,7 +544,7 @@ describe("owner-authorized targeted content revisions", () => {
   });
 });
 
-describe("owner rule: Manus rewrites a voice-over that OpenAI could not fix", () => {
+describe("owner rule: voice-over rotation OpenAI → Manus → Claude, 5 minutes each", () => {
   const BAD = { ...STORYBOARD, scenes: [1, 2, 3, 4].map((i) => ({ ...scene(i), spoken_text_ar: "لو بتفكر في إسبانيا خلينا نرتب خطوتك الجاية صح مع Elevay دلوقتي" })) };
   const BAD_FIX = { scenes: [1, 2, 3, 4].map((n) => ({ scene: n, spoken_text_ar: "لو بتفكر في إسبانيا خلينا نرتب خطوتك الجاية صح مع Elevay دلوقتي" })) };
 
@@ -568,6 +568,44 @@ describe("owner rule: Manus rewrites a voice-over that OpenAI could not fix", ()
     expect(r.status).toBe("done");
     expect(ctx.calls.openaiText).toHaveLength(2);
     expect(r.artifacts.brief.reel.storyboard.map((s) => s.spoken_text_ar)).toEqual(sceneScripts);
+  });
+
+  it("hands the voice-over to Claude when Manus has not replied within its 5-minute turn", async () => {
+    const ctx = setup([BAD, BAD_FIX, { scenes: sceneScripts }, PASS]);
+    const run = await ctx.o.create({ kind: "reel", request: "Manus is silent", user: marketer });
+    let r = await settle(ctx.o, run.id);
+    expect(r.artifacts.voiceover_manus).toMatchObject({ status: "waiting" });
+    const later = Date.now() + 5 * 60 * 1000 + 1000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(later);
+    await ctx.o.tick(); // Manus's turn is over: Claude takes over
+    clock.mockRestore();
+    r = await settle(ctx.o, run.id, ["running"]);
+    expect(r.artifacts.voiceover_manus).toMatchObject({ status: "timed_out" });
+    await ctx.o.tick();
+    r = await approveAndFinish(ctx, run.id);
+    expect(r.status).toBe("done");
+    expect(ctx.calls.claude.some((c) => /OpenAI and Manus could not produce one that passes the checks/.test(c.prompt))).toBe(true);
+    expect(r.artifacts.brief.reel.storyboard.map((s) => s.spoken_text_ar)).toEqual(sceneScripts);
+    expect(r.messages.some((m) => /Manus's voice-over turn ended: no reply within 5 minutes/.test(m.text))).toBe(true);
+  });
+
+  it("fails the reel with every model's reason when OpenAI, Manus and Claude all miss", async () => {
+    const badLines = { scenes: BAD.scenes.map((x) => x.spoken_text_ar) };
+    const ctx = setup([BAD, BAD_FIX, badLines, badLines]);
+    const run = await ctx.o.create({ kind: "reel", request: "Nobody passes", user: marketer });
+    let r = await settle(ctx.o, run.id);
+    const job = ctx.state.jobs.find((j) => j.id === r.artifacts.voiceover_manus.job);
+    job.status = "failed"; job.result = { error: "Manus is offline" };
+    await ctx.o.tick();
+    await settle(ctx.o, run.id, ["running"]);
+    await ctx.o.tick();
+    r = await settle(ctx.o, run.id, ["running", "queued"]);
+    expect(r.status).toBe("failed");
+    const err = r.steps.find((s) => s.action === "reel_storyboard").error;
+    expect(err).toMatch(/No AI model produced a voice-over that passes the checks within its 5-minute turn/);
+    expect(err).toMatch(/OpenAI: .+; Manus: Manus could not rewrite it \(Manus is offline\); Claude: its lines failed the checks/);
+    expect(ctx.calls.openai).toHaveLength(0); // no media was generated
+    expect(ctx.calls.hfSubmit).toHaveLength(0);
   });
 
   it("reads Manus replies as JSON, nested JSON text or four plain lines", () => {
