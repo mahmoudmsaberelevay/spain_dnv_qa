@@ -81,20 +81,24 @@ describe("Client Portal provider and After Settlement Services integration", () 
 
   it("serializes public-program detail rows without storage keys or internal database fields", () => {
     const content = read("server/publicContentService.ts");
+    const readySummarySerializer = read("server/publicProgramReadySummaries.ts");
     const programDetailHandler = handlerSource(
       content,
       'app.get("/public-api/programs/:publicId"',
       '\n  app.get("/public-api/service-providers"',
     );
-    const serializer = handlerSource(
-      content,
-      "function serializePublicProgram",
-      "\nasync function getPublicProgramPayload",
-    );
     expect(programDetailHandler).toContain("const rows = await getPublicProgramPayload(db)");
     expect(programDetailHandler).toContain("return res.json(row);");
+    expect(programDetailHandler).not.toContain("res.json(await db");
+    const serializerStart = readySummarySerializer.indexOf("export function publicReadySummaryFromRecord");
+    expect(serializerStart).toBeGreaterThanOrEqual(0);
+    const serializer = handlerSource(
+      readySummarySerializer.slice(serializerStart),
+      "  return {",
+      "\n  };\n}",
+    );
     expect(serializer).not.toMatch(/storageKey|sourceHash|isActive|isOverridden|displayOrder|createdAt|updatedAt/);
-    expect(serializer).toContain("publicId: row.publicId");
+    expect(serializer).toContain("publicId: `ready-summary-${summary.id}`");
     expect(serializer).toContain("readySummaryPdfUrl: null");
   });
 

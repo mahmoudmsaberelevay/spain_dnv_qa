@@ -161,6 +161,9 @@ export const invoices = mysqlTable("invoices", {
   // later rate refresh or contract change.
   actualReceivedAmount: decimal("actualReceivedAmount", { precision: 14, scale: 2 }),
   actualReceivedCurrency: varchar("actualReceivedCurrency", { length: 3 }),
+  // Rate of the actual received currency per EUR. This remains distinct from
+  // exchangeRate, which is the EUR/EGP due-amount quote printed on a receipt.
+  paymentExchangeRate: decimal("paymentExchangeRate", { precision: 10, scale: 4 }),
   paymentEurEquivalent: decimal("paymentEurEquivalent", { precision: 12, scale: 2 }),
   netContractValueEur: decimal("netContractValueEur", { precision: 12, scale: 2 }),
   remainingBeforeEur: decimal("remainingBeforeEur", { precision: 12, scale: 2 }),
@@ -189,6 +192,7 @@ export const payments = mysqlTable("payments", {
   exchangeRate: decimal("exchangeRate", { precision: 10, scale: 4 }),
   actualReceivedAmount: decimal("actualReceivedAmount", { precision: 14, scale: 2 }),
   actualReceivedCurrency: varchar("actualReceivedCurrency", { length: 3 }),
+  paymentExchangeRate: decimal("paymentExchangeRate", { precision: 10, scale: 4 }),
   paymentEurEquivalent: decimal("paymentEurEquivalent", { precision: 12, scale: 2 }),
   paidAt: timestamp("paidAt").defaultNow().notNull(),
   notes: text("notes"),

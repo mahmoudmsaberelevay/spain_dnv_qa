@@ -18,6 +18,7 @@ import { notifyFinClientAdded } from "./emailService";
 import { normalizeFinancialDateRange } from "../shared/financialDateRange";
 import { enforceQualifierCommissionMarketingSource } from "../shared/commissionSourcePolicy";
 import { calculatePaymentEurEquivalent, normalizePaymentCurrency } from "../shared/financialPaymentSnapshots";
+import { getAutomaticPostingExchangeRate, getEurToEgpRate } from "./exchangeRate";
 
 // ─── Access Control ──────────────────────────────────────────────────────────
 const ADMIN_EMAILS = [
@@ -593,10 +594,19 @@ const transactionsRouter = router({
       const account = await getAccountById(input.accountId);
       if (!account) throw new TRPCError({ code: "NOT_FOUND", message: "Account not found" });
       const transactionCurrency = String(account.currency ?? "").trim().toUpperCase();
-      const exchangeRate = transactionCurrency === "EUR" ? 1 : input.exchangeRate;
-      if (!exchangeRate) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: `Enter the EGP-per-EUR rate used for this ${transactionCurrency || "account"} income payment.` });
+      let automaticQuote;
+      try {
+        automaticQuote = await getAutomaticPostingExchangeRate(normalizePaymentCurrency(transactionCurrency));
+      } catch (error) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: error instanceof Error ? error.message : "A verified live exchange rate is unavailable. Please try again shortly.",
+        });
       }
+      // The rate is captured by the server at posting time. Browser state and a
+      // manually supplied value cannot cause a client payment to be posted with
+      // an empty or stale conversion quote.
+      const exchangeRate = automaticQuote.rate;
       let eurEquivalent: number;
       try {
         eurEquivalent = calculatePaymentEurEquivalent({
@@ -930,22 +940,34 @@ const bulkRouter = router({
       let created = 0;
       let errors: string[] = [];
       const affectedAccountIds = new Set<number>();
+      const affectedClientIds = new Set<number>();
       for (let i = 0; i < input.transactions.length; i++) {
         const tx = input.transactions[i];
         try {
           if (tx.type === "income") {
             const account = await getAccountById(tx.accountId!);
             if (!account) { errors.push(`Row ${i + 1}: Account not found`); continue; }
+            const transactionCurrency = normalizePaymentCurrency(String(account.currency ?? "").trim().toUpperCase());
+            const automaticQuote = await getAutomaticPostingExchangeRate(transactionCurrency);
+            const eurEquivalent = calculatePaymentEurEquivalent({
+              actualAmount: tx.amount,
+              currency: transactionCurrency,
+              exchangeRate: automaticQuote.rate,
+            });
             const bb = Number(account.balance);
             await createTransaction({
               type: "income", description: tx.description, accountId: tx.accountId!,
               categoryId: tx.categoryId ?? null, note: tx.note ?? null,
               finClientId: tx.finClientId ?? null, amount: tx.amount.toString(),
+              transactionCurrency,
+              exchangeRate: automaticQuote.rate.toFixed(4),
+              eurEquivalent: eurEquivalent.toFixed(2),
               transactionDate: tx.transactionDate,
               balanceBefore: bb.toString(), balanceAfter: (bb + tx.amount).toString(),
               createdBy: ctx.user?.email ?? null,
             });
             affectedAccountIds.add(tx.accountId!);
+            if (tx.finClientId != null) affectedClientIds.add(tx.finClientId);
           } else if (tx.type === "expense") {
             const account = await getAccountById(tx.accountId!);
             if (!account) { errors.push(`Row ${i + 1}: Account not found`); continue; }
@@ -986,6 +1008,7 @@ const bulkRouter = router({
       }
       // Recalculate all affected account balances from scratch after the bulk insert
       await Promise.all(Array.from(affectedAccountIds).map(id => recalcAccountBalance(id)));
+      await Promise.all(Array.from(affectedClientIds).map(id => recalcClientPaidAmount(id)));
       return { created, errors };
     }),
 });
@@ -1288,7 +1311,7 @@ const commissionReceiptsRouter = router({
     .input(z.object({
       employeeId: z.number(),
       forMonth: z.string().min(1),
-      eurToEgpRate: z.number().min(0.01),
+      eurToEgpRate: z.number().min(0.01).optional(),
       items: z.array(commissionItemSchema).min(1),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -1300,7 +1323,17 @@ const commissionReceiptsRouter = router({
       const emp2 = employees.find(e => e.id === input.employeeId);
       if (!emp2) throw new TRPCError({ code: "NOT_FOUND", message: "Employee not found" });
 
-      const rate = input.eurToEgpRate;
+      let rate = input.eurToEgpRate;
+      if (!rate) {
+        try {
+          rate = (await getAutomaticPostingExchangeRate("EGP")).rate;
+        } catch (error) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: error instanceof Error ? error.message : "A verified live EUR/EGP rate is unavailable. Please try again shortly.",
+          });
+        }
+      }
       const itemsWithEgp = input.items.map(item => ({
         ...item,
         amountEgp: Math.round(item.amountEur * rate * 100) / 100,

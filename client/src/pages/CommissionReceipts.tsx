@@ -105,6 +105,7 @@ export default function CommissionReceipts() {
   const { data: receipts = [], refetch } = trpc.financial.commissionReceipts.list.useQuery();
   const { data: employees = [] } = trpc.financial.employees.list.useQuery();
   const { data: clients = [] } = trpc.financial.clients.list.useQuery();
+  const { data: rateInfo } = trpc.contracting.exchangeRate.current.useQuery();
 
   // Date range filter state
   const [datePreset, setDatePreset] = useState<DateRangePreset>("all");
@@ -167,7 +168,7 @@ export default function CommissionReceipts() {
   function resetForm() {
     setEmployeeId("");
     setForMonth(getCurrentMonth());
-    setEurToEgpRate("");
+    setEurToEgpRate(rateInfo?.rate ?? "");
     setItems([{ clientId: 0, clientName: "", commissionFor: "", amountEur: 0 }]);
     setClientSearch([""]);
   }
@@ -187,17 +188,16 @@ export default function CommissionReceipts() {
   }
 
   const totalEur = useMemo(() => items.reduce((s, i) => s + (Number(i.amountEur) || 0), 0), [items]);
-  const totalEgp = useMemo(() => totalEur * (Number(eurToEgpRate) || 0), [totalEur, eurToEgpRate]);
+  const previewEurToEgpRate = editReceipt ? Number(eurToEgpRate) : Number(rateInfo?.rate ?? 0);
+  const totalEgp = useMemo(() => totalEur * previewEurToEgpRate, [totalEur, previewEurToEgpRate]);
 
   function handleCreate() {
     if (!employeeId) return toast.error("Select an employee");
-    if (!eurToEgpRate || Number(eurToEgpRate) <= 0) return toast.error("Enter EUR to EGP rate");
     const validItems = items.filter(i => i.clientId && i.commissionFor && i.amountEur > 0);
     if (validItems.length === 0) return toast.error("Add at least one valid client item");
     createMutation.mutate({
       employeeId: Number(employeeId),
       forMonth,
-      eurToEgpRate: Number(eurToEgpRate),
       items: validItems,
     });
   }
@@ -218,14 +218,12 @@ export default function CommissionReceipts() {
 
   function handleUpdate() {
     if (!editReceipt) return;
-    if (!eurToEgpRate || Number(eurToEgpRate) <= 0) return toast.error("Enter EUR to EGP rate");
     const validItems = items.filter(i => i.clientId && i.commissionFor && i.amountEur > 0);
     if (validItems.length === 0) return toast.error("Add at least one valid client item");
     updateMutation.mutate({
       id: editReceipt.id,
       employeeId: Number(employeeId) || undefined,
       forMonth,
-      eurToEgpRate: Number(eurToEgpRate),
       items: validItems,
     });
   }
@@ -442,16 +440,15 @@ export default function CommissionReceipts() {
               </div>
             </div>
 
-            {/* EUR to EGP Rate */}
-            <div className="space-y-1">
-              <Label>EUR to EGP Exchange Rate</Label>
-              <Input
-                type="number"
-                value={eurToEgpRate}
-                onChange={e => setEurToEgpRate(e.target.value ? Number(e.target.value) : "")}
-                placeholder="e.g. 63.00"
-                className="max-w-xs"
-              />
+            <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+              <p className="font-medium text-foreground">EUR/EGP rate captured automatically</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {editReceipt
+                  ? `This draft keeps its saved rate: 1 EUR = ${Number(eurToEgpRate).toFixed(4)} EGP.`
+                  : rateInfo?.rate
+                    ? `Current reference: 1 EUR = ${Number(rateInfo.rate).toFixed(4)} EGP. The server captures and freezes the verified live rate when the receipt is created.`
+                    : "The server captures and freezes the verified live EUR/EGP rate when the receipt is created."}
+              </p>
             </div>
 
             {/* Client Items */}
@@ -539,14 +536,14 @@ export default function CommissionReceipts() {
             </div>
 
             {/* Totals preview */}
-            {eurToEgpRate && totalEur > 0 && (
+            {previewEurToEgpRate > 0 && totalEur > 0 && (
               <div className="rounded-lg bg-muted/50 border p-4 grid grid-cols-2 gap-4">
                 <div>
                   <div className="text-xs text-muted-foreground">Total EUR</div>
                   <div className="text-lg font-bold text-foreground">€{totalEur.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground">Total EGP (@ {eurToEgpRate})</div>
+                  <div className="text-xs text-muted-foreground">Total EGP (@ {previewEurToEgpRate.toFixed(4)})</div>
                   <div className="text-lg font-bold text-foreground">EGP {totalEgp.toLocaleString("en-US", { minimumFractionDigits: 0 })}</div>
                 </div>
               </div>

@@ -25,7 +25,7 @@ import {
   recalcClientPaidFromReceipts, recalcLegacyClientPaidFromReceipts,
 } from "./db";
 import { generateContractDoc, uploadContractToStorage, calculateContractValue, CONTRACT_COUNTRIES } from "./contractGenerator";
-import { getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
+import { getAutomaticPostingExchangeRate, getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
 import { generateAndUploadInvoicePdf } from "./invoiceGenerator";
 import { calculatePaymentEurEquivalent, calculateReceiptBalanceSnapshot, normalizePaymentCurrency } from "../shared/financialPaymentSnapshots";
 import { generateAndUploadProformaPdf } from "./proformaGenerator";
@@ -837,11 +837,14 @@ function parseReceiptDate(value: string): Date {
 type StoredInvoice = NonNullable<Awaited<ReturnType<typeof getInvoiceById>>>;
 
 async function regenerateStoredReceiptPdf(invoice: StoredInvoice): Promise<string> {
-  const rateInfo = await getEurToEgpRate();
-  const amountEgp = invoice.amountEgp
-    ? Number(invoice.amountEgp)
-    : convertEurToEgp(Number(invoice.amountEur), rateInfo.rate);
-  const exchangeRate = invoice.exchangeRate ? Number(invoice.exchangeRate) : rateInfo.rate;
+  if (invoice.amountEgp == null || invoice.exchangeRate == null) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "This historical receipt has no saved exchange-rate snapshot and cannot be regenerated automatically.",
+    });
+  }
+  const amountEgp = Number(invoice.amountEgp);
+  const exchangeRate = Number(invoice.exchangeRate);
   let contractValue = 0;
   let totalPaid = 0;
   let remainingBalance = 0;
@@ -886,6 +889,7 @@ async function regenerateStoredReceiptPdf(invoice: StoredInvoice): Promise<strin
     actualReceivedCurrency: invoice.actualReceivedCurrency === "EUR" || invoice.actualReceivedCurrency === "EGP" || invoice.actualReceivedCurrency === "USD"
       ? invoice.actualReceivedCurrency
       : undefined,
+    paymentExchangeRate: invoice.paymentExchangeRate != null ? Number(invoice.paymentExchangeRate) : undefined,
     remainingAfterEur: invoice.remainingAfterEur != null ? Number(invoice.remainingAfterEur) : undefined,
     createdAt: new Date(invoice.receiptDate ?? invoice.createdAt),
     notes: invoice.notes ?? undefined,
@@ -1180,9 +1184,20 @@ const contractingRouter = router({
           const updated = await getContractById(input.contractId);
           if (updated) Object.assign(contract, updated);
         }
-        const rateInfo = await getEurToEgpRate();
-        const exchangeRate = input.exchangeRate ?? rateInfo.rate;
         const actualReceivedCurrency = input.actualReceivedCurrency ?? "EGP";
+        let dueRateInfo;
+        let paymentQuote;
+        try {
+          dueRateInfo = await getAutomaticPostingExchangeRate("EGP");
+          paymentQuote = await getAutomaticPostingExchangeRate(normalizePaymentCurrency(actualReceivedCurrency));
+        } catch (error) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: error instanceof Error ? error.message : "A verified live exchange rate is unavailable. Please try again shortly.",
+          });
+        }
+        const exchangeRate = dueRateInfo.rate;
+        const paymentExchangeRate = paymentQuote.rate;
         const amountEgp = convertEurToEgp(input.amountEur, exchangeRate);
         const invoiceCode = generateInvoiceCode();
         const receiptDate = input.receiptDate ? parseReceiptDate(input.receiptDate) : new Date();
@@ -1194,7 +1209,7 @@ const contractingRouter = router({
         const paymentEurEquivalent = calculatePaymentEurEquivalent({
           actualAmount: actualReceivedAmount,
           currency: normalizePaymentCurrency(actualReceivedCurrency),
-          exchangeRate,
+          exchangeRate: paymentExchangeRate,
         });
         const balanceSnapshot = calculateReceiptBalanceSnapshot({
           netContractValueEur,
@@ -1213,6 +1228,7 @@ const contractingRouter = router({
           paymentEurEquivalent: balanceSnapshot.paymentEurEquivalent,
           actualReceivedAmount,
           actualReceivedCurrency,
+          paymentExchangeRate,
           remainingAfterEur: balanceSnapshot.remainingAfterEur,
           createdAt: receiptDate, notes: input.notes,
           actualPaidAmountEgp: actualPaidEgp,
@@ -1224,6 +1240,7 @@ const contractingRouter = router({
           amountEgp: amountEgp.toString(), exchangeRate: exchangeRate.toString(),
           actualReceivedAmount: actualReceivedAmount.toFixed(2),
           actualReceivedCurrency,
+          paymentExchangeRate: paymentExchangeRate.toFixed(4),
           paymentEurEquivalent: balanceSnapshot.paymentEurEquivalent.toFixed(2),
           netContractValueEur: balanceSnapshot.netContractValueEur.toFixed(2),
           remainingBeforeEur: balanceSnapshot.remainingBeforeEur.toFixed(2),
@@ -1297,9 +1314,20 @@ const contractingRouter = router({
         const { eq } = await import("drizzle-orm");
         const [client] = await db.select().from(finClients).where(eq(finClients.id, input.legacyFinClientId)).limit(1);
         if (!client) throw new TRPCError({ code: "NOT_FOUND", message: "Finance client not found" });
-        const rateInfo = await getEurToEgpRate();
-        const exchangeRate = input.exchangeRate ?? rateInfo.rate;
         const actualReceivedCurrency = input.actualReceivedCurrency ?? "EGP";
+        let dueRateInfo;
+        let paymentQuote;
+        try {
+          dueRateInfo = await getAutomaticPostingExchangeRate("EGP");
+          paymentQuote = await getAutomaticPostingExchangeRate(normalizePaymentCurrency(actualReceivedCurrency));
+        } catch (error) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: error instanceof Error ? error.message : "A verified live exchange rate is unavailable. Please try again shortly.",
+          });
+        }
+        const exchangeRate = dueRateInfo.rate;
+        const paymentExchangeRate = paymentQuote.rate;
         const amountEgp = input.amountEgp ?? convertEurToEgp(input.amountEur, exchangeRate);
         const invoiceCode = generateInvoiceCode();
         const receiptDate = input.receiptDate ? parseReceiptDate(input.receiptDate) : new Date();
@@ -1314,7 +1342,7 @@ const contractingRouter = router({
         const paymentEurEquivalent = calculatePaymentEurEquivalent({
           actualAmount: actualReceivedAmount,
           currency: normalizePaymentCurrency(actualReceivedCurrency),
-          exchangeRate,
+          exchangeRate: paymentExchangeRate,
         });
         const balanceSnapshot = calculateReceiptBalanceSnapshot({
           netContractValueEur: finContractValue,
@@ -1332,6 +1360,7 @@ const contractingRouter = router({
           paymentEurEquivalent: balanceSnapshot.paymentEurEquivalent,
           actualReceivedAmount,
           actualReceivedCurrency,
+          paymentExchangeRate,
           remainingAfterEur: balanceSnapshot.remainingAfterEur,
           createdAt: receiptDate,
           notes: input.notes,
@@ -1348,6 +1377,7 @@ const contractingRouter = router({
           exchangeRate: exchangeRate.toString(),
           actualReceivedAmount: actualReceivedAmount.toFixed(2),
           actualReceivedCurrency,
+          paymentExchangeRate: paymentExchangeRate.toFixed(4),
           paymentEurEquivalent: balanceSnapshot.paymentEurEquivalent.toFixed(2),
           netContractValueEur: balanceSnapshot.netContractValueEur.toFixed(2),
           remainingBeforeEur: balanceSnapshot.remainingBeforeEur.toFixed(2),

@@ -68,7 +68,6 @@ export default function Invoices() {
   const [discountValue, setDiscountValue] = useState<string>("");
   const [actualPaidEgp, setActualPaidEgp] = useState<string>("");
   const [actualReceivedCurrency, setActualReceivedCurrency] = useState<"EGP" | "EUR" | "USD">("EGP");
-  const [receiptExchangeRate, setReceiptExchangeRate] = useState<string>("");
 
   // Form state — legacy mode
   const [legacyClientId, setLegacyClientId] = useState<string>("none");
@@ -115,7 +114,6 @@ export default function Invoices() {
       setDiscountValue("");
       setActualPaidEgp("");
       setActualReceivedCurrency("EGP");
-      setReceiptExchangeRate("");
       setReceiptDate(getTodayDateInput());
     },
     onError: (err) => {
@@ -215,7 +213,7 @@ export default function Invoices() {
   });
 
   const selectedContract = contracts?.find((c) => c.id === Number(selectedContractId));
-  const activeReceiptRate = Number(receiptExchangeRate || rateInfo?.rate || 0);
+  const activeReceiptRate = Number(rateInfo?.rate || 0);
   const previewEgp = amountEur && activeReceiptRate > 0 ? Number(amountEur) * activeReceiptRate : null;
 
   const handleCreateSubmit = (e: React.FormEvent) => {
@@ -228,7 +226,6 @@ export default function Invoices() {
       discountValue: discountValue ? Number(discountValue) : undefined,
       actualReceivedAmount: actualPaidEgp ? Number(actualPaidEgp) : undefined,
       actualReceivedCurrency,
-      exchangeRate: activeReceiptRate || undefined,
       actualPaidAmountEgp: actualPaidEgp ? Number(actualPaidEgp) : undefined,
       receiptDate,
     });
@@ -257,7 +254,6 @@ export default function Invoices() {
           <Button
             onClick={() => {
               setActualReceivedCurrency("EGP");
-              setReceiptExchangeRate(rateInfo?.rate ? String(rateInfo.rate) : "");
               setShowCreateDialog(true);
             }}
             className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
@@ -626,19 +622,11 @@ export default function Invoices() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="receiptExchangeRate">Exchange Rate (EGP per EUR)</Label>
-                  <Input
-                    id="receiptExchangeRate"
-                    type="number"
-                    min="0.0001"
-                    step="0.0001"
-                    value={actualReceivedCurrency === "EUR" ? "1" : receiptExchangeRate}
-                    disabled={actualReceivedCurrency === "EUR"}
-                    onChange={(e) => setReceiptExchangeRate(e.target.value)}
-                    placeholder={rateInfo ? String(rateInfo.rate) : "e.g. 59"}
-                    required
-                  />
+                <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">Rate captured automatically</p>
+                  <p className="mt-1">
+                    The server saves the verified live rate for the selected received currency when this receipt is created. It never changes afterwards.
+                  </p>
                 </div>
               </div>
 
@@ -704,7 +692,7 @@ export default function Invoices() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={createMutation.isPending || !selectedContractId || !amountEur || !actualPaidEgp || !activeReceiptRate || !notes.trim()}
+                  disabled={createMutation.isPending || !selectedContractId || !amountEur || !actualPaidEgp || !notes.trim()}
                   className="gap-2"
                 >
                   {createMutation.isPending ? (

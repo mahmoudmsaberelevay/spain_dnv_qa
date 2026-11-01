@@ -328,6 +328,7 @@ function actualReceiptPaidEur(invoice: {
   exchangeRate: string | null;
   actualReceivedAmount?: string | null;
   actualReceivedCurrency?: string | null;
+  paymentExchangeRate?: string | null;
   paymentEurEquivalent?: string | null;
 }) {
   if (invoice.paymentEurEquivalent != null) return Number(invoice.paymentEurEquivalent);
@@ -335,7 +336,7 @@ function actualReceiptPaidEur(invoice: {
     return calculatePaymentEurEquivalent({
       actualAmount: Number(invoice.actualReceivedAmount),
       currency: normalizePaymentCurrency(invoice.actualReceivedCurrency),
-      exchangeRate: Number(invoice.exchangeRate ?? 0),
+      exchangeRate: Number(invoice.paymentExchangeRate ?? invoice.exchangeRate ?? 0),
     });
   }
   const actualEgp = invoice.actualPaidAmountEgp == null ? null : Number(invoice.actualPaidAmountEgp);
@@ -367,6 +368,7 @@ async function reconcileContractReceiptFinancials(tx: any, contractId: number) {
     actualPaidAmountEgp: invoices.actualPaidAmountEgp,
     actualReceivedAmount: invoices.actualReceivedAmount,
     actualReceivedCurrency: invoices.actualReceivedCurrency,
+    paymentExchangeRate: invoices.paymentExchangeRate,
     paymentEurEquivalent: invoices.paymentEurEquivalent,
     exchangeRate: invoices.exchangeRate,
     paidAt: invoices.paidAt,
@@ -384,6 +386,7 @@ async function reconcileContractReceiptFinancials(tx: any, contractId: number) {
       exchangeRate: invoice.exchangeRate ?? null,
       actualReceivedAmount: invoice.actualReceivedAmount ?? invoice.actualPaidAmountEgp ?? invoice.amountEgp ?? null,
       actualReceivedCurrency: invoice.actualReceivedCurrency ?? (invoice.actualPaidAmountEgp != null ? "EGP" : "EUR"),
+      paymentExchangeRate: invoice.paymentExchangeRate ?? invoice.exchangeRate ?? null,
       paymentEurEquivalent: actualReceiptPaidEur(invoice).toFixed(2),
       paidAt: invoice.paidAt ?? new Date(),
     })));

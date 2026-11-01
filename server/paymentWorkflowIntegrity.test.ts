@@ -11,6 +11,7 @@ describe("contract, receipt, and client payment workflow", () => {
   const finDb = read("server/finDb.ts");
   const incomeRouter = read("server/finRouter.ts");
   const receiptPdf = read("server/invoiceGenerator.ts");
+  const exchangeRate = read("server/exchangeRate.ts");
 
   it("keeps original, discount, and net contract values separate", () => {
     expect(schema).toContain('originalContractValueEur: decimal("originalContractValueEur"');
@@ -39,5 +40,20 @@ describe("contract, receipt, and client payment workflow", () => {
     expect(incomeRouter).toContain("transactionCurrency");
     expect(incomeRouter).toContain("eurEquivalent");
     expect(incomeRouter).toContain("calculatePaymentEurEquivalent");
+  });
+
+  it("captures verified rates automatically for new income and receipts, then keeps the snapshots", () => {
+    expect(exchangeRate).toContain("getAutomaticPostingExchangeRate");
+    expect(exchangeRate).toContain('currency === "EUR"');
+    expect(exchangeRate).toContain('currency === "EGP" ? await getEurToEgpRate() : await getEurToUsdRate()');
+    expect(exchangeRate).toContain('No verified EUR/${currency} rate is available');
+    expect(incomeRouter).toContain('await getAutomaticPostingExchangeRate(normalizePaymentCurrency(transactionCurrency))');
+    expect(incomeRouter).toContain("transactionCurrency,");
+    expect(incomeRouter).toContain("eurEquivalent: eurEquivalent.toFixed(2)");
+    expect(router).toContain('await getAutomaticPostingExchangeRate("EGP")');
+    expect(router).toContain("paymentExchangeRate: paymentExchangeRate.toFixed(4)");
+    expect(schema).toContain('paymentExchangeRate: decimal("paymentExchangeRate"');
+    expect(db).toContain("paymentExchangeRate ?? invoice.exchangeRate");
+    expect(receiptPdf).toContain("PAYMENT RATE (1 EUR =");
   });
 });

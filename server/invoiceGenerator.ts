@@ -25,6 +25,7 @@ export interface ReceiptData {
   paymentEurEquivalent?: number;
   actualReceivedAmount?: number;
   actualReceivedCurrency?: "EGP" | "EUR" | "USD";
+  paymentExchangeRate?: number;
   remainingAfterEur?: number;
   createdAt: Date;
   notes?: string;
@@ -242,6 +243,10 @@ function buildPdf(
           label: `ACTUAL AMOUNT RECEIVED (${data.actualReceivedCurrency ?? "EGP"})`,
           value: formatCurrency(data.actualReceivedAmount ?? data.actualPaidAmountEgp ?? data.amountEgp, data.actualReceivedCurrency ?? "EGP"),
         },
+        ...(data.paymentExchangeRate != null ? [{
+          label: `PAYMENT RATE (1 EUR = ${data.actualReceivedCurrency ?? "EGP"})`,
+          value: Number(data.paymentExchangeRate).toFixed(4),
+        }] : []),
         { label: "REMAINING AFTER THIS PAYMENT", value: formatCurrency(data.remainingAfterEur!, "EUR") },
       ]
       : [
