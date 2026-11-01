@@ -616,6 +616,111 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Saint Lucia Ready Summary through all nine English sections and installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30004,
+        title: "Elevay Saint Lucia Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Saint_Lucia_Summary.pdf",
+        createdAt: 1793263210068,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30004",
+      slug: "ready-summary-30004",
+      nameEn: "Saint Lucia",
+      nameAr: "سانت لوسيا",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("Citizenship of Saint Lucia can be obtained");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.details["2. Who Can be Included"]).toContain("Children aged 21 or under");
+    expect(payload?.details["2. Who Can be Included"]).toContain("Unmarried siblings under 18");
+    expect(payload?.details["3. Investment routes"]).toContain("National Economic Fund (NEF)");
+    expect(payload?.details["3. Investment routes"]).toContain("US$240,000");
+    expect(payload?.details["3. Investment routes"]).toContain("US$50,000");
+    expect(payload?.details["3. Investment routes"]).toContain("US$3,500,000");
+    expect(payload?.details["4. Contribution options"]).toContain("US$10,000 each");
+    expect(payload?.details["4. Contribution options"]).toContain("US$35,000");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$2,000");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$300 per person");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$45,000");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$30,000");
+    expect(payload?.details["6. Due diligence fees"]).toContain("US$8,000");
+    expect(payload?.details["6. Due diligence fees"]).toContain("US$5,000");
+    expect(payload?.details["7. Country At glance"]).toContain("180,149");
+    expect(payload?.details["7. Country At glance"]).toContain("US$14,746");
+    expect(payload?.details["7. Country At glance"]).toContain("EC$2.70");
+    expect(payload?.details["8. Passport access"]).toContain("Visa-free destinations | 91");
+    expect(payload?.details["8. Passport access"]).toContain("Visa-on-arrival destinations | 41");
+    expect(payload?.details["8. Passport access"]).toContain("Total including eTA | 137");
+    expect(payload?.details["9. About Elevay"]).toContain("T +20 128 498 1717");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.passportindex.org/passport/saint-lucia/");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.cipsaintlucia.com");
+  });
+
+  it("returns Arabic-only Saint Lucia legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30004,
+        title: "Elevay Saint Lucia Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Saint_Lucia_Summary.pdf",
+        createdAt: 1793263210068,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("يمكن الحصول على جنسية سانت لوسيا");
+    expect(payload?.summaryAr).toContain("يمكن الحصول على جنسية سانت لوسيا");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "1. نظرة عامة على البرنامج",
+      "2. الأشخاص الذين يمكن إدراجهم في الطلب",
+      "3. مسارات الاستثمار",
+      "4. خيارات المساهمة",
+      "5. رسوم المعالجة الحكومية",
+      "6. رسوم العناية الواجبة",
+      "7. لمحة عن الدولة",
+      "8. إمكانية السفر بجواز السفر",
+      "9. عن إيليفاي",
+    ]);
+    expect(payload?.details["3. مسارات الاستثمار"]).toContain("240,000 دولار أمريكي");
+    expect(payload?.details["3. مسارات الاستثمار"]).toContain("3,500,000 دولار أمريكي");
+    expect(payload?.details["4. خيارات المساهمة"]).toContain("35,000 دولار أمريكي");
+    expect(payload?.details["5. رسوم المعالجة الحكومية"]).toContain("50,000 دولار أمريكي");
+    expect(payload?.details["6. رسوم العناية الواجبة"]).toContain("8,000 دولار أمريكي");
+    expect(payload?.details["8. إمكانية السفر بجواز السفر"]).toContain("الإجمالي بما في ذلك تصريح السفر الإلكتروني | 137");
+    expect(payload?.details["3. Investment routes"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("National Economic Fund");
+    expect(JSON.stringify(payload?.details)).not.toContain("Visa-free destinations");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("returns Arabic-only legacy detail headings and text when the phone language is Arabic", () => {
     const payload = publicReadySummaryFromRecord(
       {
