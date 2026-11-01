@@ -284,6 +284,8 @@ export function canonicalProgram(v) {
     [/portugal.*(golden|gv)|golden.*portugal/, "Portugal Golden Visa"],
     [/\bd8\b/, "Portugal D8"], [/\bd7\b|portugal/, "Portugal D7"], [/\bd2\b/, "Portugal D2"],
     [/greece|greek|اليونان/, "Greece Golden Visa"],
+    [/hungary|المجر|هنغاريا/, "Hungary Guest Investor"], [/latvia|لاتفيا/, "Latvia Investor"],
+    [/turkey|t[uü]rkiye|تركيا/, "Türkiye Citizenship"], [/\buae\b|emirates|الإمارات|الامارات/, "UAE Golden Residence"],
     [/caribbean|grenada|dominica|antigua|st\.? ?kitts|saint kitts|st\.? ?lucia|saint lucia|vanuatu|cbi|citizenship/, "Caribbean Citizenship"],
     [/\buk\b|united kingdom|britain|expansion worker/, "UK Expansion Worker"],
     [/canada|express entry/, "Canada Skilled Migration"],

@@ -43,7 +43,7 @@ import { notifyOwner } from "../_core/notification";
 const cleanMetaAction = (b) => cleanMeta(b, R);
 function sourcesStatus() {
   const has = (f) => { try { assetPath(f); return true; } catch { return false; } };
-  return { programs: PROGRAMS.map((p) => ({ name: p.name, loaded: !!assetText(p.file) })), creative: ["brand-identity", "brand-and-design", "video-and-audio", "delivery-checklist"].map((n) => ({ name: n, loaded: !!assetText(`creative/${n}.md`) })), logo: has("elevay-logo.png"), font: has("ApexSansBook.ttf") };
+  return { programs: PROGRAMS.map((p) => ({ name: p.name, loaded: (Array.isArray(p.file) ? p.file : [p.file]).every((f) => !!assetText(f)) })), creative: ["brand-identity", "brand-and-design", "video-and-audio", "delivery-checklist"].map((n) => ({ name: n, loaded: !!assetText(`creative/${n}.md`) })), logo: has("elevay-logo.png"), font: has("ApexSansBook.ttf") };
 }
 const isoWeekOf = (ms: number) => planningWeek(ms - 2 * 86400000); // ISO week containing ms
 import { sdk } from "../_core/sdk";

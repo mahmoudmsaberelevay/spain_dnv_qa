@@ -1,4 +1,5 @@
 import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,7 +27,7 @@ const assets = [
     destination: join(projectRoot, "dist", "marketing-fonts", "PlusJakartaSans-Bold.ttf"),
   },
   // ELEVAY Command Center: approved program sources, creative direction, official logo and font.
-  ...["ApexSansBook.ttf", "elevay-logo.png", "elevay-full-logo.png", "knowledge/spain-digital-nomad.md", "knowledge/malta-permanent-residence.md", "knowledge/antigua-barbuda-cbi.md", "knowledge/dominica-cbi.md", "knowledge/egypt-cbi-rbi.md", "knowledge/nauru-cbi.md", "knowledge/sao-tome-principe-cbi.md", "creative/brand-identity.md", "creative/brand-and-design.md", "creative/video-and-audio.md", "creative/delivery-checklist.md"].map((name) => ({
+  ...["ApexSansBook.ttf", "elevay-logo.png", "elevay-full-logo.png", "knowledge/spain-digital-nomad.md", "knowledge/malta-permanent-residence.md", "knowledge/antigua-barbuda-cbi.md", "knowledge/dominica-cbi.md", "knowledge/egypt-cbi-rbi.md", "knowledge/nauru-cbi.md", "knowledge/sao-tome-principe-cbi.md", ...readdirSync(join(projectRoot, "server", "commandCenter", "assets", "knowledge", "summaries")).filter((f) => f.endsWith(".md")).map((f) => `knowledge/summaries/${f}`), "creative/brand-identity.md", "creative/brand-and-design.md", "creative/video-and-audio.md", "creative/delivery-checklist.md"].map((name) => ({
     source: join(projectRoot, "server", "commandCenter", "assets", name),
     destination: join(projectRoot, "dist", "command-center-assets", name),
   })),

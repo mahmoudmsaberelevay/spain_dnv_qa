@@ -130,7 +130,11 @@ Tone: [Conversational / energetic / calm / other]`,
   const PROGRAMS = [
     'Spain Digital Nomad Residency', 'Portugal D7', 'Portugal D8', 'Portugal D2', 'Portugal Golden Residency',
     'Greece Golden Residency', 'Malta Permanent Residency', 'UK Expansion Worker', 'Canada Skilled Migration',
-    'Caribbean Citizenship by Investment', 'Antigua & Barbuda Citizenship', 'Dominica Citizenship', 'Egypt Citizenship & Residence', 'Nauru Citizenship', 'São Tomé & Príncipe Citizenship', 'Vanuatu Citizenship', 'Evergreen / multi-program',
+    'Caribbean Citizenship by Investment', 'Antigua & Barbuda Citizenship', 'Dominica Citizenship', 'Egypt Citizenship & Residence', 'Nauru Citizenship', 'São Tomé & Príncipe Citizenship', 'Vanuatu Citizenship',
+    'Grenada Citizenship', 'St. Kitts & Nevis Citizenship', 'Saint Lucia Citizenship', 'Türkiye Citizenship',
+    'Spain Non-Lucrative Residency', 'Spain Entrepreneur Residency', 'Spain Highly Qualified Residency',
+    'Malta Nomad Residency', 'Malta Tax-Residence Programmes', 'Hungary Guest Investor Residency', 'Latvia Investor Residency',
+    'UAE Golden Residency', 'Canada Provincial Entrepreneur', 'Evergreen / multi-program',
   ];
   const STATUSES = ['draft', 'qc_failed', 'pending_approval', 'changes_requested', 'revision_approved', 'approved', 'scheduled', 'published', 'rejected'];
   const CHANGE_SCOPES = [
