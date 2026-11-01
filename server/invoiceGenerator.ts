@@ -17,9 +17,15 @@ export interface ReceiptData {
   amountEur: number;
   amountEgp: number;
   exchangeRate: number;
-  contractValue: number;
-  totalPaid: number;
-  remainingBalance: number;
+  contractValue?: number;
+  totalPaid?: number;
+  remainingBalance?: number;
+  netContractValueEur?: number;
+  remainingBeforeEur?: number;
+  paymentEurEquivalent?: number;
+  actualReceivedAmount?: number;
+  actualReceivedCurrency?: "EGP" | "EUR" | "USD";
+  remainingAfterEur?: number;
   createdAt: Date;
   notes?: string;
   // Partial payment fields (EGP)
@@ -223,11 +229,26 @@ function buildPdf(
     // ══════════════════════════════════════════════════════════════════════
     // SUMMARY TABLE (2 columns: label | value)
     // ══════════════════════════════════════════════════════════════════════
-    const summaryRows: { label: string; value: string }[] = [
-      { label: "TOTAL CONTRACT VALUE", value: formatCurrency(data.contractValue, "EUR") },
-      { label: "TOTAL PAID",           value: formatCurrency(data.totalPaid, "EUR") },
-      { label: "REMAINING BALANCE",    value: formatCurrency(data.remainingBalance, "EUR") },
-    ];
+    const hasSnapshot = data.netContractValueEur != null
+      && data.remainingBeforeEur != null
+      && data.paymentEurEquivalent != null
+      && data.remainingAfterEur != null;
+    const summaryRows: { label: string; value: string }[] = hasSnapshot
+      ? [
+        { label: "NET CONTRACT VALUE", value: formatCurrency(data.netContractValueEur!, "EUR") },
+        { label: "REMAINING BEFORE THIS PAYMENT", value: formatCurrency(data.remainingBeforeEur!, "EUR") },
+        { label: "PAYMENT CREDITED", value: formatCurrency(data.paymentEurEquivalent!, "EUR") },
+        {
+          label: `ACTUAL AMOUNT RECEIVED (${data.actualReceivedCurrency ?? "EGP"})`,
+          value: formatCurrency(data.actualReceivedAmount ?? data.actualPaidAmountEgp ?? data.amountEgp, data.actualReceivedCurrency ?? "EGP"),
+        },
+        { label: "REMAINING AFTER THIS PAYMENT", value: formatCurrency(data.remainingAfterEur!, "EUR") },
+      ]
+      : [
+        { label: "NET CONTRACT VALUE", value: formatCurrency(data.contractValue ?? 0, "EUR") },
+        { label: "TOTAL PAID", value: formatCurrency(data.totalPaid ?? 0, "EUR") },
+        { label: "REMAINING BALANCE", value: formatCurrency(data.remainingBalance ?? 0, "EUR") },
+      ];
     // Append EGP partial-payment rows only when provided
     if (data.actualPaidAmountEgp != null) {
       summaryRows.push({ label: "DUE AMOUNT (EGP)",    value: formatCurrency(data.amountEgp, "EGP").replace(/^EGP\s*/, "EGP ") });

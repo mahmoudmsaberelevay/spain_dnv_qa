@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Trash2, Pencil, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import FinFilterBar, { FinFilters } from "@/components/FinFilterBar";
 import { ClientSearchCombobox } from "@/components/ClientSearchCombobox";
@@ -67,6 +67,7 @@ export default function FinIncome() {
   const { data: categories } = trpc.financial.categories.list.useQuery({ type: "income" });
   const { data: employees } = trpc.financial.employees.list.useQuery();
   const { data: finClients } = trpc.financial.clients.list.useQuery();
+  const { data: rateInfo } = trpc.contracting.exchangeRate.current.useQuery();
 
   const createMut = trpc.financial.transactions.createIncome.useMutation({
     onSuccess: () => {
@@ -122,7 +123,7 @@ export default function FinIncome() {
   const [editTx, setEditTx] = useState<any>(null);
   const [editForm, setEditForm] = useState({ description: "", note: "", evidenceLink: "", transactionDate: "", categoryId: "", finClientId: "", amount: "" });
   const [form, setForm] = useState({
-    description: "", accountId: "", categoryId: "", amount: "", note: "", evidenceLink: "", finClientId: "",
+    description: "", accountId: "", categoryId: "", amount: "", exchangeRate: "", note: "", evidenceLink: "", finClientId: "",
     transactionDate: new Date().toISOString().split("T")[0],
   });
 
@@ -150,9 +151,26 @@ export default function FinIncome() {
     return m;
   }, [finClients]);
 
+  const selectedAccountCurrency = useMemo(() => (
+    accounts?.find((account) => account.id === Number(form.accountId))?.currency?.toUpperCase() ?? ""
+  ), [accounts, form.accountId]);
+
+  useEffect(() => {
+    if (selectedAccountCurrency === "EGP" && rateInfo?.rate && !form.exchangeRate) {
+      setForm((current) => ({ ...current, exchangeRate: String(rateInfo.rate) }));
+    }
+    if (selectedAccountCurrency === "EUR" && form.exchangeRate !== "1") {
+      setForm((current) => ({ ...current, exchangeRate: "1" }));
+    }
+  }, [selectedAccountCurrency, rateInfo?.rate, form.exchangeRate]);
+
   const handleCreate = () => {
     if (!form.description || !form.accountId || !form.categoryId || !form.amount) {
       toast.error("Please fill all required fields");
+      return;
+    }
+    if (!form.exchangeRate || Number(form.exchangeRate) <= 0) {
+      toast.error("Enter the exchange rate used for this payment");
       return;
     }
     createMut.mutate({
@@ -160,6 +178,7 @@ export default function FinIncome() {
       accountId: Number(form.accountId),
       categoryId: Number(form.categoryId),
       amount: Number(form.amount),
+      exchangeRate: Number(form.exchangeRate),
       note: form.note || undefined,
       evidenceLink: form.evidenceLink || undefined,
       finClientId: form.finClientId && form.finClientId !== "none" ? Number(form.finClientId) : undefined,
@@ -270,7 +289,7 @@ export default function FinIncome() {
         <Button
           size="lg"
           className="gap-2 px-8"
-          onClick={() => { setForm({ description: "", accountId: "", categoryId: "", amount: "", note: "", evidenceLink: "", finClientId: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}
+          onClick={() => { setForm({ description: "", accountId: "", categoryId: "", amount: "", exchangeRate: rateInfo?.rate ? String(rateInfo.rate) : "", note: "", evidenceLink: "", finClientId: "", transactionDate: new Date().toISOString().split("T")[0] }); setShowCreate(true); }}
         >
           <Plus className="h-5 w-5" /> Record Income
         </Button>
@@ -484,6 +503,21 @@ export default function FinIncome() {
                 <label className="text-sm font-medium">Date *</label>
                 <Input type="date" value={form.transactionDate} onChange={e => setForm(f => ({ ...f, transactionDate: e.target.value }))} />
               </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Exchange rate used (EGP per EUR) *</label>
+              <Input
+                type="number"
+                min="0.0001"
+                step="0.0001"
+                value={form.exchangeRate}
+                disabled={selectedAccountCurrency === "EUR"}
+                onChange={e => setForm(f => ({ ...f, exchangeRate: e.target.value }))}
+                placeholder="e.g. 59"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Currency: {selectedAccountCurrency || "select an account"}. This value is saved with the transaction and will not change later.
+              </p>
             </div>
             <div>
               <label className="text-sm font-medium">Client (optional)</label>

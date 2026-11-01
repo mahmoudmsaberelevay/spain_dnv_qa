@@ -3,6 +3,8 @@ import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, cases, documents, analysisResults, InsertCase, InsertDocument, InsertAnalysisResult } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { linkedClientContractFinancialState } from "./contractFinancialSync";
+import { rebuildClientPaymentLedger } from "./clientPaymentLedger";
+import { calculatePaymentEurEquivalent, normalizePaymentCurrency } from "../shared/financialPaymentSnapshots";
 let _db: ReturnType<typeof drizzle> | null = null;
 
 export async function getDb() {
@@ -204,9 +206,17 @@ export async function applyContractDiscount(id: number, discountValue: number): 
       throw new Error("A discount has already been applied to this contract and cannot be changed.");
     }
 
-    const originalValue = Number(contract.contractValue);
+    if (!Number.isFinite(discountValue) || discountValue < 0) {
+      throw new Error("Discount must be a valid non-negative EUR amount.");
+    }
+    const originalValue = Number(contract.originalContractValueEur ?? contract.contractValue);
+    if (discountValue > originalValue) {
+      throw new Error("Discount cannot exceed the original contract value.");
+    }
     const newValue = Math.max(0, originalValue - discountValue);
     await tx.update(contracts).set({
+      originalContractValueEur: originalValue.toFixed(2),
+      netContractValueEur: newValue.toFixed(2),
       contractValue: newValue.toFixed(2),
       discountValue: discountValue.toFixed(2),
     }).where(eq(contracts.id, id));
@@ -223,6 +233,7 @@ export async function applyContractDiscount(id: number, discountValue: number): 
         contractValue: synced.contractValueEur,
         ...synced,
       }).where(eq(finClients.id, linkedClient.id));
+      await rebuildClientPaymentLedger(tx, linkedClient.id);
     }
   });
 }
@@ -315,7 +326,18 @@ function actualReceiptPaidEur(invoice: {
   amountEur: string | null;
   actualPaidAmountEgp: string | null;
   exchangeRate: string | null;
+  actualReceivedAmount?: string | null;
+  actualReceivedCurrency?: string | null;
+  paymentEurEquivalent?: string | null;
 }) {
+  if (invoice.paymentEurEquivalent != null) return Number(invoice.paymentEurEquivalent);
+  if (invoice.actualReceivedAmount != null && invoice.actualReceivedCurrency != null) {
+    return calculatePaymentEurEquivalent({
+      actualAmount: Number(invoice.actualReceivedAmount),
+      currency: normalizePaymentCurrency(invoice.actualReceivedCurrency),
+      exchangeRate: Number(invoice.exchangeRate ?? 0),
+    });
+  }
   const actualEgp = invoice.actualPaidAmountEgp == null ? null : Number(invoice.actualPaidAmountEgp);
   const exchangeRate = invoice.exchangeRate == null ? 0 : Number(invoice.exchangeRate);
   return actualEgp != null && exchangeRate > 0
@@ -343,17 +365,12 @@ async function reconcileContractReceiptFinancials(tx: any, contractId: number) {
     amountEur: invoices.amountEur,
     amountEgp: invoices.amountEgp,
     actualPaidAmountEgp: invoices.actualPaidAmountEgp,
+    actualReceivedAmount: invoices.actualReceivedAmount,
+    actualReceivedCurrency: invoices.actualReceivedCurrency,
+    paymentEurEquivalent: invoices.paymentEurEquivalent,
     exchangeRate: invoices.exchangeRate,
     paidAt: invoices.paidAt,
   }).from(invoices).where(and(eq(invoices.contractId, contractId), eq(invoices.status, "paid")));
-
-  const totalPaidEur = paidInvoices.reduce((total: number, invoice: any) => total + actualReceiptPaidEur(invoice), 0);
-  const remainingEur = Math.max(0, Number(client.contractValueEur ?? 0) - totalPaidEur);
-
-  await tx.update(finClients).set({
-    paidAmountEur: totalPaidEur.toFixed(2),
-    remainingAmountEur: remainingEur.toFixed(2),
-  }).where(eq(finClients.id, client.id));
 
   // The replacement is transaction-bound: a failure rolls back both the client
   // total and this ledger projection, rather than leaving half-synced records.
@@ -365,10 +382,18 @@ async function reconcileContractReceiptFinancials(tx: any, contractId: number) {
       amountEur: actualReceiptPaidEur(invoice).toFixed(2),
       amountEgp: invoice.actualPaidAmountEgp ?? invoice.amountEgp ?? null,
       exchangeRate: invoice.exchangeRate ?? null,
+      actualReceivedAmount: invoice.actualReceivedAmount ?? invoice.actualPaidAmountEgp ?? invoice.amountEgp ?? null,
+      actualReceivedCurrency: invoice.actualReceivedCurrency ?? (invoice.actualPaidAmountEgp != null ? "EGP" : "EUR"),
+      paymentEurEquivalent: actualReceiptPaidEur(invoice).toFixed(2),
       paidAt: invoice.paidAt ?? new Date(),
     })));
   }
-  return { totalPaidEur, remainingEur, paymentCount: paidInvoices.length };
+  const summary = await rebuildClientPaymentLedger(tx, client.id);
+  return {
+    totalPaidEur: summary?.paidAmountEur ?? 0,
+    remainingEur: summary?.remainingAmountEur ?? 0,
+    paymentCount: paidInvoices.length,
+  };
 }
 
 /**
@@ -427,9 +452,10 @@ export async function markInvoicePaidAndSyncFinancial(invoiceId: number) {
           signingDate: paidAt,
           consultant: contract.consultantName ?? null,
           salesPerson: contract.consultantName ?? null,
-          contractValueEur: Number(contract.contractValue ?? 0).toFixed(2),
+          contractValue: Number(contract.netContractValueEur ?? contract.contractValue ?? 0).toFixed(2),
+          contractValueEur: Number(contract.netContractValueEur ?? contract.contractValue ?? 0).toFixed(2),
           paidAmountEur: "0.00",
-          remainingAmountEur: Number(contract.contractValue ?? 0).toFixed(2),
+          remainingAmountEur: Number(contract.netContractValueEur ?? contract.contractValue ?? 0).toFixed(2),
           familyMembers: contract.familyMembers ?? 0,
           isLegacy: false,
           stage: "started",

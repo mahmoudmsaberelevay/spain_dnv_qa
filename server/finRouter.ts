@@ -17,6 +17,7 @@ import {
 import { notifyFinClientAdded } from "./emailService";
 import { normalizeFinancialDateRange } from "../shared/financialDateRange";
 import { enforceQualifierCommissionMarketingSource } from "../shared/commissionSourcePolicy";
+import { calculatePaymentEurEquivalent, normalizePaymentCurrency } from "../shared/financialPaymentSnapshots";
 
 // ─── Access Control ──────────────────────────────────────────────────────────
 const ADMIN_EMAILS = [
@@ -275,16 +276,22 @@ const finClientsRouter = router({
   recordPayment: finWriteProcedure
     .input(z.object({ clientId: z.number(), amountEgp: z.number().positive() }))
     .mutation(async ({ input }) => {
-      const result = await recordClientManualPayment(input.clientId, input.amountEgp);
-      if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found' });
-      return { eurConverted: result.newPaidEur, newRemaining: result.newRemaining };
+      try {
+        await recordClientManualPayment(input.clientId, input.amountEgp);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Record this payment as Finance Income." });
+      }
+      return { newPaidEgp: 0, newPaidEur: 0, newRemaining: 0 };
     }),
   setPaidAmount: finWriteProcedure
     .input(z.object({ clientId: z.number(), paidAmountEgp: z.number().min(0) }))
     .mutation(async ({ input }) => {
-      const result = await setClientPaidAmount(input.clientId, input.paidAmountEgp);
-      if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found' });
-      return { newPaidEgp: result.newPaidEgp, newPaidEur: result.newPaidEur, newRemaining: result.newRemaining };
+      try {
+        await setClientPaidAmount(input.clientId, input.paidAmountEgp);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Set paid amount is unavailable." });
+      }
+      return { newPaidEgp: 0, newPaidEur: 0, newRemaining: 0 };
     }),
   delete: finAdminProcedure
     .input(z.object({ id: z.number() }))
@@ -579,11 +586,27 @@ const transactionsRouter = router({
       evidenceLink: z.string().url().optional().or(z.literal("")),
       finClientId: z.number().optional(),
       amount: z.number().positive(),
+      exchangeRate: z.number().positive().optional(),
       transactionDate: z.date(),
     }))
     .mutation(async ({ ctx, input }) => {
       const account = await getAccountById(input.accountId);
       if (!account) throw new TRPCError({ code: "NOT_FOUND", message: "Account not found" });
+      const transactionCurrency = String(account.currency ?? "").trim().toUpperCase();
+      const exchangeRate = transactionCurrency === "EUR" ? 1 : input.exchangeRate;
+      if (!exchangeRate) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `Enter the EGP-per-EUR rate used for this ${transactionCurrency || "account"} income payment.` });
+      }
+      let eurEquivalent: number;
+      try {
+        eurEquivalent = calculatePaymentEurEquivalent({
+          actualAmount: input.amount,
+          currency: normalizePaymentCurrency(transactionCurrency),
+          exchangeRate,
+        });
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Invalid income payment currency or exchange rate." });
+      }
       const balanceBefore = Number(account.balance);
       const balanceAfter = balanceBefore + input.amount;
       await updateAccountBalance(input.accountId, input.amount);
@@ -596,14 +619,17 @@ const transactionsRouter = router({
         evidenceLink: input.evidenceLink || null,
         finClientId: input.finClientId ?? null,
         amount: input.amount.toString(),
+        transactionCurrency,
+        exchangeRate: exchangeRate.toFixed(4),
+        eurEquivalent: eurEquivalent.toFixed(2),
         transactionDate: input.transactionDate,
         balanceBefore: balanceBefore.toString(),
         balanceAfter: balanceAfter.toString(),
         createdBy: ctx.user?.email ?? null,
       });
-      // Recalc client paid/remaining from scratch
+      // Rebuild client paid/remaining from immutable receipt and income ledgers.
       if (input.finClientId) {
-        recalcClientPaidAmount(input.finClientId).catch(() => {});
+        await recalcClientPaidAmount(input.finClientId);
       }
       // Recalc account balance from scratch
       recalcAccountBalance(input.accountId).catch(() => {});
@@ -684,6 +710,11 @@ const transactionsRouter = router({
         updateData.amount = String(newAmount);
         if (current.type === 'income' && current.accountId) {
           await updateAccountBalance(current.accountId, diff);
+          const frozenRate = Number(current.exchangeRate ?? (current.transactionCurrency === "EUR" ? 1 : 0));
+          if (!frozenRate) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "This legacy income has no stored exchange rate. Create a corrected income transaction instead of changing its amount." });
+          }
+          updateData.eurEquivalent = (current.transactionCurrency === "EUR" ? newAmount : newAmount / frozenRate).toFixed(2);
         } else if (current.type === 'expense' && current.accountId) {
           await updateAccountBalance(current.accountId, -diff);
         }
@@ -701,10 +732,10 @@ const transactionsRouter = router({
       if (current.accountId) recalcAccountBalance(current.accountId).catch(() => {});
       // Recalc client paid/remaining — use new finClientId if changed, else old one
       const clientIdToRecalc = (fields.finClientId !== undefined ? fields.finClientId : current.finClientId);
-      if (clientIdToRecalc) recalcClientPaidAmount(clientIdToRecalc).catch(() => {});
+      if (clientIdToRecalc) await recalcClientPaidAmount(clientIdToRecalc);
       // If finClientId was changed, also recalc the old client
       if (fields.finClientId !== undefined && fields.finClientId !== current.finClientId && current.finClientId) {
-        recalcClientPaidAmount(current.finClientId).catch(() => {});
+        await recalcClientPaidAmount(current.finClientId);
       }
       const [updated] = await db.select().from(finTransactions).where(eq(finTransactions.id, id));
       return updated;

@@ -7,6 +7,7 @@ import {
 } from "../drizzle/schema";
 import { enforceQualifierCommissionMarketingSource } from "../shared/commissionSourcePolicy";
 import { isContractConsultantPosition } from "../shared/elevayEmployeePositions";
+import { rebuildClientPaymentLedger } from "./clientPaymentLedger";
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
 export async function listAccounts() {
@@ -228,10 +229,10 @@ export async function listFinClients(opts?: { search?: string; consultant?: stri
     isLegacy: finClients.isLegacy,
     contractUrl: finClients.contractUrl,
     discountValue: sql<number>`COALESCE((SELECT CAST(discountValue AS DECIMAL(10,2)) FROM contracts WHERE id = ${finClients.contractId}), 0)`,
-    originalContractValueEur: sql<number>`COALESCE((SELECT CAST(contractValue AS DECIMAL(12,2)) FROM contracts WHERE id = ${finClients.contractId}), CAST(COALESCE(${finClients.contractValueEur}, 0) AS DECIMAL(12,2))) + COALESCE((SELECT CAST(discountValue AS DECIMAL(10,2)) FROM contracts WHERE id = ${finClients.contractId}), 0)`,
-    finalContractValueEur: sql<number>`COALESCE((SELECT CAST(contractValue AS DECIMAL(12,2)) FROM contracts WHERE id = ${finClients.contractId}), CAST(COALESCE(${finClients.contractValueEur}, 0) AS DECIMAL(12,2)))`,
+    originalContractValueEur: sql<number>`COALESCE((SELECT CAST(originalContractValueEur AS DECIMAL(12,2)) FROM contracts WHERE id = ${finClients.contractId}), (SELECT CAST(contractValue AS DECIMAL(12,2)) FROM contracts WHERE id = ${finClients.contractId}) + COALESCE((SELECT CAST(discountValue AS DECIMAL(10,2)) FROM contracts WHERE id = ${finClients.contractId}), 0), CAST(COALESCE(${finClients.contractValueEur}, 0) AS DECIMAL(12,2)))`,
+    finalContractValueEur: sql<number>`COALESCE((SELECT CAST(netContractValueEur AS DECIMAL(12,2)) FROM contracts WHERE id = ${finClients.contractId}), (SELECT CAST(contractValue AS DECIMAL(12,2)) FROM contracts WHERE id = ${finClients.contractId}), CAST(COALESCE(${finClients.contractValueEur}, 0) AS DECIMAL(12,2)))`,
     totalDirectCostEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'expense'), 0)`,
-    totalDirectIncomeEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'income'), 0)`,
+    totalDirectIncomeEgp: sql<number>`COALESCE((SELECT SUM(ft.amount) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'income' AND ft.transactionCurrency = 'EGP'), 0)`,
   }).from(finClients);
   if (conditions.length > 0) query.where(conditions.length === 1 ? conditions[0] : and(...conditions));
   // DB-level sort
@@ -254,10 +255,10 @@ export async function getFinClientTotals(opts?: { search?: string; consultant?: 
   if (opts?.consultant) conditions.push(eq(finClients.consultant, opts.consultant));
   addSigningDateConditions(conditions, opts);
   const [row] = await db.select({
-    totalContractValueEur: sql<number>`COALESCE(SUM(COALESCE((SELECT CAST(contractValue AS DECIMAL(15,2)) FROM contracts WHERE id = ${finClients.contractId}), CAST(COALESCE(${finClients.contractValueEur}, 0) AS DECIMAL(15,2)))), 0)`,
-    totalOriginalContractValueEur: sql<number>`COALESCE(SUM(COALESCE((SELECT CAST(contractValue AS DECIMAL(15,2)) FROM contracts WHERE id = ${finClients.contractId}), CAST(COALESCE(${finClients.contractValueEur}, 0) AS DECIMAL(15,2))) + COALESCE((SELECT CAST(discountValue AS DECIMAL(10,2)) FROM contracts WHERE id = ${finClients.contractId}), 0)), 0)`,
+    totalContractValueEur: sql<number>`COALESCE(SUM(COALESCE((SELECT CAST(netContractValueEur AS DECIMAL(15,2)) FROM contracts WHERE id = ${finClients.contractId}), (SELECT CAST(contractValue AS DECIMAL(15,2)) FROM contracts WHERE id = ${finClients.contractId}), CAST(COALESCE(${finClients.contractValueEur}, 0) AS DECIMAL(15,2)))), 0)`,
+    totalOriginalContractValueEur: sql<number>`COALESCE(SUM(COALESCE((SELECT CAST(originalContractValueEur AS DECIMAL(15,2)) FROM contracts WHERE id = ${finClients.contractId}), (SELECT CAST(contractValue AS DECIMAL(15,2)) FROM contracts WHERE id = ${finClients.contractId}) + COALESCE((SELECT CAST(discountValue AS DECIMAL(10,2)) FROM contracts WHERE id = ${finClients.contractId}), 0), CAST(COALESCE(${finClients.contractValueEur}, 0) AS DECIMAL(15,2)))), 0)`,
     totalDiscountEur: sql<number>`COALESCE(SUM(COALESCE((SELECT CAST(discountValue AS DECIMAL(10,2)) FROM contracts WHERE id = ${finClients.contractId}), 0)), 0)`,
-    totalNetContractValueEur: sql<number>`COALESCE(SUM(COALESCE((SELECT CAST(contractValue AS DECIMAL(15,2)) FROM contracts WHERE id = ${finClients.contractId}), CAST(COALESCE(${finClients.contractValueEur}, 0) AS DECIMAL(15,2)))), 0)`,
+    totalNetContractValueEur: sql<number>`COALESCE(SUM(COALESCE((SELECT CAST(netContractValueEur AS DECIMAL(15,2)) FROM contracts WHERE id = ${finClients.contractId}), (SELECT CAST(contractValue AS DECIMAL(15,2)) FROM contracts WHERE id = ${finClients.contractId}), CAST(COALESCE(${finClients.contractValueEur}, 0) AS DECIMAL(15,2)))), 0)`,
     totalPaidEur: sql<number>`COALESCE(SUM(CAST(${finClients.paidAmountEur} AS DECIMAL(15,2))), 0)`,
     totalPaidEgp: sql<number>`COALESCE(SUM(CAST(${finClients.paidAmountEgp} AS DECIMAL(15,2))), 0)`,
     totalRemainingEur: sql<number>`COALESCE(SUM(CAST(${finClients.remainingAmountEur} AS DECIMAL(15,2))), 0)`,
@@ -286,113 +287,29 @@ export async function getFinClientById(id: number) {
   const rows = await db.select().from(finClients).where(eq(finClients.id, id));
   return rows[0] ?? null;
 }
-// Update client remaining balance when an income payment is received
-// For legacy clients: deduct payment (in EUR = amountEgp / 55.5) from remainingAmountEur
-// For new clients: remainingAmountEur = contractValueEur - (totalPaidEgp / 55.5)
+// Deprecated direct aggregate write path. Every client payment must instead be
+// recorded as a receipt or an immutable Finance Income transaction.
 export async function applyClientPayment(clientId: number, amountEgp: number, accountCurrency: string) {
-  const db = await getDb(); if (!db) return;
-  const client = await getFinClientById(clientId);
-  if (!client) return;
-  // Convert payment to EUR using fixed rate 55.5
-  const paymentEur = accountCurrency === 'EUR' ? amountEgp : amountEgp / 55.5;
-  const egpAmount = accountCurrency === 'EUR' ? amountEgp * 55.5 : amountEgp;
-  const newPaid = Number(client.paidAmountEur ?? 0) + paymentEur;
-  const newPaidEgp = Number(client.paidAmountEgp ?? 0) + egpAmount;
-  // A client can validly overpay. Preserve the paid amount but never display a
-  // negative outstanding balance; always derive it from the current net value.
-  const newRemaining = Math.max(0, Number(client.contractValueEur ?? 0) - newPaid);
-  await db.update(finClients).set({
-    paidAmountEur: newPaid.toFixed(2),
-    paidAmountEgp: newPaidEgp.toFixed(2),
-    remainingAmountEur: newRemaining.toFixed(2),
-  }).where(eq(finClients.id, clientId));
+  void clientId; void amountEgp; void accountCurrency;
+  throw new Error("Record payments through a receipt or Finance Income transaction with a stored exchange rate.");
 }
 /**
- * Full recalculation of a client's paid/remaining amounts from scratch.
- * Formula:
- *   basePaidAmountEur = full paid amount as of April 15, 2026 (absorbs all historical transactions)
- *   paidAmountEur = basePaidAmountEur + income transactions from April 16, 2026 onwards
- *   paidAmountEgp = (basePaidAmountEur * 55.5) + income transactions from April 16 onwards (in EGP equiv)
- * Call this after any income create, update, or delete.
+ * Rebuild client totals from the immutable receipt-payment and Finance Income
+ * ledgers. No current exchange rate, account configuration, or fixed fallback
+ * is used, so historic EUR equivalents cannot drift.
  */
 export async function recalcClientPaidAmount(clientId: number) {
   const db = await getDb(); if (!db) return;
-  const client = await getFinClientById(clientId);
-  if (!client) return;
-
-  // Base = full paid amount as of end of April 15, 2026 (all historical transactions already absorbed)
-  const baseEur = Number(client.basePaidAmountEur ?? 0);
-  const baseEgp = baseEur * 55.5;
-
-  // Only sum income transactions from April 16, 2026 onwards
-  const cutoffDate = new Date('2026-04-16T00:00:00.000Z');
-
-  const rows = await db
-    .select({ amount: finTransactions.amount, accountId: finTransactions.accountId })
-    .from(finTransactions)
-    .where(and(
-      eq(finTransactions.finClientId, clientId),
-      eq(finTransactions.type, 'income'),
-      gte(finTransactions.transactionDate, cutoffDate)
-    ));
-
-  // Fetch account currencies
-  const accountIds = Array.from(new Set(rows.map(r => r.accountId).filter((id): id is number => id !== null && id !== undefined)));
-  let currencyMap: Record<number, string> = {};
-  if (accountIds.length > 0) {
-    const accs = await db.select({ id: finAccounts.id, currency: finAccounts.currency }).from(finAccounts).where(inArray(finAccounts.id, accountIds));
-    for (const a of accs) currencyMap[a.id] = a.currency;
-  }
-
-  let newTxEgp = 0, newTxEur = 0;
-  for (const r of rows) {
-    const currency = r.accountId ? (currencyMap[r.accountId] ?? 'EGP') : 'EGP';
-    const amt = Number(r.amount);
-    if (currency === 'EUR') { newTxEur += amt; newTxEgp += amt * 55.5; }
-    else { newTxEgp += amt; newTxEur += amt / 55.5; }
-  }
-
-  const totalEur = baseEur + newTxEur;
-  const totalEgp = baseEgp + newTxEgp;
-
-  const contractVal = Number(client.contractValueEur ?? 0);
-  const newRemaining = contractVal > 0 ? Math.max(0, contractVal - totalEur) : Number(client.remainingAmountEur ?? 0);
-
-  await db.update(finClients).set({
-    paidAmountEur: totalEur.toFixed(2),
-    paidAmountEgp: totalEgp.toFixed(2),
-    remainingAmountEur: newRemaining.toFixed(2),
-  }).where(eq(finClients.id, clientId));
+  return db.transaction((tx) => rebuildClientPaymentLedger(tx, clientId));
 }
 
 export async function setClientPaidAmount(clientId: number, paidAmountEgp: number) {
-  const db = await getDb(); if (!db) return null;
-  const client = await getFinClientById(clientId);
-  if (!client) return null;
-  const newPaidEur = paidAmountEgp / 55.5;
-  const contractVal = Number(client.contractValueEur ?? 0);
-  const newRemaining = Math.max(0, contractVal - newPaidEur);
-  await db.update(finClients).set({
-    paidAmountEgp: paidAmountEgp.toFixed(2),
-    paidAmountEur: newPaidEur.toFixed(2),
-    remainingAmountEur: newRemaining.toFixed(2),
-  }).where(eq(finClients.id, clientId));
-  return { newPaidEgp: paidAmountEgp, newPaidEur, newRemaining };
+  void clientId; void paidAmountEgp;
+  throw new Error("Set paid amount is retired. Record an immutable receipt or Finance Income transaction instead.");
 }
 export async function recordClientManualPayment(clientId: number, amountEgp: number) {
-  const db = await getDb(); if (!db) return null;
-  const client = await getFinClientById(clientId);
-  if (!client) return null;
-  const paymentEur = amountEgp / 55.5;
-  const newPaidEgp = Number(client.paidAmountEgp ?? 0) + amountEgp;
-  const newPaidEur = Number(client.paidAmountEur ?? 0) + paymentEur;
-  const newRemaining = Math.max(0, Number(client.contractValueEur ?? 0) - newPaidEur);
-  await db.update(finClients).set({
-    paidAmountEgp: newPaidEgp.toFixed(2),
-    paidAmountEur: newPaidEur.toFixed(2),
-    remainingAmountEur: newRemaining.toFixed(2),
-  }).where(eq(finClients.id, clientId));
-  return { newPaidEgp, newPaidEur, newRemaining };
+  void clientId; void amountEgp;
+  throw new Error("Manual payment is retired. Record an immutable receipt or Finance Income transaction instead.");
 }
 export async function createFinClient(data: InsertFinClient) {
   const db = await getDb(); if (!db) return null;

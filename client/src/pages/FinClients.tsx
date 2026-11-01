@@ -666,12 +666,10 @@ export default function FinClients() {
                               size="sm"
                               variant="outline"
                               className="h-7 px-2 text-xs gap-1 text-blue-700 border-blue-300 hover:bg-blue-50"
-                              onClick={() => {
-                                setPaymentClient({ id: c.id, name: c.name, remaining: Number(c.remainingAmountEur ?? 0) });
-                                setPaymentAmount(String(Number(c.paidAmountEgp ?? 0)));
-                              }}
+                              onClick={() => toast.info("Record the payment in Finance Income with its actual amount, currency, and exchange rate.")}
+                              title="Record payments through Finance Income"
                             >
-                              <PlusCircle className="h-3 w-3" /> Paid
+                              <PlusCircle className="h-3 w-3" /> Record Income
                             </Button>
                             <Button
                               size="sm"

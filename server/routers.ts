@@ -27,6 +27,7 @@ import {
 import { generateContractDoc, uploadContractToStorage, calculateContractValue, CONTRACT_COUNTRIES } from "./contractGenerator";
 import { getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
 import { generateAndUploadInvoicePdf } from "./invoiceGenerator";
+import { calculatePaymentEurEquivalent, calculateReceiptBalanceSnapshot, normalizePaymentCurrency } from "../shared/financialPaymentSnapshots";
 import { generateAndUploadProformaPdf } from "./proformaGenerator";
 import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient, notifyNewInvoice, notifyFinClientAdded, notifyNewClientAssigned } from "./emailService";
 import { sendEmail } from "./backupEmailService";
@@ -878,6 +879,14 @@ async function regenerateStoredReceiptPdf(invoice: StoredInvoice): Promise<strin
     contractValue,
     totalPaid,
     remainingBalance,
+    netContractValueEur: invoice.netContractValueEur != null ? Number(invoice.netContractValueEur) : undefined,
+    remainingBeforeEur: invoice.remainingBeforeEur != null ? Number(invoice.remainingBeforeEur) : undefined,
+    paymentEurEquivalent: invoice.paymentEurEquivalent != null ? Number(invoice.paymentEurEquivalent) : undefined,
+    actualReceivedAmount: invoice.actualReceivedAmount != null ? Number(invoice.actualReceivedAmount) : undefined,
+    actualReceivedCurrency: invoice.actualReceivedCurrency === "EUR" || invoice.actualReceivedCurrency === "EGP" || invoice.actualReceivedCurrency === "USD"
+      ? invoice.actualReceivedCurrency
+      : undefined,
+    remainingAfterEur: invoice.remainingAfterEur != null ? Number(invoice.remainingAfterEur) : undefined,
     createdAt: new Date(invoice.receiptDate ?? invoice.createdAt),
     notes: invoice.notes ?? undefined,
     actualPaidAmountEgp: invoice.actualPaidAmountEgp ? Number(invoice.actualPaidAmountEgp) : undefined,
@@ -956,6 +965,8 @@ const contractingRouter = router({
             contract: {
               contractCode, clientName: input.clientName, invoicingName: input.invoicingName,
               clientMobile: input.clientMobile, familyMembers: input.familyMembers,
+              originalContractValueEur: contractValue.toFixed(2),
+              netContractValueEur: contractValue.toFixed(2),
               contractValue: contractValue.toString(), currency: input.currency, status: "pending",
               country: input.country,
               docUrl, consultantName: input.consultantName ?? null,
@@ -1012,8 +1023,7 @@ const contractingRouter = router({
               // Extract client code from contractCode (e.g. "26027" from "26027-001")
               const codeMatch = contract.contractCode?.match(/^(\d+)/);
               const extractedCode = codeMatch ? codeMatch[1] : undefined;
-              // contractValue is already the net value (applyContractDiscount reduces it in-place)
-              const netCvEur = Number(contract.contractValue ?? 0);
+              const netCvEur = Number(contract.netContractValueEur ?? contract.contractValue ?? 0);
               const signedAt = new Date();
               const finClient = await createFinClient({
                 name: contract.invoicingName ?? contract.clientName,
@@ -1038,7 +1048,7 @@ const contractingRouter = router({
                   finClientId: finClient.id,
                   clientName: contract.invoicingName ?? contract.clientName,
                   consultant: contract.consultantName ?? null,
-                  contractValue: contract.contractValue,
+                  contractValue: netCvEur.toFixed(2),
                   seqNumber: existingCount + 1,
                   status: "Pending",
                   signingDate: signedAt,
@@ -1112,8 +1122,16 @@ const contractingRouter = router({
         const contract = await getContractById(input.contractId);
         if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
         const totalPaid = await getTotalPaidByContractId(input.contractId);
-        const contractValue = Number(contract.contractValue);
-        return { contractValue, totalPaid, remainingBalance: contractValue - totalPaid };
+        const originalContractValue = Number(contract.originalContractValueEur ?? contract.contractValue) + (contract.originalContractValueEur == null ? Number(contract.discountValue ?? 0) : 0);
+        const netContractValue = Number(contract.netContractValueEur ?? contract.contractValue);
+        return {
+          originalContractValue,
+          discountValue: Number(contract.discountValue ?? 0),
+          netContractValue,
+          contractValue: netContractValue,
+          totalPaid,
+          remainingBalance: Math.max(0, netContractValue - totalPaid),
+        };
       }),
     delete: adminProcedure
       .input(z.object({ id: z.number() }))
@@ -1142,14 +1160,17 @@ const contractingRouter = router({
         amountEur: z.number().positive(),
         notes: z.string().min(1, "Payment notes are required"),
         discountValue: z.number().min(0).optional(),
+        actualReceivedAmount: z.number().positive().optional(),
+        actualReceivedCurrency: z.enum(["EGP", "EUR", "USD"]).optional(),
+        exchangeRate: z.number().positive().optional(),
         actualPaidAmountEgp: z.number().min(0).optional(),
         receiptDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       }))
       .mutation(async ({ input }) => {
         const contract = await getContractById(input.contractId);
         if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
-        // Invoices are allowed for contracts in any status to support legacy clients
-        // Apply one-time discount if provided (permanently reduces contract value)
+        // Invoices are allowed for contracts in any status to support legacy clients.
+        // The first receipt is the only place a contract discount may be set.
         if (input.discountValue && input.discountValue > 0) {
           if (Number(contract.discountValue ?? 0) > 0) {
             throw new TRPCError({ code: "BAD_REQUEST", message: "A discount has already been applied to this contract and cannot be changed." });
@@ -1160,25 +1181,39 @@ const contractingRouter = router({
           if (updated) Object.assign(contract, updated);
         }
         const rateInfo = await getEurToEgpRate();
-        const amountEgp = convertEurToEgp(input.amountEur, rateInfo.rate);
+        const exchangeRate = input.exchangeRate ?? rateInfo.rate;
+        const actualReceivedCurrency = input.actualReceivedCurrency ?? "EGP";
+        const amountEgp = convertEurToEgp(input.amountEur, exchangeRate);
         const invoiceCode = generateInvoiceCode();
         const receiptDate = input.receiptDate ? parseReceiptDate(input.receiptDate) : new Date();
         const totalPaid = await getTotalPaidByContractId(input.contractId);
-        // contractValue is already net (applyContractDiscount reduces it in-place — do NOT subtract discountValue again)
-        const contractValue = Number(contract.contractValue);
-        // Calculate the EUR equivalent of this payment (if partial EGP payment, use that)
-        const actualPaidEgp = input.actualPaidAmountEgp ?? undefined;
+        const netContractValueEur = Number(contract.netContractValueEur ?? contract.contractValue);
+        const actualReceivedAmount = input.actualReceivedAmount
+          ?? input.actualPaidAmountEgp
+          ?? (actualReceivedCurrency === "EUR" ? input.amountEur : amountEgp);
+        const paymentEurEquivalent = calculatePaymentEurEquivalent({
+          actualAmount: actualReceivedAmount,
+          currency: normalizePaymentCurrency(actualReceivedCurrency),
+          exchangeRate,
+        });
+        const balanceSnapshot = calculateReceiptBalanceSnapshot({
+          netContractValueEur,
+          totalPaidBeforeEur: totalPaid,
+          paymentEurEquivalent,
+        });
+        const actualPaidEgp = actualReceivedCurrency === "EGP" ? actualReceivedAmount : undefined;
         const remainingEgp = actualPaidEgp != null ? Math.max(0, amountEgp - actualPaidEgp) : undefined;
-        const thisPaymentEur = (actualPaidEgp != null && rateInfo.rate > 0)
-          ? Math.round((actualPaidEgp / rateInfo.rate) * 100) / 100
-          : input.amountEur;
-        const remainingBalance = contractValue - totalPaid - thisPaymentEur;
         const billingName = contract.invoicingName || contract.clientName;
         const clientMobile = contract.clientMobile || "";
         const pdfUrl = await generateAndUploadInvoicePdf({
           invoiceCode, contractCode: contract.contractCode, clientName: billingName, clientMobile,
-          amountEur: input.amountEur, amountEgp, exchangeRate: rateInfo.rate,
-          contractValue, totalPaid: totalPaid + thisPaymentEur, remainingBalance,
+          amountEur: input.amountEur, amountEgp, exchangeRate,
+          netContractValueEur: balanceSnapshot.netContractValueEur,
+          remainingBeforeEur: balanceSnapshot.remainingBeforeEur,
+          paymentEurEquivalent: balanceSnapshot.paymentEurEquivalent,
+          actualReceivedAmount,
+          actualReceivedCurrency,
+          remainingAfterEur: balanceSnapshot.remainingAfterEur,
           createdAt: receiptDate, notes: input.notes,
           actualPaidAmountEgp: actualPaidEgp,
           remainingAmountEgp: remainingEgp,
@@ -1186,7 +1221,13 @@ const contractingRouter = router({
         const invoice = await createInvoice({
           invoiceCode, contractId: input.contractId, contractCode: contract.contractCode,
           clientName: billingName, amountEur: input.amountEur.toString(),
-          amountEgp: amountEgp.toString(), exchangeRate: rateInfo.rate.toString(),
+          amountEgp: amountEgp.toString(), exchangeRate: exchangeRate.toString(),
+          actualReceivedAmount: actualReceivedAmount.toFixed(2),
+          actualReceivedCurrency,
+          paymentEurEquivalent: balanceSnapshot.paymentEurEquivalent.toFixed(2),
+          netContractValueEur: balanceSnapshot.netContractValueEur.toFixed(2),
+          remainingBeforeEur: balanceSnapshot.remainingBeforeEur.toFixed(2),
+          remainingAfterEur: balanceSnapshot.remainingAfterEur.toFixed(2),
           status: "unpaid", pdfUrl, notes: input.notes,
           receiptDate,
           actualPaidAmountEgp: actualPaidEgp != null ? actualPaidEgp.toString() : undefined,
@@ -1198,7 +1239,7 @@ const contractingRouter = router({
           contract.contractCode,
           billingName,
           input.amountEur,
-          remainingBalance
+          balanceSnapshot.remainingAfterEur
         ).catch(() => {});
         const { createNotification: cnInv } = await import("./db");
         await cnInv({ type: "receipt_created", title: "🧳 إيصال جديد", body: `تم إنشاء إيصال ${invoiceCode} لـ ${billingName} بمبلغ €${input.amountEur}`, entityId: invoice.id, entityType: "invoice" });
@@ -1239,6 +1280,9 @@ const contractingRouter = router({
         amountEur: z.number().positive(),
         amountEgp: z.number().positive().optional(),
         notes: z.string().optional(),
+        actualReceivedAmount: z.number().positive().optional(),
+        actualReceivedCurrency: z.enum(["EGP", "EUR", "USD"]).optional(),
+        exchangeRate: z.number().positive().optional(),
         actualPaidAmountEgp: z.number().min(0).optional(),
         receiptDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       }))
@@ -1254,28 +1298,41 @@ const contractingRouter = router({
         const [client] = await db.select().from(finClients).where(eq(finClients.id, input.legacyFinClientId)).limit(1);
         if (!client) throw new TRPCError({ code: "NOT_FOUND", message: "Finance client not found" });
         const rateInfo = await getEurToEgpRate();
-        const amountEgp = input.amountEgp ?? convertEurToEgp(input.amountEur, rateInfo.rate);
+        const exchangeRate = input.exchangeRate ?? rateInfo.rate;
+        const actualReceivedCurrency = input.actualReceivedCurrency ?? "EGP";
+        const amountEgp = input.amountEgp ?? convertEurToEgp(input.amountEur, exchangeRate);
         const invoiceCode = generateInvoiceCode();
         const receiptDate = input.receiptDate ? parseReceiptDate(input.receiptDate) : new Date();
-        const actualPaidEgp = input.actualPaidAmountEgp ?? undefined;
+        const actualReceivedAmount = input.actualReceivedAmount
+          ?? input.actualPaidAmountEgp
+          ?? (actualReceivedCurrency === "EUR" ? input.amountEur : amountEgp);
+        const actualPaidEgp = actualReceivedCurrency === "EGP" ? actualReceivedAmount : undefined;
         const remainingEgp = actualPaidEgp != null ? Math.max(0, amountEgp - actualPaidEgp) : undefined;
         // Use finClient financial data for the PDF summary table
         const finContractValue = Number(client.contractValueEur ?? 0);
         // Total paid = existing paidAmountEur + actual EUR equivalent of this payment
-        const thisPaymentEur = (actualPaidEgp != null && rateInfo.rate > 0)
-          ? Math.round((actualPaidEgp / rateInfo.rate) * 100) / 100
-          : input.amountEur;
-        const finTotalPaid = Number(client.paidAmountEur ?? 0) + thisPaymentEur;
-        const finRemainingBalance = Math.max(0, finContractValue - finTotalPaid);
+        const paymentEurEquivalent = calculatePaymentEurEquivalent({
+          actualAmount: actualReceivedAmount,
+          currency: normalizePaymentCurrency(actualReceivedCurrency),
+          exchangeRate,
+        });
+        const balanceSnapshot = calculateReceiptBalanceSnapshot({
+          netContractValueEur: finContractValue,
+          totalPaidBeforeEur: Number(client.paidAmountEur ?? 0),
+          paymentEurEquivalent,
+        });
         const pdfUrl = await generateAndUploadInvoicePdf({
           invoiceCode,
           clientName: client.name,
           amountEur: input.amountEur,
           amountEgp,
-          exchangeRate: rateInfo.rate,
-          contractValue: finContractValue,
-          totalPaid: finTotalPaid,
-          remainingBalance: finRemainingBalance,
+          exchangeRate,
+          netContractValueEur: balanceSnapshot.netContractValueEur,
+          remainingBeforeEur: balanceSnapshot.remainingBeforeEur,
+          paymentEurEquivalent: balanceSnapshot.paymentEurEquivalent,
+          actualReceivedAmount,
+          actualReceivedCurrency,
+          remainingAfterEur: balanceSnapshot.remainingAfterEur,
           createdAt: receiptDate,
           notes: input.notes,
           actualPaidAmountEgp: actualPaidEgp,
@@ -1288,7 +1345,13 @@ const contractingRouter = router({
           clientName: client.name,
           amountEur: input.amountEur.toString(),
           amountEgp: amountEgp.toString(),
-          exchangeRate: rateInfo.rate.toString(),
+          exchangeRate: exchangeRate.toString(),
+          actualReceivedAmount: actualReceivedAmount.toFixed(2),
+          actualReceivedCurrency,
+          paymentEurEquivalent: balanceSnapshot.paymentEurEquivalent.toFixed(2),
+          netContractValueEur: balanceSnapshot.netContractValueEur.toFixed(2),
+          remainingBeforeEur: balanceSnapshot.remainingBeforeEur.toFixed(2),
+          remainingAfterEur: balanceSnapshot.remainingAfterEur.toFixed(2),
           status: "unpaid",
           pdfUrl,
           notes: input.notes,

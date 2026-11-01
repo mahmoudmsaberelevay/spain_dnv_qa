@@ -125,6 +125,10 @@ export const contracts = mysqlTable("contracts", {
   invoicingName: varchar("invoicingName", { length: 255 }),
   clientMobile: varchar("clientMobile", { length: 32 }),
   familyMembers: int("familyMembers").notNull(),
+  // The agreed family-size/override value is immutable. contractValue remains
+  // the legacy net-value mirror used by existing integrations.
+  originalContractValueEur: decimal("originalContractValueEur", { precision: 12, scale: 2 }),
+  netContractValueEur: decimal("netContractValueEur", { precision: 12, scale: 2 }),
   contractValue: decimal("contractValue", { precision: 10, scale: 2 }).notNull(),
   currency: varchar("currency", { length: 10 }).default("EUR").notNull(),
   status: mysqlEnum("status", ["pending", "signed", "cancelled"]).default("pending").notNull(),
@@ -153,6 +157,14 @@ export const invoices = mysqlTable("invoices", {
   amountEur: decimal("amountEur", { precision: 10, scale: 2 }).notNull(),
   amountEgp: decimal("amountEgp", { precision: 12, scale: 2 }),
   exchangeRate: decimal("exchangeRate", { precision: 10, scale: 4 }),
+  // Immutable receipt audit snapshot. These fields are never recomputed from a
+  // later rate refresh or contract change.
+  actualReceivedAmount: decimal("actualReceivedAmount", { precision: 14, scale: 2 }),
+  actualReceivedCurrency: varchar("actualReceivedCurrency", { length: 3 }),
+  paymentEurEquivalent: decimal("paymentEurEquivalent", { precision: 12, scale: 2 }),
+  netContractValueEur: decimal("netContractValueEur", { precision: 12, scale: 2 }),
+  remainingBeforeEur: decimal("remainingBeforeEur", { precision: 12, scale: 2 }),
+  remainingAfterEur: decimal("remainingAfterEur", { precision: 12, scale: 2 }),
   actualPaidAmountEgp: decimal("actualPaidAmountEgp", { precision: 12, scale: 2 }),
   remainingAmountEgp: decimal("remainingAmountEgp", { precision: 12, scale: 2 }),
   status: mysqlEnum("status", ["unpaid", "paid"]).default("unpaid").notNull(),
@@ -175,6 +187,9 @@ export const payments = mysqlTable("payments", {
   amountEur: decimal("amountEur", { precision: 10, scale: 2 }).notNull(),
   amountEgp: decimal("amountEgp", { precision: 12, scale: 2 }),
   exchangeRate: decimal("exchangeRate", { precision: 10, scale: 4 }),
+  actualReceivedAmount: decimal("actualReceivedAmount", { precision: 14, scale: 2 }),
+  actualReceivedCurrency: varchar("actualReceivedCurrency", { length: 3 }),
+  paymentEurEquivalent: decimal("paymentEurEquivalent", { precision: 12, scale: 2 }),
   paidAt: timestamp("paidAt").defaultNow().notNull(),
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -504,10 +519,14 @@ export const finTransactions = mysqlTable("finTransactions", {
   // For transfer
   fromAccountId: int("fromAccountId"),
   toAccountId: int("toAccountId"),
+  // Captured at posting time; account configuration changes must not affect
+  // historical client-payment equivalents.
+  transactionCurrency: varchar("transactionCurrency", { length: 3 }),
   exchangeRate: decimal("exchangeRate", { precision: 10, scale: 4 }),
   // Common
   amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
   convertedAmount: decimal("convertedAmount", { precision: 14, scale: 2 }),
+  eurEquivalent: decimal("eurEquivalent", { precision: 14, scale: 2 }),
   note: text("note"),
   employeeId: int("employeeId"),
   finClientId: int("finClientId"),

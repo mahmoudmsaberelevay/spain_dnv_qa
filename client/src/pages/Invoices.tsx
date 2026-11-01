@@ -67,6 +67,8 @@ export default function Invoices() {
   const [notes, setNotes] = useState<string>("");
   const [discountValue, setDiscountValue] = useState<string>("");
   const [actualPaidEgp, setActualPaidEgp] = useState<string>("");
+  const [actualReceivedCurrency, setActualReceivedCurrency] = useState<"EGP" | "EUR" | "USD">("EGP");
+  const [receiptExchangeRate, setReceiptExchangeRate] = useState<string>("");
 
   // Form state — legacy mode
   const [legacyClientId, setLegacyClientId] = useState<string>("none");
@@ -112,6 +114,8 @@ export default function Invoices() {
       setNotes("");
       setDiscountValue("");
       setActualPaidEgp("");
+      setActualReceivedCurrency("EGP");
+      setReceiptExchangeRate("");
       setReceiptDate(getTodayDateInput());
     },
     onError: (err) => {
@@ -211,7 +215,8 @@ export default function Invoices() {
   });
 
   const selectedContract = contracts?.find((c) => c.id === Number(selectedContractId));
-  const previewEgp = amountEur && rateInfo ? Number(amountEur) * rateInfo.rate : null;
+  const activeReceiptRate = Number(receiptExchangeRate || rateInfo?.rate || 0);
+  const previewEgp = amountEur && activeReceiptRate > 0 ? Number(amountEur) * activeReceiptRate : null;
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -221,6 +226,9 @@ export default function Invoices() {
       amountEur: Number(amountEur),
       notes: notes.trim(),
       discountValue: discountValue ? Number(discountValue) : undefined,
+      actualReceivedAmount: actualPaidEgp ? Number(actualPaidEgp) : undefined,
+      actualReceivedCurrency,
+      exchangeRate: activeReceiptRate || undefined,
       actualPaidAmountEgp: actualPaidEgp ? Number(actualPaidEgp) : undefined,
       receiptDate,
     });
@@ -247,7 +255,11 @@ export default function Invoices() {
         </div>
         {canEdit("receipts") && (
           <Button
-            onClick={() => setShowCreateDialog(true)}
+            onClick={() => {
+              setActualReceivedCurrency("EGP");
+              setReceiptExchangeRate(rateInfo?.rate ? String(rateInfo.rate) : "");
+              setShowCreateDialog(true);
+            }}
             className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
             size="lg"
           >
@@ -532,8 +544,16 @@ export default function Invoices() {
               {selectedContract && paymentSummary && (
                 <div className="bg-muted/30 rounded-lg p-3 text-sm space-y-2">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Contract Value</span>
-                    <span className="font-medium">{formatCurrency(paymentSummary.contractValue, "EUR")}</span>
+                    <span className="text-muted-foreground">Original Contract Value</span>
+                    <span className="font-medium">{formatCurrency(paymentSummary.originalContractValue ?? paymentSummary.contractValue, "EUR")}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Discount</span>
+                    <span className="font-medium text-amber-700">{formatCurrency(paymentSummary.discountValue ?? 0, "EUR")}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Net Contract Value</span>
+                    <span className="font-medium">{formatCurrency(paymentSummary.netContractValue ?? paymentSummary.contractValue, "EUR")}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Total Paid</span>
@@ -567,7 +587,7 @@ export default function Invoices() {
                   />
                   {discountValue && Number(discountValue) > 0 && (
                     <p className="text-xs text-amber-700">
-                      Contract value will be reduced from {formatCurrency(paymentSummary.contractValue, "EUR")} to {formatCurrency(paymentSummary.contractValue - Number(discountValue), "EUR")}. This cannot be undone.
+                      Net contract value will be reduced from {formatCurrency(paymentSummary.netContractValue ?? paymentSummary.contractValue, "EUR")} to {formatCurrency((paymentSummary.originalContractValue ?? paymentSummary.contractValue) - Number(discountValue), "EUR")}. This cannot be undone.
                     </p>
                   )}
                 </div>
@@ -594,6 +614,34 @@ export default function Invoices() {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="actualReceivedCurrency">Received Currency</Label>
+                  <Select value={actualReceivedCurrency} onValueChange={(value) => setActualReceivedCurrency(value as "EGP" | "EUR" | "USD")}>
+                    <SelectTrigger id="actualReceivedCurrency"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="EGP">EGP</SelectItem>
+                      <SelectItem value="EUR">EUR</SelectItem>
+                      <SelectItem value="USD">USD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="receiptExchangeRate">Exchange Rate (EGP per EUR)</Label>
+                  <Input
+                    id="receiptExchangeRate"
+                    type="number"
+                    min="0.0001"
+                    step="0.0001"
+                    value={actualReceivedCurrency === "EUR" ? "1" : receiptExchangeRate}
+                    disabled={actualReceivedCurrency === "EUR"}
+                    onChange={(e) => setReceiptExchangeRate(e.target.value)}
+                    placeholder={rateInfo ? String(rateInfo.rate) : "e.g. 59"}
+                    required
+                  />
+                </div>
+              </div>
+
               {previewEgp !== null && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -604,23 +652,22 @@ export default function Invoices() {
                 </div>
               )}
 
-              {/* Actual Paid Amount (EGP) — optional partial payment */}
               <div className="space-y-2">
-                <Label htmlFor="actualPaidEgp">Actual Paid Amount (EGP) <span className="text-muted-foreground text-xs">(optional — leave blank if full amount paid)</span></Label>
+                <Label htmlFor="actualPaidEgp">Actual Amount Received ({actualReceivedCurrency}) <span className="text-muted-foreground text-xs">(required for an exact receipt record)</span></Label>
                 <Input
                   id="actualPaidEgp"
                   type="number"
                   min={0}
                   step="0.01"
-                  placeholder="e.g. 45000"
+                  placeholder={actualReceivedCurrency === "EGP" ? "e.g. 186000" : "e.g. 3000"}
                   value={actualPaidEgp}
                   onChange={(e) => setActualPaidEgp(e.target.value)}
                   className="h-10"
+                  required
                 />
               </div>
 
-              {/* Live remaining EGP calculation */}
-              {previewEgp !== null && actualPaidEgp && Number(actualPaidEgp) >= 0 && (
+              {previewEgp !== null && actualReceivedCurrency === "EGP" && actualPaidEgp && Number(actualPaidEgp) >= 0 && (
                 <div className={`border rounded-lg p-3 flex items-center justify-between ${
                   Math.max(0, previewEgp - Number(actualPaidEgp)) > 0
                     ? "bg-amber-50 border-amber-200"
@@ -657,7 +704,7 @@ export default function Invoices() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={createMutation.isPending || !selectedContractId || !amountEur || !notes.trim()}
+                  disabled={createMutation.isPending || !selectedContractId || !amountEur || !actualPaidEgp || !activeReceiptRate || !notes.trim()}
                   className="gap-2"
                 >
                   {createMutation.isPending ? (
