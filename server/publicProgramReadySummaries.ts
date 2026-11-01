@@ -1,4 +1,4 @@
-import type { MarketingReadySummary, PublicProgram } from "../drizzle/schema";
+import type { MarketingReadySummary } from "../drizzle/schema";
 
 export type PublicProgramCategory = "residency" | "citizenship";
 
@@ -14,14 +14,14 @@ export type PublicReadySummary = ReadySummaryIdentity & {
   nameAr: string | null;
   summaryEn: string | null;
   summaryAr: string | null;
-  readySummaryTitle: string;
-  readySummaryTextEn: string | null;
-  readySummaryTextAr: string | null;
-  readySummaryPdfUrl: string | null;
-  readySummaryUpdatedAt: number;
-  imageUrl: string | null;
+  readySummaryTitle: null;
+  readySummaryTextEn: null;
+  readySummaryTextAr: null;
+  readySummaryPdfUrl: null;
+  readySummaryUpdatedAt: null;
+  imageUrl: null;
   sourceUrl: string;
-  details: unknown;
+  details: Record<string, string>;
 };
 
 const COUNTRY_ALIASES: Array<[string, string]> = [
@@ -77,6 +77,29 @@ const ARABIC_COUNTRY_NAMES: Record<string, string> = {
   Vanuatu: "فانواتو",
 };
 
+const SPACED_HEADING_LABELS: Record<string, string> = {
+  PROGRAMMEOVERVIEW: "Programme Overview",
+  PROGRAMOVERVIEW: "Programme Overview",
+  WHOCANBEINCLUDED: "Who Can Be Included",
+  GOODTOKNOW: "Good To Know",
+  INCOMEREQUIREMENT: "Income Requirement",
+  WHATMUSTBEPROVED: "What Must Be Proved",
+  VISASTAGE: "Visa Stage",
+  RESIDENCEPERMITSTAGEAIMA: "Residence Permit Stage (AIMA)",
+  STAYANDRENEWAL: "Stay And Renewal",
+  MINIMUMSTAYPLEASEREADTHISCAREFULLY: "Minimum Stay",
+  VISAANDPERMIT: "Visa And Permit",
+  FEESDOCUMENTSANDTHEROADAHEAD: "Fees, Documents And The Road Ahead",
+  GOVERNMENTFEES: "Government Fees",
+  APOSTILLEORATTESTATIONWHATISTHEDIFFERENCE: "Apostille Or Attestation",
+  ABOUTTHECOUNTRY: "About The Country",
+  SCHENGENAREA: "Schengen Area",
+  INVESTMENTOPTIONS: "Investment Options",
+  ELIGIBILITY: "Eligibility",
+  APPLICATIONPROCESS: "Application Process",
+  FAMILYMEMBERS: "Family Members",
+};
+
 function normalized(value: string) {
   return value
     .normalize("NFD")
@@ -113,35 +136,116 @@ export function parseReadySummaryIdentity(title: string, fileName: string, categ
   return { country, nameEn, category: programCategory };
 }
 
+function cleanDisplayLine(value: string) {
+  const trimmed = value.replace(/\u0000/g, "").replace(/\s+/g, " ").trim();
+  const compactUpper = trimmed.replace(/\s+/g, "").replace(/[^A-Z0-9]/g, "");
+  return SPACED_HEADING_LABELS[compactUpper] ?? trimmed;
+}
+
+function isMetadataLine(value: string) {
+  return !value
+    || /^--\s*\d+\s+of\s+\d+\s*--$/i.test(value)
+    || /^www\.elevay\.(?:com|vip)$/i.test(value)
+    || /^elevay\s*\|/i.test(value)
+    || /^page\s*\d+$/i.test(value)
+    || /^expanding your freedom$/i.test(value)
+    || /^(?:residency|citizenship) programme$/i.test(value)
+    || /^country summary$/i.test(value);
+}
+
+function isHeading(value: string) {
+  if (Object.values(SPACED_HEADING_LABELS).includes(value)) return true;
+  if (value.length < 4 || value.length > 100 || /[.!?]$/.test(value)) return false;
+  const letters = value.replace(/[^A-Za-z]/g, "");
+  if (letters.length < 4) return false;
+  const uppercase = letters.replace(/[^A-Z]/g, "").length;
+  return uppercase / letters.length >= 0.8;
+}
+
+function headingLabel(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\b\w/g, character => character.toUpperCase())
+    .replace(/\bD([278])\b/g, "D$1")
+    .replace(/\bAima\b/g, "AIMA")
+    .replace(/\bMofa\b/g, "MOFA");
+}
+
+function sentenceExcerpt(value: string, maximum = 700) {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maximum) return compact;
+  const candidate = compact.slice(0, maximum);
+  const lastBoundary = Math.max(candidate.lastIndexOf(". "), candidate.lastIndexOf("; "), candidate.lastIndexOf(": "));
+  return `${(lastBoundary > Math.floor(maximum * 0.55) ? candidate.slice(0, lastBoundary + 1) : candidate).trim()}…`;
+}
+
+/**
+ * Converts a Ready Summary PDF extraction into the established mobile fields.
+ * No fact is invented: an absent stay rule is explicitly marked as not stated,
+ * while an explicit “no requirement” statement is kept as written.
+ */
+export function buildPublicProgramInformation(extractedText: string): { summaryEn: string; details: Record<string, string> } | null {
+  const pages = extractedText.split(/(?=--\s*\d+\s+of\s+\d+\s*--)/i);
+  const sections = new Map<string, string[]>();
+  let currentHeading = "Programme Information";
+
+  for (const page of pages) {
+    const rawLines = page.split(/\n+/).map(cleanDisplayLine);
+    const sourceStart = rawLines.findIndex(line => /^sources?\s*:/i.test(line));
+    const lines = (sourceStart >= 0 ? rawLines.slice(0, sourceStart) : rawLines).filter(line => !isMetadataLine(line));
+    for (const line of lines) {
+      if (isHeading(line)) {
+        const label = headingLabel(line);
+        if (!isMetadataLine(label)) currentHeading = label;
+        continue;
+      }
+      const content = sections.get(currentHeading) || [];
+      content.push(line);
+      sections.set(currentHeading, content);
+    }
+  }
+
+  const details: Record<string, string> = Object.fromEntries(
+    Array.from(sections.entries())
+      .map(([label, lines]) => [label, lines.join(" ").replace(/\s+/g, " ").trim()] as const)
+      .filter(([, value]) => value.length > 0),
+  );
+  const entries = Object.entries(details) as Array<[string, string]>;
+  if (!entries.length) return null;
+
+  const overview = entries.find(([label]) => /programme overview|program overview/i.test(label))?.[1] || entries[0][1];
+  const allText = entries.map(([, value]) => value).join(" ");
+  const hasStayInformation = /\b(?:stay|absence|physical presence|residen[ct]e requirement|minimum days|minimum stay|visit requirement)\b/i.test(allText);
+  if (!hasStayInformation) {
+    details["Stay requirement"] = "Not stated in the programme information.";
+  }
+  details["Family-size scope for figures"] = "Each investment, contribution, income or fee figure applies only to the applicant or family composition stated beside that figure. If no family size is stated, the programme information does not specify one.";
+
+  return { summaryEn: sentenceExcerpt(overview), details };
+}
+
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
-  pdfUrl: string | null,
-  fallbackProgram?: Pick<PublicProgram, "imageUrl" | "sourceUrl" | "details">,
 ): PublicReadySummary | null {
   const identity = parseReadySummaryIdentity(summary.title, summary.originalFileName, summary.category);
-  if (!identity) return null;
-  const text = extractedText?.trim() || null;
-  const excerpt = text ? text.replace(/\s+/g, " ").slice(0, 700).trim() : null;
+  if (!identity || !extractedText) return null;
+  const information = buildPublicProgramInformation(extractedText);
+  if (!information) return null;
   return {
     ...identity,
     publicId: `ready-summary-${summary.id}`,
     slug: `ready-summary-${summary.id}`,
     nameAr: ARABIC_COUNTRY_NAMES[identity.country] ?? null,
-    summaryEn: excerpt,
-    summaryAr: excerpt,
-    readySummaryTitle: summary.title,
-    readySummaryTextEn: text,
-    readySummaryTextAr: text,
-    readySummaryPdfUrl: pdfUrl,
-    readySummaryUpdatedAt: summary.createdAt,
-    imageUrl: fallbackProgram?.imageUrl ?? null,
-    sourceUrl: pdfUrl || fallbackProgram?.sourceUrl || "https://elevay.vip",
-    details: fallbackProgram?.details ?? null,
+    summaryEn: information.summaryEn,
+    summaryAr: null,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: information.details,
   };
-}
-
-export function hasReadySummaryForProgram(program: Pick<PublicProgram, "country" | "category">, summaries: ReadonlyArray<Pick<PublicReadySummary, "country" | "category">>) {
-  const country = normalized(program.country);
-  return summaries.some(summary => summary.category === program.category && normalized(summary.country) === country);
 }
