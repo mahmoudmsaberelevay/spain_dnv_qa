@@ -741,8 +741,11 @@ describe("owner reset of a month and a week (1 Nov 2026)", () => {
     const monthly = await ctx.o.get(r.monthlyRun), weekly = await ctx.o.get(r.weeklyRun);
     expect(monthly).toMatchObject({ kind: "plan", options: { month: "2026-11" } });
     expect(weekly).toMatchObject({ kind: "weekly_plan", options: { week: "2026-W45" } });
+    expect(weekly.options.wait_for_run).toBe(r.monthlyRun);
     await settle(ctx.o, r.monthlyRun, ["running", "queued"]);
     expect(ctx.calls.claude.some((c) => /marketing plan for 2026-11/.test(c.prompt))).toBe(true);
+    // The weekly plan did not start before the monthly plan finished.
+    expect(ctx.calls.claude.findIndex((c) => /Plan ELEVAY's social content/.test(c.prompt))).not.toBe(0);
   });
 });
 

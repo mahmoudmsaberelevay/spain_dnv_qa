@@ -1560,6 +1560,11 @@ export function createOrchestrator(deps) {
         return;
       }
       case "claude.weekly_plan": {
+        if (opts.wait_for_run && !A.waited_for_run) {
+          const other = await get(Number(opts.wait_for_run));
+          if (other && !["done", "failed", "cancelled", "needs_review"].includes(other.run.status)) { log(run, "studio", "team", `Waiting for the monthly plan (run #${opts.wait_for_run}) so this week is planned from it.`); return "waiting"; }
+          A.waited_for_run = true;
+        }
         const live = await deps.liveReport(false).catch(() => null);
         const { state } = await deps.loadState();
         const week = opts.week || planningWeek();
@@ -1862,6 +1867,13 @@ Return JSON only: {"summary":"3–5 sentences on how the ads did against the tar
       const latestProgress = Math.max(startedAt, ...clips.map((c) => Date.parse(c.lastProgressAt || c.submittedAt || "") || 0));
       if (now - latestProgress >= EXTERNAL_PROGRESS_DEADLINE_MS) return recoverOnceOrFail("no provider progress was recorded for 20 minutes", true);
       return false;
+    }
+    if (step.action === "weekly_plan" && run.options?.wait_for_run && !A.waited_for_run) {
+      const other = await get(Number(run.options.wait_for_run));
+      if (other && !["done", "failed", "cancelled", "needs_review"].includes(other.run.status)) return false;
+      A.waited_for_run = true;
+      step.status = "pending"; step.output = null;
+      return "resubmit";
     }
     if (step.action === "week_content" && A.week_manus?.status === "waiting") {
       const { state } = await deps.loadState();
@@ -2267,7 +2279,9 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     await q("DELETE FROM ec_kv WHERE name IN (?, ?)", [`autoplan_week_${week}`, `autoplan_month_${month}`]).catch(() => {});
     await claimOnce(`autoplan_month_${month}`);
     const monthlyRun = await create({ kind: "plan", request: why, options: { month }, user });
-    const weeklyRun = await startWeekly(week, user);
+    await claimOnce(`autoplan_week_${week}`);
+    // The weekly plan waits for the fresh monthly plan, so the week is planned from it (not from last month's).
+    const weeklyRun = await create({ kind: "weekly_plan", request: `Weekly content plan ${week}`, options: { week, wait_for_run: monthlyRun?.id }, user });
     return { cancelled, rejected, kept, superseded, monthlyRun: monthlyRun?.id ?? monthlyRun, weeklyRun: weeklyRun?.id ?? weeklyRun };
   }
 
