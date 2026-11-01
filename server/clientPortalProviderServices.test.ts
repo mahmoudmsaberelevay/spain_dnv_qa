@@ -5,6 +5,14 @@ import { decodeProviderCoverUpload, providerCoverStorageKey } from "./clientPort
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
+function handlerSource(content: string, startMarker: string, endMarker: string) {
+  const start = content.indexOf(startMarker);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = content.indexOf(endMarker, start);
+  expect(end).toBeGreaterThan(start);
+  return content.slice(start, end);
+}
+
 describe("Client Portal provider cover photos", () => {
   it("accepts supported image content and creates non-enumerable provider keys", () => {
     const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]);
@@ -58,11 +66,36 @@ describe("Client Portal provider and After Settlement Services integration", () 
 
   it("publishes active service cards without exposing provider storage keys", () => {
     const content = read("server/publicContentService.ts");
-    expect(content).toContain('app.get("/public-api/after-settlement-services"');
-    expect(content).toContain("coverImageUrl: row.coverImageUrl");
-    expect(content).toContain("eq(publicServiceProviders.isActive, true)");
-    expect(content).not.toContain("coverImageKey: row.coverImageKey");
-    expect(content).not.toContain("return res.json(row);");
+    const afterSettlementHandler = handlerSource(
+      content,
+      'app.get("/public-api/after-settlement-services"',
+      "\n  });\n}",
+    );
+    expect(afterSettlementHandler).toContain("eq(publicServiceProviders.isActive, true)");
+    expect(afterSettlementHandler).toContain("coverImageUrl: provider.coverImageUrl");
+    expect(afterSettlementHandler).not.toContain("coverImageKey");
+    expect(afterSettlementHandler).not.toContain("return res.json(rows);");
+    expect(afterSettlementHandler).not.toContain("return res.json(row);");
+    expect(afterSettlementHandler).toContain("return res.json(rows.map");
+  });
+
+  it("serializes public-program detail rows without storage keys or internal database fields", () => {
+    const content = read("server/publicContentService.ts");
+    const programDetailHandler = handlerSource(
+      content,
+      'app.get("/public-api/programs/:publicId"',
+      '\n  app.get("/public-api/service-providers"',
+    );
+    const serializer = handlerSource(
+      content,
+      "function serializePublicProgram",
+      "\nasync function getPublicProgramPayload",
+    );
+    expect(programDetailHandler).toContain("const rows = await getPublicProgramPayload(db)");
+    expect(programDetailHandler).toContain("return res.json(row);");
+    expect(serializer).not.toMatch(/storageKey|sourceHash|isActive|isOverridden|displayOrder|createdAt|updatedAt/);
+    expect(serializer).toContain("publicId: row.publicId");
+    expect(serializer).toContain("readySummaryPdfUrl: null");
   });
 
   it("keeps native Client Portal administration endpoints in parity", () => {
