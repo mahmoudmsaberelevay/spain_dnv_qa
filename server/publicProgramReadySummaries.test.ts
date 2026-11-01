@@ -423,6 +423,101 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Türkiye Ready Summary through nine English sections and installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30010,
+        title: "Elevay Turkiye Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Turkiye_Summary.pdf",
+        createdAt: 1793264003167,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30010",
+      slug: "ready-summary-30010",
+      nameEn: "Türkiye",
+      nameAr: "تركيا",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("A qualifying investment in Türkiye allows an investor to apply for Turkish citizenship.");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.details["3. Investment routes"]).toContain("US$400,000");
+    expect(payload?.details["3. Investment routes"]).toContain("US$500,000");
+    expect(payload?.details["3. Investment routes"]).toContain("NVIGM");
+    expect(payload?.details["4. Contribution options"]).toBe("Not required");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$1,000 per person");
+    expect(payload?.details["6. Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["7. Country At glance"]).toContain("85,878,556");
+    expect(payload?.details["7. Country At glance"]).toContain("US$18,599");
+    expect(payload?.details["8. Passport access"]).toContain("Visa-free destinations | 71");
+    expect(payload?.details["8. Passport access"]).toContain("Total including eTA | 121");
+    expect(payload?.details["9. About Elevay"]).toContain("T +20 128 498 1717");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar.map(section => section.heading)).toHaveLength(9);
+    const routes = payload?.programmeSections?.en[2]?.blocks.find(block => block.type === "table");
+    expect(routes?.type === "table" ? routes.rows : []).toHaveLength(5);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.passportindex.org/passport/turkey/");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("The President decides on the application. Approval is not guaranteed.");
+  });
+
+  it("returns Arabic-only Türkiye legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30010,
+        title: "Elevay Turkiye Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Turkiye_Summary.pdf",
+        createdAt: 1793264003167,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("يتيح الاستثمار المؤهل في تركيا");
+    expect(payload?.summaryAr).toContain("يتيح الاستثمار المؤهل في تركيا");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "1. نظرة عامة على البرنامج",
+      "2. الأشخاص الذين يمكن إدراجهم في الطلب",
+      "3. مسارات الاستثمار",
+      "4. خيارات المساهمة",
+      "5. رسوم المعالجة الحكومية",
+      "6. رسوم العناية الواجبة",
+      "7. لمحة عن الدولة",
+      "8. إمكانية السفر بجواز السفر",
+      "9. عن إيليفاي",
+    ]);
+    expect(payload?.details["3. مسارات الاستثمار"]).toContain("500,000 دولار أمريكي");
+    expect(payload?.details["4. خيارات المساهمة"]).toBe("غير مطلوب");
+    expect(payload?.details["6. رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["8. إمكانية السفر بجواز السفر"]).toContain("الإجمالي بما في ذلك تصريح السفر الإلكتروني | 121");
+    expect(payload?.details["3. Investment routes"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("Fixed capital investment");
+    expect(JSON.stringify(payload?.details)).not.toContain("Bank deposit");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("returns Arabic-only legacy detail headings and text when the phone language is Arabic", () => {
     const payload = publicReadySummaryFromRecord(
       {
