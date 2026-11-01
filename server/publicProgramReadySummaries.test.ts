@@ -77,7 +77,7 @@ describe("public Ready Summary programme adapter", () => {
     expect(JSON.stringify(payload)).not.toMatch(/storageKey|ready summary|\.pdf/i);
   });
 
-  it("serves Antigua using all nine owner-provided bilingual sections without the previous structured facts", () => {
+  it("serves Antigua using all nine owner-provided bilingual sections through both current and installed-app fields", () => {
     const payload = publicReadySummaryFromRecord(
       {
         id: 30002,
@@ -91,9 +91,11 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.publicId).toBe("ready-summary-antigua-barbuda");
     expect(payload?.nameEn).toBe("Antigua & Barbuda");
     expect(payload?.nameAr).toBe("أنتيغوا وبربودا");
-    expect(payload?.summaryEn).toBeNull();
-    expect(payload?.summaryAr).toBeNull();
-    expect(payload?.details).toEqual({});
+    expect(payload?.summaryEn).toContain("Citizenship of Antigua & Barbuda can be obtained");
+    expect(payload?.summaryAr).toContain("يمكن الحصول على جنسية أنتيغوا وبربودا");
+    expect(Object.keys(payload?.details ?? {})).toHaveLength(9);
+    expect(payload?.details["3. Investment Routes / 3. مسارات الاستثمار"]).toContain("US$1,500,000");
+    expect(payload?.details["3. Investment Routes / 3. مسارات الاستثمار"]).toContain("US$230,000");
     expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
       "1. Program Overview",
       "2. Who Can Be Included",
@@ -143,7 +145,7 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.readySummaryPdfUrl).toBeNull();
   });
 
-  it("serves the latest approved St. Kitts summary in all nine bilingual sections without dropping table values or links", () => {
+  it("serves the latest approved St. Kitts summary through both current and installed-app fields without dropping values or links", () => {
     const payload = publicReadySummaryFromRecord(
       {
         id: 30001,
@@ -158,11 +160,13 @@ describe("public Ready Summary programme adapter", () => {
       publicId: "ready-summary-30001",
       nameEn: "Saint Kitts & Nevis",
       nameAr: "سانت كيتس ونيفيس",
-      summaryEn: null,
-      summaryAr: null,
-      details: {},
       readySummaryPdfUrl: null,
     });
+    expect(payload?.summaryEn).toContain("Citizenship of St. Kitts & Nevis can be obtained through a non-refundable contribution");
+    expect(payload?.summaryAr).toContain("يمكن الحصول على جنسية سانت كيتس ونيفيس");
+    expect(Object.keys(payload?.details ?? {})).toHaveLength(9);
+    expect(payload?.details["3. Investment routes / 3. مسارات الاستثمار"]).toContain("US$250,000");
+    expect(payload?.details["5. Government Processing fees / 5. رسوم المعالجة الحكومية"]).toContain("US$10,000");
     expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
       "1. Program Overview",
       "2. Who Can be Included",

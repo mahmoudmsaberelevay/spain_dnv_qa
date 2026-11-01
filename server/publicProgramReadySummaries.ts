@@ -254,6 +254,49 @@ function markdownLinks(value: string) {
   }));
 }
 
+function legacyBlockText(block: ProgrammeContentBlock): string {
+  if (block.type === "list") return block.items.map(item => `• ${item}`).join("\n");
+  if (block.type === "table") {
+    const rows = [block.headers, ...block.rows];
+    return rows.map((row, rowIndex) => row.map((cell, cellIndex) => {
+      const links = rowIndex > 0 ? block.cellLinks?.[rowIndex - 1]?.[cellIndex] : undefined;
+      return links?.length ? `${cell} (${links.map(link => link.url).join("; ")})` : cell;
+    }).join(" | ")).join("\n");
+  }
+  if (!("text" in block)) return "";
+  const links = block.links?.map(link => link.url) ?? [];
+  return links.length ? `${block.text} (${links.join("; ")})` : block.text;
+}
+
+/**
+ * The installed app understands summaryEn/summaryAr and details, not the new
+ * programmeSections field. Populate both contracts to deliver content through
+ * a server update without requiring a new client build.
+ */
+function legacyBilingualFields(programmeSections: BilingualProgrammeContent) {
+  const overviewText = (section: ProgrammeContentSection | undefined) => {
+    const paragraphs = section?.blocks.filter((block): block is Extract<ProgrammeContentBlock, { text: string }> => block.type === "paragraph") ?? [];
+    const substantive = paragraphs.filter(block => !/^(?:programme details checked against|sources?:|passport index, accessed|تم التحقق من تفاصيل البرنامج|المصادر:)/i.test(block.text.trim()));
+    return substantive.find(block => block.text.length >= 100)?.text
+      || substantive[0]?.text
+      || section?.blocks.map(legacyBlockText).filter(Boolean).join("\n")
+      || "";
+  };
+  const details: Record<string, string> = {};
+  programmeSections.en.forEach((section, index) => {
+    const arabicSection = programmeSections.ar[index];
+    const englishText = section.blocks.map(legacyBlockText).filter(Boolean).join("\n\n");
+    const arabicText = arabicSection?.blocks.map(legacyBlockText).filter(Boolean).join("\n\n") ?? "";
+    details[`${section.heading}${arabicSection ? ` / ${arabicSection.heading}` : ""}`] =
+      [englishText, arabicText].filter(Boolean).join("\n\n");
+  });
+  return {
+    summaryEn: overviewText(programmeSections.en[0]),
+    summaryAr: overviewText(programmeSections.ar[0]),
+    details,
+  };
+}
+
 function rawTableCells(line: string) {
   return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|");
 }
@@ -341,6 +384,7 @@ function userApprovedAntiguaProgramme(identity: ReadySummaryIdentity): PublicRea
     ar: parseProgrammeContent(arabic),
   };
   if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyBilingualFields(programmeSections);
 
   return {
     ...identity,
@@ -348,8 +392,8 @@ function userApprovedAntiguaProgramme(identity: ReadySummaryIdentity): PublicRea
     nameAr: "أنتيغوا وبربودا",
     publicId: "ready-summary-antigua-barbuda",
     slug: "antigua-barbuda-citizenship-by-investment",
-    summaryEn: null,
-    summaryAr: null,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
     readySummaryTitle: null,
     readySummaryTextEn: null,
     readySummaryTextAr: null,
@@ -357,7 +401,7 @@ function userApprovedAntiguaProgramme(identity: ReadySummaryIdentity): PublicRea
     readySummaryUpdatedAt: null,
     imageUrl: null,
     sourceUrl: "https://elevay.vip",
-    details: {},
+    details: legacy.details,
     programmeSections,
   };
 }
@@ -380,6 +424,7 @@ function latestApprovedStKittsProgramme(
     ar: parseProgrammeContent(arabic),
   };
   if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyBilingualFields(programmeSections);
 
   return {
     ...identity,
@@ -387,8 +432,8 @@ function latestApprovedStKittsProgramme(
     nameAr: "سانت كيتس ونيفيس",
     publicId: `ready-summary-${summaryId}`,
     slug: `ready-summary-${summaryId}`,
-    summaryEn: null,
-    summaryAr: null,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
     readySummaryTitle: null,
     readySummaryTextEn: null,
     readySummaryTextAr: null,
@@ -396,7 +441,7 @@ function latestApprovedStKittsProgramme(
     readySummaryUpdatedAt: null,
     imageUrl: null,
     sourceUrl: "https://elevay.vip",
-    details: {},
+    details: legacy.details,
     programmeSections,
   };
 }
