@@ -269,6 +269,8 @@ const NAURU_ENGLISH_SOURCE = "knowledge/summaries/naoero-nauru.md";
 const NAURU_ARABIC_SOURCE = "knowledge/summaries/naoero-nauru.ar.md";
 const SAINT_LUCIA_ENGLISH_SOURCE = "knowledge/summaries/saint-lucia.md";
 const SAINT_LUCIA_ARABIC_SOURCE = "knowledge/summaries/saint-lucia.ar.md";
+const SAO_TOME_ENGLISH_SOURCE = "knowledge/summaries/sao-tome-principe.md";
+const SAO_TOME_ARABIC_SOURCE = "knowledge/summaries/sao-tome-principe.ar.md";
 
 function displayMarkdownText(value: string) {
   return value
@@ -713,6 +715,45 @@ function latestApprovedSaintLuciaProgramme(
   };
 }
 
+/**
+ * Serves the latest active São Tomé and Príncipe Ready Summary through the
+ * installed app's legacy fields, selecting only the phone-system-language content.
+ */
+function latestApprovedSaoTomeProgramme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+  locale: PublicProgramLocale,
+): PublicReadySummary | null {
+  const english = assetText(SAO_TOME_ENGLISH_SOURCE);
+  const arabic = assetText(SAO_TOME_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyLocalizedFields(programmeSections, locale);
+
+  return {
+    ...identity,
+    nameEn: "São Tomé and Príncipe",
+    nameAr: "ساو تومي وبرينسيب",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: legacy.details,
+    programmeSections,
+  };
+}
+
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
@@ -728,6 +769,7 @@ export function publicReadySummaryFromRecord(
   if (identity.country === "Turkey") return latestApprovedTurkiyeProgramme(identity, summary.id, locale);
   if (identity.country === "Nauru") return latestApprovedNauruProgramme(identity, summary.id, locale);
   if (identity.country === "Saint Lucia") return latestApprovedSaintLuciaProgramme(identity, summary.id, locale);
+  if (identity.country === "São Tomé and Príncipe") return latestApprovedSaoTomeProgramme(identity, summary.id, locale);
   if (!extractedText) return null;
   const information = buildPublicProgramInformation(extractedText);
   if (!information) return null;

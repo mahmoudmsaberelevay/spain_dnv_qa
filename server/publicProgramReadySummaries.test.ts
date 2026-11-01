@@ -721,6 +721,106 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active São Tomé Ready Summary through all nine English sections and installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30009,
+        title: "Elevay Sao Tome Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Sao_Tome_Summary.pdf",
+        createdAt: 1793263937372,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30009",
+      slug: "ready-summary-30009",
+      nameEn: "São Tomé and Príncipe",
+      nameAr: "ساو تومي وبرينسيب",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("São Tomé and Príncipe grants citizenship");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.details["2. Who Can be Included"]).toContain("Parents and grandparents: aged 55 and above");
+    expect(payload?.details["3. Investment routes"]).toContain("One route is offered");
+    expect(payload?.details["3. Investment routes"]).toContain("Nationality Law No. 07/2022");
+    expect(payload?.details["4. Contribution options"]).toContain("Single applicant | US$90,000");
+    expect(payload?.details["4. Contribution options"]).toContain("Family of 2 to 4 | US$95,000");
+    expect(payload?.details["4. Contribution options"]).toContain("Each additional dependant | US$5,000");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$5,000");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$750");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$10,000");
+    expect(payload?.details["5. Government Processing fees"]).toContain("US$500");
+    expect(payload?.details["6. Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["7. Country At glance"]).toContain("240,254");
+    expect(payload?.details["7. Country At glance"]).toContain("US$4,084");
+    expect(payload?.details["8. Passport access"]).toContain("Visa-free destinations | 27");
+    expect(payload?.details["8. Passport access"]).toContain("Visa-on-arrival destinations | 39");
+    expect(payload?.details["8. Passport access"]).toContain("Total including eTA | 70");
+    expect(payload?.details["9. About Elevay"]).toContain("T +94 77 246 8516");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.passportindex.org/passport/sao-tome-and-principe/");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://cip.gov.st/");
+  });
+
+  it("returns Arabic-only São Tomé legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30009,
+        title: "Elevay Sao Tome Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Sao_Tome_Summary.pdf",
+        createdAt: 1793263937372,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("تمنح ساو تومي وبرينسيب الجنسية");
+    expect(payload?.summaryAr).toContain("تمنح ساو تومي وبرينسيب الجنسية");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "1. نظرة عامة على البرنامج",
+      "2. الأشخاص الذين يمكن إدراجهم في الطلب",
+      "3. مسارات الاستثمار",
+      "4. خيارات المساهمة",
+      "5. رسوم المعالجة الحكومية",
+      "6. رسوم العناية الواجبة",
+      "7. لمحة عن الدولة",
+      "8. إمكانية السفر بجواز السفر",
+      "9. عن إيليفاي",
+    ]);
+    expect(payload?.details["3. مسارات الاستثمار"]).toContain("90,000 دولار أمريكي");
+    expect(payload?.details["4. خيارات المساهمة"]).toContain("95,000 دولار أمريكي");
+    expect(payload?.details["5. رسوم المعالجة الحكومية"]).toContain("750 دولارًا أمريكيًا");
+    expect(payload?.details["6. رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["8. إمكانية السفر بجواز السفر"]).toContain("الإجمالي بما في ذلك تصريح السفر الإلكتروني | 70");
+    expect(payload?.details["3. Investment routes"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("National Transformation Fund");
+    expect(JSON.stringify(payload?.details)).not.toContain("Visa-free destinations");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("returns Arabic-only legacy detail headings and text when the phone language is Arabic", () => {
     const payload = publicReadySummaryFromRecord(
       {
