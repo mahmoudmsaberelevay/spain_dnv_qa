@@ -143,6 +143,61 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.readySummaryPdfUrl).toBeNull();
   });
 
+  it("serves the latest approved St. Kitts summary in all nine bilingual sections without dropping table values or links", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30001,
+        title: "Elevay St Kitts Nevis Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_St_Kitts_Nevis_Summary.pdf",
+        createdAt: 1793262974291,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30001",
+      nameEn: "Saint Kitts & Nevis",
+      nameAr: "سانت كيتس ونيفيس",
+      summaryEn: null,
+      summaryAr: null,
+      details: {},
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    const investmentTable = payload?.programmeSections?.en[2]?.blocks.find(block => block.type === "table");
+    expect(investmentTable).toEqual({
+      type: "table",
+      headers: ["Route", "Minimum investment", "Holding period"],
+      rows: [
+        ["Option 1: Sustainable Island State Contribution", "US$250,000 (main applicant, or family of up to four)", "N/A"],
+        ["Option 2: Public Benefit Option", "US$250,000 (main applicant, or family of up to four)", "N/A"],
+        ["Option 3: Developer real estate (approved development)", "US$325,000", "7 years"],
+        ["Option 4: Private real estate", "US$325,000 (condominium or share) / US$600,000 (single-family home)", "7 years"],
+      ],
+    });
+    const passportTable = payload?.programmeSections?.en[7]?.blocks.find(block => block.type === "table" && "cellLinks" in block);
+    expect(passportTable?.type).toBe("table");
+    expect(passportTable && "cellLinks" in passportTable ? passportTable.cellLinks?.[0]?.[1] : undefined)
+      .toEqual([{ label: "https://www.passportindex.org/passport/saint-kitts-and-nevis/", url: "https://www.passportindex.org/passport/saint-kitts-and-nevis/" }]);
+    const renderedContent = JSON.stringify(payload?.programmeSections);
+    expect(renderedContent).toContain("A clean criminal record and full due diligence are required of every adult applicant.");
+    expect(renderedContent).toContain("US$10,000");
+    expect(renderedContent).toContain("148");
+    expect(renderedContent).toContain("يمكن الحصول على جنسية سانت كيتس ونيفيس");
+    expect(renderedContent).toContain("https://www.henleyglobal.com/passport-index/ranking");
+  });
+
   it("renders authored Markdown tables and normalizes only formatting, not the cell text", () => {
     const content = parseProgrammeContent("## Section\n\n| Field | Value |\n|---|---|\n| Cost | **US$10,000** |\n\nA [programme link](https://example.test) is provided.");
     expect(content).toEqual([{

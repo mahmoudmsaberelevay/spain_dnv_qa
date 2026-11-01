@@ -235,6 +235,8 @@ export type BilingualProgrammeContent = { en: ProgrammeContentSection[]; ar: Pro
 
 const ANTIGUA_ENGLISH_SOURCE = "knowledge/summaries/antigua-barbuda.md";
 const ANTIGUA_ARABIC_SOURCE = "knowledge/summaries/antigua-barbuda.ar.md";
+const ST_KITTS_ENGLISH_SOURCE = "knowledge/summaries/st-kitts-nevis.md";
+const ST_KITTS_ARABIC_SOURCE = "knowledge/summaries/st-kitts-nevis.ar.md";
 
 function displayMarkdownText(value: string) {
   return value
@@ -360,6 +362,45 @@ function userApprovedAntiguaProgramme(identity: ReadySummaryIdentity): PublicRea
   };
 }
 
+/**
+ * Presents the latest approved St. Kitts & Nevis Ready Summary using the
+ * authored bilingual section contract. This deliberately bypasses PDF
+ * heuristics so the client app receives every requested heading, detail,
+ * table value and source link without rewording its approved content.
+ */
+function latestApprovedStKittsProgramme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+): PublicReadySummary | null {
+  const english = assetText(ST_KITTS_ENGLISH_SOURCE);
+  const arabic = assetText(ST_KITTS_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+
+  return {
+    ...identity,
+    nameEn: identity.country,
+    nameAr: "سانت كيتس ونيفيس",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: null,
+    summaryAr: null,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: {},
+    programmeSections,
+  };
+}
+
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
@@ -367,6 +408,7 @@ export function publicReadySummaryFromRecord(
   const identity = parseReadySummaryIdentity(summary.title, summary.originalFileName, summary.category);
   if (!identity) return null;
   if (identity.country === "Antigua & Barbuda") return userApprovedAntiguaProgramme(identity);
+  if (identity.country === "Saint Kitts & Nevis") return latestApprovedStKittsProgramme(identity, summary.id);
   if (!extractedText) return null;
   const information = buildPublicProgramInformation(extractedText);
   if (!information) return null;
