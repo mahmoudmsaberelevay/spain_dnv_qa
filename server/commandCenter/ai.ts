@@ -759,6 +759,25 @@ export function createOrchestrator(deps) {
     advance(id).catch(() => { /* recorded on the run */ }).finally(() => running.delete(id));
   }
 
+  /**
+   * Every later step of a weekly plan needs Claude's 7-post plan from step 1. If it is missing (step 1 finished but
+   * its result was not saved — e.g. two workers raced on the run), run step 1 again instead of reviewing nothing
+   * and crashing in the content step. At most twice, then stop with a clear message.
+   */
+  function replanWeekIfMissing(run, step) {
+    const A = run.artifacts;
+    if (run.kind !== "weekly_plan" || (Array.isArray(A.week_plan?.posts) && A.week_plan.posts.length)) return null;
+    A.week_replans = Number(A.week_replans || 0) + 1;
+    if (A.week_replans > 2) throw new Error("Claude's 7-post week plan from step 1 was not saved, even after planning again twice. Press Retry to plan the week again.");
+    const first = run.steps.find((s) => s.action === "weekly_plan");
+    if (first) { first.status = "pending"; first.output = null; first.started_at = null; first.ended_at = null; first.error = null; }
+    for (const s of run.steps) if (s !== first && s.action !== "weekly_plan" && s.n < step.n) { s.status = "pending"; s.output = null; s.started_at = null; s.ended_at = null; }
+    if (A.council) delete A.council.week_plan;
+    step.started_at = null;
+    log(run, "studio", "team", `${step.title}: Claude's week plan from step 1 was missing, so the week is planned again (attempt ${A.week_replans} of 2).`);
+    return "rewind";
+  }
+
   function log(run, from, to, text) { run.messages.push({ at: nowIso(), from, to, text: clip(text, 6000) }); if (run.messages.length > 120) run.messages.splice(0, run.messages.length - 120); }
 
   async function advance(id) {
@@ -1513,6 +1532,7 @@ export function createOrchestrator(deps) {
         return;
       }
       case "openai.council_openai": {
+        if (step.subject === "week_plan") { const back = replanWeekIfMissing(run, step); if (back) return back; }
         const subject = step.subject, draft = councilDraft(run, subject);
         A.council = A.council || {};
         A.council[subject] = { ...(A.council[subject] || {}), draft };
@@ -1524,6 +1544,7 @@ export function createOrchestrator(deps) {
         return;
       }
       case "manus.council_manus": {
+        if (step.subject === "week_plan") { const back = replanWeekIfMissing(run, step); if (back) return back; }
         const subject = step.subject, c = (A.council = A.council || {})[subject] || (A.council[subject] = { draft: councilDraft(run, subject) });
         if (!c.draft) { c.manus = { assessment: "Nothing to review." }; return; }
         if (c.manus_job && !c.manus) return "waiting"; // already asked (restart or retry): keep waiting for the same job
@@ -1543,6 +1564,7 @@ export function createOrchestrator(deps) {
         return "waiting";
       }
       case "claude.council_final": {
+        if (step.subject === "week_plan") { const back = replanWeekIfMissing(run, step); if (back) return back; }
         const subject = step.subject, c = (A.council || {})[subject] || {};
         if (!c.draft) return;
         let r;
@@ -1601,6 +1623,7 @@ Today is ${cairoParts().date}; never schedule a date before today or after ${day
         return;
       }
       case "openai.week_content": {
+        { const back = replanWeekIfMissing(run, step); if (back) return back; }
         // Owner rule (20 Oct 2026): Claude's whole week plan goes to OpenAI once, and OpenAI returns one file with
         // every post's caption, design or storyboard and Egyptian voice-over. Each post's run then uses its part and
         // sends it to its provider (images, Higgsfield, the ELEVAY Arabic voice-over). The usual checks still run per post.
@@ -1646,6 +1669,7 @@ Return JSON only: {"posts": [one per planned post, in order: {"index": 1, "type"
         return;
       }
       case "system.spawn_week": {
+        { const back = replanWeekIfMissing(run, step); if (back) return back; }
         const { week, posts } = A.week_plan;
         A.children = A.children || [];
         for (let i = A.children.length; i < posts.length; i++) {
@@ -1872,7 +1896,8 @@ Return JSON only: {"summary":"3–5 sentences on how the ads did against the tar
       const other = await get(Number(run.options.wait_for_run));
       if (other && !["done", "failed", "cancelled", "needs_review"].includes(other.run.status)) return false;
       A.waited_for_run = true;
-      step.status = "pending"; step.output = null;
+      // Planning starts now: the time spent waiting for the monthly plan must not count as a stalled Claude step.
+      step.status = "pending"; step.output = null; step.started_at = null;
       return "resubmit";
     }
     if (step.action === "week_content" && A.week_manus?.status === "waiting") {
@@ -1880,6 +1905,7 @@ Return JSON only: {"summary":"3–5 sentences on how the ads did against the tar
       const j = state.jobs.find((x) => x.id === A.week_manus.job);
       if (!j) return false;
       if (j.status !== "done" && j.status !== "failed") return false;
+      if (replanWeekIfMissing(run, step)) { step.status = "pending"; delete A.week_manus; return "resubmit"; }
       const { week, posts } = A.week_plan;
       const planned = posts.map((p, i) => ({ index: i + 1, type: p.type, date: p.date, time: p.time, program: p.program, pillar: p.pillar, audience: p.audience, idea: p.brief }));
       let data = null;
@@ -2380,7 +2406,11 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
             continue;
           }
         }
-        if (!running.has(r.id) && running.size < MAX_ACTIVE) await advance(r.id).catch(() => {});
+        if (!running.has(r.id) && running.size < MAX_ACTIVE) {
+          // Registered like kick(): a later heartbeat must not mistake this live step for an interrupted one.
+          running.add(r.id);
+          try { await advance(r.id); } catch { /* recorded on the run */ } finally { running.delete(r.id); }
+        }
         continue;
       }
       if (running.has(r.id)) continue;
