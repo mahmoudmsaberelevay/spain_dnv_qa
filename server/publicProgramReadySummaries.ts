@@ -22,23 +22,8 @@ export type PublicReadySummary = ReadySummaryIdentity & {
   readySummaryUpdatedAt: null;
   imageUrl: null;
   sourceUrl: string;
-  details: Record<string, string> | StructuredPublicProgramDetails;
-};
-
-type StructuredPublicProgramDetails = {
-  version: 1;
-  sourceLabel: string;
-  programName: BilingualText;
-  country: BilingualText;
-  processingTime: BilingualText;
-  residencyRequirement: BilingualText;
-  investmentOptions: Array<{ title: BilingualText; amount: string; notes: BilingualText }>;
-  benefits: BilingualList;
-  eligibility: BilingualList;
-  family: BilingualList;
-  process: BilingualList;
-  feeNotes: BilingualList;
-  disclaimer: BilingualText;
+  details: Record<string, string>;
+  programmeSections?: BilingualProgrammeContent;
 };
 
 const COUNTRY_ALIASES: Array<[string, string]> = [
@@ -241,121 +226,119 @@ export function buildPublicProgramInformation(extractedText: string): { summaryE
   return { summaryEn: sentenceExcerpt(overview), details };
 }
 
-type BilingualText = { en: string; ar: string };
-type BilingualList = { en: string[]; ar: string[] };
+export type ProgrammeContentBlock =
+  | { type: "paragraph" | "subheading" | "emphasis"; text: string; links?: Array<{ label: string; url: string }> }
+  | { type: "list"; items: string[] }
+  | { type: "table"; headers: string[]; rows: string[][] };
+export type ProgrammeContentSection = { heading: string; blocks: ProgrammeContentBlock[] };
+export type BilingualProgrammeContent = { en: ProgrammeContentSection[]; ar: ProgrammeContentSection[] };
 
 const ANTIGUA_ENGLISH_SOURCE = "knowledge/summaries/antigua-barbuda.md";
 const ANTIGUA_ARABIC_SOURCE = "knowledge/summaries/antigua-barbuda.ar.md";
 
-function stripMarkdown(value: string) {
+function displayMarkdownText(value: string) {
   return value
-    .replace(/^#{1,6}\s+/, "")
-    .replace(/^[-*]\s+/, "")
-    .replace(/\*\*/g, "")
-    .replace(/\*([^*]+)\*/g, "$1")
     .replace(/\\\*/g, "*")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "$1")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
     .trim();
 }
 
-function markdownSection(markdown: string, position: number) {
-  const headings = Array.from(markdown.matchAll(/^##\s+.+$/gm));
-  const start = headings[position];
-  if (!start || start.index === undefined) return "";
-  const contentStart = start.index + start[0].length;
-  const contentEnd = headings[position + 1]?.index ?? markdown.length;
-  return markdown.slice(contentStart, contentEnd).trim();
+function markdownLinks(value: string) {
+  return Array.from(value.matchAll(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g), match => ({
+    label: displayMarkdownText(match[1]),
+    url: match[2],
+  }));
 }
 
-function programmeLines(markdown: string, position: number) {
-  return markdownSection(markdown, position)
-    .split("\n")
-    .map(line => line.trim())
-    .filter(line => line && line !== "---")
-    .filter(line => !/^\|?\s*:?-{3,}/.test(line))
-    .filter(line => !/^(?:sources?|source document|المصادر|وثيقة المصدر)\s*:/i.test(line))
-    .map(line => {
-      if (line.startsWith("|") && line.endsWith("|")) {
-        return line.slice(1, -1).split("|").map(cell => stripMarkdown(cell)).filter(Boolean).join(" — ");
-      }
-      return stripMarkdown(line);
-    })
-    .filter(Boolean);
+function parseTableRow(line: string) {
+  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(cell => displayMarkdownText(cell));
 }
 
-function fromBoth(en: string[], ar: string[]): BilingualList {
-  return { en, ar };
+/** Parse authored Markdown into display blocks without summarizing or rewriting its words. */
+export function parseProgrammeContent(markdown: string): ProgrammeContentSection[] {
+  const sections: ProgrammeContentSection[] = [];
+  let section: ProgrammeContentSection | null = null;
+  let paragraph: string[] = [];
+  let list: string[] = [];
+
+  const flushParagraph = () => {
+    if (!section || !paragraph.length) return;
+    const sourceText = paragraph.join(" ").replace(/\s{2,}/g, " ");
+    const links = markdownLinks(sourceText);
+    section.blocks.push({ type: "paragraph", text: displayMarkdownText(sourceText), ...(links.length ? { links } : {}) });
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (!section || !list.length) return;
+    section.blocks.push({ type: "list", items: list.map(displayMarkdownText) });
+    list = [];
+  };
+  const flushText = () => { flushParagraph(); flushList(); };
+
+  const lines = markdown.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (!line || line === "---") { flushText(); continue; }
+    if (line.startsWith("## ")) {
+      flushText();
+      section = { heading: displayMarkdownText(line.slice(3)), blocks: [] };
+      sections.push(section);
+      continue;
+    }
+    if (!section) continue;
+    if (line.startsWith("### ") || line.startsWith("#### ")) {
+      flushText();
+      const sourceText = line.replace(/^#{3,4}\s+/, "");
+      const links = markdownLinks(sourceText);
+      section.blocks.push({ type: "subheading", text: displayMarkdownText(sourceText), ...(links.length ? { links } : {}) });
+      continue;
+    }
+    if (line.startsWith("|")) {
+      flushText();
+      const tableLines: string[] = [line];
+      while (index + 1 < lines.length && lines[index + 1].trim().startsWith("|")) tableLines.push(lines[++index].trim());
+      const rows = tableLines.filter(row => !/^\|?\s*:?-{3,}/.test(row)).map(parseTableRow);
+      if (rows.length) section.blocks.push({ type: "table", headers: rows[0], rows: rows.slice(1) });
+      continue;
+    }
+    if (/^[-*]\s+/.test(line)) {
+      flushParagraph();
+      list.push(line.replace(/^[-*]\s+/, ""));
+      continue;
+    }
+    flushList();
+    if (/^\*\*.+\*\*$/.test(line)) {
+      flushParagraph();
+      const links = markdownLinks(line);
+      section.blocks.push({ type: "emphasis", text: displayMarkdownText(line), ...(links.length ? { links } : {}) });
+      continue;
+    }
+    paragraph.push(line);
+  }
+  flushText();
+  return sections.filter(item => item.heading.length > 0);
 }
 
-function firstMatching(lines: string[], expression: RegExp, fallback: string) {
-  return lines.find(line => expression.test(line)) || fallback;
-}
-
-/**
- * Antigua is an explicit owner-supplied replacement. Its English and Arabic
- * content is read directly from the approved files so no old OCR/PDF text,
- * scraped data, inferred requirement, source attribution, or PDF action can
- * appear in the programme payload.
- */
 function userApprovedAntiguaProgramme(identity: ReadySummaryIdentity): PublicReadySummary | null {
   const english = assetText(ANTIGUA_ENGLISH_SOURCE);
   const arabic = assetText(ANTIGUA_ARABIC_SOURCE);
   if (!english || !arabic) return null;
-
-  const overviewEn = programmeLines(english, 0);
-  const overviewAr = programmeLines(arabic, 0);
-  const eligibilityEn = programmeLines(english, 1);
-  const eligibilityAr = programmeLines(arabic, 1);
-  const investmentEn = programmeLines(english, 2);
-  const investmentAr = programmeLines(arabic, 2);
-  const contributionEn = programmeLines(english, 3);
-  const contributionAr = programmeLines(arabic, 3);
-  const processingFeesEn = programmeLines(english, 4);
-  const processingFeesAr = programmeLines(arabic, 4);
-  const diligenceFeesEn = programmeLines(english, 5);
-  const diligenceFeesAr = programmeLines(arabic, 5);
-  const countryEn = programmeLines(english, 6);
-  const countryAr = programmeLines(arabic, 6);
-  const passportEn = programmeLines(english, 7);
-  const passportAr = programmeLines(arabic, 7);
-  const aboutElevayEn = programmeLines(english, 8);
-  const aboutElevayAr = programmeLines(arabic, 8);
-
-  const overviewTitleEn = overviewEn.find(line => line === "Antigua & Barbuda Citizenship by Investment") || identity.nameEn;
-  const overviewTitleAr = overviewAr.find(line => /جنسية .*عن طريق الاستثمار/.test(line)) || "جنسية أنتيغوا وبربودا عن طريق الاستثمار";
-  const overviewBodyEn = overviewEn.find(line => line.startsWith("Citizenship of Antigua & Barbuda can be obtained")) || overviewEn[0] || "";
-  const overviewBodyAr = overviewAr.find(line => line.startsWith("يمكن الحصول على جنسية")) || overviewAr[0] || "";
-
-  const investmentRowsEn = investmentEn
-    .filter(line => /^Option [1-4]:/.test(line))
-    .filter((line, index, rows) => rows.findIndex(candidate => candidate.match(/^Option [1-4]:/)?.[0] === line.match(/^Option [1-4]:/)?.[0]) === index);
-  const investmentRowsAr = investmentAr
-    .filter(line => /^الخيار [1-4]:/.test(line))
-    .filter((line, index, rows) => rows.findIndex(candidate => candidate.match(/^الخيار [1-4]:/)?.[0] === line.match(/^الخيار [1-4]:/)?.[0]) === index);
-  const investmentOptions = investmentRowsEn.map((line, index) => {
-    const [title = line, amount = "", holding = ""] = line.split(" — ");
-    const [titleAr = title, amountAr = amount, holdingAr = holding] = (investmentRowsAr[index] || line).split(" — ");
-    return {
-      title: { en: title, ar: titleAr },
-      amount: amount || amountAr,
-      notes: { en: holding, ar: holdingAr },
-    };
-  });
-
-  const familyEn = eligibilityEn.filter(line => /^(?:The spouse|Children aged|A parent|An unmarried sibling)/.test(line));
-  const familyAr = eligibilityAr.filter(line => /^(?:زوج|الأبناء|والد|شقيق)/.test(line));
-  const finalDisclaimerEn = english.split("\n").map(stripMarkdown).find((line: string) => line.startsWith("Elevay warrants that all information")) || "";
-  const finalDisclaimerAr = arabic.split("\n").map(stripMarkdown).find((line: string) => line.startsWith("تضمن Elevay أن جميع المعلومات")) || "";
-  const passportNoticeEn = passportEn.slice(passportEn.findIndex(line => line === "Important notice")).filter(Boolean);
-  const passportNoticeAr = passportAr.slice(passportAr.findIndex(line => line === "إشعار مهم")).filter(Boolean);
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
 
   return {
     ...identity,
-    nameEn: overviewTitleEn,
-    nameAr: overviewTitleAr,
+    nameEn: identity.country,
+    nameAr: "أنتيغوا وبربودا",
     publicId: "ready-summary-antigua-barbuda",
     slug: "antigua-barbuda-citizenship-by-investment",
-    summaryEn: overviewBodyEn,
-    summaryAr: overviewBodyAr,
+    summaryEn: null,
+    summaryAr: null,
     readySummaryTitle: null,
     readySummaryTextEn: null,
     readySummaryTextAr: null,
@@ -363,33 +346,8 @@ function userApprovedAntiguaProgramme(identity: ReadySummaryIdentity): PublicRea
     readySummaryUpdatedAt: null,
     imageUrl: null,
     sourceUrl: "https://elevay.vip",
-    details: {
-      version: 1,
-      sourceLabel: "",
-      programName: { en: overviewTitleEn, ar: overviewTitleAr },
-      country: { en: identity.country, ar: "أنتيغوا وبربودا" },
-      processingTime: {
-        en: firstMatching(overviewEn, /Typical time to citizenship/, "Not stated in the programme information."),
-        ar: firstMatching(overviewAr, /المدة المعتادة للحصول على الجنسية/, "غير مذكور في معلومات البرنامج."),
-      },
-      residencyRequirement: {
-        en: firstMatching(overviewEn, /Minimum stay required/, "Not stated in the programme information."),
-        ar: firstMatching(overviewAr, /الحد الأدنى للإقامة المطلوبة/, "غير مذكور في معلومات البرنامج."),
-      },
-      investmentOptions,
-      benefits: fromBoth(
-        [...overviewEn.filter(line => ![overviewTitleEn, overviewBodyEn].includes(line)), ...countryEn, ...passportEn],
-        [...overviewAr.filter(line => ![overviewTitleAr, overviewBodyAr].includes(line)), ...countryAr, ...passportAr],
-      ),
-      eligibility: fromBoth(eligibilityEn, eligibilityAr),
-      family: fromBoth(familyEn, familyAr),
-      process: fromBoth([...investmentEn.filter(line => !investmentRowsEn.includes(line)), ...contributionEn, ...aboutElevayEn], [...investmentAr.filter(line => !investmentRowsAr.includes(line)), ...contributionAr, ...aboutElevayAr]),
-      feeNotes: fromBoth([...processingFeesEn, ...diligenceFeesEn], [...processingFeesAr, ...diligenceFeesAr]),
-      disclaimer: {
-        en: [...passportNoticeEn, finalDisclaimerEn].filter(Boolean).join(" "),
-        ar: [...passportNoticeAr, finalDisclaimerAr].filter(Boolean).join(" "),
-      },
-    },
+    details: {},
+    programmeSections,
   };
 }
 

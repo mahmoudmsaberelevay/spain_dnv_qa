@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPublicProgramInformation, parseReadySummaryIdentity, publicReadySummaryFromRecord } from "./publicProgramReadySummaries";
+import { buildPublicProgramInformation, parseProgrammeContent, parseReadySummaryIdentity, publicReadySummaryFromRecord } from "./publicProgramReadySummaries";
 
 const SAMPLE_D7_SUMMARY = `R E S I D E N C Y P R O G R A M M E
 PORTUGAL
@@ -77,7 +77,7 @@ describe("public Ready Summary programme adapter", () => {
     expect(JSON.stringify(payload)).not.toMatch(/storageKey|ready summary|\.pdf/i);
   });
 
-  it("replaces Antigua completely with the owner-approved bilingual programme content", () => {
+  it("serves Antigua using all nine owner-provided bilingual sections without the previous structured facts", () => {
     const payload = publicReadySummaryFromRecord(
       {
         id: 30002,
@@ -89,20 +89,64 @@ describe("public Ready Summary programme adapter", () => {
       null,
     );
     expect(payload?.publicId).toBe("ready-summary-antigua-barbuda");
-    expect(payload?.nameEn).toBe("Antigua & Barbuda Citizenship by Investment");
-    expect(payload?.nameAr).toContain("جنسية");
-    expect(payload?.summaryEn).toBe("Citizenship of Antigua & Barbuda can be obtained through a contribution (Option 1 or 2), an approved real estate investment (Option 3) or an approved business investment (Option 4), with qualifying family members included in a single application. The programme is administered by the Citizenship by Investment Unit (CIU).");
-    expect(payload?.summaryAr).toContain("يمكن الحصول على جنسية");
-    expect(payload?.details).toMatchObject({ version: 1 });
-    const details = payload?.details as any;
-    expect(details.processingTime.en).toContain("9–12 months");
-    expect(details.residencyRequirement.en).toContain("5 days");
-    expect(details.investmentOptions).toHaveLength(4);
-    expect(details.investmentOptions[0]).toMatchObject({ amount: "US$230,000 per application", notes: { en: "N/A" } });
-    expect(details.investmentOptions[1].amount).toBe("US$260,000 (minimum of six persons per application)");
-    expect(details.investmentOptions[3].notes.en).toBe("5 years‡");
-    expect(details.feeNotes.en.join(" ")).toContain("Family of up to four — US$20,000");
-    expect(details.feeNotes.ar.join(" ")).toContain("أسرة مكوّنة من أربعة أفراد كحد أقصى");
-    expect(JSON.stringify(payload)).not.toMatch(/3-6 months|150\+|US\$100,000|ready summary/i);
+    expect(payload?.nameEn).toBe("Antigua & Barbuda");
+    expect(payload?.nameAr).toBe("أنتيغوا وبربودا");
+    expect(payload?.summaryEn).toBeNull();
+    expect(payload?.summaryAr).toBeNull();
+    expect(payload?.details).toEqual({});
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "1. Program Overview",
+      "2. Who Can Be Included",
+      "3. Investment Routes",
+      "4. Contribution Options",
+      "5. Government Processing Fees",
+      "6. Due Diligence Fees",
+      "7. Country at a Glance",
+      "8. Passport Access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar.map(section => section.heading)).toEqual([
+      "1. نظرة عامة على البرنامج",
+      "2. الأشخاص الذين يمكن إدراجهم في الطلب",
+      "3. مسارات الاستثمار",
+      "4. خيارات المساهمة المالية",
+      "5. رسوم المعالجة الحكومية",
+      "6. رسوم التدقيق والتحقق الأمني",
+      "7. لمحة عن الدولة",
+      "8. إمكانية السفر بجواز السفر",
+      "9. عن إيليفاي",
+    ]);
+    const investmentTable = payload?.programmeSections?.en[2]?.blocks.find(block => block.type === "table");
+    expect(investmentTable).toEqual({
+      type: "table",
+      headers: ["Route", "Minimum investment", "Holding period"],
+      rows: [
+        ["Option 1: National Development Fund (NDF)", "US$230,000 per application", "N/A"],
+        ["Option 2: University of the West Indies (UWI) Fund", "US$260,000 (minimum of six persons per application)", "N/A"],
+        ["Option 3: Approved real estate", "US$300,000", "5 years"],
+        ["Option 4: Approved business investment", "US$1,500,000, or US$5,000,000 jointly (each investor at least US$400,000)", "Not stated by the CIU"],
+      ],
+    });
+    const renderedContent = JSON.stringify(payload?.programmeSections);
+    expect(renderedContent).toContain("Typical time to citizenship");
+    expect(renderedContent).toContain("تتولى وحدة الجنسية عن طريق الاستثمار (CIU) إدارة البرنامج.");
+    expect(renderedContent).toContain("Passport Index");
+    expect(renderedContent).toContain("https://www.passportindex.org/passport/antigua-and-barbuda/");
+    expect(renderedContent).toContain("https://www.henleyglobal.com/passport-index/ranking");
+    expect(renderedContent).toContain("https://cip.gov.ag");
+    expect(renderedContent).toContain("https://www.elevay.com");
+    expect(renderedContent).not.toMatch(/3-6 months|150\+|US\$100,000|previous(?:ly)? added|ready summary PDF/i);
+    expect(payload?.readySummaryPdfUrl).toBeNull();
+  });
+
+  it("renders authored Markdown tables and normalizes only formatting, not the cell text", () => {
+    const content = parseProgrammeContent("## Section\n\n| Field | Value |\n|---|---|\n| Cost | **US$10,000** |\n\nA [programme link](https://example.test) is provided.");
+    expect(content).toEqual([{
+      heading: "Section",
+      blocks: [
+        { type: "table", headers: ["Field", "Value"], rows: [["Cost", "US$10,000"]] },
+        { type: "paragraph", text: "A programme link is provided.", links: [{ label: "programme link", url: "https://example.test" }] },
+      ],
+    }]);
   });
 });
