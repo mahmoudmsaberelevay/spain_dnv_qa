@@ -76,4 +76,33 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.details["Income Requirement"]).toContain("Couple EUR 16,560.");
     expect(JSON.stringify(payload)).not.toMatch(/storageKey|ready summary|\.pdf/i);
   });
+
+  it("replaces Antigua completely with the owner-approved bilingual programme content", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30002,
+        title: "Elevay Antigua Barbuda Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Antigua_Barbuda_Summary.pdf",
+        createdAt: 1793263017260,
+      },
+      null,
+    );
+    expect(payload?.publicId).toBe("ready-summary-antigua-barbuda");
+    expect(payload?.nameEn).toBe("Antigua & Barbuda Citizenship by Investment");
+    expect(payload?.nameAr).toContain("جنسية");
+    expect(payload?.summaryEn).toBe("Citizenship of Antigua & Barbuda can be obtained through a contribution (Option 1 or 2), an approved real estate investment (Option 3) or an approved business investment (Option 4), with qualifying family members included in a single application. The programme is administered by the Citizenship by Investment Unit (CIU).");
+    expect(payload?.summaryAr).toContain("يمكن الحصول على جنسية");
+    expect(payload?.details).toMatchObject({ version: 1 });
+    const details = payload?.details as any;
+    expect(details.processingTime.en).toContain("9–12 months");
+    expect(details.residencyRequirement.en).toContain("5 days");
+    expect(details.investmentOptions).toHaveLength(4);
+    expect(details.investmentOptions[0]).toMatchObject({ amount: "US$230,000 per application", notes: { en: "N/A" } });
+    expect(details.investmentOptions[1].amount).toBe("US$260,000 (minimum of six persons per application)");
+    expect(details.investmentOptions[3].notes.en).toBe("5 years‡");
+    expect(details.feeNotes.en.join(" ")).toContain("Family of up to four — US$20,000");
+    expect(details.feeNotes.ar.join(" ")).toContain("أسرة مكوّنة من أربعة أفراد كحد أقصى");
+    expect(JSON.stringify(payload)).not.toMatch(/3-6 months|150\+|US\$100,000|ready summary/i);
+  });
 });
