@@ -976,6 +976,16 @@
       await api.req('POST', k === 'monthly' ? 'ai/autoplan/monthly' : 'ai/autoplan/weekly', k === 'monthly' ? { again: true } : { which: k });
       await loadStudio();
     }, 'Started. Claude is planning; production starts automatically.')));
+    const pr = el.querySelector('#planReset');
+    if (pr) pr.onclick = () => {
+      const now = new Date(); const ym = now.toISOString().slice(0, 7);
+      const month = prompt('Month to re-plan (YYYY-MM):', ym); if (!month) return;
+      const t = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 2)); const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day);
+      const wk = t.getUTCFullYear() + '-W' + String(Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7)).padStart(2, '0');
+      const week = prompt('Publishing week to re-plan (YYYY-Www, Sunday–Saturday):', wk); if (!week) return;
+      if (!confirm(`Reset ${month} and ${week}?\n\nUnpublished posts of ${week} are marked rejected (published posts are kept), ${month}'s plan is superseded, and a fresh monthly plan and weekly plan start now.`)) return;
+      act(async () => { const r = await api.req('POST', 'ai/autoplan/reset', { month, week, note: 'Owner reset from AI Studio.' }); S.lastReset = r; await loadStudio(); }, 'Reset done. Fresh monthly and weekly plans are being made; follow them in Runs.');
+    };
     const aps = el.querySelector('#apSave');
     if (aps) aps.onclick = () => act(async () => {
       await api.saveSettings({ studio: { autoplan: el.querySelector('#apAuto').checked, autoClips: el.querySelector('#apClips').checked, reelLimitPerWeek: Number(el.querySelector('#apReels').value) } });
@@ -1000,7 +1010,7 @@
     return `<section class="panel"><div class="panel-h"><h2>Autopilot</h2><span class="small muted">${ap.studio.autoplan ? 'Plans itself every Saturday 09:00 Cairo (next week) and from the 25th (next month)' : 'Automatic planning is paused'}</span></div>
       <p style="margin:0 0 10px">${status}</p>
       <p class="small muted" style="margin:0 0 12px">OpenAI designs never wait for approval. Requests from Manus run automatically. ${ap.studio.autoClips ? 'Higgsfield clips start by themselves once the keyframes pass QC' : 'Higgsfield clips wait for your approval'}, limited to ${ap.studio.reelLimitPerWeek} reels per 7 days; Meta work stays inside the 200,000 EGP cap and 100 EGP max CPL.</p>
-      ${canEdit() ? `<div class="row"><button class="btn primary" data-autoplan="this">Plan this week now</button><button class="btn" data-autoplan="next">Plan next week now</button><button class="btn" data-autoplan="monthly">Draft next month's plan now</button></div>` : ''}
+      ${canEdit() ? `<div class="row"><button class="btn primary" data-autoplan="this">Plan this week now</button><button class="btn" data-autoplan="next">Plan next week now</button><button class="btn" data-autoplan="monthly">Draft next month's plan now</button>${isOwner() ? '<button class="btn danger" id="planReset" title="Rejects the unpublished posts of a week, supersedes that month\'s plan and starts both again">Reset month &amp; week…</button>' : ''}</div>` : ''}
       ${isOwner() ? `<div class="row small" style="margin-top:12px"><label class="row"><input type="checkbox" id="apAuto" ${ap.studio.autoplan ? 'checked' : ''}> Plan automatically</label><label class="row"><input type="checkbox" id="apClips" ${ap.studio.autoClips ? 'checked' : ''}> Make Higgsfield clips automatically</label><label class="row">Reel limit per 7 days <input class="input" id="apReels" type="number" min="0" max="30" value="${ap.studio.reelLimitPerWeek}" style="width:70px"></label><button class="btn sm" id="apSave">Save</button></div>` : ''}
     </section>`;
   }

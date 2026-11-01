@@ -541,6 +541,10 @@ route("POST", "/ai/autoplan/weekly", "marketer", async (ctx) => {
   const week = /^\d{4}-W\d{2}$/.test(ctx.body.week || "") ? ctx.body.week : ctx.body.which === "this" ? isoWeekOf(Date.now()) : ctx.body.which === "next" ? isoWeekOf(Date.now() + 7 * 86400000) : undefined;
   try { const run = await (await studio()).startWeekly(week, ctx.user); return ok({ ok: true, run }); } catch (e) { return fail(400, e.message); }
 });
+route("POST", "/ai/autoplan/reset", "owner", async (ctx) => {
+  try { return ok({ ok: true, ...(await (await studio()).resetPlanning({ month: String(ctx.body?.month || ""), week: String(ctx.body?.week || ""), note: String(ctx.body?.note || "") }, ctx.user)) }); }
+  catch (e) { return fail(400, String(e?.message || e)); }
+});
 route("POST", "/ai/autoplan/monthly", "marketer", async (ctx) => {
   const d = new Date(); d.setUTCMonth(d.getUTCMonth() + 1, 1);
   const month = /^\d{4}-\d{2}$/.test(ctx.body.month || "") ? ctx.body.month : d.toISOString().slice(0, 7);

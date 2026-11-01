@@ -721,6 +721,31 @@ describe("owner rule: AI council (Claude ⇄ OpenAI ⇄ Manus)", () => {
   });
 });
 
+describe("owner reset of a month and a week (1 Nov 2026)", () => {
+  it("rejects the unpublished week, supersedes the month's plans, never touches published posts, and starts fresh plans", async () => {
+    const ctx = setup([{ title: "November plan", body: "Plan body", budget_changes: [] }]);
+    ctx.state.items.push(
+      { item_id: "2026-W45-01", type: "static", status: "pending_approval", version: 1, owner_comments: [], review: { required: true, week: "2026-W45" } },
+      { item_id: "2026-W45-02", type: "reel", status: "approved", version: 1, owner_comments: [], publish: { direct: {} } },
+      { item_id: "2026-W45-03", type: "static", status: "published", version: 1, owner_comments: [], publish: { direct: { facebook: "fb1" } } },
+      { item_id: "2026-W44-07", type: "static", status: "pending_approval", version: 1, owner_comments: [] },
+    );
+    ctx.state.plans.push({ id: "PLAN-9", month: "2026-11", status: "approved", body: "old", comments: [] }, { id: "PLAN-8", month: "2026-10", status: "approved", body: "oct", comments: [] });
+    await expect(ctx.o.resetPlanning({ month: "2026-11", week: "2026-W45" }, marketer)).rejects.toThrow(/Only the owner/);
+    const r = await ctx.o.resetPlanning({ month: "2026-11", week: "2026-W45" }, owner);
+    expect(r.rejected).toEqual(["2026-W45-01", "2026-W45-02"]);
+    expect(r.kept).toEqual(["2026-W45-03"]);
+    expect(r.superseded).toEqual(["PLAN-9"]);
+    expect(ctx.state.items.find((i) => i.item_id === "2026-W44-07").status).toBe("pending_approval");
+    expect(ctx.state.plans.find((p) => p.id === "PLAN-8").status).toBe("approved");
+    const monthly = await ctx.o.get(r.monthlyRun), weekly = await ctx.o.get(r.weeklyRun);
+    expect(monthly).toMatchObject({ kind: "plan", options: { month: "2026-11" } });
+    expect(weekly).toMatchObject({ kind: "weekly_plan", options: { week: "2026-W45" } });
+    await settle(ctx.o, r.monthlyRun, ["running", "queued"]);
+    expect(ctx.calls.claude.some((c) => /marketing plan for 2026-11/.test(c.prompt))).toBe(true);
+  });
+});
+
 describe("owner rule: cinematographer shot sheet for every clip", () => {
   it("builds the Higgsfield animation prompt from the shot sheet with camera, lens, aperture, ISO, shutter and lighting", async () => {
     const { cinematicShotPrompt } = await import("./ai");

@@ -1564,7 +1564,11 @@ export function createOrchestrator(deps) {
         const { state } = await deps.loadState();
         const week = opts.week || planningWeek();
         const days = WEEKDAY_DATES(week);
-        const monthPlan = state.plans.find((p) => p.status === "approved");
+        // The plan for this week's month: approved first, else its newest draft (e.g. right after an owner reset),
+        // else the newest approved plan of any month.
+        const weekMonth = days[0].slice(0, 7), weekEndMonth = days[6].slice(0, 7);
+        const forMonth = (p) => [weekMonth, weekEndMonth].includes(String(p.month || "").slice(0, 7));
+        const monthPlan = state.plans.find((p) => p.status === "approved" && forMonth(p)) || state.plans.find((p) => ["pending_approval", "changes_requested"].includes(p.status) && forMonth(p)) || state.plans.find((p) => p.status === "approved");
         const councilPicks = state.news.filter((n) => n.selected && n.selected_by === "ai-council");
         const news = (councilPicks.length ? councilPicks : state.news.filter((n) => n.selected || n.confidence === "verified")).slice(0, 8).map((n) => ({ headline: n.headline, country: n.country, program: n.program, angle: n.marketing_angle, why: n.why_selected || undefined }));
         const recent = state.items.slice(-21).map((i) => ({ id: i.item_id, type: i.type, topic: i.topic, program: i.program, status: i.status }));
@@ -1649,7 +1653,8 @@ Return JSON only: {"posts": [one per planned post, in order: {"index": 1, "type"
       }
       case "claude.plan": {
         const live = await deps.liveReport(false);
-        const month = (() => { const d = new Date(); d.setUTCMonth(d.getUTCMonth() + 1, 1); return d.toISOString().slice(0, 7); })();
+        // A named month (owner reset or manual start) wins; the automatic run plans next month.
+        const month = /^\d{4}-\d{2}/.test(String(opts.month || "")) ? String(opts.month).slice(0, 7) : (() => { const d = new Date(); d.setUTCMonth(d.getUTCMonth() + 1, 1); return d.toISOString().slice(0, 7); })();
         const r = await askClaude(run, step, `Live ELEVAY Meta + CRM data (last 30 days and 6 months, JSON):\n${liveSummary(live)}\n\n${run.request ? "Team note: " + run.request + "\n\n" : ""}Write ELEVAY's marketing plan for ${month}. Goal: more qualified leads and clients at lower cost per qualified lead, within the 200,000 EGP monthly cap and 100 EGP max CPL. Cover: what worked and what didn't (with numbers), budget split by campaign/program, audiences and lead-form changes to cut unqualified leads, content themes for the 7 weekly posts (4 static + 3 reels), tests to run, and KPIs. Budget changes are proposals for the owner, not actions. Return JSON: {"title": "...", "body": "the full plan in clear English with headings", "budget_changes": [{"campaign": "...", "change": "...", "reason": "..."}]}`, { note: `Plan request for ${month} with live data attached`, maxTokens: 6000 });
         A.plan = { month, title: r.data.title, body: r.data.body, budget_changes: r.data.budget_changes || [] };
         return;
@@ -2218,6 +2223,54 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     if (!(await claimOnce(`autoplan_week_${week}`))) throw new Error(`The plan for ${week} was already started.`);
     return create({ kind: "weekly_plan", request: `Weekly content plan ${week}`, options: { week }, user });
   }
+  /**
+   * Owner reset (1 Nov 2026): throws away the unpublished plan for a month and a publishing week and starts both
+   * again. Active runs for that week are cancelled, its unpublished items are marked rejected (published or partly
+   * published posts are never touched), that month's plans are marked superseded, then a fresh monthly plan and a
+   * fresh weekly plan (with the AI council) start. Nothing is published or deleted.
+   */
+  async function resetPlanning({ month, week, note = "" }, user) {
+    if (user.role !== "owner") throw new Error("Only the owner can reset the plan.");
+    if (!/^\d{4}-\d{2}$/.test(String(month || ""))) throw new Error("month must look like 2026-11.");
+    if (!/^\d{4}-W\d{2}$/.test(String(week || ""))) throw new Error("week must look like 2026-W45.");
+    const why = String(note || "").trim() || `Owner reset of ${month} and ${week}.`;
+    const cancelled = [];
+    for (const r of await list(200)) {
+      if (["done", "failed", "cancelled"].includes(r.status)) continue;
+      const o = r.options || {};
+      const hit = o.week === week || (r.kind === "plan" && String(o.month || "").startsWith(month)) || (r.kind === "weekly_plan" && o.week === week);
+      if (!hit) continue;
+      try { await cancel(r.id, user); cancelled.push(r.id); } catch { /* already gone */ }
+    }
+    const rejected = [], kept = [], superseded = [];
+    await deps.mutate({}, (st) => {
+      for (const it of st.items) {
+        const inWeek = it.review?.week === week || String(it.item_id || "").startsWith(week + "-");
+        if (!inWeek) continue;
+        const d = it.publish?.direct || {};
+        if (it.status === "published" || d.facebook || d.instagram || d.manual_review || (d.lease?.until && Number(d.lease.until) > Date.now())) { kept.push(it.item_id); continue; }
+        if (it.status === "rejected") continue;
+        it.status = "rejected";
+        it.owner_comments = it.owner_comments || [];
+        it.owner_comments.push({ at: nowIso(), by: user.email, kind: "reset", text: why, version: it.version });
+        E.audit(st, user.email, "item.reset", it.item_id, why);
+        rejected.push(it.item_id);
+      }
+      for (const p of st.plans) {
+        if (String(p.month || "").slice(0, 7) !== month || !["pending_approval", "changes_requested", "approved"].includes(p.status)) continue;
+        p.status = "superseded"; p.superseded_at = nowIso(); p.superseded_by = user.email;
+        E.audit(st, user.email, "plan.superseded", p.id, why);
+        superseded.push(p.id);
+      }
+      return { ok: true };
+    });
+    await q("DELETE FROM ec_kv WHERE name IN (?, ?)", [`autoplan_week_${week}`, `autoplan_month_${month}`]).catch(() => {});
+    await claimOnce(`autoplan_month_${month}`);
+    const monthlyRun = await create({ kind: "plan", request: why, options: { month }, user });
+    const weeklyRun = await startWeekly(week, user);
+    return { cancelled, rejected, kept, superseded, monthlyRun: monthlyRun?.id ?? monthlyRun, weeklyRun: weeklyRun?.id ?? weeklyRun };
+  }
+
   async function startMonthly(month, user) {
     if (!(await claimOnce(`autoplan_month_${month}`))) throw new Error(`The plan for ${month} was already started.`);
     return create({ kind: "plan", request: "", options: { month }, user });
@@ -2376,5 +2429,5 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     return watchdog();
   }
 
-  return { ensureTable, researchNews, startNewsCouncil, startAdsReview, adsReviewDue, create, reviseItem, recreate, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, acceptReview, redo, cancel, tick, watchdog, test: () => providers.test() };
+  return { ensureTable, resetPlanning, researchNews, startNewsCouncil, startAdsReview, adsReviewDue, create, reviseItem, recreate, list, autopilot, startWeekly, startMonthly, get: async (id) => (await get(id))?.run || null, resume: async (id) => { const g = await get(id); if (!g) throw new Error("Run not found."); if (g.run.options?.sandboxOnly && !deps.allowSandboxRuns) throw new Error("Sandbox run cannot execute on the website."); kick(id); }, approve, retry, acceptReview, redo, cancel, tick, watchdog, test: () => providers.test() };
 }
