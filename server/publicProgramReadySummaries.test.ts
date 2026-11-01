@@ -821,6 +821,105 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Vanuatu Ready Summary through all nine English sections and installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30007,
+        title: "Elevay Vanuatu Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Vanuatu_Summary.pdf",
+        createdAt: 1793263793503,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30007",
+      slug: "ready-summary-30007",
+      nameEn: "Vanuatu",
+      nameAr: "فانواتو",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("Vanuatu grants honorary citizenship");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.details["2. Who Can be Included"]).toContain("Dependent children up to the age of 25");
+    expect(payload?.details["2. Who Can be Included"]).toContain("aged 50 or older");
+    expect(payload?.details["3. Investment routes"]).toContain("Development Support Program");
+    expect(payload?.details["4. Contribution options"]).toContain("Single applicant | US$130,000");
+    expect(payload?.details["4. Contribution options"]).toContain("Married couple and two children | US$180,000");
+    expect(payload?.details["4. Contribution options"]).toContain("Each additional applicant | US$10,000");
+    expect(payload?.details["5. Government Processing fees"]).toContain("Passport delivery | US$5,000");
+    expect(payload?.details["5. Government Processing fees"]).toContain("Provided upon request");
+    expect(payload?.details["6. Due diligence fees"]).toContain("Due diligence fee (FIU) | US$5,000");
+    expect(payload?.details["7. Country At glance"]).toContain("335,169");
+    expect(payload?.details["7. Country At glance"]).toContain("US$4,039");
+    expect(payload?.details["7. Country At glance"]).toContain("VAT | 15%");
+    expect(payload?.details["8. Passport access"]).toContain("Visa-free destinations | 46");
+    expect(payload?.details["8. Passport access"]).toContain("Visa-on-arrival destinations | 42");
+    expect(payload?.details["8. Passport access"]).toContain("Total including eTA | 93");
+    expect(payload?.details["9. About Elevay"]).toContain("T +20 128 498 1717");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "1. Program Overview",
+      "2. Who Can be Included",
+      "3. Investment routes",
+      "4. Contribution options",
+      "5. Government Processing fees",
+      "6. Due diligence fees",
+      "7. Country At glance",
+      "8. Passport access",
+      "9. About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.passportindex.org/passport/vanuatu/");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://vancitizenship.gov.vu");
+  });
+
+  it("returns Arabic-only Vanuatu legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30007,
+        title: "Elevay Vanuatu Summary - English",
+        category: "Citizenship",
+        originalFileName: "Elevay_Vanuatu_Summary.pdf",
+        createdAt: 1793263793503,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("تمنح فانواتو الجنسية الفخرية");
+    expect(payload?.summaryAr).toContain("تمنح فانواتو الجنسية الفخرية");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "1. نظرة عامة على البرنامج",
+      "2. الأشخاص الذين يمكن إدراجهم في الطلب",
+      "3. مسارات الاستثمار",
+      "4. خيارات المساهمة",
+      "5. رسوم المعالجة الحكومية",
+      "6. رسوم العناية الواجبة",
+      "7. لمحة عن الدولة",
+      "8. إمكانية السفر بجواز السفر",
+      "9. عن إيليفاي",
+    ]);
+    expect(payload?.details["3. مسارات الاستثمار"]).toContain("برنامج دعم التنمية");
+    expect(payload?.details["4. خيارات المساهمة"]).toContain("130,000 دولار أمريكي");
+    expect(payload?.details["5. رسوم المعالجة الحكومية"]).toContain("5,000 دولار أمريكي");
+    expect(payload?.details["6. رسوم العناية الواجبة"]).toContain("وحدة الاستخبارات المالية FIU");
+    expect(payload?.details["8. إمكانية السفر بجواز السفر"]).toContain("الإجمالي بما في ذلك تصريح السفر الإلكتروني | 93");
+    expect(payload?.details["3. Investment routes"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("Development Support Program");
+    expect(JSON.stringify(payload?.details)).not.toContain("Visa-free destinations");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("returns Arabic-only legacy detail headings and text when the phone language is Arabic", () => {
     const payload = publicReadySummaryFromRecord(
       {
