@@ -229,7 +229,7 @@ export function buildPublicProgramInformation(extractedText: string): { summaryE
 export type ProgrammeContentBlock =
   | { type: "paragraph" | "subheading" | "emphasis"; text: string; links?: Array<{ label: string; url: string }> }
   | { type: "list"; items: string[] }
-  | { type: "table"; headers: string[]; rows: string[][] };
+  | { type: "table"; headers: string[]; rows: string[][]; cellLinks?: Array<Array<Array<{ label: string; url: string }>>> };
 export type ProgrammeContentSection = { heading: string; blocks: ProgrammeContentBlock[] };
 export type BilingualProgrammeContent = { en: ProgrammeContentSection[]; ar: ProgrammeContentSection[] };
 
@@ -252,8 +252,12 @@ function markdownLinks(value: string) {
   }));
 }
 
+function rawTableCells(line: string) {
+  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|");
+}
+
 function parseTableRow(line: string) {
-  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(cell => displayMarkdownText(cell));
+  return rawTableCells(line).map(cell => displayMarkdownText(cell));
 }
 
 /** Parse authored Markdown into display blocks without summarizing or rewriting its words. */
@@ -299,8 +303,13 @@ export function parseProgrammeContent(markdown: string): ProgrammeContentSection
       flushText();
       const tableLines: string[] = [line];
       while (index + 1 < lines.length && lines[index + 1].trim().startsWith("|")) tableLines.push(lines[++index].trim());
-      const rows = tableLines.filter(row => !/^\|?\s*:?-{3,}/.test(row)).map(parseTableRow);
-      if (rows.length) section.blocks.push({ type: "table", headers: rows[0], rows: rows.slice(1) });
+      const dataLines = tableLines.filter(row => !/^\|?\s*:?-{3,}/.test(row));
+      const rows = dataLines.map(parseTableRow);
+      const cellLinks = dataLines.slice(1).map(row => rawTableCells(row).map(markdownLinks));
+      if (rows.length) {
+        const hasCellLinks = cellLinks.some(row => row.some(links => links.length > 0));
+        section.blocks.push({ type: "table", headers: rows[0], rows: rows.slice(1), ...(hasCellLinks ? { cellLinks } : {}) });
+      }
       continue;
     }
     if (/^[-*]\s+/.test(line)) {
