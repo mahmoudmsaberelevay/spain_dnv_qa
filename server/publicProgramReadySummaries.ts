@@ -293,6 +293,8 @@ const SPAIN_ENTREPRENEUR_ENGLISH_SOURCE = "knowledge/summaries/spain-entrepreneu
 const SPAIN_ENTREPRENEUR_ARABIC_SOURCE = "knowledge/summaries/spain-entrepreneur.ar.md";
 const SPAIN_HIGHLY_QUALIFIED_ENGLISH_SOURCE = "knowledge/summaries/spain-highly-qualified.md";
 const SPAIN_HIGHLY_QUALIFIED_ARABIC_SOURCE = "knowledge/summaries/spain-highly-qualified.ar.md";
+const SPAIN_NON_LUCRATIVE_ENGLISH_SOURCE = "knowledge/summaries/spain-non-lucrative.md";
+const SPAIN_NON_LUCRATIVE_ARABIC_SOURCE = "knowledge/summaries/spain-non-lucrative.ar.md";
 const PORTUGAL_D2_ENGLISH_SOURCE = "knowledge/summaries/portugal-d2.md";
 const PORTUGAL_D2_ARABIC_SOURCE = "knowledge/summaries/portugal-d2.ar.md";
 const PORTUGAL_D7_ENGLISH_SOURCE = "knowledge/summaries/portugal-d7.md";
@@ -1208,6 +1210,44 @@ function latestApprovedSpainHighlyQualifiedProgramme(
 }
 
 /**
+ * Serves the latest active Spain Non-Lucrative Ready Summary through the
+ * installed app's legacy fields, selecting only the phone-system language.
+ */
+function latestApprovedSpainNonLucrativeProgramme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+  locale: PublicProgramLocale,
+): PublicReadySummary | null {
+  const english = assetText(SPAIN_NON_LUCRATIVE_ENGLISH_SOURCE);
+  const arabic = assetText(SPAIN_NON_LUCRATIVE_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyLocalizedFields(programmeSections, locale);
+  return {
+    ...identity,
+    nameEn: "Spain Non-Lucrative Residence",
+    nameAr: "إقامة إسبانيا غير الربحية",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: legacy.details,
+    programmeSections,
+  };
+}
+
+/**
  * Serves the latest active Portugal D2 Ready Summary through the installed
  * app's legacy fields, selecting only the phone-system language.
  */
@@ -1353,6 +1393,9 @@ export function publicReadySummaryFromRecord(
   }
   if (identity.country === "Spain" && /digital[\s_-]*nomad|\bdnv\b|telework/i.test(`${summary.title} ${summary.originalFileName}`)) {
     return latestApprovedSpainDigitalNomadProgramme(identity, summary.id, locale);
+  }
+  if (identity.country === "Spain" && /non[\s_-]*lucrative/i.test(`${summary.title} ${summary.originalFileName}`)) {
+    return latestApprovedSpainNonLucrativeProgramme(identity, summary.id, locale);
   }
   if (identity.country === "Spain" && /highly[\s_-]*qualified/i.test(`${summary.title} ${summary.originalFileName}`)) {
     return latestApprovedSpainHighlyQualifiedProgramme(identity, summary.id, locale);

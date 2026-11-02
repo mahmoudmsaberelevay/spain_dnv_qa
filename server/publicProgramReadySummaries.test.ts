@@ -2015,6 +2015,124 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Spain Non-Lucrative Ready Summary as nine English-only installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30020,
+        title: "Elevay Spain Non Lucrative Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Spain_Non_Lucrative_Summary.pdf",
+        createdAt: 1793264365398,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30020",
+      slug: "ready-summary-30020",
+      nameEn: "Spain Non-Lucrative Residence",
+      nameAr: "إقامة إسبانيا غير الربحية",
+    });
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.details["Program Overview"]).toContain("Spain’s temporary non-lucrative residence authorisation");
+    expect(payload?.details["Program Overview"]).toContain("EUR 28,800 a year, gross");
+    expect(payload?.details["Program Overview"]).toContain("400% of the IPREM, over 12 months");
+    expect(payload?.details["Program Overview"]).toContain("1 year from the date of entry into Spain");
+    expect(payload?.details["Program Overview"]).toContain("Up to 1 month");
+    expect(payload?.details["Program Overview"]).toContain("the request is considered rejected");
+    expect(payload?.details["Program Overview"]).toContain("more than 183 days in Spain in the calendar year");
+    expect(payload?.details["Program Overview"]).toContain("digital nomad authorisation");
+    expect(payload?.details["Program Overview"]).toContain("seek your own independent tax advice");
+    expect(payload?.details["Who Can be Included"]).toContain("Not an EU, EEA or Swiss citizen");
+    expect(payload?.details["Who Can be Included"]).toContain("No serious disease under the 2005 International Health Regulations");
+    expect(payload?.details["Who Can be Included"]).toContain("countries lived in during the last 5 years");
+    expect(payload?.details["Who Can be Included"]).toContain("EUR 2,400 a month");
+    expect(payload?.details["Who Can be Included"]).toContain("EUR 7,200 a year");
+    expect(payload?.details["Who Can be Included"]).toContain("Adult children only with a disability");
+    expect(payload?.details["Who Can be Included"]).toContain("Family documents are presented at proposal stage");
+    expect(payload?.details["Investment routes"]).toBe("Not required");
+    expect(payload?.details["Contribution options"]).toBe("Not required");
+    expect(payload?.details["Government Processing fees"]).toBe("All fees shall be presented on proposal stage.");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("505,983 km2");
+    expect(payload?.details["Country At glance"]).toContain("49,077,984");
+    expect(payload?.details["Country At glance"]).toContain("EUR 34,500 (2023)");
+    expect(payload?.details["Country At glance"]).toContain("29 countries");
+    expect(payload?.details["Passport access"]).toBe("Not required");
+    expect(payload?.details["About Elevay"]).toContain("28+ years of experience, since 1998");
+    expect(payload?.details["About Elevay"]).toContain("2,500+ complete cases");
+    expect(payload?.details["About Elevay"]).toContain("T +971 4 282 7221");
+    expect(payload?.details["About Elevay"]).toContain("T +20 128 498 1717");
+    expect(payload?.details["About Elevay"]).toContain("T +94 77 246 8516");
+    expect(payload?.details["About Elevay"]).toContain("not legal, tax or immigration advice");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
+  it("returns only Arabic Spain Non-Lucrative legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30020,
+        title: "Elevay Spain Non Lucrative Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Spain_Non_Lucrative_Summary.pdf",
+        createdAt: 1793264365398,
+      },
+      null,
+      "ar",
+    );
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.summaryAr).toContain("تصريح الإقامة المؤقتة غير الربحية في إسبانيا");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("EUR 28,800 سنويًا");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("حتى شهر واحد");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("يُعد الطلب مرفوضًا");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("أكثر من 183 يومًا");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("الاتحاد الأوروبي أو المنطقة الاقتصادية الأوروبية أو سويسرا");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("EUR 2,400 شهريًا");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("EUR 7,200 سنويًا");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("الأبناء البالغون إلا إذا كانت لديهم إعاقة");
+    expect(payload?.details["مسارات الاستثمار"]).toBe("غير مطلوب");
+    expect(payload?.details["خيارات المساهمة"]).toBe("غير مطلوب");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toBe("يجب تقديم جميع الرسوم في مرحلة تقديم العرض.");
+    expect(payload?.details["رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("505,983 كم2");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("29 دولة");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toBe("غير مطلوب");
+    expect(payload?.details["عن إيليفاي"]).toContain("أكثر من 2,500 ملف مكتمل");
+    expect(payload?.details["Program Overview"]).toBeUndefined();
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("serves the latest active Portugal D2 Ready Summary as nine English-only installed-app fields", () => {
     const payload = publicReadySummaryFromRecord(
       {
