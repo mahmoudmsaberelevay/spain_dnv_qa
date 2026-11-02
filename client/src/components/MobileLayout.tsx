@@ -309,7 +309,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
   // Only block unauthenticated access on non-public pages
   if (!user && !isPublicPage) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-950 px-6">
+      <div className="elevay-home min-h-screen flex flex-col items-center justify-center px-6">
         <img src="/manus-storage/elevay-logo_2c219cd3.png" alt="Elevay" className="h-20 w-auto object-contain mb-8" />
         <h2 className="text-xl font-semibold text-white mb-2">Sign in to continue</h2>
         <p className="text-sm text-white/50 text-center mb-8">Access to the Elevay platform requires authentication.</p>
@@ -325,12 +325,12 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="elevay-app-content min-h-screen flex flex-col bg-transparent">
       {/* Full Slide-out Sidebar with all modules and subpages */}
       {showSidebar && (
-        <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm" onClick={() => setShowSidebar(false)}>
+        <div className="elevay-overlay fixed inset-0 z-[70]" onClick={() => setShowSidebar(false)}>
           <div
-            className="absolute top-0 left-0 bottom-0 w-[280px] bg-background border-r shadow-2xl animate-in slide-in-from-left duration-200 flex flex-col"
+            className="elevay-sheet-surface absolute top-0 left-0 bottom-0 w-[280px] bg-background border-r shadow-2xl animate-in slide-in-from-left duration-200 flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Sidebar Header */}
@@ -470,7 +470,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
       )}
 
       {/* Mobile Header */}
-      <header className="sticky top-0 z-50 flex items-center justify-between h-14 px-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:backdrop-blur">
+      <header className="elevay-topbar sticky top-0 z-50 flex items-center justify-between h-14 px-4 border-b bg-background/82">
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowSidebar(true)}
@@ -507,9 +507,9 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
 
       {/* More Menu Overlay (bottom sheet) */}
       {showMore && (
-        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm" onClick={() => setShowMore(false)}>
+        <div className="elevay-overlay fixed inset-0 z-[60]" onClick={() => setShowMore(false)}>
           <div
-            className="absolute bottom-0 left-0 right-0 bg-background rounded-t-3xl border-t max-h-[70vh] overflow-y-auto animate-in slide-in-from-bottom duration-300"
+            className="elevay-sheet-surface absolute bottom-0 left-0 right-0 bg-background rounded-t-3xl border-t max-h-[70vh] overflow-y-auto animate-in slide-in-from-bottom duration-300"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-5 py-4 border-b">
@@ -532,8 +532,8 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
                       onClick={() => { setLocation(item.path); setShowMore(false); }}
                       className="w-full flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-accent transition-colors"
                     >
-                      <div className="h-10 w-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
-                        <Icon className="h-5 w-5 text-purple-600" />
+                      <div className="module-accent-badge module-accent--marketing h-10 w-10 rounded-xl flex items-center justify-center">
+                        <Icon className="h-5 w-5" />
                       </div>
                       <span className="flex-1 text-left text-sm font-medium">{item.label}</span>
                       <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -599,7 +599,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
       )}
 
       {/* Bottom Tab Bar — only show for authenticated users */}
-      {user && <nav className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur border-t safe-area-bottom">
+      {user && <nav className="elevay-bottom-nav fixed bottom-0 left-0 right-0 z-50 bg-background/82 border-t safe-area-bottom">
         <div className="flex items-center justify-around h-16 px-2">
           {TABS.map((tab) => {
             const Icon = tab.icon;
@@ -649,7 +649,7 @@ function MobileNotificationBell() {
     >
       <Bell className="h-5 w-5 text-muted-foreground" />
       {unread > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+        <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
           {unread > 9 ? "9+" : unread}
         </span>
       )}

@@ -179,7 +179,7 @@ describe("Weekly Results CRM integration contract", () => {
     expect(styles).toContain("color: #ffffff");
     expect(styles).toContain("input::placeholder");
     expect(workspace).toContain('agentic-readable min-h-full bg-[#0c1320] text-white');
-    expect(dashboard).toContain('agentic-readable min-h-full bg-[#0c1320] text-white');
+    expect(dashboard).toContain('marketing-workspace agentic-readable min-h-full');
     expect(hub).toContain('agentic-readable min-h-full bg-[#0c1320]');
   });
 

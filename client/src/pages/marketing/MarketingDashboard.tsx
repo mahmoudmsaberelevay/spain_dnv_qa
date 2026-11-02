@@ -10,7 +10,7 @@ const tools = [
     title: "Ready Summaries",
     description: "Browse and download approved ELEVAY country and program summaries. Administrators can add or remove PDFs from the shared library.",
     href: "/marketing/ready-summaries",
-    color: "from-[#5BA3B8] to-[#1A3A5C]",
+    tone: "brand",
     badge: "PDF Library",
   },
   {
@@ -18,7 +18,7 @@ const tools = [
     title: "Arabic Voice-over",
     description: "Convert approved Arabic marketing scripts into polished MP3 voice-overs using ELEVAY’s approved Eleven v3 voice settings.",
     href: "/marketing/voice-over",
-    color: "from-[#5BA3B8] to-[#1A3A5C]",
+    tone: "brand",
     badge: "Eleven v3",
   },
   {
@@ -26,7 +26,7 @@ const tools = [
     title: "Summary Generator",
     description: "Create branded program summaries with full editorial control and export them as professional PDFs.",
     href: "/marketing/summary-generator",
-    color: "from-teal-500 to-cyan-600",
+    tone: "teal",
     badge: "Available",
   },
   {
@@ -34,7 +34,7 @@ const tools = [
     title: "Program Enhanced Comparison",
     description: "Compare citizenship and residency programs side-by-side with criteria, costs, timelines, and benefits.",
     href: "/marketing/program-comparison",
-    color: "from-blue-500 to-indigo-600",
+    tone: "sky",
     badge: "Available",
   },
   {
@@ -42,7 +42,7 @@ const tools = [
     title: "Program Proposal",
     description: "Generate tailored program proposals for clients based on their profile, budget, and goals.",
     href: "/marketing/program-proposal",
-    color: "from-purple-500 to-violet-600",
+    tone: "gold",
     badge: "Available",
   },
 ];
@@ -101,21 +101,21 @@ export default function MarketingDashboard() {
   }, [isAdmin]);
 
   return (
-    <div className="agentic-readable min-h-full bg-[#0c1320] text-white"><div className="mx-auto max-w-5xl p-6">
+    <div className="marketing-workspace agentic-readable min-h-full"><div className="mx-auto max-w-5xl p-6">
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-2">
-          <Sparkles className="w-5 h-5 text-teal-400" />
-          <span className="text-sm text-teal-400 font-medium uppercase tracking-widest">Marketing Module</span>
+          <Sparkles className="w-5 h-5 text-[#A1C6CF]" />
+          <span className="text-sm text-[#A1C6CF] font-medium uppercase tracking-widest">Marketing Module</span>
         </div>
         <h1 className="text-3xl font-bold text-white mb-2">Marketing Tools</h1>
         <p className="text-slate-100 text-base">Create professional marketing materials for your citizenship and residency programs.</p>
       </div>
 
       {isAdmin && (
-        <section className="mb-8 rounded-xl border border-white/10 bg-[#121b2d] p-5" aria-labelledby="news-import-health-heading">
+        <section className="elevay-marketing-surface mb-8 rounded-2xl border p-5" aria-labelledby="news-import-health-heading">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-start gap-3">
-              <div className={`mt-0.5 rounded-lg p-2 ${newsHealth?.connected && !newsHealth.lastError ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`}>
+              <div className={`metric-icon mt-0.5 rounded-lg p-2 ${newsHealth?.connected && !newsHealth.lastError ? "metric-icon--success" : "metric-icon--gold"}`}>
                 {newsHealthLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : newsHealth?.connected && !newsHealth.lastError ? <CheckCircle2 className="h-5 w-5" /> : <MailWarning className="h-5 w-5" />}
               </div>
               <div>
@@ -127,7 +127,7 @@ export default function MarketingDashboard() {
               type="button"
               variant="outline"
               size="sm"
-              className="gap-2 border-white/15 bg-white/5 text-white hover:bg-white/10"
+              className="marketing-status-button gap-2"
               onClick={() => window.location.assign("/api/admin/news/status-page")}
             >
               Open status page <ArrowRight className="h-4 w-4" />
@@ -135,23 +135,23 @@ export default function MarketingDashboard() {
           </div>
 
           {newsHealthError ? (
-            <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-500/10 p-3 text-sm text-red-200">
+            <div className="mt-4 flex items-start gap-2 rounded-xl border border-destructive/35 bg-destructive/15 p-3 text-sm text-destructive-foreground">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{newsHealthError}</span>
             </div>
           ) : newsHealth ? (
             <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
-              <div className="rounded-lg bg-white/5 p-3"><p className="text-slate-100">Gmail authorization</p><p className={newsHealth.connected ? "font-semibold text-emerald-300" : "font-semibold text-amber-300"}>{newsHealth.connected ? "Connected" : "Action required"}</p><p className="mt-1 break-all text-xs text-white">{newsHealth.email || newsHealth.sourceMailbox}</p></div>
-              <div className="rounded-lg bg-white/5 p-3"><p className="text-slate-100">Last successful import</p><p className="font-semibold text-white">{formatDate(newsHealth.lastSuccessfulAt)}</p></div>
-              <div className="rounded-lg bg-white/5 p-3"><p className="text-slate-100">Last attempt</p><p className="font-semibold text-white">{formatDate(newsHealth.lastAttemptAt)}</p></div>
-              <div className="rounded-lg bg-white/5 p-3"><p className="text-slate-100">Importer error</p><p className={newsHealth.lastError ? "font-semibold text-red-300" : "font-semibold text-emerald-300"}>{newsHealth.lastError || "No current error"}</p></div>
+              <div className="elevay-marketing-status-tile rounded-xl p-3"><p className="text-slate-100">Gmail authorization</p><p className={newsHealth.connected ? "font-semibold text-[#A1C6CF]" : "font-semibold text-[#EBD990]"}>{newsHealth.connected ? "Connected" : "Action required"}</p><p className="mt-1 break-all text-xs text-white">{newsHealth.email || newsHealth.sourceMailbox}</p></div>
+              <div className="elevay-marketing-status-tile rounded-xl p-3"><p className="text-slate-100">Last successful import</p><p className="font-semibold text-white">{formatDate(newsHealth.lastSuccessfulAt)}</p></div>
+              <div className="elevay-marketing-status-tile rounded-xl p-3"><p className="text-slate-100">Last attempt</p><p className="font-semibold text-white">{formatDate(newsHealth.lastAttemptAt)}</p></div>
+              <div className="elevay-marketing-status-tile rounded-xl p-3"><p className="text-slate-100">Importer error</p><p className={newsHealth.lastError ? "font-semibold text-[#E8A7AD]" : "font-semibold text-[#A1C6CF]"}>{newsHealth.lastError || "No current error"}</p></div>
             </div>
           ) : (
             <p className="mt-5 text-sm text-slate-100">Loading News importer status…</p>
           )}
 
           {(newsHealth?.authorizationIssue || newsHealth?.lastError) && (
-            <div className="mt-3 rounded-lg border border-amber-400/25 bg-amber-500/10 p-3 text-sm text-amber-100">
+            <div className="mt-3 rounded-xl border border-[#EBD990]/30 bg-[#C9A84C]/15 p-3 text-sm text-[#FFF4C9]">
               <strong>Attention:</strong> {newsHealth.authorizationIssue || newsHealth.lastError}
             </div>
           )}
@@ -166,12 +166,12 @@ export default function MarketingDashboard() {
             <div
               key={tool.href}
               onClick={() => !isComingSoon && navigate(tool.href)}
-              className={`relative bg-[#1a2235] border border-white/10 rounded-xl p-6 flex flex-col gap-4 transition-all duration-200 ${isComingSoon ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:border-teal-500/50 hover:bg-[#1e2a40]"}`}
+              className={`elevay-marketing-tool-card relative rounded-2xl border p-6 flex flex-col gap-4 transition-all duration-200 ${isComingSoon ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
             >
-              <span className={`absolute top-4 right-4 text-xs font-semibold px-2 py-0.5 rounded-full ${isComingSoon ? "bg-gray-700 text-slate-100" : "bg-teal-900/60 text-teal-300"}`}>{tool.badge}</span>
-              <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center`}><Icon className="w-6 h-6 text-white" /></div>
+              <span className={`absolute top-4 right-4 text-xs font-semibold px-2 py-0.5 rounded-full ${isComingSoon ? "bg-white/10 text-slate-100" : "marketing-tool-badge"}`}>{tool.badge}</span>
+              <div className={`marketing-tool-icon marketing-tool-icon--${tool.tone} w-12 h-12 rounded-xl flex items-center justify-center`}><Icon className="w-6 h-6" /></div>
               <div className="flex-1"><h2 className="text-lg font-semibold text-white mb-1">{tool.title}</h2><p className="text-sm text-slate-100 leading-relaxed">{tool.description}</p></div>
-              {!isComingSoon && <div className="flex items-center gap-1 text-teal-400 text-sm font-medium mt-1">Open Tool <ArrowRight className="w-4 h-4" /></div>}
+              {!isComingSoon && <div className="flex items-center gap-1 text-[#A1C6CF] text-sm font-medium mt-1">Open Tool <ArrowRight className="w-4 h-4" /></div>}
             </div>
           );
         })}

@@ -24,6 +24,12 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -43,90 +49,178 @@
 }
 
 :root {
-  --radius: 0.65rem;
-  --background: oklch(0.985 0.002 240);
-  --foreground: oklch(0.13 0.015 240);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.13 0.015 240);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.13 0.015 240);
-  --primary: oklch(0.38 0.14 25);
-  --primary-foreground: oklch(0.98 0.002 240);
-  --secondary: oklch(0.96 0.005 240);
-  --secondary-foreground: oklch(0.25 0.015 240);
-  --muted: oklch(0.96 0.004 240);
-  --muted-foreground: oklch(0.52 0.012 240);
-  --accent: oklch(0.72 0.12 65);
-  --accent-foreground: oklch(0.13 0.015 240);
-  --destructive: oklch(0.55 0.2 25);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.9 0.004 240);
-  --input: oklch(0.9 0.004 240);
-  --ring: oklch(0.38 0.14 25);
-  --chart-1: oklch(0.38 0.14 25);
-  --chart-2: oklch(0.55 0.15 145);
-  --chart-3: oklch(0.72 0.12 65);
-  --chart-4: oklch(0.52 0.12 250);
-  --chart-5: oklch(0.65 0.14 300);
-  --sidebar: oklch(0.14 0.02 240);
-  --sidebar-foreground: oklch(0.88 0.005 240);
-  --sidebar-primary: oklch(0.65 0.14 25);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.22 0.02 240);
-  --sidebar-accent-foreground: oklch(0.88 0.005 240);
-  --sidebar-border: oklch(0.22 0.02 240);
-  --sidebar-ring: oklch(0.65 0.14 25);
-  --success: oklch(0.55 0.15 145);
-  --warning: oklch(0.72 0.15 65);
-  --gold: oklch(0.72 0.12 65);
+  --radius: 1rem;
+
+  /* ELEVAY brand palette */
+  --elevay-deep-navy: #0a1628;
+  --elevay-navy: #1a3a5c;
+  --elevay-blue: #5ba3b8;
+  --elevay-logo-blue: #a1c6cf;
+  --elevay-gold: #c9a84c;
+  --elevay-gold-light: #ebd990;
+
+  /* Semantic theme API — retained for all existing components */
+  --background: #eef5f6;
+  --foreground: #132f4d;
+  --card: rgba(255, 255, 255, 0.78);
+  --card-foreground: #132f4d;
+  --popover: rgba(252, 255, 255, 0.94);
+  --popover-foreground: #132f4d;
+  --primary: #1a3a5c;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(219, 235, 238, 0.72);
+  --secondary-foreground: #1a3a5c;
+  --muted: rgba(218, 232, 235, 0.66);
+  --muted-foreground: #557086;
+  --accent: rgba(161, 198, 207, 0.36);
+  --accent-foreground: #163d5b;
+  --destructive: #b54550;
+  --destructive-foreground: #ffffff;
+  --success: #28755f;
+  --success-foreground: #ffffff;
+  --warning: #9a741e;
+  --warning-foreground: #1f3045;
+  --info: #3b7e98;
+  --info-foreground: #ffffff;
+  --border: rgba(26, 58, 92, 0.15);
+  --input: rgba(255, 255, 255, 0.72);
+  --ring: #5ba3b8;
+
+  --chart-1: #1a3a5c;
+  --chart-2: #5ba3b8;
+  --chart-3: #c9a84c;
+  --chart-4: #6694ad;
+  --chart-5: #4a7d6c;
+  --chart-danger: #b54550;
+  --chart-muted: #708196;
+  --chart-cursor: rgba(91, 163, 184, 0.13);
+
+  --sidebar: #0a1628;
+  --sidebar-foreground: #eef8f9;
+  --sidebar-primary: #a1c6cf;
+  --sidebar-primary-foreground: #0a1628;
+  --sidebar-accent: rgba(161, 198, 207, 0.16);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(161, 198, 207, 0.2);
+  --sidebar-ring: #a1c6cf;
+
+  /* Material tiers: controls/navigation float, content remains readable. */
+  --glass-surface: rgba(255, 255, 255, 0.74);
+  --glass-surface-strong: rgba(250, 254, 255, 0.94);
+  --glass-control: rgba(255, 255, 255, 0.7);
+  --glass-inset: rgba(26, 58, 92, 0.07);
+  --glass-border: rgba(255, 255, 255, 0.78);
+  --glass-border-subtle: rgba(26, 58, 92, 0.13);
+  --glass-highlight: rgba(255, 255, 255, 0.86);
+  --glass-shadow-sm: 0 8px 26px rgba(20, 50, 76, 0.08), 0 1px 2px rgba(10, 22, 40, 0.04);
+  --glass-shadow-md: 0 20px 54px rgba(20, 50, 76, 0.15), 0 3px 10px rgba(10, 22, 40, 0.08);
+  --overlay-scrim: rgba(10, 22, 40, 0.46);
+
+  --marketing-surface: rgba(18, 38, 61, 0.75);
+  --marketing-surface-strong: rgba(10, 22, 40, 0.92);
+  --marketing-border: rgba(161, 198, 207, 0.22);
 }
 
 .dark {
-  --background: oklch(0.1 0.015 240);
-  --foreground: oklch(0.95 0.005 240);
-  --card: oklch(0.14 0.015 240);
-  --card-foreground: oklch(0.95 0.005 240);
-  --popover: oklch(0.14 0.015 240);
-  --popover-foreground: oklch(0.95 0.005 240);
-  --primary: oklch(0.65 0.14 25);
-  --primary-foreground: oklch(0.1 0.015 240);
-  --secondary: oklch(0.2 0.015 240);
-  --secondary-foreground: oklch(0.85 0.005 240);
-  --muted: oklch(0.18 0.012 240);
-  --muted-foreground: oklch(0.6 0.01 240);
-  --accent: oklch(0.72 0.12 65);
-  --accent-foreground: oklch(0.1 0.015 240);
-  --destructive: oklch(0.6 0.2 25);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.22 0.015 240);
-  --input: oklch(0.22 0.015 240);
-  --ring: oklch(0.65 0.14 25);
-  --chart-1: oklch(0.65 0.14 25);
-  --chart-2: oklch(0.65 0.15 145);
-  --chart-3: oklch(0.72 0.12 65);
-  --chart-4: oklch(0.62 0.12 250);
-  --chart-5: oklch(0.72 0.14 300);
-  --sidebar: oklch(0.1 0.015 240);
-  --sidebar-foreground: oklch(0.88 0.005 240);
-  --sidebar-primary: oklch(0.65 0.14 25);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.18 0.015 240);
-  --sidebar-accent-foreground: oklch(0.88 0.005 240);
-  --sidebar-border: oklch(0.22 0.015 240);
-  --sidebar-ring: oklch(0.65 0.14 25);
+  --background: #0a1628;
+  --foreground: #eff8f9;
+  --card: rgba(20, 47, 73, 0.78);
+  --card-foreground: #eff8f9;
+  --popover: rgba(13, 33, 54, 0.94);
+  --popover-foreground: #eff8f9;
+  --primary: #a1c6cf;
+  --primary-foreground: #0a1628;
+  --secondary: rgba(91, 163, 184, 0.16);
+  --secondary-foreground: #dff2f4;
+  --muted: rgba(161, 198, 207, 0.13);
+  --muted-foreground: #adc5ce;
+  --accent: rgba(91, 163, 184, 0.22);
+  --accent-foreground: #f2fbfc;
+  --destructive: #e37a83;
+  --destructive-foreground: #1b1114;
+  --success: #66b59b;
+  --success-foreground: #09261f;
+  --warning: #e0bf69;
+  --warning-foreground: #2b230d;
+  --info: #80c4d4;
+  --info-foreground: #08262d;
+  --border: rgba(161, 198, 207, 0.18);
+  --input: rgba(161, 198, 207, 0.1);
+  --ring: #a1c6cf;
+
+  --chart-1: #a1c6cf;
+  --chart-2: #5ba3b8;
+  --chart-3: #e0bf69;
+  --chart-4: #7eb3c7;
+  --chart-5: #74b69f;
+  --chart-danger: #e37a83;
+  --chart-muted: #9cb6c1;
+  --chart-cursor: rgba(161, 198, 207, 0.14);
+
+  --sidebar: rgba(8, 22, 40, 0.94);
+  --sidebar-foreground: #eff8f9;
+  --sidebar-primary: #a1c6cf;
+  --sidebar-primary-foreground: #0a1628;
+  --sidebar-accent: rgba(161, 198, 207, 0.16);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(161, 198, 207, 0.2);
+  --sidebar-ring: #a1c6cf;
+
+  --glass-surface: rgba(20, 47, 73, 0.76);
+  --glass-surface-strong: rgba(13, 33, 54, 0.94);
+  --glass-control: rgba(161, 198, 207, 0.1);
+  --glass-inset: rgba(161, 198, 207, 0.09);
+  --glass-border: rgba(161, 198, 207, 0.24);
+  --glass-border-subtle: rgba(161, 198, 207, 0.16);
+  --glass-highlight: rgba(255, 255, 255, 0.1);
+  --glass-shadow-sm: 0 8px 26px rgba(0, 0, 0, 0.18), 0 1px 2px rgba(0, 0, 0, 0.1);
+  --glass-shadow-md: 0 20px 54px rgba(0, 0, 0, 0.32), 0 3px 10px rgba(0, 0, 0, 0.18);
+  --overlay-scrim: rgba(3, 10, 20, 0.62);
+
+  --marketing-surface: rgba(18, 38, 61, 0.8);
+  --marketing-surface-strong: rgba(10, 22, 40, 0.95);
+  --marketing-border: rgba(161, 198, 207, 0.24);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
+  html {
+    min-height: 100%;
+    background: var(--background);
+  }
+
   body {
     @apply bg-background text-foreground;
+    min-height: 100vh;
     font-family: 'Inter', system-ui, sans-serif;
+    background-image:
+      radial-gradient(circle at 4% -8%, rgba(161, 198, 207, 0.52), transparent 27rem),
+      radial-gradient(circle at 96% 3%, rgba(201, 168, 76, 0.14), transparent 25rem),
+      linear-gradient(145deg, #f9fcfc 0%, #edf5f6 46%, #e5f0f2 100%);
+    background-attachment: fixed;
   }
+
+  .dark body,
+  body:has(.elevay-home),
+  body:has(.marketing-workspace) {
+    background-image:
+      radial-gradient(circle at 8% -8%, rgba(91, 163, 184, 0.2), transparent 28rem),
+      radial-gradient(circle at 96% 3%, rgba(201, 168, 76, 0.1), transparent 24rem),
+      linear-gradient(145deg, #0a1628 0%, #102741 56%, #0a1628 100%);
+  }
+
+  ::selection {
+    color: #ffffff;
+    background: rgba(26, 58, 92, 0.78);
+  }
+
   .font-serif {
     font-family: 'Playfair Display', Georgia, serif;
   }
+
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
   [type="button"]:not(:disabled),
@@ -141,24 +235,11 @@
 }
 
 @layer components {
-  /**
-   * Custom container utility that centers content and adds responsive padding.
-   *
-   * This overrides Tailwind's default container behavior to:
-   * - Auto-center content (mx-auto)
-   * - Add responsive horizontal padding
-   * - Set max-width for large screens
-   *
-   * Usage: <div className="container">...</div>
-   *
-   * For custom widths, use max-w-* utilities directly:
-   * <div className="max-w-6xl mx-auto px-4">...</div>
-   */
   .container {
     width: 100%;
     margin-left: auto;
     margin-right: auto;
-    padding-left: 1rem; /* 16px - mobile padding */
+    padding-left: 1rem;
     padding-right: 1rem;
   }
 
@@ -167,7 +248,251 @@
     min-width: 0;
   }
 
-  /* Agentic Marketing uses dark editorial workspaces: form copy must remain readable in either application theme. */
+  /* Content surfaces are deliberately calmer than controls/navigation. */
+  .elevay-glass-panel {
+    background: var(--glass-surface);
+    border-color: var(--glass-border-subtle);
+    box-shadow: var(--glass-shadow-sm), inset 0 1px 0 var(--glass-highlight);
+  }
+
+  .elevay-floating-surface,
+  .elevay-sheet-surface,
+  .elevay-topbar,
+  .elevay-bottom-nav {
+    background: var(--glass-surface-strong);
+    border-color: var(--glass-border);
+    box-shadow: var(--glass-shadow-md), inset 0 1px 0 var(--glass-highlight);
+  }
+
+  .elevay-control-surface {
+    background: var(--glass-control);
+    border-color: var(--glass-border-subtle);
+    box-shadow: inset 0 1px 0 var(--glass-highlight), 0 1px 2px rgba(10, 22, 40, 0.03);
+  }
+
+  .elevay-app-shell [data-slot="sidebar-inner"],
+  .elevay-glass-sidebar {
+    background: linear-gradient(180deg, rgba(10, 22, 40, 0.97), rgba(18, 47, 73, 0.94));
+    border-right-color: var(--sidebar-border);
+    box-shadow: 12px 0 36px rgba(10, 22, 40, 0.12), inset -1px 0 0 rgba(255, 255, 255, 0.035);
+  }
+
+  .elevay-topbar {
+    backdrop-filter: saturate(150%) blur(18px);
+    -webkit-backdrop-filter: saturate(150%) blur(18px);
+  }
+
+  .elevay-bottom-nav {
+    backdrop-filter: saturate(150%) blur(20px);
+    -webkit-backdrop-filter: saturate(150%) blur(20px);
+  }
+
+  .elevay-floating-surface,
+  .elevay-sheet-surface {
+    backdrop-filter: saturate(145%) blur(20px);
+    -webkit-backdrop-filter: saturate(145%) blur(20px);
+  }
+
+  .elevay-overlay {
+    background: var(--overlay-scrim);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+
+  .elevay-featured-panel {
+    background:
+      linear-gradient(135deg, rgba(161, 198, 207, 0.4), rgba(255, 255, 255, 0.74) 50%, rgba(235, 217, 144, 0.3));
+    border-color: rgba(91, 163, 184, 0.25);
+  }
+
+  .dark .elevay-featured-panel {
+    background:
+      linear-gradient(135deg, rgba(91, 163, 184, 0.26), rgba(18, 47, 73, 0.84) 50%, rgba(201, 168, 76, 0.18));
+  }
+
+  .elevay-featured-icon {
+    color: var(--primary);
+    background: rgba(161, 198, 207, 0.34);
+  }
+
+  .elevay-data-table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .elevay-data-table thead tr,
+  [data-slot="sidebar-inset"] table:not([data-slot="table"]) thead tr {
+    background: var(--glass-inset);
+  }
+
+  .elevay-data-table th,
+  [data-slot="sidebar-inset"] table:not([data-slot="table"]) th {
+    color: var(--muted-foreground);
+    letter-spacing: 0.035em;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+  }
+
+  .elevay-data-table tbody tr,
+  [data-slot="sidebar-inset"] table:not([data-slot="table"]) tbody tr {
+    transition: background-color 160ms var(--ease-out, ease-out);
+  }
+
+  .elevay-data-table tbody tr:hover,
+  [data-slot="sidebar-inset"] table:not([data-slot="table"]) tbody tr:hover {
+    background: rgba(161, 198, 207, 0.12);
+  }
+
+  .recharts-default-tooltip {
+    background: var(--glass-surface-strong) !important;
+    border: 1px solid var(--glass-border-subtle) !important;
+    border-radius: 0.8rem !important;
+    box-shadow: var(--glass-shadow-md) !important;
+    color: var(--foreground) !important;
+    backdrop-filter: blur(16px);
+  }
+
+  .recharts-cartesian-grid line,
+  .recharts-polar-grid line {
+    stroke: color-mix(in srgb, var(--border) 80%, transparent) !important;
+  }
+
+  .recharts-cartesian-axis-tick-value,
+  .recharts-legend-item-text {
+    fill: var(--muted-foreground) !important;
+    color: var(--muted-foreground) !important;
+  }
+
+  .metric-positive { color: var(--success); }
+  .metric-negative { color: var(--destructive); }
+  .metric-primary { color: var(--primary); }
+  .metric-gold { color: var(--warning); }
+  .metric-positive-bg { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+  .metric-negative-bg { color: var(--destructive); background: color-mix(in srgb, var(--destructive) 11%, transparent); }
+  .metric-primary-bg { color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); }
+  .metric-gold-bg { color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, transparent); }
+
+  .elevay-income-action { background: var(--success); color: var(--success-foreground); }
+  .elevay-income-action:hover { background: color-mix(in srgb, var(--success) 88%, #000000); }
+  .elevay-transfer-action { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 28%, transparent); background: var(--glass-control); }
+  .elevay-transfer-action:hover { background: color-mix(in srgb, var(--elevay-logo-blue) 26%, transparent); }
+
+  .elevay-success-banner {
+    border-left-color: var(--success);
+    background: color-mix(in srgb, var(--success) 8%, var(--glass-surface));
+  }
+
+  .metric-icon { border-radius: 0.8rem; }
+  .metric-icon--info { color: var(--info); background: color-mix(in srgb, var(--info) 13%, transparent); }
+  .metric-icon--primary { color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); }
+  .metric-icon--gold { color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, transparent); }
+  .metric-icon--success { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+  .metric-icon--muted { color: var(--muted-foreground); background: var(--glass-inset); }
+
+  .consultant-card { border: 1px solid var(--glass-border-subtle); }
+  .consultant-card--mahmoud { color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, transparent); }
+  .consultant-card--ziad { color: var(--info); background: color-mix(in srgb, var(--info) 9%, transparent); }
+  .consultant-card--kirolos { color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, transparent); }
+  .consultant-card--fouad { color: var(--success); background: color-mix(in srgb, var(--success) 9%, transparent); }
+  .consultant-card .consultant-icon { background: color-mix(in srgb, currentColor 13%, transparent); }
+
+  .module-accent--contracting { --module-accent: #a1c6cf; --module-accent-bg: rgba(161, 198, 207, 0.17); }
+  .module-accent--analysis { --module-accent: #88b3c2; --module-accent-bg: rgba(136, 179, 194, 0.17); }
+  .module-accent--docs { --module-accent: #7fb1a0; --module-accent-bg: rgba(127, 177, 160, 0.17); }
+  .module-accent--financial { --module-accent: #e0bf69; --module-accent-bg: rgba(224, 191, 105, 0.15); }
+  .module-accent--waqc { --module-accent: #7ab7a0; --module-accent-bg: rgba(122, 183, 160, 0.16); }
+  .module-accent--leads { --module-accent: #8fc4d1; --module-accent-bg: rgba(143, 196, 209, 0.17); }
+  .module-accent--marketing { --module-accent: #ebd990; --module-accent-bg: rgba(235, 217, 144, 0.15); }
+  .module-accent--reports { --module-accent: #a1c6cf; --module-accent-bg: rgba(161, 198, 207, 0.17); }
+  .module-accent--backup { --module-accent: #adc5ce; --module-accent-bg: rgba(173, 197, 206, 0.14); }
+  .module-accent--ai-council { --module-accent: #8fc4d1; --module-accent-bg: rgba(143, 196, 209, 0.17); }
+  .module-accent-badge { background: var(--module-accent-bg); color: var(--module-accent); border: 1px solid color-mix(in srgb, var(--module-accent) 25%, transparent); }
+  .module-accent-dot { background: var(--module-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--module-accent) 14%, transparent); }
+  .module-accent-text { color: var(--module-accent); }
+
+  .elevay-home {
+    min-height: 100vh;
+    color: #ffffff;
+    background:
+      radial-gradient(circle at 14% -8%, rgba(91, 163, 184, 0.28), transparent 27rem),
+      radial-gradient(circle at 90% 0%, rgba(201, 168, 76, 0.15), transparent 24rem),
+      linear-gradient(145deg, #0a1628 0%, #102b49 58%, #0a1628 100%);
+  }
+
+  .elevay-home__header {
+    background: rgba(10, 22, 40, 0.5);
+    border-color: rgba(161, 198, 207, 0.14);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+  }
+
+  .module-card {
+    --module-card-accent: var(--elevay-blue);
+    --module-card-glow: rgba(91, 163, 184, 0.2);
+    border-color: rgba(161, 198, 207, 0.18);
+    background: linear-gradient(135deg, rgba(23, 54, 82, 0.84), rgba(10, 22, 40, 0.72));
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    transform: translateZ(0);
+  }
+
+  .module-card::before {
+    position: absolute;
+    inset: 0;
+    content: "";
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(circle at 0 0, var(--module-card-glow), transparent 62%);
+    transition: opacity 220ms var(--ease-out, ease-out);
+  }
+
+  .module-card:hover {
+    border-color: color-mix(in srgb, var(--module-card-accent) 52%, transparent);
+    box-shadow: 0 20px 42px var(--module-card-glow), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+
+  .module-card:hover::before { opacity: 1; }
+  .module-card__icon { background: color-mix(in srgb, var(--module-card-accent) 21%, transparent); color: var(--module-card-accent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09); }
+  .module-card--contracting { --module-card-accent: #a1c6cf; --module-card-glow: rgba(161, 198, 207, 0.19); }
+  .module-card--docs { --module-card-accent: #7fb1a0; --module-card-glow: rgba(127, 177, 160, 0.18); }
+  .module-card--analysis { --module-card-accent: #83aebb; --module-card-glow: rgba(131, 174, 187, 0.18); }
+  .module-card--financial { --module-card-accent: #ebd990; --module-card-glow: rgba(235, 217, 144, 0.15); }
+  .module-card--leads { --module-card-accent: #8fc4d1; --module-card-glow: rgba(143, 196, 209, 0.18); }
+  .module-card--wa-qc { --module-card-accent: #7ab7a0; --module-card-glow: rgba(122, 183, 160, 0.18); }
+  .module-card--marketing { --module-card-accent: #ebd990; --module-card-glow: rgba(235, 217, 144, 0.15); }
+  .module-card--reports { --module-card-accent: #a1c6cf; --module-card-glow: rgba(161, 198, 207, 0.19); }
+
+  .marketing-workspace {
+    min-height: 100%;
+    color: #ffffff;
+    background:
+      radial-gradient(circle at 100% 0, rgba(201, 168, 76, 0.12), transparent 26rem),
+      radial-gradient(circle at 0 10%, rgba(91, 163, 184, 0.18), transparent 27rem),
+      linear-gradient(145deg, #0a1628, #102741 58%, #0a1628);
+  }
+
+  .marketing-workspace .elevay-marketing-surface,
+  .marketing-workspace .elevay-marketing-tool-card,
+  .marketing-workspace .elevay-marketing-status-tile {
+    border-color: var(--marketing-border);
+    background: var(--marketing-surface);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), var(--glass-shadow-sm);
+    backdrop-filter: blur(14px) saturate(135%);
+    -webkit-backdrop-filter: blur(14px) saturate(135%);
+  }
+
+  .elevay-marketing-tool-card { transition: transform 180ms var(--ease-out, ease-out), border-color 180ms var(--ease-out, ease-out), background-color 180ms var(--ease-out, ease-out); }
+  .elevay-marketing-tool-card:hover { transform: translateY(-3px); border-color: rgba(161, 198, 207, 0.5); background: rgba(30, 63, 90, 0.86); }
+  .marketing-tool-icon { color: #ffffff; box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
+  .marketing-tool-icon--brand { background: linear-gradient(135deg, #5ba3b8, #1a3a5c); }
+  .marketing-tool-icon--teal { background: linear-gradient(135deg, #5ba3b8, #2f7d91); }
+  .marketing-tool-icon--gold { background: linear-gradient(135deg, #c9a84c, #876c2c); }
+  .marketing-tool-icon--sky { background: linear-gradient(135deg, #a1c6cf, #3f718d); }
+  .marketing-tool-icon--navy { background: linear-gradient(135deg, #1a3a5c, #5ba3b8); }
+  .marketing-tool-badge { border: 1px solid rgba(161, 198, 207, 0.22); background: rgba(91, 163, 184, 0.16); color: #cde8ed; }
+  .marketing-status-button { border-color: rgba(161, 198, 207, 0.3); background: rgba(255, 255, 255, 0.06); color: #ffffff; }
+  .marketing-status-button:hover { background: rgba(161, 198, 207, 0.15); }
+
+  /* Agentic Marketing remains intentionally dark but now shares ELEVAY material and form tokens. */
   .agentic-readable [data-slot="label"],
   .agentic-readable input:not([type="checkbox"]):not([type="radio"]),
   .agentic-readable textarea,
@@ -178,36 +503,48 @@
   .agentic-readable input:not([type="checkbox"]):not([type="radio"]),
   .agentic-readable textarea,
   .agentic-readable select {
-    border-color: rgba(169, 214, 227, 0.45);
+    border-color: var(--marketing-border);
     background-color: rgba(10, 22, 40, 0.72);
   }
 
   .agentic-readable input::placeholder,
-  .agentic-readable textarea::placeholder {
-    color: rgba(255, 255, 255, 0.76);
+  .agentic-readable textarea::placeholder { color: rgba(235, 248, 250, 0.7); }
+  .agentic-readable option { color: #ffffff; background-color: var(--elevay-deep-navy); }
+
+  @supports (backdrop-filter: blur(1px)) {
+    .elevay-glass-panel { backdrop-filter: blur(12px) saturate(130%); -webkit-backdrop-filter: blur(12px) saturate(130%); }
+    .elevay-control-surface { backdrop-filter: blur(8px) saturate(125%); -webkit-backdrop-filter: blur(8px) saturate(125%); }
   }
 
-  .agentic-readable option {
-    color: #ffffff;
-    background-color: #0a1628;
+  @media (prefers-reduced-motion: no-preference) {
+    [data-slot="button"]:active { transform: scale(0.98); }
+  }
+
+  @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+    .elevay-glass-panel,
+    .elevay-floating-surface,
+    .elevay-sheet-surface,
+    .elevay-topbar,
+    .elevay-bottom-nav,
+    .elevay-control-surface,
+    .marketing-workspace .elevay-marketing-surface,
+    .marketing-workspace .elevay-marketing-tool-card,
+    .marketing-workspace .elevay-marketing-status-tile {
+      background: var(--popover);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+
+    .elevay-app-shell [data-slot="sidebar-inner"] { background: var(--sidebar); }
   }
 
   @media (min-width: 640px) {
-    .container {
-      padding-left: 1.5rem; /* 24px - tablet padding */
-      padding-right: 1.5rem;
-    }
+    .container { padding-left: 1.5rem; padding-right: 1.5rem; }
   }
 
   @media (min-width: 1024px) {
-    .container {
-      padding-left: 2rem; /* 32px - desktop padding */
-      padding-right: 2rem;
-      max-width: 1280px; /* Standard content width */
-    }
+    .container { padding-left: 2rem; padding-right: 2rem; max-width: 1280px; }
   }
 }
-/* Safe area for mobile bottom tab bar */
-.safe-area-bottom {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
+
+.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }

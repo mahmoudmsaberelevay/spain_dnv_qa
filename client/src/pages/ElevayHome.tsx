@@ -38,9 +38,6 @@ const BASE_MODULE_CARDS = [
     description: "Manage contracts, receipts, and analytics",
     path: "/contracting",
     icon: FileText,
-    gradient: "from-blue-600 to-blue-800",
-    iconBg: "bg-blue-500/30",
-    glow: "shadow-blue-500/20",
     pageKey: null, // always visible
   },
   {
@@ -49,9 +46,6 @@ const BASE_MODULE_CARDS = [
     description: "Track documents, attestations, and submissions",
     path: "/docs/dashboard",
     icon: FolderCheck,
-    gradient: "from-emerald-600 to-emerald-800",
-    iconBg: "bg-emerald-500/30",
-    glow: "shadow-emerald-500/20",
     pageKey: null,
   },
   {
@@ -60,9 +54,6 @@ const BASE_MODULE_CARDS = [
     description: "AI-powered visa application QA and reports",
     path: "/analysis/dashboard",
     icon: Search,
-    gradient: "from-violet-600 to-violet-800",
-    iconBg: "bg-violet-500/30",
-    glow: "shadow-violet-500/20",
     pageKey: null,
   },
   {
@@ -71,9 +62,6 @@ const BASE_MODULE_CARDS = [
     description: "Income, expenses, accounts, and commissions",
     path: "/finance",
     icon: Wallet,
-    gradient: "from-amber-600 to-amber-800",
-    iconBg: "bg-amber-500/30",
-    glow: "shadow-amber-500/20",
     pageKey: null,
   },
   {
@@ -82,9 +70,6 @@ const BASE_MODULE_CARDS = [
     description: "Manage leads, pipeline stages, and follow-ups",
     path: "/leads/dashboard",
     icon: Target,
-    gradient: "from-rose-600 to-rose-800",
-    iconBg: "bg-rose-500/30",
-    glow: "shadow-rose-500/20",
     pageKey: null,
   },
   {
@@ -93,9 +78,6 @@ const BASE_MODULE_CARDS = [
     description: "Monitor WhatsApp groups and AI conversation analysis",
     path: "/wa-qc",
     icon: MessageSquare,
-    gradient: "from-green-600 to-green-800",
-    iconBg: "bg-green-500/30",
-    glow: "shadow-green-500/20",
     pageKey: "wa_qc", // only show if user has this permission
   },
   {
@@ -104,9 +86,6 @@ const BASE_MODULE_CARDS = [
     description: "Program summaries, comparisons, and proposals",
     path: "/marketing",
     icon: Megaphone,
-    gradient: "from-purple-600 to-purple-800",
-    iconBg: "bg-purple-500/30",
-    glow: "shadow-purple-500/20",
     pageKey: null, // always visible
   },
   {
@@ -115,9 +94,6 @@ const BASE_MODULE_CARDS = [
     description: "Financial, attestation, visa, and paralegal reports",
     path: "/reports",
     icon: BarChart3,
-    gradient: "from-cyan-600 to-cyan-800",
-    iconBg: "bg-cyan-500/30",
-    glow: "shadow-cyan-500/20",
     pageKey: null, // always visible
   },
 ];
@@ -280,7 +256,7 @@ export default function ElevayHome() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-950">
+      <div className="elevay-home min-h-screen flex items-center justify-center">
         <div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-white animate-spin" />
       </div>
     );
@@ -323,9 +299,9 @@ export default function ElevayHome() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
+    <div className="elevay-home flex flex-col">
       {/* ── Header ── */}
-      <header className="flex items-center justify-between px-8 py-5 border-b border-white/5">
+      <header className="elevay-home__header flex items-center justify-between px-5 py-4 sm:px-8 sm:py-5 border-b">
         <div className="flex items-center gap-4">
           <img
             src="/manus-storage/elevay-logo_2c219cd3.png"
@@ -369,7 +345,7 @@ export default function ElevayHome() {
           </div>
 
           {/* Module Card Grid — 2 columns, wraps naturally */}
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {visibleCards.map((card) => {
               const Icon = card.icon;
               const isHovered = hoveredCard === card.id;
@@ -383,28 +359,20 @@ export default function ElevayHome() {
                   disabled={navigatingPath !== null}
                   aria-busy={isNavigating}
                   className={cn(
-                    "group relative flex flex-col items-start p-7 rounded-2xl border transition-all duration-300 text-left overflow-hidden",
-                    "bg-gray-900/80 border-white/10",
+                    "module-card group relative flex flex-col items-start p-7 rounded-[1.3rem] border transition-all duration-300 text-left overflow-hidden",
+                    `module-card--${card.id}`,
                     navigatingPath !== null && "cursor-wait opacity-80",
                     isHovered
-                      ? `shadow-2xl ${card.glow} border-white/20 scale-[1.02]`
-                      : "hover:border-white/15"
+                      ? "scale-[1.015]"
+                      : ""
                   )}
                 >
-                  {/* Background gradient on hover */}
-                  <div className={cn(
-                    "absolute inset-0 bg-gradient-to-br opacity-0 transition-opacity duration-300",
-                    card.gradient,
-                    isHovered ? "opacity-10" : ""
-                  )} />
-
                   {/* Icon */}
                   <div className={cn(
-                    "relative h-14 w-14 rounded-2xl flex items-center justify-center mb-5 transition-all duration-300",
-                    card.iconBg,
+                    "module-card__icon relative h-14 w-14 rounded-2xl flex items-center justify-center mb-5 transition-transform duration-300",
                     isHovered ? "scale-110" : ""
                   )}>
-                    <Icon className="h-7 w-7 text-white" />
+                    <Icon className="h-7 w-7" />
                   </div>
 
                   {/* Text */}

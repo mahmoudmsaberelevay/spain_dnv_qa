@@ -9,17 +9,17 @@ import { Users, UserCheck, TrendingUp, UserX, Star, Clock } from "lucide-react";
 import { useLocation } from "wouter";
 
 const STAGE_COLORS: Record<string, string> = {
-  fresh: "#3b82f6",
-  contacted: "#f59e0b",
-  qualified: "#8b5cf6",
-  prospect: "#06b6d4",
-  client: "#10b981",
-  dormant: "#6b7280",
-  not_qualified_budget: "#ef4444",
-  not_qualified_work: "#f97316",
-  not_qualified_study: "#ec4899",
-  not_qualified_criminal: "#dc2626",
-  not_qualified_other: "#9ca3af",
+  fresh: "#5BA3B8",
+  contacted: "#C9A84C",
+  qualified: "#1A3A5C",
+  prospect: "#A1C6CF",
+  client: "#28755F",
+  dormant: "#708196",
+  not_qualified_budget: "#B54550",
+  not_qualified_work: "#9A741E",
+  not_qualified_study: "#965C83",
+  not_qualified_criminal: "#8F3540",
+  not_qualified_other: "#97A4B2",
 };
 
 const STAGE_LABELS: Record<string, string> = {
@@ -36,7 +36,7 @@ const STAGE_LABELS: Record<string, string> = {
   not_qualified_other: "NQ - Other",
 };
 
-const SOURCE_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#f97316", "#ec4899"];
+const SOURCE_COLORS = ["#1A3A5C", "#5BA3B8", "#C9A84C", "#28755F", "#A1C6CF", "#B54550", "#9A741E", "#708196"];
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export default function LeadsDashboard() {
@@ -61,7 +61,7 @@ export default function LeadsDashboard() {
     return overview.stageCounts.map(s => ({
       name: STAGE_LABELS[s.stage] ?? s.stage,
       value: Number(s.count),
-      color: STAGE_COLORS[s.stage] ?? "#6b7280",
+      color: STAGE_COLORS[s.stage] ?? "#708196",
     }));
   }, [overview]);
 
@@ -143,9 +143,9 @@ export default function LeadsDashboard() {
       </div>
 
       {/* Conversion Rate Banner */}
-      <Card className="border-l-4 border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/20">
+      <Card className="elevay-success-banner border-l-4">
         <CardContent className="py-4 flex items-center gap-4">
-          <div className="text-3xl font-bold text-emerald-600">{conversionRate}%</div>
+          <div className="metric-positive text-3xl font-bold">{conversionRate}%</div>
           <div>
             <div className="font-semibold text-foreground">Overall Conversion Rate</div>
             <div className="text-sm text-muted-foreground">{clients} clients out of {total} total leads</div>
@@ -218,8 +218,8 @@ export default function LeadsDashboard() {
                 <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="total" name="Total Leads" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="converted" name="Converted to Client" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="total" name="Total Leads" fill="#1A3A5C" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="converted" name="Converted to Client" fill="#28755F" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -230,7 +230,7 @@ export default function LeadsDashboard() {
       {campaignCounts.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">🎯 Leads by Meta Campaign</CardTitle>
+            <CardTitle className="text-base">Leads by Meta Campaign</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={Math.max(220, campaignCounts.length * 36)}>
@@ -243,17 +243,17 @@ export default function LeadsDashboard() {
                   width={240}
                   tickFormatter={(v: string) => v.length > 38 ? v.slice(0, 36) + "…" : v}
                 />
-                <Tooltip formatter={(v: number) => [v, "Leads"]} cursor={{ fill: "rgba(59,130,246,0.08)" }} />
+                <Tooltip formatter={(v: number) => [v, "Leads"]} cursor={{ fill: "var(--chart-cursor)" }} />
                 <Bar
                   dataKey="value"
                   name="Leads"
-                  fill="#3b82f6"
-                  radius={[0, 4, 4, 0]}
+                  fill="#1A3A5C"
+                  radius={[0, 6, 6, 0]}
                   style={{ cursor: "pointer" }}
                   onClick={(data: { name: string }) => goToLeadsByCampaign(data.name)}
                 >
                   {campaignCounts.map((_, i) => (
-                    <Cell key={i} fill={["#3b82f6","#06b6d4","#8b5cf6","#10b981","#f59e0b","#ef4444","#f97316","#ec4899"][i % 8]} />
+                    <Cell key={i} fill={SOURCE_COLORS[i % SOURCE_COLORS.length]} />
                   ))}
                 </Bar>
               </BarChart>
@@ -266,7 +266,7 @@ export default function LeadsDashboard() {
       {formCounts.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">📋 Leads by Meta Form</CardTitle>
+            <CardTitle className="text-base">Leads by Meta Form</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={Math.max(200, formCounts.length * 34)}>
@@ -279,17 +279,17 @@ export default function LeadsDashboard() {
                   width={220}
                   tickFormatter={(v: string) => v.length > 32 ? v.slice(0, 30) + "…" : v}
                 />
-                <Tooltip formatter={(v: number) => [v, "Leads"]} cursor={{ fill: "rgba(16,185,129,0.08)" }} />
+                <Tooltip formatter={(v: number) => [v, "Leads"]} cursor={{ fill: "var(--chart-cursor)" }} />
                 <Bar
                   dataKey="value"
                   name="Leads"
-                  fill="#10b981"
-                  radius={[0, 4, 4, 0]}
+                  fill="#28755F"
+                  radius={[0, 6, 6, 0]}
                   style={{ cursor: "pointer" }}
                   onClick={(data: { name: string }) => goToLeadsByForm(data.name)}
                 >
                   {formCounts.map((_, i) => (
-                    <Cell key={i} fill={["#10b981","#06b6d4","#3b82f6","#8b5cf6","#f59e0b","#ef4444","#f97316","#ec4899"][i % 8]} />
+                    <Cell key={i} fill={["#28755F", "#5BA3B8", "#1A3A5C", "#C9A84C", "#A1C6CF", "#B54550", "#9A741E", "#708196"][i % 8]} />
                   ))}
                 </Bar>
               </BarChart>
@@ -310,7 +310,7 @@ export default function LeadsDashboard() {
                 <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={80} />
                 <Tooltip />
-                <Bar dataKey="value" name="Leads" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="value" name="Leads" fill="#5BA3B8" radius={[0, 6, 6, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -322,12 +322,12 @@ export default function LeadsDashboard() {
 
 function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: string }) {
   const colorMap: Record<string, string> = {
-    blue: "text-blue-600 bg-blue-100 dark:bg-blue-900/30",
-    sky: "text-sky-600 bg-sky-100 dark:bg-sky-900/30",
-    purple: "text-purple-600 bg-purple-100 dark:bg-purple-900/30",
-    cyan: "text-cyan-600 bg-cyan-100 dark:bg-cyan-900/30",
-    green: "text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30",
-    gray: "text-gray-500 bg-gray-100 dark:bg-gray-800/30",
+    blue: "metric-icon metric-icon--primary",
+    sky: "metric-icon metric-icon--info",
+    purple: "metric-icon metric-icon--gold",
+    cyan: "metric-icon metric-icon--info",
+    green: "metric-icon metric-icon--success",
+    gray: "metric-icon metric-icon--muted",
   };
   return (
     <Card>

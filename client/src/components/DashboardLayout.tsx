@@ -184,16 +184,16 @@ function NotificationBell() {
 
 // ─── Module colour map ───────────────────────────────────────────────────────
 const MODULE_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
-  contracting:  { bg: "bg-blue-500/20",   text: "text-blue-300",   dot: "bg-blue-400" },
-  analysis:     { bg: "bg-purple-500/20", text: "text-purple-300", dot: "bg-purple-400" },
-  docs:         { bg: "bg-emerald-500/20",text: "text-emerald-300",dot: "bg-emerald-400" },
-  financial:    { bg: "bg-amber-500/20",  text: "text-amber-300",  dot: "bg-amber-400" },
-  waQc:         { bg: "bg-green-500/20",  text: "text-green-300",  dot: "bg-green-400" },
-  leads:        { bg: "bg-rose-500/20",   text: "text-rose-300",   dot: "bg-rose-400" },
-  marketing:    { bg: "bg-purple-500/20", text: "text-purple-300", dot: "bg-purple-400" },
-  reports:      { bg: "bg-cyan-500/20",   text: "text-cyan-300",   dot: "bg-cyan-400" },
-  backup:       { bg: "bg-slate-500/20",  text: "text-slate-300",  dot: "bg-slate-400" },
-  aiCouncil:    { bg: "bg-cyan-500/20",   text: "text-cyan-300",   dot: "bg-cyan-400" },
+  contracting: { bg: "module-accent-badge module-accent--contracting", text: "module-accent-text module-accent--contracting", dot: "module-accent-dot module-accent--contracting" },
+  analysis: { bg: "module-accent-badge module-accent--analysis", text: "module-accent-text module-accent--analysis", dot: "module-accent-dot module-accent--analysis" },
+  docs: { bg: "module-accent-badge module-accent--docs", text: "module-accent-text module-accent--docs", dot: "module-accent-dot module-accent--docs" },
+  financial: { bg: "module-accent-badge module-accent--financial", text: "module-accent-text module-accent--financial", dot: "module-accent-dot module-accent--financial" },
+  waQc: { bg: "module-accent-badge module-accent--waqc", text: "module-accent-text module-accent--waqc", dot: "module-accent-dot module-accent--waqc" },
+  leads: { bg: "module-accent-badge module-accent--leads", text: "module-accent-text module-accent--leads", dot: "module-accent-dot module-accent--leads" },
+  marketing: { bg: "module-accent-badge module-accent--marketing", text: "module-accent-text module-accent--marketing", dot: "module-accent-dot module-accent--marketing" },
+  reports: { bg: "module-accent-badge module-accent--reports", text: "module-accent-text module-accent--reports", dot: "module-accent-dot module-accent--reports" },
+  backup: { bg: "module-accent-badge module-accent--backup", text: "module-accent-text module-accent--backup", dot: "module-accent-dot module-accent--backup" },
+  aiCouncil: { bg: "module-accent-badge module-accent--ai-council", text: "module-accent-text module-accent--ai-council", dot: "module-accent-dot module-accent--ai-council" },
 };
 
 // ─── Module Definitions ────────────────────────────────────────────────────────
@@ -369,7 +369,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
+    <SidebarProvider className="elevay-app-shell" open={sidebarOpen} onOpenChange={setSidebarOpen} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
       <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
         {children}
       </DashboardLayoutContent>
@@ -435,7 +435,7 @@ function DashboardLayoutContent({
   return (
     <>
       <div className="relative" ref={sidebarRef}>
-        <Sidebar collapsible="offcanvas" className="border-r border-border/50" disableTransition={isResizing}>
+        <Sidebar collapsible="offcanvas" className="elevay-glass-sidebar border-r border-border/50" disableTransition={isResizing}>
           {/* Header — Elevay branding */}
           <SidebarHeader className="h-16 justify-center border-b border-border/40">
             <div className="flex items-center gap-2 px-2 w-full">
@@ -477,8 +477,8 @@ function DashboardLayoutContent({
                       className={cn(
                         "flex items-center justify-between w-full px-4 py-2 text-xs font-semibold uppercase tracking-widest transition-colors",
                         activeModuleId === mod.id
-                          ? "text-white"
-                          : "text-white/60 hover:text-white"
+                          ? "text-sidebar-foreground"
+                          : "text-sidebar-foreground/65 hover:text-sidebar-foreground"
                       )}
                     >
                       <div className="flex items-center gap-2">
@@ -509,11 +509,11 @@ function DashboardLayoutContent({
                               className={cn(
                                 "h-9 transition-all",
                                 isActive
-                                  ? "bg-white/10 text-white font-bold"
-                                  : "text-white/70 font-normal hover:text-white hover:bg-white/5"
+                                  ? "bg-sidebar-accent text-sidebar-accent-foreground font-bold"
+                                  : "text-sidebar-foreground/72 font-normal hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                               )}
                             >
-                              <item.icon className={cn("h-4 w-4", isActive ? "text-white" : "text-white/60")} />
+                              <item.icon className={cn("h-4 w-4", isActive ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/62")} />
                               <span>{item.label}</span>
                             </SidebarMenuButton>
                           </SidebarMenuItem>
@@ -540,8 +540,8 @@ function DashboardLayoutContent({
                 className={cn(
                   "flex items-center gap-2 flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
                   location === "/"
-                    ? "bg-white/10 text-white"
-                    : "text-white/50 hover:text-white hover:bg-white/5"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                 )}
                 title="Home"
               >
@@ -553,8 +553,8 @@ function DashboardLayoutContent({
                 className={cn(
                   "flex items-center gap-2 flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
                   location === "/chat"
-                    ? "bg-white/10 text-white"
-                    : "text-white/50 hover:text-white hover:bg-white/5"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                 )}
                 title="Team Chat"
               >
@@ -574,8 +574,8 @@ function DashboardLayoutContent({
                 className={cn(
                   "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors mb-1",
                   location === "/settings"
-                    ? "bg-white/10 text-white"
-                    : "text-white/50 hover:text-white hover:bg-white/5"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                 )}
                 title="Settings"
               >
@@ -590,8 +590,8 @@ function DashboardLayoutContent({
                 className={cn(
                   "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors mb-1",
                   location === "/admin/permissions"
-                    ? "bg-white/10 text-white"
-                    : "text-white/50 hover:text-white hover:bg-white/5"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                 )}
                 title="Permissions"
               >
@@ -606,8 +606,8 @@ function DashboardLayoutContent({
                 className={cn(
                   "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors mb-1",
                   location === "/admin/security"
-                    ? "bg-white/10 text-white"
-                    : "text-white/50 hover:text-white hover:bg-white/5"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                 )}
                 title="Security & Audit"
               >
@@ -622,8 +622,8 @@ function DashboardLayoutContent({
                 className={cn(
                   "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors mb-1",
                   location === "/admin/client-portal"
-                    ? "bg-cyan-500/20 text-cyan-300"
-                    : "text-white/50 hover:text-cyan-300 hover:bg-cyan-500/10"
+                    ? "module-accent-badge module-accent--leads"
+                    : "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                 )}
                 title="Client Portal"
               >
@@ -638,8 +638,8 @@ function DashboardLayoutContent({
                 className={cn(
                   "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors mb-2",
                   location === "/broadcast"
-                    ? "bg-amber-500/20 text-amber-300"
-                    : "text-white/50 hover:text-amber-300 hover:bg-amber-500/10"
+                    ? "module-accent-badge module-accent--marketing"
+                    : "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                 )}
                 title="Broadcast Center"
               >
@@ -654,8 +654,8 @@ function DashboardLayoutContent({
                 className={cn(
                   "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
                   location === "/privacy-policy"
-                    ? "bg-white/10 text-white"
-                    : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/45 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                 )}
                 title="Privacy Policy"
               >
@@ -667,8 +667,8 @@ function DashboardLayoutContent({
                 className={cn(
                   "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
                   location === "/terms"
-                    ? "bg-white/10 text-white"
-                    : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/45 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                 )}
                 title="Terms & Conditions"
               >
@@ -680,8 +680,8 @@ function DashboardLayoutContent({
                 className={cn(
                   "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
                   location === "/support"
-                    ? "bg-white/10 text-white"
-                    : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/45 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                 )}
                 title="Support"
               >
@@ -693,8 +693,8 @@ function DashboardLayoutContent({
                 className={cn(
                   "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
                   location === "/account-deletion"
-                    ? "bg-white/10 text-white"
-                    : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/45 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                 )}
                 title="Account Deletion"
               >
@@ -731,8 +731,8 @@ function DashboardLayoutContent({
                   </div>
                   {!isCollapsed && (
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate leading-none text-white">{user?.name || "—"}</p>
-                      <p className="text-xs text-white/50 truncate mt-0.5">{user?.email || "—"}</p>
+                      <p className="text-sm font-medium truncate leading-none text-sidebar-foreground">{user?.name || "—"}</p>
+                      <p className="text-xs text-sidebar-foreground/55 truncate mt-0.5">{user?.email || "—"}</p>
                     </div>
                   )}
                 </button>
@@ -769,9 +769,9 @@ function DashboardLayoutContent({
         />
       </div>
 
-      <SidebarInset>
+      <SidebarInset className="elevay-app-content bg-transparent">
         {isMobile && (
-          <div className="flex border-b h-14 items-center justify-between bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
+          <div className="elevay-topbar flex border-b h-14 items-center justify-between bg-background/82 px-3 sticky top-0 z-40">
             <div className="flex items-center gap-2">
               <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" />
               <span className="font-medium text-sm">{activeItem?.label ?? "Elevay"}</span>
@@ -783,7 +783,7 @@ function DashboardLayoutContent({
           </div>
         )}
         {!isMobile && (
-          <div className="flex border-b h-12 items-center justify-between bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
+          <div className="elevay-topbar flex border-b h-12 items-center justify-between bg-background/82 px-4 sticky top-0 z-40">
             <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" title={isCollapsed ? "Show full navigation" : "Hide navigation"} />
             <NotificationBell />
           </div>

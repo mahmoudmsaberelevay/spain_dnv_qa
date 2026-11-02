@@ -12,10 +12,10 @@ function fmt(n: number) {
 
 const CONSULTANTS = ["Mahmoud", "Ziad", "Kirolos", "Fouad"];
 const CONSULTANT_COLORS: Record<string, { bg: string; text: string; icon: string }> = {
-  Mahmoud: { bg: "bg-blue-50", text: "text-blue-700", icon: "bg-blue-100" },
-  Ziad: { bg: "bg-purple-50", text: "text-purple-700", icon: "bg-purple-100" },
-  Kirolos: { bg: "bg-amber-50", text: "text-amber-700", icon: "bg-amber-100" },
-  Fouad: { bg: "bg-emerald-50", text: "text-emerald-700", icon: "bg-emerald-100" },
+  Mahmoud: { bg: "consultant-card consultant-card--mahmoud", text: "", icon: "consultant-icon" },
+  Ziad: { bg: "consultant-card consultant-card--ziad", text: "", icon: "consultant-icon" },
+  Kirolos: { bg: "consultant-card consultant-card--kirolos", text: "", icon: "consultant-icon" },
+  Fouad: { bg: "consultant-card consultant-card--fouad", text: "", icon: "consultant-icon" },
 };
 
 export default function FinancialDashboard() {
@@ -54,18 +54,18 @@ export default function FinancialDashboard() {
 
   // All balance totals now come from server (only AIB + AAIB + CIB + Cash per currency)
   const kpis = [
-    { label: "Yearly Income", value: summary.yearlyIncome, icon: TrendingUp, color: "text-green-600", bg: "bg-green-50", prefix: "EGP " },
-    { label: "Yearly Expense", value: summary.yearlyExpense, icon: TrendingDown, color: "text-red-600", bg: "bg-red-50", prefix: "EGP " },
-    { label: "Yearly Profit", value: summary.yearlyProfit, icon: DollarSign, color: summary.yearlyProfit >= 0 ? "text-green-600" : "text-red-600", bg: summary.yearlyProfit >= 0 ? "bg-green-50" : "bg-red-50", prefix: "EGP " },
-    { label: "Total EGP Balance", value: summary.totalEgpBalance, icon: Wallet, color: "text-blue-600", bg: "bg-blue-50", prefix: "EGP " },
-    { label: "Total USD Balance", value: summary.totalUsdBalance, icon: Wallet, color: "text-green-700", bg: "bg-green-50", prefix: "USD " },
-    { label: "Total EUR Balance", value: summary.totalEurBalance, icon: Wallet, color: "text-amber-600", bg: "bg-amber-50", prefix: "EUR " },
+    { label: "Yearly Income", value: summary.yearlyIncome, icon: TrendingUp, color: "metric-positive", bg: "metric-positive-bg", prefix: "EGP " },
+    { label: "Yearly Expense", value: summary.yearlyExpense, icon: TrendingDown, color: "metric-negative", bg: "metric-negative-bg", prefix: "EGP " },
+    { label: "Yearly Profit", value: summary.yearlyProfit, icon: DollarSign, color: summary.yearlyProfit >= 0 ? "metric-positive" : "metric-negative", bg: summary.yearlyProfit >= 0 ? "metric-positive-bg" : "metric-negative-bg", prefix: "EGP " },
+    { label: "Total EGP Balance", value: summary.totalEgpBalance, icon: Wallet, color: "metric-primary", bg: "metric-primary-bg", prefix: "EGP " },
+    { label: "Total USD Balance", value: summary.totalUsdBalance, icon: Wallet, color: "metric-positive", bg: "metric-positive-bg", prefix: "USD " },
+    { label: "Total EUR Balance", value: summary.totalEurBalance, icon: Wallet, color: "metric-gold", bg: "metric-gold-bg", prefix: "EUR " },
   ];
 
   const monthlyKpis = [
-    { label: "Monthly Income", value: summary.monthlyIncome, icon: ArrowUpRight, color: "text-green-600", bg: "bg-green-50" },
-    { label: "Monthly Expense", value: summary.monthlyExpense, icon: ArrowDownRight, color: "text-red-600", bg: "bg-red-50" },
-    { label: "Monthly Profit", value: summary.monthlyProfit, icon: DollarSign, color: summary.monthlyProfit >= 0 ? "text-green-600" : "text-red-600", bg: summary.monthlyProfit >= 0 ? "bg-green-50" : "bg-red-50" },
+    { label: "Monthly Income", value: summary.monthlyIncome, icon: ArrowUpRight, color: "metric-positive", bg: "metric-positive-bg" },
+    { label: "Monthly Expense", value: summary.monthlyExpense, icon: ArrowDownRight, color: "metric-negative", bg: "metric-negative-bg" },
+    { label: "Monthly Profit", value: summary.monthlyProfit, icon: DollarSign, color: summary.monthlyProfit >= 0 ? "metric-positive" : "metric-negative", bg: summary.monthlyProfit >= 0 ? "metric-positive-bg" : "metric-negative-bg" },
   ];
 
   // Top expense categories
@@ -92,7 +92,7 @@ export default function FinancialDashboard() {
         <h1 className="text-2xl font-bold">Financial Dashboard</h1>
         <div className="flex items-center gap-2">
           {roleData && (
-            <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium capitalize">
+            <span className="metric-primary-bg text-xs px-2 py-1 rounded-full font-medium capitalize">
               {roleData.role} Access
             </span>
           )}
@@ -103,7 +103,7 @@ export default function FinancialDashboard() {
       <div className="flex items-center gap-3 flex-wrap">
         <Button
           onClick={() => navigate("/finance/income")}
-          className="bg-green-600 hover:bg-green-700 text-white shadow-sm"
+          className="elevay-income-action shadow-sm"
         >
           <Plus className="h-4 w-4 mr-1.5" /> Income
         </Button>
@@ -117,7 +117,7 @@ export default function FinancialDashboard() {
         <Button
           onClick={() => navigate("/finance/transfers")}
           variant="outline"
-          className="border-blue-300 text-blue-700 hover:bg-blue-50 shadow-sm"
+          className="elevay-transfer-action shadow-sm"
         >
           <ArrowLeftRight className="h-4 w-4 mr-1.5" /> Transfer
         </Button>
@@ -126,7 +126,7 @@ export default function FinancialDashboard() {
       {/* Yearly KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpis.map((kpi) => (
-          <Card key={kpi.label} className="border-0 shadow-sm">
+          <Card key={kpi.label}>
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
@@ -147,7 +147,7 @@ export default function FinancialDashboard() {
       {/* Monthly KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {monthlyKpis.map((kpi) => (
-          <Card key={kpi.label} className="border-0 shadow-sm">
+          <Card key={kpi.label}>
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
@@ -164,12 +164,12 @@ export default function FinancialDashboard() {
       </div>
 
       {/* Net Worth Card */}
-      <Card className="border-0 shadow-sm bg-gradient-to-r from-indigo-50 to-purple-50">
+      <Card className="elevay-featured-panel">
         <CardContent className="p-5">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Net Worth (EGP Equivalent)</p>
-              <p className={`text-2xl font-bold mt-1 ${summary.netWorthEgp >= 0 ? 'text-indigo-700' : 'text-red-600'}`}>
+              <p className={`text-2xl font-bold mt-1 ${summary.netWorthEgp >= 0 ? 'metric-primary' : 'metric-negative'}`}>
                 EGP {fmt(summary.netWorthEgp)}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
@@ -178,27 +178,27 @@ export default function FinancialDashboard() {
             </div>
             <div className="flex flex-col gap-1 text-sm text-muted-foreground">
               <span className="flex items-center gap-2">
-                <span className="inline-block w-2 h-2 rounded-full bg-blue-500"></span>
+                <span className="inline-block w-2 h-2 rounded-full bg-primary"></span>
                 EGP {fmt(summary.totalEgpBalance)} (direct)
               </span>
               <span className="flex items-center gap-2">
-                <span className="inline-block w-2 h-2 rounded-full bg-green-500"></span>
+                <span className="inline-block w-2 h-2 rounded-full bg-success"></span>
                 USD {fmt(summary.totalUsdBalance)} &rarr; EGP {fmt(summary.totalUsdBalance * summary.usdEgpRate)}
               </span>
               <span className="flex items-center gap-2">
-                <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+                <span className="inline-block w-2 h-2 rounded-full bg-warning"></span>
                 EUR {fmt(summary.totalEurBalance)} &rarr; EGP {fmt(summary.totalEurBalance * summary.eurEgpRate)}
               </span>
             </div>
-            <div className="h-12 w-12 rounded-xl bg-indigo-100 flex items-center justify-center">
-              <Globe className="h-6 w-6 text-indigo-700" />
+            <div className="metric-primary-bg h-12 w-12 rounded-xl flex items-center justify-center">
+              <Globe className="h-6 w-6" />
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Consultant Yearly Signing */}
-      <Card className="border-0 shadow-sm">
+      <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-semibold">Consultant Yearly Signing ({new Date().getFullYear()})</CardTitle>
@@ -230,7 +230,7 @@ export default function FinancialDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Expense Categories */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold">Top Expense Categories ({new Date().getFullYear()})</CardTitle>
           </CardHeader>
@@ -249,7 +249,7 @@ export default function FinancialDashboard() {
                         <span className="text-muted-foreground">EGP {fmt(Number(cat.total))}</span>
                       </div>
                       <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-red-400 rounded-full" style={{ width: `${pct}%` }} />
+                        <div className="h-full bg-destructive rounded-full" style={{ width: `${pct}%` }} />
                       </div>
                     </div>
                   );
@@ -260,7 +260,7 @@ export default function FinancialDashboard() {
         </Card>
 
         {/* Account Balances */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold">Account Balances</CardTitle>
           </CardHeader>
@@ -277,7 +277,7 @@ export default function FinancialDashboard() {
                     {group.accounts.map((acc) => (
                       <div key={acc.id} className="flex justify-between text-sm py-1 px-2 rounded hover:bg-muted/50">
                         <span>{acc.name}</span>
-                        <span className={`font-medium ${Number(acc.balance) < 0 ? "text-red-600" : "text-foreground"}`}>
+                        <span className={`font-medium ${Number(acc.balance) < 0 ? "metric-negative" : "text-foreground"}`}>
                           {group.currency} {fmt(Number(acc.balance))}
                         </span>
                       </div>
@@ -294,7 +294,7 @@ export default function FinancialDashboard() {
       </div>
 
       {/* Monthly Profit Breakdown */}
-      <Card className="border-0 shadow-sm">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold">Monthly Breakdown ({new Date().getFullYear()})</CardTitle>
         </CardHeader>
@@ -303,12 +303,12 @@ export default function FinancialDashboard() {
             <p className="text-sm text-muted-foreground">No data yet</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="elevay-data-table w-full text-sm">
                 <thead>
                   <tr className="border-b">
                     <th className="text-left py-2 font-medium">Month</th>
-                    <th className="text-right py-2 font-medium text-green-600">Income</th>
-                    <th className="text-right py-2 font-medium text-red-600">Expense</th>
+                    <th className="text-right py-2 font-medium metric-positive">Income</th>
+                    <th className="text-right py-2 font-medium metric-negative">Expense</th>
                     <th className="text-right py-2 font-medium">Profit</th>
                   </tr>
                 </thead>
@@ -325,9 +325,9 @@ export default function FinancialDashboard() {
                     return (
                       <tr key={month} className="border-b border-muted/50">
                         <td className="py-2 font-medium">{monthName}</td>
-                        <td className="py-2 text-right text-green-600">{fmt(incVal)}</td>
-                        <td className="py-2 text-right text-red-600">{fmt(expVal)}</td>
-                        <td className={`py-2 text-right font-semibold ${profit >= 0 ? "text-green-700" : "text-red-700"}`}>{fmt(profit)}</td>
+                        <td className="py-2 text-right metric-positive">{fmt(incVal)}</td>
+                        <td className="py-2 text-right metric-negative">{fmt(expVal)}</td>
+                        <td className={`py-2 text-right font-semibold ${profit >= 0 ? "metric-positive" : "metric-negative"}`}>{fmt(profit)}</td>
                       </tr>
                     );
                   })}
