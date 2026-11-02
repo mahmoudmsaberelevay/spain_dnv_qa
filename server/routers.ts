@@ -42,6 +42,7 @@ import { getDocChecklist, ChildEntry, getArabicDocName } from "../shared/clientD
 import { generateChecklistDocx } from "./checklistDocxGenerator";
 import { generateWorkflowDocx } from "./workflowDocxGenerator";
 import { financialRouter } from "./finRouter";
+import { hrRouter } from "./hrRouter";
 import { settlementRouter } from "./settlementRouter";
 import { chatRouter, broadcastRouter } from "./chatRouter";
 import { getUserModuleAccess, isOwner, permissionsRouter } from "./permissionsRouter";
@@ -2786,6 +2787,7 @@ export const appRouter = router({
   contracting: contractingRouter,
   clientDocs: clientDocsRouter,
   financial: financialRouter,
+  hr: hrRouter,
   settlement: settlementRouter,
   chat: chatRouter,
   broadcast: broadcastRouter,

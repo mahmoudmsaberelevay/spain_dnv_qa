@@ -400,6 +400,7 @@
   .module-accent--analysis { --module-accent: #88b3c2; --module-accent-bg: rgba(136, 179, 194, 0.17); }
   .module-accent--docs { --module-accent: #7fb1a0; --module-accent-bg: rgba(127, 177, 160, 0.17); }
   .module-accent--financial { --module-accent: #e0bf69; --module-accent-bg: rgba(224, 191, 105, 0.15); }
+  .module-accent--hr { --module-accent: #66a99b; --module-accent-bg: rgba(102, 169, 155, 0.16); }
   .module-accent--waqc { --module-accent: #7ab7a0; --module-accent-bg: rgba(122, 183, 160, 0.16); }
   .module-accent--leads { --module-accent: #8fc4d1; --module-accent-bg: rgba(143, 196, 209, 0.17); }
   .module-accent--marketing { --module-accent: #ebd990; --module-accent-bg: rgba(235, 217, 144, 0.15); }
@@ -456,6 +457,7 @@
   .module-card--docs { --module-card-accent: #7fb1a0; --module-card-glow: rgba(127, 177, 160, 0.18); }
   .module-card--analysis { --module-card-accent: #83aebb; --module-card-glow: rgba(131, 174, 187, 0.18); }
   .module-card--financial { --module-card-accent: #ebd990; --module-card-glow: rgba(235, 217, 144, 0.15); }
+  .module-card--hr { --module-card-accent: #66a99b; --module-card-glow: rgba(102, 169, 155, 0.18); }
   .module-card--leads { --module-card-accent: #8fc4d1; --module-card-glow: rgba(143, 196, 209, 0.18); }
   .module-card--wa-qc { --module-card-accent: #7ab7a0; --module-card-glow: rgba(122, 183, 160, 0.18); }
   .module-card--marketing { --module-card-accent: #ebd990; --module-card-glow: rgba(235, 217, 144, 0.15); }

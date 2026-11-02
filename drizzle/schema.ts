@@ -443,6 +443,24 @@ export const finEmployeeSalaryRates = mysqlTable("finEmployeeSalaryRates", {
 export type FinEmployeeSalaryRate = typeof finEmployeeSalaryRates.$inferSelect;
 export type InsertFinEmployeeSalaryRate = typeof finEmployeeSalaryRates.$inferInsert;
 
+// HR owns attendance only. Employee identity and salary remain Financial-owned.
+// The server resolves every self-service action through finEmployees.crmUserId.
+export const hrAttendance = mysqlTable("hrAttendance", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employeeId").notNull(),
+  attendanceDate: date("attendanceDate", { mode: "string" }).notNull(),
+  checkInAt: timestamp("checkInAt").notNull(),
+  checkOutAt: timestamp("checkOutAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("hr_attendance_employee_date_unique").on(table.employeeId, table.attendanceDate),
+  index("hr_attendance_employee_date_idx").on(table.employeeId, table.attendanceDate),
+  index("hr_attendance_date_idx").on(table.attendanceDate),
+]);
+export type HrAttendance = typeof hrAttendance.$inferSelect;
+export type InsertHrAttendance = typeof hrAttendance.$inferInsert;
+
 // ─── Financial Clients ───────────────────────────────────────────────────────
 export const finClients = mysqlTable("finClients", {
   id: int("id").autoincrement().primaryKey(),

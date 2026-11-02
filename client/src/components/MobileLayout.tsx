@@ -59,6 +59,7 @@ import {
   ClipboardCheck,
   FileCheck2,
   PlugZap,
+  Clock3,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -145,6 +146,15 @@ export const MOBILE_SIDEBAR_MODULES = [
     ],
   },
   {
+    id: "hr",
+    label: "Human Resources",
+    icon: Clock3,
+    items: [
+      { icon: Clock3, label: "My Attendance", path: "/hr" },
+      { icon: BarChart3, label: "Attendance Reports", path: "/hr/reports", adminOnly: true },
+    ],
+  },
+  {
     id: "leads",
     label: "ELEVAY LEADS",
     icon: Target,
@@ -212,10 +222,13 @@ export const MOBILE_SIDEBAR_MODULES = [
   },
 ];
 
-export function getVisibleMobileSidebarModules(moduleAccess?: Record<string, string>, isOwner = false) {
-  return MOBILE_SIDEBAR_MODULES.filter((module) =>
-    module.id !== "aiCouncil" || isOwner || moduleAccess?.aiCouncil !== "none"
-  );
+export function getVisibleMobileSidebarModules(moduleAccess?: Record<string, string>, isOwner = false, isAdministrator = false) {
+  return MOBILE_SIDEBAR_MODULES
+    .filter((module) => module.id !== "aiCouncil" || isOwner || moduleAccess?.aiCouncil !== "none")
+    .map((module) => ({
+      ...module,
+      items: module.items.filter((item) => !("adminOnly" in item && item.adminOnly) || isAdministrator),
+    }));
 }
 
 function getActiveTab(location: string): string {
@@ -230,6 +243,7 @@ function getActiveModuleId(location: string): string {
   if (location.startsWith("/analysis")) return "analysis";
   if (location.startsWith("/docs")) return "docs";
   if (location.startsWith("/finance")) return "financial";
+  if (location.startsWith("/hr")) return "hr";
   if (location.startsWith("/wa-qc")) return "waQc";
   if (location.startsWith("/leads")) return "leads";
   if (location.startsWith("/marketing")) return "marketing";
@@ -250,6 +264,7 @@ function getPageName(location: string): string {
   }
   // Fallback to module name
   if (location.startsWith("/finance")) return "Financial";
+  if (location.startsWith("/hr")) return "Human Resources";
   if (location.startsWith("/leads")) return "Leads";
   if (location.startsWith("/contracting")) return "Contracting";
   if (location.startsWith("/docs")) return "Client Docs";
@@ -286,7 +301,8 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
   const activeTab = getActiveTab(location);
   const visibleSidebarModules = getVisibleMobileSidebarModules(
     myPermissions?.moduleAccess,
-    Boolean(myPermissions?.isOwner)
+    Boolean(myPermissions?.isOwner),
+    user?.role === "admin"
   );
 
   // Sync expanded module with navigation

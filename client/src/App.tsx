@@ -58,6 +58,9 @@ import AccessDenied from "./pages/AccessDenied";
 import SalaryReceipts from "./pages/SalaryReceipts";
 import CommissionReceipts from "./pages/CommissionReceipts";
 
+// ─── Human Resources Module ────────────────────────────────────────────────
+import HrAttendanceDashboard from "./pages/HrAttendanceDashboard";
+
 // ─── Leads CRM Module ─────────────────────────────────────────────
 import LeadsDashboard from "./pages/leads/LeadsDashboard";
 import LeadsList from "./pages/leads/LeadsList";
@@ -243,6 +246,16 @@ function Router() {
       </Route>
       <Route path="/finance/commission-receipts">
         <PageGuard pageKey="fin_commission_receipts"><MobileRoute><CommissionReceipts /></MobileRoute></PageGuard>
+      </Route>
+
+      {/* ── Human Resources Module ── */}
+      {/* The shell enforces authentication. Server-side HR procedures derive the
+          employee from the signed-in CRM login and scope every personal record. */}
+      <Route path="/hr/reports">
+        <MobileRoute><HrAttendanceDashboard /></MobileRoute>
+      </Route>
+      <Route path="/hr">
+        <MobileRoute><HrAttendanceDashboard /></MobileRoute>
       </Route>
 
       {/* ── Client Documentation Module ── */}

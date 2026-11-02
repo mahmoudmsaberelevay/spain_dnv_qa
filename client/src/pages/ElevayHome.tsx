@@ -22,6 +22,7 @@ import {
   Target,
   X,
   Megaphone,
+  Clock3,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -62,6 +63,14 @@ const BASE_MODULE_CARDS = [
     description: "Income, expenses, accounts, and commissions",
     path: "/finance",
     icon: Wallet,
+    pageKey: null,
+  },
+  {
+    id: "hr",
+    label: "Human Resources",
+    description: "Clock in, track attendance, and review team reports",
+    path: "/hr",
+    icon: Clock3,
     pageKey: null,
   },
   {

@@ -73,6 +73,7 @@ import {
   Mic2,
   HardDrive,
   Scale,
+  Clock3,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -188,6 +189,7 @@ const MODULE_COLORS: Record<string, { bg: string; text: string; dot: string }> =
   analysis: { bg: "module-accent-badge module-accent--analysis", text: "module-accent-text module-accent--analysis", dot: "module-accent-dot module-accent--analysis" },
   docs: { bg: "module-accent-badge module-accent--docs", text: "module-accent-text module-accent--docs", dot: "module-accent-dot module-accent--docs" },
   financial: { bg: "module-accent-badge module-accent--financial", text: "module-accent-text module-accent--financial", dot: "module-accent-dot module-accent--financial" },
+  hr: { bg: "module-accent-badge module-accent--hr", text: "module-accent-text module-accent--hr", dot: "module-accent-dot module-accent--hr" },
   waQc: { bg: "module-accent-badge module-accent--waqc", text: "module-accent-text module-accent--waqc", dot: "module-accent-dot module-accent--waqc" },
   leads: { bg: "module-accent-badge module-accent--leads", text: "module-accent-text module-accent--leads", dot: "module-accent-dot module-accent--leads" },
   marketing: { bg: "module-accent-badge module-accent--marketing", text: "module-accent-text module-accent--marketing", dot: "module-accent-dot module-accent--marketing" },
@@ -250,6 +252,15 @@ const modules = [
       { icon: CalendarClock, label: "Upcoming Payments", path: "/finance/upcoming" },
       { icon: Receipt, label: "Salary Receipts", path: "/finance/salary-receipts" },
       { icon: Receipt, label: "Commission Receipts", path: "/finance/commission-receipts" },
+    ],
+  },
+  {
+    id: "hr",
+    label: "Human Resources",
+    icon: Clock3,
+    items: [
+      { icon: Clock3, label: "My Attendance", path: "/hr" },
+      { icon: BarChart3, label: "Attendance Reports", path: "/hr/reports", adminOnly: true },
     ],
   },
   {
@@ -394,8 +405,15 @@ function DashboardLayoutContent({
   const isMobile = useIsMobile();
 
   // Determine active module from current path
-  const activeModuleId = location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : location.startsWith("/wa-qc") ? "waQc" : location.startsWith("/leads") ? "leads" : location.startsWith("/marketing") ? "marketing" : location.startsWith("/reports") ? "reports" : location.startsWith("/ai-council") ? "aiCouncil" : location.startsWith("/backup") ? "backup" : "contracting";
+  const activeModuleId = location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : location.startsWith("/hr") ? "hr" : location.startsWith("/wa-qc") ? "waQc" : location.startsWith("/leads") ? "leads" : location.startsWith("/marketing") ? "marketing" : location.startsWith("/reports") ? "reports" : location.startsWith("/ai-council") ? "aiCouncil" : location.startsWith("/backup") ? "backup" : "contracting";
   const [expandedModule, setExpandedModule] = useState<string>(activeModuleId);
+
+  const visibleModules = modules
+    .map((module) => ({
+      ...module,
+      items: module.items.filter((item) => !("adminOnly" in item && item.adminOnly) || user?.role === "admin"),
+    }))
+    .filter((module) => module.items.length > 0);
 
   // Sync expanded module with navigation
   useEffect(() => {
@@ -403,7 +421,7 @@ function DashboardLayoutContent({
   }, [activeModuleId]);
 
   // Active page label for mobile header
-  const allItems = modules.flatMap(m => m.items);
+  const allItems = visibleModules.flatMap(m => m.items);
   const activeItem = allItems.find(item => item.path === location) ?? allItems.find(item => location.startsWith(item.path) && item.path !== "/contracting" && item.path !== "/reports" && item.path !== "/backup");
 
   useEffect(() => {
@@ -466,7 +484,7 @@ function DashboardLayoutContent({
 
           {/* Navigation — grouped by module */}
           <SidebarContent className="gap-0 py-3">
-            {modules.map((mod) => {
+            {visibleModules.map((mod) => {
               const isExpanded = expandedModule === mod.id || isCollapsed;
               return (
                 <div key={mod.id} className="mb-1">
@@ -523,7 +541,7 @@ function DashboardLayoutContent({
                   )}
 
                   {/* Separator between modules */}
-                  {!isCollapsed && mod.id !== modules[modules.length - 1].id && (
+                  {!isCollapsed && mod.id !== visibleModules[visibleModules.length - 1].id && (
                     <div className="mx-4 my-2 border-t border-border/30" />
                   )}
                 </div>
