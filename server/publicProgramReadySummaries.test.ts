@@ -2016,6 +2016,118 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Portugal D8 Ready Summary as nine English-only installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30014,
+        title: "Elevay Portugal D8 Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Portugal_D8_Summary.pdf",
+        createdAt: 1793264175392,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30014",
+      slug: "ready-summary-30014",
+      nameEn: "Portugal D8 Digital Nomad Visa",
+      nameAr: "تأشيرة البرتغال D8 للرحالة الرقميين",
+    });
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.summaryEn).toContain("The D8 is a Portuguese residence visa for remote work");
+    expect(payload?.details["Program Overview"]).toContain("EUR 3,680");
+    expect(payload?.details["Program Overview"]).toContain("EUR 44,160");
+    expect(payload?.details["Program Overview"]).toContain("average over the last 3 months");
+    expect(payload?.details["Program Overview"]).toContain("A work contract");
+    expect(payload?.details["Program Overview"]).toContain("a services contract");
+    expect(payload?.details["Program Overview"]).toContain("A document attesting fiscal residence");
+    expect(payload?.details["Program Overview"]).toContain("sworn declaration");
+    expect(payload?.details["Who Can be Included"]).toContain("Spouse");
+    expect(payload?.details["Who Can be Included"]).toContain("Minor siblings under guardianship");
+    expect(payload?.details["Investment routes"]).toBe("Not required");
+    expect(payload?.details["Contribution options"]).toBe("Not required");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 110");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 114.30");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 351.10");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("10,804,871");
+    expect(payload?.details["Country At glance"]).toContain("US$32,082");
+    expect(payload?.details["Country At glance"]).toContain("29 countries");
+    expect(payload?.details["Passport access"]).toContain("10 years of legal residence, or 7 years");
+    expect(payload?.details["Passport access"]).toContain("Citizenship is never guaranteed or automatic");
+    expect(payload?.details["About Elevay"]).toContain("28+ years of experience, since 1998");
+    expect(payload?.details["About Elevay"]).toContain("T +20 128 498 1717");
+    expect(payload?.details["About Elevay"]).toContain("not legal or immigration advice");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
+  it("returns only Arabic Portugal D8 legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30014,
+        title: "Elevay Portugal D8 Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Portugal_D8_Summary.pdf",
+        createdAt: 1793264175392,
+      },
+      null,
+      "ar",
+    );
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.summaryAr).toContain("تأشيرة D8 هي تأشيرة إقامة برتغالية للعمل عن بُعد");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("3,680 يورو شهريًا");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("44,160 يورو سنويًا");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("الأشهر الثلاثة الماضية");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("عقد عمل");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("عقد خدمات");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("الوالدان من الدرجة الأولى المعالان");
+    expect(payload?.details["مسارات الاستثمار"]).toBe("غير مطلوب");
+    expect(payload?.details["خيارات المساهمة"]).toBe("غير مطلوب");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("110 يورو");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("114.30 يورو");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("351.10 يورو");
+    expect(payload?.details["رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("10,804,871");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("29 دولة");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toContain("10 سنوات");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toContain("7 سنوات");
+    expect(payload?.details["Program Overview"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("Digital Nomad Visa");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("renders authored Markdown tables and normalizes only formatting, not the cell text", () => {
     const content = parseProgrammeContent("## Section\n\n| Field | Value |\n|---|---|\n| Cost | **US$10,000** |\n\nA [programme link](https://example.test) is provided.");
     expect(content).toEqual([{

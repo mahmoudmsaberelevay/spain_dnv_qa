@@ -293,6 +293,8 @@ const PORTUGAL_D2_ENGLISH_SOURCE = "knowledge/summaries/portugal-d2.md";
 const PORTUGAL_D2_ARABIC_SOURCE = "knowledge/summaries/portugal-d2.ar.md";
 const PORTUGAL_D7_ENGLISH_SOURCE = "knowledge/summaries/portugal-d7.md";
 const PORTUGAL_D7_ARABIC_SOURCE = "knowledge/summaries/portugal-d7.ar.md";
+const PORTUGAL_D8_ENGLISH_SOURCE = "knowledge/summaries/portugal-d8.md";
+const PORTUGAL_D8_ARABIC_SOURCE = "knowledge/summaries/portugal-d8.ar.md";
 
 function displayMarkdownText(value: string) {
   return value
@@ -1201,6 +1203,44 @@ function latestApprovedPortugalD7Programme(
   };
 }
 
+/**
+ * Serves the latest active Portugal D8 Ready Summary through the installed
+ * app's legacy fields, selecting only the phone-system language.
+ */
+function latestApprovedPortugalD8Programme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+  locale: PublicProgramLocale,
+): PublicReadySummary | null {
+  const english = assetText(PORTUGAL_D8_ENGLISH_SOURCE);
+  const arabic = assetText(PORTUGAL_D8_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyLocalizedFields(programmeSections, locale);
+  return {
+    ...identity,
+    nameEn: "Portugal D8 Digital Nomad Visa",
+    nameAr: "تأشيرة البرتغال D8 للرحالة الرقميين",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: legacy.details,
+    programmeSections,
+  };
+}
+
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
@@ -1239,6 +1279,9 @@ export function publicReadySummaryFromRecord(
   }
   if (identity.country === "Portugal" && /\bd7\b/i.test(`${summary.title} ${summary.originalFileName}`)) {
     return latestApprovedPortugalD7Programme(identity, summary.id, locale);
+  }
+  if (identity.country === "Portugal" && /\bd8\b/i.test(`${summary.title} ${summary.originalFileName}`)) {
+    return latestApprovedPortugalD8Programme(identity, summary.id, locale);
   }
   if (!extractedText) return null;
   const information = buildPublicProgramInformation(extractedText);
