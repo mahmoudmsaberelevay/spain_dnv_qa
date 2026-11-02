@@ -1502,6 +1502,116 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Malta Nomad Ready Summary through all nine English sections and installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30018,
+        title: "Elevay Malta Nomad Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Malta_Nomad_Summary.pdf",
+        createdAt: 1793264290176,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30018",
+      slug: "ready-summary-30018",
+      nameEn: "Malta Nomad Residence Permit",
+      nameAr: "تصريح الإقامة الرقمية الرحّالة في مالطا",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("The Malta Nomad Residence Permit is for people who can work remotely");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.details["Program Overview"]).toContain("initial permit is valid for 1 year");
+    expect(payload?.details["Program Overview"]).toContain("renewed 3 times");
+    expect(payload?.details["Program Overview"]).toContain("maximum total stay of 4 years");
+    expect(payload?.details["Program Overview"]).toContain("30 working days from receipt of payment");
+    expect(payload?.details["Program Overview"]).toContain("at least 5 months in Malta over the previous 12 months");
+    expect(payload?.details["Program Overview"]).toContain("does not lead to long-term residence or citizenship");
+    expect(payload?.details["Who Can be Included"]).toContain("Unmarried adult children who are mainly dependent");
+    expect(payload?.details["Who Can be Included"]).toContain("EUR 42,000 a year");
+    expect(payload?.details["Who Can be Included"]).toContain("minimum cover of EUR 100,000");
+    expect(payload?.details["Who Can be Included"]).toContain("Russian Federation and Belarus are currently not eligible");
+    expect(payload?.details["Investment routes"]).toBe("Not required");
+    expect(payload?.details["Contribution options"]).toBe("Not required");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 300 per person");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 100 per person");
+    expect(payload?.details["Government Processing fees"]).toContain("3 to 4 weeks after arrival and biometrics");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("574,250");
+    expect(payload?.details["Country At glance"]).toContain("EUR 40,540");
+    expect(payload?.details["Country At glance"]).toContain("29 countries");
+    expect(payload?.details["Passport access"]).toBe("Not required");
+    expect(payload?.details["About Elevay"]).toContain("28+ years of experience, since 1998");
+    expect(payload?.details["About Elevay"]).toContain("T +20 128 498 1717");
+    expect(payload?.details["About Elevay"]).toContain("not legal, tax or immigration advice");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://nomad.residencymalta.gov.mt/nomad-eligibility/");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://nomad.residencymalta.gov.mt/new-faqs/");
+  });
+
+  it("returns Arabic-only Malta Nomad legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30018,
+        title: "Elevay Malta Nomad Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Malta_Nomad_Summary.pdf",
+        createdAt: 1793264290176,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("تصريح الإقامة الرقمية الرحّالة في مالطا");
+    expect(payload?.summaryAr).toContain("تصريح الإقامة الرقمية الرحّالة في مالطا");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("4 سنوات");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("42,000 يورو سنويًا");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("100,000 يورو");
+    expect(payload?.details["مسارات الاستثمار"]).toBe("غير مطلوب");
+    expect(payload?.details["خيارات المساهمة"]).toBe("غير مطلوب");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("300 يورو لكل شخص");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("100 يورو لكل شخص");
+    expect(payload?.details["رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toBe("غير مطلوب");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("574,250");
+    expect(payload?.details["Investment routes"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("work for an employer abroad");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("renders authored Markdown tables and normalizes only formatting, not the cell text", () => {
     const content = parseProgrammeContent("## Section\n\n| Field | Value |\n|---|---|\n| Cost | **US$10,000** |\n\nA [programme link](https://example.test) is provided.");
     expect(content).toEqual([{

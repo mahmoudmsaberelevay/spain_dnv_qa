@@ -283,6 +283,8 @@ const LATVIA_ENGLISH_SOURCE = "knowledge/summaries/latvia-investor.md";
 const LATVIA_ARABIC_SOURCE = "knowledge/summaries/latvia-investor.ar.md";
 const MALTA_MPRP_ENGLISH_SOURCE = "knowledge/summaries/malta-mprp.md";
 const MALTA_MPRP_ARABIC_SOURCE = "knowledge/summaries/malta-mprp.ar.md";
+const MALTA_NOMAD_ENGLISH_SOURCE = "knowledge/summaries/malta-nomad.md";
+const MALTA_NOMAD_ARABIC_SOURCE = "knowledge/summaries/malta-nomad.ar.md";
 
 function displayMarkdownText(value: string) {
   return value
@@ -1000,6 +1002,45 @@ function latestApprovedMaltaMprpProgramme(
   };
 }
 
+/**
+ * Serves the latest active Malta Nomad Ready Summary through the installed
+ * app's legacy fields, selecting only the phone-system-language content.
+ */
+function latestApprovedMaltaNomadProgramme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+  locale: PublicProgramLocale,
+): PublicReadySummary | null {
+  const english = assetText(MALTA_NOMAD_ENGLISH_SOURCE);
+  const arabic = assetText(MALTA_NOMAD_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyLocalizedFields(programmeSections, locale);
+
+  return {
+    ...identity,
+    nameEn: "Malta Nomad Residence Permit",
+    nameAr: "تصريح الإقامة الرقمية الرحّالة في مالطا",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: legacy.details,
+    programmeSections,
+  };
+}
+
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
@@ -1021,7 +1062,12 @@ export function publicReadySummaryFromRecord(
   if (identity.country === "Greece") return latestApprovedGreeceProgramme(identity, summary.id, locale);
   if (identity.country === "Hungary") return latestApprovedHungaryProgramme(identity, summary.id, locale);
   if (identity.country === "Latvia") return latestApprovedLatviaProgramme(identity, summary.id, locale);
-  if (identity.country === "Malta") return latestApprovedMaltaMprpProgramme(identity, summary.id, locale);
+  if (identity.country === "Malta" && /nomad/i.test(`${summary.title} ${summary.originalFileName}`)) {
+    return latestApprovedMaltaNomadProgramme(identity, summary.id, locale);
+  }
+  if (identity.country === "Malta" && /mprp|permanent residence/i.test(`${summary.title} ${summary.originalFileName}`)) {
+    return latestApprovedMaltaMprpProgramme(identity, summary.id, locale);
+  }
   if (!extractedText) return null;
   const information = buildPublicProgramInformation(extractedText);
   if (!information) return null;
