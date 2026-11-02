@@ -1790,6 +1790,115 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Spain Entrepreneur Ready Summary as nine English-only installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30022,
+        title: "Elevay Spain Entrepreneur Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Spain_Entrepreneur_Summary.pdf",
+        createdAt: 1793264446924,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30022",
+      slug: "ready-summary-30022",
+      nameEn: "Spain Entrepreneur Residence",
+      nameAr: "إقامة رواد الأعمال في إسبانيا",
+    });
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.details["Program Overview"]).toContain("Spain’s entrepreneur residence authorisation");
+    expect(payload?.details["Program Overview"]).toContain("A favourable report on the project is mandatory");
+    expect(payload?.details["Program Overview"]).toContain("10 working days");
+    expect(payload?.details["Program Overview"]).toContain("A maximum of 20 days from filing");
+    expect(payload?.details["Program Overview"]).toContain("The UGE sets no minimum investment");
+    expect(payload?.details["Program Overview"]).toContain("The amount of economic resources to show is confirmed at proposal stage");
+    expect(payload?.details["Program Overview"]).toContain("Do not start work before you are correctly registered");
+    expect(payload?.details["Who Can be Included"]).toContain("1 year of continuous cohabitation");
+    expect(payload?.details["Who Can be Included"]).toContain("Aged 18 to under 26");
+    expect(payload?.details["Who Can be Included"]).toContain("Dependent ascendants");
+    expect(payload?.details["Who Can be Included"]).toContain("same fee model applies to holder and dependants");
+    expect(payload?.details["Investment routes"]).toContain("no minimum investment");
+    expect(payload?.details["Investment routes"]).toContain("favourable ENISA report");
+    expect(payload?.details["Contribution options"]).toContain("Contribution amounts and tax rates are not set by the immigration authority");
+    expect(payload?.details["Government Processing fees"]).toContain("All fees shall be presented on proposal stage");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("505,983 km2");
+    expect(payload?.details["Country At glance"]).toContain("49,077,984");
+    expect(payload?.details["Country At glance"]).toContain("EUR 34,500 (2023)");
+    expect(payload?.details["Country At glance"]).toContain("29 countries");
+    expect(payload?.details["Passport access"]).toBe("Not required");
+    expect(payload?.details["About Elevay"]).toContain("28+ years of experience, since 1998");
+    expect(payload?.details["About Elevay"]).toContain("T +20 128 498 1717");
+    expect(payload?.details["About Elevay"]).toContain("not legal, tax or immigration advice");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
+  it("returns only Arabic Spain Entrepreneur legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30022,
+        title: "Elevay Spain Entrepreneur Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Spain_Entrepreneur_Summary.pdf",
+        createdAt: 1793264446924,
+      },
+      null,
+      "ar",
+    );
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.summaryAr).toContain("تصريح الإقامة الإسباني لرواد الأعمال");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("تقرير إيجابي بشأن المشروع");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("10 أيام عمل");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("20 يومًا كحد أقصى");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("لا تحدد وحدة UGE حدًا أدنى للاستثمار");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("سنة واحدة على الأقل");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("18 إلى أقل من 26 عامًا");
+    expect(payload?.details["مسارات الاستثمار"]).toContain("تقرير إيجابي من ENISA");
+    expect(payload?.details["خيارات المساهمة"]).toContain("لا تحدد سلطة الهجرة مبالغ المساهمات");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("يجب تقديم جميع الرسوم في مرحلة تقديم العرض");
+    expect(payload?.details["رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("505,983 كم2");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("49,077,984");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("29 دولة");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toBe("غير مطلوب");
+    expect(payload?.details["Program Overview"]).toBeUndefined();
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("serves the latest active Portugal D2 Ready Summary as nine English-only installed-app fields", () => {
     const payload = publicReadySummaryFromRecord(
       {
