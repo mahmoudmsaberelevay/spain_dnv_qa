@@ -1899,6 +1899,122 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Spain Highly Qualified Ready Summary as nine English-only installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30021,
+        title: "Elevay Spain Highly Qualified Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Spain_Highly_Qualified_Summary.pdf",
+        createdAt: 1793264396712,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30021",
+      slug: "ready-summary-30021",
+      nameEn: "Spain Highly Qualified Professionals",
+      nameAr: "المهنيون ذوو التأهيل العالي في إسبانيا",
+    });
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.details["Program Overview"]).toContain("Spain’s highly qualified professional route (Article 71 of Law 14/2013)");
+    expect(payload?.details["Program Overview"]).toContain("EUR 41,356.36 a year, gross");
+    expect(payload?.details["Program Overview"]).toContain("The length of the employment contract plus 3 months");
+    expect(payload?.details["Program Overview"]).toContain("A maximum of 20 days from electronic filing");
+    expect(payload?.details["Who Can be Included"]).toContain("The employer applies; the professional cannot apply alone");
+    expect(payload?.details["Who Can be Included"]).toContain("more than 250 workers in Spain");
+    expect(payload?.details["Who Can be Included"]).toContain("EUR 50 million");
+    expect(payload?.details["Who Can be Included"]).toContain("EUR 43 million");
+    expect(payload?.details["Who Can be Included"]).toContain("EUR 1 million over the previous 3 years");
+    expect(payload?.details["Who Can be Included"]).toContain("Level 2 qualification");
+    expect(payload?.details["Who Can be Included"]).toContain("1 year of continuous cohabitation");
+    expect(payload?.details["Who Can be Included"]).toContain("Aged 18 to under 26");
+    expect(payload?.details["Who Can be Included"]).toContain("over 80 is presumed");
+    expect(payload?.details["Who Can be Included"]).toContain("sufficient economic resources");
+    expect(payload?.details["Investment routes"]).toBe("Not required");
+    expect(payload?.details["Contribution options"]).toContain("Not required");
+    expect(payload?.details["Contribution options"]).toContain("tax and Social Security obligations (Article 62.5)");
+    expect(payload?.details["Government Processing fees"]).toContain("All fees shall be presented on proposal stage");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("505,983 km2");
+    expect(payload?.details["Country At glance"]).toContain("49,077,984");
+    expect(payload?.details["Country At glance"]).toContain("EUR 34,500 (2023)");
+    expect(payload?.details["Country At glance"]).toContain("29 countries");
+    expect(payload?.details["Passport access"]).toBe("Not required");
+    expect(payload?.details["About Elevay"]).toContain("28+ years of experience, since 1998");
+    expect(payload?.details["About Elevay"]).toContain("2,500+ complete cases");
+    expect(payload?.details["About Elevay"]).toContain("T +20 128 498 1717");
+    expect(payload?.details["About Elevay"]).toContain("not legal, tax or immigration advice");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
+  it("returns only Arabic Spain Highly Qualified legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30021,
+        title: "Elevay Spain Highly Qualified Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Spain_Highly_Qualified_Summary.pdf",
+        createdAt: 1793264396712,
+      },
+      null,
+      "ar",
+    );
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.summaryAr).toContain("مسار المهنيين ذوي التأهيل العالي في إسبانيا");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("EUR 41,356.36");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("10 أيام عمل");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("20 يومًا كحد أقصى");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("لا يمكن للمهني التقديم بمفرده");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("أكثر من 250 عاملًا");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("EUR 50 مليونًا");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("سنة واحدة على الأقل");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("من 18 إلى أقل من 26 عامًا");
+    expect(payload?.details["مسارات الاستثمار"]).toBe("غير مطلوب");
+    expect(payload?.details["خيارات المساهمة"]).toContain("غير مطلوب");
+    expect(payload?.details["خيارات المساهمة"]).toContain("الالتزامات الضريبية والتزامات الضمان الاجتماعي");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("يجب تقديم جميع الرسوم في مرحلة تقديم العرض");
+    expect(payload?.details["رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("505,983 كم2");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("29 دولة");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toBe("غير مطلوب");
+    expect(payload?.details["عن إيليفاي"]).toContain("أكثر من 2,500 ملف مكتمل");
+    expect(payload?.details["Program Overview"]).toBeUndefined();
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("serves the latest active Portugal D2 Ready Summary as nine English-only installed-app fields", () => {
     const payload = publicReadySummaryFromRecord(
       {
