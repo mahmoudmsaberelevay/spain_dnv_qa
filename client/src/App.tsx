@@ -251,6 +251,12 @@ function Router() {
       {/* ── Human Resources Module ── */}
       {/* The shell enforces authentication. Server-side HR procedures derive the
           employee from the signed-in CRM login and scope every personal record. */}
+      <Route path="/hr/requests">
+        <MobileRoute><HrAttendanceDashboard /></MobileRoute>
+      </Route>
+      <Route path="/hr/admin">
+        <MobileRoute><HrAttendanceDashboard /></MobileRoute>
+      </Route>
       <Route path="/hr/reports">
         <MobileRoute><HrAttendanceDashboard /></MobileRoute>
       </Route>

@@ -461,6 +461,75 @@ export const hrAttendance = mysqlTable("hrAttendance", {
 export type HrAttendance = typeof hrAttendance.$inferSelect;
 export type InsertHrAttendance = typeof hrAttendance.$inferInsert;
 
+// HR policies are effective-dated; salary remains in the Financial salary ledger.
+export const hrEmployeeSchedules = mysqlTable("hrEmployeeSchedules", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employeeId").notNull(),
+  startTime: varchar("startTime", { length: 5 }).notNull(),
+  endTime: varchar("endTime", { length: 5 }).notNull(),
+  graceMinutes: int("graceMinutes").default(0).notNull(),
+  effectiveFrom: date("effectiveFrom", { mode: "string" }).notNull(),
+  changedByUserId: int("changedByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [uniqueIndex("hr_schedule_employee_effective_unique").on(t.employeeId, t.effectiveFrom)]);
+
+export const hrHolidays = mysqlTable("hrHolidays", {
+  id: int("id").autoincrement().primaryKey(),
+  holidayDate: date("holidayDate", { mode: "string" }).notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  changedByUserId: int("changedByUserId").notNull(),
+}, (t) => [uniqueIndex("hr_holiday_date_unique").on(t.holidayDate)]);
+
+export const hrLeaveEntitlements = mysqlTable("hrLeaveEntitlements", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employeeId").notNull(),
+  year: int("year").notNull(),
+  totalDays: decimal("totalDays", { precision: 6, scale: 2 }).default("0").notNull(),
+  changedByUserId: int("changedByUserId").notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => [uniqueIndex("hr_leave_employee_year_unique").on(t.employeeId, t.year)]);
+
+export const hrLeaveRequests = mysqlTable("hrLeaveRequests", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employeeId").notNull(),
+  fromDate: date("fromDate", { mode: "string" }).notNull(),
+  toDate: date("toDate", { mode: "string" }).notNull(),
+  requestedDays: int("requestedDays").notNull(),
+  // Frozen working-day allocation by calendar year; no double-charged leave.
+  daysByYear: text("daysByYear").notNull(),
+  reason: varchar("reason", { length: 1000 }).notNull(),
+  status: varchar("status", { length: 16 }).default("pending").notNull(),
+  decisionReason: varchar("decisionReason", { length: 1000 }),
+  reviewedByUserId: int("reviewedByUserId"),
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [index("hr_leave_employee_dates_idx").on(t.employeeId, t.fromDate, t.toDate), index("hr_leave_status_idx").on(t.status)]);
+
+export const hrSettings = mysqlTable("hrSettings", {
+  id: int("id").primaryKey(),
+  verificationMethod: varchar("verificationMethod", { length: 24 }).default("pending").notNull(),
+  officeLatitude: decimal("officeLatitude", { precision: 10, scale: 7 }).default("30.0712522").notNull(),
+  officeLongitude: decimal("officeLongitude", { precision: 10, scale: 7 }).default("30.9468691").notNull(),
+  radiusMeters: int("radiusMeters").default(100).notNull(),
+  maxAccuracyMeters: int("maxAccuracyMeters").default(100).notNull(),
+  changedByUserId: int("changedByUserId"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const hrPunchAttempts = mysqlTable("hrPunchAttempts", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  action: varchar("action", { length: 12 }).notNull(),
+  accepted: boolean("accepted").notNull(),
+  reason: varchar("reason", { length: 300 }).notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  accuracyMeters: decimal("accuracyMeters", { precision: 12, scale: 2 }),
+  distanceMeters: decimal("distanceMeters", { precision: 12, scale: 2 }),
+  userAgent: varchar("userAgent", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [index("hr_punch_user_date_idx").on(t.userId, t.createdAt)]);
+
 // ─── Financial Clients ───────────────────────────────────────────────────────
 export const finClients = mysqlTable("finClients", {
   id: int("id").autoincrement().primaryKey(),

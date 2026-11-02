@@ -5,6 +5,7 @@
  */
 import { useAuth } from "@/_core/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import { isHrAdministrator } from "@shared/hrAccess";
 import {
   BookOpen,
   FileText,
@@ -150,8 +151,9 @@ export const MOBILE_SIDEBAR_MODULES = [
     label: "Human Resources",
     icon: Clock3,
     items: [
-      { icon: Clock3, label: "My Attendance", path: "/hr" },
-      { icon: BarChart3, label: "Attendance Reports", path: "/hr/reports", adminOnly: true },
+      { icon: Clock3, label: "Daily Activity", path: "/hr" },
+      { icon: Calendar, label: "Vacation Requests", path: "/hr/requests" },
+      { icon: Shield, label: "HR Admin", path: "/hr/admin", hrAdminOnly: true },
     ],
   },
   {
@@ -222,12 +224,12 @@ export const MOBILE_SIDEBAR_MODULES = [
   },
 ];
 
-export function getVisibleMobileSidebarModules(moduleAccess?: Record<string, string>, isOwner = false, isAdministrator = false) {
+export function getVisibleMobileSidebarModules(moduleAccess?: Record<string, string>, isOwner = false, isAdministrator = false, isHrAdmin = false) {
   return MOBILE_SIDEBAR_MODULES
     .filter((module) => module.id !== "aiCouncil" || isOwner || moduleAccess?.aiCouncil !== "none")
     .map((module) => ({
       ...module,
-      items: module.items.filter((item) => !("adminOnly" in item && item.adminOnly) || isAdministrator),
+      items: module.items.filter((item) => (!("adminOnly" in item && item.adminOnly) || isAdministrator) && (!("hrAdminOnly" in item && item.hrAdminOnly) || isHrAdmin)),
     }));
 }
 
@@ -302,7 +304,8 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
   const visibleSidebarModules = getVisibleMobileSidebarModules(
     myPermissions?.moduleAccess,
     Boolean(myPermissions?.isOwner),
-    user?.role === "admin"
+    user?.role === "admin",
+    isHrAdministrator(user)
   );
 
   // Sync expanded module with navigation

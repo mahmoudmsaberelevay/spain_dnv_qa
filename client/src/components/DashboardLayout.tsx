@@ -83,6 +83,7 @@ import BroadcastBanner from "./BroadcastBanner";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
+import { isHrAdministrator } from "@shared/hrAccess";
 
 // ─── Notification Bell Component ─────────────────────────────────────────────────────────────────────
 function NotificationBell() {
@@ -259,8 +260,9 @@ const modules = [
     label: "Human Resources",
     icon: Clock3,
     items: [
-      { icon: Clock3, label: "My Attendance", path: "/hr" },
-      { icon: BarChart3, label: "Attendance Reports", path: "/hr/reports", adminOnly: true },
+      { icon: Clock3, label: "Daily Activity", path: "/hr" },
+      { icon: Calendar, label: "Vacation Requests", path: "/hr/requests" },
+      { icon: Shield, label: "HR Admin", path: "/hr/admin", hrAdminOnly: true },
     ],
   },
   {
@@ -411,7 +413,7 @@ function DashboardLayoutContent({
   const visibleModules = modules
     .map((module) => ({
       ...module,
-      items: module.items.filter((item) => !("adminOnly" in item && item.adminOnly) || user?.role === "admin"),
+      items: module.items.filter((item) => (!("adminOnly" in item && item.adminOnly) || user?.role === "admin") && (!("hrAdminOnly" in item && item.hrAdminOnly) || isHrAdministrator(user))),
     }))
     .filter((module) => module.items.length > 0);
 

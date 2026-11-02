@@ -36,7 +36,9 @@ async function findEmployeeByCrmUserId(db: DbExecutor, crmUserId: number) {
 }
 
 async function requireActiveEmployeeForCrmUser(db: DbExecutor, crmUserId: number) {
-  const employee = await findEmployeeByCrmUserId(db, crmUserId);
+  // Employee row lock serializes punches and leave changes across requests.
+  const [employee] = await db.select({ id: finEmployees.id, name: finEmployees.name, role: finEmployees.role, isActive: finEmployees.isActive })
+    .from(finEmployees).where(eq(finEmployees.crmUserId, crmUserId)).limit(1).for("update");
   if (!employee) {
     throw new HrAttendanceError(
       "UNLINKED",
