@@ -1024,6 +1024,110 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Greece Ready Summary through all nine English sections and installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30011,
+        title: "Elevay Greece Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Greece_Summary.pdf",
+        createdAt: 1793264069280,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30011",
+      slug: "ready-summary-30011",
+      nameEn: "Greece",
+      nameAr: "اليونان",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("A qualifying investment in Greece can lead to a Greek residence permit");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.details["Program Overview"]).toContain("5–6 months");
+    expect(payload?.details["Program Overview"]).toContain("EUR 100,000 per tax year");
+    expect(payload?.details["Program Overview"]).toContain("not individual tax advice");
+    expect(payload?.details["Who Can be Included"]).toContain("EUR 100 per person");
+    expect(payload?.details["Investment routes"]).toContain("EUR 800,000");
+    expect(payload?.details["Investment routes"]).toContain("EUR 400,000");
+    expect(payload?.details["Investment routes"]).toContain("EUR 250,000");
+    expect(payload?.details["Investment routes"]).toContain("EUR 500,000");
+    expect(payload?.details["Investment routes"]).toContain("EUR 350,000");
+    expect(payload?.details["Contribution options"]).toBe("Not required");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 2,016");
+    expect(payload?.details["Government Processing fees"]).toContain("About 3.09%");
+    expect(payload?.details["Government Processing fees"]).toContain("15%");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("10,413,962");
+    expect(payload?.details["Country At glance"]).toContain("US$26,948");
+    expect(payload?.details["Passport access"]).toContain("29 countries");
+    expect(payload?.details["Passport access"]).toContain("Iceland");
+    expect(payload?.details["Passport access"]).toContain("Elevay does not guarantee the accuracy");
+    expect(payload?.details["About Elevay"]).toContain("28+");
+    expect(payload?.details["About Elevay"]).toContain("T +20 128 498 1717");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://stegasi.gov.gr/");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://home-affairs.ec.europa.eu/policies/schengen/schengen-area_en");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.elevay.com");
+  });
+
+  it("returns Arabic-only Greece legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30011,
+        title: "Elevay Greece Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Greece_Summary.pdf",
+        createdAt: 1793264069280,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("يمكن أن يؤدي الاستثمار المؤهل في اليونان");
+    expect(payload?.summaryAr).toContain("يمكن أن يؤدي الاستثمار المؤهل في اليونان");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.details["مسارات الاستثمار"]).toContain("800,000 يورو");
+    expect(payload?.details["مسارات الاستثمار"]).toContain("350,000 يورو");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("2,016 يورو");
+    expect(payload?.details["رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toContain("29 دولة");
+    expect(payload?.details["Investment routes"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("Greek-market listed shares");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("returns Arabic-only legacy detail headings and text when the phone language is Arabic", () => {
     const payload = publicReadySummaryFromRecord(
       {
