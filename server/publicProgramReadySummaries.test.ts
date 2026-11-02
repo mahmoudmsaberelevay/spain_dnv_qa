@@ -920,6 +920,110 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Canada Ready Summary through all nine English sections and installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30025,
+        title: "Elevay Canada Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Canada_Summary.pdf",
+        createdAt: 1793264685191,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30025",
+      slug: "ready-summary-30025",
+      nameEn: "Canada",
+      nameAr: "كندا",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("Five Canadian provinces run entrepreneur streams");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.details["Program Overview"]).toContain("Five Canadian provinces");
+    expect(payload?.details["Program Overview"]).toContain("Mandatory");
+    expect(payload?.details["Who Can be Included"]).toContain("common-law partner");
+    expect(payload?.details["Who Can be Included"]).toContain("dependent children");
+    expect(payload?.details["Investment routes"]).toContain("British Columbia Entrepreneur Immigration — Base Stream");
+    expect(payload?.details["Investment routes"]).toContain("CAD 200,000");
+    expect(payload?.details["Investment routes"]).toContain("Alberta Rural Entrepreneur Stream");
+    expect(payload?.details["Investment routes"]).toContain("Nova Scotia Entrepreneur Stream");
+    expect(payload?.details["Investment routes"]).toContain("New Brunswick Business Immigration");
+    expect(payload?.details["Investment routes"]).toContain("Newfoundland and Labrador International Entrepreneur");
+    expect(payload?.details["Program Overview"]).toContain("About 13 months");
+    expect(payload?.details["Contribution options"]).toBe("Not required");
+    expect(payload?.details["Government Processing fees"]).toContain("Not required");
+    expect(payload?.details["Government Processing fees"]).toContain("All fees shall be presented on proposal stage.");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("41,651,653");
+    expect(payload?.details["Country At glance"]).toContain("US$55,698");
+    expect(payload?.details["Passport access"]).toBe("Not required");
+    expect(payload?.details["About Elevay"]).toContain("2,500+");
+    expect(payload?.details["About Elevay"]).toContain("T +20 128 498 1717");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.gnb.ca/en/topic/family-home-community/immigration/provincial-nominee-program/business-immigration-stream.html");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.elevay.com");
+  });
+
+  it("returns Arabic-only Canada legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30025,
+        title: "Elevay Canada Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Canada_Summary.pdf",
+        createdAt: 1793264685191,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("تدير خمس مقاطعات كندية مسارات لرواد الأعمال");
+    expect(payload?.summaryAr).toContain("تدير خمس مقاطعات كندية مسارات لرواد الأعمال");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.details["مسارات الاستثمار"]).toContain("بريتيش كولومبيا");
+    expect(payload?.details["مسارات الاستثمار"]).toContain("200,000 دولار كندي");
+    expect(payload?.details["خيارات المساهمة"]).toBe("غير مطلوب");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("غير مطلوب");
+    expect(payload?.details["رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toBe("غير مطلوب");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("41,651,653");
+    expect(payload?.details["Investment routes"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("British Columbia Entrepreneur Immigration");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("returns Arabic-only legacy detail headings and text when the phone language is Arabic", () => {
     const payload = publicReadySummaryFromRecord(
       {
