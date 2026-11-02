@@ -1612,6 +1612,183 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Malta Tax Residence Ready Summary as nine English-only installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30017,
+        title: "Elevay Malta Tax Residence Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Malta_Tax_Residence_Summary.pdf",
+        createdAt: 1793264263705,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30017",
+      slug: "ready-summary-30017",
+      nameEn: "Malta Tax Residence Programmes",
+      nameAr: "برامج الإقامة الضريبية في مالطا",
+    });
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.details["Program Overview"]).toContain("15% rate and the yearly minimum");
+    expect(payload?.details["Program Overview"]).toContain("EUR 15,000");
+    expect(payload?.details["Program Overview"]).toContain("EUR 7,500");
+    expect(payload?.details["Program Overview"]).toContain("EUR 500 a year for each dependant and special carer");
+    expect(payload?.details["Program Overview"]).toContain("Income that is not taxed at 15% under these rules is taxed separately at 35%");
+    expect(payload?.details["Program Overview"]).toContain("EUR 200,000");
+    expect(payload?.details["Program Overview"]).toContain("EUR 35,000 for global resident and EU, EEA and Swiss resident status");
+    expect(payload?.details["Who Can be Included"]).toContain("nationals of countries outside the EU, EEA and Switzerland");
+    expect(payload?.details["Who Can be Included"]).toContain("pension is at least 75% of their income");
+    expect(payload?.details["Who Can be Included"]).toContain("At least 90 days a year");
+    expect(payload?.details["Who Can be Included"]).toContain("No more than 183 days in any other country");
+    expect(payload?.details["Investment routes"]).toContain("EUR 275,000");
+    expect(payload?.details["Investment routes"]).toContain("EUR 8,750");
+    expect(payload?.details["Investment routes"]).toContain("EUR 700,000");
+    expect(payload?.details["Investment routes"]).toContain("EUR 14,000 a year");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 6,000");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 5,500");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 8,500, non-refundable");
+    expect(payload?.details["Contribution options"]).toBe("Not required");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("574,250");
+    expect(payload?.details["Passport access"]).toBe("Not required");
+    expect(payload?.details["About Elevay"]).toContain("T +20 128 498 1717");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://legislation.mt/eli/ln/2026/195/eng");
+  });
+
+  it("returns only Arabic Malta Tax Residence fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30017,
+        title: "Elevay Malta Tax Residence Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Malta_Tax_Residence_Summary.pdf",
+        createdAt: 1793264263705,
+      },
+      null,
+      "ar",
+    );
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.summaryEn).toContain("توجد في مالطا برامج للإقامة الضريبية");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("15%");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("15,000 يورو");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("75%");
+    expect(payload?.details["مسارات الاستثمار"]).toContain("275,000 يورو");
+    expect(payload?.details["مسارات الاستثمار"]).toContain("700,000 يورو");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("8,500 يورو");
+    expect(payload?.details["خيارات المساهمة"]).toBe("غير مطلوب");
+    expect(payload?.details["Due diligence fees"]).toBeUndefined();
+    expect(payload?.details["Passport access"]).toBeUndefined();
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
+  it("serves the latest active Spain Digital Nomad Ready Summary with all nine English fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30026,
+        title: "Elevay Spain Digital Nomad Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Spain_Digital_Nomad_Summary.pdf",
+        createdAt: 1793264708112,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30026",
+      slug: "ready-summary-30026",
+      nameEn: "Spain Digital Nomad Visa",
+      nameAr: "تأشيرة إسبانيا للرحّالة الرقميين",
+    });
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.details["Program Overview"]).toContain("Up to 20 days");
+    expect(payload?.details["Program Overview"]).toContain("up to a maximum of 3 years");
+    expect(payload?.details["Program Overview"]).toContain("deemed granted by administrative silence");
+    expect(payload?.details["Who Can be Included"]).toContain("EUR 34,188 a year (gross)");
+    expect(payload?.details["Who Can be Included"]).toContain("EUR 12,820.50 a year (gross)");
+    expect(payload?.details["Who Can be Included"]).toContain("EUR 4,273.50 a year each (gross)");
+    expect(payload?.details["Investment routes"]).toBe("Not required");
+    expect(payload?.details["Contribution options"]).toContain("EUR 88.56 a month");
+    expect(payload?.details["Contribution options"]).toContain("previous 2 years");
+    expect(payload?.details["Government Processing fees"]).toContain("All fees shall be presented on proposal stage");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("49,077,984");
+    expect(payload?.details["Country At glance"]).toContain("29 countries");
+    expect(payload?.details["Passport access"]).toBe("Not required");
+    expect(payload?.details["About Elevay"]).toContain("T +971 4 282 7221");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.boe.es/buscar/act.php?id=BOE-A-2026-3815");
+  });
+
+  it("returns only Arabic Spain Digital Nomad fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30026,
+        title: "Elevay Spain Digital Nomad Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Spain_Digital_Nomad_Summary.pdf",
+        createdAt: 1793264708112,
+      },
+      null,
+      "ar",
+    );
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.summaryAr).toContain("تأشيرة إسبانيا للرحّالة الرقميين");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("20 يومًا");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("34,188 يورو سنويًا");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("12,820.50 يورو سنويًا");
+    expect(payload?.details["مسارات الاستثمار"]).toBe("غير مطلوب");
+    expect(payload?.details["خيارات المساهمة"]).toContain("88.56 يورو شهريًا");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("تُعرض جميع الرسوم عند مرحلة تقديم العرض");
+    expect(payload?.details["رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toBe("غير مطلوب");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("49,077,984");
+    expect(payload?.details["Investment routes"]).toBeUndefined();
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("renders authored Markdown tables and normalizes only formatting, not the cell text", () => {
     const content = parseProgrammeContent("## Section\n\n| Field | Value |\n|---|---|\n| Cost | **US$10,000** |\n\nA [programme link](https://example.test) is provided.");
     expect(content).toEqual([{

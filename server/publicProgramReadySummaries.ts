@@ -285,6 +285,10 @@ const MALTA_MPRP_ENGLISH_SOURCE = "knowledge/summaries/malta-mprp.md";
 const MALTA_MPRP_ARABIC_SOURCE = "knowledge/summaries/malta-mprp.ar.md";
 const MALTA_NOMAD_ENGLISH_SOURCE = "knowledge/summaries/malta-nomad.md";
 const MALTA_NOMAD_ARABIC_SOURCE = "knowledge/summaries/malta-nomad.ar.md";
+const MALTA_TAX_RESIDENCE_ENGLISH_SOURCE = "knowledge/summaries/malta-tax-residence.md";
+const MALTA_TAX_RESIDENCE_ARABIC_SOURCE = "knowledge/summaries/malta-tax-residence.ar.md";
+const SPAIN_DNV_ENGLISH_SOURCE = "knowledge/summaries/spain-digital-nomad.md";
+const SPAIN_DNV_ARABIC_SOURCE = "knowledge/summaries/spain-digital-nomad.ar.md";
 
 function displayMarkdownText(value: string) {
   return value
@@ -1041,6 +1045,82 @@ function latestApprovedMaltaNomadProgramme(
   };
 }
 
+/**
+ * Serves the latest active Malta tax-residence Ready Summary through the
+ * installed app's legacy fields, selecting only the phone-system language.
+ */
+function latestApprovedMaltaTaxResidenceProgramme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+  locale: PublicProgramLocale,
+): PublicReadySummary | null {
+  const english = assetText(MALTA_TAX_RESIDENCE_ENGLISH_SOURCE);
+  const arabic = assetText(MALTA_TAX_RESIDENCE_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyLocalizedFields(programmeSections, locale);
+  return {
+    ...identity,
+    nameEn: "Malta Tax Residence Programmes",
+    nameAr: "برامج الإقامة الضريبية في مالطا",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: legacy.details,
+    programmeSections,
+  };
+}
+
+/**
+ * Serves the latest active Spain Digital Nomad Ready Summary through the
+ * installed app's legacy fields, selecting only the phone-system language.
+ */
+function latestApprovedSpainDigitalNomadProgramme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+  locale: PublicProgramLocale,
+): PublicReadySummary | null {
+  const english = assetText(SPAIN_DNV_ENGLISH_SOURCE);
+  const arabic = assetText(SPAIN_DNV_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyLocalizedFields(programmeSections, locale);
+  return {
+    ...identity,
+    nameEn: "Spain Digital Nomad Visa",
+    nameAr: "تأشيرة إسبانيا للرحّالة الرقميين",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: legacy.details,
+    programmeSections,
+  };
+}
+
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
@@ -1062,11 +1142,17 @@ export function publicReadySummaryFromRecord(
   if (identity.country === "Greece") return latestApprovedGreeceProgramme(identity, summary.id, locale);
   if (identity.country === "Hungary") return latestApprovedHungaryProgramme(identity, summary.id, locale);
   if (identity.country === "Latvia") return latestApprovedLatviaProgramme(identity, summary.id, locale);
+  if (identity.country === "Malta" && /tax[\s-]*residence/i.test(`${summary.title} ${summary.originalFileName}`)) {
+    return latestApprovedMaltaTaxResidenceProgramme(identity, summary.id, locale);
+  }
   if (identity.country === "Malta" && /nomad/i.test(`${summary.title} ${summary.originalFileName}`)) {
     return latestApprovedMaltaNomadProgramme(identity, summary.id, locale);
   }
   if (identity.country === "Malta" && /mprp|permanent residence/i.test(`${summary.title} ${summary.originalFileName}`)) {
     return latestApprovedMaltaMprpProgramme(identity, summary.id, locale);
+  }
+  if (identity.country === "Spain" && /digital[\s_-]*nomad|\bdnv\b|telework/i.test(`${summary.title} ${summary.originalFileName}`)) {
+    return latestApprovedSpainDigitalNomadProgramme(identity, summary.id, locale);
   }
   if (!extractedText) return null;
   const information = buildPublicProgramInformation(extractedText);
