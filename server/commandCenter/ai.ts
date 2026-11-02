@@ -563,7 +563,7 @@ export const PIPELINES = {
   weekly_plan: { label: "Weekly plan (automatic)", steps: () => [
     S("claude", "weekly_plan", "Claude plans the week's 7 posts from Meta + CRM results and the monthly plan"),
     S("openai", "council_openai", "AI council: OpenAI reviews Claude's draft and suggests improvements", { subject: "week_plan" }),
-    S("manus", "council_manus", "AI council: Manus reviews the draft and OpenAI's suggestions (always waited for)", { subject: "week_plan" }),
+    S("manus", "council_manus", "AI council: Manus reviews the draft and OpenAI's suggestions (up to 5 minutes)", { subject: "week_plan" }),
     S("claude", "council_final", "AI council: Claude weighs both opinions and finalizes", { subject: "week_plan" }),
     S("openai", "week_content", "OpenAI writes the storyboard, caption and voice-over for all 7 posts in one file"),
     S("system", "spawn_week", "Start production of the 4 statics and 3 reels"),
@@ -571,21 +571,21 @@ export const PIPELINES = {
   plan: { label: "Monthly plan from data", steps: () => [
     S("claude", "plan", "Claude drafts next month's plan from 6 months of Meta + CRM data"),
     S("openai", "council_openai", "AI council: OpenAI reviews Claude's draft and suggests improvements", { subject: "monthly_plan" }),
-    S("manus", "council_manus", "AI council: Manus reviews the draft and OpenAI's suggestions (always waited for)", { subject: "monthly_plan" }),
+    S("manus", "council_manus", "AI council: Manus reviews the draft and OpenAI's suggestions (up to 5 minutes)", { subject: "monthly_plan" }),
     S("claude", "council_final", "AI council: Claude weighs both opinions and finalizes", { subject: "monthly_plan" }),
     S("system", "to_monthly_plan", "Send to the monthly plan for owner approval"),
   ] },
   ads_review: { label: "Weekly ads review (automatic, Thursday)", steps: () => [
     S("claude", "ads_review", "Claude reviews the last 7 and 30 days of Meta + CRM results and drafts ad actions with their numbers"),
     S("openai", "council_openai", "AI council: OpenAI reviews Claude's draft and suggests improvements", { subject: "ads" }),
-    S("manus", "council_manus", "AI council: Manus reviews the draft and OpenAI's suggestions (always waited for)", { subject: "ads" }),
+    S("manus", "council_manus", "AI council: Manus reviews the draft and OpenAI's suggestions (up to 5 minutes)", { subject: "ads" }),
     S("claude", "council_final", "AI council: Claude weighs both opinions and finalizes", { subject: "ads" }),
     S("system", "queue_meta", "Queue them in the Meta tab for one-click owner approval (cap and CPL checked)"),
   ] },
   news_council: { label: "Weekly news selection (automatic, AI council)", steps: () => [
     S("claude", "news_shortlist", "Claude selects which of this week's news matters"),
     S("openai", "council_openai", "AI council: OpenAI reviews Claude's draft and suggests improvements", { subject: "news" }),
-    S("manus", "council_manus", "AI council: Manus reviews the draft and OpenAI's suggestions (always waited for)", { subject: "news" }),
+    S("manus", "council_manus", "AI council: Manus reviews the draft and OpenAI's suggestions (up to 5 minutes)", { subject: "news" }),
     S("claude", "council_final", "AI council: Claude weighs both opinions and finalizes", { subject: "news" }),
   ] },
   meta: { label: "Meta campaign change", steps: () => [
@@ -933,7 +933,7 @@ export function createOrchestrator(deps) {
   }
 
   // ---------------------------------------------------------------- AI council (owner rule 26 Oct 2026)
-  // Claude drafts → OpenAI critiques and suggests → Manus critiques and suggests (always waited for) → Claude weighs
+  // Claude drafts → OpenAI critiques and suggests → Manus critiques and suggests (up to 5 minutes, owner rule 2 Nov 2026) → Claude weighs
   // both opinions and finalizes, recording which suggestions it adopted and why. Used for the weekly plan, the monthly
   // plan, which news matters and the weekly ads proposals.
   const COUNCIL_LABEL = { week_plan: "weekly content plan", monthly_plan: "monthly marketing plan", news: "selection of this week's news", ads: "weekly paid-ads proposals" };
@@ -1716,7 +1716,7 @@ Return JSON only: {"posts": [one per planned post, in order: {"index": 1, "type"
           if (q2 && q2.ok === false) throw new Error(q2.error);
           A.week_manus = { status: "waiting", job: jobId, reason: why, requested_at: nowIso() };
           step.output = { waiting_for: "manus_week_content", job: jobId, reason: why };
-          log(run, "studio", "manus", `OpenAI could not write the week content file (${why}). Asked Manus to write it (job ${jobId}); production waits for it.`);
+          log(run, "studio", "manus", `OpenAI could not write the week content file (${why}). Asked Manus to write it (job ${jobId}); Manus has up to ${TURN_MIN} minutes; otherwise each post is written on its own.`);
           return "waiting";
         }
         return;
@@ -1956,15 +1956,17 @@ Return JSON only: {"summary":"3–5 sentences on how the ads did against the tar
     if (step.action === "week_content" && A.week_manus?.status === "waiting") {
       const { state } = await deps.loadState();
       const j = state.jobs.find((x) => x.id === A.week_manus.job);
-      if (!j) return false;
-      if (j.status !== "done" && j.status !== "failed") return false;
+      const manusLate = !(j && (j.status === "done" || j.status === "failed")) && turnLeft(A.week_manus.requested_at) <= 0;
+      if (!manusLate && !j) return false;
+      if (!manusLate && j.status !== "done" && j.status !== "failed") return false;
       if (replanWeekIfMissing(run, step)) { step.status = "pending"; delete A.week_manus; return "resubmit"; }
       const { week, posts } = A.week_plan;
       const planned = posts.map((p, i) => ({ index: i + 1, type: p.type, date: p.date, time: p.time, program: p.program, pillar: p.pillar, audience: p.audience, idea: p.brief }));
       let data = null;
-      if (j.status === "done") { let v = j.result ?? j.manus?.message; if (v && typeof v === "object" && !v.posts) v = v.text ?? v.message ?? v.result ?? JSON.stringify(v); if (typeof v === "string") { const m = v.match(/\{[\s\S]*\}/); try { data = m ? JSON.parse(m[0]) : null; } catch { data = null; } } else data = v; }
+      if (manusLate) log(run, "manus", "studio", `Manus did not write the week file within ${TURN_MIN} minutes (job ${A.week_manus.job}); each post is written on its own.`);
+      else if (j.status === "done") { let v = j.result ?? j.manus?.message; if (v && typeof v === "object" && !v.posts) v = v.text ?? v.message ?? v.result ?? JSON.stringify(v); if (typeof v === "string") { const m = v.match(/\{[\s\S]*\}/); try { data = m ? JSON.parse(m[0]) : null; } catch { data = null; } } else data = v; }
       const usable = usableWeekPosts(posts, data);
-      A.week_manus = { ...A.week_manus, status: j.status === "done" ? "received" : "failed" };
+      A.week_manus = { ...A.week_manus, status: manusLate ? "timed_out" : j.status === "done" ? "received" : "failed" };
       if (usable.some(Boolean)) await saveWeekFile(run, step, week, planned, usable, "manus");
       else { A.week_content = { week, posts: posts.map(() => null), failed: "Neither OpenAI nor Manus produced a usable week file." }; log(run, "studio", "manus", "Manus's week file was not usable; each post will be written on its own so the week is not blocked."); }
       return true;
@@ -1997,7 +1999,14 @@ Return JSON only: {"summary":"3–5 sentences on how the ads did against the tar
       const { state } = await deps.loadState();
       const j = state.jobs.find((x) => x.id === c.manus_job);
       if (!j) { c.manus = { assessment: "The Manus review job is missing; Claude decides with OpenAI's review only." }; log(run, "studio", "team", c.manus.assessment); return true; }
-      if (j.status !== "done" && j.status !== "failed") return false; // owner rule: always wait for Manus
+      if (j.status !== "done" && j.status !== "failed") {
+        // Owner rule (2 Nov 2026): Manus has at most 5 minutes; then Claude decides with OpenAI's review only.
+        if (turnLeft(c.manus_requested_at) > 0) return false;
+        c.manus = { assessment: `Manus did not reply within ${TURN_MIN} minutes (job ${c.manus_job}); Claude decides with OpenAI's review only.` };
+        c.manus_timed_out_at = nowIso();
+        log(run, "manus", "studio", c.manus.assessment);
+        return true;
+      }
       if (j.status === "failed") { c.manus = { assessment: "Manus could not complete its review: " + clip(j.result?.error || "", 300) }; log(run, "manus", "studio", c.manus.assessment); return true; }
       c.manus = parseLooseJson(j.result ?? j.manus?.message) || { assessment: "Manus replied without a review." };
       c.manus_received_at = nowIso();

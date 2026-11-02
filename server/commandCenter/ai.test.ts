@@ -759,6 +759,25 @@ describe("owner rule: AI council (Claude ⇄ OpenAI ⇄ Manus)", () => {
   });
 });
 
+describe("owner rule: Manus has at most 5 minutes in the AI council (2 Nov 2026)", () => {
+  it("lets Claude finalize the monthly plan with OpenAI's review when Manus stays silent", async () => {
+    const DRAFT = { title: "November plan", body: "Draft body", budget_changes: [] };
+    const ctx = setup([DRAFT, OPENAI_REVIEW, { final: { title: "November plan v2", body: "Council body", budget_changes: [] }, decision_log: [], summary: "Done." }]);
+    const run = await ctx.o.create({ kind: "plan", request: "", options: {}, user: owner });
+    let r = await settle(ctx.o, run.id);
+    expect(r.status).toBe("waiting");
+    await ctx.o.tick();
+    expect((await ctx.o.get(run.id)).status).toBe("waiting"); // still inside Manus's 5 minutes
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 5 * 60 * 1000 + 1000);
+    await ctx.o.tick();
+    clock.mockRestore();
+    r = await settle(ctx.o, run.id, ["running", "queued", "waiting"]);
+    expect(r.status).toBe("done");
+    expect(r.artifacts.council.monthly_plan.manus.assessment).toMatch(/did not reply within 5 minutes/);
+    expect(r.artifacts.plan.title).toBe("November plan v2");
+  });
+});
+
 describe("owner reset of a month and a week (1 Nov 2026)", () => {
   it("rejects the unpublished week, supersedes the month's plans, never touches published posts, and starts fresh plans", async () => {
     const ctx = setup([{ title: "November plan", body: "Plan body", budget_changes: [] }]);
