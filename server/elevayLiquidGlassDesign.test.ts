@@ -19,6 +19,17 @@ describe("ELEVAY Liquid Glass visual system", () => {
     expect(css).toContain(".elevay-control-surface");
   });
 
+  it("uses a consistent 50 percent opacity for every Liquid Glass material tier", () => {
+    const css = read("client/src/index.css");
+
+    expect(css).toContain("--glass-surface: rgba(255, 255, 255, 0.5)");
+    expect(css).toContain("--glass-surface-strong: rgba(250, 254, 255, 0.5)");
+    expect(css).toContain("--glass-control: rgba(255, 255, 255, 0.5)");
+    expect(css).toContain("--marketing-surface: rgba(18, 38, 61, 0.5)");
+    expect(css).toContain("--glass-surface: rgba(20, 47, 73, 0.5)");
+    expect(css).toContain("background: linear-gradient(180deg, rgba(10, 22, 40, 0.5), rgba(18, 47, 73, 0.5))");
+  });
+
   it("applies shared glass treatments to cards, controls, data tables, dialogs, drawers, and charts", () => {
     expect(read("client/src/components/ui/card.tsx")).toContain("elevay-glass-panel");
     expect(read("client/src/components/ui/input.tsx")).toContain("elevay-control-surface");
