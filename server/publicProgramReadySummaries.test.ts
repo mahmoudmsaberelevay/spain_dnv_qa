@@ -1275,6 +1275,114 @@ describe("public Ready Summary programme adapter", () => {
     expect(Object.keys(payload?.details ?? {}).some(heading => heading.includes(" / "))).toBe(false);
   });
 
+  it("serves the latest active Latvia Ready Summary through all nine English sections and installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30024,
+        title: "Elevay Latvia Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Latvia_Summary.pdf",
+        createdAt: 1793264617015,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30024",
+      slug: "ready-summary-30024",
+      nameEn: "Latvia",
+      nameAr: "لاتفيا",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("Latvia offers a temporary residence permit to foreign investors");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.details["Program Overview"]).toContain("Programme status: OPEN");
+    expect(payload?.details["Program Overview"]).toContain("in force since 15 September 2026");
+    expect(payload?.details["Program Overview"]).toContain("Nothing in this summary guarantees that an application will be approved or renewed");
+    expect(payload?.details["Who Can be Included"]).toContain("The investor’s spouse");
+    expect(payload?.details["Who Can be Included"]).toContain("Persons under the investor’s curatorship");
+    expect(payload?.details["Investment routes"]).toContain("EUR 50,000 in share capital");
+    expect(payload?.details["Investment routes"]).toContain("EUR 100,000 in share capital");
+    expect(payload?.details["Investment routes"]).toContain("Up to 10 foreigners per company on this tier");
+    expect(payload?.details["Investment routes"]).toContain("EUR 40,000");
+    expect(payload?.details["Investment routes"]).toContain("EUR 100,000 taxes a year");
+    expect(payload?.details["Contribution options"]).toBe("Not required");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 10,000");
+    expect(payload?.details["Government Processing fees"]).toContain("not an Elevay fee");
+    expect(payload?.details["Government Processing fees"]).toContain("All fees shall be presented on proposal stage");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("64,594 km2");
+    expect(payload?.details["Country At glance"]).toContain("1,845,096");
+    expect(payload?.details["Country At glance"]).toContain("EUR 29,500");
+    expect(payload?.details["Country At glance"]).toContain("29 countries");
+    expect(payload?.details["Passport access"]).toBe("Not required");
+    expect(payload?.details["About Elevay"]).toContain("28+");
+    expect(payload?.details["About Elevay"]).toContain("T +20 128 498 1717");
+    expect(payload?.details["About Elevay"]).toContain("not legal, tax or immigration advice");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://likumi.lv/ta/id/370622-imigracijas-likums");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.pmlp.gov.lv/en/article/new-immigration-law-takes-effect-key-changes-and-regulations");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.elevay.com");
+  });
+
+  it("returns Arabic-only Latvia legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30024,
+        title: "Elevay Latvia Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Latvia_Summary.pdf",
+        createdAt: 1793264617015,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("تمنح لاتفيا تصريح إقامة مؤقتًا للمستثمرين الأجانب");
+    expect(payload?.summaryAr).toContain("تمنح لاتفيا تصريح إقامة مؤقتًا للمستثمرين الأجانب");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.details["مسارات الاستثمار"]).toContain("50,000 يورو");
+    expect(payload?.details["مسارات الاستثمار"]).toContain("100,000 يورو");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("10,000 يورو");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("ليست رسمًا تتقاضاه إيليفاي");
+    expect(payload?.details["رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toBe("غير مطلوب");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("1,845,096");
+    expect(payload?.details["Investment routes"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("share capital");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("renders authored Markdown tables and normalizes only formatting, not the cell text", () => {
     const content = parseProgrammeContent("## Section\n\n| Field | Value |\n|---|---|\n| Cost | **US$10,000** |\n\nA [programme link](https://example.test) is provided.");
     expect(content).toEqual([{
