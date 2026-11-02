@@ -1789,6 +1789,120 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Portugal D2 Ready Summary as nine English-only installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30015,
+        title: "Elevay Portugal D2 Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Portugal_D2_Summary.pdf",
+        createdAt: 1793264201880,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30015",
+      slug: "ready-summary-30015",
+      nameEn: "Portugal D2 Residence Visa",
+      nameAr: "تأشيرة الإقامة البرتغالية D2",
+    });
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.details["Program Overview"]).toContain("work for themselves or run a business in Portugal");
+    expect(payload?.details["Program Overview"]).toContain("3 to 6 months");
+    expect(payload?.details["Program Overview"]).toContain("6 months in a row / 8 months in total");
+    expect(payload?.details["Program Overview"]).toContain("EUR 6,440");
+    expect(payload?.details["Program Overview"]).toContain("16 of the 24 months");
+    expect(payload?.details["Who Can be Included"]).toContain("Dependent first-degree parents");
+    expect(payload?.details["Who Can be Included"]).toContain("Minor siblings under guardianship");
+    expect(payload?.details["Investment routes"]).toContain("Independent professional");
+    expect(payload?.details["Investment routes"]).toContain("Immigrant entrepreneur");
+    expect(payload?.details["Investment routes"]).toContain("Startup Visa");
+    expect(payload?.details["Investment routes"]).toContain("EUR 11,592");
+    expect(payload?.details["Investment routes"]).toContain("Portuguese law sets no minimum investment amount");
+    expect(payload?.details["Contribution options"]).toBe("Not required");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 110");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 114.30");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 351.10");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("10,804,871");
+    expect(payload?.details["Country At glance"]).toContain("US$32,082");
+    expect(payload?.details["Country At glance"]).toContain("29 countries");
+    expect(payload?.details["Passport access"]).toContain("10 years of legal residence, or 7 years");
+    expect(payload?.details["Passport access"]).toContain("Citizenship is never guaranteed or automatic");
+    expect(payload?.details["About Elevay"]).toContain("28+ years of experience, since 1998");
+    expect(payload?.details["About Elevay"]).toContain("T +20 128 498 1717");
+    expect(payload?.details["About Elevay"]).toContain("not legal or immigration advice");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("diariodarepublica.pt");
+  });
+
+  it("returns only Arabic Portugal D2 legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30015,
+        title: "Elevay Portugal D2 Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Portugal_D2_Summary.pdf",
+        createdAt: 1793264201880,
+      },
+      null,
+      "ar",
+    );
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.summaryAr).toContain("تأشيرة D2 هي تأشيرة إقامة برتغالية");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("3 إلى 6 أشهر");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("6 أشهر متتالية أو 8 أشهر إجمالًا");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("الإخوة القاصرون الخاضعون للوصاية");
+    expect(payload?.details["مسارات الاستثمار"]).toContain("المهني المستقل");
+    expect(payload?.details["مسارات الاستثمار"]).toContain("رائد الأعمال المهاجر");
+    expect(payload?.details["مسارات الاستثمار"]).toContain("تأشيرة الشركات الناشئة");
+    expect(payload?.details["مسارات الاستثمار"]).toContain("11,592 يورو");
+    expect(payload?.details["خيارات المساهمة"]).toBe("غير مطلوب");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("110 يورو");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("114.30 يورو");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("351.10 يورو");
+    expect(payload?.details["رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("10,804,871");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("29 دولة");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toContain("10 سنوات");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toContain("7 سنوات");
+    expect(payload?.details["Investment routes"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("Independent professional");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("renders authored Markdown tables and normalizes only formatting, not the cell text", () => {
     const content = parseProgrammeContent("## Section\n\n| Field | Value |\n|---|---|\n| Cost | **US$10,000** |\n\nA [programme link](https://example.test) is provided.");
     expect(content).toEqual([{

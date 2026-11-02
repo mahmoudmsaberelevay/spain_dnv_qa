@@ -289,6 +289,8 @@ const MALTA_TAX_RESIDENCE_ENGLISH_SOURCE = "knowledge/summaries/malta-tax-reside
 const MALTA_TAX_RESIDENCE_ARABIC_SOURCE = "knowledge/summaries/malta-tax-residence.ar.md";
 const SPAIN_DNV_ENGLISH_SOURCE = "knowledge/summaries/spain-digital-nomad.md";
 const SPAIN_DNV_ARABIC_SOURCE = "knowledge/summaries/spain-digital-nomad.ar.md";
+const PORTUGAL_D2_ENGLISH_SOURCE = "knowledge/summaries/portugal-d2.md";
+const PORTUGAL_D2_ARABIC_SOURCE = "knowledge/summaries/portugal-d2.ar.md";
 
 function displayMarkdownText(value: string) {
   return value
@@ -1121,6 +1123,44 @@ function latestApprovedSpainDigitalNomadProgramme(
   };
 }
 
+/**
+ * Serves the latest active Portugal D2 Ready Summary through the installed
+ * app's legacy fields, selecting only the phone-system language.
+ */
+function latestApprovedPortugalD2Programme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+  locale: PublicProgramLocale,
+): PublicReadySummary | null {
+  const english = assetText(PORTUGAL_D2_ENGLISH_SOURCE);
+  const arabic = assetText(PORTUGAL_D2_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyLocalizedFields(programmeSections, locale);
+  return {
+    ...identity,
+    nameEn: "Portugal D2 Residence Visa",
+    nameAr: "تأشيرة الإقامة البرتغالية D2",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: legacy.details,
+    programmeSections,
+  };
+}
+
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
@@ -1153,6 +1193,9 @@ export function publicReadySummaryFromRecord(
   }
   if (identity.country === "Spain" && /digital[\s_-]*nomad|\bdnv\b|telework/i.test(`${summary.title} ${summary.originalFileName}`)) {
     return latestApprovedSpainDigitalNomadProgramme(identity, summary.id, locale);
+  }
+  if (identity.country === "Portugal" && /\bd2\b/i.test(`${summary.title} ${summary.originalFileName}`)) {
+    return latestApprovedPortugalD2Programme(identity, summary.id, locale);
   }
   if (!extractedText) return null;
   const information = buildPublicProgramInformation(extractedText);
