@@ -412,15 +412,38 @@ export type InsertFinCategory = typeof finCategories.$inferInsert;
 
 export const finEmployees = mysqlTable("finEmployees", {
   id: int("id").autoincrement().primaryKey(),
+  // Optional explicit CRM login link. HR self-service must never resolve this by name or email.
+  crmUserId: int("crmUserId"),
   name: varchar("name", { length: 255 }).notNull(),
   role: varchar("role", { length: 128 }),
   salary: decimal("salary", { precision: 14, scale: 2 }).default("0"),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  // MySQL allows multiple NULL values, while preventing one CRM login from being assigned twice.
+  uniqueIndex("fin_employees_crm_user_unique").on(table.crmUserId),
+]);
 export type FinEmployee = typeof finEmployees.$inferSelect;
 export type InsertFinEmployee = typeof finEmployees.$inferInsert;
 
+// Financial owns salary changes. HR reads the effective rate but never writes it.
+export const finEmployeeSalaryRates = mysqlTable("finEmployeeSalaryRates", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employeeId").notNull(),
+  monthlySalary: decimal("monthlySalary", { precision: 14, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 10 }).default("EGP").notNull(),
+  effectiveFrom: date("effectiveFrom").notNull(),
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("fin_employee_salary_rates_employee_effective_idx").on(table.employeeId, table.effectiveFrom),
+  uniqueIndex("fin_employee_salary_rates_employee_effective_unique").on(table.employeeId, table.effectiveFrom),
+]);
+export type FinEmployeeSalaryRate = typeof finEmployeeSalaryRates.$inferSelect;
+export type InsertFinEmployeeSalaryRate = typeof finEmployeeSalaryRates.$inferInsert;
+
+// ─── Financial Clients ───────────────────────────────────────────────────────
 export const finClients = mysqlTable("finClients", {
   id: int("id").autoincrement().primaryKey(),
   contractId: int("contractId"),

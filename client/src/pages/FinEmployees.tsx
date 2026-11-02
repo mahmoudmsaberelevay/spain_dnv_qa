@@ -5,14 +5,16 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Edit2 } from "lucide-react";
+import { Plus, Edit2, History } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ELEVAY_EMPLOYEE_POSITIONS } from "@shared/elevayEmployeePositions";
+import { getCairoBusinessDate } from "@shared/financialEmployeeSalaryRates";
 
 export default function FinEmployees() {
   const utils = trpc.useUtils();
   const { data: employees, isLoading } = trpc.financial.employees.list.useQuery();
+  const { data: crmUsers } = trpc.financial.employees.listAssignableCrmUsers.useQuery();
   const createMut = trpc.financial.employees.create.useMutation({
     onSuccess: () => { utils.financial.employees.list.invalidate(); toast.success("Employee added"); setShowCreate(false); },
     onError: (e) => toast.error(e.message),
@@ -26,15 +28,25 @@ export default function FinEmployees() {
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState("");
   const [newSalary, setNewSalary] = useState("");
+  const [newCrmUserId, setNewCrmUserId] = useState("unlinked");
+  const [newSalaryEffectiveFrom, setNewSalaryEffectiveFrom] = useState(() => getCairoBusinessDate());
   const [editEmp, setEditEmp] = useState<any>(null);
   const [editName, setEditName] = useState("");
   const [editRole, setEditRole] = useState("");
   const [editSalary, setEditSalary] = useState("");
+  const [editCrmUserId, setEditCrmUserId] = useState("unlinked");
+  const [editSalaryEffectiveFrom, setEditSalaryEffectiveFrom] = useState(() => getCairoBusinessDate());
+  const [historyEmp, setHistoryEmp] = useState<any>(null);
+  const { data: salaryRates, isLoading: isSalaryRatesLoading } = trpc.financial.employees.salaryRates.useQuery(
+    { employeeId: historyEmp?.id ?? 0 },
+    { enabled: Boolean(historyEmp?.id) },
+  );
 
   const fmt = (v: string | number | null | undefined, currency = "EGP") => {
     const n = Number(v ?? 0);
     return n > 0 ? `${currency} ${n.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—";
   };
+  const formatDateOnly = (value: string | Date) => value instanceof Date ? value.toISOString().slice(0, 10) : value.slice(0, 10);
 
   const totalSalary = employees?.reduce((sum, e) => sum + Number(e.salary ?? 0), 0) ?? 0;
 
@@ -47,7 +59,10 @@ export default function FinEmployees() {
             {employees?.length ?? 0} team members · Total monthly payroll: EGP {totalSalary.toLocaleString("en-US", { minimumFractionDigits: 2 })}
           </p>
         </div>
-        <Button onClick={() => { setNewName(""); setNewRole(""); setNewSalary(""); setShowCreate(true); }}>
+        <Button onClick={() => {
+          setNewName(""); setNewRole(""); setNewSalary(""); setNewCrmUserId("unlinked");
+          setNewSalaryEffectiveFrom(getCairoBusinessDate()); setShowCreate(true);
+        }}>
           <Plus className="h-4 w-4 mr-1" /> Add Employee
         </Button>
       </div>
@@ -69,6 +84,7 @@ export default function FinEmployees() {
                     <th className="text-left py-2 font-medium">#</th>
                     <th className="text-left py-2 font-medium">Name</th>
                     <th className="text-left py-2 font-medium">Position</th>
+                    <th className="text-left py-2 font-medium">CRM Login</th>
                     <th className="text-right py-2 font-medium">Fixed Salary</th>
                     <th className="text-right py-2 font-medium text-green-700">Total Income</th>
                     <th className="text-right py-2 font-medium text-red-700">Total Expense</th>
@@ -82,6 +98,7 @@ export default function FinEmployees() {
                       <td className="py-2.5 text-muted-foreground">{idx + 1}</td>
                       <td className="py-2.5 font-medium">{emp.name}</td>
                       <td className="py-2.5 text-muted-foreground">{emp.role ?? "—"}</td>
+                      <td className="py-2.5 text-muted-foreground">{(emp as any).crmUserEmail ?? "Not linked"}</td>
                       <td className="py-2.5 text-right font-mono">{fmt(emp.salary)}</td>
                       <td className="py-2.5 text-right font-mono text-green-700">{fmt((emp as any).totalIncome)}</td>
                       <td className="py-2.5 text-right font-mono text-red-700">{fmt((emp as any).totalExpense)}</td>
@@ -96,8 +113,13 @@ export default function FinEmployees() {
                           setEditName(emp.name);
                           setEditRole(emp.role ?? "");
                           setEditSalary(String(Number(emp.salary ?? 0)));
+                          setEditCrmUserId(emp.crmUserId ? String(emp.crmUserId) : "unlinked");
+                          setEditSalaryEffectiveFrom(getCairoBusinessDate());
                         }}>
                           <Edit2 className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" title="Salary history" onClick={() => setHistoryEmp(emp)}>
+                          <History className="h-3.5 w-3.5" />
                         </Button>
                       </td>
                     </tr>
@@ -131,10 +153,29 @@ export default function FinEmployees() {
               <label className="text-sm font-medium">Fixed Salary (EGP)</label>
               <Input type="number" value={newSalary} onChange={e => setNewSalary(e.target.value)} placeholder="0.00" />
             </div>
+            <div>
+              <label className="text-sm font-medium">CRM login (optional)</label>
+              <Select value={newCrmUserId} onValueChange={setNewCrmUserId}>
+                <SelectTrigger><SelectValue placeholder="No CRM login linked" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unlinked">No CRM login linked</SelectItem>
+                  {crmUsers?.map((user) => <SelectItem key={user.id} value={String(user.id)}>{user.name || user.email || `User #${user.id}`}{user.email ? ` · ${user.email}` : ""}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">Linking is explicit; employee self-service will use this account, never a name match.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Salary effective from</label>
+              <Input type="date" value={newSalaryEffectiveFrom} onChange={e => setNewSalaryEffectiveFrom(e.target.value)} />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button onClick={() => createMut.mutate({ name: newName, role: newRole, salary: newSalary ? Number(newSalary) : undefined })} disabled={!newName.trim() || !newRole || createMut.isPending}>
+            <Button onClick={() => createMut.mutate({
+              name: newName, role: newRole, salary: newSalary ? Number(newSalary) : undefined,
+              crmUserId: newCrmUserId === "unlinked" ? null : Number(newCrmUserId),
+              salaryEffectiveFrom: newSalaryEffectiveFrom || undefined,
+            })} disabled={!newName.trim() || !newRole || createMut.isPending}>
               {createMut.isPending ? "Adding..." : "Add"}
             </Button>
           </DialogFooter>
@@ -165,14 +206,51 @@ export default function FinEmployees() {
             <div>
               <label className="text-sm font-medium">Fixed Salary (EGP)</label>
               <Input type="number" value={editSalary} onChange={e => setEditSalary(e.target.value)} placeholder="0.00" />
+              <p className="mt-1 text-xs text-muted-foreground">Saving a salary change adds a dated Financial salary record; previous receipt amounts are never changed.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Salary effective from</label>
+              <Input type="date" value={editSalaryEffectiveFrom} onChange={e => setEditSalaryEffectiveFrom(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">CRM login (optional)</label>
+              <Select value={editCrmUserId} onValueChange={setEditCrmUserId}>
+                <SelectTrigger><SelectValue placeholder="No CRM login linked" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unlinked">No CRM login linked</SelectItem>
+                  {crmUsers?.map((user) => <SelectItem key={user.id} value={String(user.id)}>{user.name || user.email || `User #${user.id}`}{user.email ? ` · ${user.email}` : ""}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditEmp(null)}>Cancel</Button>
-            <Button onClick={() => updateMut.mutate({ id: editEmp.id, name: editName, role: editRole || undefined, salary: editSalary ? Number(editSalary) : undefined })} disabled={!editName.trim() || !editRole || updateMut.isPending}>
+            <Button onClick={() => updateMut.mutate({
+              id: editEmp.id, name: editName, role: editRole || undefined, salary: editSalary ? Number(editSalary) : undefined,
+              crmUserId: editCrmUserId === "unlinked" ? null : Number(editCrmUserId),
+              salaryEffectiveFrom: editSalaryEffectiveFrom || undefined,
+            })} disabled={!editName.trim() || !editRole || updateMut.isPending}>
               {updateMut.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!historyEmp} onOpenChange={() => setHistoryEmp(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Salary History — {historyEmp?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-2 py-2">
+            <p className="text-sm text-muted-foreground">Financial salary records only. HR will read these rates but cannot change them.</p>
+            {isSalaryRatesLoading ? <div className="py-6 text-center text-sm text-muted-foreground">Loading…</div> : !salaryRates?.length ? <div className="py-6 text-center text-sm text-muted-foreground">No salary history recorded yet.</div> : (
+              <div className="overflow-hidden rounded-xl border border-border/70">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b bg-muted/35"><th className="px-3 py-2 text-left font-medium">Effective from</th><th className="px-3 py-2 text-right font-medium">Monthly salary</th></tr></thead>
+                  <tbody>{salaryRates.map((rate) => <tr key={rate.id} className="border-b last:border-0"><td className="px-3 py-2">{formatDateOnly(rate.effectiveFrom)}</td><td className="px-3 py-2 text-right font-mono">{fmt(rate.monthlySalary, rate.currency)}</td></tr>)}</tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setHistoryEmp(null)}>Close</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

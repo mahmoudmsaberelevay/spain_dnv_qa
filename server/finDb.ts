@@ -1,13 +1,14 @@
 import { eq, desc, and, gte, lte, sql, asc, inArray } from "drizzle-orm";
 import { getDb } from "./db";
 import {
-  finAccounts, finCategories, finEmployees, finClients, finCommissions, finTransactions,
+  finAccounts, finCategories, finEmployees, finEmployeeSalaryRates, finClients, finCommissions, finTransactions, users,
   InsertFinAccount, InsertFinCategory, InsertFinEmployee, InsertFinClient, InsertFinCommission, InsertFinTransaction,
   clientCases, appSettings, contracts,
 } from "../drizzle/schema";
 import { enforceQualifierCommissionMarketingSource } from "../shared/commissionSourcePolicy";
 import { isContractConsultantPosition } from "../shared/elevayEmployeePositions";
 import { rebuildClientPaymentLedger } from "./clientPaymentLedger";
+import { getCairoBusinessDate } from "../shared/financialEmployeeSalaryRates";
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
 export async function listAccounts() {
@@ -103,6 +104,15 @@ export async function deleteCategory(id: number) {
 export async function listEmployees() {
   const db = await getDb(); if (!db) return [];
   const employees = await db.select().from(finEmployees).orderBy(asc(finEmployees.name));
+  const linkedUserIds = employees
+    .map((employee) => employee.crmUserId)
+    .filter((userId): userId is number => userId !== null);
+  const linkedUsers = linkedUserIds.length > 0
+    ? await db.select({ id: users.id, name: users.name, email: users.email })
+      .from(users)
+      .where(inArray(users.id, linkedUserIds))
+    : [];
+  const linkedUsersById = new Map(linkedUsers.map((user) => [user.id, user]));
   // Attach total income and expense per employee from transactions
   const totals = await db.select({
     employeeId: finTransactions.employeeId,
@@ -120,9 +130,45 @@ export async function listEmployees() {
   }
   return employees.map(e => ({
     ...e,
+    crmUserName: e.crmUserId ? linkedUsersById.get(e.crmUserId)?.name ?? null : null,
+    crmUserEmail: e.crmUserId ? linkedUsersById.get(e.crmUserId)?.email ?? null : null,
     totalIncome: totalsMap[e.id]?.totalIncome ?? 0,
     totalExpense: totalsMap[e.id]?.totalExpense ?? 0,
   }));
+}
+
+/** Returns only the identity fields required for an administrator to make an explicit employee-login link. */
+export async function listAssignableCrmUsers() {
+  const db = await getDb(); if (!db) return [];
+  return db.select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .orderBy(asc(users.name));
+}
+
+export async function listEmployeeSalaryRates(employeeId: number) {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(finEmployeeSalaryRates)
+    .where(eq(finEmployeeSalaryRates.employeeId, employeeId))
+    .orderBy(desc(finEmployeeSalaryRates.effectiveFrom), desc(finEmployeeSalaryRates.id));
+}
+
+function toDateOnly(value: string): Date {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+// The helper receives either the normal Drizzle connection or its transaction executor.
+// Both expose the same typed query contract used below.
+async function assertAvailableCrmUserLink(db: any, employeeId: number | null, crmUserId: number) {
+  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, crmUserId)).limit(1);
+  if (!user) throw new Error("The selected CRM user no longer exists");
+
+  const [existingLink] = await db.select({ employeeId: finEmployees.id })
+    .from(finEmployees)
+    .where(eq(finEmployees.crmUserId, crmUserId))
+    .limit(1);
+  if (existingLink && existingLink.employeeId !== employeeId) {
+    throw new Error("This CRM user is already linked to another Financial employee");
+  }
 }
 
 /** The Contracting module may only offer active employees with a consultant-equivalent position. */
@@ -142,14 +188,62 @@ export async function isActiveContractConsultant(name: string) {
   return consultants.some((consultant) => consultant.name.trim().toLocaleLowerCase() === normalizedName);
 }
 
-export async function createEmployee(data: { name: string; role?: string; salary?: string }) {
+export async function createEmployee(data: { name: string; role?: string; salary?: string; crmUserId?: number | null; salaryEffectiveFrom?: string; createdByUserId?: number }) {
   const db = await getDb(); if (!db) return null;
-  const [result] = await db.insert(finEmployees).values(data);
-  return { id: result.insertId, ...data };
+  const salary = data.salary ?? "0";
+  const effectiveFrom = data.salaryEffectiveFrom ?? getCairoBusinessDate();
+  return db.transaction(async (tx) => {
+    if (data.crmUserId != null) await assertAvailableCrmUserLink(tx, null, data.crmUserId);
+    const [result] = await tx.insert(finEmployees).values({
+      name: data.name,
+      role: data.role,
+      salary,
+      crmUserId: data.crmUserId ?? null,
+    });
+    await tx.insert(finEmployeeSalaryRates).values({
+      employeeId: result.insertId,
+      monthlySalary: salary,
+      currency: "EGP",
+      effectiveFrom: toDateOnly(effectiveFrom),
+      createdByUserId: data.createdByUserId ?? null,
+    });
+    return { id: result.insertId, ...data, salary, crmUserId: data.crmUserId ?? null };
+  });
 }
-export async function updateEmployee(id: number, data: { name?: string; role?: string; salary?: string; isActive?: boolean }) {
+export async function updateEmployee(id: number, data: { name?: string; role?: string; salary?: string; isActive?: boolean; crmUserId?: number | null; salaryEffectiveFrom?: string; changedByUserId?: number }) {
   const db = await getDb(); if (!db) return;
-  await db.update(finEmployees).set(data).where(eq(finEmployees.id, id));
+  await db.transaction(async (tx) => {
+    const [employee] = await tx.select({ id: finEmployees.id }).from(finEmployees).where(eq(finEmployees.id, id)).limit(1);
+    if (!employee) throw new Error("Financial employee not found");
+    if (data.crmUserId != null) await assertAvailableCrmUserLink(tx, id, data.crmUserId);
+
+    const employeeUpdate: { name?: string; role?: string; salary?: string; isActive?: boolean; crmUserId?: number | null } = {};
+    if (data.name !== undefined) employeeUpdate.name = data.name;
+    if (data.role !== undefined) employeeUpdate.role = data.role;
+    if (data.isActive !== undefined) employeeUpdate.isActive = data.isActive;
+    if (data.crmUserId !== undefined) employeeUpdate.crmUserId = data.crmUserId;
+    if (data.salary !== undefined) employeeUpdate.salary = data.salary;
+    if (Object.keys(employeeUpdate).length > 0) {
+      await tx.update(finEmployees).set(employeeUpdate).where(eq(finEmployees.id, id));
+    }
+
+    if (data.salary !== undefined) {
+      await tx.insert(finEmployeeSalaryRates).values({
+        employeeId: id,
+        monthlySalary: data.salary,
+        currency: "EGP",
+        effectiveFrom: toDateOnly(data.salaryEffectiveFrom ?? getCairoBusinessDate()),
+        createdByUserId: data.changedByUserId ?? null,
+      }).onDuplicateKeyUpdate({
+        set: {
+          monthlySalary: data.salary,
+          currency: "EGP",
+          createdByUserId: data.changedByUserId ?? null,
+          updatedAt: new Date(),
+        },
+      });
+    }
+  });
 }
 export async function deleteEmployee(id: number) {
   const db = await getDb(); if (!db) return;

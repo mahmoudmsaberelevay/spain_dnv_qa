@@ -7,7 +7,7 @@ import { finAccounts, finTransactions, appSettings, upcomingPayments, finClients
 import {
   listAccounts, getAccountById, createAccount, updateAccount, updateAccountBalance, recalcAccountBalance, recalcAllAccountBalances,
   listCategories, createCategory, updateCategory, deleteCategory,
-  listEmployees, createEmployee, updateEmployee, deleteEmployee,
+  listEmployees, listAssignableCrmUsers, listEmployeeSalaryRates, createEmployee, updateEmployee, deleteEmployee,
   listFinClients, countFinClients, getFinClientTotals, getFinClientById, createFinClient, updateFinClient, deleteFinClient, getFinClientByContractId, applyClientPayment, recordClientManualPayment, setClientPaidAmount, recalcClientPaidAmount,
   bulkDeleteTransactions,
   listCommissions, countCommissions, createCommission, updateCommission, deleteCommission,
@@ -158,18 +158,41 @@ const categoriesRouter = router({
 
 // ─── Employees Router ────────────────────────────────────────────────────────
 const employeesRouter = router({
-  list: finProcedure.query(async () => listEmployees()),
+  // Employee salaries, their CRM login link, and the rate history are Financial-admin data.
+  list: finAdminProcedure.query(async () => listEmployees()),
+  listAssignableCrmUsers: finAdminProcedure.query(async () => listAssignableCrmUsers()),
+  salaryRates: finAdminProcedure
+    .input(z.object({ employeeId: z.number().int().positive() }))
+    .query(async ({ input }) => listEmployeeSalaryRates(input.employeeId)),
   create: finAdminProcedure
-    .input(z.object({ name: z.string().min(1), role: z.string().optional(), salary: z.number().optional() }))
-    .mutation(async ({ input }) => {
+    .input(z.object({
+      name: z.string().trim().min(1),
+      role: z.string().optional(),
+      salary: z.number().min(0).optional(),
+      crmUserId: z.number().int().positive().nullable().optional(),
+      salaryEffectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
       const { salary, ...rest } = input;
-      return createEmployee({ ...rest, salary: salary?.toString() });
+      return createEmployee({ ...rest, salary: salary?.toString(), createdByUserId: ctx.user.id });
     }),
   update: finAdminProcedure
-    .input(z.object({ id: z.number(), name: z.string().optional(), role: z.string().optional(), salary: z.number().optional(), isActive: z.boolean().optional() }))
-    .mutation(async ({ input }) => {
+    .input(z.object({
+      id: z.number().int().positive(),
+      name: z.string().trim().min(1).optional(),
+      role: z.string().optional(),
+      salary: z.number().min(0).optional(),
+      crmUserId: z.number().int().positive().nullable().optional(),
+      salaryEffectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      isActive: z.boolean().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
       const { id, salary, ...data } = input;
-      await updateEmployee(id, { ...data, salary: salary !== undefined ? salary.toString() : undefined });
+      await updateEmployee(id, {
+        ...data,
+        salary: salary !== undefined ? salary.toString() : undefined,
+        changedByUserId: ctx.user.id,
+      });
     }),
   delete: finAdminProcedure
     .input(z.object({ id: z.number() }))
