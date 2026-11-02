@@ -1128,6 +1128,112 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Hungary Ready Summary through all nine English sections and installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30016,
+        title: "Elevay Hungary Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Hungary_Summary.pdf",
+        createdAt: 1793264235803,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30016",
+      slug: "ready-summary-30016",
+      nameEn: "Hungary",
+      nameAr: "المجر",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("The Hungary Guest Investor Residence Permit is a residence permit under Act XC of 2023");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.details["Program Overview"]).toContain("Programme status: OPEN");
+    expect(payload?.details["Program Overview"]).toContain("EUR 250,000");
+    expect(payload?.details["Program Overview"]).toContain("EUR 1,000,000");
+    expect(payload?.details["Program Overview"]).toContain("21 days");
+    expect(payload?.details["Program Overview"]).toContain("does not give Hungarian or European Union citizenship");
+    expect(payload?.details["Program Overview"]).toContain("The Act sets no minimum stay requirement");
+    expect(payload?.details["Who Can be Included"]).toContain("joint minor children, including adopted and foster children");
+    expect(payload?.details["Who Can be Included"]).toContain("Adult children and parents are not listed in the Act");
+    expect(payload?.details["Investment routes"]).toContain("at least 40% of its net assets");
+    expect(payload?.details["Investment routes"]).toContain("securities sub-account that is blocked for 5 years");
+    expect(payload?.details["Investment routes"]).toContain("does not require a further investment");
+    expect(payload?.details["Contribution options"]).toContain("At least EUR 1,000,000");
+    expect(payload?.details["Government Processing fees"]).toContain("Not required");
+    expect(payload?.details["Government Processing fees"]).toContain("All fees shall be presented on proposal stage");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("9,539,502");
+    expect(payload?.details["Country At glance"]).toContain("EUR 29,400");
+    expect(payload?.details["Country At glance"]).toContain("21 December 2007");
+    expect(payload?.details["Passport access"]).toBe("Not required");
+    expect(payload?.details["About Elevay"]).toContain("28+");
+    expect(payload?.details["About Elevay"]).toContain("not legal, tax or immigration advice");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://njt.jog.gov.hu/jogszabaly/2023-90-00-00");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://oif.gov.hu/factsheets/residence-permit-for-guest-investor");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://www.elevay.com");
+  });
+
+  it("returns Arabic-only Hungary legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30016,
+        title: "Elevay Hungary Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Hungary_Summary.pdf",
+        createdAt: 1793264235803,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("تصريح الإقامة للمستثمر الضيف في المجر هو تصريح إقامة");
+    expect(payload?.summaryAr).toContain("تصريح الإقامة للمستثمر الضيف في المجر هو تصريح إقامة");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.details["مسارات الاستثمار"]).toContain("250,000 يورو");
+    expect(payload?.details["مسارات الاستثمار"]).toContain("1,000,000 يورو");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("الأبناء القاصرون المشتركون للزوجين");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("تُعرض جميع الرسوم في مرحلة تقديم العرض");
+    expect(payload?.details["رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toBe("غير مطلوب");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("9,539,502");
+    expect(payload?.details["Investment routes"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("real estate fund");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("returns Arabic-only legacy detail headings and text when the phone language is Arabic", () => {
     const payload = publicReadySummaryFromRecord(
       {

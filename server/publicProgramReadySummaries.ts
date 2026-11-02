@@ -277,6 +277,8 @@ const CANADA_ENGLISH_SOURCE = "knowledge/summaries/canada-provincial-entrepreneu
 const CANADA_ARABIC_SOURCE = "knowledge/summaries/canada-provincial-entrepreneur.ar.md";
 const GREECE_ENGLISH_SOURCE = "knowledge/summaries/greece-golden.md";
 const GREECE_ARABIC_SOURCE = "knowledge/summaries/greece-golden.ar.md";
+const HUNGARY_ENGLISH_SOURCE = "knowledge/summaries/hungary-guest-investor.md";
+const HUNGARY_ARABIC_SOURCE = "knowledge/summaries/hungary-guest-investor.ar.md";
 
 function displayMarkdownText(value: string) {
   return value
@@ -877,6 +879,45 @@ function latestApprovedGreeceProgramme(
   };
 }
 
+/**
+ * Serves the latest active Hungary Ready Summary through the installed app's
+ * legacy fields, selecting only the phone-system-language content.
+ */
+function latestApprovedHungaryProgramme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+  locale: PublicProgramLocale,
+): PublicReadySummary | null {
+  const english = assetText(HUNGARY_ENGLISH_SOURCE);
+  const arabic = assetText(HUNGARY_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyLocalizedFields(programmeSections, locale);
+
+  return {
+    ...identity,
+    nameEn: "Hungary",
+    nameAr: "المجر",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: legacy.details,
+    programmeSections,
+  };
+}
+
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
@@ -896,6 +937,7 @@ export function publicReadySummaryFromRecord(
   if (identity.country === "Vanuatu") return latestApprovedVanuatuProgramme(identity, summary.id, locale);
   if (identity.country === "Canada") return latestApprovedCanadaProgramme(identity, summary.id, locale);
   if (identity.country === "Greece") return latestApprovedGreeceProgramme(identity, summary.id, locale);
+  if (identity.country === "Hungary") return latestApprovedHungaryProgramme(identity, summary.id, locale);
   if (!extractedText) return null;
   const information = buildPublicProgramInformation(extractedText);
   if (!information) return null;
