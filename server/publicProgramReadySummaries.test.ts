@@ -86,7 +86,7 @@ describe("public Ready Summary programme adapter", () => {
     expect(JSON.stringify(payload)).not.toMatch(/storageKey|ready summary|\.pdf/i);
   });
 
-  it("serves Antigua using all nine owner-provided bilingual sections through both current and installed-app fields", () => {
+  it("serves Antigua with country facts in the intro, the duplicate facts section removed, and both app payload contracts", () => {
     const payload = publicReadySummaryFromRecord(
       {
         id: 30002,
@@ -100,9 +100,14 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.publicId).toBe("ready-summary-antigua-barbuda");
     expect(payload?.nameEn).toBe("Antigua & Barbuda");
     expect(payload?.nameAr).toBe("أنتيغوا وبربودا");
-    expect(payload?.summaryEn).toContain("Citizenship of Antigua & Barbuda can be obtained");
-    expect(payload?.summaryAr).toContain("Citizenship of Antigua & Barbuda can be obtained");
-    expect(Object.keys(payload?.details ?? {})).toHaveLength(9);
+    expect(payload?.imageUrl).toBe("https://elevay.vip/manus-storage/antigua-barbuda-cover-mobile_d217274b.jpg");
+    expect(payload?.summaryEn).toContain("Capital\n\nSt. John’s");
+    expect(payload?.summaryEn).toContain("94,209 (2025 estimate)");
+    expect(payload?.summaryAr).toContain("Capital\n\nSt. John’s");
+    expect(Object.keys(payload?.details ?? {})).toHaveLength(8);
+    expect(payload?.details["7. Country at a Glance"]).toBeUndefined();
+    expect(payload?.details["1. Program Overview"]).toContain("Citizenship of Antigua & Barbuda can be obtained");
+    expect(payload?.details["1. Program Overview"]).toContain("St. John’s");
     expect(payload?.details["3. Investment Routes"]).toContain("US$1,500,000");
     expect(payload?.details["3. Investment Routes"]).toContain("US$230,000");
     expect(Object.keys(payload?.details ?? {}).some(heading => heading.includes(" / "))).toBe(false);
@@ -114,9 +119,8 @@ describe("public Ready Summary programme adapter", () => {
       "4. Contribution Options",
       "5. Government Processing Fees",
       "6. Due Diligence Fees",
-      "7. Country at a Glance",
-      "8. Passport Access",
-      "9. About Elevay",
+      "7. Passport Access",
+      "8. About Elevay",
     ]);
     expect(payload?.programmeSections?.ar.map(section => section.heading)).toEqual([
       "1. نظرة عامة على البرنامج",
@@ -125,10 +129,11 @@ describe("public Ready Summary programme adapter", () => {
       "4. خيارات المساهمة المالية",
       "5. رسوم المعالجة الحكومية",
       "6. رسوم التدقيق والتحقق الأمني",
-      "7. لمحة عن الدولة",
-      "8. إمكانية السفر بجواز السفر",
-      "9. عن إيليفاي",
+      "7. إمكانية السفر بجواز السفر",
+      "8. عن إيليفاي",
     ]);
+    const overview = payload?.programmeSections?.en[0];
+    expect(JSON.stringify(overview)).toContain("St. John’s");
     const investmentTable = payload?.programmeSections?.en[2]?.blocks.find(block => block.type === "table");
     expect(investmentTable).toEqual({
       type: "table",
@@ -140,7 +145,7 @@ describe("public Ready Summary programme adapter", () => {
         ["Option 4: Approved business investment", "US$1,500,000, or US$5,000,000 jointly (each investor at least US$400,000)", "Not stated by the CIU"],
       ],
     });
-    const passportTable = payload?.programmeSections?.en[7]?.blocks.find(block => block.type === "table" && "cellLinks" in block);
+    const passportTable = payload?.programmeSections?.en[6]?.blocks.find(block => block.type === "table" && "cellLinks" in block);
     expect(passportTable?.type).toBe("table");
     expect(passportTable && "cellLinks" in passportTable ? passportTable.cellLinks?.[0]?.[1] : undefined)
       .toEqual([{ label: "https://www.passportindex.org/passport/antigua-and-barbuda/", url: "https://www.passportindex.org/passport/antigua-and-barbuda/" }]);
@@ -1271,6 +1276,11 @@ describe("public Ready Summary programme adapter", () => {
       null,
       "ar",
     );
+    expect(payload?.summaryEn).toContain("العاصمة\n\nسانت جونز");
+    expect(payload?.summaryAr).toContain("العاصمة\n\nسانت جونز");
+    expect(Object.keys(payload?.details ?? {})).toHaveLength(8);
+    expect(payload?.details["7. لمحة عن الدولة"]).toBeUndefined();
+    expect(payload?.details["1. نظرة عامة على البرنامج"]).toContain("سانت جونز");
     expect(payload?.details["3. مسارات الاستثمار"]).toBeTruthy();
     expect(payload?.details["3. Investment Routes"]).toBeUndefined();
     expect(Object.keys(payload?.details ?? {}).some(heading => heading.includes(" / "))).toBe(false);

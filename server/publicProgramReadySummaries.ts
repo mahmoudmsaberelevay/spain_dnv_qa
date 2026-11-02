@@ -40,7 +40,7 @@ export type PublicReadySummary = ReadySummaryIdentity & {
   readySummaryTextAr: null;
   readySummaryPdfUrl: null;
   readySummaryUpdatedAt: null;
-  imageUrl: null;
+  imageUrl: string | null;
   sourceUrl: string;
   details: Record<string, string>;
   programmeSections?: BilingualProgrammeContent;
@@ -255,6 +255,7 @@ export type BilingualProgrammeContent = { en: ProgrammeContentSection[]; ar: Pro
 
 const ANTIGUA_ENGLISH_SOURCE = "knowledge/summaries/antigua-barbuda.md";
 const ANTIGUA_ARABIC_SOURCE = "knowledge/summaries/antigua-barbuda.ar.md";
+const ANTIGUA_COUNTRY_COVER_IMAGE_URL = "https://elevay.vip/manus-storage/antigua-barbuda-cover-mobile_d217274b.jpg";
 const ST_KITTS_ENGLISH_SOURCE = "knowledge/summaries/st-kitts-nevis.md";
 const ST_KITTS_ARABIC_SOURCE = "knowledge/summaries/st-kitts-nevis.ar.md";
 const DOMINICA_ENGLISH_SOURCE = "knowledge/summaries/dominica.md";
@@ -441,11 +442,36 @@ function userApprovedAntiguaProgramme(identity: ReadySummaryIdentity, locale: Pu
   const english = assetText(ANTIGUA_ENGLISH_SOURCE);
   const arabic = assetText(ANTIGUA_ARABIC_SOURCE);
   if (!english || !arabic) return null;
-  const programmeSections: BilingualProgrammeContent = {
+  const sourceSections: BilingualProgrammeContent = {
     en: parseProgrammeContent(english),
     ar: parseProgrammeContent(arabic),
   };
-  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  if (sourceSections.en.length !== 9 || sourceSections.ar.length !== 9) return null;
+  const moveCountryFacts = (sections: ProgrammeContentSection[]) => {
+    const countryIndex = sections.findIndex(section => /country at a glance|لمحة عن الدولة/i.test(section.heading));
+    const overviewIndex = sections.findIndex(section => /program overview|نظرة عامة على البرنامج/i.test(section.heading));
+    if (countryIndex < 0 || overviewIndex < 0) return null;
+    const countrySection = sections[countryIndex];
+    const countrySummary = countrySection.blocks.map(legacyBlockText).filter(Boolean).join("\n\n");
+    const combined = sections
+      .filter((_, index) => index !== countryIndex)
+      .map(section => section.heading === sections[overviewIndex].heading
+        ? { ...section, blocks: [...section.blocks, ...countrySection.blocks] }
+        : section);
+    const renumbered = combined.map((section, index) => ({
+      ...section,
+      heading: section.heading.replace(/^\d+(?=\.)/, String(index + 1)),
+    }));
+    return { sections: renumbered, countrySummary };
+  };
+  const englishFacts = moveCountryFacts(sourceSections.en);
+  const arabicFacts = moveCountryFacts(sourceSections.ar);
+  if (!englishFacts || !arabicFacts) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: englishFacts.sections,
+    ar: arabicFacts.sections,
+  };
+  const countrySummary = locale === "ar" ? arabicFacts.countrySummary : englishFacts.countrySummary;
   const legacy = legacyLocalizedFields(programmeSections, locale);
 
   return {
@@ -454,14 +480,14 @@ function userApprovedAntiguaProgramme(identity: ReadySummaryIdentity, locale: Pu
     nameAr: "أنتيغوا وبربودا",
     publicId: "ready-summary-antigua-barbuda",
     slug: "antigua-barbuda-citizenship-by-investment",
-    summaryEn: legacy.summaryEn,
-    summaryAr: legacy.summaryAr,
+    summaryEn: countrySummary,
+    summaryAr: countrySummary,
     readySummaryTitle: null,
     readySummaryTextEn: null,
     readySummaryTextAr: null,
     readySummaryPdfUrl: null,
     readySummaryUpdatedAt: null,
-    imageUrl: null,
+    imageUrl: ANTIGUA_COUNTRY_COVER_IMAGE_URL,
     sourceUrl: "https://elevay.vip",
     details: legacy.details,
     programmeSections,
