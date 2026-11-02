@@ -1383,6 +1383,125 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
+  it("serves the latest active Malta MPRP Ready Summary through all nine English sections and installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30019,
+        title: "Elevay Malta MPRP Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Malta_MPRP_Summary.pdf",
+        createdAt: 1793264333179,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30019",
+      slug: "ready-summary-30019",
+      nameEn: "Malta",
+      nameAr: "مالطا",
+      readySummaryPdfUrl: null,
+    });
+    expect(payload?.summaryEn).toContain("The Malta Permanent Residence Programme (MPRP) is a Maltese residence programme");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.details["Program Overview"]).toContain("non-European Economic Area (EEA) and non-Swiss nationals");
+    expect(payload?.details["Program Overview"]).toContain("90 days in any 180-day period");
+    expect(payload?.details["Program Overview"]).toContain("6 to 9 months");
+    expect(payload?.details["Program Overview"]).toContain("does not give citizenship by itself");
+    expect(payload?.details["Program Overview"]).toContain("The MPRP regulations set no minimum number of days a year in Malta");
+    expect(payload?.details["Program Overview"]).toContain("at least 4 years in the 6 years before that");
+    expect(payload?.details["Who Can be Included"]).toContain("Children aged 18 to 28 who are unmarried");
+    expect(payload?.details["Who Can be Included"]).toContain("up to four generations");
+    expect(payload?.details["Who Can be Included"]).toContain("Stable and regular resources");
+    expect(payload?.details["Investment routes"]).toContain("EUR 14,000 a year");
+    expect(payload?.details["Investment routes"]).toContain("EUR 375,000");
+    expect(payload?.details["Investment routes"]).toContain("at least EUR 500,000");
+    expect(payload?.details["Investment routes"]).toContain("EUR 150,000");
+    expect(payload?.details["Investment routes"]).toContain("at least EUR 650,000");
+    expect(payload?.details["Investment routes"]).toContain("EUR 75,000");
+    expect(payload?.details["Investment routes"]).toContain("The capital must be kept for 5 years");
+    expect(payload?.details["Contribution options"]).toBe("Not required");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 60,000");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 37,000");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 7,500 each");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 2,000");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 500 per person");
+    expect(payload?.details["Government Processing fees"]).toContain("No total is shown");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("574,250");
+    expect(payload?.details["Country At glance"]).toContain("EUR 40,540");
+    expect(payload?.details["Country At glance"]).toContain("29 countries");
+    expect(payload?.details["Passport access"]).toBe("Visa-free travel across the Schengen Area for 90 days in any 180-day period.");
+    expect(payload?.details["About Elevay"]).toContain("2,500+");
+    expect(payload?.details["About Elevay"]).toContain("T +971 4 282 7221");
+    expect(payload?.details["About Elevay"]).toContain("not legal, tax or immigration advice");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://residencymalta.gov.mt/wp-content/uploads/2026/08/MPRP-Brochure-English.pdf");
+    expect(JSON.stringify(payload?.programmeSections)).toContain("https://legislation.mt/eli/cap/188/eng");
+  });
+
+  it("returns Arabic-only Malta MPRP legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30019,
+        title: "Elevay Malta MPRP Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Malta_MPRP_Summary.pdf",
+        createdAt: 1793264333179,
+      },
+      null,
+      "ar",
+    );
+    expect(payload?.summaryEn).toContain("برنامج مالطا للإقامة الدائمة");
+    expect(payload?.summaryAr).toContain("برنامج مالطا للإقامة الدائمة");
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.details["مسارات الاستثمار"]).toContain("14,000 يورو سنويًا");
+    expect(payload?.details["مسارات الاستثمار"]).toContain("375,000 يورو");
+    expect(payload?.details["مسارات الاستثمار"]).toContain("500,000 يورو على الأقل");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("60,000 يورو");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("37,000 يورو");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("7,500 يورو لكل معال");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("2,000 يورو");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("500 يورو لكل شخص");
+    expect(payload?.details["رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toContain("السفر دون تأشيرة في أنحاء منطقة شنغن لمدة 90 يومًا خلال أي فترة من 180 يومًا");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("574,250");
+    expect(payload?.details["Investment routes"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("investment in share capital");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
   it("renders authored Markdown tables and normalizes only formatting, not the cell text", () => {
     const content = parseProgrammeContent("## Section\n\n| Field | Value |\n|---|---|\n| Cost | **US$10,000** |\n\nA [programme link](https://example.test) is provided.");
     expect(content).toEqual([{

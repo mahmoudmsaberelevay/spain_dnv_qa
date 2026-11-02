@@ -281,6 +281,8 @@ const HUNGARY_ENGLISH_SOURCE = "knowledge/summaries/hungary-guest-investor.md";
 const HUNGARY_ARABIC_SOURCE = "knowledge/summaries/hungary-guest-investor.ar.md";
 const LATVIA_ENGLISH_SOURCE = "knowledge/summaries/latvia-investor.md";
 const LATVIA_ARABIC_SOURCE = "knowledge/summaries/latvia-investor.ar.md";
+const MALTA_MPRP_ENGLISH_SOURCE = "knowledge/summaries/malta-mprp.md";
+const MALTA_MPRP_ARABIC_SOURCE = "knowledge/summaries/malta-mprp.ar.md";
 
 function displayMarkdownText(value: string) {
   return value
@@ -959,6 +961,45 @@ function latestApprovedLatviaProgramme(
   };
 }
 
+/**
+ * Serves the latest active Malta MPRP Ready Summary through the installed
+ * app's legacy fields, selecting only the phone-system-language content.
+ */
+function latestApprovedMaltaMprpProgramme(
+  identity: ReadySummaryIdentity,
+  summaryId: number,
+  locale: PublicProgramLocale,
+): PublicReadySummary | null {
+  const english = assetText(MALTA_MPRP_ENGLISH_SOURCE);
+  const arabic = assetText(MALTA_MPRP_ARABIC_SOURCE);
+  if (!english || !arabic) return null;
+  const programmeSections: BilingualProgrammeContent = {
+    en: parseProgrammeContent(english),
+    ar: parseProgrammeContent(arabic),
+  };
+  if (programmeSections.en.length !== 9 || programmeSections.ar.length !== 9) return null;
+  const legacy = legacyLocalizedFields(programmeSections, locale);
+
+  return {
+    ...identity,
+    nameEn: "Malta",
+    nameAr: "مالطا",
+    publicId: `ready-summary-${summaryId}`,
+    slug: `ready-summary-${summaryId}`,
+    summaryEn: legacy.summaryEn,
+    summaryAr: legacy.summaryAr,
+    readySummaryTitle: null,
+    readySummaryTextEn: null,
+    readySummaryTextAr: null,
+    readySummaryPdfUrl: null,
+    readySummaryUpdatedAt: null,
+    imageUrl: null,
+    sourceUrl: "https://elevay.vip",
+    details: legacy.details,
+    programmeSections,
+  };
+}
+
 export function publicReadySummaryFromRecord(
   summary: Pick<MarketingReadySummary, "id" | "title" | "category" | "originalFileName" | "createdAt">,
   extractedText: string | null,
@@ -980,6 +1021,7 @@ export function publicReadySummaryFromRecord(
   if (identity.country === "Greece") return latestApprovedGreeceProgramme(identity, summary.id, locale);
   if (identity.country === "Hungary") return latestApprovedHungaryProgramme(identity, summary.id, locale);
   if (identity.country === "Latvia") return latestApprovedLatviaProgramme(identity, summary.id, locale);
+  if (identity.country === "Malta") return latestApprovedMaltaMprpProgramme(identity, summary.id, locale);
   if (!extractedText) return null;
   const information = buildPublicProgramInformation(extractedText);
   if (!information) return null;
