@@ -13,9 +13,9 @@ export type HrVerificationSettings = {
 };
 export const DEFAULT_HR_VERIFICATION: HrVerificationSettings = {
   verificationMethod: "pending",
-  officeLatitude: 30.0712522,
-  officeLongitude: 30.9468691,
-  radiusMeters: 100,
+  officeLatitude: 30.0715683,
+  officeLongitude: 30.9468446,
+  radiusMeters: 1000,
   maxAccuracyMeters: 100,
 };
 export function hrDistanceMeters(

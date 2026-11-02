@@ -33,6 +33,33 @@ describe("HR verification and restricted administrators", () => {
     expect(verifyHrPunchLocation(settings, location, now).accepted).toBe(true);
     expect(hrDistanceMeters(0, 0, 0, 1)).toBeGreaterThan(111000);
   });
+  it("uses the owner's Google Maps office pin and a maximum 1km punch radius", () => {
+    expect(DEFAULT_HR_VERIFICATION).toMatchObject({
+      officeLatitude: 30.0715683,
+      officeLongitude: 30.9468446,
+      radiusMeters: 1000,
+      maxAccuracyMeters: 100,
+    });
+    const northFix = (metres: number) => ({
+      ...location,
+      latitude: location.latitude + (metres / 6_371_000) * (180 / Math.PI),
+    });
+    expect(verifyHrPunchLocation(settings, northFix(999), now).accepted).toBe(
+      true
+    );
+    expect(verifyHrPunchLocation(settings, northFix(1001), now).accepted).toBe(
+      false
+    );
+    // GPS uncertainty never increases the allowed radius or replaces freshness.
+    expect(
+      verifyHrPunchLocation(settings, { ...northFix(1001), accuracy: 100 }, now)
+        .accepted
+    ).toBe(false);
+    expect(
+      verifyHrPunchLocation(settings, { ...northFix(999), accuracy: 101 }, now)
+        .accepted
+    ).toBe(false);
+  });
   it("rejects missing, stale, future, inaccurate, invalid and outside fixes", () => {
     for (const v of [
       undefined,

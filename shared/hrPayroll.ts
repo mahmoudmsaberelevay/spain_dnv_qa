@@ -1,6 +1,8 @@
 import { ELEVAY_TIME_ZONE } from "./financialEmployeeSalaryRates";
 import { assertHrAttendanceDate } from "./hrAttendance";
 
+export const HR_SALARY_DAYS = 30;
+
 const DAY_MS = 86_400_000;
 const cairoFormatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: ELEVAY_TIME_ZONE,
@@ -36,6 +38,7 @@ export type HrPayrollInput = {
   attendance: HrPayrollAttendance[];
   holidays: string[];
   approvedLeaveDates: string[];
+  attendanceCreditDates?: readonly string[];
 };
 
 export type HrPayrollDayStatus =
@@ -46,6 +49,7 @@ export type HrPayrollDayStatus =
   | "in_progress"
   | "leave"
   | "present"
+  | "credited"
   | "absent"
   | "incomplete";
 
@@ -190,6 +194,8 @@ function roundMoney(value: number): number {
  * paid leave and future days), but excludes holidays and pre-configuration dates.
  * evaluatedDays includes only scheduled working days whose Cairo shift has ended.
  * Today is never finalized before endTime, even with an early complete checkout.
+ * Explicit attendance credits have zero loss, including future/unconfigured dates;
+ * credited scheduled working days also count as evaluated without altering punches.
  *
  * Each third finalized incomplete date carries one scheduled day's missingMinutes
  * for the cycle-level 3-for-1 rule. Other incomplete dates carry zero; none receive
@@ -197,9 +203,11 @@ function roundMoney(value: number): number {
  * sums days[].missingMinutes, while equivalentDays sums missingMinutes / that
  * date's span, not minutes divided by an arbitrary fixed eight-hour shift.
  *
- * Days have equal salary weight. hourlyRate/minuteRate use the full cycle's
- * average scheduled span and are informational when spans vary; deductions use
- * dailyRate * equivalentDays. Only final monetary outputs are rounded.
+ * Every day has a fixed salary / 30 weight, regardless of cycle length or the
+ * number of scheduled days. hourlyRate/minuteRate divide that dailyRate by the
+ * full cycle's average scheduled span (zero if none) and are informational when
+ * spans vary; deductions use dailyRate * equivalentDays, capped at salary.
+ * Only final monetary outputs are rounded.
  *
  * Schedules must be same-day shifts. Check-in must belong to attendanceDate in
  * Cairo; reversed or duplicate punches are rejected. Late next-day checkouts are
@@ -219,6 +227,7 @@ export function calculateHrPayroll(input: HrPayrollInput): HrPayrollResult {
   const now = cairoClock(instant(input.now, "HR now"));
   const holidays = dateSet(input.holidays);
   const leaveDates = dateSet(input.approvedLeaveDates);
+  const creditDates = dateSet(input.attendanceCreditDates ?? []);
   const scheduleDates = new Set<string>();
   const schedules = input.schedules
     .map(schedule => {
@@ -311,6 +320,15 @@ export function calculateHrPayroll(input: HrPayrollInput): HrPayrollResult {
       missingMinutes: 0,
     };
     result.days.push(day);
+    if (creditDates.has(date)) {
+      day.status = "credited";
+      if (schedule && !isWeekend(date) && !holidays.has(date)) {
+        result.workingDays += 1;
+        result.evaluatedDays += 1;
+        scheduledMinutes += schedule.span;
+      }
+      continue;
+    }
     if (isWeekend(date)) {
       day.status = "weekend";
       continue;
@@ -372,8 +390,13 @@ export function calculateHrPayroll(input: HrPayrollInput): HrPayrollResult {
     result.equivalentDays += day.missingMinutes / schedule.span;
   }
   result.lostHours = result.totalLostMinutes / 60;
-  result.dailyRate = result.workingDays ? input.salary / result.workingDays : 0;
-  result.minuteRate = scheduledMinutes ? input.salary / scheduledMinutes : 0;
+  result.dailyRate = input.salary / HR_SALARY_DAYS;
+  const averageScheduledMinutes = result.workingDays
+    ? scheduledMinutes / result.workingDays
+    : 0;
+  result.minuteRate = averageScheduledMinutes
+    ? result.dailyRate / averageScheduledMinutes
+    : 0;
   result.hourlyRate = result.minuteRate * 60;
   const deduction = Math.min(
     input.salary,

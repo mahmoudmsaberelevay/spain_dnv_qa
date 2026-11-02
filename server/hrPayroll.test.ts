@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  HR_SALARY_DAYS,
   calculateHrPayroll,
   countHrLeaveWorkingDays,
   hrDateKey,
@@ -174,6 +175,200 @@ describe("HR date helpers", () => {
 });
 
 describe("deterministic HR payroll", () => {
+  it("credits supplied dates without rewriting punches, including future credit, then enforces November 4 normally", () => {
+    const source = input({
+      from: "2026-10-27",
+      to: "2026-11-04",
+      salary: 10000,
+      now: new Date("2026-11-04T18:00:00Z"),
+      attendanceCreditDates: Object.freeze(
+        listHrDates("2026-10-27", "2026-11-03")
+      ),
+      attendance: [
+        punch("2026-10-27", "12:00", "14:00", "+03:00"),
+        punch("2026-10-28", "15:00", null, "+03:00"),
+      ],
+    });
+    const before = JSON.stringify(source);
+    const result = calculateHrPayroll(source);
+    expect(
+      result.days.slice(0, -1).every(day => day.status === "credited")
+    ).toBe(true);
+    expect(
+      result.days.slice(0, -1).every(day => day.missingMinutes === 0)
+    ).toBe(true);
+    expect(result.days.at(-1)).toMatchObject({
+      date: "2026-11-04",
+      status: "absent",
+      missingMinutes: 480,
+    });
+    expect(result).toMatchObject({
+      workingDays: 7,
+      evaluatedDays: 7,
+      lateMinutes: 0,
+      earlyMinutes: 0,
+      incompleteDays: 0,
+      incompleteDeductionDays: 0,
+      absentDays: 1,
+      equivalentDays: 1,
+      totalLostMinutes: 480,
+      totalDeduction: 333.33,
+      netSalary: 9666.67,
+    });
+    const live = calculateHrPayroll({
+      ...source,
+      now: new Date("2026-11-02T10:00:00Z"),
+    });
+    expect(live.days.find(day => day.date === "2026-11-03")?.status).toBe(
+      "credited"
+    );
+    expect(live.days.at(-1)?.status).toBe("future");
+    expect(live.workingDays).toBe(7);
+    expect(live.evaluatedDays).toBe(6);
+    expect(live.totalDeduction).toBe(0);
+    expect(JSON.stringify(source)).toBe(before);
+  });
+
+  it("shows explicit credits without schedules, even for future dates, without adding evaluated or working days", () => {
+    const result = calculateHrPayroll(
+      input({
+        from: "2026-10-27",
+        to: "2026-11-04",
+        salary: 10000,
+        now: new Date("2026-11-02T10:00:00Z"),
+        schedules: [],
+        attendanceCreditDates: listHrDates("2026-10-27", "2026-11-03"),
+        attendance: [punch("2026-10-27", "15:00", null, "+03:00")],
+      })
+    );
+    expect(result.days.slice(0, -1).map(day => day.status)).toEqual(
+      Array(8).fill("credited")
+    );
+    expect(result.days.at(-1)?.status).toBe("unconfigured");
+    expect(result).toMatchObject({
+      workingDays: 0,
+      evaluatedDays: 0,
+      lateMinutes: 0,
+      earlyMinutes: 0,
+      absentDays: 0,
+      incompleteDays: 0,
+      incompleteDeductionDays: 0,
+      totalLostMinutes: 0,
+      equivalentDays: 0,
+      dailyRate: 10000 / 30,
+      hourlyRate: 0,
+      minuteRate: 0,
+      totalDeduction: 0,
+      netSalary: 10000,
+    });
+  });
+
+  it.each([
+    ["2026-01-01", "2026-01-31"],
+    ["2026-02-01", "2026-02-28"],
+    ["2024-02-01", "2024-02-29"],
+    ["2026-03-01", "2026-03-31"],
+    ["2026-01-04", "2026-01-04"],
+    ["2026-01-04", "2026-01-08"],
+    ["2026-01-29", "2026-02-02"],
+  ])("uses salary / 30 for EGP 10000 over %s–%s", (from, to) => {
+    const result = calculateHrPayroll(
+      input({
+        from,
+        to,
+        salary: 10000,
+        now: new Date("2026-12-01T00:00:00Z"),
+        schedules: [{ ...schedule, effectiveFrom: "2024-01-01" }],
+      })
+    );
+    expect(HR_SALARY_DAYS).toBe(30);
+    expect(result.dailyRate).toBe(10000 / 30);
+    expect(result.dailyRate.toFixed(2)).toBe("333.33");
+    expect(result.minuteRate).toBe(10000 / 30 / 480);
+    expect(result.hourlyRate).toBeCloseTo(10000 / 30 / 8, 12);
+  });
+
+  it.each([
+    { schedules: [] },
+    { schedules: [{ ...schedule, effectiveFrom: "2026-02-01" }] },
+    { from: "2026-01-09", to: "2026-01-10" },
+    { holidays: listHrDates("2026-01-04", "2026-01-08") },
+  ])(
+    "keeps EGP 10000 / 30 with zero time rates when no days are scheduled %#",
+    overrides => {
+      const result = calculateHrPayroll(input({ ...overrides, salary: 10000 }));
+      expect(result).toMatchObject({
+        workingDays: 0,
+        evaluatedDays: 0,
+        dailyRate: 10000 / 30,
+        hourlyRate: 0,
+        minuteRate: 0,
+        equivalentDays: 0,
+        totalDeduction: 0,
+        netSalary: 10000,
+      });
+    }
+  );
+
+  it("deducts EGP 333.33 for one absence on an EGP 10000 salary", () => {
+    const result = singleDay({ salary: 10000 });
+    expect(result).toMatchObject({
+      absentDays: 1,
+      totalLostMinutes: 480,
+      equivalentDays: 1,
+      dailyRate: 10000 / 30,
+      totalDeduction: 333.33,
+      netSalary: 9666.67,
+    });
+  });
+
+  it("deducts EGP 41.67 for 60 missed minutes in an eight-hour day on EGP 10000", () => {
+    const result = singleDay({
+      salary: 10000,
+      schedules: [{ ...schedule, graceMinutes: 0 }],
+      attendance: [punch("2026-01-04", "10:00")],
+    });
+    expect(result).toMatchObject({
+      absentDays: 0,
+      lateMinutes: 60,
+      earlyMinutes: 0,
+      totalLostMinutes: 60,
+      equivalentDays: 60 / 480,
+      dailyRate: 10000 / 30,
+      minuteRate: 10000 / 30 / 480,
+      totalDeduction: 41.67,
+      netSalary: 9958.33,
+    });
+  });
+
+  it("does not prematurely round the EGP 10000 daily rate before three absences", () => {
+    const result = calculateHrPayroll(
+      input({ salary: 10000, to: "2026-01-06" })
+    );
+    expect(result.dailyRate).toBe(10000 / 30);
+    expect(result.equivalentDays).toBe(3);
+    expect(result.totalDeduction).toBe(1000);
+    expect(result.netSalary).toBe(9000);
+    expect(result.totalDeduction).not.toBe(
+      Number(result.dailyRate.toFixed(2)) * 3
+    );
+  });
+
+  it("caps total monetary penalties at the monthly salary for longer ranges", () => {
+    const result = calculateHrPayroll(
+      input({
+        salary: 10000,
+        from: "2026-01-01",
+        to: "2026-02-28",
+        now: new Date("2026-03-01T18:00:00Z"),
+      })
+    );
+    expect(result.equivalentDays).toBeGreaterThan(30);
+    expect(result.dailyRate).toBe(10000 / 30);
+    expect(result.totalDeduction).toBe(10000);
+    expect(result.netSalary).toBe(0);
+  });
+
   it("returns the exact preview contract and unchanged salary for a fully attended cycle", () => {
     const records = listHrDates("2026-01-04", "2026-01-08").map(date =>
       punch(date)
@@ -190,9 +385,9 @@ describe("deterministic HR payroll", () => {
       totalLostMinutes: 0,
       lostHours: 0,
       equivalentDays: 0,
-      dailyRate: 1000 / 5,
-      hourlyRate: 1000 / (5 * 8),
-      minuteRate: 1000 / (5 * 8 * 60),
+      dailyRate: 1000 / 30,
+      hourlyRate: (1000 / 30 / (8 * 60)) * 60,
+      minuteRate: 1000 / 30 / (8 * 60),
       totalDeduction: 0,
       netSalary: 1000,
       days: records.map(record => ({
@@ -232,8 +427,8 @@ describe("deterministic HR payroll", () => {
         equivalentDays: deductionDays,
         totalLostMinutes: deductionDays * 8 * 60,
         lostHours: deductionDays * 8,
-        totalDeduction: Number(((1000 / 6) * deductionDays).toFixed(2)),
-        netSalary: Number((1000 - (1000 / 6) * deductionDays).toFixed(2)),
+        totalDeduction: Number(((1000 / 30) * deductionDays).toFixed(2)),
+        netSalary: Number((1000 - (1000 / 30) * deductionDays).toFixed(2)),
       });
       const incomplete = result.days.filter(day => day.status === "incomplete");
       expect(incomplete).toHaveLength(incompleteDays);
@@ -277,7 +472,9 @@ describe("deterministic HR payroll", () => {
     });
     expect(result.totalLostMinutes).toBe(2 * 480 + 60);
     expect(result.equivalentDays).toBe(equivalentDays);
-    expect(result.totalDeduction).toBe((1000 / 5) * equivalentDays);
+    expect(result.totalDeduction).toBe(
+      Number(((1000 / 30) * equivalentDays).toFixed(2))
+    );
     expect(result.netSalary).toBe(1000 - result.totalDeduction);
     expect(result.days.reduce((sum, day) => sum + day.missingMinutes, 0)).toBe(
       result.totalLostMinutes
@@ -306,7 +503,7 @@ describe("deterministic HR payroll", () => {
     );
     expect(result.workingDays).toBe(4);
     expect(result.evaluatedDays).toBe(4);
-    expect(result.dailyRate).toBe(1000 / 4);
+    expect(result.dailyRate).toBe(1000 / 30);
     expect(result.incompleteDays).toBe(0);
     expect(result.days.map(day => day.status)).toEqual([
       "leave",
@@ -320,24 +517,24 @@ describe("deterministic HR payroll", () => {
     expectNoLoss(result);
   });
 
-  it("keeps approved paid leave in the full denominator even without punches", () => {
+  it("excludes approved paid leave from penalties without changing the fixed daily rate", () => {
     const result = calculateHrPayroll(
       input({ approvedLeaveDates: ["2026-01-04"] })
     );
     expect(result.workingDays).toBe(5);
     expect(result.evaluatedDays).toBe(5);
     expect(result.absentDays).toBe(4);
-    expect(result.totalDeduction).toBe((1000 / 5) * 4);
+    expect(result.totalDeduction).toBe(Number(((1000 / 30) * 4).toFixed(2)));
   });
 
-  it("returns zero rates, no penalties, and all unconfigured weekdays when there is no schedule", () => {
+  it("keeps the fixed daily rate, zero time rates, and no penalties when there is no schedule", () => {
     const result = calculateHrPayroll(
       input({ schedules: [], attendance: [punch("2026-01-04", "15:00", null)] })
     );
     expect(result).toMatchObject({
       workingDays: 0,
       evaluatedDays: 0,
-      dailyRate: 0,
+      dailyRate: 1000 / 30,
       hourlyRate: 0,
       minuteRate: 0,
       incompleteDays: 0,
@@ -361,9 +558,9 @@ describe("deterministic HR payroll", () => {
       workingDays: 2,
       evaluatedDays: 2,
       absentDays: 2,
-      dailyRate: 1000 / 2,
-      totalDeduction: 1000,
-      netSalary: 0,
+      dailyRate: 1000 / 30,
+      totalDeduction: Number(((1000 / 30) * 2).toFixed(2)),
+      netSalary: Number((1000 - (1000 / 30) * 2).toFixed(2)),
     });
   });
 
@@ -374,22 +571,22 @@ describe("deterministic HR payroll", () => {
     expect(result).toMatchObject({
       workingDays: 0,
       evaluatedDays: 0,
-      dailyRate: 0,
+      dailyRate: 1000 / 30,
       hourlyRate: 0,
       minuteRate: 0,
     });
     expectNoLoss(result);
   });
 
-  it("uses the full cycle denominator rather than only elapsed days", () => {
+  it("uses the fixed daily rate and counts penalties only on elapsed working days", () => {
     const result = calculateHrPayroll(
       input({ now: new Date("2026-01-05T08:00:00Z") })
     );
     expect(result.workingDays).toBe(5);
     expect(result.evaluatedDays).toBe(1);
     expect(result.absentDays).toBe(1);
-    expect(result.dailyRate).toBe(1000 / 5);
-    expect(result.totalDeduction).toBe(1000 / 5);
+    expect(result.dailyRate).toBe(1000 / 30);
+    expect(result.totalDeduction).toBe(Number((1000 / 30).toFixed(2)));
     expect(result.days.map(day => day.status)).toEqual([
       "absent",
       "in_progress",
@@ -517,7 +714,7 @@ describe("deterministic HR payroll", () => {
         earlyMinutes: 30,
         totalLostMinutes: 60,
         equivalentDays: 60 / 480,
-        totalDeduction: (1000 * 60) / 480,
+        totalDeduction: Number(((1000 / 30) * (60 / 480)).toFixed(2)),
       });
     }
   );
@@ -622,7 +819,7 @@ describe("deterministic HR payroll", () => {
     });
   });
 
-  it("selects unsorted schedule changes inclusively, weights each lost fraction using that day's span, and keeps the full denominator", () => {
+  it("selects unsorted schedule changes inclusively, weights each lost fraction using that day's span, and averages configured spans for time rates", () => {
     const result = calculateHrPayroll(
       input({
         schedules: [
@@ -651,12 +848,14 @@ describe("deterministic HR payroll", () => {
     );
     const equivalentDays = 60 / 480 + 60 / 240;
     expect(result.workingDays).toBe(5);
-    expect(result.dailyRate).toBe(1000 / 5);
-    expect(result.minuteRate).toBe(1000 / (2 * 480 + 3 * 240));
+    expect(result.dailyRate).toBe(1000 / 30);
+    expect(result.minuteRate).toBe(1000 / 30 / ((2 * 480 + 3 * 240) / 5));
     expect(result.hourlyRate).toBe(result.minuteRate * 60);
     expect(result.totalLostMinutes).toBe(120);
     expect(result.equivalentDays).toBe(equivalentDays);
-    expect(result.totalDeduction).toBe((1000 / 5) * equivalentDays);
+    expect(result.totalDeduction).toBe(
+      Number(((1000 / 30) * equivalentDays).toFixed(2))
+    );
     expect(result.totalDeduction).not.toBe(
       result.totalLostMinutes * result.minuteRate
     );
@@ -683,8 +882,8 @@ describe("deterministic HR payroll", () => {
       absentDays: 2,
       equivalentDays: 2,
       totalLostMinutes: 480 + 240,
-      totalDeduction: 1000,
-      netSalary: 0,
+      totalDeduction: Number(((1000 / 30) * 2).toFixed(2)),
+      netSalary: Number((1000 - (1000 / 30) * 2).toFixed(2)),
     });
   });
 
@@ -718,7 +917,7 @@ describe("deterministic HR payroll", () => {
       equivalentDays: 1,
     });
     expect(result.days.map(day => day.missingMinutes)).toEqual([0, 0, 240]);
-    expect(result.totalDeduction).toBe(Number((1000 / 3).toFixed(2)));
+    expect(result.totalDeduction).toBe(Number((1000 / 30).toFixed(2)));
   });
 
   it("does not round rates, fractions, or individual daily losses before final money", () => {
@@ -738,13 +937,15 @@ describe("deterministic HR payroll", () => {
         attendance: dates.map(date => punch(date, "09:01", "09:03")),
       })
     );
-    expect(result.dailyRate).toBe(101 / 3);
-    expect(result.minuteRate).toBe(101 / 9);
+    expect(result.dailyRate).toBe(101 / 30);
+    expect(result.minuteRate).toBe(101 / 30 / 3);
     expect(result.equivalentDays).toBe(1);
     expect(result.lostHours).toBe(3 / 60);
-    expect(result.totalDeduction).toBe(Number((101 / 3).toFixed(2)));
-    expect(result.netSalary).toBe(Number((101 - 101 / 3).toFixed(2)));
-    expect(result.totalDeduction).not.toBe(Number((101 / 9).toFixed(2)) * 3);
+    expect(result.totalDeduction).toBe(Number((101 / 30).toFixed(2)));
+    expect(result.netSalary).toBe(Number((101 - 101 / 30).toFixed(2)));
+    expect(result.totalDeduction).not.toBe(
+      Number((101 / 30 / 3).toFixed(2)) * 3
+    );
   });
 
   it("allows zero salary and returns finite zero rates and money", () => {
@@ -839,7 +1040,7 @@ describe("HR payroll input validation", () => {
     ).toThrow("Duplicate");
   });
 
-  it.each(["holidays", "approvedLeaveDates"] as const)(
+  it.each(["holidays", "approvedLeaveDates", "attendanceCreditDates"] as const)(
     "validates every %s key",
     field => {
       expect(() => singleDay({ [field]: ["2026-02-30"] })).toThrow();

@@ -186,6 +186,21 @@ describe("HR server security", () => {
     expect(mocks.clockOut).not.toHaveBeenCalled();
     expect(mocks.attempts).toHaveBeenCalledTimes(2);
   });
+  it.each([1, 120001, 191, 933743])(
+    "never bypasses strict location checks for named HR administrator %i",
+    async id => {
+      const caller = hrRouter.createCaller(context(id, "admin"));
+      await expect(caller.attendance.clockIn()).rejects.toMatchObject({
+        code: "PRECONDITION_FAILED",
+      });
+      await expect(caller.attendance.clockOut()).rejects.toMatchObject({
+        code: "PRECONDITION_FAILED",
+      });
+      expect(mocks.validate).toHaveBeenCalledTimes(2);
+      expect(mocks.clockIn).not.toHaveBeenCalled();
+      expect(mocks.clockOut).not.toHaveBeenCalled();
+    }
+  );
   it("rejects caller-selected Wi-Fi names or another employee ID as proof", async () => {
     const caller = hrRouter.createCaller(context(900));
     await expect(
@@ -215,6 +230,57 @@ describe("HR server security", () => {
     expect(mocks.clockIn).toHaveBeenCalledWith(900, expect.any(Date));
     expect(mocks.clockOut).toHaveBeenCalledWith(900, expect.any(Date));
   });
+  it.each([
+    [900, "user", false],
+    [901, "admin", false],
+    [1, "admin", true],
+    [120001, "user", true],
+    [933743, "user", true],
+    [191, "admin", true],
+  ] as const)(
+    "allows CRM user %i (%s) their own daily actions and vacation requests",
+    async (id, role, isHrAdmin) => {
+      mocks.validate.mockResolvedValue({
+        accepted: true,
+        message: "Office accepted",
+        distanceMeters: 999,
+      });
+      mocks.create.mockResolvedValue({ id: 11 });
+      const caller = hrRouter.createCaller(context(id, role));
+      await expect(caller.access()).resolves.toEqual({ isHrAdmin });
+      await caller.attendance.me();
+      await caller.attendance.clockIn({
+        location: {
+          latitude: 30.0715683,
+          longitude: 30.9468446,
+          accuracy: 10,
+          capturedAt: Date.now(),
+        },
+      });
+      await caller.attendance.clockOut({
+        location: {
+          latitude: 30.0715683,
+          longitude: 30.9468446,
+          accuracy: 10,
+          capturedAt: Date.now(),
+        },
+      });
+      await caller.leave.mine({ year: 2026 });
+      await caller.leave.create({
+        fromDate: "2026-11-10",
+        toDate: "2026-11-11",
+        reason: "Annual vacation",
+      });
+      expect(mocks.me).toHaveBeenCalledWith(id);
+      expect(mocks.clockIn).toHaveBeenCalledWith(id, expect.any(Date));
+      expect(mocks.clockOut).toHaveBeenCalledWith(id, expect.any(Date));
+      expect(mocks.leave).toHaveBeenCalledWith(id, 2026);
+      expect(mocks.create).toHaveBeenCalledWith(
+        id,
+        expect.objectContaining({ reason: "Annual vacation" })
+      );
+    }
+  );
   it("requires an authenticated CRM account", async () => {
     const caller = hrRouter.createCaller({ ...context(900), user: null });
     await expect(caller.access()).rejects.toMatchObject({

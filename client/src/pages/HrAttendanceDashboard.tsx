@@ -38,6 +38,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { isHrAdministrator } from "@shared/hrAccess";
+import { HR_ROLLOUT_CREDIT } from "@shared/hrAttendanceCredits";
 import {
   formatAttendanceDuration,
   formatCairoAttendanceTime,
@@ -48,6 +49,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
+  FileDown,
   Loader2,
   LockKeyhole,
   LogIn,
@@ -371,13 +373,16 @@ function Status({ status }: { status: string }) {
           ? "destructive"
           : status === "approved" ||
               status === "completed" ||
-              status === "present"
+              status === "present" ||
+              status === "credited"
             ? "secondary"
             : "outline"
       }
       className="capitalize"
     >
-      {status.replaceAll("_", " ")}
+      {status === "credited"
+        ? "Present (rollout credit)"
+        : status.replaceAll("_", " ")}
     </Badge>
   );
 }
@@ -491,6 +496,18 @@ export default function HrAttendanceDashboard() {
           </Button>
         )}
       </nav>
+      <p
+        className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm leading-6 text-foreground"
+        role="note"
+      >
+        On-time attendance credit for all staff:{" "}
+        {dateLabel(HR_ROLLOUT_CREDIT.from)}–{dateLabel(HR_ROLLOUT_CREDIT.to)}{" "}
+        inclusive. Normal attendance enforcement starts Wednesday,{" "}
+        {dateLabel(HR_ROLLOUT_CREDIT.enforcementFrom)}. This reporting credit
+        does not create clock records. Every actual clock-in and clock-out still
+        requires verified office location within 1 km, including HR
+        administrators.
+      </p>
       {access.isError && section !== "admin" && (
         <QueryState
           loading={false}
@@ -1346,6 +1363,7 @@ type AdminEdit =
   | { kind: "removeHoliday"; holiday: Holiday };
 function HrAdmin() {
   // This component is mounted ONLY after both exact identity and hr.access verification.
+  const { user } = useAuth();
   const today = getCairoBusinessDate();
   const [filters, setFilters] = useState(() => ({
     ...cycleFor(today),
@@ -1355,6 +1373,7 @@ function HrAdmin() {
   const [filterError, setFilterError] = useState<string | null>(null);
   const [edit, setEdit] = useState<AdminEdit | null>(null);
   const [employeeFilter, setEmployeeFilter] = useState("");
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [holidayDate, setHolidayDate] = useState("");
   const [holidayName, setHolidayName] = useState("");
   const [holidayError, setHolidayError] = useState<string | null>(null);
@@ -1369,7 +1388,37 @@ function HrAdmin() {
   const visibleEmployees = employees.filter(employee =>
     employee.name.toLowerCase().includes(employeeFilter.trim().toLowerCase())
   );
+  const unappliedFilters =
+    draft.from !== filters.from ||
+    draft.to !== filters.to ||
+    draft.year !== filters.year;
+  const exportDisabled =
+    exportingPdf ||
+    overview.isFetching ||
+    overview.isError ||
+    !overview.data ||
+    unappliedFilters;
   const pending = requests.filter(request => request.status === "pending");
+  async function exportReport(selected: Employee[]) {
+    if (exportDisabled || !selected.length) return;
+    setExportingPdf(true);
+    try {
+      // Export the exact loaded server preview, never un-applied date inputs.
+      const report = {
+        from: filters.from,
+        to: filters.to,
+        employees: selected,
+        generatedBy: user?.name || "HR Administrator",
+      };
+      const { exportHrAttendancePdf } = await import("@/lib/hrAttendancePdf");
+      await exportHrAttendancePdf(report);
+      toast.success("HR attendance PDF downloaded.");
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setExportingPdf(false);
+    }
+  }
   function apply(next: typeof filters) {
     const error = rangeError(next.from, next.to);
     if (
@@ -1592,13 +1641,32 @@ function HrAdmin() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Team payroll preview</CardTitle>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle className="text-base">
+                  Team payroll preview
+                </CardTitle>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11"
+                  disabled={exportDisabled || !visibleEmployees.length}
+                  onClick={() => void exportReport(visibleEmployees)}
+                >
+                  {exportingPdf ? (
+                    <Loader2 className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <FileDown aria-hidden="true" />
+                  )}
+                  {exportingPdf ? "Preparing PDF…" : "Export attendance PDF"}
+                </Button>
+              </div>
               <CardDescription>
-                Salary ÷ scheduled working days = daily rate. Hourly and minute
-                rates use the period's average scheduled duration and are
-                informational when schedules vary. No schedule means no
-                deductions. Three finalized incomplete attendance days convert
-                to one deduction day under the original rule.
+                Daily salary = monthly salary ÷ 30, always. EGP 10,000 gives EGP
+                333.33 per day. Hourly and minute rates use the scheduled
+                working duration; calculations keep full precision until final
+                monetary rounding. No schedule means no deductions. Three
+                finalized incomplete attendance days convert to one deduction
+                day.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1611,6 +1679,15 @@ function HrAdmin() {
                   placeholder="Search by employee name"
                 />
               </Field>
+              <p className="text-xs leading-5 text-muted-foreground">
+                PDF exports include the applied period (
+                {dateLabel(filters.from)} – {dateLabel(filters.to)}), visible
+                employees, late and absence minutes, hours, equivalent days and
+                a daily attendance sheet. Approved vacation is excluded from
+                penalties. Deductions remain previews only.
+                {unappliedFilters &&
+                  " Apply your changed dates before exporting."}
+              </p>
               {!visibleEmployees.length ? (
                 <p className="py-4 text-sm text-muted-foreground">
                   {employees.length
@@ -1625,6 +1702,8 @@ function HrAdmin() {
                     today={today}
                     year={filters.year}
                     edit={kind => setEdit({ kind, employee })}
+                    exportPdf={() => void exportReport([employee])}
+                    exportDisabled={exportDisabled}
                   />
                 ))
               )}
@@ -1740,11 +1819,15 @@ function EmployeePreview({
   today,
   year,
   edit,
+  exportPdf,
+  exportDisabled,
 }: {
   employee: Employee;
   today: string;
   year: number;
   edit: (kind: "schedule" | "salary" | "entitlement") => void;
+  exportPdf: () => void;
+  exportDisabled: boolean;
 }) {
   const payroll = employee.payroll;
   const schedules = [...employee.schedules].sort((a, b) =>
@@ -1773,6 +1856,15 @@ function EmployeePreview({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11"
+            disabled={exportDisabled}
+            onClick={exportPdf}
+          >
+            <FileDown aria-hidden="true" /> Employee PDF
+          </Button>
           <Button
             type="button"
             variant="outline"
@@ -1869,13 +1961,14 @@ function EmployeePreview({
         ))}
       </dl>
       <p className="mt-4 text-xs leading-5 text-muted-foreground">
-        Each 27th–26th payroll cycle uses its own effective Financial salary and
-        full-cycle scheduled working-day denominator. Partial ranges use a
-        proportionate covered base; multi-cycle totals are accumulated, not one
-        monthly salary divided by annual working days. Informational rates above
-        refer to the latest cycle. Paid leave is excluded from penalties. Future
-        shifts and unconfigured dates have no deductions. These are previews
-        only; no payroll payment or salary deduction is posted.
+        Each 27th–26th payroll cycle uses its own effective Financial monthly
+        salary ÷ 30 for daily deductions, never divided by workdays. A full
+        configured cycle keeps its full monthly base; selected partial periods
+        use the fixed daily rate for configured calendar days, capped at the
+        monthly salary. Informational rates above refer to the latest cycle.
+        Paid leave and approved rollout credits have no penalties. Future shifts
+        and unconfigured dates have no deductions. These are previews only; no
+        payroll payment or salary deduction is posted.
       </p>
       <details className="mt-3">
         <summary className="min-h-11 cursor-pointer rounded-lg p-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -1890,7 +1983,7 @@ function EmployeePreview({
                   <TableHead>Monthly salary</TableHead>
                   <TableHead>Full-cycle working days</TableHead>
                   <TableHead>Covered days</TableHead>
-                  <TableHead>Covered base</TableHead>
+                  <TableHead>Covered base (30-day basis)</TableHead>
                   <TableHead>Deduction preview</TableHead>
                 </TableRow>
               </TableHeader>
