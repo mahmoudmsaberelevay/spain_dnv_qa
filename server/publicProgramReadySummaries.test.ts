@@ -67,21 +67,22 @@ describe("public Ready Summary programme adapter", () => {
     expect(information?.details["Stay requirement"]).toBe("Not stated in the programme information.");
   });
 
-  it("returns stable public programme fields without leaking summary, PDF, or storage metadata", () => {
+  it("returns stable public D7 fields without leaking summary, PDF, or storage metadata", () => {
     const payload = publicReadySummaryFromRecord(
       { id: 30013, title: "Elevay Portugal D7 Summary - English", category: "Residency", originalFileName: "Elevay_Portugal_D7_Summary.pdf", createdAt: 1793264143867 },
-      SAMPLE_D7_SUMMARY,
+      null,
     );
     expect(payload).toMatchObject({
       publicId: "ready-summary-30013",
       slug: "ready-summary-30013",
-      nameEn: "Portugal D7",
+      nameEn: "Portugal D7 Residence Visa",
       country: "Portugal",
       readySummaryTextEn: null,
       readySummaryPdfUrl: null,
       readySummaryTitle: null,
     });
-    expect(payload?.details["Income Requirement"]).toContain("Couple EUR 16,560.");
+    expect(payload?.details["Program Overview"]).toContain("No fixed D7 amount is published");
+    expect(payload?.details["Investment routes"]).toBe("Not required");
     expect(JSON.stringify(payload)).not.toMatch(/storageKey|ready summary|\.pdf/i);
   });
 
@@ -1900,6 +1901,118 @@ describe("public Ready Summary programme adapter", () => {
     expect(payload?.details["إمكانية السفر بجواز السفر"]).toContain("7 سنوات");
     expect(payload?.details["Investment routes"]).toBeUndefined();
     expect(JSON.stringify(payload?.details)).not.toContain("Independent professional");
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
+  it("serves the latest active Portugal D7 Ready Summary as nine English-only installed-app fields", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30013,
+        title: "Elevay Portugal D7 Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Portugal_D7_Summary.pdf",
+        createdAt: 1793264143867,
+      },
+      null,
+    );
+    expect(payload).toMatchObject({
+      publicId: "ready-summary-30013",
+      slug: "ready-summary-30013",
+      nameEn: "Portugal D7 Residence Visa",
+      nameAr: "تأشيرة الإقامة البرتغالية D7",
+    });
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.summaryEn).toContain("The D7 is a Portuguese residence visa");
+    expect(payload?.details["Program Overview"]).toContain("EUR 11,040");
+    expect(payload?.details["Program Overview"]).toContain("EUR 5,520");
+    expect(payload?.details["Program Overview"]).toContain("EUR 3,312");
+    expect(payload?.details["Program Overview"]).toContain("EUR 16,560");
+    expect(payload?.details["Program Overview"]).toContain("EUR 19,872");
+    expect(payload?.details["Program Overview"]).toContain("6 consecutive months, or 8 months in total");
+    expect(payload?.details["Program Overview"]).toContain("Travel insurance");
+    expect(payload?.details["Who Can be Included"]).toContain("Dependent first-degree parents");
+    expect(payload?.details["Who Can be Included"]).toContain("Minor siblings under guardianship");
+    expect(payload?.details["Investment routes"]).toBe("Not required");
+    expect(payload?.details["Contribution options"]).toBe("Not required");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 110");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 114.30");
+    expect(payload?.details["Government Processing fees"]).toContain("EUR 351.10");
+    expect(payload?.details["Due diligence fees"]).toBe("Not required");
+    expect(payload?.details["Country At glance"]).toContain("10,804,871");
+    expect(payload?.details["Country At glance"]).toContain("US$32,082");
+    expect(payload?.details["Country At glance"]).toContain("29 countries");
+    expect(payload?.details["Passport access"]).toContain("10 years of legal residence, or 7 years");
+    expect(payload?.details["Passport access"]).toContain("Citizenship is never guaranteed or automatic");
+    expect(payload?.details["About Elevay"]).toContain("28+ years of experience, since 1998");
+    expect(payload?.details["About Elevay"]).toContain("T +20 128 498 1717");
+    expect(payload?.details["About Elevay"]).toContain("not legal or immigration advice");
+    expect(JSON.stringify(payload?.details)).not.toMatch(/[\u0600-\u06ff]/);
+    expect(payload?.programmeSections?.en.map(section => section.heading)).toEqual([
+      "Program Overview",
+      "Who Can be Included",
+      "Investment routes",
+      "Contribution options",
+      "Government Processing fees",
+      "Due diligence fees",
+      "Country At glance",
+      "Passport access",
+      "About Elevay",
+    ]);
+    expect(payload?.programmeSections?.ar).toHaveLength(9);
+  });
+
+  it("returns only Arabic Portugal D7 legacy fields when the phone language is Arabic", () => {
+    const payload = publicReadySummaryFromRecord(
+      {
+        id: 30013,
+        title: "Elevay Portugal D7 Summary - English",
+        category: "Residency",
+        originalFileName: "Elevay_Portugal_D7_Summary.pdf",
+        createdAt: 1793264143867,
+      },
+      null,
+      "ar",
+    );
+    expect(Object.keys(payload?.details ?? {})).toEqual([
+      "نظرة عامة على البرنامج",
+      "الأشخاص الذين يمكن إدراجهم",
+      "مسارات الاستثمار",
+      "خيارات المساهمة",
+      "رسوم المعالجة الحكومية",
+      "رسوم العناية الواجبة",
+      "لمحة عن الدولة",
+      "إمكانية السفر بجواز السفر",
+      "عن إيليفاي",
+    ]);
+    expect(payload?.summaryAr).toContain("تأشيرة D7 هي تأشيرة إقامة برتغالية");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("11,040 يورو");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("5,520 يورو");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("3,312 يورو");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("16,560 يورو");
+    expect(payload?.details["نظرة عامة على البرنامج"]).toContain("19,872 يورو");
+    expect(payload?.details["الأشخاص الذين يمكن إدراجهم"]).toContain("الوالدان من الدرجة الأولى المعالان");
+    expect(payload?.details["مسارات الاستثمار"]).toBe("غير مطلوب");
+    expect(payload?.details["خيارات المساهمة"]).toBe("غير مطلوب");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("110 يورو");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("114.30 يورو");
+    expect(payload?.details["رسوم المعالجة الحكومية"]).toContain("351.10 يورو");
+    expect(payload?.details["رسوم العناية الواجبة"]).toBe("غير مطلوب");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("10,804,871");
+    expect(payload?.details["لمحة عن الدولة"]).toContain("29 دولة");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toContain("10 سنوات");
+    expect(payload?.details["إمكانية السفر بجواز السفر"]).toContain("7 سنوات");
+    expect(payload?.details["Investment routes"]).toBeUndefined();
+    expect(JSON.stringify(payload?.details)).not.toContain("No fixed D7 amount is published");
     expect(payload?.programmeSections?.ar).toHaveLength(9);
   });
 
