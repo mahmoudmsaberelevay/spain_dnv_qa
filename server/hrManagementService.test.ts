@@ -100,7 +100,8 @@ function memoryDb(seed: Record<string, Row[]> = {}) {
         },
         for(mode: string) {
           // Production TiDB rejects shared locking reads instead of executing them.
-          if (mode === "share") throw new Error("TiDB does not support FOR SHARE");
+          if (mode === "share")
+            throw new Error("TiDB does not support FOR SHARE");
           events.push({ type: "lock", table, mode });
           return query;
         },
@@ -368,13 +369,16 @@ describe("HR self-service identity and overlap", () => {
       requestedDays: 1,
       daysByYear: '[{"year":2026,"days":1}]',
     });
-    expect(memory.events.filter(event => event.type === "lock").slice(0, 2)).toEqual([
+    expect(
+      memory.events.filter(event => event.type === "lock").slice(0, 2)
+    ).toEqual([
       { type: "lock", table: "finEmployees", mode: "update" },
       { type: "lock", table: "hrHolidays", mode: "update" },
     ]);
     expect(memory.state.hrLeaveEntitlements[0].totalDays).toBe("0.00");
-    await expect(reviewHrLeaveRequest(1, { ...decision, requestId: created.id }))
-      .rejects.toMatchObject({ reason: "INSUFFICIENT_BALANCE" });
+    await expect(
+      reviewHrLeaveRequest(1, { ...decision, requestId: created.id })
+    ).rejects.toMatchObject({ reason: "INSUFFICIENT_BALANCE" });
     expect(memory.state.hrLeaveRequests[0].status).toBe("pending");
   });
 
@@ -1264,5 +1268,132 @@ describe("HR admin overview read contracts", () => {
     expect(source).not.toContain("employee.email");
     expect(source).not.toContain("insert(finEmployeeSalaryRates)");
     expect(source).not.toContain("update(finEmployees)");
+  });
+});
+
+describe("HR calendar-year allowance and rollover", () => {
+  it.each([
+    [2026, 20],
+    [2027, 22],
+    [2028, 22],
+  ])(
+    "gives new/unseeded staff the %i allowance in both employee and admin reads without writing",
+    async (year, totalDays) => {
+      const memory = memoryDb({ finEmployees: [employee()] });
+      const expected = {
+        year,
+        totalDays,
+        usedDays: 0,
+        remainingDays: totalDays,
+      };
+      expect((await getMyHrLeave(42, year)).balances).toContainEqual(expected);
+      const overview = await getHrAdminOverview(
+        { from: `${year}-01-01`, to: `${year}-01-01`, year },
+        new Date(`${year}-01-02T12:00:00Z`)
+      );
+      expect(overview.employees[0].leaveBalance).toEqual(expected);
+      expect(
+        memory.events.some(event =>
+          ["insert", "upsert", "update", "delete"].includes(event.type)
+        )
+      ).toBe(false);
+    }
+  );
+
+  it("starts 2027 at 22 minus that year's approved usage, never carrying unused 2026 leave", async () => {
+    const memory = memoryDb({
+      finEmployees: [employee()],
+      hrLeaveEntitlements: [entitlement({ totalDays: "20.00" })],
+      hrLeaveRequests: [
+        request({
+          status: "approved",
+          requestedDays: 5,
+          daysByYear: '[{"year":2026,"days":2},{"year":2027,"days":3}]',
+          fromDate: "2026-12-30",
+          toDate: "2027-01-05",
+        }),
+        request({
+          id: 2,
+          status: "pending",
+          daysByYear: '[{"year":2027,"days":1}]',
+          fromDate: "2027-02-01",
+          toDate: "2027-02-01",
+        }),
+        request({
+          id: 3,
+          status: "rejected",
+          daysByYear: '[{"year":2027,"days":1}]',
+          fromDate: "2027-03-01",
+          toDate: "2027-03-01",
+        }),
+      ],
+    });
+    const before = structuredClone(memory.state.hrLeaveRequests);
+    expect((await getMyHrLeave(42, 2027)).balances).toEqual([
+      { year: 2026, totalDays: 20, usedDays: 2, remainingDays: 18 },
+      { year: 2027, totalDays: 22, usedDays: 3, remainingDays: 19 },
+    ]);
+    expect((await getMyHrLeave(42, 2028)).balances).toContainEqual({
+      year: 2028,
+      totalDays: 22,
+      usedDays: 0,
+      remainingDays: 22,
+    });
+    expect(memory.state.hrLeaveRequests).toEqual(before);
+  });
+
+  it("allows the reported one-day request against the 20-day 2026 default exactly once", async () => {
+    memoryDb({
+      finEmployees: [employee()],
+      hrLeaveRequests: [
+        request({ fromDate: "2026-11-05", toDate: "2026-11-06" }),
+      ],
+    });
+    const first = await reviewHrLeaveRequest(1, decision);
+    expect(first.status).toBe("approved");
+    expect(await reviewHrLeaveRequest(191, decision)).toEqual(first);
+    expect((await getMyHrLeave(42, 2026)).balances[0]).toEqual({
+      year: 2026,
+      totalDays: 20,
+      usedDays: 1,
+      remainingDays: 19,
+    });
+    expect(dependencies.updateEmployee).not.toHaveBeenCalled();
+  });
+
+  it("checks each allocation year independently when approving leave spanning New Year", async () => {
+    memoryDb({
+      finEmployees: [employee()],
+      hrLeaveRequests: [
+        request({
+          fromDate: "2026-12-30",
+          toDate: "2027-01-04",
+          requestedDays: 4,
+          daysByYear: '[{"year":2026,"days":2},{"year":2027,"days":2}]',
+        }),
+      ],
+    });
+    await reviewHrLeaveRequest(1, decision);
+    expect((await getMyHrLeave(42, 2027)).balances).toEqual([
+      { year: 2026, totalDays: 20, usedDays: 2, remainingDays: 18 },
+      { year: 2027, totalDays: 22, usedDays: 2, remainingDays: 20 },
+    ]);
+  });
+
+  it("keeps explicit year-specific administrator adjustments authoritative, including zero", async () => {
+    memoryDb({
+      finEmployees: [employee()],
+      hrLeaveEntitlements: [entitlement({ year: 2027, totalDays: "0.00" })],
+    });
+    expect((await getMyHrLeave(42, 2027)).balances).toEqual([
+      { year: 2027, totalDays: 0, usedDays: 0, remainingDays: 0 },
+    ]);
+    await setHrLeaveEntitlement(1, {
+      employeeId: 10,
+      year: 2027,
+      totalDays: 24,
+      reason: "Owner adjustment",
+    });
+    expect((await getMyHrLeave(42, 2027)).balances[0].totalDays).toBe(24);
   });
 });

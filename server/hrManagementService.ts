@@ -13,6 +13,7 @@ import { updateEmployee } from "./finDb";
 import { isHrAdministrator } from "../shared/hrAccess";
 import { assertHrAttendanceDate } from "../shared/hrAttendance";
 import { getHrAttendanceCreditDates } from "../shared/hrAttendanceCredits";
+import { getHrDefaultAnnualLeaveDays } from "../shared/hrAnnualLeavePolicy";
 import {
   getCairoBusinessDate,
   selectEffectiveEmployeeSalaryRate,
@@ -253,7 +254,8 @@ function balance(
   requests: LeaveRequest[]
 ): HrLeaveBalance {
   const totalDays = Number(
-    entitlements.find(row => row.year === year)?.totalDays ?? 0
+    entitlements.find(row => row.year === year)?.totalDays ??
+      getHrDefaultAnnualLeaveDays(year)
   );
   const usedDays = requests
     .filter(row => row.status === "approved")

@@ -40,6 +40,7 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { isHrAdministrator } from "@shared/hrAccess";
 import { HR_ROLLOUT_CREDIT } from "@shared/hrAttendanceCredits";
+import { HR_ANNUAL_LEAVE_POLICY_TEXT } from "@shared/hrAnnualLeavePolicy";
 import {
   formatAttendanceDuration,
   formatCairoAttendanceTime,
@@ -1179,6 +1180,9 @@ function VacationRequests() {
           setSubmittedId(null);
         }}
       />
+      <Notice title="Annual leave policy">
+        {HR_ANNUAL_LEAVE_POLICY_TEXT}
+      </Notice>
       <QueryState
         loading={mine.isLoading}
         error={mine.error}
@@ -1460,6 +1464,9 @@ function HrAdmin() {
         HR calculates an auditable preview. It does not create expenses, post
         payroll, deduct salary automatically, or mark salary receipts paid.
         Financial remains the salary source of truth.
+      </Notice>
+      <Notice title="Annual leave policy">
+        {HR_ANNUAL_LEAVE_POLICY_TEXT}
       </Notice>
       <HrEmployeeOnboarding />
       <Card>
