@@ -134,10 +134,25 @@ describe("ELEVAY Client app Layla advisor", () => {
   it("matches the latest Arabic message language and never returns the server prompt", async () => {
     const result = await chatWithLayla({ locale: "en", message: "أريد الإقامة في أوروبا", history: [] });
     const call = mocks.invokeLLM.mock.calls[0]?.[0];
-    expect(call.messages[0].content).toContain("Current interface locale: Arabic");
+    expect(call.messages.find((message: { role: string; content: string }) => message.content.includes("Current interface locale:"))?.content).toContain("Current interface locale: Arabic");
     expect(result.qualificationData.goal).toBe("relocate");
     expect(result.message).not.toContain("You are Layla");
     expect((laylaService as Record<string, unknown>).LAYLA_SYSTEM_PROMPT).toBeUndefined();
+  });
+
+  it("grounds a named programme question in its own attached Ready Summary text", async () => {
+    await chatWithLayla({
+      locale: "en",
+      message: "What are the family requirements and financial means for Portugal D7?",
+      history: [],
+    });
+    const call = mocks.invokeLLM.mock.calls[0]?.[0];
+    const context = call.messages.find((message: { role: string; content: string }) => message.content.includes("### Portugal D7 Residence Visa"))?.content;
+    expect(context).toContain("### Portugal D7 Residence Visa");
+    expect(context).not.toContain("### Portugal D8 Digital Nomad Visa");
+    expect(context).not.toContain("### Portugal Golden Visa");
+    expect(context).toContain("Who Can Be Included");
+    expect(context).toContain("Do not convert currencies, invent totals");
   });
 
   it("creates one opaque session and restores its server-side context when client history is absent", async () => {

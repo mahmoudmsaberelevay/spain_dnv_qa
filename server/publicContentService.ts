@@ -7,6 +7,7 @@ import { and, asc, desc, eq, isNull, notInArray } from "drizzle-orm";
 import { getDb } from "./db";
 import { marketingReadySummaries, publicAfterSettlementServices, publicContentSyncRuns, publicContentSyncSettings, publicPrograms, publicServiceProviders, type PublicProgram } from "../drizzle/schema";
 import { chatWithLayla } from "./clientAppAiAdvisor";
+import { aiGuideInputSchema, aiGuideResponseNotes, getAiGuideRecommendations, loadAiProgrammeKnowledge } from "./clientAppProgrammeKnowledge";
 import { storageGet } from "./storage";
 import { parseReadySummaryIdentity, publicProgramLocaleFromAcceptLanguage, publicReadySummaryFromRecord } from "./publicProgramReadySummaries";
 
@@ -213,6 +214,13 @@ export async function runPublicContentSync(triggerType: "scheduled" | "manual") 
 }
 
 export function registerPublicContentRoutes(app: Express) {
+  const aiGuideLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 24,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "ai_guide_rate_limit", message: "Please wait before requesting more recommendations." },
+  });
   const laylaLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 24,
@@ -245,6 +253,24 @@ export function registerPublicContentRoutes(app: Express) {
       if (caught instanceof ZodError) return res.status(400).json({ error: "invalid_layla_request", message: "The message or conversation history is invalid." });
       console.error("[PublicContent] Layla failed:", caught instanceof Error ? caught.message : String(caught));
       return res.status(502).json({ error: "layla_unavailable", message: "Layla is temporarily unavailable. Please try again." });
+    }
+  });
+
+  app.post("/public-api/ai-guide/recommendations", aiGuideLimiter, (req: Request, res: Response) => {
+    try {
+      const input = aiGuideInputSchema.parse(req.body);
+      const recommendations = getAiGuideRecommendations(input.answers);
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      return res.json({
+        sourceSnapshot: loadAiProgrammeKnowledge().sourceSnapshot,
+        recommendations,
+        notes: aiGuideResponseNotes(input.locale),
+      });
+    } catch (caught) {
+      if (caught instanceof ZodError) return res.status(400).json({ error: "invalid_ai_guide_request" });
+      console.error("[PublicContent] AI Guide recommendations failed:", caught instanceof Error ? caught.message : String(caught));
+      return res.status(503).json({ error: "ai_guide_unavailable" });
     }
   });
 

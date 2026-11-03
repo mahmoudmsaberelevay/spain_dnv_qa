@@ -2,6 +2,7 @@
 /*
  * ELEVAY approved sources for the AI Studio.
  *
+ *   assets/knowledge/ai-programme-knowledge.en.json  structured 26-program content used by Ask Layla and AI Guide
  *   assets/knowledge/summaries/*.md  the owner's 26 ELEVAY program summaries (trusted sources, 1 Nov 2026)
  *   assets/knowledge/*.md   earlier owner-approved Q&A and training guides (Spain DNV, Malta PR, Antigua & Barbuda,
  *                           Dominica, Egypt, Nauru, São Tomé and Príncipe)
