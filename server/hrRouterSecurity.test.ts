@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   settings: vi.fn(),
   onboarding: vi.fn(),
   linkEmployee: vi.fn(),
+  saveSchedule: vi.fn(),
+  saveSalary: vi.fn(),
 }));
 vi.mock("./auditLog", () => ({
   auditCtxFromTrpc: vi.fn(() => ({})),
@@ -35,8 +37,8 @@ vi.mock("./hrManagementService", () => ({
   getHrAdminOverview: mocks.overview,
   reviewHrLeaveRequest: vi.fn(),
   setHrLeaveEntitlement: vi.fn(),
-  saveHrSchedule: vi.fn(),
-  saveHrSalary: vi.fn(),
+  saveHrSchedule: mocks.saveSchedule,
+  saveHrSalary: mocks.saveSalary,
   saveHrHoliday: vi.fn(),
   removeHrHoliday: vi.fn(),
 }));
@@ -90,6 +92,8 @@ beforeEach(() => {
   mocks.clockOut.mockResolvedValue({
     attendance: { id: 7, attendanceDate: "2026-11-02" },
   });
+  mocks.saveSchedule.mockImplementation(async (_actor, input) => ({ id: 1, ...input }));
+  mocks.saveSalary.mockResolvedValue({ employeeId: 7, salary: "10000.00", effectiveFrom: "2026-11-08" });
 });
 describe("HR server security", () => {
   it("denies HR Admin even to an unrelated CRM administrator", async () => {
@@ -529,4 +533,76 @@ describe("HR onboarding router security", () => {
       expect(mocks.create).not.toHaveBeenCalled();
     }
   );
+});
+
+describe("HR maternity schedule router contract", () => {
+  const scheduleInput = {
+    employeeId: 7, startTime: "09:00", endTime: "17:00", graceMinutes: 15,
+    effectiveFrom: "2026-11-08", reason: "Daily nursing breaks",
+  };
+  const policyInput = {
+    ...scheduleInput, maternityBreakMode: "two_30" as const,
+    maternityBreakStart1: "09:00", maternityBreakStart2: "16:30", maternityBreakUntil: "2026-12-31",
+  };
+
+  it.each([1, 120001, 191, 933743])("forwards optional policy fields only for verified named administrator %i", async actorId => {
+    const caller = hrRouter.createCaller(context(actorId));
+    await caller.admin.saveSchedule(policyInput);
+    expect(mocks.saveSchedule).toHaveBeenCalledWith(actorId, policyInput);
+    expect(mocks.saveSalary).not.toHaveBeenCalled();
+    expect(writeAuditLog).toHaveBeenCalledWith({}, "update", "hr_schedule", 7,
+      expect.stringContaining("2 × 30 min: 09:00–09:30 + 16:30–17:00 (Cairo)"));
+  });
+
+  it("supports one hour, nullable details for explicit none, and legacy omission without adding defaults", async () => {
+    const caller = hrRouter.createCaller(context(1));
+    const one = { ...policyInput, maternityBreakMode: "one_60" as const, maternityBreakStart1: "16:00", maternityBreakStart2: null };
+    await caller.admin.saveSchedule(one);
+    expect(mocks.saveSchedule).toHaveBeenLastCalledWith(1, one);
+    const none = { ...scheduleInput, maternityBreakMode: "none" as const, maternityBreakStart1: null, maternityBreakStart2: null, maternityBreakUntil: null };
+    await caller.admin.saveSchedule(none);
+    expect(mocks.saveSchedule).toHaveBeenLastCalledWith(1, none);
+    await caller.admin.saveSchedule(scheduleInput);
+    expect(mocks.saveSchedule).toHaveBeenLastCalledWith(1, scheduleInput);
+  });
+
+  it("audits the returned preserved policy rather than incorrectly claiming a legacy update disabled it", async () => {
+    mocks.saveSchedule.mockResolvedValueOnce({ id: 1, ...policyInput });
+    await hrRouter.createCaller(context(191)).admin.saveSchedule(scheduleInput);
+    expect(writeAuditLog).toHaveBeenLastCalledWith({}, "update", "hr_schedule", 7,
+      expect.stringContaining("through 2026-12-31 inclusive"));
+  });
+
+  it.each([[900, "admin"], [901, "user"]] as const)("denies policy and salary changes from unrelated actor %i (%s)", async (id, role) => {
+    const caller = hrRouter.createCaller(context(id, role));
+    await expect(caller.admin.saveSchedule(policyInput)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.admin.saveSalary({ employeeId: 7, salary: 10000, effectiveFrom: "2026-11-08", reason: "Salary edit" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(mocks.saveSchedule).not.toHaveBeenCalled(); expect(mocks.saveSalary).not.toHaveBeenCalled();
+    expect(writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("requires authentication before schedule or salary edits", async () => {
+    const caller = hrRouter.createCaller({ ...context(1), user: null });
+    await expect(caller.admin.saveSchedule(policyInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.admin.saveSalary({ employeeId: 7, salary: 10000, effectiveFrom: "2026-11-08", reason: "Salary edit" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(mocks.saveSchedule).not.toHaveBeenCalled(); expect(mocks.saveSalary).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { maternityBreakMode: "two_60" }, { maternityBreakMode: null }, { maternityBreakStart1: "9:00" },
+    { maternityBreakStart2: "24:00" }, { maternityBreakUntil: "2026-02-30" },
+    { graceMinutes: 121 }, { graceMinutes: 1.5 }, { salary: 100 }, { payment: 10 },
+    { actorUserId: 1 }, { maternityBreakMinutes: 120 },
+  ])("rejects malformed or non-whitelisted policy input before service %j", async invalid => {
+    await expect(hrRouter.createCaller(context(191)).admin.saveSchedule({ ...policyInput, ...invalid } as any)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(mocks.saveSchedule).not.toHaveBeenCalled(); expect(writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("translates independent service policy validation failure without writes or audit", async () => {
+    mocks.saveSchedule.mockRejectedValueOnce(new HrManagementError("INVALID_INPUT", "Maternity break slots must not overlap"));
+    await expect(hrRouter.createCaller(context(1)).admin.saveSchedule(policyInput)).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED", message: "Maternity break slots must not overlap",
+    });
+    expect(writeAuditLog).not.toHaveBeenCalled();
+  });
 });

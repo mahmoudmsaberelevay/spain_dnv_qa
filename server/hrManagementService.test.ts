@@ -82,6 +82,7 @@ function memoryDb(seed: Record<string, Row[]> = {}) {
       let table: string;
       let predicate: any;
       let max: number | undefined;
+      let ordering: { column: string; direction: number }[] = [];
       const query: any = {
         from(value: any) {
           table = tableName(value);
@@ -95,7 +96,13 @@ function memoryDb(seed: Record<string, Row[]> = {}) {
           max = value;
           return query;
         },
-        orderBy() {
+        orderBy(...expressions: any[]) {
+          ordering = expressions.map(expression => {
+            const sql = dialect.sqlToQuery(expression).sql;
+            const match = sql.match(/`[^`]+`\.`([^`]+)`\s+(asc|desc)/i);
+            if (!match) throw new Error(`Unsupported test sort: ${sql}`);
+            return { column: match[1], direction: match[2].toLowerCase() === "desc" ? -1 : 1 };
+          });
           return query;
         },
         for(mode: string) {
@@ -114,6 +121,14 @@ function memoryDb(seed: Record<string, Row[]> = {}) {
           });
           const rows = state[table]
             .filter(row => matching(predicate, row))
+            .sort((left, right) => {
+              for (const order of ordering) {
+                const a = calendarValue(left[order.column]);
+                const b = calendarValue(right[order.column]);
+                if (a !== b) return (a < b ? -1 : 1) * order.direction;
+              }
+              return 0;
+            })
             .slice(0, max);
           return structuredClone(
             rows.map(row =>
@@ -719,6 +734,109 @@ describe("HR approval and frozen balances", () => {
 });
 
 describe("HR policy changes and Financial salary delegation", () => {
+  const policyInput = {
+    employeeId: 10, effectiveFrom: "2026-11-08", startTime: "09:00", endTime: "17:00",
+    graceMinutes: 15, reason: "Maternity nursing policy",
+    maternityBreakMode: "two_30", maternityBreakStart1: "09:00", maternityBreakStart2: "16:30",
+    maternityBreakUntil: "2026-12-31",
+  };
+
+  it.each([1, 120001, 191, 933743])("allows only named actor %i to save a policy with no Financial postings", async actorId => {
+    const memory = memoryDb({ finEmployees: [employee()] });
+    const result = await saveHrSchedule(actorId, { ...policyInput, salary: 1, payment: 1 } as any);
+    const { reason: _reason, ...persisted } = policyInput;
+    expect(result).toMatchObject({ ...persisted, changedByUserId: actorId });
+    expect(result).not.toHaveProperty("reason");
+    const writes = memory.events.filter(event => ["insert", "upsert", "update", "delete"].includes(event.type));
+    expect(writes.map(row => row.table)).toEqual(["hrEmployeeSchedules"]);
+    expect(writes[0].values).not.toHaveProperty("salary");
+    expect(writes[0].values).not.toHaveProperty("payment");
+    expect(dependencies.updateEmployee).not.toHaveBeenCalled();
+  });
+
+  it.each([42, 900])("denies policy edits by unnamed actor %i before database access", async actorId => {
+    await expect(saveHrSchedule(actorId, policyInput)).rejects.toMatchObject({ reason: "FORBIDDEN" });
+    expect(dependencies.getDb).not.toHaveBeenCalled();
+    expect(dependencies.updateEmployee).not.toHaveBeenCalled();
+  });
+
+  it("preserves all omitted existing same-date policy columns when changing duty or grace", async () => {
+    const memory = memoryDb({ finEmployees: [employee()], hrEmployeeSchedules: [schedule(policyInput)] });
+    await saveHrSchedule(191, {
+      employeeId: 10, effectiveFrom: policyInput.effectiveFrom, startTime: "08:00", endTime: "18:00",
+      graceMinutes: 120, reason: "Duty hours only",
+    });
+    expect(memory.state.hrEmployeeSchedules[0]).toMatchObject({
+      ...policyInput, startTime: "08:00", endTime: "18:00", graceMinutes: 120, changedByUserId: 191,
+    });
+  });
+
+  it("inherits latest prior effective policy for new dated shifts without using a future row", async () => {
+    const memory = memoryDb({ finEmployees: [employee()], hrEmployeeSchedules: [
+      schedule({ ...policyInput, effectiveFrom: "2026-11-03", maternityBreakMode: "none" }),
+      schedule({ ...policyInput, id: 2 }),
+      schedule({ ...policyInput, id: 3, effectiveFrom: "2026-12-01", maternityBreakMode: "none" }),
+    ] });
+    const result = await saveHrSchedule(191, {
+      employeeId: 10, effectiveFrom: "2026-11-09", startTime: "08:00", endTime: "18:00", graceMinutes: 0, reason: "Later shift",
+    });
+    expect(result).toMatchObject({
+      effectiveFrom: "2026-11-09", maternityBreakMode: "two_30", maternityBreakStart1: "09:00",
+      maternityBreakStart2: "16:30", maternityBreakUntil: "2026-12-31",
+    });
+    expect(memory.state.hrEmployeeSchedules).toHaveLength(4);
+  });
+
+  it("revalidates a preserved grant against changed hours and rolls back instead of silently clearing it", async () => {
+    const memory = memoryDb({ finEmployees: [employee()], hrEmployeeSchedules: [schedule(policyInput)] });
+    const before = structuredClone(memory.state.hrEmployeeSchedules);
+    await expect(saveHrSchedule(1, {
+      employeeId: 10, effectiveFrom: policyInput.effectiveFrom, startTime: "10:00", endTime: "17:00", graceMinutes: 0, reason: "Shorter duty",
+    })).rejects.toMatchObject({ reason: "INVALID_INPUT" });
+    expect(memory.state.hrEmployeeSchedules).toEqual(before);
+  });
+
+  it("requires explicit disable or revised expiry instead of silently clearing an expired inherited policy", async () => {
+    const memory = memoryDb({ finEmployees: [employee()], hrEmployeeSchedules: [schedule({ ...policyInput, maternityBreakUntil: "2026-11-08" })] });
+    const later = { employeeId: 10, effectiveFrom: "2026-11-09", startTime: "09:00", endTime: "17:00", graceMinutes: 0, reason: "Later duty" };
+    await expect(saveHrSchedule(1, later)).rejects.toMatchObject({ reason: "INVALID_INPUT" });
+    expect(memory.state.hrEmployeeSchedules).toHaveLength(1);
+    expect(await saveHrSchedule(1, { ...later, maternityBreakMode: "none" })).toMatchObject({
+      maternityBreakMode: "none", maternityBreakStart1: null, maternityBreakStart2: null, maternityBreakUntil: null,
+    });
+  });
+
+  it("explicit none clears existing slots and expiry without creating punches", async () => {
+    const memory = memoryDb({ finEmployees: [employee()], hrEmployeeSchedules: [schedule(policyInput)] });
+    expect(await saveHrSchedule(1, { ...policyInput, maternityBreakMode: "none" })).toMatchObject({
+      maternityBreakMode: "none", maternityBreakStart1: null, maternityBreakStart2: null, maternityBreakUntil: null,
+    });
+    expect(memory.state.hrAttendance).toEqual([]);
+  });
+
+  it("supports one hour and partial policy updates while retaining omitted expiry", async () => {
+    memoryDb({ finEmployees: [employee()], hrEmployeeSchedules: [schedule(policyInput)] });
+    const result = await saveHrSchedule(1, {
+      employeeId: 10, effectiveFrom: policyInput.effectiveFrom, startTime: "09:00", endTime: "17:00", graceMinutes: 0, reason: "Combined nursing",
+      maternityBreakMode: "one_60", maternityBreakStart1: "16:00", maternityBreakStart2: null,
+    });
+    expect(result).toMatchObject({ maternityBreakMode: "one_60", maternityBreakStart1: "16:00", maternityBreakStart2: null, maternityBreakUntil: "2026-12-31" });
+  });
+
+  it.each([
+    { maternityBreakMode: "invalid" }, { maternityBreakMode: null },
+    { maternityBreakStart1: "9:00" }, { maternityBreakStart2: "09:15" },
+    { maternityBreakStart1: null }, { maternityBreakStart2: "16:31" },
+    { maternityBreakUntil: "2026-11-07" }, { maternityBreakUntil: "2026-02-30" },
+    { endTime: "10:00", maternityBreakStart2: "09:30" },
+    { maternityBreakMode: "one_60" }, { graceMinutes: 121 }, { graceMinutes: 1440 },
+  ])("validates service calls independently of router %j", async invalid => {
+    const memory = memoryDb({ finEmployees: [employee()] });
+    await expect(saveHrSchedule(1, { ...policyInput, ...invalid } as any)).rejects.toBeInstanceOf(HrManagementError);
+    expect(memory.state.hrEmployeeSchedules).toHaveLength(0);
+    expect(dependencies.updateEmployee).not.toHaveBeenCalled();
+  });
+
   it("requires audit reasons for entitlement, schedule, salary and holiday removal", async () => {
     await expect(
       setHrLeaveEntitlement(1, {
@@ -885,6 +1003,28 @@ describe("HR policy changes and Financial salary delegation", () => {
 });
 
 describe("HR admin overview read contracts", () => {
+  it("retains maternity allowance and actual excused minutes on only the selected payroll days, with no financial or punch writes", async () => {
+    const memory = memoryDb({
+      finEmployees: [employee()],
+      hrEmployeeSchedules: [schedule({ maternityBreakMode: "two_30", maternityBreakStart1: "09:00", maternityBreakStart2: "16:30" })],
+      finEmployeeSalaryRates: [{ employeeId: 10, effectiveFrom: new Date("2026-01-01T00:00:00Z"), monthlySalary: "10000.00" }],
+      hrAttendance: ["2026-11-08", "2026-11-09"].map(attendanceDate => ({
+        employeeId: 10, attendanceDate,
+        checkInAt: new Date(`${attendanceDate}T07:45:00Z`), checkOutAt: new Date(`${attendanceDate}T14:15:00Z`),
+      })),
+    });
+    const punches = structuredClone(memory.state.hrAttendance);
+    const result = await getHrAdminOverview({ from: "2026-11-09", to: "2026-11-09", year: 2026 }, new Date("2026-11-10T20:00:00Z"));
+    expect(result.employees[0].payroll.days).toEqual([{
+      date: "2026-11-09", status: "present", lateMinutes: 15, earlyMinutes: 15,
+      missingMinutes: 30, maternityBreakMinutes: 60, maternityExcusedMinutes: 60,
+    }]);
+    expect(result.employees[0].payroll.totalDeduction).toBe(20.83);
+    expect(memory.state.hrAttendance).toEqual(punches);
+    expect(memory.events.every(event => !["insert", "upsert", "update", "delete"].includes(event.type))).toBe(true);
+    expect(dependencies.updateEmployee).not.toHaveBeenCalled();
+  });
+
   it("includes employees without attendance and uses historical effective salary rather than current salary", async () => {
     const memory = memoryDb({
       finEmployees: [

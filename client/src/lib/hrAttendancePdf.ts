@@ -388,6 +388,9 @@ export async function createHrAttendancePdf(
     "Salary deduction basis: monthly salary / 30 calendar days (not monthly salary / scheduled working days). Payroll preserves precision until final monetary rounding. All displayed deductions are the supplied authoritative payroll values, not recalculated by this export."
   );
   paragraph(
+    "Paid maternity/nursing breaks: only authorized, dated Cairo time slots are excluded from finalized late/early loss. The allowance is not recorded work, does not consume annual leave and never waives a full-day absence or an incomplete-punch penalty. Unused daily minutes do not carry over."
+  );
+  paragraph(
     "27 Oct-3 Nov 2026: owner-approved on-time attendance credit; regular enforcement from 4 Nov. Credits do not fabricate clock-in/out records. Credited dates are explicitly labeled and carry no penalties."
   );
 
@@ -409,6 +412,9 @@ export async function createHrAttendancePdf(
     );
     paragraph(
       `Late minutes: ${number(employee.lateMinutes)} min | Late hours: ${number(employee.timing.lateHours, 4)} h | Late equivalent days: ${employee.timingAvailable ? number(employee.timing.lateEquivalentDays, 6) : "unavailable"} | Early-exit equivalent days: ${employee.timingAvailable ? number(employee.timing.earlyEquivalentDays, 6) : "unavailable"}`
+    );
+    paragraph(
+      `Maternity/nursing time actually excused from late/early penalties: ${number(employee.days.reduce((sum, day) => sum + day.maternityExcusedMinutes, 0))} min. Configured allowance and excused minutes are shown separately on the daily sheet.`
     );
     if (employee.timingAvailable) {
       const timing = employee.timing;
@@ -539,6 +545,8 @@ export async function createHrAttendancePdf(
         numeric("Early exit min", 27),
         numeric("Absence min", 29),
         numeric("Incomplete penalty min", 36),
+        numeric("Paid maternity allowance min", 34),
+        numeric("Maternity excused min", 30),
         numeric("Total lost min", 29),
       ],
       employee.days.map(day => [
@@ -548,6 +556,8 @@ export async function createHrAttendancePdf(
         number(day.earlyMinutes),
         number(day.absenceMinutes),
         number(day.incompletePenaltyMinutes),
+        number(day.maternityBreakMinutes),
+        number(day.maternityExcusedMinutes),
         number(day.missingMinutes),
       ])
     );

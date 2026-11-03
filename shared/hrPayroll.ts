@@ -1,5 +1,12 @@
 import { ELEVAY_TIME_ZONE } from "./financialEmployeeSalaryRates";
 import { assertHrAttendanceDate } from "./hrAttendance";
+import {
+  getHrMaternityBreakIntervals,
+  hrMaternityBreakOverlapMinutes,
+  hrScheduleTimeMinutes,
+  validateHrMaternityBreaks,
+  type HrMaternityBreakPolicy,
+} from "./hrMaternityBreaks";
 
 export const HR_SALARY_DAYS = 30;
 
@@ -16,7 +23,7 @@ const cairoFormatter = new Intl.DateTimeFormat("en-GB", {
   hourCycle: "h23",
 });
 
-export type HrPayrollSchedule = {
+export type HrPayrollSchedule = HrMaternityBreakPolicy & {
   effectiveFrom: string;
   startTime: string;
   endTime: string;
@@ -59,6 +66,10 @@ export type HrPayrollDay = {
   lateMinutes: number;
   earlyMinutes: number;
   missingMinutes: number;
+  /** Actual excluded late/early overlap, not an allowance or altered punches. */
+  maternityExcusedMinutes?: number;
+  /** Configured policy on an active scheduled working day, even if not used. */
+  maternityBreakMinutes?: number;
 };
 
 export type HrPayrollResult = {
@@ -135,14 +146,6 @@ export function countHrLeaveWorkingDays(
     byYear.set(year, (byYear.get(year) ?? 0) + 1);
   }
   return Array.from(byYear, ([year, days]) => ({ year, days }));
-}
-
-function timeMinutes(time: string): number {
-  if (typeof time !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) {
-    throw new Error("HR schedule times must use HH:mm");
-  }
-  const [hour, minute] = time.split(":").map(Number);
-  return hour * 60 + minute;
 }
 
 function instant(value: Date | string, label: string): Date {
@@ -235,15 +238,16 @@ export function calculateHrPayroll(input: HrPayrollInput): HrPayrollResult {
       if (scheduleDates.has(effectiveFrom))
         throw new Error("Duplicate HR schedule effective date");
       scheduleDates.add(effectiveFrom);
-      const start = timeMinutes(schedule.startTime);
-      const end = timeMinutes(schedule.endTime);
+      const start = hrScheduleTimeMinutes(schedule.startTime);
+      const end = hrScheduleTimeMinutes(schedule.endTime);
       if (end <= start)
         throw new Error("HR schedule end must be after start on the same day");
       if (
         !Number.isInteger(schedule.graceMinutes) ||
-        schedule.graceMinutes < 0
+        schedule.graceMinutes < 0 ||
+        schedule.graceMinutes > 120
       ) {
-        throw new Error("HR grace minutes must be a non-negative integer");
+        throw new Error("HR grace minutes must be an integer between 0 and 120");
       }
       return {
         effectiveFrom,
@@ -251,6 +255,7 @@ export function calculateHrPayroll(input: HrPayrollInput): HrPayrollResult {
         end,
         span: end - start,
         grace: schedule.graceMinutes,
+        maternity: validateHrMaternityBreaks(schedule),
       };
     })
     .sort((left, right) =>
@@ -318,8 +323,16 @@ export function calculateHrPayroll(input: HrPayrollInput): HrPayrollResult {
       lateMinutes: 0,
       earlyMinutes: 0,
       missingMinutes: 0,
+      maternityExcusedMinutes: 0,
+      maternityBreakMinutes: 0,
     };
     result.days.push(day);
+    const maternityIntervals = schedule && !isWeekend(date) && !holidays.has(date)
+      ? getHrMaternityBreakIntervals(schedule.maternity, date)
+      : [];
+    day.maternityBreakMinutes = maternityIntervals.reduce(
+      (sum, slot) => sum + slot.endMinute - slot.startMinute, 0
+    );
     if (creditDates.has(date)) {
       day.status = "credited";
       if (schedule && !isWeekend(date) && !holidays.has(date)) {
@@ -372,16 +385,23 @@ export function calculateHrPayroll(input: HrPayrollInput): HrPayrollResult {
       const checkOutMinute =
         record.checkOut.date > date ? schedule.end : record.checkOut.minute;
       const end = clamp(checkOutMinute, schedule.start, schedule.end);
+      const lateExcused = hrMaternityBreakOverlapMinutes(
+        maternityIntervals, schedule.start, start
+      );
+      // Cairo wall clocks can reverse across DST despite ordered real instants.
+      // Partition the union of missing windows so no break minute is granted
+      // twice (and no missing duty minute is penalized twice).
+      const earlyStart = Math.max(start, end);
+      const earlyExcused = hrMaternityBreakOverlapMinutes(
+        maternityIntervals, earlyStart, schedule.end
+      );
+      day.maternityExcusedMinutes = lateExcused + earlyExcused;
       day.lateMinutes = clamp(
-        start - schedule.start - schedule.grace,
+        start - schedule.start - lateExcused - schedule.grace,
         0,
         schedule.span
       );
-      // Both endpoints are clamped, so the combined loss cannot exceed span.
-      day.earlyMinutes = Math.min(
-        schedule.span - day.lateMinutes,
-        Math.max(0, schedule.end - end)
-      );
+      day.earlyMinutes = Math.max(0, schedule.end - earlyStart - earlyExcused);
       result.lateMinutes += day.lateMinutes;
       result.earlyMinutes += day.earlyMinutes;
       day.missingMinutes = day.lateMinutes + day.earlyMinutes;

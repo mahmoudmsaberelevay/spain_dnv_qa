@@ -25,6 +25,8 @@ export type HrAttendanceReportSourceEmployee = {
       readonly lateMinutes: number;
       readonly earlyMinutes: number;
       readonly missingMinutes: number;
+      readonly maternityBreakMinutes?: number;
+      readonly maternityExcusedMinutes?: number;
     }[];
   };
 };
@@ -76,6 +78,10 @@ export type HrAttendanceReportDay = {
   missingMinutes: number;
   absenceMinutes: number;
   incompletePenaltyMinutes: number;
+  /** Configured paid daily allowance; not recorded work or annual-leave usage. */
+  maternityBreakMinutes: number;
+  /** Only the overlap actually excluded from finalized late/early penalties. */
+  maternityExcusedMinutes: number;
 };
 
 const SUMMARY_FIELDS = [
@@ -240,6 +246,23 @@ export function buildHrAttendanceReport(
         source.missingMinutes,
         "daily missing minutes"
       );
+      const maternityBreakMinutes = nonNegative(
+        source.maternityBreakMinutes ?? 0,
+        "daily maternity break allowance"
+      );
+      const maternityExcusedMinutes = nonNegative(
+        source.maternityExcusedMinutes ?? 0,
+        "daily maternity excused minutes"
+      );
+      if (
+        ![0, 60].includes(maternityBreakMinutes) ||
+        maternityExcusedMinutes > maternityBreakMinutes ||
+        (status !== "present" && maternityExcusedMinutes > 0)
+      ) {
+        throw new Error(
+          "Maternity break minutes require a valid allowance and finalized attendance"
+        );
+      }
       // Approved paid leave, future/in-progress dates and non-working dates are
       // never silently converted to absence, even in a malformed source snapshot.
       if (status === "present") {
@@ -266,6 +289,8 @@ export function buildHrAttendanceReport(
         missingMinutes,
         absenceMinutes: status === "absent" ? missingMinutes : 0,
         incompletePenaltyMinutes: status === "incomplete" ? missingMinutes : 0,
+        maternityBreakMinutes,
+        maternityExcusedMinutes,
       };
     });
     const sum = (

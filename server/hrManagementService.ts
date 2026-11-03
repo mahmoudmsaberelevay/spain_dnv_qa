@@ -16,6 +16,11 @@ import { getHrAttendanceCreditDates } from "../shared/hrAttendanceCredits";
 import { buildHrAttendanceTiming } from "../shared/hrAttendanceTiming";
 import { getHrDefaultAnnualLeaveDays } from "../shared/hrAnnualLeavePolicy";
 import {
+  HR_MATERNITY_BREAK_MODES,
+  validateHrMaternityBreaks,
+  type HrMaternityBreakPolicy,
+} from "../shared/hrMaternityBreaks";
+import {
   getCairoBusinessDate,
   selectEffectiveEmployeeSalaryRate,
 } from "../shared/financialEmployeeSalaryRates";
@@ -538,7 +543,7 @@ export async function setHrLeaveEntitlement(
 
 export async function saveHrSchedule(
   actorId: number,
-  input: {
+  input: HrMaternityBreakPolicy & {
     employeeId: number;
     startTime: string;
     endTime: string;
@@ -566,17 +571,65 @@ export async function saveHrSchedule(
   if (
     !Number.isInteger(input.graceMinutes) ||
     input.graceMinutes < 0 ||
-    input.graceMinutes > 1440
+    input.graceMinutes > 120
   ) {
     throw new HrManagementError(
       "INVALID_INPUT",
-      "Grace minutes must be an integer between 0 and 1440"
+      "Grace minutes must be an integer between 0 and 120"
     );
+  }
+  if (input.maternityBreakMode !== undefined &&
+      !HR_MATERNITY_BREAK_MODES.includes(input.maternityBreakMode as any)) {
+    throw new HrManagementError("INVALID_INPUT", "Maternity break mode must be none, two_30, or one_60");
+  }
+  if (input.maternityBreakMode !== "none") {
+    for (const slot of [input.maternityBreakStart1, input.maternityBreakStart2]) {
+      if (slot != null && (typeof slot !== "string" || !validTime.test(slot))) {
+        throw new HrManagementError("INVALID_INPUT", "Maternity break start times must use HH:mm");
+      }
+    }
+    if (input.maternityBreakUntil != null) dateKey(input.maternityBreakUntil);
   }
   const db = await database();
   return db.transaction(async tx => {
     await lockEmployee(tx, input.employeeId);
     futureDate(input.effectiveFrom);
+    // Current locking read after the common employee mutex: legacy clients must
+    // not silently erase a grant when editing duty hours or creating a later
+    // effective version. An expired inherited policy requires an explicit none
+    // or revised until date, rather than silently removing policy history.
+    const [existing] = await tx
+      .select()
+      .from(hrEmployeeSchedules)
+      .where(and(
+        eq(hrEmployeeSchedules.employeeId, input.employeeId),
+        lte(hrEmployeeSchedules.effectiveFrom, input.effectiveFrom)
+      ))
+      .orderBy(desc(hrEmployeeSchedules.effectiveFrom))
+      .limit(1)
+      .for("update");
+    const policy: HrMaternityBreakPolicy = {
+      maternityBreakMode: input.maternityBreakMode === undefined
+        ? existing?.maternityBreakMode ?? "none" : input.maternityBreakMode,
+      maternityBreakStart1: input.maternityBreakStart1 === undefined
+        ? existing?.maternityBreakStart1 ?? null : input.maternityBreakStart1,
+      maternityBreakStart2: input.maternityBreakStart2 === undefined
+        ? existing?.maternityBreakStart2 ?? null : input.maternityBreakStart2,
+      maternityBreakUntil: input.maternityBreakUntil === undefined
+        ? existing?.maternityBreakUntil ?? null : input.maternityBreakUntil,
+    };
+    let maternity;
+    try {
+      maternity = validateHrMaternityBreaks({ ...input, ...policy });
+    } catch (error) {
+      throw new HrManagementError("INVALID_INPUT", error instanceof Error ? error.message : "Invalid maternity break policy");
+    }
+    const maternityValues = {
+      maternityBreakMode: maternity.maternityBreakMode,
+      maternityBreakStart1: maternity.maternityBreakStart1,
+      maternityBreakStart2: maternity.maternityBreakStart2,
+      maternityBreakUntil: maternity.maternityBreakUntil,
+    };
     const values = {
       employeeId: input.employeeId,
       startTime: input.startTime,
@@ -584,6 +637,7 @@ export async function saveHrSchedule(
       graceMinutes: input.graceMinutes,
       effectiveFrom: input.effectiveFrom,
       changedByUserId: actorId,
+      ...maternityValues,
     };
     await tx
       .insert(hrEmployeeSchedules)
@@ -594,6 +648,7 @@ export async function saveHrSchedule(
           endTime: values.endTime,
           graceMinutes: values.graceMinutes,
           changedByUserId: actorId,
+          ...maternityValues,
         },
       });
     const [row] = await tx

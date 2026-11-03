@@ -4,6 +4,7 @@ import { protectedProcedure, router } from "./_core/trpc";
 import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
 import { isHrAdministrator } from "../shared/hrAccess";
 import { assertHrAttendanceDate } from "../shared/hrAttendance";
+import { HR_MATERNITY_BREAK_MODES, validateHrMaternityBreaks } from "../shared/hrMaternityBreaks";
 import { getHrEmployeeOnboarding, linkHrEmployeeLogin, HrOnboardingError } from "./hrEmployeeOnboardingService";
 import {
   clockInForCrmUser,
@@ -278,6 +279,10 @@ export const hrRouter = router({
             endTime: time,
             graceMinutes: z.number().int().min(0).max(120),
             effectiveFrom: dateKey,
+            maternityBreakMode: z.enum(HR_MATERNITY_BREAK_MODES).optional(),
+            maternityBreakStart1: time.nullable().optional(),
+            maternityBreakStart2: time.nullable().optional(),
+            maternityBreakUntil: dateKey.nullable().optional(),
             reason,
           })
           .strict()
@@ -289,7 +294,7 @@ export const hrRouter = router({
             ctx,
             "hr_schedule",
             input.employeeId,
-            `Schedule ${input.startTime}-${input.endTime} from ${input.effectiveFrom}: ${input.reason}`
+            `Schedule ${input.startTime}-${input.endTime} from ${input.effectiveFrom}; ${validateHrMaternityBreaks(result).displayText}: ${input.reason}`
           );
           return result;
         })

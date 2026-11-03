@@ -42,6 +42,7 @@ import { cn } from "@/lib/utils";
 import { isHrAdministrator } from "@shared/hrAccess";
 import { HR_ROLLOUT_CREDIT } from "@shared/hrAttendanceCredits";
 import { HR_ANNUAL_LEAVE_POLICY_TEXT } from "@shared/hrAnnualLeavePolicy";
+import { validateHrMaternityBreaks } from "@shared/hrMaternityBreaks";
 import {
   hrPayrollCycleForDate,
   hrPayrollCycleForMonth,
@@ -168,13 +169,81 @@ type LeaveRequest = {
   employeeName?: string;
 };
 type Holiday = { id: number; holidayDate: string | Date; name: string };
+type MaternityBreakMode = "none" | "two_30" | "one_60";
+type MaternityBreakSettings = {
+  startTime: string;
+  endTime: string;
+  effectiveFrom?: string | Date;
+  maternityBreakMode?: MaternityBreakMode;
+  maternityBreakStart1?: string | null;
+  maternityBreakStart2?: string | null;
+  maternityBreakUntil?: string | null;
+};
 type Schedule = {
   id: number;
   startTime: string;
   endTime: string;
   graceMinutes: number;
   effectiveFrom: string | Date;
-};
+} & MaternityBreakSettings;
+
+// These browser-only helpers use Cairo wall-clock minutes, never browser timezones.
+function dutyTimeMinutes(value: string): number | null {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return null;
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+function maternityBreakEnd(start: string, duration: number): string {
+  const minutes = dutyTimeMinutes(start);
+  if (minutes === null || minutes + duration >= 1440) return "—";
+  const end = minutes + duration;
+  return `${String(Math.floor(end / 60)).padStart(2, "0")}:${String(end % 60).padStart(2, "0")}`;
+}
+function maternityBreakValidation(
+  settings: MaternityBreakSettings
+): string | null {
+  try {
+    validateHrMaternityBreaks({
+      ...settings,
+      effectiveFrom: settings.effectiveFrom
+        ? dateKey(settings.effectiveFrom)
+        : getCairoBusinessDate(),
+    });
+    return null;
+  } catch (error) {
+    return errorMessage(error);
+  }
+}
+function maternityBreakSummary(
+  settings: MaternityBreakSettings,
+  onDate?: string
+): string {
+  const mode = settings.maternityBreakMode ?? "none";
+  if (mode === "none") return "No paid maternity / nursing breaks";
+  const until = settings.maternityBreakUntil;
+  if (onDate && until && until < onDate)
+    return `No active paid maternity / nursing breaks · expired ${dateLabel(until)} (inclusive)`;
+  settings = {
+    ...settings,
+    startTime: settings.startTime.slice(0, 5),
+    endTime: settings.endTime.slice(0, 5),
+    maternityBreakStart1: settings.maternityBreakStart1?.slice(0, 5) ?? null,
+    maternityBreakStart2: settings.maternityBreakStart2?.slice(0, 5) ?? null,
+  };
+  if (maternityBreakValidation(settings))
+    return "Paid break configuration needs review";
+  const duration = mode === "two_30" ? 30 : 60;
+  const starts =
+    mode === "two_30"
+      ? [settings.maternityBreakStart1, settings.maternityBreakStart2]
+      : [settings.maternityBreakStart1];
+  const slots = starts.map(
+    start =>
+      `${start}–${maternityBreakEnd(start ?? "", duration)} (${duration} min)`
+  );
+  return `Paid maternity / nursing · ${slots.join(" + ")} · 60 min/day${until ? ` · through ${dateLabel(until)} inclusive` : " · no end date"}`;
+}
+
 type PayrollDay = {
   date: string;
   status: string;
@@ -1681,6 +1750,10 @@ function HrAdmin() {
             onSearch={setEmployeeFilter}
             exportDisabled={exportDisabled}
             exporting={exportingPdf}
+            onEditEmployee={(employeeId, kind) => {
+              const employee = employees.find(item => item.id === employeeId);
+              if (employee) setEdit({ kind, employee });
+            }}
             onAttendancePdf={ids =>
               void exportReport(
                 ids
@@ -1971,18 +2044,20 @@ function EmployeePreview({
             type="button"
             variant="outline"
             className="min-h-11"
+            aria-label={`Edit duty & breaks for ${employee.name}`}
             onClick={() => edit("schedule")}
           >
             <Pencil aria-hidden="true" />
-            Schedule
+            Edit duty &amp; breaks
           </Button>
           <Button
             type="button"
             variant="outline"
             className="min-h-11"
+            aria-label={`Edit salary for ${employee.name}`}
             onClick={() => edit("salary")}
           >
-            Salary
+            Edit salary
           </Button>
           <Button
             type="button"
@@ -2005,9 +2080,14 @@ function EmployeePreview({
               : "No effective schedule — no deductions"}
           </p>
           {current && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Effective from {dateLabel(current.effectiveFrom)}
-            </p>
+            <>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Effective from {dateLabel(current.effectiveFrom)}
+              </p>
+              <p className="mt-2 whitespace-normal break-words text-xs leading-5 text-muted-foreground">
+                {maternityBreakSummary(current, today)}
+              </p>
+            </>
           )}
         </div>
         <div className="rounded-lg bg-muted/30 p-3">
@@ -2150,6 +2230,9 @@ function EmployeePreview({
                       Upcoming
                     </Badge>
                   )}
+                  <p className="mt-2 whitespace-normal break-words text-xs leading-5 text-muted-foreground">
+                    {maternityBreakSummary(schedule)}
+                  </p>
                 </li>
               ))}
             </ul>
@@ -2190,6 +2273,17 @@ function AdminEditDialog({
   const [graceMinutes, setGraceMinutes] = useState(
     String(schedule?.graceMinutes ?? 0)
   );
+  const [maternityBreakMode, setMaternityBreakMode] =
+    useState<MaternityBreakMode>(schedule?.maternityBreakMode ?? "none");
+  const [maternityBreakStart1, setMaternityBreakStart1] = useState(
+    schedule?.maternityBreakStart1?.slice(0, 5) ?? ""
+  );
+  const [maternityBreakStart2, setMaternityBreakStart2] = useState(
+    schedule?.maternityBreakStart2?.slice(0, 5) ?? ""
+  );
+  const [maternityBreakUntil, setMaternityBreakUntil] = useState(
+    schedule?.maternityBreakUntil ?? ""
+  );
   const [amount, setAmount] = useState(
     String(
       employee
@@ -2215,9 +2309,29 @@ function AdminEditDialog({
     reviewLeave.isPending ||
     removeHoliday.isPending;
   const effectiveEdit = edit.kind === "salary" || edit.kind === "schedule";
+  const breakSettings = {
+    startTime,
+    endTime,
+    effectiveFrom,
+    maternityBreakMode,
+    maternityBreakStart1:
+      maternityBreakMode === "none" ? null : maternityBreakStart1 || null,
+    maternityBreakStart2:
+      maternityBreakMode === "two_30" ? maternityBreakStart2 || null : null,
+    maternityBreakUntil:
+      maternityBreakMode === "none" ? null : maternityBreakUntil || null,
+  };
+  const breakError = maternityBreakValidation(breakSettings);
+  const breakDateError =
+    maternityBreakMode !== "none" &&
+    maternityBreakUntil &&
+    (!validDate(maternityBreakUntil) || maternityBreakUntil < effectiveFrom)
+      ? "The inclusive break end date must be on or after the effective date."
+      : null;
+  const breakDuration = maternityBreakMode === "two_30" ? 30 : 60;
   const title =
     edit.kind === "schedule"
-      ? "Change work schedule"
+      ? "Edit duty & breaks"
       : edit.kind === "salary"
         ? "Change Financial salary"
         : edit.kind === "entitlement"
@@ -2249,8 +2363,8 @@ function AdminEditDialog({
       switch (edit.kind) {
         case "schedule": {
           if (
-            !/^\d{2}:\d{2}$/.test(startTime) ||
-            !/^\d{2}:\d{2}$/.test(endTime) ||
+            dutyTimeMinutes(startTime) === null ||
+            dutyTimeMinutes(endTime) === null ||
             endTime <= startTime
           )
             throw new Error(
@@ -2266,11 +2380,17 @@ function AdminEditDialog({
             throw new Error(
               "Grace must be a whole number between 0 and 120 minutes."
             );
+          if (breakError || breakDateError)
+            throw new Error(breakError || breakDateError!);
           await saveSchedule.mutateAsync({
             employeeId: edit.employee.id,
             startTime,
             endTime,
             graceMinutes: grace,
+            maternityBreakMode: breakSettings.maternityBreakMode,
+            maternityBreakStart1: breakSettings.maternityBreakStart1,
+            maternityBreakStart2: breakSettings.maternityBreakStart2,
+            maternityBreakUntil: breakSettings.maternityBreakUntil,
             effectiveFrom,
             reason: reason.trim(),
           });
@@ -2349,7 +2469,7 @@ function AdminEditDialog({
       }}
     >
       <DialogContent
-        className="max-h-[90dvh] overflow-y-auto"
+        className="max-h-[90dvh] grid-cols-[minmax(0,1fr)] overflow-y-auto sm:max-w-2xl"
         showCloseButton={!busy}
         onEscapeKeyDown={event => {
           if (busy) event.preventDefault();
@@ -2370,14 +2490,18 @@ function AdminEditDialog({
                   : ""}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={event => void save(event)} className="space-y-4">
-          <fieldset disabled={busy} className="space-y-4">
+        <form
+          onSubmit={event => void save(event)}
+          className="min-w-0 space-y-4"
+        >
+          <fieldset disabled={busy} className="min-w-0 space-y-4">
             {edit.kind === "schedule" && (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
                 <Field label="Start time (Cairo)">
                   <Input
                     className="mt-2"
                     type="time"
+                    aria-label="Duty start time (Cairo)"
                     value={startTime}
                     onChange={event => setStartTime(event.target.value)}
                     required
@@ -2387,6 +2511,7 @@ function AdminEditDialog({
                   <Input
                     className="mt-2"
                     type="time"
+                    aria-label="Duty end time (Cairo)"
                     value={endTime}
                     onChange={event => setEndTime(event.target.value)}
                     required
@@ -2404,6 +2529,128 @@ function AdminEditDialog({
                     required
                   />
                 </Field>
+                <div className="min-w-0 sm:col-span-2">
+                  <Label htmlFor={`${id}-maternity-mode`}>
+                    Paid maternity / nursing breaks
+                  </Label>
+                  <select
+                    id={`${id}-maternity-mode`}
+                    className="mt-2 block min-h-11 w-full min-w-0 rounded-md border bg-background px-3 text-sm"
+                    value={maternityBreakMode}
+                    onChange={event =>
+                      setMaternityBreakMode(
+                        event.target.value as MaternityBreakMode
+                      )
+                    }
+                    aria-describedby={`${id}-maternity-policy`}
+                  >
+                    <option value="none">None</option>
+                    <option value="two_30">2 × 30 minutes — paid daily</option>
+                    <option value="one_60">1 × 60 minutes — paid daily</option>
+                  </select>
+                </div>
+                {maternityBreakMode !== "none" && (
+                  <>
+                    <div className="min-w-0 space-y-2">
+                      <Label htmlFor={`${id}-break-start-1`}>
+                        Break 1 start (Cairo)
+                      </Label>
+                      <Input
+                        id={`${id}-break-start-1`}
+                        type="time"
+                        min={startTime}
+                        max={endTime}
+                        value={maternityBreakStart1}
+                        onChange={event =>
+                          setMaternityBreakStart1(event.target.value)
+                        }
+                        aria-describedby={`${id}-break-end-1`}
+                        required
+                      />
+                      <p
+                        id={`${id}-break-end-1`}
+                        className="text-xs leading-5 text-muted-foreground"
+                        aria-live="polite"
+                      >
+                        Ends at{" "}
+                        {maternityBreakEnd(maternityBreakStart1, breakDuration)}{" "}
+                        Cairo · {breakDuration} minutes paid
+                      </p>
+                    </div>
+                    {maternityBreakMode === "two_30" && (
+                      <div className="min-w-0 space-y-2">
+                        <Label htmlFor={`${id}-break-start-2`}>
+                          Break 2 start (Cairo)
+                        </Label>
+                        <Input
+                          id={`${id}-break-start-2`}
+                          type="time"
+                          min={startTime}
+                          max={endTime}
+                          value={maternityBreakStart2}
+                          onChange={event =>
+                            setMaternityBreakStart2(event.target.value)
+                          }
+                          aria-describedby={`${id}-break-end-2`}
+                          required
+                        />
+                        <p
+                          id={`${id}-break-end-2`}
+                          className="text-xs leading-5 text-muted-foreground"
+                          aria-live="polite"
+                        >
+                          Ends at {maternityBreakEnd(maternityBreakStart2, 30)}{" "}
+                          Cairo · 30 minutes paid
+                        </p>
+                      </div>
+                    )}
+                    <div className="min-w-0 space-y-2 sm:col-span-2">
+                      <Label htmlFor={`${id}-break-until`}>
+                        Break end date (inclusive, optional)
+                      </Label>
+                      <Input
+                        id={`${id}-break-until`}
+                        type="date"
+                        min={effectiveFrom}
+                        value={maternityBreakUntil}
+                        onChange={event =>
+                          setMaternityBreakUntil(event.target.value)
+                        }
+                        aria-describedby={`${id}-break-until-help`}
+                      />
+                      <p
+                        id={`${id}-break-until-help`}
+                        className="text-xs leading-5 text-muted-foreground"
+                      >
+                        Applies through this Cairo business date, including that
+                        day. Leave empty for no expiry.
+                      </p>
+                    </div>
+                    <div
+                      role="status"
+                      className="min-w-0 rounded-lg border bg-muted/25 p-3 text-sm leading-6 sm:col-span-2"
+                    >
+                      <p className="font-medium">Daily paid break preview</p>
+                      <p className="whitespace-normal break-words text-muted-foreground">
+                        {breakError ||
+                          breakDateError ||
+                          maternityBreakSummary(breakSettings)}
+                      </p>
+                    </div>
+                  </>
+                )}
+                <p
+                  id={`${id}-maternity-policy`}
+                  className="min-w-0 text-xs leading-5 text-muted-foreground sm:col-span-2"
+                >
+                  Paid maternity / nursing breaks total 60 minutes each
+                  scheduled day: two non-overlapping 30-minute slots or one
+                  60-minute slot, fully within this employee's duty shift. They
+                  do not consume annual leave, do not invent punches, and
+                  full-day absences are not waived. Only the specified slots are
+                  excluded from late / early deductions. Duty and breaks share
+                  the effective date below; prior history is preserved.
+                </p>
               </div>
             )}
             {edit.kind === "salary" && (
@@ -2454,6 +2701,7 @@ function AdminEditDialog({
                   className="mt-2"
                   type="date"
                   min={today}
+                  aria-label="Effective from (Cairo business date)"
                   value={effectiveFrom}
                   onChange={event => setEffectiveFrom(event.target.value)}
                   required

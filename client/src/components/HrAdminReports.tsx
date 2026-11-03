@@ -64,6 +64,8 @@ type AttendanceEmployee = {
       lateMinutes: number;
       earlyMinutes: number;
       missingMinutes: number;
+      maternityBreakMinutes?: number;
+      maternityExcusedMinutes?: number;
     }[];
   };
 };
@@ -81,6 +83,7 @@ type Props = {
   exporting: boolean;
   onAttendancePdf: (ids: number[]) => void;
   onVacationPdf: (ids: number[]) => void;
+  onEditEmployee: (employeeId: number, kind: "schedule" | "salary") => void;
 };
 const n = (value: number | null | undefined, places = 2) =>
   value == null
@@ -127,7 +130,40 @@ function SmallMetric({ title, value }: { title: string; value: string }) {
   );
 }
 
-/** Read-only workspace. Export callbacks receive the entire filtered selection, not just the page. */
+function EmployeeEditActions({
+  employee,
+  onEditEmployee,
+}: {
+  employee: Pick<AttendanceEmployee, "id" | "name">;
+  onEditEmployee: Props["onEditEmployee"];
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="min-h-11 whitespace-normal text-left"
+        aria-label={`Edit duty & breaks for ${employee.name}`}
+        onClick={() => onEditEmployee(employee.id, "schedule")}
+      >
+        Edit duty &amp; breaks
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="min-h-11 whitespace-normal text-left"
+        aria-label={`Edit salary for ${employee.name}`}
+        onClick={() => onEditEmployee(employee.id, "salary")}
+      >
+        Edit salary
+      </Button>
+    </div>
+  );
+}
+
+/** Read-only reports; edits open the parent's existing audited dialog. Exports include the full filtered selection. */
 export default function HrAdminReports(props: Props) {
   const [tab, setTab] = useState("attendance");
   const [sort, setSort] = useState("name");
@@ -206,6 +242,11 @@ export default function HrAdminReports(props: Props) {
           <strong>{safeIssuer}</strong>. Each PDF includes its issuance time in
           Cairo.
         </CardDescription>
+        <p className="text-xs leading-5 text-muted-foreground">
+          Edit duty &amp; breaks or salary directly beside each employee.
+          Changes require an effective date and reason; viewing reports never
+          saves them.
+        </p>
       </CardHeader>
       <CardContent className="space-y-4">
         <Tabs
@@ -339,6 +380,10 @@ export default function HrAdminReports(props: Props) {
                   <TableRow key={employee.id}>
                     <TableCell className="font-medium">
                       {employee.name}
+                      <EmployeeEditActions
+                        employee={employee}
+                        onEditEmployee={props.onEditEmployee}
+                      />
                     </TableCell>
                     <TableCell className="tabular-nums">
                       {n(
@@ -484,6 +529,10 @@ export default function HrAdminReports(props: Props) {
                         <TableRow key={employee.id}>
                           <TableCell className="font-medium">
                             {employee.name}
+                            <EmployeeEditActions
+                              employee={employee}
+                              onEditEmployee={props.onEditEmployee}
+                            />
                           </TableCell>
                           <TableCell>{n(balance?.totalDays)}</TableCell>
                           <TableCell>{n(balance?.usedDays)}</TableCell>
@@ -664,6 +713,7 @@ export default function HrAdminReports(props: Props) {
                     <Column width={160}>Clock in / out · Cairo</Column>
                     <Column>Recorded / overlap min</Column>
                     <Column>Late / early min</Column>
+                    <Column width={170}>Paid break / excused min</Column>
                     <Column>Total lost min</Column>
                   </TableRow>
                 </TableHeader>
@@ -701,12 +751,22 @@ export default function HrAdminReports(props: Props) {
                         <TableCell>
                           {n(day.lateMinutes)} / {n(day.earlyMinutes)}
                         </TableCell>
+                        <TableCell>
+                          {n(day.maternityBreakMinutes ?? 0)} /{" "}
+                          {n(day.maternityExcusedMinutes ?? 0)}
+                        </TableCell>
                         <TableCell>{n(day.missingMinutes)}</TableCell>
                       </TableRow>
                     );
                   })}
                 </TableBody>
               </Table>
+              <p className="text-xs leading-5 text-muted-foreground">
+                Paid break minutes show the active daily allowance; excused
+                minutes show only lateness or early departure overlapping the
+                specified slots. Full-day absences are not waived. Paid nursing
+                breaks do not consume annual leave or create clock records.
+              </p>
             </div>
           )}
           {vacationDetail && detail?.kind === "vacation" && (

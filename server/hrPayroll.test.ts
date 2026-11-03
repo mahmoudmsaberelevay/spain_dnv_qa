@@ -396,6 +396,8 @@ describe("deterministic HR payroll", () => {
         lateMinutes: 0,
         earlyMinutes: 0,
         missingMinutes: 0,
+        maternityExcusedMinutes: 0,
+        maternityBreakMinutes: 0,
       })),
     });
   });
@@ -809,8 +811,8 @@ describe("deterministic HR payroll", () => {
       }).lateMinutes
     ).toBe(10);
     const result = singleDay({
-      schedules: [{ ...schedule, graceMinutes: 600 }],
-      attendance: [punch("2026-01-04", "16:00", "16:30")],
+      schedules: [{ ...schedule, endTime: "10:00", graceMinutes: 120 }],
+      attendance: [punch("2026-01-04", "09:15", "09:30")],
     });
     expect(result).toMatchObject({
       lateMinutes: 0,
@@ -1027,6 +1029,8 @@ describe("HR payroll input validation", () => {
     { ...schedule, endTime: "09:00" },
     { ...schedule, startTime: "17:00", endTime: "09:00" },
     { ...schedule, graceMinutes: -1 },
+    { ...schedule, graceMinutes: 121 },
+    { ...schedule, graceMinutes: 600 },
     { ...schedule, graceMinutes: 1.5 },
     { ...schedule, graceMinutes: NaN },
     { ...schedule, graceMinutes: Infinity },
