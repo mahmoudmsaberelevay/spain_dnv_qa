@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   aiGuideInputSchema,
   aiGuideResponseNotes,
+  buildLaylaConversationProgrammeContext,
   buildLaylaProgrammeContext,
   getAiGuideRecommendations,
   loadAiProgrammeKnowledge,
@@ -105,5 +106,66 @@ describe("ELEVAY AI programme knowledge", () => {
     expect(aiGuideInputSchema.safeParse({ ...valid, answers: { ...valid.answers, unexpected: "value" } }).success).toBe(false);
     expect(aiGuideResponseNotes("en").join(" ")).toContain("not an approval probability");
     expect(aiGuideResponseNotes("ar").join(" ")).toContain("ليست احتمالًا للقبول");
+  });
+
+  it("does not mistake generic fee keywords or substrings for an explicitly named programme", () => {
+    const generic = retrieveAiProgrammeKnowledge("How much are application government processing fees, due diligence and family rules?");
+    expect(generic.isExplicitProgrammeQuery).toBe(false);
+    expect(generic.selected).toEqual([]);
+    expect(buildLaylaProgrammeContext("what are the fees?")).toContain("No specific programme has been identified");
+    expect(buildLaylaProgrammeContext("what are the fees?")).not.toContain("### Dominica");
+    expect(retrieveAiProgrammeKnowledge("a Canadian company").selected.map(p => p.programId)).not.toContain("ready-summary-30006");
+    expect(retrieveAiProgrammeKnowledge("إسبانيا").selected.every(p => p.country === "Spain")).toBe(true);
+  });
+
+  it("switches to the latest explicit route and ignores earlier assistant suggestions", () => {
+    const history = [
+      { role: "user", content: "Tell me about Spain Digital Nomad Visa" },
+      { role: "assistant", content: "Consider Malta MPRP as well." },
+    ];
+    const switched = buildLaylaConversationProgrammeContext("Now explain Portugal D7", history);
+    expect(switched).toContain("### Portugal D7 Residence Visa");
+    expect(switched).not.toContain("### Spain Digital Nomad Visa");
+    expect(switched).not.toContain("### Malta Permanent Residence Programme");
+    const followup = buildLaylaConversationProgrammeContext("What are the application fees?", history);
+    expect(followup).toContain("### Spain Digital Nomad Visa");
+    expect(followup).not.toContain("### Malta Permanent Residence Programme");
+  });
+
+  it("does not rank citizenship routes as business routes from ELEVAY's common company-formation footer", () => {
+    const results = getAiGuideRecommendations({ goal: "business", timeline: "flexible", budget: "over_500k", family: "solo", residency_req: "yes_fulltime", passport_priority: "open" });
+    expect(results.every(p => p.category === "residency")).toBe(true);
+    expect(results.every(p => /entrepreneur|business|nomad|highly qualified|D2/i.test(p.name.en))).toBe(true);
+    expect(results.map(p => p.programId)).not.toContain("ready-summary-30005");
+  });
+
+  it.each([
+    ["ما هي الإقامة الذهبية في الإمارات؟", "ready-summary-30023"],
+    ["الاقامة الذهبية في الامارات", "ready-summary-30023"],
+    ["ما هي الإقامة الذهبية في البرتغال؟", "ready-summary-30012"],
+    ["ما هي شروط عدم الإقامة في دومينيكا؟", "ready-summary-30005"],
+    ["ما شروط إقامة مالطا الضريبية؟", "ready-summary-30017"],
+    ["ما هي إقامة الرحالة الرقميين في مالطا؟", "ready-summary-30018"],
+    ["ما شروط الإقامة الدائمة في مالطا؟", "ready-summary-30019"],
+  ])("retrieves the Arabic named route in %s", (query, id) => {
+    const result = retrieveAiProgrammeKnowledge(query);
+    expect(result.isExplicitProgrammeQuery).toBe(true);
+    expect(result.selected.map(p => p.programId)).toEqual([id]);
+  });
+
+  it("recognizes country-only Arabic questions without choosing an unrelated country", () => {
+    const result = retrieveAiProgrammeKnowledge("ما شروط الإقامة في البرتغال؟");
+    expect(result.isExplicitProgrammeQuery).toBe(true);
+    expect(result.selected).toHaveLength(4);
+    expect(result.selected.every(p => p.country === "Portugal")).toBe(true);
+  });
+
+  it("matches Hungary's no minimum stay while preserving remaining permit conditions", () => {
+    const results = getAiGuideRecommendations({ goal: "relocate", timeline: "flexible", budget: "over_500k", family: "solo", residency_req: "no", passport_priority: "residency_ok" });
+    expect(results[0].programId).toBe("ready-summary-30016");
+    expect(results[0].reasons.some(r => r.en.includes("no minimum stay requirement") && r.en.includes("other permit conditions"))).toBe(true);
+    const citizenship = getAiGuideRecommendations({ goal: "travel", timeline: "flexible", budget: "over_500k", family: "solo", residency_req: "no", passport_priority: "passport_first" });
+    expect(citizenship[0].reasons.some(r => r.en.includes("no residence requirement"))).toBe(true);
+    expect(citizenship.map(p => p.programId)).not.toContain("ready-summary-antigua-barbuda");
   });
 });

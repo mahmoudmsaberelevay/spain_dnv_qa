@@ -12,7 +12,7 @@ import {
   normalizeLeadPhone,
 } from "./leadContactIdentity";
 import { laylaConversations } from "../drizzle/schema";
-import { buildLaylaProgrammeContext } from "./clientAppProgrammeKnowledge";
+import { buildLaylaConversationProgrammeContext } from "./clientAppProgrammeKnowledge";
 
 export type LaylaLocale = "en" | "ar";
 export type LaylaMessage = { role: "user" | "assistant"; content: string };
@@ -395,8 +395,7 @@ export async function chatWithLayla(input: {
   const latestLocale: LaylaLocale = /[\u0600-\u06ff]/.test(parsed.message) ? "ar" : parsed.locale;
   const deterministicQualification = mergeQualification(restoredQualification, extractLaylaQualification(messages));
   const baseResult = { sessionId, leadScore: scoreLaylaLead(deterministicQualification), qualificationData: deterministicQualification, leadCaptured: false };
-  const programmeContextQuery = [...effectiveHistory.slice(-5).map(item => item.content), parsed.message].join("\n");
-  const programmeContext = buildLaylaProgrammeContext(programmeContextQuery);
+  const programmeContext = buildLaylaConversationProgrammeContext(parsed.message, effectiveHistory);
 
   let assistantMessage: string | undefined;
   let structuredQualification: z.infer<typeof structuredQualificationSchema> | undefined;
