@@ -187,8 +187,9 @@ async function holidays(db: Executor, lock = false) {
     .from(hrHolidays)
     .orderBy(asc(hrHolidays.holidayDate));
   // Current reads at approval avoid a repeatable-read snapshot from the initial
-  // request lookup. Shared locks freeze the holiday policy until commit.
-  return lock ? query.for("share") : query;
+  // request lookup. TiDB rejects FOR SHARE; FOR UPDATE keeps a supported current
+  // locking read rather than disabling locks or enabling no-op shared locks.
+  return lock ? query.for("update") : query;
 }
 
 async function approvedRequests(

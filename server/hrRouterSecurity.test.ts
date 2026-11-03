@@ -25,7 +25,11 @@ vi.mock("./hrAttendanceService", () => ({
   getHrAttendanceReport: vi.fn(),
 }));
 vi.mock("./hrManagementService", () => ({
-  HrManagementError: class extends Error {},
+  HrManagementError: class extends Error {
+    constructor(public readonly reason: string, message: string) {
+      super(message);
+    }
+  },
   getMyHrLeave: mocks.leave,
   createHrLeaveRequest: mocks.create,
   getHrAdminOverview: mocks.overview,
@@ -52,6 +56,7 @@ vi.mock("./hrEmployeeOnboardingService", () => ({
 import { HrOnboardingError } from "./hrEmployeeOnboardingService";
 import { writeAuditLog } from "./auditLog";
 import { hrRouter } from "./hrRouter";
+import { HrManagementError } from "./hrManagementService";
 function context(id: number, role: "admin" | "user" = "user"): TrpcContext {
   return {
     user: { id, role } as TrpcContext["user"],
@@ -192,6 +197,36 @@ describe("HR server security", () => {
       toDate: "2026-11-11",
       reason: "Family vacation",
     });
+  });
+  it("hides raw SQL when vacation submission fails and never audits a failed request", async () => {
+    const error = new Error("Failed query: select id from hrHolidays for share params:");
+    mocks.create.mockRejectedValueOnce(error);
+    const caller = hrRouter.createCaller(context(900));
+    const failure = await caller.leave.create({
+      fromDate: "2026-11-05",
+      toDate: "2026-11-06",
+      reason: "Family",
+    }).catch(value => value);
+    expect(failure).toMatchObject({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "The HR action could not be completed because of a system error. Please try again or contact HR.",
+      cause: error,
+    });
+    expect(failure.message).not.toMatch(/select|hrHolidays|params|for share/i);
+    expect(writeAuditLog).not.toHaveBeenCalled();
+  });
+  it("preserves clear leave business-rule messages instead of hiding them as system failures", async () => {
+    mocks.create.mockRejectedValueOnce(new HrManagementError("CONFLICT", "Leave overlaps a pending or approved request"));
+    const caller = hrRouter.createCaller(context(900));
+    await expect(caller.leave.create({
+      fromDate: "2026-11-05",
+      toDate: "2026-11-06",
+      reason: "Family",
+    })).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: "Leave overlaps a pending or approved request",
+    });
+    expect(writeAuditLog).not.toHaveBeenCalled();
   });
   it("rejects both clock actions before writes when verification fails", async () => {
     const caller = hrRouter.createCaller(context(900));
@@ -451,7 +486,7 @@ describe("HR onboarding router security", () => {
     const caller = hrRouter.createCaller(context(1));
     await expect(caller.admin.linkEmployee(linkInput)).rejects.toMatchObject({
       code: "INTERNAL_SERVER_ERROR",
-      message: "Database timeout",
+      message: "The HR action could not be completed because of a system error. Please try again or contact HR.",
     });
     expect(writeAuditLog).not.toHaveBeenCalled();
   });

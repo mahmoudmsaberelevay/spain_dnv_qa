@@ -72,7 +72,11 @@ function translate(error: unknown): never {
       code: "PRECONDITION_FAILED",
       message: error.message,
     });
-  throw error;
+  throw new TRPCError({
+    code: "INTERNAL_SERVER_ERROR",
+    message: "The HR action could not be completed because of a system error. Please try again or contact HR.",
+    cause: error,
+  });
 }
 async function business<T>(fn: () => Promise<T>) {
   try {

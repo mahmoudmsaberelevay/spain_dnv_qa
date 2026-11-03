@@ -99,6 +99,8 @@ function memoryDb(seed: Record<string, Row[]> = {}) {
           return query;
         },
         for(mode: string) {
+          // Production TiDB rejects shared locking reads instead of executing them.
+          if (mode === "share") throw new Error("TiDB does not support FOR SHARE");
           events.push({ type: "lock", table, mode });
           return query;
         },
@@ -350,6 +352,38 @@ describe("HR leave allocation and validation", () => {
 });
 
 describe("HR self-service identity and overlap", () => {
+  it("submits the reported November 5–6 request pending with supported holiday locking and no entitlement charge", async () => {
+    const memory = memoryDb({
+      finEmployees: [employee()],
+      hrLeaveEntitlements: [entitlement({ totalDays: "0.00" })],
+    });
+    const created = await createHrLeaveRequest(42, {
+      fromDate: "2026-11-05",
+      toDate: "2026-11-06",
+      reason: "Family",
+    });
+    expect(created).toMatchObject({
+      employeeId: 10,
+      status: "pending",
+      requestedDays: 1,
+      daysByYear: '[{"year":2026,"days":1}]',
+    });
+    expect(memory.events.filter(event => event.type === "lock").slice(0, 2)).toEqual([
+      { type: "lock", table: "finEmployees", mode: "update" },
+      { type: "lock", table: "hrHolidays", mode: "update" },
+    ]);
+    expect(memory.state.hrLeaveEntitlements[0].totalDays).toBe("0.00");
+    await expect(reviewHrLeaveRequest(1, { ...decision, requestId: created.id }))
+      .rejects.toMatchObject({ reason: "INSUFFICIENT_BALANCE" });
+    expect(memory.state.hrLeaveRequests[0].status).toBe("pending");
+  });
+
+  it("keeps holiday calendar reads unlocked for self-service views", async () => {
+    const memory = memoryDb({ finEmployees: [employee()] });
+    await getMyHrLeave(42, 2026);
+    expect(memory.events.filter(event => event.type === "lock")).toEqual([]);
+  });
+
   it("returns an unlinked empty result without searching by name or email", async () => {
     const memory = memoryDb({
       finEmployees: [employee({ crmUserId: 999, email: "same@example.com" })],
@@ -534,7 +568,7 @@ describe("HR approval and frozen balances", () => {
         event =>
           event.type === "lock" &&
           event.table === "hrHolidays" &&
-          event.mode === "share"
+          event.mode === "update"
       )
     ).toBe(true);
   });
