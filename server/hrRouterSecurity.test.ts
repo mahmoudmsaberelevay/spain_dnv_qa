@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   validate: vi.fn(),
   attempts: vi.fn(),
   settings: vi.fn(),
+  onboarding: vi.fn(),
+  linkEmployee: vi.fn(),
 }));
 vi.mock("./auditLog", () => ({
   auditCtxFromTrpc: vi.fn(() => ({})),
@@ -42,6 +44,13 @@ vi.mock("./hrVerificationService", () => ({
   saveHrVerificationSettings: vi.fn(),
   getHrRecentPunchAttempts: vi.fn(),
 }));
+vi.mock("./hrEmployeeOnboardingService", () => ({
+  HrOnboardingError: class HrOnboardingError extends Error {},
+  getHrEmployeeOnboarding: mocks.onboarding,
+  linkHrEmployeeLogin: mocks.linkEmployee,
+}));
+import { HrOnboardingError } from "./hrEmployeeOnboardingService";
+import { writeAuditLog } from "./auditLog";
 import { hrRouter } from "./hrRouter";
 function context(id: number, role: "admin" | "user" = "user"): TrpcContext {
   return {
@@ -54,6 +63,16 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.overview.mockResolvedValue({ employees: [] });
   mocks.leave.mockResolvedValue({ requests: [] });
+  mocks.onboarding.mockResolvedValue({
+    employees: [],
+    users: [],
+    summary: { unlinkedEmployees: 0, unlinkedUsers: 0 },
+  });
+  mocks.linkEmployee.mockResolvedValue({
+    employeeId: 7,
+    userId: 42,
+    changed: true,
+  });
   mocks.validate.mockResolvedValue({
     accepted: false,
     message: "Attendance blocked",
@@ -290,4 +309,189 @@ describe("HR server security", () => {
       code: "UNAUTHORIZED",
     });
   });
+});
+
+describe("HR onboarding router security", () => {
+  const linkInput = {
+    employeeId: 7,
+    userId: 42,
+    reason: "Explicit staff login link",
+  };
+
+  it.each([
+    [900, "admin"],
+    [901, "user"],
+  ] as const)(
+    "denies onboarding inventory and links to unrelated CRM account %i (%s)",
+    async (id, role) => {
+      const caller = hrRouter.createCaller(context(id, role));
+      await expect(caller.admin.onboarding()).rejects.toMatchObject({
+        code: "FORBIDDEN",
+      });
+      await expect(caller.admin.linkEmployee(linkInput)).rejects.toMatchObject({
+        code: "FORBIDDEN",
+      });
+      expect(mocks.onboarding).not.toHaveBeenCalled();
+      expect(mocks.linkEmployee).not.toHaveBeenCalled();
+      expect(writeAuditLog).not.toHaveBeenCalled();
+    }
+  );
+
+  it("requires authentication for both onboarding APIs", async () => {
+    const caller = hrRouter.createCaller({ ...context(1), user: null });
+    await expect(caller.admin.onboarding()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+    await expect(caller.admin.linkEmployee(linkInput)).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+    expect(mocks.onboarding).not.toHaveBeenCalled();
+    expect(mocks.linkEmployee).not.toHaveBeenCalled();
+    expect(writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it.each([1, 120001, 191, 933743])(
+    "allows named actor %i with either generic CRM role and forwards only explicit IDs",
+    async id => {
+      for (const role of ["user", "admin"] as const) {
+        const caller = hrRouter.createCaller(context(id, role));
+        await expect(caller.admin.onboarding()).resolves.toEqual({
+          employees: [],
+          users: [],
+          summary: { unlinkedEmployees: 0, unlinkedUsers: 0 },
+        });
+        await expect(
+          caller.admin.linkEmployee({
+            ...linkInput,
+            reason: "  Explicit staff login link  ",
+          })
+        ).resolves.toEqual({ employeeId: 7, userId: 42, changed: true });
+        expect(mocks.onboarding).toHaveBeenLastCalledWith(id);
+        expect(mocks.linkEmployee).toHaveBeenLastCalledWith(id, linkInput);
+      }
+      expect(mocks.onboarding).toHaveBeenCalledTimes(2);
+      expect(mocks.linkEmployee).toHaveBeenCalledTimes(2);
+      expect(writeAuditLog).toHaveBeenCalledTimes(2);
+      expect(writeAuditLog).toHaveBeenLastCalledWith(
+        {},
+        "update",
+        "hr_employee_login",
+        7,
+        "CRM user 42 linked explicitly: Explicit staff login link"
+      );
+    }
+  );
+
+  it.each([
+    { salary: 1 },
+    { name: "Forged financial name" },
+    { salary: 1, name: "Forged financial name" },
+    { crmUserId: 999 },
+    { hrSelfServiceRequired: false },
+    { isActive: false },
+    { email: "lookalike@elevay.com" },
+    { actorUserId: 900 },
+  ])(
+    "rejects non-whitelisted link properties %j before the service",
+    async extra => {
+      const caller = hrRouter.createCaller(context(1));
+      await expect(
+        caller.admin.linkEmployee({ ...linkInput, ...extra } as any)
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(mocks.linkEmployee).not.toHaveBeenCalled();
+      expect(writeAuditLog).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    { employeeId: 0 },
+    { employeeId: -1 },
+    { employeeId: 1.5 },
+    { employeeId: "7" },
+    { userId: 0 },
+    { userId: -1 },
+    { userId: 1.5 },
+    { userId: "42" },
+    { reason: "" },
+    { reason: " ab " },
+    { reason: "x".repeat(1001) },
+  ])("rejects invalid link input %j before the service", async invalid => {
+    const caller = hrRouter.createCaller(context(191));
+    await expect(
+      caller.admin.linkEmployee({ ...linkInput, ...invalid } as any)
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(mocks.linkEmployee).not.toHaveBeenCalled();
+    expect(writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("translates the mocked onboarding error class to a friendly precondition failure for both APIs", async () => {
+    const caller = hrRouter.createCaller(context(1));
+    const inventoryMessage =
+      "Database unavailable. No employee links were changed.";
+    mocks.onboarding.mockRejectedValueOnce(
+      new HrOnboardingError(inventoryMessage)
+    );
+    await expect(caller.admin.onboarding()).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: inventoryMessage,
+    });
+    const linkMessage = "This CRM login is already linked to another employee.";
+    mocks.linkEmployee.mockRejectedValueOnce(
+      new HrOnboardingError(linkMessage)
+    );
+    await expect(caller.admin.linkEmployee(linkInput)).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: linkMessage,
+    });
+    expect(writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("does not translate an unrelated error into an onboarding business failure", async () => {
+    mocks.linkEmployee.mockRejectedValueOnce(new Error("Database timeout"));
+    const caller = hrRouter.createCaller(context(1));
+    await expect(caller.admin.linkEmployee(linkInput)).rejects.toMatchObject({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Database timeout",
+    });
+    expect(writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("does not audit an idempotent unchanged link", async () => {
+    mocks.linkEmployee.mockResolvedValueOnce({
+      employeeId: 7,
+      userId: 42,
+      changed: false,
+    });
+    const caller = hrRouter.createCaller(context(933743));
+    await expect(caller.admin.linkEmployee(linkInput)).resolves.toEqual({
+      employeeId: 7,
+      userId: 42,
+      changed: false,
+    });
+    expect(writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it.each([1, 120001, 191, 933743])(
+    "keeps named administrator %i self-service reads scoped to their own CRM identity",
+    async id => {
+      const caller = hrRouter.createCaller(context(id, "admin"));
+      await caller.attendance.me();
+      await caller.leave.mine({ year: 2026 });
+      expect(mocks.me.mock.calls).toEqual([[id]]);
+      expect(mocks.leave.mock.calls).toEqual([[id, 2026]]);
+      await expect(
+        caller.leave.mine({ year: 2026, employeeId: 7 } as any)
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      await expect(
+        caller.leave.create({
+          fromDate: "2026-11-10",
+          toDate: "2026-11-11",
+          reason: "Annual leave",
+          employeeId: 7,
+        } as any)
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(mocks.leave).toHaveBeenCalledTimes(1);
+      expect(mocks.create).not.toHaveBeenCalled();
+    }
+  );
 });

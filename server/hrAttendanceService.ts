@@ -28,6 +28,7 @@ async function findEmployeeByCrmUserId(db: DbExecutor, crmUserId: number) {
       name: finEmployees.name,
       role: finEmployees.role,
       isActive: finEmployees.isActive,
+      hrSelfServiceRequired: finEmployees.hrSelfServiceRequired,
     })
     .from(finEmployees)
     .where(eq(finEmployees.crmUserId, crmUserId))
@@ -37,15 +38,15 @@ async function findEmployeeByCrmUserId(db: DbExecutor, crmUserId: number) {
 
 async function requireActiveEmployeeForCrmUser(db: DbExecutor, crmUserId: number) {
   // Employee row lock serializes punches and leave changes across requests.
-  const [employee] = await db.select({ id: finEmployees.id, name: finEmployees.name, role: finEmployees.role, isActive: finEmployees.isActive })
+  const [employee] = await db.select({ id: finEmployees.id, name: finEmployees.name, role: finEmployees.role, isActive: finEmployees.isActive, hrSelfServiceRequired: finEmployees.hrSelfServiceRequired })
     .from(finEmployees).where(eq(finEmployees.crmUserId, crmUserId)).limit(1).for("update");
-  if (!employee) {
-    throw new HrAttendanceError(
-      "UNLINKED",
-      "Your CRM login is not linked to an employee record. Ask a Financial administrator to link it in Financial → Employees.",
-    );
-  }
-  if (!employee.isActive) {
+    if (!employee) {
+      throw new HrAttendanceError(
+        "UNLINKED",
+      "HR onboarding is pending. Ask Mahmoud, Madonna, or Ziad to link your existing employee profile in HR Admin → Employee login links.",
+      );
+    }
+  if (!employee.isActive || employee.hrSelfServiceRequired === false) {
     throw new HrAttendanceError("INACTIVE", "Your employee record is inactive and cannot record attendance.");
   }
   return employee;
@@ -71,7 +72,7 @@ export async function getMyHrAttendance(crmUserId: number, now: Date = new Date(
   if (!db) throw new Error("Database not available");
   const attendanceDate = getCairoBusinessDate(now);
   const employee = await findEmployeeByCrmUserId(db, crmUserId);
-  if (!employee) {
+  if (!employee || employee.hrSelfServiceRequired === false) {
     return {
       linked: false,
       employee: null,

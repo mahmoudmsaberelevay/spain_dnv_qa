@@ -9,6 +9,7 @@ import { enforceQualifierCommissionMarketingSource } from "../shared/commissionS
 import { isContractConsultantPosition } from "../shared/elevayEmployeePositions";
 import { rebuildClientPaymentLedger } from "./clientPaymentLedger";
 import { getCairoBusinessDate } from "../shared/financialEmployeeSalaryRates";
+import { assertHrEmployeeOnboarding } from "../shared/hrEmployeeOnboarding";
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
 export async function listAccounts() {
@@ -159,7 +160,7 @@ function toDateOnly(value: string): Date {
 // The helper receives either the normal Drizzle connection or its transaction executor.
 // Both expose the same typed query contract used below.
 async function assertAvailableCrmUserLink(db: any, employeeId: number | null, crmUserId: number) {
-  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, crmUserId)).limit(1);
+  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, crmUserId)).limit(1).for("update");
   if (!user) throw new Error("The selected CRM user no longer exists");
 
   const [existingLink] = await db.select({ employeeId: finEmployees.id })
@@ -188,7 +189,8 @@ export async function isActiveContractConsultant(name: string) {
   return consultants.some((consultant) => consultant.name.trim().toLocaleLowerCase() === normalizedName);
 }
 
-export async function createEmployee(data: { name: string; role?: string; salary?: string; crmUserId?: number | null; salaryEffectiveFrom?: string; createdByUserId?: number }) {
+export async function createEmployee(data: { name: string; role?: string; salary?: string; crmUserId?: number | null; hrSelfServiceRequired?: boolean; salaryEffectiveFrom?: string; createdByUserId?: number }) {
+  assertHrEmployeeOnboarding(data);
   const db = await getDb(); if (!db) return null;
   const salary = data.salary ?? "0";
   const effectiveFrom = data.salaryEffectiveFrom ?? getCairoBusinessDate();
@@ -199,6 +201,7 @@ export async function createEmployee(data: { name: string; role?: string; salary
       role: data.role,
       salary,
       crmUserId: data.crmUserId ?? null,
+      hrSelfServiceRequired: data.hrSelfServiceRequired ?? true,
     });
     await tx.insert(finEmployeeSalaryRates).values({
       employeeId: result.insertId,
@@ -210,19 +213,23 @@ export async function createEmployee(data: { name: string; role?: string; salary
     return { id: result.insertId, ...data, salary, crmUserId: data.crmUserId ?? null };
   });
 }
-export async function updateEmployee(id: number, data: { name?: string; role?: string; salary?: string; isActive?: boolean; crmUserId?: number | null; salaryEffectiveFrom?: string; changedByUserId?: number }) {
+export async function updateEmployee(id: number, data: { name?: string; role?: string; salary?: string; isActive?: boolean; crmUserId?: number | null; hrSelfServiceRequired?: boolean; salaryEffectiveFrom?: string; changedByUserId?: number }) {
   const db = await getDb(); if (!db) return;
   await db.transaction(async (tx) => {
-    const [employee] = await tx.select({ id: finEmployees.id }).from(finEmployees).where(eq(finEmployees.id, id)).limit(1);
+    const [employee] = await tx.select({ id: finEmployees.id, crmUserId: finEmployees.crmUserId, isActive: finEmployees.isActive, hrSelfServiceRequired: finEmployees.hrSelfServiceRequired }).from(finEmployees).where(eq(finEmployees.id, id)).limit(1).for("update");
     if (!employee) throw new Error("Financial employee not found");
+    if (data.crmUserId !== undefined || data.isActive === true || data.hrSelfServiceRequired !== undefined) {
+      assertHrEmployeeOnboarding({ isActive: data.isActive ?? employee.isActive, hrSelfServiceRequired: data.hrSelfServiceRequired ?? employee.hrSelfServiceRequired, crmUserId: data.crmUserId !== undefined ? data.crmUserId : employee.crmUserId });
+    }
     if (data.crmUserId != null) await assertAvailableCrmUserLink(tx, id, data.crmUserId);
 
-    const employeeUpdate: { name?: string; role?: string; salary?: string; isActive?: boolean; crmUserId?: number | null } = {};
+    const employeeUpdate: { name?: string; role?: string; salary?: string; isActive?: boolean; crmUserId?: number | null; hrSelfServiceRequired?: boolean } = {};
     if (data.name !== undefined) employeeUpdate.name = data.name;
     if (data.role !== undefined) employeeUpdate.role = data.role;
     if (data.isActive !== undefined) employeeUpdate.isActive = data.isActive;
     if (data.crmUserId !== undefined) employeeUpdate.crmUserId = data.crmUserId;
     if (data.salary !== undefined) employeeUpdate.salary = data.salary;
+    if (data.hrSelfServiceRequired !== undefined) employeeUpdate.hrSelfServiceRequired = data.hrSelfServiceRequired;
     if (Object.keys(employeeUpdate).length > 0) {
       await tx.update(finEmployees).set(employeeUpdate).where(eq(finEmployees.id, id));
     }

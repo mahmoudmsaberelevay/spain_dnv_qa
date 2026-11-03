@@ -414,6 +414,8 @@ export const finEmployees = mysqlTable("finEmployees", {
   id: int("id").autoincrement().primaryKey(),
   // Optional explicit CRM login link. HR self-service must never resolve this by name or email.
   crmUserId: int("crmUserId"),
+  // False only for explicitly classified financial-only/vendor records, never an HR access shortcut.
+  hrSelfServiceRequired: boolean("hrSelfServiceRequired").default(true).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   role: varchar("role", { length: 128 }),
   salary: decimal("salary", { precision: 14, scale: 2 }).default("0"),

@@ -13,6 +13,10 @@ const location = {
   accuracy: 12,
   capturedAt: now,
 };
+const northFix = (metres: number) => ({
+  ...location,
+  latitude: location.latitude + (metres / 6_371_000) * (180 / Math.PI),
+});
 describe("HR verification and restricted administrators", () => {
   it("allows exactly the verified three people, never any generic administrator", () => {
     for (const id of [1, 120001, 191, 933743])
@@ -38,11 +42,7 @@ describe("HR verification and restricted administrators", () => {
       officeLatitude: 30.0715683,
       officeLongitude: 30.9468446,
       radiusMeters: 1000,
-      maxAccuracyMeters: 100,
-    });
-    const northFix = (metres: number) => ({
-      ...location,
-      latitude: location.latitude + (metres / 6_371_000) * (180 / Math.PI),
+      maxAccuracyMeters: 1000,
     });
     expect(verifyHrPunchLocation(settings, northFix(999), now).accepted).toBe(
       true
@@ -50,14 +50,39 @@ describe("HR verification and restricted administrators", () => {
     expect(verifyHrPunchLocation(settings, northFix(1001), now).accepted).toBe(
       false
     );
-    // GPS uncertainty never increases the allowed radius or replaces freshness.
+    // GPS uncertainty is separate from the office radius and never expands it.
     expect(
-      verifyHrPunchLocation(settings, { ...northFix(1001), accuracy: 100 }, now)
-        .accepted
+      verifyHrPunchLocation(
+        settings,
+        { ...northFix(1001), accuracy: 1000 },
+        now
+      ).accepted
     ).toBe(false);
+  });
+  it("accepts accuracy up to and including 1000m, but never over it", () => {
+    for (const accuracy of [0, 100, 101, 999, 1000]) {
+      expect(
+        verifyHrPunchLocation(settings, { ...northFix(999), accuracy }, now)
+          .accepted
+      ).toBe(true);
+    }
+    for (const accuracy of [1000.01, 1001]) {
+      const result = verifyHrPunchLocation(
+        settings,
+        { ...location, accuracy },
+        now
+      );
+      expect(result.accepted).toBe(false);
+      expect(result.message).toContain("1000 metres");
+    }
+  });
+  it("honors stricter administrator-configured accuracy without a client-side override", () => {
     expect(
-      verifyHrPunchLocation(settings, { ...northFix(999), accuracy: 101 }, now)
-        .accepted
+      verifyHrPunchLocation(
+        { ...settings, maxAccuracyMeters: 100 },
+        { ...location, accuracy: 101 },
+        now
+      ).accepted
     ).toBe(false);
   });
   it("rejects missing, stale, future, inaccurate, invalid and outside fixes", () => {
@@ -65,13 +90,14 @@ describe("HR verification and restricted administrators", () => {
       undefined,
       { ...location, capturedAt: now - 61000 },
       { ...location, capturedAt: now + 6000 },
-      { ...location, accuracy: 101 },
+      { ...location, accuracy: 1001 },
       { ...location, latitude: 91 },
       { ...location, accuracy: -1 },
       { ...location, latitude: NaN },
       { ...location, latitude: location.latitude + 0.01 },
-    ])
+    ]) {
       expect(verifyHrPunchLocation(settings, v, now).accepted).toBe(false);
+    }
   });
   it("fails closed for pending, strict Wi-Fi, both, and unknown verification modes", () => {
     for (const verificationMethod of [
@@ -79,7 +105,7 @@ describe("HR verification and restricted administrators", () => {
       "strict_wifi",
       "both",
       "unknown",
-    ])
+    ]) {
       expect(
         verifyHrPunchLocation(
           { ...settings, verificationMethod },
@@ -87,5 +113,6 @@ describe("HR verification and restricted administrators", () => {
           now
         ).accepted
       ).toBe(false);
+    }
   });
 });

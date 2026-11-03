@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import HrEmployeeOnboarding from "@/components/HrEmployeeOnboarding";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -388,9 +389,9 @@ function Status({ status }: { status: string }) {
 }
 function UnlinkedProfile() {
   return (
-    <Notice title="Your HR profile is not linked yet">
-      Use your normal CRM login. Ask an authorized Financial administrator to
-      link your CRM user ID in Financial → Employees. HR does not match
+    <Notice title="HR onboarding pending">
+      Use your normal CRM login. Ask Mahmoud, Madonna, or Ziad to
+      link your existing employee profile in HR Admin → Employee login links. HR does not match
       identities by name or email.
     </Notice>
   );
@@ -1460,6 +1461,7 @@ function HrAdmin() {
         payroll, deduct salary automatically, or mark salary receipts paid.
         Financial remains the salary source of truth.
       </Notice>
+      <HrEmployeeOnboarding />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Review period</CardTitle>
@@ -2483,10 +2485,10 @@ function VerificationForm({ settings }: { settings: VerificationSettings }) {
       radiusMeters > 1000 ||
       !Number.isInteger(maxAccuracyMeters) ||
       maxAccuracyMeters < 5 ||
-      maxAccuracyMeters > 100
+      maxAccuracyMeters > 1000
     ) {
       setFormError(
-        "Enter valid office coordinates, a whole-number radius from 10 to 1,000 meters, and maximum uncertainty from 5 to 100 meters. These settings must be explicit even when another method is selected."
+        "Enter valid office coordinates, a whole-number radius from 10 to 1,000 meters, and maximum uncertainty from 5 to 1,000 meters. These settings must be explicit even when another method is selected."
       );
       return;
     }
@@ -2635,7 +2637,7 @@ function VerificationForm({ settings }: { settings: VerificationSettings }) {
               type="number"
               className="mt-2"
               min={5}
-              max={100}
+              max={1000}
               step={1}
               value={accuracy}
               onChange={event => setAccuracy(event.target.value)}

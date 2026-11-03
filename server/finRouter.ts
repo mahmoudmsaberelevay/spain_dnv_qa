@@ -170,6 +170,7 @@ const employeesRouter = router({
       role: z.string().optional(),
       salary: z.number().min(0).optional(),
       crmUserId: z.number().int().positive().nullable().optional(),
+      hrSelfServiceRequired: z.boolean().optional(),
       salaryEffectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -183,6 +184,7 @@ const employeesRouter = router({
       role: z.string().optional(),
       salary: z.number().min(0).optional(),
       crmUserId: z.number().int().positive().nullable().optional(),
+      hrSelfServiceRequired: z.boolean().optional(),
       salaryEffectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       isActive: z.boolean().optional(),
     }))

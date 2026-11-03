@@ -33,6 +33,7 @@ import {
   userPermissions,
   pendingInvites,
   users,
+  finEmployees,
 } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
@@ -441,9 +442,14 @@ export const permissionsRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "You cannot delete your own account." });
       }
       const db = await requireDb();
-      await db.delete(modulePermissions).where(eq(modulePermissions.userId, input.userId));
-      await db.delete(userPermissions).where(eq(userPermissions.userId, input.userId));
-      await db.delete(users).where(eq(users.id, input.userId));
+      await db.transaction(async tx => {
+        await tx.select({ id: users.id }).from(users).where(eq(users.id, input.userId)).limit(1).for("update");
+        const [linked] = await tx.select({ id: finEmployees.id }).from(finEmployees).where(eq(finEmployees.crmUserId, input.userId)).limit(1).for("update");
+        if (linked) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This login is linked to an employee. Resolve the employee's HR login explicitly before deleting the account; attendance and salary history must remain linked." });
+        await tx.delete(modulePermissions).where(eq(modulePermissions.userId, input.userId));
+        await tx.delete(userPermissions).where(eq(userPermissions.userId, input.userId));
+        await tx.delete(users).where(eq(users.id, input.userId));
+      });
       return { success: true };
     }),
 

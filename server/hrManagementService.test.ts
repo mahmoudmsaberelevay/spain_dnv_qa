@@ -902,12 +902,39 @@ describe("HR admin overview read contracts", () => {
       memory.events.find(
         event => event.table === "finEmployees" && event.type === "select"
       )?.columns
-    ).toEqual(["id", "name", "crmUserId", "salary", "isActive"]);
+    ).toEqual([
+      "id",
+      "name",
+      "crmUserId",
+      "salary",
+      "isActive",
+      "hrSelfServiceRequired",
+    ]);
     expect(
       memory.events.every(
         event => !["insert", "upsert", "update", "delete"].includes(event.type)
       )
     ).toBe(true);
+  });
+
+  it("never counts explicitly financial-only records as absent and does not enable their leave requests", async () => {
+    memoryDb({
+      finEmployees: [
+        employee(),
+        employee({
+          id: 20,
+          crmUserId: 99,
+          hrSelfServiceRequired: false,
+        } as any),
+      ],
+      hrEmployeeSchedules: [schedule(), schedule({ id: 2, employeeId: 20 })],
+    });
+    const result = await getHrAdminOverview(
+      { from: "2026-10-25", to: "2026-10-25", year: 2026 },
+      new Date("2026-11-02T20:00:00Z")
+    );
+    expect(result.employees.map(row => row.id)).toEqual([10]);
+    expect(await getMyHrLeave(99, 2026)).toMatchObject({ linked: false });
   });
 
   it("caps rate selection at today, applies the authorized rollout credit and labels requests", async () => {

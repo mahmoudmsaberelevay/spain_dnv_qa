@@ -4,6 +4,7 @@ import { protectedProcedure, router } from "./_core/trpc";
 import { auditCtxFromTrpc, writeAuditLog } from "./auditLog";
 import { isHrAdministrator } from "../shared/hrAccess";
 import { assertHrAttendanceDate } from "../shared/hrAttendance";
+import { getHrEmployeeOnboarding, linkHrEmployeeLogin, HrOnboardingError } from "./hrEmployeeOnboardingService";
 import {
   clockInForCrmUser,
   clockOutForCrmUser,
@@ -66,7 +67,7 @@ const punchInput = z
   .strict()
   .optional();
 function translate(error: unknown): never {
-  if (error instanceof HrAttendanceError || error instanceof HrManagementError)
+  if (error instanceof HrAttendanceError || error instanceof HrManagementError || error instanceof HrOnboardingError)
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
       message: error.message,
@@ -251,6 +252,14 @@ export const hrRouter = router({
       ),
   }),
   admin: router({
+    onboarding: hrAdminProcedure.query(({ ctx }) => business(() => getHrEmployeeOnboarding(ctx.user.id))),
+    linkEmployee: hrAdminProcedure
+      .input(z.object({ employeeId: z.number().int().positive(), userId: z.number().int().positive(), reason }).strict())
+      .mutation(({ ctx, input }) => business(async () => {
+        const result = await linkHrEmployeeLogin(ctx.user.id, input);
+        if (result.changed) await audit(ctx, "hr_employee_login", input.employeeId, `CRM user ${input.userId} linked explicitly: ${input.reason}`);
+        return result;
+      })),
     overview: hrAdminProcedure
       .input(z.object({ from: dateKey, to: dateKey, year }).strict())
       .query(({ input }) => business(() => getHrAdminOverview(input))),
@@ -397,7 +406,7 @@ export const hrRouter = router({
             officeLatitude: z.number().finite().min(-90).max(90),
             officeLongitude: z.number().finite().min(-180).max(180),
             radiusMeters: z.number().int().min(10).max(1000),
-            maxAccuracyMeters: z.number().int().min(5).max(100),
+            maxAccuracyMeters: z.number().int().min(5).max(1000),
             reason,
           })
           .strict()

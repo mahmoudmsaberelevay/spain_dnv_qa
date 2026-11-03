@@ -29,12 +29,14 @@ export default function FinEmployees() {
   const [newRole, setNewRole] = useState("");
   const [newSalary, setNewSalary] = useState("");
   const [newCrmUserId, setNewCrmUserId] = useState("unlinked");
+  const [newHrRequired, setNewHrRequired] = useState(true);
   const [newSalaryEffectiveFrom, setNewSalaryEffectiveFrom] = useState(() => getCairoBusinessDate());
   const [editEmp, setEditEmp] = useState<any>(null);
   const [editName, setEditName] = useState("");
   const [editRole, setEditRole] = useState("");
   const [editSalary, setEditSalary] = useState("");
   const [editCrmUserId, setEditCrmUserId] = useState("unlinked");
+  const [editHrRequired, setEditHrRequired] = useState(true);
   const [editSalaryEffectiveFrom, setEditSalaryEffectiveFrom] = useState(() => getCairoBusinessDate());
   const [historyEmp, setHistoryEmp] = useState<any>(null);
   const { data: salaryRates, isLoading: isSalaryRatesLoading } = trpc.financial.employees.salaryRates.useQuery(
@@ -61,6 +63,7 @@ export default function FinEmployees() {
         </div>
         <Button onClick={() => {
           setNewName(""); setNewRole(""); setNewSalary(""); setNewCrmUserId("unlinked");
+          setNewHrRequired(true);
           setNewSalaryEffectiveFrom(getCairoBusinessDate()); setShowCreate(true);
         }}>
           <Plus className="h-4 w-4 mr-1" /> Add Employee
@@ -98,7 +101,7 @@ export default function FinEmployees() {
                       <td className="py-2.5 text-muted-foreground">{idx + 1}</td>
                       <td className="py-2.5 font-medium">{emp.name}</td>
                       <td className="py-2.5 text-muted-foreground">{emp.role ?? "—"}</td>
-                      <td className="py-2.5 text-muted-foreground">{(emp as any).crmUserEmail ?? "Not linked"}</td>
+                      <td className="py-2.5 text-muted-foreground">{emp.hrSelfServiceRequired === false ? "Financial-only (no HR attendance)" : (emp as any).crmUserEmail ?? "HR onboarding required"}</td>
                       <td className="py-2.5 text-right font-mono">{fmt(emp.salary)}</td>
                       <td className="py-2.5 text-right font-mono text-green-700">{fmt((emp as any).totalIncome)}</td>
                       <td className="py-2.5 text-right font-mono text-red-700">{fmt((emp as any).totalExpense)}</td>
@@ -114,6 +117,7 @@ export default function FinEmployees() {
                           setEditRole(emp.role ?? "");
                           setEditSalary(String(Number(emp.salary ?? 0)));
                           setEditCrmUserId(emp.crmUserId ? String(emp.crmUserId) : "unlinked");
+                          setEditHrRequired(emp.hrSelfServiceRequired !== false);
                           setEditSalaryEffectiveFrom(getCairoBusinessDate());
                         }}>
                           <Edit2 className="h-3.5 w-3.5" />
@@ -154,7 +158,14 @@ export default function FinEmployees() {
               <Input type="number" value={newSalary} onChange={e => setNewSalary(e.target.value)} placeholder="0.00" />
             </div>
             <div>
-              <label className="text-sm font-medium">CRM login (optional)</label>
+              <label className="text-sm font-medium">HR participation</label>
+              <Select value={newHrRequired ? "staff" : "financial"} onValueChange={v => setNewHrRequired(v === "staff")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="staff">Internal staff — CRM login required</SelectItem><SelectItem value="financial">Financial-only / external supplier — no HR attendance</SelectItem></SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">{newHrRequired ? "CRM login (required for staff)" : "CRM login (optional for Financial-only)"}</label>
               <Select value={newCrmUserId} onValueChange={setNewCrmUserId}>
                 <SelectTrigger><SelectValue placeholder="No CRM login linked" /></SelectTrigger>
                 <SelectContent>
@@ -174,8 +185,9 @@ export default function FinEmployees() {
             <Button onClick={() => createMut.mutate({
               name: newName, role: newRole, salary: newSalary ? Number(newSalary) : undefined,
               crmUserId: newCrmUserId === "unlinked" ? null : Number(newCrmUserId),
+              hrSelfServiceRequired: newHrRequired,
               salaryEffectiveFrom: newSalaryEffectiveFrom || undefined,
-            })} disabled={!newName.trim() || !newRole || createMut.isPending}>
+            })} disabled={!newName.trim() || !newRole || (newHrRequired && newCrmUserId === "unlinked") || createMut.isPending}>
               {createMut.isPending ? "Adding..." : "Add"}
             </Button>
           </DialogFooter>
@@ -213,7 +225,15 @@ export default function FinEmployees() {
               <Input type="date" value={editSalaryEffectiveFrom} onChange={e => setEditSalaryEffectiveFrom(e.target.value)} />
             </div>
             <div>
-              <label className="text-sm font-medium">CRM login (optional)</label>
+              <label className="text-sm font-medium">HR participation</label>
+              <Select value={editHrRequired ? "staff" : "financial"} onValueChange={v => setEditHrRequired(v === "staff")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="staff">Internal staff — CRM login required</SelectItem><SelectItem value="financial">Financial-only / external supplier — no HR attendance</SelectItem></SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">Financial-only is not a staff attendance exemption. Use it only for non-staff Financial records.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">{editHrRequired ? "CRM login (required for active staff)" : "CRM login (optional for Financial-only)"}</label>
               <Select value={editCrmUserId} onValueChange={setEditCrmUserId}>
                 <SelectTrigger><SelectValue placeholder="No CRM login linked" /></SelectTrigger>
                 <SelectContent>
@@ -228,8 +248,9 @@ export default function FinEmployees() {
             <Button onClick={() => updateMut.mutate({
               id: editEmp.id, name: editName, role: editRole || undefined, salary: editSalary ? Number(editSalary) : undefined,
               crmUserId: editCrmUserId === "unlinked" ? null : Number(editCrmUserId),
+              hrSelfServiceRequired: editHrRequired,
               salaryEffectiveFrom: editSalaryEffectiveFrom || undefined,
-            })} disabled={!editName.trim() || !editRole || updateMut.isPending}>
+            })} disabled={!editName.trim() || !editRole || (editEmp?.isActive && editHrRequired && editCrmUserId === "unlinked") || updateMut.isPending}>
               {updateMut.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>

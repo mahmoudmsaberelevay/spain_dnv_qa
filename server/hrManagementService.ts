@@ -61,6 +61,7 @@ const employeeColumns = {
   crmUserId: finEmployees.crmUserId,
   salary: finEmployees.salary,
   isActive: finEmployees.isActive,
+  hrSelfServiceRequired: finEmployees.hrSelfServiceRequired,
 };
 
 async function database() {
@@ -147,11 +148,11 @@ function futureDate(value: string, strictlyFuture = false) {
   return date;
 }
 
-function activeEmployee(employee: { isActive: boolean }) {
-  if (!employee.isActive)
+function activeEmployee(employee: { isActive: boolean; hrSelfServiceRequired?: boolean }) {
+  if (!employee.isActive || employee.hrSelfServiceRequired === false)
     throw new HrManagementError(
       "INACTIVE",
-      "The employee is inactive and cannot make HR changes"
+      "The employee is inactive or Financial-only and cannot make HR changes"
     );
 }
 
@@ -177,7 +178,7 @@ async function findOwnEmployee(db: Executor, userId: number, lock = false) {
     .where(eq(finEmployees.crmUserId, userId))
     .limit(1);
   const [employee] = await (lock ? query.for("update") : query);
-  return employee ?? null;
+  return employee?.hrSelfServiceRequired === false ? null : employee ?? null;
 }
 
 async function holidays(db: Executor, lock = false) {
@@ -918,7 +919,8 @@ export async function getHrAdminOverview(
   const employees = await db
     .select(employeeColumns)
     .from(finEmployees)
-    .orderBy(asc(finEmployees.name));
+    .orderBy(asc(finEmployees.name))
+    .then(rows => rows.filter(employee => employee.hrSelfServiceRequired !== false));
   const schedules = await db
     .select()
     .from(hrEmployeeSchedules)
