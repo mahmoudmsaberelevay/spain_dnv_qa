@@ -42,7 +42,7 @@ describe("HR verification and restricted administrators", () => {
       officeLatitude: 30.0715683,
       officeLongitude: 30.9468446,
       radiusMeters: 1000,
-      maxAccuracyMeters: 1000,
+      maxAccuracyMeters: 300,
     });
     expect(verifyHrPunchLocation(settings, northFix(999), now).accepted).toBe(
       true
@@ -54,26 +54,26 @@ describe("HR verification and restricted administrators", () => {
     expect(
       verifyHrPunchLocation(
         settings,
-        { ...northFix(1001), accuracy: 1000 },
+        { ...northFix(1001), accuracy: 300 },
         now
       ).accepted
     ).toBe(false);
   });
-  it("accepts accuracy up to and including 1000m, but never over it", () => {
-    for (const accuracy of [0, 100, 101, 999, 1000]) {
+  it("accepts accuracy up to and including 300m, but never over it", () => {
+    for (const accuracy of [0, 100, 101, 299, 300]) {
       expect(
         verifyHrPunchLocation(settings, { ...northFix(999), accuracy }, now)
           .accepted
       ).toBe(true);
     }
-    for (const accuracy of [1000.01, 1001]) {
+    for (const accuracy of [300.01, 301, 1000]) {
       const result = verifyHrPunchLocation(
         settings,
         { ...location, accuracy },
         now
       );
       expect(result.accepted).toBe(false);
-      expect(result.message).toContain("1000 metres");
+      expect(result.message).toContain("300 metres");
     }
   });
   it("honors stricter administrator-configured accuracy without a client-side override", () => {
@@ -90,7 +90,7 @@ describe("HR verification and restricted administrators", () => {
       undefined,
       { ...location, capturedAt: now - 61000 },
       { ...location, capturedAt: now + 6000 },
-      { ...location, accuracy: 1001 },
+      { ...location, accuracy: 301 },
       { ...location, latitude: 91 },
       { ...location, accuracy: -1 },
       { ...location, latitude: NaN },

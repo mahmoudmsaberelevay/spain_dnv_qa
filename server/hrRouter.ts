@@ -406,7 +406,7 @@ export const hrRouter = router({
             officeLatitude: z.number().finite().min(-90).max(90),
             officeLongitude: z.number().finite().min(-180).max(180),
             radiusMeters: z.number().int().min(10).max(1000),
-            maxAccuracyMeters: z.number().int().min(5).max(1000),
+            maxAccuracyMeters: z.number().int().min(5).max(300),
             reason,
           })
           .strict()

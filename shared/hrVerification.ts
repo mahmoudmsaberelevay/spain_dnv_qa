@@ -16,7 +16,7 @@ export const DEFAULT_HR_VERIFICATION: HrVerificationSettings = {
   officeLatitude: 30.0715683,
   officeLongitude: 30.9468446,
   radiusMeters: 1000,
-  maxAccuracyMeters: 1000,
+  maxAccuracyMeters: 300,
 };
 export function hrDistanceMeters(
   lat1: number,

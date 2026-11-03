@@ -2485,10 +2485,10 @@ function VerificationForm({ settings }: { settings: VerificationSettings }) {
       radiusMeters > 1000 ||
       !Number.isInteger(maxAccuracyMeters) ||
       maxAccuracyMeters < 5 ||
-      maxAccuracyMeters > 1000
+      maxAccuracyMeters > 300
     ) {
       setFormError(
-        "Enter valid office coordinates, a whole-number radius from 10 to 1,000 meters, and maximum uncertainty from 5 to 1,000 meters. These settings must be explicit even when another method is selected."
+        "Enter valid office coordinates, a whole-number radius from 10 to 1,000 meters, and maximum uncertainty from 5 to 300 meters. These settings must be explicit even when another method is selected."
       );
       return;
     }
@@ -2637,7 +2637,7 @@ function VerificationForm({ settings }: { settings: VerificationSettings }) {
               type="number"
               className="mt-2"
               min={5}
-              max={1000}
+              max={300}
               step={1}
               value={accuracy}
               onChange={event => setAccuracy(event.target.value)}
