@@ -13,6 +13,7 @@ import { updateEmployee } from "./finDb";
 import { isHrAdministrator } from "../shared/hrAccess";
 import { assertHrAttendanceDate } from "../shared/hrAttendance";
 import { getHrAttendanceCreditDates } from "../shared/hrAttendanceCredits";
+import { buildHrAttendanceTiming } from "../shared/hrAttendanceTiming";
 import { getHrDefaultAnnualLeaveDays } from "../shared/hrAnnualLeavePolicy";
 import {
   getCairoBusinessDate,
@@ -149,7 +150,10 @@ function futureDate(value: string, strictlyFuture = false) {
   return date;
 }
 
-function activeEmployee(employee: { isActive: boolean; hrSelfServiceRequired?: boolean }) {
+function activeEmployee(employee: {
+  isActive: boolean;
+  hrSelfServiceRequired?: boolean;
+}) {
   if (!employee.isActive || employee.hrSelfServiceRequired === false)
     throw new HrManagementError(
       "INACTIVE",
@@ -179,7 +183,7 @@ async function findOwnEmployee(db: Executor, userId: number, lock = false) {
     .where(eq(finEmployees.crmUserId, userId))
     .limit(1);
   const [employee] = await (lock ? query.for("update") : query);
-  return employee?.hrSelfServiceRequired === false ? null : employee ?? null;
+  return employee?.hrSelfServiceRequired === false ? null : (employee ?? null);
 }
 
 async function holidays(db: Executor, lock = false) {
@@ -923,7 +927,9 @@ export async function getHrAdminOverview(
     .select(employeeColumns)
     .from(finEmployees)
     .orderBy(asc(finEmployees.name))
-    .then(rows => rows.filter(employee => employee.hrSelfServiceRequired !== false));
+    .then(rows =>
+      rows.filter(employee => employee.hrSelfServiceRequired !== false)
+    );
   const schedules = await db
     .select()
     .from(hrEmployeeSchedules)
@@ -993,6 +999,19 @@ export async function getHrAdminOverview(
             })
         )
       );
+      const ownAttendance = attendance.filter(
+        row => row.employeeId === employee.id
+      );
+      const payroll = aggregatePayroll(
+        input,
+        now,
+        cycles,
+        ownSchedules,
+        ownAttendance,
+        holidayDates,
+        approvedLeaveDates,
+        rates.filter(row => row.employeeId === employee.id)
+      );
       return {
         ...employee,
         schedules: ownSchedules,
@@ -1001,16 +1020,15 @@ export async function getHrAdminOverview(
           entitlements.filter(row => row.employeeId === employee.id),
           ownRequests
         ),
-        payroll: aggregatePayroll(
-          input,
-          now,
-          cycles,
-          ownSchedules,
-          attendance.filter(row => row.employeeId === employee.id),
-          holidayDates,
-          approvedLeaveDates,
-          rates.filter(row => row.employeeId === employee.id)
-        ),
+        payroll,
+        timing: buildHrAttendanceTiming({
+          from: input.from,
+          to: input.to,
+          payrollDays: payroll.days,
+          schedules: ownSchedules,
+          attendance: ownAttendance,
+          holidays: holidayDates,
+        }),
       };
     }),
     requests: requests.map(request => ({

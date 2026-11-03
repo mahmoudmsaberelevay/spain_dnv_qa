@@ -1,5 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import HrEmployeeOnboarding from "@/components/HrEmployeeOnboarding";
+import HrAdminReports from "@/components/HrAdminReports";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -41,6 +42,12 @@ import { cn } from "@/lib/utils";
 import { isHrAdministrator } from "@shared/hrAccess";
 import { HR_ROLLOUT_CREDIT } from "@shared/hrAttendanceCredits";
 import { HR_ANNUAL_LEAVE_POLICY_TEXT } from "@shared/hrAnnualLeavePolicy";
+import {
+  hrPayrollCycleForDate,
+  hrPayrollCycleForMonth,
+} from "@shared/hrReportPeriod";
+import type { HrAttendanceTiming } from "@shared/hrAttendanceTiming";
+import { buildHrVacationReport } from "@shared/hrVacationReport";
 import {
   formatAttendanceDuration,
   formatCairoAttendanceTime,
@@ -137,16 +144,7 @@ function cycleFor(
   today: string,
   lastCompleted = false
 ): { from: string; to: string } {
-  const [year, month] = today.split("-").map(Number);
-  let end = new Date(Date.UTC(year, month - 1, 26));
-  if (lastCompleted && end.toISOString().slice(0, 10) >= today)
-    end = new Date(Date.UTC(year, month - 2, 26));
-  return {
-    from: new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 1, 27))
-      .toISOString()
-      .slice(0, 10),
-    to: end.toISOString().slice(0, 10),
-  };
+  return hrPayrollCycleForDate(today, lastCompleted);
 }
 
 type Balance = {
@@ -157,6 +155,8 @@ type Balance = {
 };
 type LeaveRequest = {
   id: number;
+  employeeId: number;
+  daysByYear: string;
   fromDate: string | Date;
   toDate: string | Date;
   requestedDays: number | string;
@@ -222,6 +222,7 @@ type Employee = {
   isActive: boolean | number;
   schedules: Schedule[];
   leaveBalance: Balance | null;
+  timing?: HrAttendanceTiming;
   payroll: Payroll;
 };
 type VerificationMethod = "pending" | "geofence" | "strict_wifi" | "both";
@@ -391,9 +392,9 @@ function Status({ status }: { status: string }) {
 function UnlinkedProfile() {
   return (
     <Notice title="HR onboarding pending">
-      Use your normal CRM login. Ask Mahmoud, Madonna, or Ziad to
-      link your existing employee profile in HR Admin → Employee login links. HR does not match
-      identities by name or email.
+      Use your normal CRM login. Ask Mahmoud, Madonna, or Ziad to link your
+      existing employee profile in HR Admin → Employee login links. HR does not
+      match identities by name or email.
     </Notice>
   );
 }
@@ -1180,9 +1181,7 @@ function VacationRequests() {
           setSubmittedId(null);
         }}
       />
-      <Notice title="Annual leave policy">
-        {HR_ANNUAL_LEAVE_POLICY_TEXT}
-      </Notice>
+      <Notice title="Annual leave policy">{HR_ANNUAL_LEAVE_POLICY_TEXT}</Notice>
       <QueryState
         loading={mine.isLoading}
         error={mine.error}
@@ -1403,6 +1402,25 @@ function HrAdmin() {
     overview.isError ||
     !overview.data ||
     unappliedFilters;
+  const vacationResult = useMemo(() => {
+    if (!overview.data || !employees.length)
+      return { report: null, error: null };
+    try {
+      return {
+        report: buildHrVacationReport({
+          year: filters.year,
+          employees,
+          requests,
+          holidays: overview.data.holidays,
+          generatedBy: user?.name || "HR Administrator",
+          generatedAt: new Date(),
+        }),
+        error: null,
+      };
+    } catch (error) {
+      return { report: null, error: errorMessage(error) };
+    }
+  }, [overview.data, filters.year, user?.name]);
   const pending = requests.filter(request => request.status === "pending");
   async function exportReport(selected: Employee[]) {
     if (exportDisabled || !selected.length) return;
@@ -1418,6 +1436,31 @@ function HrAdmin() {
       const { exportHrAttendancePdf } = await import("@/lib/hrAttendancePdf");
       await exportHrAttendancePdf(report);
       toast.success("HR attendance PDF downloaded.");
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+  async function exportVacationReport(selected: Employee[]) {
+    if (
+      exportDisabled ||
+      !selected.length ||
+      !overview.data ||
+      !vacationResult.report
+    )
+      return;
+    setExportingPdf(true);
+    try {
+      const { exportHrVacationPdf } = await import("@/lib/hrVacationPdf");
+      await exportHrVacationPdf({
+        year: filters.year,
+        employees: selected,
+        requests,
+        holidays: overview.data.holidays,
+        generatedBy: user?.name || "HR Administrator",
+      });
+      toast.success("HR vacation PDF downloaded.");
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -1465,10 +1508,7 @@ function HrAdmin() {
         payroll, deduct salary automatically, or mark salary receipts paid.
         Financial remains the salary source of truth.
       </Notice>
-      <Notice title="Annual leave policy">
-        {HR_ANNUAL_LEAVE_POLICY_TEXT}
-      </Notice>
-      <HrEmployeeOnboarding />
+      <Notice title="Annual leave policy">{HR_ANNUAL_LEAVE_POLICY_TEXT}</Notice>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Review period</CardTitle>
@@ -1528,6 +1568,21 @@ function HrAdmin() {
               </Button>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Field label="Payroll month (closing 26th)">
+                <Input
+                  type="month"
+                  aria-label="Choose a payroll cycle month"
+                  className="min-h-11"
+                  value={draft.to.slice(0, 7)}
+                  onChange={event => {
+                    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value))
+                      setDraft({
+                        ...draft,
+                        ...hrPayrollCycleForMonth(event.target.value),
+                      });
+                  }}
+                />
+              </Field>
               <Button
                 type="button"
                 variant="outline"
@@ -1614,6 +1669,33 @@ function HrAdmin() {
               icon={Timer}
             />
           </div>
+          <HrAdminReports
+            employees={employees}
+            vacation={vacationResult.report}
+            vacationError={vacationResult.error}
+            from={filters.from}
+            to={filters.to}
+            year={filters.year}
+            issuer={user?.name || "HR Administrator"}
+            search={employeeFilter}
+            onSearch={setEmployeeFilter}
+            exportDisabled={exportDisabled}
+            exporting={exportingPdf}
+            onAttendancePdf={ids =>
+              void exportReport(
+                ids
+                  .map(id => employees.find(employee => employee.id === id)!)
+                  .filter(Boolean)
+              )
+            }
+            onVacationPdf={ids =>
+              void exportVacationReport(
+                ids
+                  .map(id => employees.find(employee => employee.id === id)!)
+                  .filter(Boolean)
+              )
+            }
+          />
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
@@ -1679,15 +1761,10 @@ function HrAdmin() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Field label="Find employee">
-                <Input
-                  type="search"
-                  className="mt-2"
-                  value={employeeFilter}
-                  onChange={event => setEmployeeFilter(event.target.value)}
-                  placeholder="Search by employee name"
-                />
-              </Field>
+              <p className="text-sm text-muted-foreground">
+                The employee search in Employee reports also filters these
+                settings.
+              </p>
               <p className="text-xs leading-5 text-muted-foreground">
                 PDF exports include the applied period (
                 {dateLabel(filters.from)} – {dateLabel(filters.to)}), visible
@@ -1697,25 +1774,33 @@ function HrAdmin() {
                 {unappliedFilters &&
                   " Apply your changed dates before exporting."}
               </p>
-              {!visibleEmployees.length ? (
-                <p className="py-4 text-sm text-muted-foreground">
-                  {employees.length
-                    ? "No employees match your search."
-                    : "No employees available."}
-                </p>
-              ) : (
-                visibleEmployees.map(employee => (
-                  <EmployeePreview
-                    key={employee.id}
-                    employee={employee}
-                    today={today}
-                    year={filters.year}
-                    edit={kind => setEdit({ kind, employee })}
-                    exportPdf={() => void exportReport([employee])}
-                    exportDisabled={exportDisabled}
-                  />
-                ))
-              )}
+              <details>
+                <summary className="min-h-11 cursor-pointer rounded-lg p-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  Employee settings and detailed payroll previews (
+                  {visibleEmployees.length})
+                </summary>
+                <div className="mt-3 space-y-3">
+                  {!visibleEmployees.length ? (
+                    <p className="py-4 text-sm text-muted-foreground">
+                      {employees.length
+                        ? "No employees match your search."
+                        : "No employees available."}
+                    </p>
+                  ) : (
+                    visibleEmployees.map(employee => (
+                      <EmployeePreview
+                        key={employee.id}
+                        employee={employee}
+                        today={today}
+                        year={filters.year}
+                        edit={kind => setEdit({ kind, employee })}
+                        exportPdf={() => void exportReport([employee])}
+                        exportDisabled={exportDisabled}
+                      />
+                    ))
+                  )}
+                </div>
+              </details>
             </CardContent>
           </Card>
           <Card>
@@ -1779,6 +1864,14 @@ function HrAdmin() {
           </Card>
         </>
       )}
+      <details className="rounded-xl border p-3">
+        <summary className="min-h-11 cursor-pointer rounded-lg p-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          Employee login readiness and explicit CRM links
+        </summary>
+        <div className="mt-3">
+          <HrEmployeeOnboarding />
+        </div>
+      </details>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">

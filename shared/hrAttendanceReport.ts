@@ -1,5 +1,10 @@
 import { ELEVAY_TIME_ZONE } from "./financialEmployeeSalaryRates";
 import {
+  emptyHrAttendanceTiming,
+  projectHrAttendanceTiming,
+  type HrAttendanceTiming,
+} from "./hrAttendanceTiming";
+import {
   listHrDates,
   type HrPayrollDayStatus,
   type HrPayrollResult,
@@ -9,6 +14,8 @@ import {
 export type HrAttendanceReportSourceEmployee = {
   readonly id: number;
   readonly name: string;
+  /** Optional only for older callers/fixtures; real overviews always supply it. */
+  readonly timing?: HrAttendanceTiming;
   readonly payroll: Omit<HrPayrollResult, "days"> & {
     readonly coveredBaseSalary: number;
     readonly cycleBreakdown: readonly HrAttendanceReportCycle[];
@@ -97,6 +104,9 @@ type Summary = Pick<
 export type HrAttendanceReportEmployee = Summary & {
   id: number;
   name: string;
+  timing: HrAttendanceTiming;
+  /** False means timing was unavailable, not that the employee recorded zero work. */
+  timingAvailable: boolean;
   absenceMinutes: number;
   incompletePenaltyMinutes: number;
   days: HrAttendanceReportDay[];
@@ -131,6 +141,7 @@ export type HrAttendanceReport = {
   calendarDays: number;
   generatedAt: string;
   generatedBy: string;
+  reportReference: string;
   employees: HrAttendanceReportEmployee[];
   totals: HrAttendanceReportTotals;
 };
@@ -307,10 +318,47 @@ export function buildHrAttendanceReport(
         "cycle incomplete penalties"
       ),
     }));
+    const timing =
+      employee.timing === undefined
+        ? emptyHrAttendanceTiming(days)
+        : projectHrAttendanceTiming(employee.timing, {
+            from: input.from,
+            to: input.to,
+            payrollDays: days,
+          });
+    if (employee.timing !== undefined) {
+      const scheduledDays = timing.days.filter(day => day.scheduledMinutes > 0);
+      const evaluatedStatuses = new Set([
+        "present",
+        "credited",
+        "absent",
+        "leave",
+        "incomplete",
+      ]);
+      const evaluatedDays = scheduledDays.filter(day =>
+        evaluatedStatuses.has(byDate.get(day.date)!.status)
+      );
+      if (
+        scheduledDays.length !== summary.workingDays ||
+        evaluatedDays.length !== summary.evaluatedDays
+      ) {
+        throw new Error(
+          "Attendance timing coverage and payroll day totals disagree; refresh the overview"
+        );
+      }
+      timing.days.forEach((timingDay, index) => {
+        if (days[index].status === "credited" && timingDay.checkInAt !== null) {
+          days[index].statusLabel =
+            "Present - rollout credit (recorded punch retained)";
+        }
+      });
+    }
     return {
       id: employee.id,
       name: attendanceReportDisplayName(employee.name, "Unnamed employee"),
       ...summary,
+      timing,
+      timingAvailable: employee.timing !== undefined,
       absenceMinutes: sum("absenceMinutes"),
       incompletePenaltyMinutes: sum("incompletePenaltyMinutes"),
       days,
@@ -329,6 +377,7 @@ export function buildHrAttendanceReport(
     timeZone: ELEVAY_TIME_ZONE,
     calendarDays: dates.length,
     generatedAt: input.generatedAt.toISOString(),
+    reportReference: `HR-ATT-${input.from.replace(/-/g, "")}-${input.to.replace(/-/g, "")}-${input.generatedAt.toISOString().replace(/[-:.TZ]/g, "")}`,
     generatedBy: attendanceReportDisplayName(
       input.generatedBy,
       "HR administrator"
