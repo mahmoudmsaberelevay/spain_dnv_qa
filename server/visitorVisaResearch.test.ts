@@ -20,6 +20,30 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function providerStream(content: any[], stopReason = 'end_turn') {
+  const events: any[] = [{ type: 'message_start', message: {
+    id: 'msg_test', type: 'message', role: 'assistant', model: 'claude-sonnet-4-6',
+    content: [], stop_reason: null, stop_sequence: null,
+    usage: { input_tokens: 1, output_tokens: 0 },
+  } }, { type: 'ping' }];
+  content.forEach((block, index) => {
+    events.push({ type: 'content_block_start', index,
+      content_block: block.type === 'text' ? { type: 'text', text: '', citations: [] } : block });
+    if (block.type === 'text') {
+      events.push({ type: 'content_block_delta', index, delta: { type: 'text_delta', text: block.text } });
+      for (const citation of block.citations || []) {
+        events.push({ type: 'content_block_delta', index, delta: { type: 'citations_delta', citation } });
+      }
+    }
+    events.push({ type: 'content_block_stop', index });
+  });
+  events.push({ type: 'message_delta', delta: { stop_reason: stopReason, stop_sequence: null }, usage: { output_tokens: 20 } });
+  events.push({ type: 'message_stop' });
+  return new Response(events.map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(''), {
+    headers: { 'content-type': 'text/event-stream' },
+  });
+}
+
 async function withServer<T>(run: (baseUrl: string) => Promise<T>): Promise<T> {
   const app = express();
   app.use(express.json());
@@ -76,8 +100,8 @@ it('requires completed actual search and native citations', () => {
 it('continues paused provider turns and preserves citations', async () => {
   vi.stubEnv('ANTHROPIC_API_KEY', 'test-only');
   const fetcher = vi.fn()
-    .mockResolvedValueOnce({ ok: true, json: async () => ({ stop_reason: 'pause_turn', content: [search] }) })
-    .mockResolvedValueOnce({ ok: true, json: async () => ({ stop_reason: 'end_turn', content: [answer] }) });
+    .mockResolvedValueOnce(providerStream([search], 'pause_turn'))
+    .mockResolvedValueOnce(providerStream([answer]));
   const result = await researchVisa(visaResearchInput.parse(input), fetcher);
   expect(result.kind).toBe('web-research');
   expect(fetcher).toHaveBeenCalledTimes(2);
@@ -93,7 +117,7 @@ it('fails without server-side provider configuration', async () => {
 
 it('allows unauthenticated guest requests and returns cited research', async () => {
   vi.stubEnv('ANTHROPIC_API_KEY', 'test-only');
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ stop_reason: 'end_turn', content: [search, answer] }) }));
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => providerStream([search, answer])));
   await withServer(async baseUrl => {
     const response = await postResearch(baseUrl, input);
     expect(response.status).toBe(200);
@@ -114,7 +138,7 @@ it('returns 400 for invalid requests and 503 when the provider is unavailable', 
     expect(fetcher).not.toHaveBeenCalled();
 
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-only');
-    fetcher.mockResolvedValue({ ok: false, status: 503 });
+    fetcher.mockImplementation(async () => new Response('{}', { status: 503 }));
     const unavailable = await postResearch(baseUrl, input);
     expect(unavailable.status).toBe(503);
     expect(await unavailable.json()).toEqual({ error: 'visa_research_unavailable' });
@@ -134,10 +158,7 @@ it('enforces the three-concurrent-research limit', async () => {
     const overflow = await postResearch(baseUrl, input);
     expect(overflow.status).toBe(429);
     expect(await overflow.json()).toEqual({ error: 'research_busy' });
-    for (const release of providerReleases) release({
-      ok: true,
-      json: async () => ({ stop_reason: 'end_turn', content: [search, answer] }),
-    });
+    for (const release of providerReleases) release(providerStream([search, answer]));
     const responses = await Promise.all(pending);
     expect(responses.every(response => response.status === 200)).toBe(true);
   });
@@ -152,4 +173,56 @@ it('enforces the six-request per-IP rate limit', async () => {
     }
     expect(statuses).toEqual([400, 400, 400, 400, 400, 400, 429]);
   });
+});
+
+it('uses internal streaming, bounded output and verified Singapore authority domains', async () => {
+  vi.stubEnv('ANTHROPIC_API_KEY', 'test-only');
+  const fetcher = vi.fn().mockImplementation(async () => providerStream([search, answer]));
+  await researchVisa(visaResearchInput.parse(input), fetcher);
+  const request = JSON.parse(fetcher.mock.calls[0][1].body);
+  expect(request.stream).toBe(true);
+  expect(request.max_tokens).toBe(6000);
+  expect(request.tools[0].allowed_domains).toEqual(['ica.gov.sg', 'dubai.mfa.gov.sg']);
+  expect(request.system).toContain('350-450 words');
+  expect(request.system).toContain('Search in English even when the requested answer is Arabic');
+  expect(request.system).toContain('Do not transfer another embassy/consulate');
+  expect(JSON.parse(request.messages[0].content).destinationName).toBe('Singapore');
+});
+
+it('preserves native citation deltas and Arabic output from the accumulated stream', async () => {
+  vi.stubEnv('ANTHROPIC_API_KEY', 'test-only');
+  const arabic = { ...answer, text: 'تأشيرة مطلوبة. هذه إرشادات بحثية وليست ضماناً للدخول.' };
+  const fetcher = vi.fn().mockImplementation(async () => providerStream([search, arabic]));
+  const result = await researchVisa(visaResearchInput.parse({ ...input, locale: 'ar' }), fetcher);
+  expect(result.paragraphs[0].text).toBe(arabic.text);
+  expect(result.paragraphs[0].sources[0].url).toBe('https://www.ica.gov.sg/');
+  expect(JSON.parse(fetcher.mock.calls[0][1].body).system).toContain('Reply ONLY in Arabic');
+});
+
+it('rejects unofficial or hostname-spoofed Singapore citations', () => {
+  const domains = ['ica.gov.sg', 'mfa.gov.sg'];
+  for (const url of ['https://visa-blog.example/', 'https://ica.gov.sg.attacker.example/', 'https://notica.gov.sg/']) {
+    const unsafe = { ...answer, citations: [{ type: 'web_search_result_location', url }] };
+    expect(() => citedResult([search, unsafe], 'end_turn', domains)).toThrow('Unverified authority citation');
+  }
+  const mission = { ...answer, citations: [{ type: 'web_search_result_location', url: 'https://dubai.mfa.gov.sg/consular-services/visa-information/' }] };
+  expect(citedResult([search, mission], 'end_turn', domains).paragraphs[0].sources).toHaveLength(1);
+});
+
+it('returns unavailable for truncated streamed answers or exhausted pause turns', async () => {
+  vi.stubEnv('ANTHROPIC_API_KEY', 'test-only');
+  const truncated = vi.fn().mockImplementation(async () => providerStream([search, answer], 'max_tokens'));
+  await expect(researchVisa(visaResearchInput.parse(input), truncated)).rejects.toThrow('Incomplete research');
+  const paused = vi.fn().mockImplementation(async () => providerStream([search], 'pause_turn'));
+  await expect(researchVisa(visaResearchInput.parse(input), paused)).rejects.toThrow('Research incomplete');
+  expect(paused).toHaveBeenCalledTimes(3);
+});
+
+it('keeps other destinations available without guessing authority domains', async () => {
+  vi.stubEnv('ANTHROPIC_API_KEY', 'test-only');
+  const fetcher = vi.fn().mockImplementation(async () => providerStream([search, answer]));
+  await researchVisa(visaResearchInput.parse({ ...input, destination: 'GB' }), fetcher);
+  const request = JSON.parse(fetcher.mock.calls[0][1].body);
+  expect(request.tools[0].allowed_domains).toBeUndefined();
+  expect(request.system).toContain('commercial sites are not authority for rules');
 });
