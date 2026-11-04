@@ -186,6 +186,8 @@ it('uses internal streaming, bounded output and verified Singapore authority dom
   expect(request.system).toContain('350-450 words');
   expect(request.system).toContain('Search in English even when the requested answer is Arabic');
   expect(request.system).toContain('Do not transfer another embassy/consulate');
+  expect(request.system).toContain('Do not calculate or invent calendar cutoff dates');
+  expect(request.system).toContain('entry/arrival versus departure');
   expect(JSON.parse(request.messages[0].content).destinationName).toBe('Singapore');
 });
 
