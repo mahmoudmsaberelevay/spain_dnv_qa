@@ -10,6 +10,7 @@ import { chatWithLayla } from "./clientAppAiAdvisor";
 import { aiGuideInputSchema, aiGuideResponseNotes, getAiGuideRecommendations, loadAiProgrammeKnowledge } from "./clientAppProgrammeKnowledge";
 import { storageGet } from "./storage";
 import { parseReadySummaryIdentity, publicProgramLocaleFromAcceptLanguage, publicReadySummaryFromRecord } from "./publicProgramReadySummaries";
+import { registerVisitorVisaResearch } from "./visitorVisaResearch";
 
 const SOURCES = [
   { category: "residency" as const, url: "https://elevay.com/residency-by-investment/", path: "/residency-by-investment/" },
@@ -235,6 +236,8 @@ export function registerPublicContentRoutes(app: Express) {
     if (_req.method === "OPTIONS") return res.sendStatus(204);
     next();
   });
+
+  registerVisitorVisaResearch(app);
 
   app.post("/public-api/layla/chat", laylaLimiter, async (req: Request, res: Response) => {
     try {
