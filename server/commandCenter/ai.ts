@@ -177,7 +177,7 @@ function runFfmpeg(args, timeoutMs = 240000) {
     let err = "";
     const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Media composition timed out.")); }, timeoutMs);
     child.stderr.on("data", (d) => { err = (err + d).slice(-3000); });
-    child.on("error", (e) => { clearTimeout(timer); reject(e); });
+    child.on("error", (e) => { clearTimeout(timer); reject((e as any)?.code === "ENOENT" ? new Error("FFmpeg is missing on the elevay.vip server (the packaged ffmpeg-static binary was not installed and no system ffmpeg was found). Ask Manus to restore FFmpeg, then press Retry.") : e); });
     child.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error("Media composition failed: " + ffmpegReason(err))); });
   });
 }
