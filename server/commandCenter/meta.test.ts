@@ -27,7 +27,7 @@ function db() {
   };
 }
 
-function fakeMeta({ mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 150 }, instagramPermission = true, instagramStatus = "FINISHED", permissions = ["ads_management", "ads_read", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", "read_insights", "leads_retrieval", "instagram_basic", "instagram_manage_insights", "instagram_manage_comments", "instagram_content_publish"] } = {}) {
+function fakeMeta({ conversations = false, mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 150 }, instagramPermission = true, instagramStatus = "FINISHED", permissions = ["ads_management", "ads_read", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", "read_insights", "leads_retrieval", "instagram_basic", "instagram_manage_insights", "instagram_manage_comments", "instagram_content_publish"] } = {}) {
   const posts = [];
   const fetcher = async (url, init) => {
     const u = new URL(url), path = u.pathname.split("/").slice(2).join("/"), body = init.body ? JSON.parse(init.body) : null;
@@ -48,7 +48,9 @@ function fakeMeta({ mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 15
       else if (path === "me/permissions") out = { data: instagramPermission ? permissions.map((permission) => ({ permission, status: "granted" })) : [] };
       else if (path === "111") out = { id: "111", name: "Elevay Global", instagram_business_account: { id: "ig1", username: "elevayglobal" } };
       else if (path === "ig1/media") out = { data: [] };
-      else if (path === "111/conversations") out = { data: [] };
+      else if (path === "111/conversations") out = !conversations ? { data: [] } : u.searchParams.get("platform") === "instagram"
+        ? { data: [{ id: "igconv1", messages: { data: [{ id: "igm1", message: "عايز أعرف عن إقامة البرتغال", from: { id: "igsid-9", username: "sara.k" }, created_time: new Date(Date.now() - 10 * 60_000).toISOString() }] } }] }
+        : { data: [{ id: "fbconv1", messages: { data: [{ id: "fbm1", message: "كم تكلفة إقامة إسبانيا؟", from: { id: "psid-7", name: "Ahmed" }, created_time: new Date(Date.now() - 5 * 60_000).toISOString() }] } }] };
       else if (path === "igc1") out = { status_code: instagramStatus };
     } else {
       if (path.endsWith("/campaigns")) out = { id: "newcamp" }; else if (path.endsWith("/adsets")) out = { id: "newset" }; else if (path.endsWith("/adcreatives")) out = { id: "newcr" }; else if (path.endsWith("/ads")) out = { id: "newad" };
@@ -108,14 +110,33 @@ describe("Meta actions", () => {
     expect(posts.find((p) => p.path === "111/messages")).toBeUndefined();
   });
 
-  it("sends an in-window Facebook Messenger reply but never routes Instagram Direct through the Page endpoint", async () => {
+  it("queues Messenger and Instagram Direct replies with the customer's message time and sends both after approval (8 Nov 2026)", async () => {
+    const { h, posts } = hub({ meta: { conversations: true } });
+    await h.syncInbox();
+    const actions = await h.list();
+    const fb = actions.find((a) => a.kind === "reply_message" && a.platform === "facebook");
+    const ig = actions.find((a) => a.kind === "reply_message" && a.platform === "instagram");
+    expect(fb).toMatchObject({ recipient_id: "psid-7", status: "pending" });
+    expect(ig).toMatchObject({ recipient_id: "igsid-9", status: "pending" });
+    expect(fb.incoming_at).toBeGreaterThan(Date.now() - 60 * 60_000);
+    expect(ig.incoming_at).toBeGreaterThan(Date.now() - 60 * 60_000);
+    await h.approve(fb.id, owner, { text: "شكرًا لك! راسلنا لحجز استشارة مع ELEVAY." });
+    await h.approve(ig.id, owner, { text: "شكرًا لك! راسلنا لحجز استشارة مع ELEVAY." });
+    expect(posts.find((p) => p.path === "111/messages")).toMatchObject({ body: { recipient: { id: "psid-7" }, messaging_type: "RESPONSE" } });
+    expect(posts.find((p) => p.path === "ig1/messages")).toMatchObject({ body: { recipient: { id: "igsid-9" } } });
+  });
+
+  it("sends an in-window Facebook Messenger reply and an Instagram Direct reply from the Instagram account, never the Page endpoint", async () => {
     const { h, posts } = hub();
     const current = await h.enqueue({ kind: "reply_message", platform: "facebook", recipient_id: "u1", incoming_at: Date.now() - 60_000, text: "شكرًا لك!" }, "team");
     await h.approve(current.id, owner);
     expect(posts.find((p) => p.path === "111/messages")).toMatchObject({ body: { recipient: { id: "u1" } } });
     const instagram = await h.enqueue({ kind: "reply_message", platform: "instagram", recipient_id: "ig-user", incoming_at: Date.now() - 60_000, text: "شكرًا لك!" }, "team");
-    await expect(h.approve(instagram.id, owner)).rejects.toThrow(/Instagram Direct replies are disabled/);
+    await h.approve(instagram.id, owner);
     expect(posts.filter((p) => p.path === "111/messages")).toHaveLength(1);
+    expect(posts.find((p) => p.path === "ig1/messages")).toMatchObject({ body: { recipient: { id: "ig-user" } } });
+    const stale = await h.enqueue({ kind: "reply_message", platform: "instagram", recipient_id: "ig-user", incoming_at: Date.now() - 25 * 60 * 60 * 1000, text: "شكرًا لك!" }, "team");
+    await expect(h.approve(stale.id, owner)).rejects.toThrow(/Instagram Direct's 24-hour customer-service window has expired/);
   });
 
   it("returns a selected Page and linked Instagram asset summary without credentials", async () => {

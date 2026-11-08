@@ -46,18 +46,16 @@ const MESSAGE_REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
  */
 function messageReplyWindowProblem(action, at = Date.now()) {
   if (action?.kind !== "reply_message") return null;
-  if (action.platform === "instagram") {
-    return "Instagram Direct replies are disabled until the separate Instagram Messaging API credential and live test-account delivery check are complete.";
-  }
+  const label = action.platform === "instagram" ? "Instagram Direct" : "Messenger";
   const receivedAt = Number(action.incoming_at);
   if (!Number.isFinite(receivedAt) || receivedAt <= 0) {
-    return "Messenger reply is missing a verifiable inbound-message timestamp, so sending is blocked.";
+    return `${label} reply is missing a verifiable inbound-message timestamp, so sending is blocked.`;
   }
   if (receivedAt > at + 5 * 60 * 1000) {
-    return "Messenger reply has an invalid inbound-message timestamp, so sending is blocked.";
+    return `${label} reply has an invalid inbound-message timestamp, so sending is blocked.`;
   }
   if (at - receivedAt >= MESSAGE_REPLY_WINDOW_MS) {
-    return "Messenger's 24-hour customer-service window has expired; the reply was not sent.";
+    return `${label}'s 24-hour customer-service window has expired; the reply was not sent.`;
   }
   return null;
 }
@@ -229,7 +227,17 @@ export function createMetaHub(deps) {
       case "reply_message": {
         const windowProblem = messageReplyWindowProblem(a);
         if (windowProblem) throw new Error(windowProblem);
-        const r = await graph.post(`${page.pageId}/messages`, page.token, { recipient: { id: a.recipient_id }, messaging_type: "RESPONSE", message: { text: a.text } });
+        // Instagram Direct (owner request 8 Nov 2026): sent from the linked Instagram professional account with the
+        // Page token (instagram_manage_messages), never through the Facebook Page Messenger endpoint.
+        let sender = page.pageId;
+        if (a.platform === "instagram") {
+          const pg = await graph.get(page.pageId, page.token, { fields: "instagram_business_account{id}" });
+          sender = pg.instagram_business_account?.id;
+          if (!sender) throw new Error("No Instagram professional account is linked to the Facebook Page, so the Instagram reply was not sent.");
+        }
+        const r = await graph.post(`${sender}/messages`, page.token, a.platform === "instagram"
+          ? { recipient: { id: a.recipient_id }, message: { text: a.text } }
+          : { recipient: { id: a.recipient_id }, messaging_type: "RESPONSE", message: { text: a.text } });
         return { message_id: r.message_id || r.id };
       }
       case "campaign_status":
@@ -345,7 +353,7 @@ export function createMetaHub(deps) {
       const problems = d.reply ? replyProblems(d.reply, item.channel === "comment", contactPhone) : [];
       found.push(await enqueue({
         kind: item.channel === "comment" ? "reply_comment" : "reply_message", platform: item.platform, target_id: item.target_id, recipient_id: item.recipient_id,
-        from: item.from, incoming: clip(item.text, 1500), context: clip(item.context || "", 300), permalink: item.permalink || null,
+        from: item.from, incoming: clip(item.text, 1500), ...(item.incoming_at ? { incoming_at: item.incoming_at } : {}), context: clip(item.context || "", 300), permalink: item.permalink || null,
         text: d.reply || "", category: d.category, needs_human: !!d.needs_human || !d.reply || problems.length > 0, reason: problems.length ? "Draft broke a rule: " + problems.join(" ") : d.reason || "",
         preview: `${item.platform === "instagram" ? "Instagram" : "Facebook"} ${item.channel} from ${item.from || "someone"}`,
       }, "claude"));
@@ -377,11 +385,8 @@ export function createMetaHub(deps) {
         }
       }
     } catch (e) { errors.push("Instagram comments: " + e.message); }
-    // Messenger direct messages (reply window: 24 h). Instagram Direct is
-    // intentionally excluded until it uses its own supported credentials and
-    // has passed a native-client delivery test; do not route an Instagram DM
-    // through the Facebook Page Messenger endpoint.
-    for (const platform of ["messenger"]) {
+    // Messenger and Instagram Direct messages (reply window: 24 h for both).
+    for (const platform of ["messenger", "instagram"]) {
       try {
         const convs = await graph.get(`${page.pageId}/conversations`, page.token, { platform, fields: "id,updated_time,messages.limit(3){id,message,from,created_time}", limit: "25" });
         for (const cv of convs.data || []) {
@@ -389,7 +394,7 @@ export function createMetaHub(deps) {
           if (!last || !last.message || last.from?.id === page.pageId || last.from?.id === igId) continue;
           const incomingAt = Date.parse(last.created_time);
           if (!Number.isFinite(incomingAt) || incomingAt > Date.now() + 5 * 60 * 1000 || Date.now() - incomingAt > 23 * 3600000) continue;
-          await consider({ key: "msg_" + last.id, platform: "facebook", channel: "message", recipient_id: last.from?.id, text: last.message, from: last.from?.name || last.from?.username, incoming_at: incomingAt });
+          await consider({ key: "msg_" + last.id, platform: platform === "instagram" ? "instagram" : "facebook", channel: "message", recipient_id: last.from?.id, text: last.message, from: last.from?.name || last.from?.username, incoming_at: incomingAt });
         }
       } catch (e) { errors.push(`${platform} messages: ` + e.message); }
     }
