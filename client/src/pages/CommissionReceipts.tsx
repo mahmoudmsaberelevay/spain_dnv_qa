@@ -103,7 +103,7 @@ interface ReceiptWithItems {
 
 export default function CommissionReceipts() {
   const { data: receipts = [], refetch } = trpc.financial.commissionReceipts.list.useQuery();
-  const { data: employees = [] } = trpc.financial.employees.list.useQuery();
+  const { data: employees = [], isLoading: employeesLoading, error: employeesError, refetch: refetchEmployees } = trpc.financial.commissionReceipts.employeeOptions.useQuery();
   const { data: clients = [] } = trpc.financial.clients.list.useQuery();
   const { data: rateInfo } = trpc.contracting.exchangeRate.current.useQuery();
 
@@ -425,14 +425,22 @@ export default function CommissionReceipts() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label>Employee</Label>
-                <Select value={String(employeeId)} onValueChange={v => setEmployeeId(Number(v))}>
-                  <SelectTrigger><SelectValue placeholder="Select employee..." /></SelectTrigger>
+                <Select value={String(employeeId)} onValueChange={v => setEmployeeId(Number(v))} disabled={employeesLoading || Boolean(employeesError)}>
+                  <SelectTrigger aria-label="Select employee"><SelectValue placeholder={employeesLoading ? "Loading employees..." : "Select employee..."} /></SelectTrigger>
                   <SelectContent>
-                    {employees.map((e: any) => (
+                    {employees.map(e => (
                       <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {employeesError ? (
+                  <div role="alert" className="text-xs text-destructive">
+                    <p>Unable to load employee names: {employeesError.message}</p>
+                    <Button type="button" size="sm" variant="outline" onClick={() => void refetchEmployees()}>Retry employee list</Button>
+                  </div>
+                ) : !employeesLoading && employees.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No active employees available.</p>
+                ) : null}
               </div>
               <div className="space-y-1">
                 <Label>Month</Label>

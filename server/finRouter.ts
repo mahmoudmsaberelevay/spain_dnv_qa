@@ -19,6 +19,7 @@ import { normalizeFinancialDateRange } from "../shared/financialDateRange";
 import { enforceQualifierCommissionMarketingSource } from "../shared/commissionSourcePolicy";
 import { calculatePaymentEurEquivalent, normalizePaymentCurrency } from "../shared/financialPaymentSnapshots";
 import { getAutomaticPostingExchangeRate, getEurToEgpRate } from "./exchangeRate";
+import { listCommissionEmployeeOptions } from "./commissionEmployeeOptionsService";
 
 // ─── Access Control ──────────────────────────────────────────────────────────
 const ADMIN_EMAILS = [
@@ -1316,6 +1317,11 @@ const commissionItemSchema = z.object({
 });
 
 const commissionReceiptsRouter = router({
+  // Commission employee selection must not expose salaries, CRM links, or ledger totals.
+  employeeOptions: finProcedure.query(({ ctx }) => listCommissionEmployeeOptions({
+    userId: ctx.user.id,
+    isFinancialAdmin: ctx.finRole === "admin",
+  })),
   list: finProcedure.query(async () => {
     const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
     const receipts = await db.select().from(commissionReceipts).orderBy(commissionReceipts.createdAt);
