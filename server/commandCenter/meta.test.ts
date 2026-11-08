@@ -122,19 +122,22 @@ describe("Meta actions", () => {
     expect(ig.incoming_at).toBeGreaterThan(Date.now() - 60 * 60_000);
     await h.approve(fb.id, owner, { text: "شكرًا لك! راسلنا لحجز استشارة مع ELEVAY." });
     await h.approve(ig.id, owner, { text: "شكرًا لك! راسلنا لحجز استشارة مع ELEVAY." });
-    expect(posts.find((p) => p.path === "111/messages")).toMatchObject({ body: { recipient: { id: "psid-7" }, messaging_type: "RESPONSE" } });
-    expect(posts.find((p) => p.path === "ig1/messages")).toMatchObject({ body: { recipient: { id: "igsid-9" } } });
+    const sent = posts.filter((p) => p.path === "111/messages");
+    expect(sent.find((p) => p.body.recipient.id === "psid-7")).toMatchObject({ body: { messaging_type: "RESPONSE" } });
+    expect(sent.find((p) => p.body.recipient.id === "igsid-9")).toMatchObject({ body: { message: { text: expect.stringContaining("ELEVAY") } } });
+    expect(posts.some((p) => p.path === "ig1/messages")).toBe(false);
   });
 
-  it("sends an in-window Facebook Messenger reply and an Instagram Direct reply from the Instagram account, never the Page endpoint", async () => {
+  it("sends in-window Messenger and Instagram Direct replies through the Page /messages endpoint (Meta's Instagram Messaging with Facebook Login)", async () => {
     const { h, posts } = hub();
     const current = await h.enqueue({ kind: "reply_message", platform: "facebook", recipient_id: "u1", incoming_at: Date.now() - 60_000, text: "شكرًا لك!" }, "team");
     await h.approve(current.id, owner);
     expect(posts.find((p) => p.path === "111/messages")).toMatchObject({ body: { recipient: { id: "u1" } } });
     const instagram = await h.enqueue({ kind: "reply_message", platform: "instagram", recipient_id: "ig-user", incoming_at: Date.now() - 60_000, text: "شكرًا لك!" }, "team");
     await h.approve(instagram.id, owner);
-    expect(posts.filter((p) => p.path === "111/messages")).toHaveLength(1);
-    expect(posts.find((p) => p.path === "ig1/messages")).toMatchObject({ body: { recipient: { id: "ig-user" } } });
+    expect(posts.filter((p) => p.path === "111/messages")).toHaveLength(2);
+    expect(posts.find((p) => p.path === "111/messages" && p.body.recipient.id === "ig-user")).toBeTruthy();
+    expect(posts.some((p) => p.path === "ig1/messages")).toBe(false);
     const stale = await h.enqueue({ kind: "reply_message", platform: "instagram", recipient_id: "ig-user", incoming_at: Date.now() - 25 * 60 * 60 * 1000, text: "شكرًا لك!" }, "team");
     await expect(h.approve(stale.id, owner)).rejects.toThrow(/Instagram Direct's 24-hour customer-service window has expired/);
   });

@@ -227,15 +227,15 @@ export function createMetaHub(deps) {
       case "reply_message": {
         const windowProblem = messageReplyWindowProblem(a);
         if (windowProblem) throw new Error(windowProblem);
-        // Instagram Direct (owner request 8 Nov 2026): sent from the linked Instagram professional account with the
-        // Page token (instagram_manage_messages), never through the Facebook Page Messenger endpoint.
-        let sender = page.pageId;
+        // Instagram Direct (owner request 8 Nov 2026). Meta's Messenger Platform for Instagram (apps connected
+        // through a Facebook Page) sends to the IGSID through the Page's /messages endpoint with the Page token
+        // and instagram_manage_messages. The {ig-id}/messages route belongs to Instagram Login and answers
+        // "(#100) The requested user cannot be found" for these IDs.
         if (a.platform === "instagram") {
           const pg = await graph.get(page.pageId, page.token, { fields: "instagram_business_account{id}" });
-          sender = pg.instagram_business_account?.id;
-          if (!sender) throw new Error("No Instagram professional account is linked to the Facebook Page, so the Instagram reply was not sent.");
+          if (!pg.instagram_business_account?.id) throw new Error("No Instagram professional account is linked to the Facebook Page, so the Instagram reply was not sent.");
         }
-        const r = await graph.post(`${sender}/messages`, page.token, a.platform === "instagram"
+        const r = await graph.post(`${page.pageId}/messages`, page.token, a.platform === "instagram"
           ? { recipient: { id: a.recipient_id }, message: { text: a.text } }
           : { recipient: { id: a.recipient_id }, messaging_type: "RESPONSE", message: { text: a.text } });
         return { message_id: r.message_id || r.id };
