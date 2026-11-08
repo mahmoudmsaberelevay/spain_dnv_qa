@@ -5,11 +5,16 @@ import ffprobeStatic from "ffprobe-static";
 
 // Prefer verified, absolute paths provided by the production image; otherwise
 // use the app-packaged binaries. Never resolve a command through shell PATH.
-function serverBinaryPath(override: string | undefined, packaged: string | null | undefined) {
-  return override?.startsWith("/") && !/[\r\n\0]/.test(override) ? override : packaged || "";
+// If the packaged binary is missing (e.g. its download failed during a deploy's install), fall back to an
+// installed system binary at a fixed absolute path instead of failing with "spawn … ENOENT".
+const isExecutable = (p: string) => { try { accessSync(p, constants.X_OK); return true; } catch { return false; } };
+export function pickServerBinary(name: string, override: string | undefined, packaged: string | null | undefined, exists: (p: string) => boolean = isExecutable) {
+  const safeOverride = override?.startsWith("/") && !/[\r\n\0]/.test(override) ? override : "";
+  const candidates = [safeOverride, packaged || "", `/usr/bin/${name}`, `/usr/local/bin/${name}`, `/opt/homebrew/bin/${name}`].filter(Boolean);
+  return candidates.find((p) => exists(p)) || safeOverride || packaged || "";
 }
-export const FFMPEG_BIN = serverBinaryPath(process.env.ELEVAY_FFMPEG_BIN, ffmpegStatic);
-export const FFPROBE_BIN = serverBinaryPath(process.env.ELEVAY_FFPROBE_BIN, ffprobeStatic?.path);
+export const FFMPEG_BIN = pickServerBinary("ffmpeg", process.env.ELEVAY_FFMPEG_BIN, ffmpegStatic);
+export const FFPROBE_BIN = pickServerBinary("ffprobe", process.env.ELEVAY_FFPROBE_BIN, ffprobeStatic?.path);
 let cached: { ready: boolean; checkedAt: number } | null = null;
 
 function checkBinary(binary: string) {
