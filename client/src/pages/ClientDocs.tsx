@@ -33,7 +33,7 @@ type FormState = {
   program: ClientDocumentationProgram;
   applicationType: "freelancer" | "business_owner" | "";
   maritalStatus: "single" | "family" | "";
-  consultant: "Mahmoud" | "Ziad" | "Fouad" | "Kirolos" | "";
+  consultant: "Mahmoud" | "Ziad" | "Fouad" | "Kirolos" | "Nouran" | "";
   spouseName: string;
   numberOfKids: number;
   children: ChildEntry[];
@@ -231,7 +231,7 @@ export default function ClientDocs() {
       program: form.program,
       applicationType: form.program === "spain" ? form.applicationType as "freelancer" | "business_owner" : "business_owner",
       maritalStatus: form.maritalStatus as "single" | "family",
-      consultant: form.consultant as "Mahmoud" | "Ziad" | "Fouad" | "Kirolos",
+      consultant: form.consultant as "Mahmoud" | "Ziad" | "Fouad" | "Kirolos" | "Nouran",
       internalTeamComment: form.internalTeamComment.trim() || undefined,
       spouseName: form.spouseName || undefined,
       children: form.maritalStatus === "family" || isCaribbeanDocumentationProgram(form.program) ? form.children : [],
@@ -512,7 +512,7 @@ export default function ClientDocs() {
                     <SelectValue placeholder="Select consultant" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border-gray-200">
-                    {["Mahmoud", "Ziad", "Fouad", "Kirolos"].map(c => (
+                    {["Mahmoud", "Ziad", "Fouad", "Kirolos", "Nouran"].map(c => (
                       <SelectItem key={c} value={c} className="text-gray-900">{c}</SelectItem>
                     ))}
                   </SelectContent>

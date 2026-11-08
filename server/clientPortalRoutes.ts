@@ -393,6 +393,7 @@ function staffRecipients(consultant?: string | null, paralegal?: string | null) 
     Ziad: "ziad.elshurafa@elevay.com", "Ziad Elshurafa": "ziad.elshurafa@elevay.com",
     Fouad: "fouad.abdo@elevay.com", "Fouad Abdo": "fouad.abdo@elevay.com",
     Kirolos: "kirlos.nabil@elevay.com", "Kirolos Nabil": "kirlos.nabil@elevay.com",
+    Nouran: "nouran.mamdouh@elevay.com", "Nouran Mamdouh": "nouran.mamdouh@elevay.com",
     Madonna: "madonna.adel@elevay.com", "Madonna Adel": "madonna.adel@elevay.com",
     Monica: "monica.sobhy@elevay.com", "Monica Sobhy": "monica.sobhy@elevay.com",
     Marina: "marina.kamel@elevay.com", "Marina Kamel": "marina.kamel@elevay.com",

@@ -1738,7 +1738,7 @@ const clientDocsRouter = router({
       applicationType: z.enum(["freelancer", "business_owner"]),
       maritalStatus: z.enum(["single", "family"]),
       paralegal: z.enum(["Madonna", "Monica", "Marina", "Marwa", "Minerva", "Lea"]).optional(),
-      consultant: z.enum(["Mahmoud", "Ziad", "Fouad", "Kirolos"]),
+      consultant: z.enum(["Mahmoud", "Ziad", "Fouad", "Kirolos", "Nouran"]),
       internalTeamComment: z.string().trim().max(4000).optional(),
       children: z.array(z.object({ name: z.string().optional().default(""), age: z.number().int().min(0).max(120), relationship: z.enum(["child", "dependent_parent", "other"]).optional().default("child") })).max(20).optional().default([]),
       spouseName: z.string().optional(),

@@ -239,7 +239,7 @@ export const clientCases = mysqlTable("clientCases", {
   applicationType: mysqlEnum("applicationType", ["freelancer", "business_owner"]).notNull(),
   maritalStatus: mysqlEnum("maritalStatus", ["single", "family"]).notNull(),
   paralegal: mysqlEnum("paralegal", ["Madonna", "Monica", "Marina", "Marwa", "Minerva", "Lea"]),
-  consultant: mysqlEnum("consultant", ["Mahmoud", "Ziad", "Fouad", "Kirolos"]).notNull(),
+  consultant: mysqlEnum("consultant", ["Mahmoud", "Ziad", "Fouad", "Kirolos", "Nouran"]).notNull(),
   // Staff-only context entered at case creation. This field is deliberately
   // excluded from all client-portal response projections.
   internalTeamComment: text("internalTeamComment"),

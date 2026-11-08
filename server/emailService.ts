@@ -17,6 +17,8 @@ export const TEAM_EMAIL_MAP: Record<string, string> = {
   "Fouad Abdo": "fouad.abdo@elevay.com",
   "Kirolos Nabil": "kirlos.nabil@elevay.com",
   "Ziad Elshurafa": "ziad.elshurafa@elevay.com",
+  "Nouran Mamdouh": "nouran.mamdouh@elevay.com",
+  "Nouran": "nouran.mamdouh@elevay.com",
 };
 
 export const MAHMOUD_EMAILS = ["mahmoud.saber@elevay.com", "mahmoud.saberelevay@gmail.com"];
