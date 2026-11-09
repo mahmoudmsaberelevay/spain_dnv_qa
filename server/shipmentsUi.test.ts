@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   EMPTY_SHIPMENT_FILTERS,
   SHIPMENT_SORT_FIELDS,
@@ -66,7 +66,50 @@ const validEntry = {
   direction: "from" as const,
   partyName: "Synthetic Sender",
   driveUrl: "https://drive.google.com/file/d/synthetic/view",
+  recordedByName: "Synthetic Record-maker",
+  notificationEmail: "shipment@example.test",
 };
+
+function saveHarness() {
+  const create = { mutateAsync: vi.fn() };
+  const requestRef = { current: null };
+  const submittingRef = { current: false };
+  const invalidate = vi.fn().mockResolvedValue(undefined);
+  const deps = {
+    enabled: true,
+    pending: false,
+    entry: { ...validEntry },
+    shipmentEntrySchema,
+    EMPTY_ENTRY: {},
+    create,
+    requestRef,
+    submittingRef,
+    crypto: { randomUUID: vi.fn(() => "11111111-1111-4111-8111-111111111111") },
+    setErrors: vi.fn(),
+    setSaveError: vi.fn(),
+    setEntry: vi.fn(),
+    setOpen: vi.fn(),
+    shipmentSaveFeedback: pureHelper("shipmentSaveFeedback"),
+    toast: {
+      success: vi.fn(),
+      warning: vi.fn(),
+      info: vi.fn(),
+      error: vi.fn(),
+    },
+    utils: { shipments: { list: { invalidate } } },
+  };
+  const javascript = ts.transpileModule(functionSource("save"), {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.None,
+    },
+  }).outputText;
+  const save = new Function(
+    "deps",
+    `const { ${Object.keys(deps).join(", ")} } = deps; ${javascript}; return save;`
+  )(deps);
+  return { ...deps, invalidate, save: () => save({ preventDefault() {} }) };
+}
 
 describe("Shipment frontend source contracts", () => {
   it("uses auth-enabled tRPC queries without an extra layout or special user guard", () => {
@@ -96,12 +139,12 @@ describe("Shipment frontend source contracts", () => {
     expect(source).not.toMatch(/rows\.filter|rows\.length\s*[+*]/);
   });
 
-  it("keeps creation in an accessible dialog with six shared-schema fields", () => {
+  it("keeps creation in an accessible dialog with eight shared-schema fields", () => {
     const dialog = compact(functionSource("AddShipmentDialog"));
     expect(dialog).toContain("<DialogTrigger asChild>");
     expect(dialog).toContain("<DialogTitle");
     expect(dialog).toContain("<DialogDescription>");
-    expect(dialog).toContain("All six fields are required.");
+    expect(dialog).toContain("All eight fields are required.");
     expect(dialog).toContain("shipmentEntrySchema.safeParse(entry)");
     expect(dialog).toContain("aria-invalid=");
     expect(dialog).toContain("aria-describedby=");
@@ -137,6 +180,45 @@ describe("Shipment frontend source contracts", () => {
         shipmentEntrySchema.safeParse({ ...validEntry, driveUrl }).success
       ).toBe(false);
     }
+  });
+
+  it("requires manually entered recorder and a single bare notification address", () => {
+    expect(initializer("EMPTY_ENTRY")).toContain('recordedByName: ""');
+    expect(initializer("EMPTY_ENTRY")).toContain('notificationEmail: ""');
+    const dialog = compact(functionSource("AddShipmentDialog"));
+    expect(dialog).toContain('type="email"');
+    expect(dialog).toContain("maxLength={254}");
+    expect(dialog).toContain("Recorded by");
+    expect(dialog).toContain("Notification email");
+    expect(dialog).toContain("This does not change the signed-in user");
+    expect(dialog).toContain(
+      "All shipment details will be emailed immediately after saving"
+    );
+    expect(dialog).toContain("Ziad under the standing notification preference");
+    expect(
+      shipmentEntrySchema.parse({
+        ...validEntry,
+        recordedByName: "  Manual maker  ",
+      }).recordedByName
+    ).toBe("Manual maker");
+    expect(
+      shipmentEntrySchema.safeParse({
+        ...validEntry,
+        recordedByName: "a".repeat(201),
+      }).success
+    ).toBe(false);
+    for (const notificationEmail of [
+      "not-an-email",
+      "Maker <maker@example.test>",
+      "a@example.test,b@example.test",
+      "a@example.test;b@example.test",
+      "a@example.test\r\nBcc: b@example.test",
+      `${"a".repeat(245)}@example.test`,
+    ])
+      expect(
+        shipmentEntrySchema.safeParse({ ...validEntry, notificationEmail })
+          .success
+      ).toBe(false);
   });
 
   it("prevents duplicate submits and disables form controls while saving", () => {
@@ -179,13 +261,123 @@ describe("Shipment frontend source contracts", () => {
 
   it("does not falsely mark an already-saved shipment as failed when list refresh fails", () => {
     const save = compact(functionSource("save"));
-    expect(save.indexOf('toast.success("Shipment added")')).toBeGreaterThan(
-      save.indexOf("await create.mutateAsync")
-    );
+    expect(
+      save.indexOf("toast[feedback.level](feedback.message)")
+    ).toBeGreaterThan(save.indexOf("await create.mutateAsync"));
     expect(save).toContain("void utils.shipments.list.invalidate().catch");
     expect(save).toContain("Shipment saved, but the list could not refresh");
     expect(save.indexOf("utils.shipments.list.invalidate")).toBeGreaterThan(
       save.indexOf("} finally {")
+    );
+  });
+
+  it.each([
+    ["sent", "success", "Notification email sent"],
+    ["failed", "warning", "notification email failed"],
+    ["unknown", "warning", "could not be confirmed"],
+    [undefined, "warning", "could not be confirmed"],
+    ["sending", "info", "is being sent"],
+    ["not_requested", "warning", "No notification email was requested"],
+  ] as const)(
+    "closes and refreshes confirmed saves with %s email status",
+    async (status, level, message) => {
+      const harness = saveHarness();
+      harness.create.mutateAsync.mockResolvedValue({
+        row: { notificationStatus: status },
+        created: true,
+      });
+      await harness.save();
+      expect(harness.setOpen).toHaveBeenCalledWith(false);
+      expect(harness.invalidate).toHaveBeenCalledOnce();
+      expect(harness.toast[level]).toHaveBeenCalledWith(
+        expect.stringContaining(message)
+      );
+      expect(harness.setSaveError.mock.calls).toEqual([[null]]);
+      expect(harness.create.mutateAsync).toHaveBeenCalledOnce();
+      expect(harness.requestRef.current).toBeNull();
+      if (status === "failed" || status === "unknown")
+        expect(harness.toast.warning).toHaveBeenCalledWith(
+          expect.stringContaining("Do not save again")
+        );
+    }
+  );
+
+  it("reuses the UUID after an uncertain save and treats replay mail status as saved", async () => {
+    const harness = saveHarness();
+    harness.create.mutateAsync.mockRejectedValueOnce(
+      new Error("Synthetic transport loss")
+    );
+    harness.create.mutateAsync.mockResolvedValueOnce({
+      row: { notificationStatus: "unknown" },
+      created: false,
+    });
+    await harness.save();
+    expect(harness.setOpen).not.toHaveBeenCalled();
+    expect(harness.invalidate).not.toHaveBeenCalled();
+    await harness.save();
+    expect(harness.create.mutateAsync.mock.calls[0][0].requestKey).toBe(
+      harness.create.mutateAsync.mock.calls[1][0].requestKey
+    );
+    expect(harness.crypto.randomUUID).toHaveBeenCalledOnce();
+    expect(harness.setOpen).toHaveBeenCalledWith(false);
+    expect(harness.toast.warning).toHaveBeenCalledWith(
+      expect.stringContaining("Shipment saved")
+    );
+    expect(harness.invalidate).toHaveBeenCalledOnce();
+  });
+
+  it("keeps failed-email saves closed when list refresh also fails", async () => {
+    const harness = saveHarness();
+    harness.create.mutateAsync.mockResolvedValue({
+      row: { notificationStatus: "failed" },
+      created: true,
+    });
+    harness.invalidate.mockRejectedValue(new Error("Synthetic list failure"));
+    await harness.save();
+    await Promise.resolve();
+    expect(harness.setOpen.mock.calls).toEqual([[false]]);
+    expect(harness.setSaveError.mock.calls).toEqual([[null]]);
+    expect(harness.toast.warning).toHaveBeenCalledWith(
+      expect.stringContaining("Shipment saved")
+    );
+    expect(harness.toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("Shipment saved, but the list could not refresh")
+    );
+    expect(harness.create.mutateAsync).toHaveBeenCalledOnce();
+  });
+
+  it("blocks a second click before pending mutation state can render", async () => {
+    const harness = saveHarness();
+    let complete!: (value: unknown) => void;
+    harness.create.mutateAsync.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          complete = resolve;
+        })
+    );
+    const firstSave = harness.save();
+    await harness.save();
+    expect(harness.create.mutateAsync).toHaveBeenCalledOnce();
+    complete({ row: { notificationStatus: "sent" }, created: true });
+    await firstSave;
+    expect(harness.submittingRef.current).toBe(false);
+    expect(harness.invalidate).toHaveBeenCalledOnce();
+  });
+
+  it("shows recorder, notification address/status and legacy fallbacks without altering sortable columns", () => {
+    expect(page).toContain("Recorded by: ");
+    expect(page).toContain("Notification email: ");
+    expect(page).toContain('row.recordedByName?.trim() || "Not recorded"');
+    expect(page).toContain('row.notificationEmail || "Not recorded"');
+    expect(page).toContain("shipmentNotificationLabel(row.notificationStatus)");
+    const label = pureHelper<(status?: string) => string>(
+      "shipmentNotificationLabel"
+    );
+    expect(label(undefined)).toBe("Not recorded");
+    for (const status of ["sent", "failed", "sending", "unknown"])
+      expect(label(status).toLowerCase()).toBe(status);
+    expect(source).not.toMatch(
+      /notificationError|notificationRecipients|createdByUserId|SMTP|trpc\.shipments\.(notify|resend)/
     );
   });
 

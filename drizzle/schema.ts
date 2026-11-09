@@ -4020,6 +4020,13 @@ export const crmShipments = mysqlTable("crmShipments", {
   direction: mysqlEnum("direction", ["from", "to"]).notNull(),
   partyName: varchar("partyName", { length: 200 }).notNull(),
   driveUrl: varchar("driveUrl", { length: 2000 }).notNull(),
+  // Nullable for legacy shipments; new records require both through input validation.
+  recordedByName: varchar("recordedByName", { length: 200 }),
+  notificationEmail: varchar("notificationEmail", { length: 254 }),
+  notificationStatus: mysqlEnum("notificationStatus", [
+    "not_requested", "sending", "sent", "failed", "unknown",
+  ]).default("not_requested").notNull(),
+  notificationSentAt: timestamp("notificationSentAt"),
   requestKey: varchar("requestKey", { length: 36 }).notNull().unique(),
   createdByUserId: int("createdByUserId").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

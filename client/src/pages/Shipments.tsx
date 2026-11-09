@@ -80,6 +80,8 @@ const EMPTY_ENTRY: ShipmentDraft = {
   direction: "",
   partyName: "",
   driveUrl: "",
+  recordedByName: "",
+  notificationEmail: "",
 };
 const COLUMNS: {
   key: ColumnKey;
@@ -189,6 +191,60 @@ function FieldError({ id, message }: { id: string; message?: string }) {
   ) : null;
 }
 
+function shipmentNotificationLabel(
+  status: ShipmentRecord["notificationStatus"]
+): string {
+  switch (status) {
+    case "not_requested":
+      return "Not requested";
+    case "sending":
+      return "Sending";
+    case "sent":
+      return "Sent";
+    case "failed":
+      return "Failed";
+    case "unknown":
+      return "Unknown";
+    default:
+      return "Not recorded";
+  }
+}
+function shipmentSaveFeedback(status: ShipmentRecord["notificationStatus"]): {
+  level: "success" | "warning" | "info";
+  message: string;
+} {
+  switch (status) {
+    case "sent":
+      return {
+        level: "success",
+        message: "Shipment saved. Notification email sent.",
+      };
+    case "failed":
+      return {
+        level: "warning",
+        message:
+          "Shipment saved, but notification email failed. Do not save again to resend it.",
+      };
+    case "sending":
+      return {
+        level: "info",
+        message:
+          "Shipment saved. Notification email is being sent; do not save again.",
+      };
+    case "not_requested":
+      return {
+        level: "warning",
+        message: "Shipment saved. No notification email was requested.",
+      };
+    default:
+      return {
+        level: "warning",
+        message:
+          "Shipment saved, but notification email sending could not be confirmed. Do not save again to resend it.",
+      };
+  }
+}
+
 function AddShipmentDialog({ enabled }: { enabled: boolean }) {
   const utils = trpc.useUtils();
   const id = useId();
@@ -237,6 +293,7 @@ function AddShipmentDialog({ enabled }: { enabled: boolean }) {
     setErrors({});
     setSaveError(null);
     const fingerprint = JSON.stringify(parsed.data);
+    let result: Awaited<ReturnType<typeof create.mutateAsync>>;
     try {
       // Retain the UUID on an ambiguous failure. A changed payload always starts a new request.
       if (
@@ -246,7 +303,7 @@ function AddShipmentDialog({ enabled }: { enabled: boolean }) {
         requestRef.current = { fingerprint, requestKey: crypto.randomUUID() };
       }
       submittingRef.current = true;
-      await create.mutateAsync({
+      result = await create.mutateAsync({
         ...parsed.data,
         requestKey: requestRef.current.requestKey,
       });
@@ -261,7 +318,8 @@ function AddShipmentDialog({ enabled }: { enabled: boolean }) {
     requestRef.current = null;
     setEntry({ ...EMPTY_ENTRY });
     setOpen(false);
-    toast.success("Shipment added");
+    const feedback = shipmentSaveFeedback(result.row.notificationStatus);
+    toast[feedback.level](feedback.message);
     // A refresh failure must not turn an already-confirmed save into a failed creation.
     void utils.shipments.list.invalidate().catch(() => {
       toast.error(
@@ -330,7 +388,7 @@ function AddShipmentDialog({ enabled }: { enabled: boolean }) {
           </DialogTitle>
           <DialogDescription>
             Keep the shipment reference and its supporting documents together.
-            All six fields are required.
+            All eight fields are required.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -466,6 +524,68 @@ function AddShipmentDialog({ enabled }: { enabled: boolean }) {
                 permissions.
               </p>
               <FieldError id={errorId("driveUrl")} message={errors.driveUrl} />
+            </div>
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor={fieldId("recordedByName")}>
+                Recorded by<span aria-hidden="true"> *</span>
+              </Label>
+              <Input
+                id={fieldId("recordedByName")}
+                type="text"
+                value={entry.recordedByName}
+                required
+                maxLength={200}
+                placeholder="Record-maker's name"
+                autoComplete="off"
+                aria-invalid={!!errors.recordedByName}
+                aria-describedby={`${id}-recorder-help${errors.recordedByName ? ` ${errorId("recordedByName")}` : ""}`}
+                onChange={event => update("recordedByName", event.target.value)}
+                className="min-w-0 w-full"
+              />
+              <p
+                id={`${id}-recorder-help`}
+                className="text-xs text-muted-foreground"
+              >
+                Enter the person making this record. This does not change the
+                signed-in user.
+              </p>
+              <FieldError
+                id={errorId("recordedByName")}
+                message={errors.recordedByName}
+              />
+            </div>
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor={fieldId("notificationEmail")}>
+                Notification email<span aria-hidden="true"> *</span>
+              </Label>
+              <Input
+                id={fieldId("notificationEmail")}
+                type="email"
+                value={entry.notificationEmail}
+                required
+                maxLength={254}
+                placeholder="name@example.com"
+                autoComplete="off"
+                spellCheck={false}
+                aria-invalid={!!errors.notificationEmail}
+                aria-describedby={`${id}-notification-help${errors.notificationEmail ? ` ${errorId("notificationEmail")}` : ""}`}
+                onChange={event =>
+                  update("notificationEmail", event.target.value)
+                }
+                className="min-w-0 w-full"
+              />
+              <p
+                id={`${id}-notification-help`}
+                className="text-xs text-muted-foreground"
+              >
+                All shipment details will be emailed immediately after saving to
+                this address and to Ziad under the standing notification
+                preference. Enter one email address only.
+              </p>
+              <FieldError
+                id={errorId("notificationEmail")}
+                message={errors.notificationEmail}
+              />
             </div>
           </fieldset>
           {saveError && (
@@ -830,7 +950,7 @@ export default function Shipments() {
                       updateFilter("search", event.target.value)
                     }
                     maxLength={200}
-                    placeholder="Company, shipment number, name or Drive link…"
+                    placeholder="Company, shipment number, recorder, email or Drive link…"
                     className="min-w-0 w-full pl-9"
                     aria-invalid={!!filterErrors.search}
                     aria-describedby={
@@ -1259,6 +1379,26 @@ export default function Shipments() {
                     </td>
                     <td className="border-b px-4 py-4 align-top font-medium [overflow-wrap:anywhere]">
                       {row.companyName}
+                      <dl className="mt-2 space-y-1 text-[11px] font-normal text-muted-foreground">
+                        <div>
+                          <dt className="inline">Recorded by: </dt>
+                          <dd className="inline">
+                            {row.recordedByName?.trim() || "Not recorded"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="inline">Notification email: </dt>
+                          <dd className="inline">
+                            {row.notificationEmail || "Not recorded"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="inline">Email status: </dt>
+                          <dd className="inline">
+                            {shipmentNotificationLabel(row.notificationStatus)}
+                          </dd>
+                        </div>
+                      </dl>
                     </td>
                     <td className="border-b px-4 py-4 align-top font-medium [overflow-wrap:anywhere]">
                       {row.shipmentNumber}

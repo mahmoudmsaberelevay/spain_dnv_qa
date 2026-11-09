@@ -17,6 +17,10 @@ const row = {
   direction: "from" as const,
   partyName: "Sample sender",
   driveUrl: "https://drive.google.com/file/d/synthetic-document/view",
+  recordedByName: "Manual record-maker",
+  notificationEmail: "shipment@example.test",
+  notificationStatus: "sent" as const,
+  notificationSentAt: new Date("2026-11-09T08:01:00Z"),
   createdAt: new Date("2026-11-09T08:00:00Z"),
 };
 const report = (): ShipmentReport => ({
@@ -65,6 +69,8 @@ describe("Shipment entry, report and PDF safety", () => {
           createdByUserId: 42,
           requestKey: "private-key",
           privateNote: "private-value",
+          notificationError: "private-provider-error",
+          notificationRecipients: "private-recipient@example.test",
         } as any,
       ],
     });
@@ -81,6 +87,14 @@ describe("Shipment entry, report and PDF safety", () => {
       "Sample sender",
       "09/11/2026",
       "Sample issuer",
+      "Manual record-maker",
+      "shipment@example.test",
+      "Notification status",
+      "Sent",
+      "Notification sent at",
+      "Africa/Cairo",
+      "Issued by (report issuer)",
+      "Recorded by (record-maker)",
     ])
       expect(text).toContain(visible);
     for (const hidden of [
@@ -88,6 +102,8 @@ describe("Shipment entry, report and PDF safety", () => {
       "private-key",
       "private-value",
       "createdByUserId",
+      "private-provider-error",
+      "private-recipient@example.test",
     ])
       expect(text).not.toContain(hidden);
     expect(safeShipmentIssuer("private@example.com")).toBe(
@@ -118,6 +134,87 @@ describe("Shipment entry, report and PDF safety", () => {
     expect(text).toContain("TRACK-90");
     expect(text.match(/Company name/g)?.length).toBeGreaterThan(1);
     expect(text).toContain("inclusive");
+    expect(text).toContain("Recorded by:");
+    expect(text).toContain("Manual record-maker");
+    expect(text).toContain("Notification email:");
+    expect(text).toContain("shipment@example.test");
+    expect(text).toContain("Notification status: Sent");
+    expect(text).toContain("Notification sent at:");
+    expect(pdf.output()).toContain(row.driveUrl);
+  });
+  it.each([undefined, null])(
+    "exports legacy rows with %s recorder/email as Not recorded",
+    async missing => {
+      const legacyRow = {
+        ...row,
+        recordedByName: missing,
+        notificationEmail: missing,
+        notificationStatus: undefined,
+        notificationSentAt: missing,
+      };
+      for (const shipmentId of [1, undefined]) {
+        const pdf = await createShipmentsPdf({
+          ...report(),
+          shipmentId,
+          rows: [legacyRow],
+        });
+        const parser = new PDFParse({
+          data: new Uint8Array(pdf.output("arraybuffer")),
+        });
+        const text = (await parser.getText()).text;
+        await parser.destroy();
+        expect(text.match(/Not recorded/g)?.length).toBe(4);
+        expect(text).toContain("Sample issuer");
+        expect(text).not.toContain("undefined");
+        expect(text).not.toContain("null");
+        expect(pdf.output()).toContain(row.driveUrl);
+      }
+    }
+  );
+  it.each([
+    ["failed", "Failed"],
+    ["unknown", "Unknown"],
+    ["sending", "Sending"],
+    ["not_requested", "Not requested"],
+  ] as const)(
+    "shows %s notification status without claiming sent",
+    async (status, label) => {
+      const pdf = await createShipmentsPdf({
+        ...report(),
+        shipmentId: 1,
+        rows: [
+          { ...row, notificationStatus: status, notificationSentAt: null },
+        ],
+      });
+      const parser = new PDFParse({
+        data: new Uint8Array(pdf.output("arraybuffer")),
+      });
+      const text = (await parser.getText()).text;
+      await parser.destroy();
+      expect(text).toContain(label);
+      expect(text).toContain("Not recorded");
+      expect(text).not.toMatch(/\bSent\b/);
+    }
+  );
+  it("does not silently misrender Arabic manual record-makers outside a browser", async () => {
+    await expect(
+      createShipmentsPdf({
+        ...report(),
+        rows: [{ ...row, recordedByName: "صانع السجل" }],
+      })
+    ).rejects.toThrow("Arabic shipment text requires browser rendering");
+  });
+  it("rejects unsafe or invalid new report fields but does not require them for legacy rows", async () => {
+    for (const fields of [
+      { recordedByName: "a".repeat(201) },
+      { notificationEmail: "Maker <maker@example.test>" },
+      { notificationEmail: "a@example.test,b@example.test" },
+      { notificationSentAt: "not-a-date" },
+    ]) {
+      await expect(
+        createShipmentsPdf({ ...report(), rows: [{ ...row, ...fields }] })
+      ).rejects.toThrow();
+    }
   });
   it("rejects empty, mismatched or silently over-limit exports", async () => {
     await expect(createShipmentsPdf({ ...report(), rows: [] })).rejects.toThrow(

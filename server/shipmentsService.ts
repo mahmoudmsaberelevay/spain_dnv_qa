@@ -22,6 +22,7 @@ import {
   shipmentReportSchema,
 } from "../shared/shipments";
 import { getDb } from "./db";
+import { notifyShipmentCreated } from "./shipmentNotifications";
 
 export const SHIPMENT_REPORT_LIMIT = 5000;
 export type ShipmentCreateInput = z.infer<typeof shipmentCreateSchema>;
@@ -55,6 +56,10 @@ const shipmentProjection = {
   partyName: crmShipments.partyName,
   driveUrl: crmShipments.driveUrl,
   createdAt: crmShipments.createdAt,
+  recordedByName: crmShipments.recordedByName,
+  notificationEmail: crmShipments.notificationEmail,
+  notificationStatus: crmShipments.notificationStatus,
+  notificationSentAt: crmShipments.notificationSentAt,
 };
 const replayProjection = {
   ...shipmentProjection,
@@ -71,6 +76,10 @@ function safeRow(row: ShipmentRecord): ShipmentRecord {
     partyName: row.partyName,
     driveUrl: row.driveUrl,
     createdAt: row.createdAt,
+    recordedByName: row.recordedByName ?? null,
+    notificationEmail: row.notificationEmail ?? null,
+    notificationStatus: row.notificationStatus ?? "not_requested",
+    notificationSentAt: row.notificationSentAt ?? null,
   };
 }
 
@@ -189,6 +198,8 @@ const payloadFields = [
   "direction",
   "partyName",
   "driveUrl",
+  "recordedByName",
+  "notificationEmail",
 ] as const;
 type ReplayRow = ShipmentRecord & { createdByUserId: number };
 function replayResult(
@@ -250,6 +261,8 @@ export async function createShipment(
     direction: input.direction,
     partyName: input.partyName,
     driveUrl: input.driveUrl,
+    recordedByName: input.recordedByName,
+    notificationEmail: input.notificationEmail,
   };
   let id: number;
   try {
@@ -261,6 +274,7 @@ export async function createShipment(
         ...entry,
         requestKey: input.requestKey,
         createdByUserId: creatorId,
+        notificationStatus: "sending",
       })
       .$returningId();
     if (!inserted) throw new Error("Shipment insert returned no ID");
@@ -277,5 +291,37 @@ export async function createShipment(
     .where(eq(crmShipments.id, id))
     .limit(1);
   if (!created) throw new Error("Created shipment could not be read");
-  return { row: safeRow(created), created: true };
+  // Only this winning insert can reach mail. Replays, failed sends and lost
+  // responses never retry mail; no transaction/outbox can roll back the save.
+  const row = safeRow(created);
+  let sent = false;
+  try {
+    sent = await notifyShipmentCreated(row);
+  } catch {
+    console.warn("[Shipments] Notification could not be completed.");
+  }
+  const notificationStatus = sent ? "sent" : "failed";
+  const notificationSentAt = sent ? new Date() : null;
+  try {
+    const [updated] = await db.update(crmShipments)
+      .set({ notificationStatus, notificationSentAt })
+      .where(and(eq(crmShipments.id, id), eq(crmShipments.notificationStatus, "sending")));
+    if (updated.affectedRows !== 1) throw new Error("Notification state not confirmed");
+    return { row: { ...row, notificationStatus, notificationSentAt }, created: true };
+  } catch {
+    console.warn("[Shipments] Notification status could not be confirmed.");
+    // Best effort to make uncertainty durable. This is a state write only,
+    // never a second email; a DB outage may leave the stored state as sending.
+    try {
+      await db.update(crmShipments)
+        .set({ notificationStatus: "unknown", notificationSentAt: null })
+        .where(eq(crmShipments.id, id));
+    } catch {
+      // Intentionally omit raw DB/provider details.
+    }
+    return {
+      row: { ...row, notificationStatus: "unknown", notificationSentAt: null },
+      created: true,
+    };
+  }
 }

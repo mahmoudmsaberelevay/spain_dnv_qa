@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { shipmentNotificationEmailSchema } from "../shared/shipments";
 import {
   getSystemNotificationFromHeader,
   normalizeEmailRecipients,
@@ -66,6 +67,49 @@ async function sendEmail(
     return true;
   } catch (error) {
     console.error("Email send error:", error);
+    return false;
+  }
+}
+
+/**
+ * Shipment-only operational mail. Intentionally does not use the "other" event
+ * policy, which filters executive addresses. Preserve the user's one recipient
+ * and the standing Ziad preference without changing any existing mail helpers.
+ * Success means SMTP accepted every expected address, not inbox delivery.
+ */
+export async function sendShipmentNotificationEmail(
+  notificationEmail: string,
+  subject: string,
+  html: string,
+  text: string,
+): Promise<boolean> {
+  try {
+    const parsed = shipmentNotificationEmailSchema.safeParse(notificationEmail);
+    const sender = getSystemNotificationFromHeader();
+    if (!parsed.success || !sender) {
+      console.warn("[Shipments] Notification could not be sent.");
+      return false;
+    }
+    const recipients = normalizeEmailRecipients(parsed.data, ZIAD_NOTIFICATION_RECIPIENTS);
+    const result = await transporter.sendMail({
+      from: sender,
+      to: recipients,
+      subject: subject.replace(new RegExp("[\\p{Cc}\\p{Cf}]", "gu"), " "),
+      html,
+      text,
+    });
+    const accepted = new Set<string>(
+      (Array.isArray(result.accepted) ? result.accepted : []).flatMap(address => {
+        const value = typeof address === "string" ? address : address?.address;
+        return typeof value === "string" ? [value.trim().toLowerCase()] : [];
+      })
+    );
+    const success = recipients.every(address => accepted.has(address.toLowerCase()));
+    if (!success) console.warn("[Shipments] Notification was not accepted for every recipient.");
+    return success;
+  } catch {
+    // No provider error, token, envelope, address or message content in logs.
+    console.warn("[Shipments] Notification could not be sent.");
     return false;
   }
 }

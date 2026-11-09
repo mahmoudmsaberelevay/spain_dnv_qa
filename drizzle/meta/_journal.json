@@ -442,6 +442,13 @@
       "when": 1794216446634,
       "tag": "0128_crm_shipments",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "5",
+      "when": 1794218594623,
+      "tag": "0129_shipment_recorder_notifications",
+      "breakpoints": true
     }
   ]
 }

@@ -55,7 +55,13 @@ export const shipmentsRouter = router({
             result.row.id
           );
         }
-        return result;
+        const status = result.row.notificationStatus;
+        const notificationMessage = status === "unknown" || status === "sending"
+          ? "Shipment saved. Notification delivery status is uncertain; email will not be sent again for this request."
+          : status === "failed"
+            ? "Shipment saved, but the notification was not accepted for every recipient. Email will not be sent again for this request."
+            : undefined;
+        return { ...result, ...(notificationMessage ? { notificationMessage } : {}) };
       })
     ),
   report: protectedProcedure

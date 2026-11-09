@@ -16,6 +16,35 @@ const unicode = (text: string) => /[^\x20-\x7e]/.test(text);
 const calendarDate = (date: string) =>
   `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}`;
 
+// New entries require these fields; historical report rows may predate them.
+const reportEntrySchema = shipmentEntrySchema.extend({
+  recordedByName: shipmentEntrySchema.shape.recordedByName.nullish(),
+  notificationEmail: shipmentEntrySchema.shape.notificationEmail.nullish(),
+});
+function notificationLabel(status: string | undefined): string {
+  switch (status) {
+    case "not_requested":
+      return "Not requested";
+    case "sending":
+      return "Sending";
+    case "sent":
+      return "Sent";
+    case "failed":
+      return "Failed";
+    case "unknown":
+      return "Unknown";
+    default:
+      return "Not recorded";
+  }
+}
+function notificationTime(value: Date | string | null | undefined): string {
+  if (value == null) return "Not recorded";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime()))
+    throw new Error("Shipment notification time is invalid");
+  return `${date.toLocaleString("en-GB", { timeZone: "Africa/Cairo", hourCycle: "h23" })} | Africa/Cairo`;
+}
+
 /** Local-only report: no uploads, Drive requests, sharing changes or database writes. */
 export async function createShipmentsPdf(
   input: ShipmentReport
@@ -33,7 +62,12 @@ export async function createShipmentsPdf(
   const rows = input.rows.map(row => {
     if (!Number.isSafeInteger(row.id) || row.id <= 0)
       throw new Error("Invalid shipment report identifier");
-    return { id: row.id, ...shipmentEntrySchema.parse(row) };
+    return {
+      id: row.id,
+      ...reportEntrySchema.parse(row),
+      notificationStatus: notificationLabel(row.notificationStatus),
+      notificationSentAt: notificationTime(row.notificationSentAt),
+    };
   });
   if (
     input.shipmentId &&
@@ -56,6 +90,8 @@ export async function createShipmentsPdf(
       row.companyName,
       row.shipmentNumber,
       row.partyName,
+      row.recordedByName,
+      row.notificationEmail,
     ]),
     ...Object.values(filters),
   ].some(value => typeof value === "string" && unicode(value));
@@ -109,6 +145,8 @@ export async function createShipmentsPdf(
     return (ctx.measureText(text).width * 25.4) / 96;
   }
   function wrap(text: string, maxWidth: number, size = fontSize): string[] {
+    if (text.includes("\n"))
+      return text.split("\n").flatMap(line => wrap(line, maxWidth, size));
     const result: string[] = [];
     let line = "";
     for (const word of text.split(/\s+/)) {
@@ -278,7 +316,10 @@ export async function createShipmentsPdf(
     y += 6;
   }
   page();
-  paragraph(`Issued by: ${issuer}`);
+  paragraph(`Issued by (report issuer): ${issuer}`);
+  paragraph(
+    "Recorded by identifies the manually entered record-maker, not the report issuer or authenticated user."
+  );
   paragraph(
     `Date selection: ${filters.from ? calendarDate(filters.from) : "All dates"} to ${filters.to ? calendarDate(filters.to) : "All dates"}. Shipment dates are calendar dates; range boundaries are inclusive.`
   );
@@ -312,19 +353,35 @@ export async function createShipmentsPdf(
           row.direction === "from" ? "Sender name" : "Recipient name",
           row.partyName,
         ],
+        ["Recorded by (record-maker)", row.recordedByName || "Not recorded"],
+        ["Notification email", row.notificationEmail || "Not recorded"],
+        ["Notification status", row.notificationStatus],
+        ["Notification sent at", row.notificationSentAt],
         ["Document scan Drive link", row.driveUrl],
       ],
-      [undefined, undefined, undefined, undefined, undefined, row.driveUrl]
+      [
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        row.driveUrl,
+      ]
     );
   } else {
     table(
       [
         { title: "Date / ID", weight: 30 },
-        { title: "Company name", weight: 52 },
-        { title: "Shipment number", weight: 39 },
+        { title: "Company name", weight: 42 },
+        { title: "Shipment number", weight: 35 },
         { title: "Direction", weight: 34 },
-        { title: "Sender / recipient", weight: 66 },
-        { title: "Document scan", weight: 43 },
+        { title: "Sender / recipient", weight: 50 },
+        { title: "Record / notification", weight: 75 },
+        { title: "Document scan", weight: 70 },
       ],
       rows.map(row => [
         `${calendarDate(row.shipmentDate)} / #${row.id}`,
@@ -332,7 +389,8 @@ export async function createShipmentsPdf(
         row.shipmentNumber,
         shipmentDirectionLabel(row.direction),
         row.partyName,
-        "Open Drive copy",
+        `Recorded by: ${row.recordedByName || "Not recorded"}\nNotification email: ${row.notificationEmail || "Not recorded"}\nNotification status: ${row.notificationStatus}\nNotification sent at: ${row.notificationSentAt}`,
+        `Open Drive copy: ${row.driveUrl}`,
       ]),
       rows.map(row => row.driveUrl)
     );

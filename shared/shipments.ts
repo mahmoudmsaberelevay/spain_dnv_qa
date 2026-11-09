@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 export const SHIPMENT_DIRECTIONS = ["from", "to"] as const;
+export const SHIPMENT_NOTIFICATION_STATUSES = [
+  "not_requested", "sending", "sent", "failed", "unknown",
+] as const;
+export type ShipmentNotificationStatus = (typeof SHIPMENT_NOTIFICATION_STATUSES)[number];
 export const SHIPMENT_SORT_FIELDS = [
   "shipmentDate",
   "companyName",
@@ -17,6 +21,7 @@ export function isShipmentDate(value: string): boolean {
   );
 }
 export function isShipmentDriveUrl(value: string): boolean {
+  if (new RegExp("[\\p{Cc}\\p{Cf}]", "u").test(value)) return false;
   try {
     const url = new URL(value);
     return (
@@ -33,12 +38,23 @@ export function isShipmentDriveUrl(value: string): boolean {
 const day = z.string().refine(isShipmentDate, "Choose a valid calendar date");
 const shortText = (max: number) =>
   z.string().trim().min(1, "This field is required").max(max);
+const withoutControls = z.string().refine(
+  value => !new RegExp("[\\p{Cc}\\p{Cf}]", "u").test(value),
+  "Control characters are not allowed"
+);
+export const shipmentNotificationEmailSchema = withoutControls.pipe(
+  z.string().trim().min(1, "Enter one notification email").max(254).email(
+    "Enter one bare email address (no names or recipient lists)"
+  )
+);
 export const shipmentEntrySchema = z.object({
   shipmentDate: day,
   companyName: shortText(200),
   shipmentNumber: shortText(100),
   direction: z.enum(SHIPMENT_DIRECTIONS),
   partyName: shortText(200),
+  recordedByName: withoutControls.pipe(shortText(200)),
+  notificationEmail: shipmentNotificationEmailSchema,
   driveUrl: z
     .string()
     .trim()
@@ -85,9 +101,14 @@ export const shipmentReportSchema = z
 export type ShipmentEntry = z.infer<typeof shipmentEntrySchema>;
 export type ShipmentFilters = z.infer<typeof shipmentFiltersSchema>;
 export type ShipmentSortField = (typeof SHIPMENT_SORT_FIELDS)[number];
-export type ShipmentRecord = ShipmentEntry & {
+export type ShipmentRecord = Omit<ShipmentEntry, "recordedByName" | "notificationEmail"> & {
   id: number;
   createdAt: Date | string;
+  /** Manual descriptive attribution; never an authenticated creator identity. */
+  recordedByName?: string | null;
+  notificationEmail?: string | null;
+  notificationStatus?: ShipmentNotificationStatus;
+  notificationSentAt?: Date | string | null;
 };
 export type ShipmentReport = {
   rows: ShipmentRecord[];

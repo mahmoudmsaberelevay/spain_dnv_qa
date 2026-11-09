@@ -12,11 +12,13 @@ import type { TrpcContext } from "./_core/context";
 const dependencies = vi.hoisted(() => ({
   getDb: vi.fn(),
   writeAuditLog: vi.fn(),
+  notifyShipmentCreated: vi.fn(),
 }));
 // Mock before importing the actual router/service. No environment initialization,
 // database connection, auth mutation, provider invocation or real audit writes.
 vi.mock("./db", () => ({ getDb: dependencies.getDb }));
 vi.mock("./auditLog", () => ({ writeAuditLog: dependencies.writeAuditLog }));
+vi.mock("./shipmentNotifications", () => ({ notifyShipmentCreated: dependencies.notifyShipmentCreated }));
 import { shipmentsRouter } from "./shipmentsRouter";
 
 type Row = Record<string, unknown>;
@@ -29,12 +31,16 @@ const entry = {
   direction: "from" as const,
   partyName: "Synthetic recipient",
   driveUrl: "https://drive.google.com/file/d/synthetic/view",
+  recordedByName: "Synthetic manual recorder",
+  notificationEmail: "shipment@example.test",
 };
 const createInput = { ...entry, requestKey };
 const record = (overrides: Row = {}) => ({
   id: 7,
   ...entry,
   createdAt: new Date("2026-11-09T09:00:00.000Z"),
+  notificationStatus: "sending",
+  notificationSentAt: null,
   ...overrides,
 });
 const replay = (overrides: Row = {}) =>
@@ -59,7 +65,7 @@ function caller(user?: Row | null) {
  * These tests do not claim actual MySQL isolation or query-execution coverage. */
 function queuedDb(
   reads: Row[][] = [],
-  options: { insertError?: unknown; selectError?: unknown } = {}
+  options: { insertError?: unknown; selectError?: unknown; updateError?: unknown; affectedRows?: number } = {}
 ) {
   const pending = [...reads];
   const queries: any[] = [];
@@ -91,15 +97,20 @@ function queuedDb(
     return [{ id: 7 }];
   });
   const values = vi.fn(() => ({ $returningId: returning }));
+  const updateWhere = vi.fn(async () => {
+    if (options.updateError) throw options.updateError;
+    return [{ affectedRows: options.affectedRows ?? 1 }];
+  });
+  const set = vi.fn(() => ({ where: updateWhere }));
   const db = {
     select,
     insert: vi.fn(() => ({ values })),
-    update: forbidden,
+    update: vi.fn(() => ({ set })),
     delete: forbidden,
     execute: forbidden,
   };
   dependencies.getDb.mockResolvedValue(db);
-  return { db, queries, pending, values, returning, forbidden };
+  return { db, queries, pending, values, returning, forbidden, set, updateWhere };
 }
 function whereSql(query: any) {
   return dialect.sqlToQuery(query.where.mock.calls[0][0]);
@@ -120,6 +131,10 @@ function expectSafeRow(row: unknown) {
       "partyName",
       "driveUrl",
       "createdAt",
+      "recordedByName",
+      "notificationEmail",
+      "notificationStatus",
+      "notificationSentAt",
     ].sort()
   );
 }
@@ -134,12 +149,17 @@ function expectSafeProjection(query: any) {
       "partyName",
       "driveUrl",
       "createdAt",
+      "recordedByName",
+      "notificationEmail",
+      "notificationStatus",
+      "notificationSentAt",
     ].sort()
   );
   expect(query.from).toHaveBeenCalledWith(crmShipments);
 }
 beforeEach(() => {
   vi.resetAllMocks();
+  dependencies.notifyShipmentCreated.mockResolvedValue(true);
 });
 
 describe("Shipment actual-router authentication and identity", () => {
@@ -194,6 +214,7 @@ describe("Shipment actual-router authentication and identity", () => {
     expect(memory.values).toHaveBeenCalledWith({
       ...createInput,
       createdByUserId: 900,
+      notificationStatus: "sending",
     });
     expect(dependencies.writeAuditLog.mock.calls).toEqual([
       [{ userId: 900 }, "create", "crm_shipment", 7],
@@ -214,10 +235,13 @@ describe("Shipment shared-schema validation at the actual router", () => {
       shipmentNumber: " SHP-100 ",
       partyName: " Synthetic recipient ",
       driveUrl: ` ${entry.driveUrl} `,
+      recordedByName: " Synthetic manual recorder ",
+      notificationEmail: " shipment@example.test ",
     });
     expect(memory.values).toHaveBeenCalledWith({
       ...createInput,
       createdByUserId: 900,
+      notificationStatus: "sending",
     });
   });
   it.each([
@@ -239,6 +263,20 @@ describe("Shipment shared-schema validation at the actual router", () => {
     { driveUrl: "https://user:pass@drive.google.com/file" },
     { driveUrl: "https://drive.google.com:8443/file" },
     { driveUrl: "https://drive.google.com/" + "x".repeat(2000) },
+    { recordedByName: undefined },
+    { recordedByName: " " },
+    { recordedByName: "x".repeat(201) },
+    { recordedByName: " Recorder\n" },
+    { recordedByName: "Recorder\u0000" },
+    { recordedByName: "Recorder\u0085" },
+    { notificationEmail: undefined },
+    { notificationEmail: "" },
+    { notificationEmail: "Name <shipment@example.test>" },
+    { notificationEmail: "shipment@example.test,second@example.test" },
+    { notificationEmail: "shipment@example.test;second@example.test" },
+    { notificationEmail: "shipment@example.test\r\nBcc: second@example.test" },
+    { notificationEmail: "shipment@example.test\n" },
+    { notificationEmail: "a".repeat(245) + "@example.test" },
   ])("rejects invalid creation %j before database access", async invalid => {
     await expect(
       caller().create({ ...createInput, ...invalid } as any)
@@ -540,6 +578,8 @@ describe("Shipment immutable idempotent creation", () => {
     { direction: "to" },
     { partyName: "Other party" },
     { driveUrl: "https://docs.google.com/document/d/other" },
+    { recordedByName: "Other manual recorder" },
+    { notificationEmail: "other@example.test" },
   ])(
     "rejects replay when creator or any payload field differs: %j",
     async difference => {
@@ -641,6 +681,7 @@ describe("Shipment safe infrastructure failure boundary", () => {
 });
 
 describe("crmShipments schema contract", () => {
+  // Notification flows below use the real router/service and memory-only DB.
   it("declares calendar-date/text field widths, enum, unique replay key, server timestamp, and requested indexes", () => {
     const config = getTableConfig(crmShipments);
     expect(config.name).toBe("crmShipments");
@@ -652,6 +693,10 @@ describe("crmShipments schema contract", () => {
       "direction",
       "partyName",
       "driveUrl",
+      "recordedByName",
+      "notificationEmail",
+      "notificationStatus",
+      "notificationSentAt",
       "requestKey",
       "createdByUserId",
       "createdAt",
@@ -671,6 +716,15 @@ describe("crmShipments schema contract", () => {
       expect(columns[field].notNull).toBe(true);
     }
     expect(crmShipments.direction.enumValues).toEqual(["from", "to"]);
+    expect(crmShipments.recordedByName.getSQLType()).toBe("varchar(200)");
+    expect(crmShipments.notificationEmail.getSQLType()).toBe("varchar(254)");
+    expect(crmShipments.recordedByName.notNull).toBe(false);
+    expect(crmShipments.notificationEmail.notNull).toBe(false);
+    expect(crmShipments.notificationStatus.enumValues).toEqual(["not_requested", "sending", "sent", "failed", "unknown"]);
+    expect(crmShipments.notificationStatus.default).toBe("not_requested");
+    expect(crmShipments.notificationStatus.notNull).toBe(true);
+    expect(crmShipments.notificationSentAt.notNull).toBe(false);
+    expect(crmShipments.notificationSentAt.getSQLType()).toBe("timestamp");
     expect(crmShipments.requestKey.isUnique).toBe(true);
     expect(crmShipments.createdByUserId.getSQLType()).toBe("int");
     expect(crmShipments.createdAt.hasDefault).toBe(true);
@@ -682,5 +736,104 @@ describe("crmShipments schema contract", () => {
       )
     ).toEqual([["shipmentDate"], ["shipmentNumber"]]);
     expect(shipmentCreateSchema.parse(createInput)).toEqual(createInput);
+  });
+});
+
+describe("Shipment one-shot notification after durable creation", () => {
+  it("sends exactly once after insert and read confirmation, then persists sent time", async () => {
+    const memory = queuedDb([[], [record()]]);
+    dependencies.notifyShipmentCreated.mockImplementation(async (row: Row) => {
+      expect(memory.returning).toHaveBeenCalledTimes(1);
+      expect(memory.db.select).toHaveBeenCalledTimes(2);
+      expect(memory.db.update).not.toHaveBeenCalled();
+      expectSafeRow(row);
+      expect(row).toMatchObject({ recordedByName: entry.recordedByName, notificationEmail: entry.notificationEmail });
+      return true;
+    });
+    const result = await caller().create(createInput);
+    expect(result).toMatchObject({ created: true, row: { notificationStatus: "sent" } });
+    expect(result.row.notificationSentAt).toBeInstanceOf(Date);
+    expect(dependencies.notifyShipmentCreated).toHaveBeenCalledTimes(1);
+    expect(memory.set).toHaveBeenCalledWith({ notificationStatus: "sent", notificationSentAt: expect.any(Date) });
+    expect(dialect.sqlToQuery(memory.updateWhere.mock.calls[0][0])).toMatchObject({
+      params: [7, "sending"],
+    });
+  });
+  it.each([false, "exception"])("keeps shipment saved when notification outcome is %s", async outcome => {
+    const memory = queuedDb([[], [record()]]);
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    if (outcome === "exception") dependencies.notifyShipmentCreated.mockRejectedValue(new Error("raw SMTP token and private address"));
+    else dependencies.notifyShipmentCreated.mockResolvedValue(false);
+    try {
+      const result = await caller().create(createInput);
+      expect(result).toMatchObject({ created: true, row: { id: 7, notificationStatus: "failed", notificationSentAt: null } });
+      expect(result.notificationMessage).toMatch(/Shipment saved/);
+      expect(memory.returning).toHaveBeenCalledTimes(1);
+      expect(memory.set).toHaveBeenCalledWith({ notificationStatus: "failed", notificationSentAt: null });
+      expect(dependencies.notifyShipmentCreated).toHaveBeenCalledTimes(1);
+      expect(dependencies.writeAuditLog).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(log.mock.calls)).not.toMatch(/raw SMTP|token|private address/);
+    } finally { log.mockRestore(); }
+  });
+  it.each(["sending", "sent", "failed", "unknown", "not_requested"])("never resends replay with persisted state %s", async notificationStatus => {
+    const memory = queuedDb([[replay({ notificationStatus })]]);
+    expect((await caller().create(createInput)).created).toBe(false);
+    expect(memory.db.insert).not.toHaveBeenCalled();
+    expect(memory.db.update).not.toHaveBeenCalled();
+    expect(dependencies.notifyShipmentCreated).not.toHaveBeenCalled();
+  });
+  it("does not send mail for the losing unique-key race", async () => {
+    const memory = queuedDb([[], [replay()]], { insertError: { cause: { code: "ER_DUP_ENTRY" } } });
+    expect((await caller().create(createInput)).created).toBe(false);
+    expect(memory.db.update).not.toHaveBeenCalled();
+    expect(dependencies.notifyShipmentCreated).not.toHaveBeenCalled();
+  });
+  it("sends only once when concurrent calls both initially see no replay", async () => {
+    const memory = queuedDb([[], [], [replay()], [replay()]]);
+    let inserts = 0;
+    memory.returning.mockImplementation(async () => {
+      inserts += 1;
+      if (inserts > 1) throw { code: "ER_DUP_ENTRY" };
+      return [{ id: 7 }];
+    });
+    const results = await Promise.all([caller().create(createInput), caller().create(createInput)]);
+    expect(results.map(result => result.created).sort()).toEqual([false, true]);
+    expect(memory.returning).toHaveBeenCalledTimes(2);
+    expect(dependencies.notifyShipmentCreated).toHaveBeenCalledTimes(1);
+    expect(memory.db.update).toHaveBeenCalledTimes(1);
+    expect(dependencies.writeAuditLog).toHaveBeenCalledTimes(1);
+  });
+  it("returns unknown without throwing or resending if sent-state persistence fails", async () => {
+    const memory = queuedDb([[], [record()]], { updateError: new Error("SQL secret value") });
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await caller().create(createInput);
+      expect(result).toMatchObject({ created: true, row: { notificationStatus: "unknown", notificationSentAt: null } });
+      expect(result.notificationMessage).toMatch(/saved.*uncertain.*not be sent again/);
+      expect(dependencies.notifyShipmentCreated).toHaveBeenCalledTimes(1);
+      expect(memory.db.update).toHaveBeenCalledTimes(2);
+      expect(memory.set).toHaveBeenLastCalledWith({ notificationStatus: "unknown", notificationSentAt: null });
+      expect(JSON.stringify(log.mock.calls)).not.toMatch(/SQL|secret/);
+    } finally { log.mockRestore(); }
+  });
+  it("persists unknown best-effort when the initial status update affected no rows", async () => {
+    const memory = queuedDb([[], [record()]], { affectedRows: 0 });
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect((await caller().create(createInput)).row.notificationStatus).toBe("unknown");
+      expect(memory.set).toHaveBeenLastCalledWith({ notificationStatus: "unknown", notificationSentAt: null });
+      expect(dependencies.notifyShipmentCreated).toHaveBeenCalledTimes(1);
+    } finally { log.mockRestore(); }
+  });
+  it("does not notify when the inserted shipment cannot be confirmed by read", async () => {
+    queuedDb([[], []]);
+    await expect(caller().create(createInput)).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+    expect(dependencies.notifyShipmentCreated).not.toHaveBeenCalled();
+  });
+  it("keeps legacy list rows compatible with nullable recorder/email and safe defaults", async () => {
+    queuedDb([[record({ recordedByName: undefined, notificationEmail: null, notificationStatus: undefined, notificationSentAt: undefined })], [{ total: 1 }]]);
+    const result = await caller().list(listInput);
+    expect(result.rows[0]).toMatchObject({ recordedByName: null, notificationEmail: null, notificationStatus: "not_requested", notificationSentAt: null });
+    expectSafeRow(result.rows[0]);
   });
 });
