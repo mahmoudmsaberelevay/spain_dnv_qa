@@ -346,10 +346,22 @@ export function createMetaHub(deps) {
     const found = [], errors = [];
     const since = Date.now() - 7 * 86400000;
     const contactPhone = (await deps.loadState()).state.settings.meta?.contactPhone || "";
+    const counts = { facebook_comments: 0, instagram_comments: 0, ad_comments: 0, messenger: 0, instagram_direct: 0, media_only: 0, queued: 0, skipped_no_reply: 0 };
     const consider = async (item) => {
       if (await seen(item.key)) return;
+      if (item.mediaOnly) {
+        // Voice notes, photos and stickers carry no text to draft from: show them to the team instead of dropping them.
+        counts.media_only++;
+        found.push(await enqueue({
+          kind: "reply_message", platform: item.platform, recipient_id: item.recipient_id, from: item.from,
+          incoming: item.text, ...(item.incoming_at ? { incoming_at: item.incoming_at } : {}), text: "", category: "other", needs_human: true,
+          reason: "The customer sent a voice note, photo or other attachment. Listen or look in Meta Business Suite, then write the reply here or there.",
+          preview: `${item.platform === "instagram" ? "Instagram" : "Facebook"} message from ${item.from || "someone"} (attachment)`,
+        }, "claude"));
+        return;
+      }
       const d = await draftReply({ ...item, contactPhone }).catch((e) => ({ category: "other", needs_human: true, reason: "Claude could not draft: " + e.message }));
-      if (d.category === "spam" || (!d.reply && !d.needs_human)) return;
+      if (d.category === "spam" || (!d.reply && !d.needs_human)) { counts.skipped_no_reply++; return; }
       const problems = d.reply ? replyProblems(d.reply, item.channel === "comment", contactPhone) : [];
       found.push(await enqueue({
         kind: item.channel === "comment" ? "reply_comment" : "reply_message", platform: item.platform, target_id: item.target_id, recipient_id: item.recipient_id,
@@ -358,17 +370,34 @@ export function createMetaHub(deps) {
         preview: `${item.platform === "instagram" ? "Instagram" : "Facebook"} ${item.channel} from ${item.from || "someone"}`,
       }, "claude"));
     };
-    // Facebook comments on recent posts
+    // Ads: comments on ad posts never appear in the Page's published posts, and most ELEVAY comments come on ads.
+    const adStories = new Set(), adMedia = new Set();
+    try {
+      if (adsToken() && process.env.META_AD_ACCOUNT_ID) {
+        const ads = await graph.get(`${account()}/ads`, adsToken(), { fields: "id,effective_status,creative{effective_object_story_id,effective_instagram_media_id}", effective_status: JSON.stringify(["ACTIVE", "PAUSED", "CAMPAIGN_PAUSED", "ADSET_PAUSED"]), limit: "100" });
+        for (const ad of ads.data || []) {
+          if (ad.creative?.effective_object_story_id && adStories.size < 40) adStories.add(String(ad.creative.effective_object_story_id));
+          if (ad.creative?.effective_instagram_media_id && adMedia.size < 40) adMedia.add(String(ad.creative.effective_instagram_media_id));
+        }
+      }
+    } catch (e) { errors.push("Ad posts: " + e.message); }
+    // Facebook comments on recent posts and on ad posts
+    const fbPosts = [];
     try {
       const posts = await graph.get(`${page.pageId}/published_posts`, page.token, { fields: "id,message,permalink_url,created_time", limit: String(maxPosts) });
-      for (const p of posts.data || []) {
+      for (const p of posts.data || []) fbPosts.push({ ...p, ad: false });
+    } catch (e) { errors.push("Facebook posts: " + e.message); }
+    for (const id of adStories) if (!fbPosts.some((p) => p.id === id)) fbPosts.push({ id, ad: true });
+    for (const p of fbPosts) {
+      try {
         const cs = await graph.get(`${p.id}/comments`, page.token, { fields: "id,message,from,created_time", filter: "stream", order: "reverse_chronological", limit: "25" });
         for (const c of cs.data || []) {
           if (!c.message || c.from?.id === page.pageId || Date.parse(c.created_time) < since) continue;
-          await consider({ key: "fbc_" + c.id, platform: "facebook", channel: "comment", target_id: c.id, text: c.message, from: c.from?.name, context: p.message, permalink: p.permalink_url });
+          if (p.ad) counts.ad_comments++; else counts.facebook_comments++;
+          await consider({ key: "fbc_" + c.id, platform: "facebook", channel: "comment", target_id: c.id, text: c.message, from: c.from?.name, context: p.message || (p.ad ? "(comment on an ELEVAY ad)" : ""), permalink: p.permalink_url || null });
         }
-      }
-    } catch (e) { errors.push("Facebook comments: " + e.message); }
+      } catch (e) { errors.push(`Facebook comments on ${p.ad ? "ad " : ""}post ${p.id}: ` + e.message); }
+    }
     // Instagram comments
     let igId = null;
     try {
@@ -376,29 +405,47 @@ export function createMetaHub(deps) {
       igId = pg.instagram_business_account?.id || null;
       if (igId) {
         const media = await graph.get(`${igId}/media`, page.token, { fields: "id,caption,permalink,timestamp", limit: String(maxPosts) });
-        for (const m of media.data || []) {
-          const cs = await graph.get(`${m.id}/comments`, page.token, { fields: "id,text,username,timestamp", limit: "25" });
-          for (const c of cs.data || []) {
-            if (!c.text || c.username === pg.instagram_business_account.username || Date.parse(c.timestamp) < since) continue;
-            await consider({ key: "igc_" + c.id, platform: "instagram", channel: "comment", target_id: c.id, text: c.text, from: c.username, context: m.caption, permalink: m.permalink });
-          }
+        const list = (media.data || []).map((m) => ({ ...m, ad: false }));
+        for (const id of adMedia) if (!list.some((m) => m.id === id)) list.push({ id, ad: true });
+        for (const m of list) {
+          try {
+            const cs = await graph.get(`${m.id}/comments`, page.token, { fields: "id,text,username,timestamp", limit: "25" });
+            for (const c of cs.data || []) {
+              if (!c.text || c.username === pg.instagram_business_account.username || Date.parse(c.timestamp) < since) continue;
+              if (m.ad) counts.ad_comments++; else counts.instagram_comments++;
+              await consider({ key: "igc_" + c.id, platform: "instagram", channel: "comment", target_id: c.id, text: c.text, from: c.username, context: m.caption || (m.ad ? "(comment on an ELEVAY ad)" : ""), permalink: m.permalink || null });
+            }
+          } catch (e) { errors.push(`Instagram comments on ${m.ad ? "ad " : ""}media ${m.id}: ` + e.message); }
         }
       }
     } catch (e) { errors.push("Instagram comments: " + e.message); }
     // Messenger and Instagram Direct messages (reply window: 24 h for both).
     for (const platform of ["messenger", "instagram"]) {
       try {
-        const convs = await graph.get(`${page.pageId}/conversations`, page.token, { platform, fields: "id,updated_time,messages.limit(3){id,message,from,created_time}", limit: "25" });
+        const convs = await graph.get(`${page.pageId}/conversations`, page.token, { platform, fields: "id,updated_time,messages.limit(3){id,message,from,created_time,attachments.limit(1){mime_type,type}}", limit: "25" });
         for (const cv of convs.data || []) {
           const last = cv.messages?.data?.[0];
-          if (!last || !last.message || last.from?.id === page.pageId || last.from?.id === igId) continue;
+          if (!last || last.from?.id === page.pageId || last.from?.id === igId) continue;
           const incomingAt = Date.parse(last.created_time);
           if (!Number.isFinite(incomingAt) || incomingAt > Date.now() + 5 * 60 * 1000 || Date.now() - incomingAt > 23 * 3600000) continue;
+          if (platform === "instagram") counts.instagram_direct++; else counts.messenger++;
+          if (!last.message) {
+            const kind = String(last.attachments?.data?.[0]?.mime_type || last.attachments?.data?.[0]?.type || "attachment");
+            await consider({ key: "msg_" + last.id, mediaOnly: true, platform: platform === "instagram" ? "instagram" : "facebook", channel: "message", recipient_id: last.from?.id, text: `[${/audio/i.test(kind) ? "voice message" : /image|photo/i.test(kind) ? "photo" : /video/i.test(kind) ? "video" : "attachment"}]`, from: last.from?.name || last.from?.username, incoming_at: incomingAt });
+            continue;
+          }
           await consider({ key: "msg_" + last.id, platform: platform === "instagram" ? "instagram" : "facebook", channel: "message", recipient_id: last.from?.id, text: last.message, from: last.from?.name || last.from?.username, incoming_at: incomingAt });
         }
       } catch (e) { errors.push(`${platform} messages: ` + e.message); }
     }
-    return { queued: found.length, errors };
+    counts.queued = found.length;
+    const status = { at: Date.now(), counts, errors: errors.slice(0, 12) };
+    await q("INSERT INTO ec_kv (name, value) VALUES ('meta_inbox_last', ?) ON DUPLICATE KEY UPDATE value=VALUES(value)", [JSON.stringify(status)]).catch(() => {});
+    return { queued: found.length, errors, counts };
+  }
+  /** The last inbox check (manual or automatic), so failures of the 10-minute check are visible. */
+  async function inboxStatus() {
+    try { return JSON.parse((await q("SELECT value FROM ec_kv WHERE name='meta_inbox_last'"))[0]?.value || "null"); } catch { return null; }
   }
 
   // ---------------------------------------------------------------- publishing approved posts
@@ -634,7 +681,9 @@ export function createMetaHub(deps) {
     const { state } = await deps.loadState();
     if (state.settings.meta?.inbox === false || Date.now() - last < 10 * 60000) return;
     await q("INSERT INTO ec_kv (name, value) VALUES ('meta_inbox_sync', ?) ON DUPLICATE KEY UPDATE value=VALUES(value)", [String(Date.now())]);
-    await syncInbox().catch(() => {});
+    await syncInbox().catch(async (e) => {
+      await q("INSERT INTO ec_kv (name, value) VALUES ('meta_inbox_last', ?) ON DUPLICATE KEY UPDATE value=VALUES(value)", [JSON.stringify({ at: Date.now(), counts: null, errors: [String(e?.message || e).slice(0, 300)] })]).catch(() => {});
+    });
   }
 
   /** Owner action: let approved posts that stopped retrying (e.g. missing Instagram permission) be published again.
@@ -718,5 +767,5 @@ export function createMetaHub(deps) {
 
   async function adsReviewData() { return buildAdsReviewData({ q, fetcher: deps.fetcher || fetch }); }
 
-  return { adsReviewData, ensureTables, enqueue, approve, reject, list, syncInbox, publishDue, publishItem, publishNow, releaseForPublishing, precheck, checkConnection, selectedAssets, leadForms, tick, replyProblems, adsSnapshot };
+  return { adsReviewData, ensureTables, enqueue, approve, reject, list, syncInbox, inboxStatus, publishDue, publishItem, publishNow, releaseForPublishing, precheck, checkConnection, selectedAssets, leadForms, tick, replyProblems, adsSnapshot };
 }

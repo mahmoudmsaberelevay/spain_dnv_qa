@@ -21,13 +21,13 @@ function db() {
     if (sql.startsWith("SELECT id, doc FROM ec_meta_actions")) return [...rows.values()].reverse();
     if (sql.startsWith("INSERT IGNORE INTO ec_meta_seen")) { if (seen.has(a[0])) return { affectedRows: 0 }; seen.add(a[0]); return { affectedRows: 1 }; }
     if (sql.includes("lead_integrations")) return [];
-    if (sql.startsWith("SELECT value FROM ec_kv")) return kv.has("meta_inbox_sync") ? [{ value: kv.get("meta_inbox_sync") }] : [];
-    if (sql.startsWith("INSERT INTO ec_kv")) { kv.set("meta_inbox_sync", a[0]); return {}; }
+    if (sql.startsWith("SELECT value FROM ec_kv")) { const name = (sql.match(/name='([^']+)'/) || [])[1] || "meta_inbox_sync"; return kv.has(name) ? [{ value: kv.get(name) }] : []; }
+    if (sql.startsWith("INSERT INTO ec_kv")) { const name = (sql.match(/\('([^']+)', \?\)/) || [])[1] || "meta_inbox_sync"; kv.set(name, a[0]); return {}; }
     throw new Error("unexpected sql: " + sql);
   };
 }
 
-function fakeMeta({ conversations = false, mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 150 }, instagramPermission = true, instagramStatus = "FINISHED", permissions = ["ads_management", "ads_read", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", "read_insights", "leads_retrieval", "instagram_basic", "instagram_manage_insights", "instagram_manage_comments", "instagram_content_publish"] } = {}) {
+function fakeMeta({ adComments = false, voiceNote = false, conversations = false, mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 150 }, instagramPermission = true, instagramStatus = "FINISHED", permissions = ["ads_management", "ads_read", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", "read_insights", "leads_retrieval", "instagram_basic", "instagram_manage_insights", "instagram_manage_comments", "instagram_content_publish"] } = {}) {
   const posts = [];
   const fetcher = async (url, init) => {
     const u = new URL(url), path = u.pathname.split("/").slice(2).join("/"), body = init.body ? JSON.parse(init.body) : null;
@@ -48,6 +48,10 @@ function fakeMeta({ conversations = false, mtd = 100000, activeDaily = 3000, cpl
       else if (path === "me/permissions") out = { data: instagramPermission ? permissions.map((permission) => ({ permission, status: "granted" })) : [] };
       else if (path === "111") out = { id: "111", name: "Elevay Global", instagram_business_account: { id: "ig1", username: "elevayglobal" } };
       else if (path === "ig1/media") out = { data: [] };
+      else if (path === "act_548667060148825/ads") out = !adComments ? { data: [] } : { data: [{ id: "ad1", effective_status: "ACTIVE", creative: { effective_object_story_id: "111_adpost", effective_instagram_media_id: "igad1" } }] };
+      else if (path === "111_adpost/comments") out = { data: [{ id: "adc1", message: "بكام إقامة البرتغال؟", from: { id: "u9", name: "Hany" }, created_time: new Date().toISOString() }] };
+      else if (path === "igad1/comments") out = { data: [{ id: "igadc1", text: "Details please", username: "nour.a", timestamp: new Date().toISOString() }] };
+      else if (path === "111/conversations" && voiceNote && u.searchParams.get("platform") === "messenger") out = { data: [{ id: "fbconv2", messages: { data: [{ id: "fbv1", from: { id: "psid-8", name: "Milad" }, created_time: new Date(Date.now() - 2 * 60_000).toISOString(), attachments: { data: [{ mime_type: "audio/mpeg" }] } }] } }] };
       else if (path === "111/conversations") out = !conversations ? { data: [] } : u.searchParams.get("platform") === "instagram"
         ? { data: [{ id: "igconv1", messages: { data: [{ id: "igm1", message: "عايز أعرف عن إقامة البرتغال", from: { id: "igsid-9", username: "sara.k" }, created_time: new Date(Date.now() - 10 * 60_000).toISOString() }] } }] }
         : { data: [{ id: "fbconv1", messages: { data: [{ id: "fbm1", message: "كم تكلفة إقامة إسبانيا؟", from: { id: "psid-7", name: "Ahmed" }, created_time: new Date(Date.now() - 5 * 60_000).toISOString() }] } }] };
@@ -79,6 +83,21 @@ describe("Meta actions", () => {
     expect(check.key).toMatchObject({ ok: true, detail: "Key has required publishing permissions" });
     expect(check.inbox_key).toMatchObject({ ok: false });
     expect(check.inbox_key.detail).toMatch(/pending Meta review/);
+  });
+
+  it("reads comments on ad posts and shows voice notes to the team; the last check is recorded (9 Nov 2026)", async () => {
+    const { h } = hub({ meta: { adComments: true, voiceNote: true } });
+    const r = await h.syncInbox();
+    const actions = await h.list();
+    expect(actions.find((a) => a.target_id === "adc1")).toMatchObject({ kind: "reply_comment", platform: "facebook" });
+    expect(actions.find((a) => a.target_id === "igadc1")).toMatchObject({ kind: "reply_comment", platform: "instagram" });
+    const voice = actions.find((a) => a.recipient_id === "psid-8");
+    expect(voice).toMatchObject({ kind: "reply_message", needs_human: true, incoming: "[voice message]" });
+    expect(voice.incoming_at).toBeGreaterThan(Date.now() - 60 * 60_000);
+    expect(r.counts).toMatchObject({ ad_comments: 2, media_only: 1 });
+    const status = await h.inboxStatus();
+    expect(status.counts.ad_comments).toBe(2);
+    expect(Array.isArray(status.errors)).toBe(true);
   });
 
   it("drafts replies to new comments, skips spam and the page's own comments, flags complaints", async () => {

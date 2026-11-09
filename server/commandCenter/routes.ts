@@ -568,7 +568,7 @@ function metaHub() {
   return metaPromise;
 }
 const metaAct = (fn) => async (ctx) => { try { return ok({ ok: true, ...(await fn(await metaHub(), ctx)) }); } catch (e) { return fail(400, e.message); } };
-route("GET", "/meta/actions", "team", metaAct(async (m, ctx) => ({ actions: await m.list({ status: ctx.query.status || undefined, limit: 150 }), kinds: META_KINDS })));
+route("GET", "/meta/actions", "team", metaAct(async (m, ctx) => ({ actions: await m.list({ status: ctx.query.status || undefined, limit: 150 }), kinds: META_KINDS, inbox: await m.inboxStatus() })));
 route("POST", "/meta/actions", "marketer", metaAct(async (m, ctx) => ({ action: await m.enqueue(cleanMetaAction(ctx.body), ctx.user.email) })));
 route("POST", "/meta/actions/:id/approve", "owner", metaAct(async (m, ctx) => ({ action: await m.approve(Number(ctx.params.id), ctx.user, { text: ctx.body.text, daily_budget_egp: ctx.body.daily_budget_egp }) })));
 route("POST", "/meta/actions/:id/reject", "owner", metaAct(async (m, ctx) => { await m.reject(Number(ctx.params.id), ctx.user, String(ctx.body.reason || "")); return {}; }));

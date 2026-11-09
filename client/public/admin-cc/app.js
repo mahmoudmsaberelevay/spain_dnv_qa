@@ -1046,9 +1046,17 @@
   }
   // ------------------------------------------------------------ Meta (replies, publishing, campaigns)
   const META_PILL = { pending: ['warn', 'Needs approval'], running: ['info', 'Running'], done: ['ok', 'Done'], failed: ['bad', 'Failed'], blocked: ['bad', 'Refused by guardrail'], rejected: ['', 'Rejected'] };
+  // Last inbox check (manual or the automatic 10-minute one): what was read and any error, so nothing fails silently.
+  function inboxLine(x) {
+    if (!x) return '<p class="small muted">No inbox check recorded yet.</p>';
+    const c = x.counts || {};
+    const read = x.counts ? `Read ${c.facebook_comments || 0} Facebook comments, ${c.instagram_comments || 0} Instagram comments, ${c.ad_comments || 0} ad comments, ${c.messenger || 0} Messenger and ${c.instagram_direct || 0} Instagram messages (last 7 days / 24 h). ${c.queued || 0} new item(s) queued${c.media_only ? `, ${c.media_only} voice note/photo` : ''}${c.skipped_no_reply ? `, ${c.skipped_no_reply} needed no reply` : ''}.` : '';
+    const errs = (x.errors || []).length ? `<div class="small" style="color:var(--bad,#b42318)">Problems: ${(x.errors || []).map(esc).join(' · ')}</div>` : '';
+    return `<p class="small muted">Last check ${fmtDT(new Date(x.at).toISOString())}. ${esc(read)}</p>${errs}`;
+  }
   async function loadMeta() {
     const [a, c, f, w, assets] = await Promise.all([api.req('GET', 'meta/actions'), api.req('GET', 'meta/campaigns').catch((e) => ({ error: e.message })), S.meta && S.meta.forms ? Promise.resolve({ forms: S.meta.forms }) : api.req('GET', 'meta/forms').catch(() => ({ forms: [] })), api.req('GET', 'meta/webhooks').catch((e) => ({ error: e.message })), api.req('GET', 'meta/assets').catch(() => null)]);
-    S.meta = { actions: a.actions, campaigns: c, forms: f.forms || [], webhookHealth: w.health || null, webhookError: w.error || null, assets: assets && assets.assets ? assets.assets : null, checks: S.meta && S.meta.checks };
+    S.meta = { inbox: a.inbox || null, actions: a.actions, campaigns: c, forms: f.forms || [], webhookHealth: w.health || null, webhookError: w.error || null, assets: assets && assets.assets ? assets.assets : null, checks: S.meta && S.meta.checks };
     return S.meta;
   }
   function webhookHealthCard(h, err) {
@@ -1075,6 +1083,7 @@
     const posts = [...S.data.items.filter((i) => ['approved', 'scheduled'].includes(i.status)), ...S.data.items.filter((i) => i.status === 'published').slice(-5).reverse()];
     el.innerHTML = `<div class="stack" style="gap:16px">
       <section class="panel"><div class="panel-h"><h2>Needs your approval</h2><span class="row small muted">${pending.length} waiting ${canEdit() ? '<button class="btn sm" id="mxSync">Check comments & messages now</button>' : ''}</span></div>
+        ${inboxLine(m.inbox)}
         ${pending.length ? `<div class="stack" style="gap:10px">${pending.map(metaCard).join('')}</div>` : '<div class="empty">Nothing waiting. New comments and Messenger messages are checked every 10 minutes; Claude drafts each reply. Instagram Direct remains disabled pending its separate API validation.</div>'}</section>
       ${webhookHealthCard(m.webhookHealth, m.webhookError)}
       ${owner ? selectedAssetsCard(m.assets) : ''}
