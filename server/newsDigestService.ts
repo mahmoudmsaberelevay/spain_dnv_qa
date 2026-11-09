@@ -235,6 +235,46 @@ export function extractNewsArticlesFromDigest(text: string, html = "") {
   return Array.from(unique.values());
 }
 
+const NEWS_COUNTRY_RULES: RegExp[] = [
+  /\b(spain|spanish|espana|espanol)\b/,
+  /\b(portugal|portuguese|portugues)\b/,
+  /\b(malta|maltese)\b/,
+  /\b(greece|greek|hellenic)\b/,
+  /\b(latvia|latvian)\b/,
+  /\b(united kingdom|great britain|britain|british|uk|u k)\b/,
+  /\b(united states( of america)?|usa|u s a|u s|american)\b/,
+  /\b(canada|canadian)\b/,
+  /\b(australia|australian)\b/,
+  /\b(argentina|argentine|argentinian)\b/,
+  /\b(sao tome( and principe)?|sao tome e principe)\b/,
+  /\b(antigua( and barbuda)?|barbuda)\b/,
+  /\b(saint kitts( and nevis)?|st kitts( and nevis)?|nevis)\b/,
+  /\b(saint lucia|st lucia)\b/,
+  /\b(dominica)\b/,
+  /\b(grenada|grenadian)\b/,
+];
+
+const NEWS_COUNTRY_ARABIC_RULE = /إسبانيا|اسبانيا|البرتغال|مالطا|اليونان|لاتفيا|المملكة المتحدة|بريطانيا|الولايات المتحدة|أمريكا|امريكا|كندا|أستراليا|استراليا|الأرجنتين|الارجنتين|ساو تومي|أنتيغوا|انتيغوا|باربودا|سانت كيتس|نيفيس|سانت لوسيا|دومينيكا|غرينادا|جرينادا/;
+const IMMIGRATION_TOPIC_RULE = /\b(immigration|immigrants?|migration|migrants?|migratory|citizenship|citizens?|nationality|naturaliz(e|ation|ed|ing)|naturaliz(s|ation|ed|ing)|residency|residence|residents?|visas?|visa[- ]free|permits?|golden visa|investor visa|investment migration|permanent residence|settlement|asylum|deportation|border policy|entry requirements?|immigration law|immigration policy)\b/;
+const IMMIGRATION_TOPIC_ARABIC_RULE = /هجر|إقام|اقام|جنسية|مواطنة|تأشير|فيزا|تجنس|جواز سفر|إقامة دائمة|اقامة دائمة|لجوء|ترحيل/;
+
+function normalizeNewsMatchText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+export function isImmigrationNewsArticleRelevant(article: Pick<NewsArticleCandidate, "title" | "description">) {
+  const rawText = `${article.title} ${article.description || ""}`;
+  const text = normalizeNewsMatchText(rawText);
+  const countryMatched = NEWS_COUNTRY_RULES.some(rule => rule.test(text)) || NEWS_COUNTRY_ARABIC_RULE.test(rawText);
+  const topicMatched = IMMIGRATION_TOPIC_RULE.test(text) || IMMIGRATION_TOPIC_ARABIC_RULE.test(rawText);
+  return countryMatched && topicMatched;
+}
+
+export function filterImmigrationNewsArticles<T extends Pick<NewsArticleCandidate, "title" | "description">>(articles: T[]) {
+  return articles.filter(isImmigrationNewsArticleRelevant);
+}
+
 function decodeBody(data?: string | null) {
   return data ? Buffer.from(data, "base64url").toString("utf8") : "";
 }
@@ -288,7 +328,7 @@ async function importDigestMessage(message: GmailDigestMessage) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const [previous] = await db.select().from(newsDigestImports).where(and(eq(newsDigestImports.sourceMailbox, NEWS_SOURCE_MAILBOX), eq(newsDigestImports.sourceMessageId, message.sourceMessageId))).limit(1);
-  if (previous?.status === "success") return { found: previous.articlesFound, inserted: [] as Array<{ publicId: string; title: string }> };
+  if (previous?.status === "success") return { found: previous.articlesFound, filteredOut: 0, inserted: [] as Array<{ publicId: string; title: string }> };
   if (!previous) {
     await db.insert(newsDigestImports).values({ sourceMessageId: message.sourceMessageId, sourceMailbox: NEWS_SOURCE_MAILBOX, subject: message.subject, receivedAt: message.receivedAt, status: "processing" });
   } else {
@@ -296,7 +336,9 @@ async function importDigestMessage(message: GmailDigestMessage) {
   }
   const [importRow] = await db.select().from(newsDigestImports).where(and(eq(newsDigestImports.sourceMailbox, NEWS_SOURCE_MAILBOX), eq(newsDigestImports.sourceMessageId, message.sourceMessageId))).limit(1);
   try {
-    const candidates = extractNewsArticlesFromDigest(message.text, message.html);
+    const extractedCandidates = extractNewsArticlesFromDigest(message.text, message.html);
+    const candidates = filterImmigrationNewsArticles(extractedCandidates);
+    const filteredOut = extractedCandidates.length - candidates.length;
     const inserted: Array<{ publicId: string; title: string }> = [];
     for (const article of candidates) {
       const hash = createHash("sha256").update(article.url).digest("hex");
@@ -323,7 +365,7 @@ async function importDigestMessage(message: GmailDigestMessage) {
       }
     }
     if (importRow) await db.update(newsDigestImports).set({ status: "success", articlesFound: candidates.length, articlesInserted: inserted.length, completedAt: new Date(), errorMessage: null }).where(eq(newsDigestImports.id, importRow.id));
-    return { found: candidates.length, inserted };
+    return { found: extractedCandidates.length, filteredOut, inserted };
   } catch (error) {
     if (importRow) await db.update(newsDigestImports).set({ status: "failed", errorMessage: String(error).slice(0, 4000), completedAt: new Date() }).where(eq(newsDigestImports.id, importRow.id));
     throw error;
@@ -415,15 +457,17 @@ export async function runNewsDigestImport() {
     const messages = await loadDigestMessages();
     const inserted: Array<{ publicId: string; title: string }> = [];
     let articlesFound = 0;
+    let articlesFilteredOut = 0;
     for (const message of messages) {
       const result = await importDigestMessage(message);
       articlesFound += result.found;
+      articlesFilteredOut += result.filteredOut;
       inserted.push(...result.inserted);
     }
     const removed = await enforceNewsRetention(NEWS_MAX_ARTICLES);
     const delivery = await broadcastNews(inserted);
     await db.update(newsDigestSettings).set({ lastSuccessfulAt: new Date(), lastError: null }).where(eq(newsDigestSettings.id, 1));
-    return { messagesChecked: messages.length, articlesFound, articlesInserted: inserted.length, articlesRemoved: removed, ...delivery };
+    return { messagesChecked: messages.length, articlesFound, articlesFilteredOut, articlesInserted: inserted.length, articlesRemoved: removed, ...delivery };
   } catch (error) {
     const errorMessage = String(error).slice(0, 4000);
     await db.update(newsDigestSettings).set({ lastError: errorMessage }).where(eq(newsDigestSettings.id, 1));

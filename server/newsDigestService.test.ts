@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { describe, expect, it } from "vitest";
-import { createNewsGmailOAuthState, decryptGmailRefreshToken, encryptGmailRefreshToken, extractNewsArticlesFromDigest, NEWS_MAX_ARTICLES, NEWS_SOURCE_MAILBOX, NEWS_SUBJECT_TRIGGER, verifyNewsGmailOAuthState } from "./newsDigestService";
+import { createNewsGmailOAuthState, decryptGmailRefreshToken, encryptGmailRefreshToken, extractNewsArticlesFromDigest, filterImmigrationNewsArticles, isImmigrationNewsArticleRelevant, NEWS_MAX_ARTICLES, NEWS_SOURCE_MAILBOX, NEWS_SUBJECT_TRIGGER, verifyNewsGmailOAuthState } from "./newsDigestService";
 import { isCairoNewsDigestTime } from "./scheduledNewsDigestHandler";
 
 describe("ELEVAY News Daily Digest importer", () => {
@@ -39,6 +39,39 @@ The report summarizes current processing and appointment developments for applic
       <a href="https://www.google.com/alerts/manage">Manage this Daily Digest alert</a>
     `;
     expect(extractNewsArticlesFromDigest("", html)).toEqual([]);
+  });
+
+  it("keeps only immigration, citizenship, residency, visa, and migration news for the approved countries", () => {
+    const relevant = [
+      { title: "Spain changes digital nomad residence rules", description: "New residency permit requirements for applicants." },
+      { title: "Portugal immigration policy update", description: "The government announced new visa rules." },
+      { title: "Malta citizenship programme changes", description: "The residency route and citizenship rules were revised." },
+      { title: "Greece golden visa update", description: "Investors face new residence permit criteria." },
+      { title: "Latvia residence permit rules", description: "Immigration applications will follow new requirements." },
+      { title: "UK settlement and immigration changes", description: "New migrant visa eligibility rules." },
+      { title: "U.S. citizenship and visa policy", description: "A new nationality regulation was announced." },
+      { title: "Canada permanent residence update", description: "Immigration policy changes for applicants." },
+      { title: "Australia migration programme update", description: "New visa eligibility requirements." },
+      { title: "Argentina residency reform", description: "Residence permits and naturalization changes." },
+      { title: "São Tomé visa rules", description: "Immigration entry and residency policy update." },
+      { title: "Antigua and Barbuda citizenship news", description: "Citizenship by investment regulations change." },
+      { title: "St. Kitts & Nevis investor visa", description: "New citizenship application rules." },
+      { title: "St. Lucia residency programme", description: "Immigration permit regulation update." },
+      { title: "Dominica citizenship programme", description: "Naturalization requirements are changing." },
+      { title: "Grenada immigration update", description: "New visa and residency requirements." },
+    ];
+    expect(filterImmigrationNewsArticles(relevant)).toHaveLength(16);
+    expect(isImmigrationNewsArticleRelevant({ title: "إسبانيا: تحديث قواعد الإقامة", description: "أعلنت الحكومة تغييرات على تأشيرات الهجرة." })).toBe(true);
+  });
+
+  it("excludes unrelated country stories, unrelated immigration stories, and country matches found only in the publisher name", () => {
+    const candidates = [
+      { title: "Spain wins international football final", description: "A dramatic match ended after extra time." },
+      { title: "Immigration reform announced", description: "The government published a new visa regulation." },
+      { title: "Daily immigration report", description: "A general migration report with no country-specific coverage." },
+      { title: "New Canadian music album released", description: "The artist announced tour dates." },
+    ];
+    expect(filterImmigrationNewsArticles(candidates)).toEqual([]);
   });
 
   it("uses the requested mailbox, trigger, direct Gmail read-only API, and a 200-item cap", () => {

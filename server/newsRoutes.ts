@@ -12,6 +12,7 @@ import {
   getNewsGmailConnectionStatus,
   NEWS_MAX_ARTICLES,
   NEWS_SOURCE_MAILBOX,
+  isImmigrationNewsArticleRelevant,
   verifyNewsGmailOAuthState,
 } from "./newsDigestService";
 
@@ -63,10 +64,33 @@ export function registerNewsRoutes(app: Express) {
         publishedAt: publicNewsArticles.publishedAt,
         digestReceivedAt: publicNewsArticles.digestReceivedAt,
       }).from(publicNewsArticles).orderBy(desc(publicNewsArticles.digestReceivedAt), desc(publicNewsArticles.id)).limit(NEWS_MAX_ARTICLES);
+      const articles = rows.filter(isImmigrationNewsArticleRelevant).map(row => ({ ...row, content: row.description || "" }));
       res.setHeader("Cache-Control", "public, max-age=120, stale-while-revalidate=900");
-      return res.json(rows);
+      return res.json(articles);
     } catch (error) {
       console.error("[News] Public feed failed:", error instanceof Error ? error.message : String(error));
+      return res.status(500).json({ error: "news_unavailable" });
+    }
+  });
+
+  app.get("/public-api/news/:publicId", async (req: Request, res: Response) => {
+    try {
+      const db = await getDb();
+      if (!db) return res.status(503).json({ error: "service_unavailable" });
+      const [row] = await db.select({
+        publicId: publicNewsArticles.publicId,
+        title: publicNewsArticles.title,
+        description: publicNewsArticles.description,
+        sourceName: publicNewsArticles.sourceName,
+        url: publicNewsArticles.url,
+        publishedAt: publicNewsArticles.publishedAt,
+        digestReceivedAt: publicNewsArticles.digestReceivedAt,
+      }).from(publicNewsArticles).where(eq(publicNewsArticles.publicId, req.params.publicId)).limit(1);
+      if (!row || !isImmigrationNewsArticleRelevant(row)) return res.status(404).json({ error: "not_found" });
+      res.setHeader("Cache-Control", "public, max-age=120, stale-while-revalidate=900");
+      return res.json({ ...row, content: row.description || "" });
+    } catch (error) {
+      console.error("[News] Public article failed:", error instanceof Error ? error.message : String(error));
       return res.status(500).json({ error: "news_unavailable" });
     }
   });
