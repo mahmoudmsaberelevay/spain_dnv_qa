@@ -6,7 +6,7 @@ import { CallSession, emptyCallSession, type CallLead } from "./CallSession";
 import { CallPanel } from "./CallPanel";
 import { needsCallPolling, normalizeDisplayPhone, safeCallError } from "./callUi";
 
-type CallContextValue = { readiness: LeadCallsReadiness | undefined; locked: boolean; open: (lead: CallLead) => void };
+type CallContextValue = { readiness: LeadCallsReadiness | undefined; readinessLoading: boolean; readinessError: string | null; locked: boolean; open: (lead: CallLead) => void };
 const CallContext = createContext<CallContextValue | null>(null);
 export function useLeadCalling() {
   const context = useContext(CallContext);
@@ -105,14 +105,14 @@ export function LeadCallProvider({ children }: { children: ReactNode }) {
     previousUser.current = userId;
   }, [userId, session]);
   const open = (lead: CallLead) => {
-    if (!readiness.data?.canCall) return;
+    if (readiness.isError || readiness.isLoading || !readiness.data?.canCall) return;
     if (!normalizeDisplayPhone(lead.phone)) { toast.error("A valid lead phone number is required before calling."); return; }
     if (!readiness.data.ready) { toast.error("Calling setup is required. Ask your administrator to review calling readiness."); return; }
     if (!session.review(lead)) { toast.info("Finish your current calling session before starting another."); return; }
     lastUpdate.current = 0;
   };
   return (
-    <CallContext.Provider value={{ readiness: readiness.data, locked: session.locked, open }}>
+    <CallContext.Provider value={{ readiness: readiness.data, readinessLoading: auth.isLoading || readiness.isLoading, readinessError: readiness.error ? safeCallError(readiness.error) : auth.error ? "Your login could not be checked. Sign in again before calling." : null, locked: session.locked, open }}>
       {children}
       <CallPanel state={state} locked={session.locked} agentName={auth.data?.name ?? ""} consentStatus={callQuery.data?.consentStatus}
         initialize={() => void session.initialize()} start={() => session.start()} end={() => void session.end()} mute={() => session.mute()} close={() => session.close()} />

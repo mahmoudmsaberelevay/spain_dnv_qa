@@ -23,6 +23,7 @@ import {
 import { getLeadSpecialNoteLabel, type LeadSpecialNoteType } from "../../../../shared/leadSpecialNote";
 
 import { CallNowButton } from "@/components/lead-calls/CallNowButton";
+import { DeviceCallButton } from "@/components/lead-calls/DeviceCallButton";
 import { CallActivityCard } from "@/components/lead-calls/CallActivityCard";
 import { useLeadCallHistory } from "@/components/lead-calls/useLeadCallHistory";
 import { mergeCallTimeline } from "@/components/lead-calls/callUi";
@@ -398,6 +399,7 @@ export default function LeadProfile() {
 
               {/* Quick Contact Buttons */}
               <div className="pt-2 flex flex-wrap gap-2">
+                <DeviceCallButton phone={lead.phone} />
                 {waUrl && (
                   <a href={waUrl} target="_blank" rel="noreferrer">
                     <Button size="sm" variant="outline" className="gap-1.5 text-green-700 border-green-300 hover:bg-green-50">
