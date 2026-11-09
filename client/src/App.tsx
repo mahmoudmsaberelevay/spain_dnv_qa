@@ -62,6 +62,9 @@ import CommissionReceipts from "./pages/CommissionReceipts";
 // ─── Human Resources Module ────────────────────────────────────────────────
 import HrAttendanceDashboard from "./pages/HrAttendanceDashboard";
 
+// ─── Shipment Module ───────────────────────────────────────────────────────
+import Shipments from "./pages/Shipments";
+
 // ─── Leads CRM Module ─────────────────────────────────────────────
 import LeadsDashboard from "./pages/leads/LeadsDashboard";
 import LeadsList from "./pages/leads/LeadsList";
@@ -263,6 +266,11 @@ function Router() {
       </Route>
       <Route path="/hr">
         <MobileRoute><HrAttendanceDashboard /></MobileRoute>
+      </Route>
+
+      {/* Shipment is available to every authenticated CRM team account. */}
+      <Route path="/shipments">
+        <MobileRoute><Shipments /></MobileRoute>
       </Route>
 
       {/* ── Client Documentation Module ── */}

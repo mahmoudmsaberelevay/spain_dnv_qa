@@ -458,6 +458,7 @@
   .module-card--analysis { --module-card-accent: #83aebb; --module-card-glow: rgba(131, 174, 187, 0.18); }
   .module-card--financial { --module-card-accent: #ebd990; --module-card-glow: rgba(235, 217, 144, 0.15); }
   .module-card--hr { --module-card-accent: #66a99b; --module-card-glow: rgba(102, 169, 155, 0.18); }
+  .module-card--shipments { --module-card-accent: #5ba3b8; --module-card-glow: rgba(91, 163, 184, 0.18); }
   .module-card--leads { --module-card-accent: #8fc4d1; --module-card-glow: rgba(143, 196, 209, 0.18); }
   .module-card--wa-qc { --module-card-accent: #7ab7a0; --module-card-glow: rgba(122, 183, 160, 0.18); }
   .module-card--marketing { --module-card-accent: #ebd990; --module-card-glow: rgba(235, 217, 144, 0.15); }

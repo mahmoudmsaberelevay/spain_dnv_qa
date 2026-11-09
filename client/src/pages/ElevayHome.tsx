@@ -23,6 +23,7 @@ import {
   X,
   Megaphone,
   Clock3,
+  Package,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -104,6 +105,14 @@ const BASE_MODULE_CARDS = [
     path: "/reports",
     icon: BarChart3,
     pageKey: null, // always visible
+  },
+  {
+    id: "shipments",
+    label: "Shipment",
+    description: "Track incoming and outgoing documents and export shipment reports",
+    path: "/shipments",
+    icon: Package,
+    pageKey: null,
   },
 ];
 

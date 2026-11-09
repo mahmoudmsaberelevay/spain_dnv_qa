@@ -19,6 +19,7 @@ import {
   DollarSign,
   FolderOpen,
   FileSignature,
+  Package,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { startSystemLogin } from "@/const";
@@ -56,6 +57,7 @@ export default function MobileHome() {
     { id: "docs", label: "Client Docs", icon: FolderCheck, path: "/docs/dashboard", color: "bg-emerald-500/15 text-emerald-600" },
     { id: "analysis", label: "Analysis", icon: Search, path: "/analysis/dashboard", color: "bg-violet-500/15 text-violet-600" },
     { id: "marketing", label: "Marketing", icon: Megaphone, path: "/marketing", color: "bg-purple-500/15 text-purple-600" },
+    { id: "shipments", label: "Shipment", icon: Package, path: "/shipments", color: "bg-primary/15 text-primary" },
   ];
 
   return (

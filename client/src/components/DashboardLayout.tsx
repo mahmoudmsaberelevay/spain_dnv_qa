@@ -74,6 +74,7 @@ import {
   HardDrive,
   Scale,
   Clock3,
+  Package,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -191,6 +192,7 @@ const MODULE_COLORS: Record<string, { bg: string; text: string; dot: string }> =
   docs: { bg: "module-accent-badge module-accent--docs", text: "module-accent-text module-accent--docs", dot: "module-accent-dot module-accent--docs" },
   financial: { bg: "module-accent-badge module-accent--financial", text: "module-accent-text module-accent--financial", dot: "module-accent-dot module-accent--financial" },
   hr: { bg: "module-accent-badge module-accent--hr", text: "module-accent-text module-accent--hr", dot: "module-accent-dot module-accent--hr" },
+  shipments: { bg: "module-accent-badge module-accent--docs", text: "module-accent-text module-accent--docs", dot: "module-accent-dot module-accent--docs" },
   waQc: { bg: "module-accent-badge module-accent--waqc", text: "module-accent-text module-accent--waqc", dot: "module-accent-dot module-accent--waqc" },
   leads: { bg: "module-accent-badge module-accent--leads", text: "module-accent-text module-accent--leads", dot: "module-accent-dot module-accent--leads" },
   marketing: { bg: "module-accent-badge module-accent--marketing", text: "module-accent-text module-accent--marketing", dot: "module-accent-dot module-accent--marketing" },
@@ -302,6 +304,14 @@ const modules = [
     ],
   },
   {
+    id: "shipments",
+    label: "Shipment",
+    icon: Package,
+    items: [
+      { icon: Package, label: "Shipment Register", path: "/shipments" },
+    ],
+  },
+  {
     id: "waQc",
     label: "WhatsApp Quality Control",
     icon: MessageSquare,
@@ -407,7 +417,7 @@ function DashboardLayoutContent({
   const isMobile = useIsMobile();
 
   // Determine active module from current path
-  const activeModuleId = location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : location.startsWith("/hr") ? "hr" : location.startsWith("/wa-qc") ? "waQc" : location.startsWith("/leads") ? "leads" : location.startsWith("/marketing") ? "marketing" : location.startsWith("/reports") ? "reports" : location.startsWith("/ai-council") ? "aiCouncil" : location.startsWith("/backup") ? "backup" : "contracting";
+  const activeModuleId = location.startsWith("/shipments") ? "shipments" : location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : location.startsWith("/hr") ? "hr" : location.startsWith("/wa-qc") ? "waQc" : location.startsWith("/leads") ? "leads" : location.startsWith("/marketing") ? "marketing" : location.startsWith("/reports") ? "reports" : location.startsWith("/ai-council") ? "aiCouncil" : location.startsWith("/backup") ? "backup" : "contracting";
   const [expandedModule, setExpandedModule] = useState<string>(activeModuleId);
 
   const visibleModules = modules

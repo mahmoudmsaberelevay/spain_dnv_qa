@@ -4010,3 +4010,22 @@ export const leadCallPolicies = mysqlTable("lead_call_policies", {
   updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
 });
 export type LeadCallPolicy = typeof leadCallPolicies.$inferSelect;
+
+// ─── CRM Shipments ─────────────────────────────────────────────────────────────
+export const crmShipments = mysqlTable("crmShipments", {
+  id: int("id").autoincrement().primaryKey(),
+  shipmentDate: varchar("shipmentDate", { length: 10 }).notNull(),
+  companyName: varchar("companyName", { length: 200 }).notNull(),
+  shipmentNumber: varchar("shipmentNumber", { length: 100 }).notNull(),
+  direction: mysqlEnum("direction", ["from", "to"]).notNull(),
+  partyName: varchar("partyName", { length: 200 }).notNull(),
+  driveUrl: varchar("driveUrl", { length: 2000 }).notNull(),
+  requestKey: varchar("requestKey", { length: 36 }).notNull().unique(),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("crm_shipments_date_idx").on(table.shipmentDate),
+  index("crm_shipments_number_idx").on(table.shipmentNumber),
+]);
+export type CrmShipment = typeof crmShipments.$inferSelect;
+export type InsertCrmShipment = typeof crmShipments.$inferInsert;

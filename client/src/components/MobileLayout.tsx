@@ -61,6 +61,7 @@ import {
   FileCheck2,
   PlugZap,
   Clock3,
+  Package,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -193,6 +194,14 @@ export const MOBILE_SIDEBAR_MODULES = [
     ],
   },
   {
+    id: "shipments",
+    label: "Shipment",
+    icon: Package,
+    items: [
+      { icon: Package, label: "Shipment Register", path: "/shipments" },
+    ],
+  },
+  {
     id: "waQc",
     label: "WhatsApp QC",
     icon: MessageSquare,
@@ -246,6 +255,7 @@ function getActiveModuleId(location: string): string {
   if (location.startsWith("/docs")) return "docs";
   if (location.startsWith("/finance")) return "financial";
   if (location.startsWith("/hr")) return "hr";
+  if (location.startsWith("/shipments")) return "shipments";
   if (location.startsWith("/wa-qc")) return "waQc";
   if (location.startsWith("/leads")) return "leads";
   if (location.startsWith("/marketing")) return "marketing";
@@ -267,6 +277,7 @@ function getPageName(location: string): string {
   // Fallback to module name
   if (location.startsWith("/finance")) return "Financial";
   if (location.startsWith("/hr")) return "Human Resources";
+  if (location.startsWith("/shipments")) return "Shipment";
   if (location.startsWith("/leads")) return "Leads";
   if (location.startsWith("/contracting")) return "Contracting";
   if (location.startsWith("/docs")) return "Client Docs";

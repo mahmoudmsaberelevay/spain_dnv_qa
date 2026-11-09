@@ -43,6 +43,7 @@ import {
 import { getDocChecklist, ChildEntry, getArabicDocName } from "../shared/clientDocDefs";
 import { generateChecklistDocx } from "./checklistDocxGenerator";
 import { generateWorkflowDocx } from "./workflowDocxGenerator";
+import { shipmentsRouter } from "./shipmentsRouter";
 import { financialRouter } from "./finRouter";
 import { hrRouter } from "./hrRouter";
 import { settlementRouter } from "./settlementRouter";
@@ -2790,6 +2791,7 @@ export const appRouter = router({
   clientDocs: clientDocsRouter,
   financial: financialRouter,
   hr: hrRouter,
+  shipments: shipmentsRouter,
   settlement: settlementRouter,
   chat: chatRouter,
   broadcast: broadcastRouter,
