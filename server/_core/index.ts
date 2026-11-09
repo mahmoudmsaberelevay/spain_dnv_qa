@@ -213,6 +213,11 @@ async function startServer() {
   const { registerRenderWorkerUploadRoute } = await import("../commandCenter/renderWorkerBridge");
   registerRenderWorkerUploadRoute(app);
 
+  // Twilio callbacks use their own bounded form parser and exact HTTPS signature.
+  // No calling or recording is enabled by this route registration.
+  const { registerLeadCallRoutes } = await import("../leadCallsWebhooks");
+  registerLeadCallRoutes(app);
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -634,6 +639,8 @@ async function startServer() {
   app.post("/api/scheduled/ai-studio-watchdog", scheduledAiStudioWatchdogHandler);
   const { scheduledWeeklyCommandCenterOperationsHandler } = await import("../scheduledWeeklyCommandCenterOperationsHandler.js");
   app.post("/api/scheduled/weekly-command-center-operations", scheduledWeeklyCommandCenterOperationsHandler);
+  const { leadCallRecoveryHandler } = await import("../leadCallRecovery");
+  app.post("/api/scheduled/lead-calls", leadCallRecoveryHandler);
   const { registerClientPortalRoutes } = await import("../clientPortalRoutes.js");
   registerClientPortalRoutes(app);
 

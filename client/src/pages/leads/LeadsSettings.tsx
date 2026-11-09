@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import MetaOperationsTab from "./MetaOperationsTab";
 import { toast } from "sonner";
+import { CallsSettings } from "@/components/lead-calls/CallsSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1314,6 +1315,7 @@ export default function LeadsSettings() {
           {isAdmin && <TabsTrigger value="meta-ops" className="gap-1 text-xs"><Activity className="h-3.5 w-3.5" />Meta Ops</TabsTrigger>}
           {isAdmin && <TabsTrigger value="forms" className="gap-1 text-xs"><List className="h-3.5 w-3.5" />Lead Forms</TabsTrigger>}
           <TabsTrigger value="website" className="gap-1 text-xs"><Globe className="h-3.5 w-3.5" />Website</TabsTrigger>
+          {isAdmin && <TabsTrigger value="calling" className="gap-1 text-xs"><Settings className="h-3.5 w-3.5" />Calling</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="export" className="mt-6"><ExportImportTab /></TabsContent>
@@ -1325,6 +1327,7 @@ export default function LeadsSettings() {
         {isAdmin && <TabsContent value="meta-ops" className="mt-6"><MetaOperationsTab /></TabsContent>}
         {isAdmin && <TabsContent value="forms" className="mt-6"><LeadFormsTab /></TabsContent>}
         <TabsContent value="website" className="mt-6"><WebsiteIntegrationTab /></TabsContent>
+        {isAdmin && <TabsContent value="calling" className="mt-6"><CallsSettings /></TabsContent>}
       </Tabs>
     </div>
   );

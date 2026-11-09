@@ -22,6 +22,11 @@ import {
 } from "lucide-react";
 import { getLeadSpecialNoteLabel, type LeadSpecialNoteType } from "../../../../shared/leadSpecialNote";
 
+import { CallNowButton } from "@/components/lead-calls/CallNowButton";
+import { CallActivityCard } from "@/components/lead-calls/CallActivityCard";
+import { useLeadCallHistory } from "@/components/lead-calls/useLeadCallHistory";
+import { mergeCallTimeline } from "@/components/lead-calls/callUi";
+
 const STAGES = [
   { value: "fresh", label: "Fresh", color: "bg-blue-100 text-blue-700 border-blue-200" },
   { value: "contacted", label: "Contacted", color: "bg-amber-100 text-amber-700 border-amber-200" },
@@ -98,6 +103,8 @@ export default function LeadProfile() {
   const { data: activities = [] } = trpc.leads.activities.list.useQuery({ leadId });
   const { data: notes = [] } = trpc.leads.notes.list.useQuery({ leadId });
   const { data: tasks = [] } = trpc.leads.tasks.list.useQuery({ leadId });
+  const callHistory = useLeadCallHistory(leadId);
+  const timeline = mergeCallTimeline(activities, callHistory.data);
   const { data: presets = [] } = trpc.leadsSettings.listActivityPresets.useQuery();
   const { data: metaContext } = trpc.leads.metaContext.useQuery({ leadId });
   const { data: personnelOptions } = trpc.leads.personnelOptions.useQuery();
@@ -368,12 +375,11 @@ export default function LeadProfile() {
               <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Contact</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              {lead.phone && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <a href={`tel:${lead.phone}`} className="hover:text-primary transition-colors">{lead.phone}</a>
+                  <span className="break-all" dir="ltr">{lead.phone || "No phone number"}</span>
+                  <CallNowButton lead={lead} />
                 </div>
-              )}
               {lead.whatsapp && (
                 <div className="flex items-center gap-2">
                   <MessageCircle className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -405,14 +411,6 @@ export default function LeadProfile() {
                     <Mail className="w-3.5 h-3.5" />
                     Send Email
                   </Button>
-                )}
-                {lead.phone && (
-                  <a href={`tel:${lead.phone}`}>
-                    <Button size="sm" variant="outline" className="gap-1.5">
-                      <Phone className="w-3.5 h-3.5" />
-                      Call
-                    </Button>
-                  </a>
                 )}
               </div>
             </CardContent>
@@ -714,11 +712,15 @@ export default function LeadProfile() {
               <CardTitle className="text-base">Activity Timeline</CardTitle>
             </CardHeader>
             <CardContent>
-              {activities.length === 0 ? (
+              {callHistory.error && <p className="mb-3 text-xs text-muted-foreground" role="status">Call details are unavailable. Your recording permissions or login may need review.</p>}
+              {timeline.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">No activity yet</p>
               ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-                  {activities.map(act => {
+                <div className="space-y-3 max-h-[36rem] overflow-y-auto pr-1">
+                  {timeline.map(entry => {
+                    if (entry.call) return <CallActivityCard key={entry.key} call={entry.call} />;
+                    const act = entry.activity;
+                    if (!act) return null;
                     const iconColor = ACTIVITY_COLORS[act.activityType] ?? "bg-gray-100 text-gray-600";
                     const isExpanded = expandedActivity === act.id;
                     // Show full description — split on ": " to show label vs body

@@ -19,6 +19,7 @@ import Profile from "./pages/Profile";
 import PageGuard from "./components/PageGuard";
 
 // ─── Application Analysis Module ─────────────────────────────────────────────
+import { LeadCallProvider } from "./components/lead-calls/LeadCallProvider";
 import AnalysisDashboard from "./pages/AnalysisDashboard";
 import Cases from "./pages/Cases";
 import CaseDetail from "./pages/CaseDetail";
@@ -508,7 +509,9 @@ function App() {
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster position="top-right" richColors />
-          <Router />
+          <LeadCallProvider>
+            <Router />
+          </LeadCallProvider>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

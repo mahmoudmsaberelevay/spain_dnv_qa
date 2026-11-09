@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { getLeadSpecialNoteLabel, type LeadSpecialNoteFilter } from "../../../../shared/leadSpecialNote";
+import { CallNowButton } from "@/components/lead-calls/CallNowButton";
 
 const STAGES = [
   { value: "fresh", label: "Fresh", color: "bg-blue-100 text-blue-700 border-blue-200" },
@@ -945,6 +946,7 @@ export default function LeadsList() {
                           )}
                         </span>
                       </a>
+                      <div className="px-4 pb-2"><CallNowButton lead={lead} compact /></div>
                     </td>
                     {col("contact") && (
                       <td className="p-0">

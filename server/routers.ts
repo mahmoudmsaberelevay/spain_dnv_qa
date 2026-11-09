@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { leadsRouter } from "./routers/leads";
+import { leadCallsRouter } from "./leadCallsRouter";
+import { leadCallRecoveryRouter } from "./leadCallRecovery";
 import { leadsSettingsRouter } from "./routers/leadsSettings";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -2797,6 +2799,8 @@ export const appRouter = router({
   nationalVisa: nationalVisaRouter,
   notifications: notificationsRouter,
   leads: leadsRouter,
+  calls: leadCallsRouter,
+  callRecovery: leadCallRecoveryRouter,
   leadsSettings: leadsSettingsRouter,
   marketing: marketingRouter,
   marketingSystem: marketingSystemRouter,

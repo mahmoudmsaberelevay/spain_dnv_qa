@@ -3921,3 +3921,92 @@ export const marketingMetaAdsProductionReports = mysqlTable("marketing_meta_ads_
 ]);
 export type MarketingMetaAdsProductionReport = typeof marketingMetaAdsProductionReports.$inferSelect;
 export type InsertMarketingMetaAdsProductionReport = typeof marketingMetaAdsProductionReports.$inferInsert;
+
+// ─── Consent-gated outbound CRM calling (additive; deployment approval required) ───
+export const leadCallRecords = mysqlTable("lead_call_records", {
+  id: int("id").autoincrement().primaryKey(),
+  leadId: int("leadId").notNull(),
+  agentId: int("agentId").notNull(),
+  agentName: varchar("agentName", { length: 320 }).notNull(),
+  activityId: int("activityId").notNull().unique(),
+  intentHash: varchar("intentHash", { length: 64 }).notNull().unique(),
+  intentExpiresAt: bigint("intentExpiresAt", { mode: "number" }).notNull(),
+  intentConsumedAt: bigint("intentConsumedAt", { mode: "number" }),
+  callerId: varchar("callerId", { length: 32 }).notNull(),
+  destination: varchar("destination", { length: 32 }).notNull(),
+  agentIdentity: varchar("agentIdentity", { length: 80 }).notNull(),
+  direction: varchar("direction", { length: 20 }).default("outbound").notNull(),
+  status: varchar("status", { length: 24 }).default("initializing").notNull(),
+  parentCallSid: varchar("parentCallSid", { length: 34 }).unique(),
+  childCallSid: varchar("childCallSid", { length: 34 }).unique(),
+  parentSequence: int("parentSequence").default(-1).notNull(),
+  childSequence: int("childSequence").default(-1).notNull(),
+  // Nullable unique slots protect against concurrent reservations across processes.
+  activeAgentId: int("activeAgentId").unique(),
+  activeLeadId: int("activeLeadId").unique(),
+  recordingSid: varchar("recordingSid", { length: 34 }).unique(),
+  recordingCallSid: varchar("recordingCallSid", { length: 34 }),
+  recordingStatus: varchar("recordingStatus", { length: 24 }).default("none").notNull(),
+  recordingStartClaimedAt: bigint("recordingStartClaimedAt", { mode: "number" }),
+  durationSeconds: int("durationSeconds").default(0).notNull(),
+  startedAt: bigint("startedAt", { mode: "number" }),
+  answeredAt: bigint("answeredAt", { mode: "number" }),
+  endedAt: bigint("endedAt", { mode: "number" }),
+  transcript: mediumtext("transcript"),
+  transcriptSegmentsJson: json("transcriptSegmentsJson"),
+  aiSummaryJson: json("aiSummaryJson"),
+  callOutcome: text("callOutcome"),
+  suggestedNextAction: text("suggestedNextAction"),
+  transcriptionStatus: varchar("transcriptionStatus", { length: 24 }).default("not_requested").notNull(),
+  summaryStatus: varchar("summaryStatus", { length: 24 }).default("not_requested").notNull(),
+  processingAttempts: int("processingAttempts").default(0).notNull(),
+  nextAttemptAt: bigint("nextAttemptAt", { mode: "number" }),
+  processingLeaseUntil: bigint("processingLeaseUntil", { mode: "number" }),
+  processingLeaseToken: varchar("processingLeaseToken", { length: 64 }),
+  processingErrorCode: varchar("processingErrorCode", { length: 80 }),
+  consentStatus: varchar("consentStatus", { length: 24 }).default("pending").notNull(),
+  recordingConsentAt: bigint("recordingConsentAt", { mode: "number" }),
+  retentionExpiresAt: bigint("retentionExpiresAt", { mode: "number" }).notNull(),
+  deletedAt: bigint("deletedAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, table => [
+  index("lead_calls_lead_created_idx").on(table.leadId, table.createdAt),
+  index("lead_calls_processing_idx").on(table.transcriptionStatus, table.nextAttemptAt, table.processingLeaseUntil),
+  index("lead_calls_retention_idx").on(table.retentionExpiresAt, table.deletedAt),
+]);
+export type LeadCallRecord = typeof leadCallRecords.$inferSelect;
+export type InsertLeadCallRecord = typeof leadCallRecords.$inferInsert;
+
+export const leadCallAgentSettings = mysqlTable("lead_call_agent_settings", {
+  userId: int("userId").primaryKey(),
+  canCall: boolean("canCall").default(false).notNull(),
+  canListen: boolean("canListen").default(false).notNull(),
+  callerId: varchar("callerId", { length: 32 }),
+  maxCallsPerHour: int("maxCallsPerHour").default(10).notNull(),
+  rateWindowStartedAt: bigint("rateWindowStartedAt", { mode: "number" }).default(0).notNull(),
+  rateCount: int("rateCount").default(0).notNull(),
+  updatedBy: int("updatedBy").notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type LeadCallAgentSetting = typeof leadCallAgentSettings.$inferSelect;
+
+export const leadCallPolicies = mysqlTable("lead_call_policies", {
+  id: int("id").autoincrement().primaryKey(),
+  policyKey: varchar("policyKey", { length: 40 }).default("default").notNull().unique(),
+  enabled: boolean("enabled").default(false).notNull(),
+  callingApproved: boolean("callingApproved").default(false).notNull(),
+  processingApproved: boolean("processingApproved").default(false).notNull(),
+  policyVersion: varchar("policyVersion", { length: 100 }),
+  recordingNoticeAr: text("recordingNoticeAr"),
+  recordingNoticeEn: text("recordingNoticeEn"),
+  consentRequired: boolean("consentRequired").default(true).notNull(),
+  mediaProtectionConfirmed: boolean("mediaProtectionConfirmed").default(false).notNull(),
+  retentionDays: int("retentionDays").default(90).notNull(),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 255 }).unique(),
+  scheduleEnabled: boolean("scheduleEnabled").default(false).notNull(),
+  scheduleUpdatedAt: bigint("scheduleUpdatedAt", { mode: "number" }),
+  updatedBy: int("updatedBy").notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type LeadCallPolicy = typeof leadCallPolicies.$inferSelect;
