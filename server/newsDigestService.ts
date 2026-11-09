@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto";
 import { google, type gmail_v1 } from "googleapis";
+import { load } from "cheerio";
 import { and, desc, eq, gt, isNull, ne, notInArray } from "drizzle-orm";
 import {
   clientPortalDeliveryOutbox,
@@ -194,43 +195,70 @@ function parsePlainDigest(text: string) {
   const linkPattern = /<((?:https?):\/\/[^>\s]+)>/g;
   let previousEnd = 0;
   for (const match of Array.from(text.matchAll(linkPattern))) {
-    const rawUrl = match[1];
-    const matchIndex = match.index ?? 0;
-    const chunk = text.slice(previousEnd, matchIndex);
-    previousEnd = matchIndex + match[0].length;
-    const url = unwrapArticleUrl(rawUrl);
+    const chunk = text.slice(previousEnd, match.index ?? 0);
+    previousEnd = (match.index ?? 0) + match[0].length;
+    const url = unwrapArticleUrl(match[1]);
     if (!url) continue;
-    const lines = chunk.split(/\r?\n/).map(part => clean(part, 1200)).filter(Boolean);
+    // Google Alerts wraps descriptions over multiple lines. Do not mistake
+    // a description line for the title or borrow text from an adjacent story.
+    const rawLines = chunk.split(/\r?\n/);
+    const headingIndex = rawLines.findLastIndex(line => /^\s*\*\*.+\*\*\s*$/.test(line));
+    const lines = rawLines.slice(headingIndex >= 0 ? headingIndex : 0)
+      .map(line => clean(line, 12000)).filter(Boolean);
     if (lines.length < 3) continue;
-    const description = lines.at(-1) || "";
-    const sourceName = lines.at(-2) || "";
-    const title = lines.at(-3) || "";
+    const [title, sourceName, ...body] = lines;
+    const description = clean(body.join(" "), 12000);
     if (!looksLikeTitle(title) || sourceName.length > 255 || description.length < 10) continue;
-    candidates.push({ title: clean(title, 500), sourceName: clean(sourceName, 255), description: clean(description, 1000), url });
+    candidates.push({ title: clean(title, 500), sourceName: clean(sourceName, 255), description, url });
   }
   return candidates;
 }
 
 function parseHtmlDigest(html: string) {
+  if (!html) return [];
+  const $ = load(html.slice(0, 2_000_000));
+  $("script, style, noscript").remove();
   const candidates: NewsArticleCandidate[] = [];
-  const anchorPattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  for (const match of Array.from(html.matchAll(anchorPattern))) {
-    const url = unwrapArticleUrl(match[1]);
-    if (!url) continue;
-    const title = clean(match[2].replace(/<[^>]+>/g, " ").replace(/&[^;]+;/g, " "), 500);
-    if (!looksLikeTitle(title)) continue;
-    candidates.push({ title, sourceName: new URL(url).hostname.replace(/^www\./, ""), description: null, url });
-  }
+  $("a[href]").each((_index, element) => {
+    const link = $(element);
+    const url = unwrapArticleUrl(link.attr("href") || "");
+    if (!url) return;
+    const title = clean(link.text(), 500);
+    if (!looksLikeTitle(title)) return;
+    let description: string | null = null;
+    let sourceName = new URL(url).hostname.replace(/^www\./, "");
+    // Bound extraction to one article's Google Alerts item/container. The
+    // selected container must contain only one distinct publisher URL.
+    for (const parent of link.parents().toArray()) {
+      const container = $(parent);
+      const urls = new Set(container.find("a[href]").toArray()
+        .map(node => unwrapArticleUrl($(node).attr("href") || "")).filter(Boolean));
+      if (urls.size > 1) break;
+      const snippet = container.find(".item_snippet, .snippet, [itemprop='description']").first();
+      if (!snippet.length) continue;
+      const text = clean(snippet.text(), 12000);
+      if (text.length >= 10) description = text;
+      const source = container.find(".item_source, .source, [itemprop='publisher']").first();
+      if (source.length) sourceName = clean(source.text(), 255) || sourceName;
+      break;
+    }
+    candidates.push({ title, sourceName, description, url });
+  });
   return candidates;
 }
 
 export function extractNewsArticlesFromDigest(text: string, html = "") {
-  const combined = [...parsePlainDigest(text), ...parseHtmlDigest(html)];
+  // HTML carries the actual linked title and decoded entities; prefer it,
+  // then merge a missing excerpt from the plain-text alternative by URL.
+  const combined = [...parseHtmlDigest(html), ...parsePlainDigest(text)];
   const unique = new Map<string, NewsArticleCandidate>();
   for (const article of combined) {
     const canonicalUrlHash = createHash("sha256").update(article.url).digest("hex");
     const existing = unique.get(canonicalUrlHash);
-    if (!existing || (!existing.description && article.description)) unique.set(canonicalUrlHash, article);
+    if (!existing) unique.set(canonicalUrlHash, article);
+    else if (!existing.description && article.description) unique.set(canonicalUrlHash, {
+      ...existing, description: article.description, sourceName: article.sourceName || existing.sourceName,
+    });
   }
   return Array.from(unique.values());
 }
@@ -242,32 +270,48 @@ const NEWS_COUNTRY_RULES: RegExp[] = [
   /\b(greece|greek|hellenic)\b/,
   /\b(latvia|latvian)\b/,
   /\b(united kingdom|great britain|britain|british|uk|u k)\b/,
-  /\b(united states( of america)?|usa|u s a|u s|american)\b/,
-  /\b(canada|canadian)\b/,
+  /\b(united states( of america)?|usa|u s a|u s|american|uscis)\b/,
+  /\b(canada|canadian|ircc)\b/,
   /\b(australia|australian)\b/,
   /\b(argentina|argentine|argentinian)\b/,
   /\b(sao tome( and principe)?|sao tome e principe)\b/,
-  /\b(antigua( and barbuda)?|barbuda)\b/,
-  /\b(saint kitts( and nevis)?|st kitts( and nevis)?|nevis)\b/,
-  /\b(saint lucia|st lucia)\b/,
+  /\b(antigua( and barbuda)?|barbuda|antiguan|barbudan)\b/,
+  /\b(saint kitts( and nevis)?|st kitts( and nevis)?|nevis|kittitian|nevisian)\b/,
+  /\b(saint lucia|st lucia|saint lucian|st lucian)\b/,
   /\b(dominica)\b/,
   /\b(grenada|grenadian)\b/,
 ];
 
-const NEWS_COUNTRY_ARABIC_RULE = /إسبانيا|اسبانيا|البرتغال|مالطا|اليونان|لاتفيا|المملكة المتحدة|بريطانيا|الولايات المتحدة|أمريكا|امريكا|كندا|أستراليا|استراليا|الأرجنتين|الارجنتين|ساو تومي|أنتيغوا|انتيغوا|باربودا|سانت كيتس|نيفيس|سانت لوسيا|دومينيكا|غرينادا|جرينادا/;
-const IMMIGRATION_TOPIC_RULE = /\b(immigration|immigrants?|migration|migrants?|migratory|citizenship|citizens?|nationality|naturaliz(e|ation|ed|ing)|naturaliz(s|ation|ed|ing)|residency|residence|residents?|visas?|visa[- ]free|permits?|golden visa|investor visa|investment migration|permanent residence|settlement|asylum|deportation|border policy|entry requirements?|immigration law|immigration policy)\b/;
-const IMMIGRATION_TOPIC_ARABIC_RULE = /هجر|إقام|اقام|جنسية|مواطنة|تأشير|فيزا|تجنس|جواز سفر|إقامة دائمة|اقامة دائمة|لجوء|ترحيل/;
+const NEWS_COUNTRY_ARABIC_RULE = /اسبانيا|البرتغال|مالطا|اليونان|لاتفيا|المملكه المتحده|بريطانيا|الولايات المتحده|امريكا|كندا|استراليا|الارجنتين|ساو توم[ييه]|انتيغوا|باربودا|سانت كيتس|نيفيس|سانت لوسيا|دومينيكا|غرينادا|جرينادا/;
+// A residence, resident, permit, citizen or settlement alone is not immigration
+// evidence (homes, construction licences, citizen bonds and legal settlements).
+const IMMIGRATION_TOPIC_RULE = /\b(immigration|citizenship|natural(?:iz|is)(?:e|ation|ed|ing)|visas?|golden visa|investor visa|investment migration|cbi|cip|rcbi|residen(?:ce|cy) (?:permit|visa|program(?:me)?s?|polic(?:y|ies)|rules?|regulations?|reforms?|eligibility|requirements?|by investment)|(?:permanent|temporary|tax|legal|lawful|investor) residen(?:ce|cy)|(?:work|study|student|employment|residency|residence) permits?|nationality (?:law|laws|rules?|regulations?|policy|reform)|(?:settlement|settled) (?:status|visa)|(?:uk|british) settlement|asylum|deportation|migrant workers?|skilled migration|family reunification|green cards?|border polic(?:y|ies)|entry requirements?)\b/;
+const MIGRATION_POLICY_RULE = /\b(?:migration|migrants?|immigrants?)\b/;
+const MIGRATION_CONTEXT_RULE = /\b(?:polic(?:y|ies)|regulations?|laws?|reforms?|program(?:me)?s?|eligibility|applications?|workers?|skills?|skilled|employment|reunification|naturalisation|naturalization|residence|residency|visa|border|government)\b/;
+const IMMIGRATION_TOPIC_ARABIC_RULE = /الهجره|هجره|الجنسية|الجنسيه|تجنيس|تجنس|تاشير|فيزا|اقامه (?:دائمه|موقته|ضريبيه)|(?:قواعد|قوانين|شروط|برنامج|برامج|تصاريح|تصريح) الاقامه|تصاريح العمل|تصريح عمل|لم الشمل|لجوء|ترحيل/;
 
 function normalizeNewsMatchText(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
     .replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function normalizeArabicNewsText(value: string) {
+  return value.replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    .replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه");
+}
+
 export function isImmigrationNewsArticleRelevant(article: Pick<NewsArticleCandidate, "title" | "description">) {
   const rawText = `${article.title} ${article.description || ""}`;
   const text = normalizeNewsMatchText(rawText);
-  const countryMatched = NEWS_COUNTRY_RULES.some(rule => rule.test(text)) || NEWS_COUNTRY_ARABIC_RULE.test(rawText);
-  const topicMatched = IMMIGRATION_TOPIC_RULE.test(text) || IMMIGRATION_TOPIC_ARABIC_RULE.test(rawText);
+  const arabic = normalizeArabicNewsText(rawText);
+  const nonImmigrationResidency = /\b(?:artist|artistic|art|medical|surgical|music|writer|writers) residency\b/.test(text);
+  if (nonImmigrationResidency && !/\b(?:immigration|visas?|citizenship|work permit|residence permit)\b/.test(text)) return false;
+  const countryText = text.replace(/\b(?:latin|south|central|north) american\b/g, " ");
+  const countryArabic = arabic.replace(/امريكا (?:اللاتينيه|الجنوبيه|الوسطي|الشماليه)/g, " ");
+  const countryMatched = NEWS_COUNTRY_RULES.some(rule => rule.test(countryText)) || NEWS_COUNTRY_ARABIC_RULE.test(countryArabic);
+  const topicMatched = IMMIGRATION_TOPIC_RULE.test(text)
+    || (MIGRATION_POLICY_RULE.test(text) && MIGRATION_CONTEXT_RULE.test(text))
+    || IMMIGRATION_TOPIC_ARABIC_RULE.test(arabic);
   return countryMatched && topicMatched;
 }
 
@@ -330,7 +374,14 @@ async function importDigestMessage(message: GmailDigestMessage) {
   const [previous] = await db.select().from(newsDigestImports).where(and(eq(newsDigestImports.sourceMailbox, NEWS_SOURCE_MAILBOX), eq(newsDigestImports.sourceMessageId, message.sourceMessageId))).limit(1);
   if (previous?.status === "success") return { found: previous.articlesFound, filteredOut: 0, inserted: [] as Array<{ publicId: string; title: string }> };
   if (!previous) {
-    await db.insert(newsDigestImports).values({ sourceMessageId: message.sourceMessageId, sourceMailbox: NEWS_SOURCE_MAILBOX, subject: message.subject, receivedAt: message.receivedAt, status: "processing" });
+    try {
+      await db.insert(newsDigestImports).values({ sourceMessageId: message.sourceMessageId, sourceMailbox: NEWS_SOURCE_MAILBOX, subject: message.subject, receivedAt: message.receivedAt, status: "processing" });
+    } catch (error) {
+      // The unique mailbox/message key arbitrates two simultaneous first runs.
+      // Only the winning insert owns this message; a duplicate is not a failure.
+      if (String(error).toLowerCase().includes("duplicate")) return { found: 0, filteredOut: 0, inserted: [] as Array<{ publicId: string; title: string }> };
+      throw error;
+    }
   } else {
     await db.update(newsDigestImports).set({ status: "processing", errorMessage: null, completedAt: null }).where(eq(newsDigestImports.id, previous.id));
   }
@@ -381,6 +432,11 @@ export async function enforceNewsRetention(maxArticles = NEWS_MAX_ARTICLES) {
   const deleted = await db.select({ id: publicNewsArticles.id }).from(publicNewsArticles).where(notInArray(publicNewsArticles.id, kept.map(row => row.id)));
   if (deleted.length) await db.delete(publicNewsArticles).where(notInArray(publicNewsArticles.id, kept.map(row => row.id)));
   return deleted.length;
+}
+
+export function retainedNewsForDelivery<T extends { publicId: string }>(inserted: T[], retained: Array<{ publicId: string }>) {
+  const retainedIds = new Set(retained.map(article => article.publicId));
+  return inserted.filter(article => retainedIds.has(article.publicId));
 }
 
 async function deliverPush(token: string, locale: "en" | "ar", articleCount: number, latestArticle: { publicId: string; title: string }) {
@@ -465,7 +521,9 @@ export async function runNewsDigestImport() {
       inserted.push(...result.inserted);
     }
     const removed = await enforceNewsRetention(NEWS_MAX_ARTICLES);
-    const delivery = await broadcastNews(inserted);
+    const retained = inserted.length ? await db.select({ publicId: publicNewsArticles.publicId }).from(publicNewsArticles)
+      .orderBy(desc(publicNewsArticles.digestReceivedAt), desc(publicNewsArticles.id)).limit(NEWS_MAX_ARTICLES) : [];
+    const delivery = await broadcastNews(retainedNewsForDelivery(inserted, retained));
     await db.update(newsDigestSettings).set({ lastSuccessfulAt: new Date(), lastError: null }).where(eq(newsDigestSettings.id, 1));
     return { messagesChecked: messages.length, articlesFound, articlesFilteredOut, articlesInserted: inserted.length, articlesRemoved: removed, ...delivery };
   } catch (error) {

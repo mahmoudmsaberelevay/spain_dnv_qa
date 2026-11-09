@@ -65,7 +65,7 @@ export function registerNewsRoutes(app: Express) {
         digestReceivedAt: publicNewsArticles.digestReceivedAt,
       }).from(publicNewsArticles).orderBy(desc(publicNewsArticles.digestReceivedAt), desc(publicNewsArticles.id)).limit(NEWS_MAX_ARTICLES);
       const articles = rows.filter(isImmigrationNewsArticleRelevant).map(row => ({ ...row, content: row.description || "" }));
-      res.setHeader("Cache-Control", "public, max-age=120, stale-while-revalidate=900");
+      res.setHeader("Cache-Control", "no-store");
       return res.json(articles);
     } catch (error) {
       console.error("[News] Public feed failed:", error instanceof Error ? error.message : String(error));
@@ -87,7 +87,7 @@ export function registerNewsRoutes(app: Express) {
         digestReceivedAt: publicNewsArticles.digestReceivedAt,
       }).from(publicNewsArticles).where(eq(publicNewsArticles.publicId, req.params.publicId)).limit(1);
       if (!row || !isImmigrationNewsArticleRelevant(row)) return res.status(404).json({ error: "not_found" });
-      res.setHeader("Cache-Control", "public, max-age=120, stale-while-revalidate=900");
+      res.setHeader("Cache-Control", "no-store");
       return res.json({ ...row, content: row.description || "" });
     } catch (error) {
       console.error("[News] Public article failed:", error instanceof Error ? error.message : String(error));
