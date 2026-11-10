@@ -2364,6 +2364,17 @@ export const publicNewsArticles = mysqlTable("public_news_articles", {
   url: varchar("url", { length: 2048 }).notNull(),
   title: varchar("title", { length: 500 }).notNull(),
   description: text("description"),
+  articleContent: mediumtext("articleContent"),
+  articleSummary: text("articleSummary"),
+  publicationStatus: mysqlEnum("publicationStatus", ["pending_review", "published", "rejected"]).default("pending_review").notNull(),
+  accessStatus: mysqlEnum("accessStatus", ["pending", "processing", "accessible", "inaccessible", "fetch_failed"]).default("pending").notNull(),
+  accessError: varchar("accessError", { length: 160 }),
+  reviewReason: varchar("reviewReason", { length: 160 }),
+  processingAt: timestamp("processingAt"),
+  fetchedAt: timestamp("fetchedAt"),
+  summarizedAt: timestamp("summarizedAt"),
+  summaryWordCount: int("summaryWordCount"),
+  reviewedAt: timestamp("reviewedAt"),
   sourceName: varchar("sourceName", { length: 255 }),
   sourceMailbox: varchar("sourceMailbox", { length: 320 }).notNull(),
   sourceMessageId: varchar("sourceMessageId", { length: 255 }).notNull(),
@@ -2373,6 +2384,8 @@ export const publicNewsArticles = mysqlTable("public_news_articles", {
 }, (table) => ({
   canonicalUrl: uniqueIndex("public_news_articles_canonical_url_hash_uq").on(table.canonicalUrlHash),
   newestFirst: index("public_news_articles_newest_idx").on(table.digestReceivedAt, table.id),
+  publicationQueue: index("public_news_articles_publication_queue_idx").on(table.publicationStatus, table.digestReceivedAt),
+  accessQueue: index("public_news_articles_access_queue_idx").on(table.accessStatus, table.digestReceivedAt),
 }));
 export type PublicNewsArticle = typeof publicNewsArticles.$inferSelect;
 export type InsertPublicNewsArticle = typeof publicNewsArticles.$inferInsert;
