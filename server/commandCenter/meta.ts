@@ -398,16 +398,22 @@ export function createMetaHub(deps) {
       }, "claude"));
     };
     // Ads: comments on ad posts never appear in the Page's published posts, and most ELEVAY comments come on ads.
+    // Facebook ad posts come from the Page's own light ads_posts list; Instagram ad media from the account's ACTIVE
+    // ads only, 25 at a time (asking for 100 ads with creatives timed out at Meta).
     const adStories = new Set(), adMedia = new Set();
     try {
+      const ap = await graph.get(`${page.pageId}/ads_posts`, page.token, { fields: "id", include_inline_create: "true", limit: "25" });
+      for (const p of ap.data || []) if (p.id) adStories.add(String(p.id));
+    } catch (e) { errors.push("Facebook ad posts: " + e.message); }
+    try {
       if (adsToken() && process.env.META_AD_ACCOUNT_ID) {
-        const ads = await graph.get(`${account()}/ads`, adsToken(), { fields: "id,effective_status,creative{effective_object_story_id,effective_instagram_media_id}", effective_status: JSON.stringify(["ACTIVE", "PAUSED", "CAMPAIGN_PAUSED", "ADSET_PAUSED"]), limit: "100" });
+        const ads = await graph.get(`${account()}/ads`, adsToken(), { fields: "creative{effective_instagram_media_id,effective_object_story_id}", effective_status: JSON.stringify(["ACTIVE"]), limit: "25" });
         for (const ad of ads.data || []) {
+          if (ad.creative?.effective_instagram_media_id) adMedia.add(String(ad.creative.effective_instagram_media_id));
           if (ad.creative?.effective_object_story_id && adStories.size < 40) adStories.add(String(ad.creative.effective_object_story_id));
-          if (ad.creative?.effective_instagram_media_id && adMedia.size < 40) adMedia.add(String(ad.creative.effective_instagram_media_id));
         }
       }
-    } catch (e) { errors.push("Ad posts: " + e.message); }
+    } catch (e) { errors.push("Instagram ad posts: " + e.message); }
     // Facebook comments on recent posts and on ad posts
     const fbPosts = [];
     try {
@@ -449,7 +455,8 @@ export function createMetaHub(deps) {
     // Messenger and Instagram Direct messages (reply window: 24 h for both).
     for (const platform of ["messenger", "instagram"]) {
       try {
-        const convs = await graph.get(`${page.pageId}/conversations`, page.token, { platform, fields: "id,updated_time,messages.limit(3){id,message,from,created_time,attachments.limit(1){mime_type,type}}", limit: "25" });
+        // Light request: 10 most recent conversations, only their latest message (25 × 3 timed out for Instagram).
+        const convs = await graph.get(`${page.pageId}/conversations`, page.token, { platform, fields: "id,updated_time,messages.limit(1){id,message,from,created_time,attachments.limit(1){mime_type,type}}", limit: "10" });
         for (const cv of convs.data || []) {
           const last = cv.messages?.data?.[0];
           if (!last || last.from?.id === page.pageId || last.from?.id === igId) continue;

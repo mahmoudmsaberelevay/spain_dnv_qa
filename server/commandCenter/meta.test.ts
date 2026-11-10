@@ -48,7 +48,8 @@ function fakeMeta({ adComments = false, voiceNote = false, conversations = false
       else if (path === "me/permissions") out = { data: instagramPermission ? permissions.map((permission) => ({ permission, status: "granted" })) : [] };
       else if (path === "111") out = { id: "111", name: "Elevay Global", instagram_business_account: { id: "ig1", username: "elevayglobal" } };
       else if (path === "ig1/media") out = { data: [] };
-      else if (path === "act_548667060148825/ads") out = !adComments ? { data: [] } : { data: [{ id: "ad1", effective_status: "ACTIVE", creative: { effective_object_story_id: "111_adpost", effective_instagram_media_id: "igad1" } }] };
+      else if (path === "act_548667060148825/ads") out = !adComments ? { data: [] } : { data: [{ creative: { effective_instagram_media_id: "igad1" } }] };
+      else if (path === "111/ads_posts") out = !adComments ? { data: [] } : { data: [{ id: "111_adpost" }] };
       else if (path === "111_adpost/comments") out = { data: [{ id: "adc1", message: "بكام إقامة البرتغال؟", from: { id: "u9", name: "Hany" }, created_time: new Date().toISOString() }] };
       else if (path === "igad1/comments") out = { data: [{ id: "igadc1", text: "Details please", username: "nour.a", timestamp: new Date().toISOString() }] };
       else if (path === "111/conversations" && voiceNote && u.searchParams.get("platform") === "messenger") out = { data: [{ id: "fbconv2", messages: { data: [{ id: "fbv1", from: { id: "psid-8", name: "Milad" }, created_time: new Date(Date.now() - 2 * 60_000).toISOString(), attachments: { data: [{ mime_type: "audio/mpeg" }] } }] } }] };

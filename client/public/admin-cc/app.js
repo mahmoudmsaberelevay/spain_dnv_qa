@@ -1084,7 +1084,7 @@
     el.innerHTML = `<div class="stack" style="gap:16px">
       <section class="panel"><div class="panel-h"><h2>Needs your approval</h2><span class="row small muted">${pending.length} waiting ${canEdit() ? '<button class="btn sm" id="mxSync">Check comments & messages now</button>' : ''}</span></div>
         ${inboxLine(m.inbox)}
-        ${pending.length ? `<div class="stack" style="gap:10px">${pending.map(metaCard).join('')}</div>` : '<div class="empty">Nothing waiting. New comments and Messenger messages are checked every 10 minutes; Claude drafts each reply. Instagram Direct remains disabled pending its separate API validation.</div>'}</section>
+        ${pending.length ? `<div class="stack" style="gap:10px">${pending.map(metaCard).join('')}</div>` : '<div class="empty">Nothing waiting. New Facebook and Instagram comments (including on ads) and messages are checked every 10 minutes; Claude drafts each reply.</div>'}</section>
       ${webhookHealthCard(m.webhookHealth, m.webhookError)}
       ${owner ? selectedAssetsCard(m.assets) : ''}
       <section class="panel"><div class="panel-h"><h2>Campaigns</h2><span class="small muted">${m.campaigns && m.campaigns.mtd !== undefined ? `Month to date ${n0(m.campaigns.mtd)} EGP · active budgets ${n0(m.campaigns.dailyTotal)} EGP/day · cap ${n0(set.monthlyAdCapEgp)} EGP` : esc((m.campaigns && m.campaigns.error) || '')}</span></div>
