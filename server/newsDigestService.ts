@@ -15,6 +15,7 @@ import {
 import { ENV } from "./_core/env";
 import { getDb } from "./db";
 import { sendNewsDigestFailureAlert } from "./emailService";
+import { processPendingNewsArticles } from "./newsArticleWorkflow";
 
 export const NEWS_SOURCE_MAILBOX = "mahmoud.saberelevay@gmail.com";
 export const NEWS_SUBJECT_TRIGGER = "Daily Digest";
@@ -388,8 +389,10 @@ async function importDigestMessage(message: GmailDigestMessage) {
   const [importRow] = await db.select().from(newsDigestImports).where(and(eq(newsDigestImports.sourceMailbox, NEWS_SOURCE_MAILBOX), eq(newsDigestImports.sourceMessageId, message.sourceMessageId))).limit(1);
   try {
     const extractedCandidates = extractNewsArticlesFromDigest(message.text, message.html);
-    const candidates = filterImmigrationNewsArticles(extractedCandidates);
-    const filteredOut = extractedCandidates.length - candidates.length;
+    // Alerts are discovery only. Read the actual article before determining
+    // relevance: a short snippet may omit its country or immigration details.
+    const candidates = extractedCandidates;
+    const filteredOut = 0;
     const inserted: Array<{ publicId: string; title: string }> = [];
     for (const article of candidates) {
       const hash = createHash("sha256").update(article.url).digest("hex");
@@ -408,6 +411,9 @@ async function importDigestMessage(message: GmailDigestMessage) {
           sourceMessageId: message.sourceMessageId,
           digestReceivedAt: message.receivedAt,
           publishedAt: article.publishedAt || null,
+          publicationStatus: "pending_review",
+          accessStatus: "pending",
+          reviewReason: "source_research_pending",
         });
         inserted.push({ publicId, title: article.title });
       } catch (error) {
@@ -437,6 +443,11 @@ export async function enforceNewsRetention(maxArticles = NEWS_MAX_ARTICLES) {
 export function retainedNewsForDelivery<T extends { publicId: string }>(inserted: T[], retained: Array<{ publicId: string }>) {
   const retainedIds = new Set(retained.map(article => article.publicId));
   return inserted.filter(article => retainedIds.has(article.publicId));
+}
+
+export function newlyPublishedDigestArticles<T extends { publicId: string }>(published: T[], currentDigestInserted: Array<{ publicId: string }>, retained: Array<{ publicId: string }>) {
+  const currentIds = new Set(currentDigestInserted.map(article => article.publicId));
+  return retainedNewsForDelivery(published.filter(article => currentIds.has(article.publicId)), retained);
 }
 
 async function deliverPush(token: string, locale: "en" | "ar", articleCount: number, latestArticle: { publicId: string; title: string }) {
@@ -521,11 +532,20 @@ export async function runNewsDigestImport() {
       inserted.push(...result.inserted);
     }
     const removed = await enforceNewsRetention(NEWS_MAX_ARTICLES);
-    const retained = inserted.length ? await db.select({ publicId: publicNewsArticles.publicId }).from(publicNewsArticles)
+    // Also processes pending legacy records, with per-row leases and a bounded
+    // batch. Inaccessible or ungrounded articles remain private for review.
+    const research = await processPendingNewsArticles(isImmigrationNewsArticleRelevant);
+    articlesFilteredOut += research.rejected;
+    const retained = research.published.length ? await db.select({ publicId: publicNewsArticles.publicId }).from(publicNewsArticles)
+      .where(eq(publicNewsArticles.publicationStatus, "published"))
       .orderBy(desc(publicNewsArticles.digestReceivedAt), desc(publicNewsArticles.id)).limit(NEWS_MAX_ARTICLES) : [];
-    const delivery = await broadcastNews(retainedNewsForDelivery(inserted, retained));
+    // Backfill rows may publish during this run, but notifications are only for
+    // articles newly inserted from one of the Gmail messages processed now.
+    const delivery = await broadcastNews(newlyPublishedDigestArticles(research.published, inserted, retained));
     await db.update(newsDigestSettings).set({ lastSuccessfulAt: new Date(), lastError: null }).where(eq(newsDigestSettings.id, 1));
-    return { messagesChecked: messages.length, articlesFound, articlesFilteredOut, articlesInserted: inserted.length, articlesRemoved: removed, ...delivery };
+    return { messagesChecked: messages.length, articlesFound, articlesFilteredOut, articlesInserted: inserted.length,
+      articlesPublished: research.published.length, articlesReviewed: research.checked, articlesFlaggedForReview: research.flagged,
+      articlesRemoved: removed, ...delivery };
   } catch (error) {
     const errorMessage = String(error).slice(0, 4000);
     await db.update(newsDigestSettings).set({ lastError: errorMessage }).where(eq(newsDigestSettings.id, 1));

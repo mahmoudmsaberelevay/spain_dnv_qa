@@ -123,6 +123,16 @@ export default function MarketingDashboard() {
                 <p className="text-sm text-slate-100">Daily Digest Gmail authorization and last import status.</p>
               </div>
             </div>
+            <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="marketing-status-button gap-2"
+              onClick={() => window.location.assign("/api/admin/news/review")}
+            >
+              Review source access <ClipboardCheck className="h-4 w-4" />
+            </Button>
             <Button
               type="button"
               variant="outline"
@@ -132,6 +142,7 @@ export default function MarketingDashboard() {
             >
               Open status page <ArrowRight className="h-4 w-4" />
             </Button>
+            </div>
           </div>
 
           {newsHealthError ? (

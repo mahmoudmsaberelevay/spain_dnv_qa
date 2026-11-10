@@ -456,6 +456,13 @@
       "when": 1794299514587,
       "tag": "0130_shipment_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "5",
+      "when": 1794300216621,
+      "tag": "0131_news_article_publication_review",
+      "breakpoints": true
     }
   ]
 }

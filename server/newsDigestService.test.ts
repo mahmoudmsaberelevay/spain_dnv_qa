@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { describe, expect, it } from "vitest";
-import { createNewsGmailOAuthState, decryptGmailRefreshToken, encryptGmailRefreshToken, extractNewsArticlesFromDigest, filterImmigrationNewsArticles, isImmigrationNewsArticleRelevant, retainedNewsForDelivery, NEWS_MAX_ARTICLES, NEWS_SOURCE_MAILBOX, NEWS_SUBJECT_TRIGGER, verifyNewsGmailOAuthState } from "./newsDigestService";
+import { createNewsGmailOAuthState, decryptGmailRefreshToken, encryptGmailRefreshToken, extractNewsArticlesFromDigest, filterImmigrationNewsArticles, isImmigrationNewsArticleRelevant, newlyPublishedDigestArticles, retainedNewsForDelivery, NEWS_MAX_ARTICLES, NEWS_SOURCE_MAILBOX, NEWS_SUBJECT_TRIGGER, verifyNewsGmailOAuthState } from "./newsDigestService";
 import { isCairoNewsDigestTime } from "./scheduledNewsDigestHandler";
 
 describe("ELEVAY News Daily Digest importer", () => {
@@ -134,6 +134,14 @@ Applicants must follow the new filing procedure.
     expect(retainedNewsForDelivery(inserted, [{ publicId: "kept-new" }, { publicId: "not-inserted" }])).toEqual([inserted[1]]);
     expect(retainedNewsForDelivery(inserted, [])).toEqual([]);
     expect(retainedNewsForDelivery([], [{ publicId: "kept-new" }])).toEqual([]);
+  });
+
+  it("never sends the current digest notification for a historical backfill row published in the same run", () => {
+    const published = [{ publicId: "historic", title: "Backfill" }, { publicId: "today", title: "New digest article" }];
+    const currentDigestInserted = [{ publicId: "today" }];
+    const retained = [{ publicId: "historic" }, { publicId: "today" }];
+    expect(newlyPublishedDigestArticles(published, currentDigestInserted, retained)).toEqual([published[1]]);
+    expect(newlyPublishedDigestArticles(published, [], retained)).toEqual([]);
   });
 
   it("uses the requested mailbox, trigger, direct Gmail read-only API, and a 200-item cap", () => {

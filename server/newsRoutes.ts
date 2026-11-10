@@ -1,10 +1,12 @@
 import type { Express, NextFunction, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { newsDigestSettings, publicNewsArticles, publicNewsPushSubscriptions } from "../drizzle/schema";
 import { sdk } from "./_core/sdk";
 import { getDb } from "./db";
+import { isNewsReadyForPublication } from "./newsArticleWorkflow";
+import { renderNewsReviewPage } from "./newsReviewPage";
 import {
   connectNewsGmail,
   createNewsGmailOAuthState,
@@ -17,6 +19,30 @@ import {
 } from "./newsDigestService";
 
 const PUSH_TOKEN = /^(?:Exponent|Expo)PushToken\[[A-Za-z0-9_-]+\]$/;
+
+const publicNewsSelection = {
+  publicId: publicNewsArticles.publicId,
+  title: publicNewsArticles.title,
+  description: publicNewsArticles.description,
+  sourceName: publicNewsArticles.sourceName,
+  url: publicNewsArticles.url,
+  publishedAt: publicNewsArticles.publishedAt,
+  digestReceivedAt: publicNewsArticles.digestReceivedAt,
+  articleSummary: publicNewsArticles.articleSummary,
+  publicationStatus: publicNewsArticles.publicationStatus,
+  accessStatus: publicNewsArticles.accessStatus,
+  fetchedAt: publicNewsArticles.fetchedAt,
+  summarizedAt: publicNewsArticles.summarizedAt,
+};
+
+function publicArticle(row: {
+  publicId: string; title: string; description: string | null; sourceName: string | null;
+  url: string; publishedAt: Date | null; digestReceivedAt: Date; articleSummary: string | null;
+}) {
+  return { publicId: row.publicId, title: row.title, description: row.description,
+    sourceName: row.sourceName, url: row.url, publishedAt: row.publishedAt,
+    digestReceivedAt: row.digestReceivedAt, content: row.articleSummary || "" };
+}
 
 async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   try {
@@ -52,20 +78,16 @@ export function registerNewsRoutes(app: Express) {
   });
 
   app.get("/public-api/news", async (_req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
     try {
       const db = await getDb();
       if (!db) return res.status(503).json({ error: "service_unavailable" });
-      const rows = await db.select({
-        publicId: publicNewsArticles.publicId,
-        title: publicNewsArticles.title,
-        description: publicNewsArticles.description,
-        sourceName: publicNewsArticles.sourceName,
-        url: publicNewsArticles.url,
-        publishedAt: publicNewsArticles.publishedAt,
-        digestReceivedAt: publicNewsArticles.digestReceivedAt,
-      }).from(publicNewsArticles).orderBy(desc(publicNewsArticles.digestReceivedAt), desc(publicNewsArticles.id)).limit(NEWS_MAX_ARTICLES);
-      const articles = rows.filter(isImmigrationNewsArticleRelevant).map(row => ({ ...row, content: row.description || "" }));
-      res.setHeader("Cache-Control", "no-store");
+      const rows = await db.select(publicNewsSelection).from(publicNewsArticles)
+        .where(eq(publicNewsArticles.publicationStatus, "published"))
+        .orderBy(desc(publicNewsArticles.digestReceivedAt), desc(publicNewsArticles.id)).limit(NEWS_MAX_ARTICLES);
+      const articles = rows.filter(isNewsReadyForPublication)
+        .filter(row => isImmigrationNewsArticleRelevant({ title: row.title, description: row.articleSummary }))
+        .map(publicArticle);
       return res.json(articles);
     } catch (error) {
       console.error("[News] Public feed failed:", error instanceof Error ? error.message : String(error));
@@ -74,21 +96,14 @@ export function registerNewsRoutes(app: Express) {
   });
 
   app.get("/public-api/news/:publicId", async (req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
     try {
       const db = await getDb();
       if (!db) return res.status(503).json({ error: "service_unavailable" });
-      const [row] = await db.select({
-        publicId: publicNewsArticles.publicId,
-        title: publicNewsArticles.title,
-        description: publicNewsArticles.description,
-        sourceName: publicNewsArticles.sourceName,
-        url: publicNewsArticles.url,
-        publishedAt: publicNewsArticles.publishedAt,
-        digestReceivedAt: publicNewsArticles.digestReceivedAt,
-      }).from(publicNewsArticles).where(eq(publicNewsArticles.publicId, req.params.publicId)).limit(1);
-      if (!row || !isImmigrationNewsArticleRelevant(row)) return res.status(404).json({ error: "not_found" });
-      res.setHeader("Cache-Control", "no-store");
-      return res.json({ ...row, content: row.description || "" });
+      const [row] = await db.select(publicNewsSelection).from(publicNewsArticles)
+        .where(and(eq(publicNewsArticles.publicId, req.params.publicId), eq(publicNewsArticles.publicationStatus, "published"))).limit(1);
+      if (!row || !isNewsReadyForPublication(row) || !isImmigrationNewsArticleRelevant({ title: row.title, description: row.articleSummary })) return res.status(404).json({ error: "not_found" });
+      return res.json(publicArticle(row));
     } catch (error) {
       console.error("[News] Public article failed:", error instanceof Error ? error.message : String(error));
       return res.status(500).json({ error: "news_unavailable" });
@@ -123,6 +138,26 @@ export function registerNewsRoutes(app: Express) {
       return res.json(await getNewsGmailConnectionStatus());
     } catch (error) {
       return res.status(503).json({ error: error instanceof Error ? error.message : "status_unavailable" });
+    }
+  });
+
+  app.get("/api/admin/news/review", requireAdmin, async (req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const db = await getDb();
+      if (!db) return res.status(503).json({ error: "service_unavailable" });
+      const rows = await db.select({
+        publicId: publicNewsArticles.publicId, title: publicNewsArticles.title, url: publicNewsArticles.url,
+        sourceName: publicNewsArticles.sourceName, publicationStatus: publicNewsArticles.publicationStatus,
+        accessStatus: publicNewsArticles.accessStatus, reviewReason: publicNewsArticles.reviewReason,
+        accessError: publicNewsArticles.accessError, digestReceivedAt: publicNewsArticles.digestReceivedAt,
+        summaryWordCount: publicNewsArticles.summaryWordCount,
+      }).from(publicNewsArticles).orderBy(desc(publicNewsArticles.digestReceivedAt), desc(publicNewsArticles.id)).limit(NEWS_MAX_ARTICLES);
+      if (req.query.format === "json") return res.json(rows);
+      res.type("html");
+      return res.send(renderNewsReviewPage(rows));
+    } catch {
+      return res.status(500).json({ error: "news_review_unavailable" });
     }
   });
 
