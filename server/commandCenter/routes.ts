@@ -344,7 +344,7 @@ route("POST", "/jobs/:id/retry", "marketer", (ctx) => mutate(ctx, (st) => {
 }).then(fromResult));
 route("PUT", "/settings", "owner", (ctx) => mutate(ctx, (st) => {
   const allowed = ["monthlyAdCapEgp", "maxCplEgp", "targetCplEgp", "cplBreachDays", "cplBreachMinSpendEgp", "approvalThreshold", "killSwitchRollingThreshold", "manualWeeks", "approvalChannel", "targets", "studio", "meta", "voiceOverPrompt"];
-  if ("meta" in ctx.body) ctx.body.meta = { directPublish: ctx.body.meta?.directPublish === true, inbox: ctx.body.meta?.inbox !== false, contactPhone: String(ctx.body.meta?.contactPhone || "").replace(/[^\d+ ]/g, "").trim().slice(0, 20) };
+  if ("meta" in ctx.body) ctx.body.meta = { directPublish: ctx.body.meta?.directPublish === true, inbox: ctx.body.meta?.inbox !== false, contactPhone: String(ctx.body.meta?.contactPhone || "").replace(/[^\d+ ]/g, "").trim().slice(0, 20), replyApprovers: (Array.isArray(ctx.body.meta?.replyApprovers) ? ctx.body.meta.replyApprovers : String(ctx.body.meta?.replyApprovers || "").split(/[\s,;]+/)).map((e) => String(e).trim().toLowerCase()).filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)).slice(0, 10) };
   if ("studio" in ctx.body) ctx.body.studio = { autoplan: ctx.body.studio?.autoplan !== false, autoClips: ctx.body.studio?.autoClips !== false, reelLimitPerWeek: Math.max(0, Math.min(30, Math.round(Number(ctx.body.studio?.reelLimitPerWeek ?? 6)))) };
   if ("voiceOverPrompt" in ctx.body) {
     const prompt = String(ctx.body.voiceOverPrompt || "").trim();
@@ -570,8 +570,8 @@ function metaHub() {
 const metaAct = (fn) => async (ctx) => { try { return ok({ ok: true, ...(await fn(await metaHub(), ctx)) }); } catch (e) { return fail(400, e.message); } };
 route("GET", "/meta/actions", "team", metaAct(async (m, ctx) => ({ actions: await m.list({ status: ctx.query.status || undefined, limit: 150 }), kinds: META_KINDS, inbox: await m.inboxStatus() })));
 route("POST", "/meta/actions", "marketer", metaAct(async (m, ctx) => ({ action: await m.enqueue(cleanMetaAction(ctx.body), ctx.user.email) })));
-route("POST", "/meta/actions/:id/approve", "owner", metaAct(async (m, ctx) => ({ action: await m.approve(Number(ctx.params.id), ctx.user, { text: ctx.body.text, daily_budget_egp: ctx.body.daily_budget_egp }) })));
-route("POST", "/meta/actions/:id/reject", "owner", metaAct(async (m, ctx) => { await m.reject(Number(ctx.params.id), ctx.user, String(ctx.body.reason || "")); return {}; }));
+route("POST", "/meta/actions/:id/approve", "team", metaAct(async (m, ctx) => ({ action: await m.approve(Number(ctx.params.id), ctx.user, { text: ctx.body.text, daily_budget_egp: ctx.body.daily_budget_egp }) })));
+route("POST", "/meta/actions/:id/reject", "team", metaAct(async (m, ctx) => { await m.reject(Number(ctx.params.id), ctx.user, String(ctx.body.reason || "")); return {}; }));
 route("POST", "/meta/inbox/sync", "marketer", metaAct(async (m) => m.syncInbox()));
 route("GET", "/meta/connection", "owner", metaAct(async (m) => ({ checks: await m.checkConnection() })));
 route("GET", "/meta/assets", "owner", metaAct(async (m) => ({ assets: await m.selectedAssets() })));

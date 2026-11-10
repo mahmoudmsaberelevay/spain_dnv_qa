@@ -271,11 +271,21 @@ export function createMetaHub(deps) {
     }
   }
 
+  /**
+   * Owner approves everything. People the owner lists under Meta settings → "Reply approvers" (e.g. the Meta App
+   * Review tester) may approve or reject ONLY comment and message replies — never posts, budgets or campaigns.
+   */
+  async function canDecide(user, a) {
+    if (user.role === "owner") return true;
+    if (!["reply_comment", "reply_message"].includes(a.kind)) return false;
+    const list = (await deps.loadState()).state.settings.meta?.replyApprovers || [];
+    return list.includes(String(user.email || "").toLowerCase());
+  }
   async function approve(id, user, edits = {}) {
-    if (user.role !== "owner") throw new Error("Only the owner can approve Meta actions.");
     const g = await getA(id);
     if (!g) throw new Error("Action not found.");
     const a = g.a;
+    if (!(await canDecide(user, a))) throw new Error("Only the owner can approve Meta actions (reply approvers may approve replies only).");
     if (a.status !== "pending") throw new Error(`This action is ${a.status}.`);
     if (typeof edits.text === "string" && ["reply_comment", "reply_message"].includes(a.kind)) {
       const t = edits.text.trim();
@@ -306,6 +316,7 @@ export function createMetaHub(deps) {
   async function reject(id, user, reason = "") {
     const g = await getA(id);
     if (!g) throw new Error("Action not found.");
+    if (!(await canDecide(user, g.a))) throw new Error("Only the owner can reject this Meta action.");
     if (!["pending", "blocked", "failed"].includes(g.a.status)) throw new Error(`This action is ${g.a.status}.`);
     g.a.status = "rejected"; g.a.log.push({ at: nowIso(), by: user.email, text: reason || "Rejected" });
     await saveA(g.a, g.ver);

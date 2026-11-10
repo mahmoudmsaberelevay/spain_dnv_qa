@@ -100,6 +100,19 @@ describe("Meta actions", () => {
     expect(Array.isArray(status.errors)).toBe(true);
   });
 
+  it("lets listed reply approvers (e.g. the App Review tester) approve replies only, never campaigns (10 Nov 2026)", async () => {
+    const { h, state, posts } = hub();
+    state.settings.meta = { ...(state.settings.meta || {}), replyApprovers: ["tester@example.com"] };
+    const tester = { email: "Tester@example.com", role: "viewer" }, other = { email: "someone@example.com", role: "marketer" };
+    const reply = await h.enqueue({ kind: "reply_message", platform: "facebook", recipient_id: "u1", incoming_at: Date.now() - 60_000, text: "شكرًا لك!" }, "team");
+    await expect(h.approve(reply.id, other)).rejects.toThrow(/Only the owner/);
+    await h.approve(reply.id, tester);
+    expect(posts.find((p) => p.path === "111/messages")).toMatchObject({ body: { recipient: { id: "u1" } } });
+    const camp = await h.enqueue({ kind: "campaign_status", target_id: "c2", target_name: "Greece", status_to: "ACTIVE", reason: "test" }, "team");
+    await expect(h.approve(camp.id, tester)).rejects.toThrow(/Only the owner/);
+    await expect(h.reject(camp.id, tester)).rejects.toThrow(/Only the owner/);
+  });
+
   it("drafts replies to new comments, skips spam and the page's own comments, flags complaints", async () => {
     const { h } = hub();
     const r = await h.syncInbox();

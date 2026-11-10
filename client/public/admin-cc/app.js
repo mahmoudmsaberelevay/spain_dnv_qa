@@ -1104,6 +1104,8 @@
         <div class="stack small" style="gap:6px;margin-top:10px"><label class="row"><input type="checkbox" id="mxDirect" ${mset.directPublish ? 'checked' : ''}> Publish approved posts directly to Facebook and Instagram (instead of Manus)</label>
         <label class="row"><input type="checkbox" id="mxInbox" ${mset.inbox !== false ? 'checked' : ''}> Check comments and messages every 10 minutes and draft replies</label>
         <label class="row">ELEVAY WhatsApp number for message replies <input id="mxPhone" style="max-width:200px" placeholder="leave empty for none" value="${esc(mset.contactPhone || '')}"></label>
+        <label class="row">Reply approvers (emails, comma separated) <input id="mxApprovers" style="max-width:360px" placeholder="e.g. tester@example.com" value="${esc((mset.replyApprovers || []).join(', '))}"></label>
+        <span class="muted">These team members (for example Meta's App Review tester account) may approve or reject comment and message replies only — never posts, budgets or campaigns.</span>
         <span class="muted">Replies can only give this number. Empty: replies never include a phone number.</span>
         <div><button class="btn sm" id="mxSave">Save</button></div></div></section>` : ''}
       <section class="panel"><div class="panel-h"><h2>History</h2></div>${history.length ? `<div class="stack" style="gap:8px">${history.slice(0, 60).map(metaCard).join('')}</div>` : '<div class="empty">No actions yet.</div>'}</section>
@@ -1120,7 +1122,7 @@
     const g = (id) => document.getElementById(id);
     if (g('mxSync')) g('mxSync').onclick = () => act(async () => { const r = await api.req('POST', 'meta/inbox/sync', {}); await reload(); if (r.errors && r.errors.length) toast(r.errors.join(' · '), true); }, 'Inbox checked.');
     if (g('mxCheck')) g('mxCheck').onclick = () => act(async () => { const r = await api.req('GET', 'meta/connection'); S.meta.checks = r.checks; g('mxChecks').innerHTML = metaChecks(r.checks); });
-    if (g('mxSave')) g('mxSave').onclick = () => act(() => api.saveSettings({ meta: { directPublish: g('mxDirect').checked, inbox: g('mxInbox').checked, contactPhone: g('mxPhone').value.trim() } }), 'Meta settings saved.');
+    if (g('mxSave')) g('mxSave').onclick = () => act(() => api.saveSettings({ meta: { directPublish: g('mxDirect').checked, inbox: g('mxInbox').checked, contactPhone: g('mxPhone').value.trim(), replyApprovers: g('mxApprovers').value } }), 'Meta settings saved.');
     if (g('ncGo')) g('ncGo').onclick = () => {
       const item = S.data.items.find((i) => i.item_id === g('ncItem').value);
       if (!item) return toast('Choose an approved design.', true);
@@ -1137,7 +1139,8 @@
   function metaCard(a) {
     const [pc, pl] = META_PILL[a.status] || ['', a.status];
     const reply = ['reply_comment', 'reply_message'].includes(a.kind);
-    const editable = a.status === 'pending' && isOwner();
+    const replyApprover = ['reply_comment', 'reply_message'].includes(a.kind) && ((S.data.settings && S.data.settings.meta && S.data.settings.meta.replyApprovers) || []).includes(String(who()).toLowerCase());
+    const editable = a.status === 'pending' && (isOwner() || replyApprover);
     const messageWindow = a.kind === 'reply_message' ? (() => { const at = Number(a.incoming_at || 0), ends = at + 24 * 60 * 60 * 1000; return at > 0 ? (Date.now() < ends ? `Messenger reply window ends ${fmtDT(new Date(ends).toISOString())}` : 'Messenger reply window expired; sending is blocked') : 'Messenger reply timestamp unavailable; sending is blocked'; })() : '';
     return `<div class="run"><div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><div><span class="pill ${pc}">${pl}</span> <strong>${esc(a.preview || a.kind)}</strong> <span class="small muted">#${a.id} · ${esc(a.created_by || '')} · ${ago(a.created_at)}${a.category ? ' · ' + esc(a.category) : ''}</span></div>${a.permalink ? `<a class="small" href="${esc(a.permalink)}" target="_blank" rel="noopener">Open post</a>` : ''}</div>
       ${a.incoming ? `<div class="small" style="margin-top:6px"><span class="muted">They wrote:</span> <span dir="auto">${esc(a.incoming)}</span></div>` : ''}
