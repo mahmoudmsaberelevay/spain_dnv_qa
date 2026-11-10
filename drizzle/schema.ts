@@ -4023,6 +4023,7 @@ export const crmShipments = mysqlTable("crmShipments", {
   // Nullable for legacy shipments; new records require both through input validation.
   recordedByName: varchar("recordedByName", { length: 200 }),
   notificationEmail: varchar("notificationEmail", { length: 254 }),
+  notes: text("notes"),
   notificationStatus: mysqlEnum("notificationStatus", [
     "not_requested", "sending", "sent", "failed", "unknown",
   ]).default("not_requested").notNull(),

@@ -67,6 +67,7 @@ describe("Shipment entry, report and PDF safety", () => {
         {
           ...row,
           createdByUserId: 42,
+          notes: "Synthetic handling instructions\nKeep documents together",
           requestKey: "private-key",
           privateNote: "private-value",
           notificationError: "private-provider-error",
@@ -95,6 +96,9 @@ describe("Shipment entry, report and PDF safety", () => {
       "Africa/Cairo",
       "Issued by (report issuer)",
       "Recorded by (record-maker)",
+      "Notes",
+      "Synthetic handling instructions",
+      "Keep documents together",
     ])
       expect(text).toContain(visible);
     for (const hidden of [
@@ -151,6 +155,7 @@ describe("Shipment entry, report and PDF safety", () => {
         notificationEmail: missing,
         notificationStatus: undefined,
         notificationSentAt: missing,
+        notes: missing,
       };
       for (const shipmentId of [1, undefined]) {
         const pdf = await createShipmentsPdf({
@@ -164,6 +169,7 @@ describe("Shipment entry, report and PDF safety", () => {
         const text = (await parser.getText()).text;
         await parser.destroy();
         expect(text.match(/Not recorded/g)?.length).toBe(4);
+        expect(text).toContain("No notes");
         expect(text).toContain("Sample issuer");
         expect(text).not.toContain("undefined");
         expect(text).not.toContain("null");
@@ -204,12 +210,83 @@ describe("Shipment entry, report and PDF safety", () => {
       })
     ).rejects.toThrow("Arabic shipment text requires browser rendering");
   });
+  it("detects Unicode when notes are the only non-English shipment text", async () => {
+    await expect(
+      createShipmentsPdf({
+        ...report(),
+        rows: [{ ...row, notes: "ملاحظات الشحنة" }],
+      })
+    ).rejects.toThrow("Arabic shipment text requires browser rendering");
+  });
+  it.each([1, undefined])(
+    "exports all multiline notes across pages with aligned Drive links (shipmentId=%s)",
+    async shipmentId => {
+      const lines = Array.from(
+        { length: 70 },
+        (_, index) =>
+          `NOTE-${String(index + 1).padStart(3, "0")} handling detail`
+      );
+      const notes = `${lines.slice(0, 35).join("\n")}\n\n${lines.slice(35).join("\n")}\nTab:\tkeep together`;
+      expect(notes.length).toBeLessThanOrEqual(2000);
+      const pdf = await createShipmentsPdf({
+        ...report(),
+        shipmentId,
+        rows: [{ ...row, notes }],
+      });
+      expect(pdf.getNumberOfPages()).toBeGreaterThan(1);
+      const parser = new PDFParse({
+        data: new Uint8Array(pdf.output("arraybuffer")),
+      });
+      const result = await parser.getText();
+      await parser.destroy();
+      expect(result.text).toContain("Notes");
+      for (const line of lines) expect(result.text).toContain(line);
+      expect(result.text).toContain("Tab: keep together");
+      expect(result.pages[0].text).toContain("NOTE-001");
+      expect(result.pages.at(-1)?.text).toContain("NOTE-070");
+      expect(
+        result.text.match(/Shipment details|Record \/ notification/g)?.length
+      ).toBeGreaterThan(1);
+      const annotations = Array.from(
+        { length: pdf.getNumberOfPages() },
+        (_, index) =>
+          pdf.internal.getPageInfo(index + 1).pageContext.annotations
+      ).flat();
+      expect(annotations.length).toBeGreaterThan(0);
+      for (const annotation of annotations) {
+        expect(annotation.options.url).toBe(row.driveUrl);
+        // The Drive link stays in the final table column, never the notes/field column.
+        expect(Number(annotation.finalBounds.x)).toBeGreaterThan(180);
+      }
+      if (shipmentId) expect(annotations).toHaveLength(1);
+    }
+  );
+  it.each([1, undefined])(
+    "renders empty optional notes as No notes (shipmentId=%s)",
+    async shipmentId => {
+      const pdf = await createShipmentsPdf({
+        ...report(),
+        shipmentId,
+        rows: [{ ...row, notes: "  \r\n\t " }],
+      });
+      const parser = new PDFParse({
+        data: new Uint8Array(pdf.output("arraybuffer")),
+      });
+      const text = (await parser.getText()).text;
+      await parser.destroy();
+      expect(text).toContain("No notes");
+      expect(pdf.output()).toContain(row.driveUrl);
+    }
+  );
   it("rejects unsafe or invalid new report fields but does not require them for legacy rows", async () => {
     for (const fields of [
       { recordedByName: "a".repeat(201) },
       { notificationEmail: "Maker <maker@example.test>" },
       { notificationEmail: "a@example.test,b@example.test" },
       { notificationSentAt: "not-a-date" },
+      { notes: "a".repeat(2001) },
+      { notes: "Unsafe\u0000notes" },
+      { notes: "Unsafe\u0085notes" },
     ]) {
       await expect(
         createShipmentsPdf({ ...report(), rows: [{ ...row, ...fields }] })

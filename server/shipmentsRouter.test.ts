@@ -18,7 +18,9 @@ const dependencies = vi.hoisted(() => ({
 // database connection, auth mutation, provider invocation or real audit writes.
 vi.mock("./db", () => ({ getDb: dependencies.getDb }));
 vi.mock("./auditLog", () => ({ writeAuditLog: dependencies.writeAuditLog }));
-vi.mock("./shipmentNotifications", () => ({ notifyShipmentCreated: dependencies.notifyShipmentCreated }));
+vi.mock("./shipmentNotifications", () => ({
+  notifyShipmentCreated: dependencies.notifyShipmentCreated,
+}));
 import { shipmentsRouter } from "./shipmentsRouter";
 
 type Row = Record<string, unknown>;
@@ -65,7 +67,12 @@ function caller(user?: Row | null) {
  * These tests do not claim actual MySQL isolation or query-execution coverage. */
 function queuedDb(
   reads: Row[][] = [],
-  options: { insertError?: unknown; selectError?: unknown; updateError?: unknown; affectedRows?: number } = {}
+  options: {
+    insertError?: unknown;
+    selectError?: unknown;
+    updateError?: unknown;
+    affectedRows?: number;
+  } = {}
 ) {
   const pending = [...reads];
   const queries: any[] = [];
@@ -110,7 +117,16 @@ function queuedDb(
     execute: forbidden,
   };
   dependencies.getDb.mockResolvedValue(db);
-  return { db, queries, pending, values, returning, forbidden, set, updateWhere };
+  return {
+    db,
+    queries,
+    pending,
+    values,
+    returning,
+    forbidden,
+    set,
+    updateWhere,
+  };
 }
 function whereSql(query: any) {
   return dialect.sqlToQuery(query.where.mock.calls[0][0]);
@@ -133,6 +149,7 @@ function expectSafeRow(row: unknown) {
       "createdAt",
       "recordedByName",
       "notificationEmail",
+      "notes",
       "notificationStatus",
       "notificationSentAt",
     ].sort()
@@ -151,6 +168,7 @@ function expectSafeProjection(query: any) {
       "createdAt",
       "recordedByName",
       "notificationEmail",
+      "notes",
       "notificationStatus",
       "notificationSentAt",
     ].sort()
@@ -368,7 +386,7 @@ describe("Shipment list SQL predicates, pagination, sort and privacy", () => {
     expect(compiled.sql).toContain("`crmShipments`.`direction` = ?");
     expect(compiled.sql).toContain(" and ");
     expect(compiled.sql).toContain(" or ");
-    expect(compiled.sql.match(/escape '!'/g)).toHaveLength(9);
+    expect(compiled.sql.match(/escape '!'/g)).toHaveLength(10);
     expect(compiled.sql).not.toContain("OR 1=1");
     const searchPattern = "%50!%!_!!\\' OR 1=1 --%";
     expect(compiled.params).toEqual([
@@ -379,7 +397,7 @@ describe("Shipment list SQL predicates, pagination, sort and privacy", () => {
       "%NUM!_%",
       "%Party!%%",
       "%drive!_%",
-      ...Array(5).fill(searchPattern),
+      ...Array(6).fill(searchPattern),
     ]);
     expect(whereSql(memory.queries[1])).toEqual(compiled);
     expect(memory.queries[0].limit).toHaveBeenCalledWith(25);
@@ -435,7 +453,7 @@ describe("Shipment list SQL predicates, pagination, sort and privacy", () => {
       await caller().list({ filters: { search } });
       const compiled = whereSql(memory.queries[0]);
       expect(compiled.sql).toContain("then 'Shipment from' else 'Shipment to'");
-      expect(compiled.params).toEqual(Array(5).fill(`%${search}%`));
+      expect(compiled.params).toEqual(Array(6).fill(`%${search}%`));
     }
   );
 });
@@ -580,6 +598,7 @@ describe("Shipment immutable idempotent creation", () => {
     { driveUrl: "https://docs.google.com/document/d/other" },
     { recordedByName: "Other manual recorder" },
     { notificationEmail: "other@example.test" },
+    { notes: "Changed shipment instruction" },
   ])(
     "rejects replay when creator or any payload field differs: %j",
     async difference => {
@@ -695,6 +714,7 @@ describe("crmShipments schema contract", () => {
       "driveUrl",
       "recordedByName",
       "notificationEmail",
+      "notes",
       "notificationStatus",
       "notificationSentAt",
       "requestKey",
@@ -720,7 +740,15 @@ describe("crmShipments schema contract", () => {
     expect(crmShipments.notificationEmail.getSQLType()).toBe("varchar(254)");
     expect(crmShipments.recordedByName.notNull).toBe(false);
     expect(crmShipments.notificationEmail.notNull).toBe(false);
-    expect(crmShipments.notificationStatus.enumValues).toEqual(["not_requested", "sending", "sent", "failed", "unknown"]);
+    expect(crmShipments.notes.notNull).toBe(false);
+    expect(crmShipments.notes.getSQLType()).toBe("text");
+    expect(crmShipments.notificationStatus.enumValues).toEqual([
+      "not_requested",
+      "sending",
+      "sent",
+      "failed",
+      "unknown",
+    ]);
     expect(crmShipments.notificationStatus.default).toBe("not_requested");
     expect(crmShipments.notificationStatus.notNull).toBe(true);
     expect(crmShipments.notificationSentAt.notNull).toBe(false);
@@ -747,43 +775,79 @@ describe("Shipment one-shot notification after durable creation", () => {
       expect(memory.db.select).toHaveBeenCalledTimes(2);
       expect(memory.db.update).not.toHaveBeenCalled();
       expectSafeRow(row);
-      expect(row).toMatchObject({ recordedByName: entry.recordedByName, notificationEmail: entry.notificationEmail });
+      expect(row).toMatchObject({
+        recordedByName: entry.recordedByName,
+        notificationEmail: entry.notificationEmail,
+      });
       return true;
     });
     const result = await caller().create(createInput);
-    expect(result).toMatchObject({ created: true, row: { notificationStatus: "sent" } });
+    expect(result).toMatchObject({
+      created: true,
+      row: { notificationStatus: "sent" },
+    });
     expect(result.row.notificationSentAt).toBeInstanceOf(Date);
     expect(dependencies.notifyShipmentCreated).toHaveBeenCalledTimes(1);
-    expect(memory.set).toHaveBeenCalledWith({ notificationStatus: "sent", notificationSentAt: expect.any(Date) });
-    expect(dialect.sqlToQuery(memory.updateWhere.mock.calls[0][0])).toMatchObject({
+    expect(memory.set).toHaveBeenCalledWith({
+      notificationStatus: "sent",
+      notificationSentAt: expect.any(Date),
+    });
+    expect(
+      dialect.sqlToQuery(memory.updateWhere.mock.calls[0][0])
+    ).toMatchObject({
       params: [7, "sending"],
     });
   });
-  it.each([false, "exception"])("keeps shipment saved when notification outcome is %s", async outcome => {
-    const memory = queuedDb([[], [record()]]);
-    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
-    if (outcome === "exception") dependencies.notifyShipmentCreated.mockRejectedValue(new Error("raw SMTP token and private address"));
-    else dependencies.notifyShipmentCreated.mockResolvedValue(false);
-    try {
-      const result = await caller().create(createInput);
-      expect(result).toMatchObject({ created: true, row: { id: 7, notificationStatus: "failed", notificationSentAt: null } });
-      expect(result.notificationMessage).toMatch(/Shipment saved/);
-      expect(memory.returning).toHaveBeenCalledTimes(1);
-      expect(memory.set).toHaveBeenCalledWith({ notificationStatus: "failed", notificationSentAt: null });
-      expect(dependencies.notifyShipmentCreated).toHaveBeenCalledTimes(1);
-      expect(dependencies.writeAuditLog).toHaveBeenCalledTimes(1);
-      expect(JSON.stringify(log.mock.calls)).not.toMatch(/raw SMTP|token|private address/);
-    } finally { log.mockRestore(); }
-  });
-  it.each(["sending", "sent", "failed", "unknown", "not_requested"])("never resends replay with persisted state %s", async notificationStatus => {
-    const memory = queuedDb([[replay({ notificationStatus })]]);
-    expect((await caller().create(createInput)).created).toBe(false);
-    expect(memory.db.insert).not.toHaveBeenCalled();
-    expect(memory.db.update).not.toHaveBeenCalled();
-    expect(dependencies.notifyShipmentCreated).not.toHaveBeenCalled();
-  });
+  it.each([false, "exception"])(
+    "keeps shipment saved when notification outcome is %s",
+    async outcome => {
+      const memory = queuedDb([[], [record()]]);
+      const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+      if (outcome === "exception")
+        dependencies.notifyShipmentCreated.mockRejectedValue(
+          new Error("raw SMTP token and private address")
+        );
+      else dependencies.notifyShipmentCreated.mockResolvedValue(false);
+      try {
+        const result = await caller().create(createInput);
+        expect(result).toMatchObject({
+          created: true,
+          row: {
+            id: 7,
+            notificationStatus: "failed",
+            notificationSentAt: null,
+          },
+        });
+        expect(result.notificationMessage).toMatch(/Shipment saved/);
+        expect(memory.returning).toHaveBeenCalledTimes(1);
+        expect(memory.set).toHaveBeenCalledWith({
+          notificationStatus: "failed",
+          notificationSentAt: null,
+        });
+        expect(dependencies.notifyShipmentCreated).toHaveBeenCalledTimes(1);
+        expect(dependencies.writeAuditLog).toHaveBeenCalledTimes(1);
+        expect(JSON.stringify(log.mock.calls)).not.toMatch(
+          /raw SMTP|token|private address/
+        );
+      } finally {
+        log.mockRestore();
+      }
+    }
+  );
+  it.each(["sending", "sent", "failed", "unknown", "not_requested"])(
+    "never resends replay with persisted state %s",
+    async notificationStatus => {
+      const memory = queuedDb([[replay({ notificationStatus })]]);
+      expect((await caller().create(createInput)).created).toBe(false);
+      expect(memory.db.insert).not.toHaveBeenCalled();
+      expect(memory.db.update).not.toHaveBeenCalled();
+      expect(dependencies.notifyShipmentCreated).not.toHaveBeenCalled();
+    }
+  );
   it("does not send mail for the losing unique-key race", async () => {
-    const memory = queuedDb([[], [replay()]], { insertError: { cause: { code: "ER_DUP_ENTRY" } } });
+    const memory = queuedDb([[], [replay()]], {
+      insertError: { cause: { code: "ER_DUP_ENTRY" } },
+    });
     expect((await caller().create(createInput)).created).toBe(false);
     expect(memory.db.update).not.toHaveBeenCalled();
     expect(dependencies.notifyShipmentCreated).not.toHaveBeenCalled();
@@ -796,7 +860,10 @@ describe("Shipment one-shot notification after durable creation", () => {
       if (inserts > 1) throw { code: "ER_DUP_ENTRY" };
       return [{ id: 7 }];
     });
-    const results = await Promise.all([caller().create(createInput), caller().create(createInput)]);
+    const results = await Promise.all([
+      caller().create(createInput),
+      caller().create(createInput),
+    ]);
     expect(results.map(result => result.created).sort()).toEqual([false, true]);
     expect(memory.returning).toHaveBeenCalledTimes(2);
     expect(dependencies.notifyShipmentCreated).toHaveBeenCalledTimes(1);
@@ -804,36 +871,138 @@ describe("Shipment one-shot notification after durable creation", () => {
     expect(dependencies.writeAuditLog).toHaveBeenCalledTimes(1);
   });
   it("returns unknown without throwing or resending if sent-state persistence fails", async () => {
-    const memory = queuedDb([[], [record()]], { updateError: new Error("SQL secret value") });
+    const memory = queuedDb([[], [record()]], {
+      updateError: new Error("SQL secret value"),
+    });
     const log = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const result = await caller().create(createInput);
-      expect(result).toMatchObject({ created: true, row: { notificationStatus: "unknown", notificationSentAt: null } });
-      expect(result.notificationMessage).toMatch(/saved.*uncertain.*not be sent again/);
+      expect(result).toMatchObject({
+        created: true,
+        row: { notificationStatus: "unknown", notificationSentAt: null },
+      });
+      expect(result.notificationMessage).toMatch(
+        /saved.*uncertain.*not be sent again/
+      );
       expect(dependencies.notifyShipmentCreated).toHaveBeenCalledTimes(1);
       expect(memory.db.update).toHaveBeenCalledTimes(2);
-      expect(memory.set).toHaveBeenLastCalledWith({ notificationStatus: "unknown", notificationSentAt: null });
+      expect(memory.set).toHaveBeenLastCalledWith({
+        notificationStatus: "unknown",
+        notificationSentAt: null,
+      });
       expect(JSON.stringify(log.mock.calls)).not.toMatch(/SQL|secret/);
-    } finally { log.mockRestore(); }
+    } finally {
+      log.mockRestore();
+    }
   });
   it("persists unknown best-effort when the initial status update affected no rows", async () => {
     const memory = queuedDb([[], [record()]], { affectedRows: 0 });
     const log = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      expect((await caller().create(createInput)).row.notificationStatus).toBe("unknown");
-      expect(memory.set).toHaveBeenLastCalledWith({ notificationStatus: "unknown", notificationSentAt: null });
+      expect((await caller().create(createInput)).row.notificationStatus).toBe(
+        "unknown"
+      );
+      expect(memory.set).toHaveBeenLastCalledWith({
+        notificationStatus: "unknown",
+        notificationSentAt: null,
+      });
       expect(dependencies.notifyShipmentCreated).toHaveBeenCalledTimes(1);
-    } finally { log.mockRestore(); }
+    } finally {
+      log.mockRestore();
+    }
   });
   it("does not notify when the inserted shipment cannot be confirmed by read", async () => {
     queuedDb([[], []]);
-    await expect(caller().create(createInput)).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+    await expect(caller().create(createInput)).rejects.toMatchObject({
+      code: "INTERNAL_SERVER_ERROR",
+    });
     expect(dependencies.notifyShipmentCreated).not.toHaveBeenCalled();
   });
   it("keeps legacy list rows compatible with nullable recorder/email and safe defaults", async () => {
-    queuedDb([[record({ recordedByName: undefined, notificationEmail: null, notificationStatus: undefined, notificationSentAt: undefined })], [{ total: 1 }]]);
+    queuedDb([
+      [
+        record({
+          recordedByName: undefined,
+          notificationEmail: null,
+          notificationStatus: undefined,
+          notificationSentAt: undefined,
+        }),
+      ],
+      [{ total: 1 }],
+    ]);
     const result = await caller().list(listInput);
-    expect(result.rows[0]).toMatchObject({ recordedByName: null, notificationEmail: null, notificationStatus: "not_requested", notificationSentAt: null });
+    expect(result.rows[0]).toMatchObject({
+      recordedByName: null,
+      notificationEmail: null,
+      notes: null,
+      notificationStatus: "not_requested",
+      notificationSentAt: null,
+    });
     expectSafeRow(result.rows[0]);
+  });
+});
+
+describe("Shipment optional Notes", () => {
+  it("normalizes and persists multiline Notes and sends the same saved details once", async () => {
+    const notes = "Deliver original documents\nCall before arrival";
+    const memory = queuedDb([[], [record({ notes })]]);
+    const result = await caller().create({
+      ...createInput,
+      notes: "  Deliver original documents\r\nCall before arrival  ",
+    });
+    expect(memory.values).toHaveBeenCalledWith({
+      ...createInput,
+      notes,
+      createdByUserId: 900,
+      notificationStatus: "sending",
+    });
+    expect(result.row.notes).toBe(notes);
+    expect(dependencies.notifyShipmentCreated).toHaveBeenCalledTimes(1);
+    expect(dependencies.notifyShipmentCreated).toHaveBeenCalledWith(
+      expect.objectContaining({ notes })
+    );
+  });
+  it.each([undefined, "", "  \n  "])(
+    "accepts optional empty Notes %j",
+    async notes => {
+      queuedDb([[], [record({ notes: null })]]);
+      await expect(
+        caller().create({ ...createInput, notes })
+      ).resolves.toMatchObject({ created: true });
+    }
+  );
+  it.each([
+    "x".repeat(2001),
+    "bad\u0000note",
+    "bad\u001bnote",
+    "bad\u0085note",
+  ])("rejects invalid Notes before DB access", async notes => {
+    await expect(
+      caller().create({ ...createInput, notes })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(dependencies.getDb).not.toHaveBeenCalled();
+  });
+  it("keeps null legacy Notes replay compatible with blank input without resending", async () => {
+    const memory = queuedDb([[replay({ notes: null })]]);
+    await expect(
+      caller().create({ ...createInput, notes: " " })
+    ).resolves.toMatchObject({ created: false });
+    expect(memory.db.insert).not.toHaveBeenCalled();
+    expect(dependencies.notifyShipmentCreated).not.toHaveBeenCalled();
+  });
+  it("returns complete Notes in single-shipment and date-range reports", async () => {
+    const notes = "First line\nSecond line";
+    queuedDb([[record({ notes })], [record({ notes })]]);
+    expect((await caller().report({ shipmentId: 7 })).rows[0].notes).toBe(
+      notes
+    );
+    expect(
+      (
+        await caller().report({
+          filters: { from: "2026-11-01", to: "2026-11-30" },
+        })
+      ).rows[0].notes
+    ).toBe(notes);
+    expect(dependencies.writeAuditLog).not.toHaveBeenCalled();
   });
 });

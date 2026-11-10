@@ -78,9 +78,9 @@ function saveHarness() {
   const deps = {
     enabled: true,
     pending: false,
-    entry: { ...validEntry },
+    entry: { ...validEntry, notes: "" },
     shipmentEntrySchema,
-    EMPTY_ENTRY: {},
+    EMPTY_ENTRY: { notes: "" },
     create,
     requestRef,
     submittingRef,
@@ -156,6 +156,75 @@ describe("Shipment frontend source contracts", () => {
     expect(dialog).toContain('"Recipient name"');
     expect(dialog).toContain("shipmentDirectionLabel(direction)");
     expect(dialog).toContain("Choose Shipment from or Shipment to");
+  });
+
+  it("adds an accessible optional notes textarea after notification fields with a count and disclosure", () => {
+    expect(initializer("EMPTY_ENTRY")).toContain('notes: ""');
+    expect(source).toContain(
+      'import { Textarea } from "@/components/ui/textarea"'
+    );
+    const dialog = compact(functionSource("AddShipmentDialog"));
+    expect(dialog).toContain(
+      "All eight fields are required. Notes are optional."
+    );
+    expect(dialog).toContain(
+      'htmlFor={fieldId("notes")}>Notes (optional)</Label>'
+    );
+    expect(dialog.indexOf('htmlFor={fieldId("notes")}')).toBeGreaterThan(
+      dialog.indexOf('htmlFor={fieldId("notificationEmail")}')
+    );
+    const textarea = dialog.slice(
+      dialog.indexOf("<Textarea"),
+      dialog.indexOf("/>", dialog.indexOf("<Textarea"))
+    );
+    for (const expected of [
+      'id={fieldId("notes")}',
+      'value={entry.notes ?? ""}',
+      "maxLength={2000}",
+      "rows={4}",
+      "aria-invalid={!!errors.notes}",
+      "aria-describedby=",
+      'update("notes", event.target.value)',
+    ])
+      expect(textarea).toContain(expected);
+    expect(textarea).not.toMatch(/\brequired\b/);
+    expect(dialog).toContain('(entry.notes ?? "").length.toLocaleString()');
+    expect(dialog).toContain("/ 2,000 characters.");
+    expect(dialog).toContain(
+      "Notes are included in the notification email and PDF reports."
+    );
+    expect(dialog).toContain(
+      'FieldError id={errorId("notes")} message={errors.notes}'
+    );
+  });
+
+  it("accepts omitted or empty notes while normalizing multiline content in shared validation", () => {
+    expect(shipmentEntrySchema.parse(validEntry).notes).toBeUndefined();
+    expect(shipmentEntrySchema.parse({ ...validEntry, notes: "" }).notes).toBe(
+      ""
+    );
+    expect(
+      shipmentEntrySchema.parse({
+        ...validEntry,
+        notes: "  First paragraph\r\n\r\nSecond\titem  ",
+      }).notes
+    ).toBe("First paragraph\n\nSecond\titem");
+    expect(
+      shipmentEntrySchema.safeParse({ ...validEntry, notes: "a".repeat(2000) })
+        .success
+    ).toBe(true);
+    expect(
+      shipmentEntrySchema.safeParse({ ...validEntry, notes: "a".repeat(2001) })
+        .success
+    ).toBe(false);
+    for (const notes of [
+      "Unsafe\u0000note",
+      "Unsafe\u0085note",
+      "Bad\u000bcontrol",
+    ])
+      expect(
+        shipmentEntrySchema.safeParse({ ...validEntry, notes }).success
+      ).toBe(false);
   });
 
   it("shared validation rejects missing fields, invalid calendar dates and unsafe Drive links", () => {
@@ -364,6 +433,23 @@ describe("Shipment frontend source contracts", () => {
     expect(harness.invalidate).toHaveBeenCalledOnce();
   });
 
+  it("submits normalized notes as shared-schema data and clears notes after a confirmed save", async () => {
+    const harness = saveHarness();
+    harness.entry.notes = "  First line\r\n\r\nFinal\tline  ";
+    harness.create.mutateAsync.mockResolvedValue({
+      row: { notificationStatus: "sent" },
+      created: true,
+    });
+    await harness.save();
+    expect(harness.create.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notes: "First line\n\nFinal\tline",
+      })
+    );
+    expect(harness.setEntry).toHaveBeenCalledWith({ notes: "" });
+    expect(harness.setOpen).toHaveBeenCalledWith(false);
+  });
+
   it("shows recorder, notification address/status and legacy fallbacks without altering sortable columns", () => {
     expect(page).toContain("Recorded by: ");
     expect(page).toContain("Notification email: ");
@@ -378,6 +464,27 @@ describe("Shipment frontend source contracts", () => {
       expect(label(status).toLowerCase()).toBe(status);
     expect(source).not.toMatch(
       /notificationError|notificationRecipients|createdByUserId|SMTP|trpc\.shipments\.(notify|resend)/
+    );
+  });
+
+  it("shows full saved notes in existing row details with readable whitespace and legacy fallback", () => {
+    const rowDetails = page.slice(
+      page.indexOf('<dl className="mt-2'),
+      page.indexOf("</dl>")
+    );
+    expect(rowDetails).toContain("<dt>Notes:</dt>");
+    expect(rowDetails).toContain(
+      "whitespace-pre-wrap break-words text-xs text-foreground"
+    );
+    expect(rowDetails).toContain('row.notes?.trim() || "No notes"');
+    expect(rowDetails).not.toMatch(
+      /line-clamp|truncate|dangerouslySetInnerHTML/
+    );
+    expect(initializer("COLUMNS")).not.toContain('key: "notes"');
+    for (const notes of [undefined, null, "", "  "])
+      expect(notes?.trim() || "No notes").toBe("No notes");
+    expect(source).toContain(
+      'placeholder="Company, shipment number, recorder, email, notes or Drive link…"'
     );
   });
 

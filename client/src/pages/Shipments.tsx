@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
@@ -82,6 +83,7 @@ const EMPTY_ENTRY: ShipmentDraft = {
   driveUrl: "",
   recordedByName: "",
   notificationEmail: "",
+  notes: "",
 };
 const COLUMNS: {
   key: ColumnKey;
@@ -388,7 +390,7 @@ function AddShipmentDialog({ enabled }: { enabled: boolean }) {
           </DialogTitle>
           <DialogDescription>
             Keep the shipment reference and its supporting documents together.
-            All eight fields are required.
+            All eight fields are required. Notes are optional.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -586,6 +588,29 @@ function AddShipmentDialog({ enabled }: { enabled: boolean }) {
                 id={errorId("notificationEmail")}
                 message={errors.notificationEmail}
               />
+            </div>
+            <div className="min-w-0 space-y-2 sm:col-span-2">
+              <Label htmlFor={fieldId("notes")}>Notes (optional)</Label>
+              <Textarea
+                id={fieldId("notes")}
+                value={entry.notes ?? ""}
+                maxLength={2000}
+                rows={4}
+                placeholder="Additional shipment details or handling instructions"
+                className="min-w-0 w-full field-sizing-fixed resize-y"
+                aria-invalid={!!errors.notes}
+                aria-describedby={`${id}-notes-help${errors.notes ? ` ${errorId("notes")}` : ""}`}
+                onChange={event => update("notes", event.target.value)}
+              />
+              <p
+                id={`${id}-notes-help`}
+                className="text-xs text-muted-foreground"
+              >
+                {(entry.notes ?? "").length.toLocaleString()} / 2,000
+                characters. Notes are included in the notification email and PDF
+                reports.
+              </p>
+              <FieldError id={errorId("notes")} message={errors.notes} />
             </div>
           </fieldset>
           {saveError && (
@@ -950,7 +975,7 @@ export default function Shipments() {
                       updateFilter("search", event.target.value)
                     }
                     maxLength={200}
-                    placeholder="Company, shipment number, recorder, email or Drive link…"
+                    placeholder="Company, shipment number, recorder, email, notes or Drive link…"
                     className="min-w-0 w-full pl-9"
                     aria-invalid={!!filterErrors.search}
                     aria-describedby={
@@ -1396,6 +1421,12 @@ export default function Shipments() {
                           <dt className="inline">Email status: </dt>
                           <dd className="inline">
                             {shipmentNotificationLabel(row.notificationStatus)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Notes:</dt>
+                          <dd className="whitespace-pre-wrap break-words text-xs text-foreground">
+                            {row.notes?.trim() || "No notes"}
                           </dd>
                         </div>
                       </dl>

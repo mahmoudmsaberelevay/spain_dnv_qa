@@ -29,6 +29,7 @@ export function buildShipmentNotification(row: ShipmentRecord): {
     ? createdAt.toISOString()
     : "Unavailable";
   const driveUrl = isShipmentDriveUrl(row.driveUrl) ? row.driveUrl : "";
+  const noteLines = (row.notes?.trim() || "No notes").split(/\r\n?|\n/);
   const details: [string, string][] = [
     ["Shipment date", row.shipmentDate],
     ["Company", row.companyName],
@@ -41,22 +42,34 @@ export function buildShipmentNotification(row: ShipmentRecord): {
   ];
   return {
     subject: cleanText(`ELEVAY — Shipment saved: ${row.shipmentNumber}`),
-    html: `<h2>Shipment saved</h2>${details.map(([label, value]) =>
-      `<p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</p>`
-    ).join("")}<p><strong>Drive link:</strong> ${driveUrl
-      ? `<a href="${escapeHtml(driveUrl)}">${escapeHtml(driveUrl)}</a>`
-      : "Unavailable"}</p><p>The recorder name is manually entered descriptive attribution, not the authenticated account identity. This email includes a link only; it does not grant Drive access.</p>`,
-    text: `Shipment saved\n${details.map(([label, value]) =>
-      `${label}: ${cleanText(value)}`
-    ).join("\n")}\nDrive link: ${driveUrl || "Unavailable"}\n\nThe recorder name is manually entered descriptive attribution, not the authenticated account identity. This email includes a link only; it does not grant Drive access.`,
+    html: `<h2>Shipment saved</h2>${details
+      .map(
+        ([label, value]) =>
+          `<p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</p>`
+      )
+      .join("")}<p><strong>Drive link:</strong> ${
+      driveUrl
+        ? `<a href="${escapeHtml(driveUrl)}">${escapeHtml(driveUrl)}</a>`
+        : "Unavailable"
+    }</p><p><strong>Notes:</strong> ${noteLines.map(escapeHtml).join("<br>")}</p><p>The recorder name is manually entered descriptive attribution, not the authenticated account identity. This email includes a link only; it does not grant Drive access.</p>`,
+    text: `Shipment saved\n${details
+      .map(([label, value]) => `${label}: ${cleanText(value)}`)
+      .join(
+        "\n"
+      )}\nDrive link: ${driveUrl || "Unavailable"}\n\nNotes: ${noteLines.map(cleanText).join("\n")}\n\nThe recorder name is manually entered descriptive attribution, not the authenticated account identity. This email includes a link only; it does not grant Drive access.`,
   };
 }
 
 /** Called only by the winning insert after its saved row has been confirmed. */
-export async function notifyShipmentCreated(row: ShipmentRecord): Promise<boolean> {
+export async function notifyShipmentCreated(
+  row: ShipmentRecord
+): Promise<boolean> {
   if (!row.notificationEmail) return false;
   const message = buildShipmentNotification(row);
   return sendShipmentNotificationEmail(
-    row.notificationEmail, message.subject, message.html, message.text
+    row.notificationEmail,
+    message.subject,
+    message.html,
+    message.text
   );
 }

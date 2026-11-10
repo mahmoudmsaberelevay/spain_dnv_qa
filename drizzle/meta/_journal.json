@@ -449,6 +449,13 @@
       "when": 1794218594623,
       "tag": "0129_shipment_recorder_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "5",
+      "when": 1794299514587,
+      "tag": "0130_shipment_notes",
+      "breakpoints": true
     }
   ]
 }

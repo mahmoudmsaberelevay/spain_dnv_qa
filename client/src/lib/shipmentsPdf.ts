@@ -12,14 +12,16 @@ const NAVY = "#1A3A5C",
   TEAL = "#5BA3B8",
   INK = "#26394A",
   MUTED = "#526575";
-const unicode = (text: string) => /[^\x20-\x7e]/.test(text);
+// Newlines and tabs are layout whitespace, not text requiring canvas rendering.
+const unicode = (text: string) => /[^\x09\x0a\x0d\x20-\x7e]/.test(text);
 const calendarDate = (date: string) =>
   `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}`;
 
-// New entries require these fields; historical report rows may predate them.
+// Historical report rows may predate recorder/email; notes are always optional.
 const reportEntrySchema = shipmentEntrySchema.extend({
   recordedByName: shipmentEntrySchema.shape.recordedByName.nullish(),
   notificationEmail: shipmentEntrySchema.shape.notificationEmail.nullish(),
+  notes: shipmentEntrySchema.shape.notes.nullish(),
 });
 function notificationLabel(status: string | undefined): string {
   switch (status) {
@@ -92,6 +94,7 @@ export async function createShipmentsPdf(
       row.partyName,
       row.recordedByName,
       row.notificationEmail,
+      row.notes,
     ]),
     ...Object.values(filters),
   ].some(value => typeof value === "string" && unicode(value));
@@ -357,9 +360,11 @@ export async function createShipmentsPdf(
         ["Notification email", row.notificationEmail || "Not recorded"],
         ["Notification status", row.notificationStatus],
         ["Notification sent at", row.notificationSentAt],
+        ["Notes", row.notes || "No notes"],
         ["Document scan Drive link", row.driveUrl],
       ],
       [
+        undefined,
         undefined,
         undefined,
         undefined,
@@ -380,7 +385,7 @@ export async function createShipmentsPdf(
         { title: "Shipment number", weight: 35 },
         { title: "Direction", weight: 34 },
         { title: "Sender / recipient", weight: 50 },
-        { title: "Record / notification", weight: 75 },
+        { title: "Record / notification / notes", weight: 75 },
         { title: "Document scan", weight: 70 },
       ],
       rows.map(row => [
@@ -389,7 +394,7 @@ export async function createShipmentsPdf(
         row.shipmentNumber,
         shipmentDirectionLabel(row.direction),
         row.partyName,
-        `Recorded by: ${row.recordedByName || "Not recorded"}\nNotification email: ${row.notificationEmail || "Not recorded"}\nNotification status: ${row.notificationStatus}\nNotification sent at: ${row.notificationSentAt}`,
+        `Recorded by: ${row.recordedByName || "Not recorded"}\nNotification email: ${row.notificationEmail || "Not recorded"}\nNotification status: ${row.notificationStatus}\nNotification sent at: ${row.notificationSentAt}\nNotes:\n${row.notes || "No notes"}`,
         `Open Drive copy: ${row.driveUrl}`,
       ]),
       rows.map(row => row.driveUrl)

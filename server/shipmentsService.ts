@@ -58,6 +58,7 @@ const shipmentProjection = {
   createdAt: crmShipments.createdAt,
   recordedByName: crmShipments.recordedByName,
   notificationEmail: crmShipments.notificationEmail,
+  notes: crmShipments.notes,
   notificationStatus: crmShipments.notificationStatus,
   notificationSentAt: crmShipments.notificationSentAt,
 };
@@ -78,6 +79,7 @@ function safeRow(row: ShipmentRecord): ShipmentRecord {
     createdAt: row.createdAt,
     recordedByName: row.recordedByName ?? null,
     notificationEmail: row.notificationEmail ?? null,
+    notes: row.notes ?? null,
     notificationStatus: row.notificationStatus ?? "not_requested",
     notificationSentAt: row.notificationSentAt ?? null,
   };
@@ -121,6 +123,7 @@ function shipmentWhere(filters: ShipmentFilters): SQL | undefined {
         literalContains(crmShipments.shipmentNumber, filters.search),
         literalContains(crmShipments.partyName, filters.search),
         literalContains(crmShipments.driveUrl, filters.search),
+        literalContains(crmShipments.notes, filters.search),
         literalContains(label, filters.search)
       )!
     );
@@ -200,6 +203,7 @@ const payloadFields = [
   "driveUrl",
   "recordedByName",
   "notificationEmail",
+  "notes",
 ] as const;
 type ReplayRow = ShipmentRecord & { createdByUserId: number };
 function replayResult(
@@ -209,7 +213,11 @@ function replayResult(
 ): ShipmentCreateResult {
   if (
     row.createdByUserId !== creatorId ||
-    payloadFields.some(field => row[field] !== input[field])
+    payloadFields.some(field =>
+      field === "notes"
+        ? (row.notes ?? "") !== (input.notes ?? "")
+        : row[field] !== input[field]
+    )
   ) {
     throw new ShipmentError(
       "CONFLICT",
@@ -263,6 +271,7 @@ export async function createShipment(
     driveUrl: input.driveUrl,
     recordedByName: input.recordedByName,
     notificationEmail: input.notificationEmail,
+    ...(input.notes !== undefined ? { notes: input.notes } : {}),
   };
   let id: number;
   try {
@@ -303,17 +312,28 @@ export async function createShipment(
   const notificationStatus = sent ? "sent" : "failed";
   const notificationSentAt = sent ? new Date() : null;
   try {
-    const [updated] = await db.update(crmShipments)
+    const [updated] = await db
+      .update(crmShipments)
       .set({ notificationStatus, notificationSentAt })
-      .where(and(eq(crmShipments.id, id), eq(crmShipments.notificationStatus, "sending")));
-    if (updated.affectedRows !== 1) throw new Error("Notification state not confirmed");
-    return { row: { ...row, notificationStatus, notificationSentAt }, created: true };
+      .where(
+        and(
+          eq(crmShipments.id, id),
+          eq(crmShipments.notificationStatus, "sending")
+        )
+      );
+    if (updated.affectedRows !== 1)
+      throw new Error("Notification state not confirmed");
+    return {
+      row: { ...row, notificationStatus, notificationSentAt },
+      created: true,
+    };
   } catch {
     console.warn("[Shipments] Notification status could not be confirmed.");
     // Best effort to make uncertainty durable. This is a state write only,
     // never a second email; a DB outage may leave the stored state as sending.
     try {
-      await db.update(crmShipments)
+      await db
+        .update(crmShipments)
         .set({ notificationStatus: "unknown", notificationSentAt: null })
         .where(eq(crmShipments.id, id));
     } catch {

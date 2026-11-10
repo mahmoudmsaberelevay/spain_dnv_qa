@@ -2,9 +2,14 @@ import { z } from "zod";
 
 export const SHIPMENT_DIRECTIONS = ["from", "to"] as const;
 export const SHIPMENT_NOTIFICATION_STATUSES = [
-  "not_requested", "sending", "sent", "failed", "unknown",
+  "not_requested",
+  "sending",
+  "sent",
+  "failed",
+  "unknown",
 ] as const;
-export type ShipmentNotificationStatus = (typeof SHIPMENT_NOTIFICATION_STATUSES)[number];
+export type ShipmentNotificationStatus =
+  (typeof SHIPMENT_NOTIFICATION_STATUSES)[number];
 export const SHIPMENT_SORT_FIELDS = [
   "shipmentDate",
   "companyName",
@@ -38,15 +43,32 @@ export function isShipmentDriveUrl(value: string): boolean {
 const day = z.string().refine(isShipmentDate, "Choose a valid calendar date");
 const shortText = (max: number) =>
   z.string().trim().min(1, "This field is required").max(max);
-const withoutControls = z.string().refine(
-  value => !new RegExp("[\\p{Cc}\\p{Cf}]", "u").test(value),
-  "Control characters are not allowed"
-);
+const withoutControls = z
+  .string()
+  .refine(
+    value => !new RegExp("[\\p{Cc}\\p{Cf}]", "u").test(value),
+    "Control characters are not allowed"
+  );
 export const shipmentNotificationEmailSchema = withoutControls.pipe(
-  z.string().trim().min(1, "Enter one notification email").max(254).email(
-    "Enter one bare email address (no names or recipient lists)"
-  )
+  z
+    .string()
+    .trim()
+    .min(1, "Enter one notification email")
+    .max(254)
+    .email("Enter one bare email address (no names or recipient lists)")
 );
+export const shipmentNotesSchema = z
+  .string()
+  .transform(value => value.replace(/\r\n?/g, "\n").trim())
+  .pipe(
+    z
+      .string()
+      .max(2000, "Notes must be 2,000 characters or fewer")
+      .refine(
+        value => !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/.test(value),
+        "Unsupported control characters are not allowed in Notes"
+      )
+  );
 export const shipmentEntrySchema = z.object({
   shipmentDate: day,
   companyName: shortText(200),
@@ -55,6 +77,7 @@ export const shipmentEntrySchema = z.object({
   partyName: shortText(200),
   recordedByName: withoutControls.pipe(shortText(200)),
   notificationEmail: shipmentNotificationEmailSchema,
+  notes: shipmentNotesSchema.optional(),
   driveUrl: z
     .string()
     .trim()
@@ -101,12 +124,16 @@ export const shipmentReportSchema = z
 export type ShipmentEntry = z.infer<typeof shipmentEntrySchema>;
 export type ShipmentFilters = z.infer<typeof shipmentFiltersSchema>;
 export type ShipmentSortField = (typeof SHIPMENT_SORT_FIELDS)[number];
-export type ShipmentRecord = Omit<ShipmentEntry, "recordedByName" | "notificationEmail"> & {
+export type ShipmentRecord = Omit<
+  ShipmentEntry,
+  "recordedByName" | "notificationEmail" | "notes"
+> & {
   id: number;
   createdAt: Date | string;
   /** Manual descriptive attribution; never an authenticated creator identity. */
   recordedByName?: string | null;
   notificationEmail?: string | null;
+  notes?: string | null;
   notificationStatus?: ShipmentNotificationStatus;
   notificationSentAt?: Date | string | null;
 };
