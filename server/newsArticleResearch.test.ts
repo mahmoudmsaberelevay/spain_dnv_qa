@@ -267,6 +267,19 @@ describe("research publication gates", () => {
     expect(noKey.reviewReason).toBe("summary_model_unavailable");
   });
 
+  it.each([
+    { reason: "article_paywalled", html: articleHtml(`<p>${paragraphWords(100)}</p>`, '<script type="application/ld+json">{"isAccessibleForFree":false}</script>') },
+    { reason: "article_unreadable", html: "<html><body><nav>Navigation only</nav><div>No article body</div></body></html>" },
+  ])("labels a 2xx but blocked/unreadable source inaccessible: $reason", async ({ reason, html }) => {
+    installHttp([{ body: html }]);
+    const result = await researchNewsArticle(article, () => true);
+    expect(result.publicationStatus).toBe("pending_review");
+    expect(result.accessStatus).toBe("inaccessible");
+    expect(result.reviewReason).toBe(reason);
+    expect(result.articleSummary).toBeNull();
+    expect(anthropicCreate).not.toHaveBeenCalled();
+  });
+
   it("fails closed when the model invents a number or supplies non-source evidence", async () => {
     const evidence = "Spain residency investment migration programme";
     const source = paragraphWords(500, evidence) + " The article reports 2026 as the current year.";
@@ -341,6 +354,13 @@ describe("research publication gates", () => {
     installHttp([{ body: html }]); const result = await fetchReadableNewsArticle("http://example.com/article");
     expect(result.publisher).toBe("Original Publisher"); expect(result.content).not.toContain("Unrelated Germany");
     expect(extractReadableNewsArticle(articleHtml(`<p>${paragraphWords(100)}</p>`, '<script type="application/ld+json">{"@graph":[{"isAccessibleForFree":false}]}</script>'), "https://example.com/article")).toBeNull();
+  });
+
+  it("uses an explicit publisher instead of SEO site metadata and strips only an exact appended article heading", async () => {
+    installHttp([{ body: articleHtml(`<p>${paragraphWords(100)}</p>`, '<meta property="og:site_name" content="Example Publisher - Spain residency article">') }]);
+    expect((await fetchReadableNewsArticle("http://example.com/article")).publisher).toBe("Example Publisher");
+    installHttp([{ body: articleHtml(`<p>${paragraphWords(100)}</p>`, '<meta property="og:site_name" content="SEO title"><script type="application/ld+json">{"@type":"NewsArticle","publisher":{"name":"Actual Publisher"}}</script>') }]);
+    expect((await fetchReadableNewsArticle("http://example.com/article")).publisher).toBe("Actual Publisher");
   });
 
   it("never persists raw provider errors or unsupported snippet summaries", async () => {

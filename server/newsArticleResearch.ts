@@ -339,7 +339,8 @@ function tidyText(value: string): string {
 }
 
 function structuredMetadata($: cheerio.CheerioAPI) {
-  let publisher = tidyText($("meta[property='og:site_name'], meta[name='application-name']").first().attr("content") || "") || null;
+  const siteName = tidyText($("meta[property='og:site_name'], meta[name='application-name']").first().attr("content") || "") || null;
+  let publisher: string | null = null;
   let paywalled = false;
   $("script[type='application/ld+json']").each((_index, node) => {
     try {
@@ -356,6 +357,15 @@ function structuredMetadata($: cheerio.CheerioAPI) {
       }
     } catch { if (/"isAccessibleForFree"\s*:\s*(?:false|"false")/i.test($(node).text())) paywalled = true; }
   });
+  publisher ||= siteName;
+  // Some sites put "Publisher - Article headline" in og:site_name.
+  // Remove only an exact heading suffix, not inferred names or outside data.
+  const headings = [$("meta[property='og:title']").attr("content") || "", $("h1").first().text()].map(tidyText).filter(Boolean);
+  for (const heading of headings) {
+    if (!publisher?.endsWith(heading)) continue;
+    const prefix = publisher.slice(0, -heading.length);
+    if (/\s[-–—|:]\s*$/.test(prefix)) publisher = prefix.replace(/\s[-–—|:]\s*$/, "").trim() || null;
+  }
   return { publisher: publisher?.slice(0, 255) || null, paywalled };
 }
 
@@ -560,11 +570,12 @@ export async function researchNewsArticle(
     result.reviewReason = SAFE_REVIEW_REASONS.articleFetchFailed;
     return result;
   }
-  result.accessStatus = "accessible";
   if (fetched.paywalled || !fetched.content) {
+    result.accessStatus = "inaccessible";
     result.reviewReason = fetched.paywalled ? SAFE_REVIEW_REASONS.articlePaywalled : SAFE_REVIEW_REASONS.articleUnreadable;
     return result;
   }
+  result.accessStatus = "accessible";
   result.articleContent = fetched.content;
   result.sourceName = sourceNameFrom(article, fetched.finalUrl, fetched.publisher);
   let relevant: boolean;
