@@ -196,6 +196,7 @@ async function qcSheets(file: string, directory: string, narrativeSeconds = 20, 
   await run(["-y", "-hide_banner", "-loglevel", "error", "-threads", "1", "-i", file, "-vf", `trim=duration=${N.toFixed(3)},fps=${sampleFps},scale=360:640:flags=bicubic,tile=4x2:nb_frames=8`, "-frames:v", "75", "-q:v", "3", "-threads", "1", "-filter_threads", "1", pattern]);
   const sheets = (await fsp.readdir(directory)).filter((name) => /^qc-\d+\.jpg$/.test(name)).sort().map((name) => path.join(directory, name));
   if (sheets.length !== 75) throw new Error("All 600 narrative frames must be represented in 75 QC sheets.");
+  if (Number(outroSeconds) === 0) return sheets; // reels with no outro (owner rule 10 Nov 2026)
   const O = Math.max(2, Math.min(8, Number(outroSeconds) || 3));
   for (const [offset, time] of [N + 0.4, N + O - 0.3].entries()) {
     const frame = path.join(directory, `outro-qc-${offset + 1}.jpg`);

@@ -25,6 +25,7 @@ export function createRenderWorker({ q, root, renderReel, owner = crypto.randomU
     const names=(await fsp.readdir(directory)).filter(n=>/^qc-\d+\.jpg$/.test(n)).sort();
     if(names.length!==75)throw new Error('All 600 narrative frames must be represented in 75 QC sheets.');
     const evidence = names.map((n,i)=>({file:path.join(directory,n),label:`Sheet ${i+1}: chronological frames ${i*8+1}–${i*8+8}, row-major, t=${(i*8/30).toFixed(3)}–${((i*8+7)/30).toFixed(3)} s. Scene = floor(t/5)+1.`}));
+    if (Number(outroSeconds) === 0) return evidence; // reels with no outro (owner rule 10 Nov 2026)
     const O=Math.max(2,Math.min(8,Number(outroSeconds)||3));
     for (const [index,time] of [N+0.4,N+O-0.3].entries()) {
       const f = path.join(directory, `outro-qc-${index}.jpg`);
@@ -47,7 +48,7 @@ export function createRenderWorker({ q, root, renderReel, owner = crypto.randomU
     const heartbeat=setInterval(()=>persist().catch(()=>{}),30000);
     try{
       console.log(`Render #${row.run_id}: saved inputs only, threads=1, disk directory=${dir}`);
-      if (!doc.manifest?.outroUrl) throw new Error('Waiting for the required fixed ELEVAYEXTRO.mov; no logo-image fallback is permitted.');
+      if (!doc.manifest?.outroUrl && doc.manifest?.outroSeconds !== 0) throw new Error('Waiting for the required fixed ELEVAYEXTRO.mov; no logo-image fallback is permitted.');
       const result=await renderReel({manifest:doc.manifest,directory:dir,savedParts:doc.parts,
         onPart:async({name,file,type,sha256,metrics})=>{
           const stored=await storagePutFile(`marketing/command-center/render-worker/${row.id}/${sha256.slice(0,24)}-${name}`,file,type);
