@@ -1103,6 +1103,8 @@
         <div id="mxChecks" class="small">${m.checks ? metaChecks(m.checks) : ''}</div>
         <div class="stack small" style="gap:6px;margin-top:10px"><label class="row"><input type="checkbox" id="mxDirect" ${mset.directPublish ? 'checked' : ''}> Publish approved posts directly to Facebook and Instagram (instead of Manus)</label>
         <label class="row"><input type="checkbox" id="mxInbox" ${mset.inbox !== false ? 'checked' : ''}> Check comments and messages every 10 minutes and draft replies</label>
+        <label class="row"><input type="checkbox" id="mxAutoComments" ${mset.autoReplyComments ? 'checked' : ''}> Auto-reply to Facebook and Instagram comments (Claude writes and posts the reply without approval)</label>
+        <span class="muted">Complaints, unclear or sensitive comments, and any draft that breaks an ELEVAY rule still wait for your approval. Private messages always wait for approval. Safety limit: 150 automatic comment replies per day.</span>
         <label class="row">ELEVAY WhatsApp number for message replies <input id="mxPhone" style="max-width:200px" placeholder="leave empty for none" value="${esc(mset.contactPhone || '')}"></label>
         <label class="row">Reply approvers (emails, comma separated) <input id="mxApprovers" style="max-width:360px" placeholder="e.g. tester@example.com" value="${esc((mset.replyApprovers || []).join(', '))}"></label>
         <span class="muted">These team members (for example Meta's App Review tester account) may approve or reject comment and message replies only — never posts, budgets or campaigns.</span>
@@ -1122,7 +1124,7 @@
     const g = (id) => document.getElementById(id);
     if (g('mxSync')) g('mxSync').onclick = () => act(async () => { const r = await api.req('POST', 'meta/inbox/sync', {}); await reload(); if (r.errors && r.errors.length) toast(r.errors.join(' · '), true); }, 'Inbox checked.');
     if (g('mxCheck')) g('mxCheck').onclick = () => act(async () => { const r = await api.req('GET', 'meta/connection'); S.meta.checks = r.checks; g('mxChecks').innerHTML = metaChecks(r.checks); });
-    if (g('mxSave')) g('mxSave').onclick = () => act(() => api.saveSettings({ meta: { directPublish: g('mxDirect').checked, inbox: g('mxInbox').checked, contactPhone: g('mxPhone').value.trim(), replyApprovers: g('mxApprovers').value } }), 'Meta settings saved.');
+    if (g('mxSave')) g('mxSave').onclick = () => act(() => api.saveSettings({ meta: { directPublish: g('mxDirect').checked, inbox: g('mxInbox').checked, autoReplyComments: g('mxAutoComments').checked, contactPhone: g('mxPhone').value.trim(), replyApprovers: g('mxApprovers').value } }), 'Meta settings saved.');
     if (g('ncGo')) g('ncGo').onclick = () => {
       const item = S.data.items.find((i) => i.item_id === g('ncItem').value);
       if (!item) return toast('Choose an approved design.', true);

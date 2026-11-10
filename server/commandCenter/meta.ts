@@ -153,6 +153,14 @@ export function createMetaHub(deps) {
   async function autopilotOn() { const { state } = await deps.loadState(); return { on: !!state.settings.autopublish?.enabled, state }; }
 
   /** Queue an action; it auto-runs under autopilot unless it needs a person. */
+  const AUTO_COMMENT_DAILY_CAP = 150;
+  /** Comment replies sent by the auto-reply switch in the last 24 hours (a safety limit against reply storms). */
+  async function autoRepliesToday() {
+    const rows = await q("SELECT id, doc FROM ec_meta_actions ORDER BY id DESC LIMIT 400").catch(() => []);
+    const since = Date.now() - 86400000;
+    return rows.map((r) => { try { return JSON.parse(r.doc); } catch { return null; } })
+      .filter((x) => x && x.kind === "reply_comment" && Date.parse(x.created_at) >= since && /auto-reply \(owner switch/.test(String(x.approved_by || ""))).length;
+  }
   async function enqueue(action, by) {
     const a = { status: "pending", created_at: nowIso(), created_by: by, log: [], ...action };
     a.check = await precheck(a).catch((e) => ({ ok: false, reason: e.message }));
@@ -160,8 +168,16 @@ export function createMetaHub(deps) {
     const res = await q("INSERT INTO ec_meta_actions (created_at, status, doc) VALUES (?, ?, ?)", [Date.now(), a.status, JSON.stringify(a)]);
     a.id = res.insertId;
     if (a.status === "pending") {
-      const { on } = await autopilotOn();
-      if (on && !a.needs_human) await approve(a.id, { email: "autopilot (6-week gate reached)", role: "owner" }).catch(() => {});
+      const { on, state } = await autopilotOn();
+      // Owner rule (10 Nov 2026): replies to public Facebook and Instagram comments are posted automatically when the
+      // owner switches on "Auto-reply to comments". Complaints, unclear or sensitive comments and drafts that broke a
+      // rule (needs_human) still wait for approval; private messages are never auto-sent by this switch.
+      const autoComments = a.kind === "reply_comment" && !a.needs_human && a.text && state?.settings?.meta?.autoReplyComments === true && by === "claude";
+      if (autoComments && (await autoRepliesToday()) >= AUTO_COMMENT_DAILY_CAP) {
+        a.reason = `Daily auto-reply limit of ${AUTO_COMMENT_DAILY_CAP} reached; waiting for approval.`;
+      } else if (autoComments) {
+        await approve(a.id, { email: "auto-reply (owner switch: comments)", role: "owner" }).catch(() => {});
+      } else if (on && !a.needs_human) await approve(a.id, { email: "autopilot (6-week gate reached)", role: "owner" }).catch(() => {});
     }
     return a;
   }

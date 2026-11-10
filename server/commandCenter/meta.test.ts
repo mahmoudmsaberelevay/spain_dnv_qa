@@ -113,6 +113,27 @@ describe("Meta actions", () => {
     await expect(h.reject(camp.id, tester)).rejects.toThrow(/Only the owner/);
   });
 
+  it("auto-posts clean comment replies when the owner switch is on; complaints and messages still wait (10 Nov 2026)", async () => {
+    const { h, state, posts } = hub();
+    state.settings.meta = { ...(state.settings.meta || {}), autoReplyComments: true };
+    await h.syncInbox();
+    const actions = await h.list();
+    const lead = actions.find((a) => a.target_id === "cm1"), complaint = actions.find((a) => a.target_id === "cm4");
+    expect(lead).toMatchObject({ status: "done", approved_by: expect.stringMatching(/auto-reply/) });
+    expect(posts.find((p) => p.path === "cm1/comments")).toBeTruthy();
+    expect(complaint.status).toBe("pending");
+    expect(posts.some((p) => p.path === "cm4/comments")).toBe(false);
+    const msg = await h.enqueue({ kind: "reply_message", platform: "facebook", recipient_id: "u1", incoming_at: Date.now() - 60_000, text: "شكرًا لك!" }, "claude");
+    expect((await h.list()).find((a) => a.id === msg.id).status).toBe("pending");
+  });
+
+  it("keeps comment replies for approval when the auto-reply switch is off", async () => {
+    const { h, posts } = hub();
+    await h.syncInbox();
+    expect((await h.list()).find((a) => a.target_id === "cm1").status).toBe("pending");
+    expect(posts.some((p) => p.path === "cm1/comments")).toBe(false);
+  });
+
   it("drafts replies to new comments, skips spam and the page's own comments, flags complaints", async () => {
     const { h } = hub();
     const r = await h.syncInbox();
