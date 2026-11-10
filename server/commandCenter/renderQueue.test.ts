@@ -20,17 +20,20 @@ describe('external render queue', () => {
     expect(a).toMatchObject({ pending: true, waitReason: 'Waiting for render worker' });
     expect(a.jobId).toBe(b.jobId); expect(rows.size).toBe(1);
     const d = JSON.parse(rows.get(a.jobId).doc); expect(d.manifest.threads).toBe(1);
-    expect(d.manifest.outroUrl).toBe('https://cdn.example/ELEVAYEXTRO.mov');
-    expect(d.manifest).toMatchObject({ narrationTargetSeconds: 20, narrationSceneSeconds: 5 });
+    expect(d.manifest.outroUrl).toBe(null);
+    expect(d.manifest).toMatchObject({ narrationTargetSeconds: 20, narrationSceneSeconds: 5, outroSeconds: 0 });
   });
-  it("uses the owner's animated ELEVAY outro: 9:16 for reels (5 s), 16:9 for landscape videos", async () => {
+  it("reels (9:16) have no outro since 10 Nov 2026; landscape videos keep the owner's 16:9 outro", async () => {
     const { queue, rows } = setup({ fixedOutroUrl: "" });
     const a = await queue.compose(input);
     const doc = JSON.parse(rows.get(a.jobId).doc);
-    expect(doc.manifest.outroUrl).toBe("https://elevay.vip/brand/elevay-outro-9x16.mp4");
-    expect(doc.manifest.outroSeconds).toBe(5);
+    expect(doc.manifest.outroUrl).toBe(null);
+    expect(doc.manifest.outroSeconds).toBe(0);
+    expect(doc.manifest.version).toBe("disk-concat-v7-20s-narration-no-outro");
     const b = await queue.compose({ ...input, width: 1920, height: 1080 });
-    expect(JSON.parse(rows.get(b.jobId).doc).manifest.outroUrl).toBe("https://elevay.vip/manus-storage/elevay-outro-16x9_607de281.mp4");
+    const landscape = JSON.parse(rows.get(b.jobId).doc).manifest;
+    expect(landscape.outroUrl).toBe("https://elevay.vip/manus-storage/elevay-outro-16x9_607de281.mp4");
+    expect(landscape.outroSeconds).toBe(5);
   });
   it('returns existing completed output instead of regenerating or rendering it again', async () => {
     const { queue, rows } = setup(); const a = await queue.compose(input);

@@ -23,8 +23,10 @@ export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<
     // served from the website: 9:16 for reels, 16:9 for landscape videos. The older fixed outro is no longer used.
     const base = String(process.env.ELEVAY_PUBLIC_BASE_URL || "https://elevay.vip").replace(/\/$/, "");
     const landscape = Number(input.width) > Number(input.height || 0);
-    const outroUrl = String(opts.fixedOutroUrl || (landscape ? ELEVAY_OUTRO_16X9_STORAGE_URL : `${base}/brand/${ELEVAY_OUTRO_9X16}`)).trim();
-    if (!/^https:\/\//.test(outroUrl)) throw new Error("The ELEVAY outro must be a public HTTPS URL.");
+    // Owner rule (10 Nov 2026): reels (9:16) no longer end with an outro. Landscape videos keep theirs.
+    const noOutro = !landscape;
+    const outroUrl = noOutro ? null : String(opts.fixedOutroUrl || ELEVAY_OUTRO_16X9_STORAGE_URL).trim();
+    if (outroUrl !== null && !/^https:\/\//.test(outroUrl)) throw new Error("The ELEVAY outro must be a public HTTPS URL.");
     const narrationTargetSeconds = Number(input.narrationTargetSeconds);
     const narrationSceneSeconds = Number(input.narrationSceneSeconds);
     const legacyNarration = narrationTargetSeconds === 18 && narrationSceneSeconds === 4.5;
@@ -32,7 +34,7 @@ export function createRenderQueue(q: (sql: string, args?: unknown[]) => Promise<
     if (!legacyNarration && !currentNarration) {
       throw new Error("ELEVAY reels require four saved voice takes using either the legacy 18-second/4.5-second contract or the current 20-second/5-second contract.");
     }
-    const manifest = { version: currentNarration ? "disk-concat-v6-20s-narration-elevay-animated-outro-5s" : "disk-concat-v3-18s-narration-fixed-elevayoutro", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, outroUrl, editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: ELEVAY_OUTRO_SECONDS, narrationTargetSeconds, narrationSceneSeconds };
+    const manifest = { version: noOutro ? (currentNarration ? "disk-concat-v7-20s-narration-no-outro" : "disk-concat-v7-18s-narration-no-outro") : currentNarration ? "disk-concat-v6-20s-narration-elevay-animated-outro-5s" : "disk-concat-v3-18s-narration-fixed-elevayoutro", runId: input.runId, clipUrls: input.clipUrls, voiceUrls: input.voiceUrls, musicUrl: input.musicUrl || null, outroUrl, editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null, threads: 1, width: 1080, height: 1920, fps: 30, sceneSeconds: 5, outroSeconds: noOutro ? 0 : ELEVAY_OUTRO_SECONDS, narrationTargetSeconds, narrationSceneSeconds };
     const id = "reel-" + crypto.createHash("sha256").update(JSON.stringify(manifest)).digest("hex").slice(0, 40);
     const now = Date.now();
     const reusable = input.parts?._version === manifest.version ? Object.fromEntries(Object.entries(input.parts).filter(([k]) => ["seg0", "seg1", "seg2", "seg3", "outro", "audio", "music", "musicDropped", "narrationTargetSeconds", "narrationSceneSeconds", "rawVoiceSeconds", "sceneSeconds", "appliedVoiceTempos", "voicePaddingSeconds"].includes(k))) : {};

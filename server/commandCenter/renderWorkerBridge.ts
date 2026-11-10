@@ -171,7 +171,9 @@ function safeManifest(value: unknown) {
   const clips = Array.isArray(input.clipUrls) ? input.clipUrls.map(assetUrl) : [];
   const voices = Array.isArray(input.voiceUrls) ? input.voiceUrls.map(assetUrl) : [];
   const outroUrl = assetUrl(input.outroUrl);
-  if (clips.length !== 4 || clips.some((x) => !x) || voices.length !== 4 || voices.some((x) => !x) || !outroUrl) {
+  // Owner rule (10 Nov 2026): reels end with no outro. Such jobs say so explicitly with outroSeconds 0 and no outro URL.
+  const noOutro = input.outroSeconds === 0 && !input.outroUrl;
+  if (clips.length !== 4 || clips.some((x) => !x) || voices.length !== 4 || voices.some((x) => !x) || (!outroUrl && !noOutro)) {
     throw new RenderWorkerBridgeError(409, "Queued job has no valid saved render inputs.");
   }
   const legacy = Number(input.narrationTargetSeconds) === 18 && Number(input.narrationSceneSeconds) === 4.5;
@@ -185,7 +187,7 @@ function safeManifest(value: unknown) {
     clipUrls: clips,
     voiceUrls: voices,
     musicUrl: assetUrl(input.musicUrl),
-    outroUrl,
+    outroUrl: noOutro ? null : outroUrl,
     editDirection: typeof input.editDirection === "string" ? input.editDirection.slice(0, 600) : null,
     threads: 1,
     width: 1080,
@@ -193,7 +195,7 @@ function safeManifest(value: unknown) {
     fps: 30,
     sceneSeconds: 5,
     // Animated owner outro (29 Oct 2026) is 5 s; older queued jobs keep their 3-second outro.
-    outroSeconds: Number(input.outroSeconds) >= 2 && Number(input.outroSeconds) <= 8 ? Number(input.outroSeconds) : 3,
+    outroSeconds: noOutro ? 0 : Number(input.outroSeconds) >= 2 && Number(input.outroSeconds) <= 8 ? Number(input.outroSeconds) : 3,
     narrationTargetSeconds: current ? 20 : 18,
     narrationSceneSeconds: current ? 5 : 4.5,
   };
@@ -313,7 +315,7 @@ export function createRenderWorkerBridge({
   }
 
   /** Lowest renderer version that may take jobs (3 = the voice-over fix). Older or unversioned Macs wait. */
-  const requiredRenderer = () => Math.max(0, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 12) || 0);
+  const requiredRenderer = () => Math.max(13, Number(process.env.ELEVAY_RENDER_MIN_RENDERER_VERSION ?? 13) || 0);
   const workersSeen = new Map<string, { rendererVersion: number | null; at: number; outdated: boolean }>();
   async function lease(workerId: string, rendererVersion?: unknown) {
     await ensure();
@@ -431,15 +433,17 @@ export function createRenderWorkerBridge({
     if (!uploaded || !current.doc.parts?.final || !/^[a-f0-9]{64}$/i.test(String(final.sha256 || "")) || !timingSafeEqual(uploaded.sha256, String(final.sha256).toLowerCase())) {
       throw new RenderWorkerBridgeError(400, "The uploaded final MP4 is missing or does not match its declared SHA-256.");
     }
-    const qcFrames = Array.from({ length: MAX_QC_FRAMES }, (_, index) => evidence[String(index + 1)]).filter(Boolean);
-    if (qcFrames.length !== MAX_QC_FRAMES) throw new RenderWorkerBridgeError(400, "All 75 narrative QC sheets and 2 outro frames are required before completion.");
-    const seconds = Number(final.seconds);
     const manifest = safeManifest(current.doc.manifest);
+    const noOutro = manifest.outroSeconds === 0;
+    const expectedFrames = noOutro ? 75 : MAX_QC_FRAMES;
+    const qcFrames = Array.from({ length: expectedFrames }, (_, index) => evidence[String(index + 1)]).filter(Boolean);
+    if (qcFrames.length !== expectedFrames) throw new RenderWorkerBridgeError(400, noOutro ? "All 75 narrative QC sheets are required before completion." : "All 75 narrative QC sheets and 2 outro frames are required before completion.");
+    const seconds = Number(final.seconds);
     // Owner rule (20 Oct 2026): 20 s of narrative + the outro (5 s animated outro since 29 Oct 2026); longer when a voice take runs long.
-    const outroSeconds = Number(manifest.outroSeconds) || 3;
+    const outroSeconds = manifest.outroSeconds;
     const narrativeSeconds = Number(final.narrativeSeconds ?? 20);
     if (!Number.isFinite(seconds) || !(narrativeSeconds >= 20 - 0.01 && narrativeSeconds <= 90) || Math.abs(seconds - (narrativeSeconds + outroSeconds)) > 0.15 || final.mode !== "cuts" || Number(final.narrationTargetSeconds) !== manifest.narrationTargetSeconds || Number(final.narrationSceneSeconds) !== manifest.narrationSceneSeconds) {
-      throw new RenderWorkerBridgeError(400, "Final render does not meet the ELEVAY output contract (narrative of at least 20 s + the official ELEVAY outro).");
+      throw new RenderWorkerBridgeError(400, `Final render does not meet the ELEVAY output contract (narrative of at least 20 s${noOutro ? ", no outro" : " + the official ELEVAY outro"}).`);
     }
     const rawVoiceSeconds = Array.isArray(final.rawVoiceSeconds) ? final.rawVoiceSeconds.slice(0, 4).map(Number) : [];
     if (rawVoiceSeconds.length !== 4 || rawVoiceSeconds.some((n) => !Number.isFinite(n) || n <= 0.2 || n > 30)) throw new RenderWorkerBridgeError(400, "Final render voice timing metadata is invalid.");
@@ -452,6 +456,7 @@ export function createRenderWorkerBridge({
       music: final.music === true,
       musicDropped: final.musicDropped ? cleanError(final.musicDropped).slice(0, 240) : null,
       mode: "cuts",
+      outroSeconds,
       narrationTargetSeconds: manifest.narrationTargetSeconds,
       narrationSceneSeconds: manifest.narrationSceneSeconds,
       spokenNarrationSeconds: manifest.narrationTargetSeconds,

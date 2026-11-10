@@ -500,7 +500,7 @@
     if (i.type === 'reel') {
       if (m.video_url) return `<div class="frame v916"><video src="${esc(m.video_url)}" controls playsinline preload="metadata"></video></div>`;
       if ((m.keyframes || []).length) return `<div class="stack" style="gap:6px"><div class="thumbs">${m.keyframes.map((u) => `<img src="${esc(u)}" alt="Keyframe" loading="lazy">`).join('')}</div><span class="small muted">Keyframes only: the reel itself was not made because these failed the design check. Make it again from AI Studio.</span></div>`;
-      return `<div class="frame v916" style="max-width:230px"><div class="ph reel"><span class="note">Final reel pending</span><div><div class="hl">${esc(i.topic)}</div><div class="small" style="opacity:.8;margin-top:6px">4 × 5 s clips + 3 s white logo outro</div></div><div class="clips">${[1, 2, 3, 4].map((c) => `<span>Clip ${c}</span>`).join('')}</div></div></div>`;
+      return `<div class="frame v916" style="max-width:230px"><div class="ph reel"><span class="note">Final reel pending</span><div><div class="hl">${esc(i.topic)}</div><div class="small" style="opacity:.8;margin-top:6px">4 × 5 s clips · no outro</div></div><div class="clips">${[1, 2, 3, 4].map((c) => `<span>Clip ${c}</span>`).join('')}</div></div></div>`;
     }
     if (m.image_url) return `<div class="frame ${fmt}"><img src="${esc(m.image_url)}" alt="Design for ${esc(i.item_id)}" loading="lazy"></div>`;
     return `<div class="frame ${fmt}"><div class="ph"><span class="note">Design pending from Manus</span><div class="hl">${esc((i.design && i.design.headline_en) || i.topic)}</div><span class="small" style="opacity:.75">${esc((i.design && i.design.format) || '1080x1080')} · logo composited after generation</span></div></div>`;

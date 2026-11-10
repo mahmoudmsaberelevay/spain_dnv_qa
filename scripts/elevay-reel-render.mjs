@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 /** Bumped whenever renderer output changes. Version 4 adds the 20-second / four 5-second narration timeline. */
-export const RENDERER_VERSION = 12; // v12: owner's animated 5 s ELEVAY outro with its sound logo (v11: chunked uploads wait; v10: chunked uploads)
+export const RENDERER_VERSION = 13; // v13: reels can end with no outro (owner rule 10 Nov 2026); v12: owner's animated 5 s ELEVAY outro with its sound logo (v11: chunked uploads wait; v10: chunked uploads)
 const THREADS = 1;
 const FFMPEG = process.env.ELEVAY_FFMPEG_BIN || '/usr/bin/ffmpeg';
 const FFPROBE = process.env.ELEVAY_FFPROBE_BIN || '/usr/bin/ffprobe';
@@ -105,12 +105,14 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       await publish(`seg${i}`, out, 'video/mp4');
       await fsp.rm(source, { force: true });
     }
-    stage = 'official ELEVAY animated outro';
+    // Owner rule (10 Nov 2026): reels no longer end with an outro. A manifest with outroSeconds 0 skips it entirely.
+    const NO_OUTRO = Number(manifest.outroSeconds) === 0;
+    if (!NO_OUTRO) stage = 'official ELEVAY animated outro';
     // Owner rule (29 Oct 2026): the owner's animated ELEVAY outro (about 5 s, white background, its own sound logo).
     // The picture is normalized to 1080x1920 / 30 fps; its sound is kept and mixed in after the narration.
-    const OUTRO = Number(manifest.outroSeconds) >= 2 && Number(manifest.outroSeconds) <= 8 ? Number(manifest.outroSeconds) : 3;
+    const OUTRO = NO_OUTRO ? 0 : Number(manifest.outroSeconds) >= 2 && Number(manifest.outroSeconds) <= 8 ? Number(manifest.outroSeconds) : 3;
     const outroAudio = path.join(directory, 'outro-audio.wav');
-    if (!(await restore('outro', 'mp4'))) {
+    if (!NO_OUTRO && !(await restore('outro', 'mp4'))) {
       if (!manifest.outroUrl) throw new Error('The official ELEVAY outro is missing from the render manifest; no generated logo fallback is permitted.');
       const source = path.join(directory, 'outro.src'), out = path.join(directory, 'outro.mp4');
       await downloadFile(manifest.outroUrl, source, 100 * 1024 * 1024);
@@ -122,14 +124,14 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       await fsp.rm(source, { force: true });
     }
     // Video-only copy of the outro for the stream-copy join (its sound goes into the audio mix instead).
-    {
+    if (!NO_OUTRO) {
       const vOnly = path.join(directory, 'outro.video.mp4');
       await ff(['-i', files.outro, '-map', '0:v:0', '-c:v', 'copy', '-an', '-movflags', '+faststart', vOnly]);
       files.outroVideo = vOnly;
     }
     // The outro's own sound (if any) for the final mix; a silent outro simply contributes silence.
     let hasOutroAudio = false;
-    try { await ff(['-threads','1','-i',files.outro,'-vn','-af',`${audioFormat},atrim=duration=${OUTRO},apad=whole_dur=${OUTRO}`,'-c:a','pcm_s16le',outroAudio]); hasOutroAudio = true; } catch { hasOutroAudio = false; }
+    if (!NO_OUTRO) try { await ff(['-threads','1','-i',files.outro,'-vn','-af',`${audioFormat},atrim=duration=${OUTRO},apad=whole_dur=${OUTRO}`,'-c:a','pcm_s16le',outroAudio]); hasOutroAudio = true; } catch { hasOutroAudio = false; }
     stage = 'voice and music audio mix';
     let musicDropped = null;
     // Timing is evidence for the current audio mix, not a reusable source
@@ -190,7 +192,7 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
       let musicFile=null;
       if(manifest.musicUrl) try { musicFile=path.join(directory,'music.src');await downloadFile(manifest.musicUrl,musicFile,25*1024*1024); } catch { musicDropped='Music source unavailable; saved voice takes retained.';musicFile=null; }
       const mix=async withMusic => {
-        const T=(narrativeSeconds+OUTRO).toFixed(3), fadeAt=Math.max(0, narrativeSeconds-0.6).toFixed(3), outroAt=Math.round(narrativeSeconds*1000);
+        const T=(narrativeSeconds+OUTRO).toFixed(3), fadeAt=Math.max(0, narrativeSeconds-(NO_OUTRO?1.5:0.6)).toFixed(3), fadeLen=NO_OUTRO?1.5:1.2, outroAt=Math.round(narrativeSeconds*1000);
         const args=voices.flatMap(f=>['-threads','1','-i',f]);
         let k=4;
         const musicIdx = withMusic ? k++ : -1;
@@ -201,7 +203,7 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
         filters.push('[n0][n1][n2][n3]amix=inputs=4:duration=longest:normalize=0[voice]');
         let bus='voice';
         // Music fades out as the outro begins, so the outro's own sound logo is heard cleanly.
-        if(withMusic){ filters.push(`[${musicIdx}:a]${audioFormat},atrim=duration=${T},volume=0.16,afade=t=in:d=0.8,afade=t=out:st=${fadeAt}:d=1.2[bed]`,`[${bus}][bed]amix=inputs=2:duration=longest:normalize=0[vb]`); bus='vb'; }
+        if(withMusic){ filters.push(`[${musicIdx}:a]${audioFormat},atrim=duration=${T},volume=0.16,afade=t=in:d=0.8,afade=t=out:st=${fadeAt}:d=${fadeLen}[bed]`,`[${bus}][bed]amix=inputs=2:duration=longest:normalize=0[vb]`); bus='vb'; }
         if(hasOutroAudio){ filters.push(`[${outroIdx}:a]${audioFormat},adelay=${outroAt}|${outroAt},apad=whole_dur=${T}[ob]`,`[${bus}][ob]amix=inputs=2:duration=longest:normalize=0[vo]`); bus='vo'; }
         filters.push(`[${bus}]atrim=duration=${T},alimiter=limit=0.95[a]`);
         await ff([...args,'-filter_complex',filters.join(';'),'-map','[a]','-t',T,'-c:a','aac','-b:a','256k','-threads','1',path.join(directory,'audio.m4a')]);
@@ -236,7 +238,7 @@ export async function renderReel({ manifest, directory, savedParts = {}, onPart 
     }
     stage = 'stream-copy concat';
     const concat=path.join(directory,'concat.txt');
-    await fsp.writeFile(concat,['seg0','seg1','seg2','seg3','outroVideo'].map(n=>`file '${files[n].replace(/'/g,"'\\''")}'`).join('\n')+'\n');
+    await fsp.writeFile(concat,(NO_OUTRO?['seg0','seg1','seg2','seg3']:['seg0','seg1','seg2','seg3','outroVideo']).map(n=>`file '${files[n].replace(/'/g,"'\\''")}'`).join('\n')+'\n');
     const joined=path.join(directory,'joined.mp4');
     await ff(['-f','concat','-safe','0','-i',concat,'-map','0:v:0','-c:v','copy','-an','-movflags','+faststart',joined]);
     stage = 'final audio mux (no video encoding)';
