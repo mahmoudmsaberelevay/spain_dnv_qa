@@ -1050,7 +1050,7 @@
   function inboxLine(x) {
     if (!x) return '<p class="small muted">No inbox check recorded yet.</p>';
     const c = x.counts || {};
-    const read = x.counts ? `Read ${c.facebook_comments || 0} Facebook comments, ${c.instagram_comments || 0} Instagram comments, ${c.ad_comments || 0} ad comments, ${c.messenger || 0} Messenger and ${c.instagram_direct || 0} Instagram messages (last 7 days / 24 h). ${c.queued || 0} new item(s) queued${c.media_only ? `, ${c.media_only} voice note/photo` : ''}${c.skipped_no_reply ? `, ${c.skipped_no_reply} needed no reply` : ''}.` : '';
+    const read = x.counts ? `Read ${c.facebook_comments || 0} Facebook comments, ${c.instagram_comments || 0} Instagram comments, ${c.ad_comments || 0} ad comments, ${c.messenger || 0} Messenger and ${c.instagram_direct || 0} Instagram messages (last 7 days / 24 h). ${c.queued || 0} new item(s) queued${c.media_only ? `, ${c.media_only} voice note/photo` : ''}${c.skipped_no_reply ? `, ${c.skipped_no_reply} needed no reply` : ''}${c.auto_replied ? `, ${c.auto_replied} replied automatically` : ''}.${c.already_handled ? ` ${c.already_handled} were already handled by an earlier check (see History at the bottom of this page).` : ''}${c.messages_answered ? ` ${c.messages_answered} conversation(s) already answered by the Page.` : ''}${c.messages_older ? ` ${c.messages_older} conversation(s) older than 24 h (Meta no longer allows a reply).` : ''}` : '';
     const errs = (x.errors || []).length ? `<div class="small" style="color:var(--bad,#b42318)">Problems: ${(x.errors || []).map(esc).join(' · ')}</div>` : '';
     return `<p class="small muted">Last check ${fmtDT(new Date(x.at).toISOString())}. ${esc(read)}</p>${errs}`;
   }

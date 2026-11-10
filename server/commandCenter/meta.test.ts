@@ -27,7 +27,7 @@ function db() {
   };
 }
 
-function fakeMeta({ adComments = false, voiceNote = false, conversations = false, mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 150 }, instagramPermission = true, instagramStatus = "FINISHED", permissions = ["ads_management", "ads_read", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", "read_insights", "leads_retrieval", "instagram_basic", "instagram_manage_insights", "instagram_manage_comments", "instagram_content_publish"] } = {}) {
+function fakeMeta({ adComments = false, voiceNote = false, conversations = false, pageReplied = 0, igThread = false, mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 150 }, instagramPermission = true, instagramStatus = "FINISHED", permissions = ["ads_management", "ads_read", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", "read_insights", "leads_retrieval", "instagram_basic", "instagram_manage_insights", "instagram_manage_comments", "instagram_content_publish"] } = {}) {
   const posts = [];
   const fetcher = async (url, init) => {
     const u = new URL(url), path = u.pathname.split("/").slice(2).join("/"), body = init.body ? JSON.parse(init.body) : null;
@@ -47,12 +47,18 @@ function fakeMeta({ adComments = false, voiceNote = false, conversations = false
       ] };
       else if (path === "me/permissions") out = { data: instagramPermission ? permissions.map((permission) => ({ permission, status: "granted" })) : [] };
       else if (path === "111") out = { id: "111", name: "Elevay Global", instagram_business_account: { id: "ig1", username: "elevayglobal" } };
-      else if (path === "ig1/media") out = { data: [] };
+      else if (path === "ig1/media") out = !igThread ? { data: [] } : { data: [{ id: "igm9", caption: "Malta PR", timestamp: new Date().toISOString() }] };
+      else if (path === "igm9/comments") out = { data: [{ id: "igtop1", text: "Price?", username: "ali.m", timestamp: new Date().toISOString(), replies: { data: [{ id: "igrep1", text: "And for a family of four?", username: "ali.m", timestamp: new Date().toISOString() }] } }] };
       else if (path === "act_548667060148825/ads") out = !adComments ? { data: [] } : { data: [{ creative: { effective_instagram_media_id: "igad1" } }] };
       else if (path === "111/ads_posts") out = !adComments ? { data: [] } : { data: [{ id: "111_adpost" }] };
       else if (path === "111_adpost/comments") out = { data: [{ id: "adc1", message: "بكام إقامة البرتغال؟", from: { id: "u9", name: "Hany" }, created_time: new Date().toISOString() }] };
       else if (path === "igad1/comments") out = { data: [{ id: "igadc1", text: "Details please", username: "nour.a", timestamp: new Date().toISOString() }] };
       else if (path === "111/conversations" && voiceNote && u.searchParams.get("platform") === "messenger") out = { data: [{ id: "fbconv2", messages: { data: [{ id: "fbv1", from: { id: "psid-8", name: "Milad" }, created_time: new Date(Date.now() - 2 * 60_000).toISOString(), attachments: { data: [{ mime_type: "audio/mpeg" }] } }] } }] };
+      else if (path === "111/conversations" && pageReplied && u.searchParams.get("platform") === "messenger") {
+        // Customer 10 min ago, then a Page message pageReplied ms later (newest first, as Meta returns them).
+        const at = Date.now() - 10 * 60_000;
+        out = { data: [{ id: "fbconv3", messages: { data: [{ id: "pg1", message: "Thanks for messaging ELEVAY!", from: { id: "111", name: "Elevay Global" }, created_time: new Date(at + pageReplied).toISOString() }, { id: "fbm3", message: "عايز تفاصيل إقامة مالطا", from: { id: "psid-5", name: "Omar" }, created_time: new Date(at).toISOString() }] } }] };
+      }
       else if (path === "111/conversations") out = !conversations ? { data: [] } : u.searchParams.get("platform") === "instagram"
         ? { data: [{ id: "igconv1", messages: { data: [{ id: "igm1", message: "عايز أعرف عن إقامة البرتغال", from: { id: "igsid-9", username: "sara.k" }, created_time: new Date(Date.now() - 10 * 60_000).toISOString() }] } }] }
         : { data: [{ id: "fbconv1", messages: { data: [{ id: "fbm1", message: "كم تكلفة إقامة إسبانيا؟", from: { id: "psid-7", name: "Ahmed" }, created_time: new Date(Date.now() - 5 * 60_000).toISOString() }] } }] };
@@ -180,6 +186,30 @@ describe("Meta actions", () => {
     expect(sent.find((p) => p.body.recipient.id === "psid-7")).toMatchObject({ body: { messaging_type: "RESPONSE" } });
     expect(sent.find((p) => p.body.recipient.id === "igsid-9")).toMatchObject({ body: { message: { text: expect.stringContaining("ELEVAY") } } });
     expect(posts.some((p) => p.path === "ig1/messages")).toBe(false);
+  });
+
+  it("still queues a message hidden behind the Page's automatic instant reply, but not one a person already answered (10 Nov 2026)", async () => {
+    const auto = hub({ meta: { pageReplied: 5_000 } });
+    const r1 = await auto.h.syncInbox();
+    const fb = (await auto.h.list()).find((a) => a.kind === "reply_message");
+    expect(fb).toMatchObject({ recipient_id: "psid-5", incoming: "عايز تفاصيل إقامة مالطا", status: "pending" });
+    expect(fb.reason).toMatch(/automatic reply/);
+    expect(r1.counts.messenger).toBe(1);
+    const again = await auto.h.syncInbox();
+    expect(again.counts.queued).toBe(0);
+    expect(again.counts.already_handled).toBeGreaterThanOrEqual(1);
+    const human = hub({ meta: { pageReplied: 5 * 60_000 } });
+    const r2 = await human.h.syncInbox();
+    expect(r2.counts).toMatchObject({ messenger: 0, messages_answered: 1 });
+    expect((await human.h.list()).some((a) => a.kind === "reply_message")).toBe(false);
+  });
+
+  it("reads Instagram replies inside a comment thread and answers them on the top-level comment", async () => {
+    const { h } = hub({ meta: { igThread: true } });
+    const r = await h.syncInbox();
+    expect(r.counts.instagram_comments).toBe(2);
+    const replies = (await h.list()).filter((a) => a.kind === "reply_comment" && a.platform === "instagram");
+    expect(replies.map((a) => a.target_id).sort()).toEqual(["igtop1", "igtop1"]);
   });
 
   it("sends in-window Messenger and Instagram Direct replies through the Page /messages endpoint (Meta's Instagram Messaging with Facebook Login)", async () => {

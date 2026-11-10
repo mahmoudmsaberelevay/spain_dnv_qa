@@ -176,7 +176,7 @@ export function createMetaHub(deps) {
       if (autoComments && (await autoRepliesToday()) >= AUTO_COMMENT_DAILY_CAP) {
         a.reason = `Daily auto-reply limit of ${AUTO_COMMENT_DAILY_CAP} reached; waiting for approval.`;
       } else if (autoComments) {
-        await approve(a.id, { email: "auto-reply (owner switch: comments)", role: "owner" }).catch(() => {});
+        await approve(a.id, { email: "auto-reply (owner switch: comments)", role: "owner" }).then(() => { a.auto_replied = true; }).catch(() => {});
       } else if (on && !a.needs_human) await approve(a.id, { email: "autopilot (6-week gate reached)", role: "owner" }).catch(() => {});
     }
     return a;
@@ -373,9 +373,10 @@ export function createMetaHub(deps) {
     const found = [], errors = [];
     const since = Date.now() - 7 * 86400000;
     const contactPhone = (await deps.loadState()).state.settings.meta?.contactPhone || "";
-    const counts = { facebook_comments: 0, instagram_comments: 0, ad_comments: 0, messenger: 0, instagram_direct: 0, media_only: 0, queued: 0, skipped_no_reply: 0 };
+    const counts = { facebook_comments: 0, instagram_comments: 0, ad_comments: 0, messenger: 0, instagram_direct: 0, media_only: 0, queued: 0, skipped_no_reply: 0, already_handled: 0, auto_replied: 0, messages_answered: 0, messages_older: 0 };
     const consider = async (item) => {
-      if (await seen(item.key)) return;
+      // Already drafted, replied or skipped by an earlier check: never queued twice.
+      if (await seen(item.key)) { counts.already_handled++; return; }
       if (item.mediaOnly) {
         // Voice notes, photos and stickers carry no text to draft from: show them to the team instead of dropping them.
         counts.media_only++;
@@ -390,12 +391,15 @@ export function createMetaHub(deps) {
       const d = await draftReply({ ...item, contactPhone }).catch((e) => ({ category: "other", needs_human: true, reason: "Claude could not draft: " + e.message }));
       if (d.category === "spam" || (!d.reply && !d.needs_human)) { counts.skipped_no_reply++; return; }
       const problems = d.reply ? replyProblems(d.reply, item.channel === "comment", contactPhone) : [];
-      found.push(await enqueue({
+      const note = item.note ? item.note + " " : "";
+      const queued = await enqueue({
         kind: item.channel === "comment" ? "reply_comment" : "reply_message", platform: item.platform, target_id: item.target_id, recipient_id: item.recipient_id,
         from: item.from, incoming: clip(item.text, 1500), ...(item.incoming_at ? { incoming_at: item.incoming_at } : {}), context: clip(item.context || "", 300), permalink: item.permalink || null,
-        text: d.reply || "", category: d.category, needs_human: !!d.needs_human || !d.reply || problems.length > 0, reason: problems.length ? "Draft broke a rule: " + problems.join(" ") : d.reason || "",
+        text: d.reply || "", category: d.category, needs_human: !!d.needs_human || !d.reply || problems.length > 0, reason: note + (problems.length ? "Draft broke a rule: " + problems.join(" ") : d.reason || ""),
         preview: `${item.platform === "instagram" ? "Instagram" : "Facebook"} ${item.channel} from ${item.from || "someone"}`,
-      }, "claude"));
+      }, "claude");
+      if (queued.auto_replied) counts.auto_replied++;
+      found.push(queued);
     };
     // Ads: comments on ad posts never appear in the Page's published posts, and most ELEVAY comments come on ads.
     // Facebook ad posts come from the Page's own light ads_posts list; Instagram ad media from the account's ACTIVE
@@ -407,7 +411,7 @@ export function createMetaHub(deps) {
     } catch (e) { errors.push("Facebook ad posts: " + e.message); }
     try {
       if (adsToken() && process.env.META_AD_ACCOUNT_ID) {
-        const ads = await graph.get(`${account()}/ads`, adsToken(), { fields: "creative{effective_instagram_media_id,effective_object_story_id}", effective_status: JSON.stringify(["ACTIVE"]), limit: "25" });
+        const ads = await graph.get(`${account()}/ads`, adsToken(), { fields: "creative{effective_instagram_media_id,effective_object_story_id}", effective_status: JSON.stringify(["ACTIVE", "WITH_ISSUES", "PENDING_BILLING_INFO", "IN_PROCESS"]), limit: "25" });
         for (const ad of ads.data || []) {
           if (ad.creative?.effective_instagram_media_id) adMedia.add(String(ad.creative.effective_instagram_media_id));
           if (ad.creative?.effective_object_story_id && adStories.size < 40) adStories.add(String(ad.creative.effective_object_story_id));
@@ -442,11 +446,15 @@ export function createMetaHub(deps) {
         for (const id of adMedia) if (!list.some((m) => m.id === id)) list.push({ id, ad: true });
         for (const m of list) {
           try {
-            const cs = await graph.get(`${m.id}/comments`, page.token, { fields: "id,text,username,timestamp", limit: "25" });
-            for (const c of cs.data || []) {
+            const cs = await graph.get(`${m.id}/comments`, page.token, { fields: "id,text,username,timestamp,replies.limit(10){id,text,username,timestamp}", limit: "25" });
+            // Top-level comments and the replies under them (a customer often answers inside a thread).
+            // A reply is answered on its top-level comment: Instagram threads are only one level deep.
+            const all = [];
+            for (const c of cs.data || []) { all.push({ c, parent: c.id }); for (const r of c.replies?.data || []) all.push({ c: r, parent: c.id }); }
+            for (const { c, parent } of all) {
               if (!c.text || c.username === pg.instagram_business_account.username || Date.parse(c.timestamp) < since) continue;
               if (m.ad) counts.ad_comments++; else counts.instagram_comments++;
-              await consider({ key: "igc_" + c.id, platform: "instagram", channel: "comment", target_id: c.id, text: c.text, from: c.username, context: m.caption || (m.ad ? "(comment on an ELEVAY ad)" : ""), permalink: m.permalink || null });
+              await consider({ key: "igc_" + c.id, platform: "instagram", channel: "comment", target_id: parent, text: c.text, from: c.username, context: m.caption || (m.ad ? "(comment on an ELEVAY ad)" : ""), permalink: m.permalink || null });
             }
           } catch (e) { errors.push(`Instagram comments on ${m.ad ? "ad " : ""}media ${m.id}: ` + e.message); }
         }
@@ -456,19 +464,27 @@ export function createMetaHub(deps) {
     for (const platform of ["messenger", "instagram"]) {
       try {
         // Light request: 10 most recent conversations, only their latest message (25 × 3 timed out for Instagram).
-        const convs = await graph.get(`${page.pageId}/conversations`, page.token, { platform, fields: "id,updated_time,messages.limit(1){id,message,from,created_time,attachments.limit(1){mime_type,type}}", limit: "10" });
+        // The 5 latest messages of each conversation: an automatic "instant reply" sent by the Page (Meta Business Suite)
+        // right after the customer must not hide the customer's message, as it did when only the last message was read.
+        const convs = await graph.get(`${page.pageId}/conversations`, page.token, { platform, fields: "id,updated_time,messages.limit(5){id,message,from,created_time,attachments.limit(1){mime_type,type}}", limit: "10" });
+        const ours = (m) => m?.from?.id === page.pageId || (igId && m?.from?.id === igId);
         for (const cv of convs.data || []) {
-          const last = cv.messages?.data?.[0];
-          if (!last || last.from?.id === page.pageId || last.from?.id === igId) continue;
+          const msgs = (cv.messages?.data || []).slice().sort((a, b) => Date.parse(b.created_time) - Date.parse(a.created_time));
+          const last = msgs.find((m) => !ours(m));
+          if (!last) continue;
           const incomingAt = Date.parse(last.created_time);
-          if (!Number.isFinite(incomingAt) || incomingAt > Date.now() + 5 * 60 * 1000 || Date.now() - incomingAt > 23 * 3600000) continue;
+          // Page messages after the customer's: within 2 minutes = an automatic reply; later = a person already answered.
+          const after = msgs.filter((m) => ours(m) && Date.parse(m.created_time) >= incomingAt);
+          if (after.some((m) => Date.parse(m.created_time) - incomingAt > 120_000)) { counts.messages_answered++; continue; }
+          if (!Number.isFinite(incomingAt) || incomingAt > Date.now() + 5 * 60 * 1000 || Date.now() - incomingAt > 23 * 3600000) { counts.messages_older++; continue; }
+          const autoNote = after.length ? "The Page sent an automatic reply right after this message (Meta Business Suite instant reply); this is the real answer." : "";
           if (platform === "instagram") counts.instagram_direct++; else counts.messenger++;
           if (!last.message) {
             const kind = String(last.attachments?.data?.[0]?.mime_type || last.attachments?.data?.[0]?.type || "attachment");
             await consider({ key: "msg_" + last.id, mediaOnly: true, platform: platform === "instagram" ? "instagram" : "facebook", channel: "message", recipient_id: last.from?.id, text: `[${/audio/i.test(kind) ? "voice message" : /image|photo/i.test(kind) ? "photo" : /video/i.test(kind) ? "video" : "attachment"}]`, from: last.from?.name || last.from?.username, incoming_at: incomingAt });
             continue;
           }
-          await consider({ key: "msg_" + last.id, platform: platform === "instagram" ? "instagram" : "facebook", channel: "message", recipient_id: last.from?.id, text: last.message, from: last.from?.name || last.from?.username, incoming_at: incomingAt });
+          await consider({ key: "msg_" + last.id, platform: platform === "instagram" ? "instagram" : "facebook", channel: "message", recipient_id: last.from?.id, text: last.message, from: last.from?.name || last.from?.username, incoming_at: incomingAt, note: autoNote });
         }
       } catch (e) { errors.push(`${platform} messages: ` + e.message); }
     }
