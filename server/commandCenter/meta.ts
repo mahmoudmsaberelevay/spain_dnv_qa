@@ -373,7 +373,7 @@ export function createMetaHub(deps) {
     const found = [], errors = [];
     const since = Date.now() - 7 * 86400000;
     const contactPhone = (await deps.loadState()).state.settings.meta?.contactPhone || "";
-    const counts = { facebook_comments: 0, instagram_comments: 0, ad_comments: 0, messenger: 0, instagram_direct: 0, media_only: 0, queued: 0, skipped_no_reply: 0, already_handled: 0, auto_replied: 0, messages_answered: 0, messages_older: 0 };
+    const counts = { facebook_comments: 0, instagram_comments: 0, ad_comments: 0, messenger: 0, instagram_direct: 0, media_only: 0, queued: 0, skipped_no_reply: 0, already_handled: 0, auto_replied: 0, messages_answered: 0, messages_older: 0, messages_after_bot: 0, ad_posts_unavailable: 0 };
     const consider = async (item) => {
       // Already drafted, replied or skipped by an earlier check: never queued twice.
       if (await seen(item.key)) { counts.already_handled++; return; }
@@ -433,7 +433,11 @@ export function createMetaHub(deps) {
           if (p.ad) counts.ad_comments++; else counts.facebook_comments++;
           await consider({ key: "fbc_" + c.id, platform: "facebook", channel: "comment", target_id: c.id, text: c.message, from: c.from?.name, context: p.message || (p.ad ? "(comment on an ELEVAY ad)" : ""), permalink: p.permalink_url || null });
         }
-      } catch (e) { errors.push(`Facebook comments on ${p.ad ? "ad " : ""}post ${p.id}: ` + e.message); }
+      } catch (e) {
+        // An ad's post that was deleted, or belongs to another Page, can no longer be read: count it, don't alarm.
+        if (p.ad && /does not exist|cannot be loaded|Unsupported get request/i.test(String(e.message))) counts.ad_posts_unavailable++;
+        else errors.push(`Facebook comments on ${p.ad ? "ad " : ""}post ${p.id}: ` + e.message);
+      }
     }
     // Instagram comments
     let igId = null;
@@ -461,32 +465,41 @@ export function createMetaHub(deps) {
       }
     } catch (e) { errors.push("Instagram comments: " + e.message); }
     // Messenger and Instagram Direct messages (reply window: 24 h for both).
+    // The 5 latest messages of each conversation, for both platforms first, so automated Page replies can be told
+    // apart from a person's answer before anything is decided.
+    const ours = (m) => m?.from?.id === page.pageId || (igId && m?.from?.id === igId);
+    const fetched = [];
     for (const platform of ["messenger", "instagram"]) {
       try {
-        // Light request: 10 most recent conversations, only their latest message (25 × 3 timed out for Instagram).
-        // The 5 latest messages of each conversation: an automatic "instant reply" sent by the Page (Meta Business Suite)
-        // right after the customer must not hide the customer's message, as it did when only the last message was read.
         const convs = await graph.get(`${page.pageId}/conversations`, page.token, { platform, fields: "id,updated_time,messages.limit(5){id,message,from,created_time,attachments.limit(1){mime_type,type}}", limit: "10" });
-        const ours = (m) => m?.from?.id === page.pageId || (igId && m?.from?.id === igId);
-        for (const cv of convs.data || []) {
-          const msgs = (cv.messages?.data || []).slice().sort((a, b) => Date.parse(b.created_time) - Date.parse(a.created_time));
-          const last = msgs.find((m) => !ours(m));
-          if (!last) continue;
-          const incomingAt = Date.parse(last.created_time);
-          // Page messages after the customer's: within 2 minutes = an automatic reply; later = a person already answered.
-          const after = msgs.filter((m) => ours(m) && Date.parse(m.created_time) >= incomingAt);
-          if (after.some((m) => Date.parse(m.created_time) - incomingAt > 120_000)) { counts.messages_answered++; continue; }
-          if (!Number.isFinite(incomingAt) || incomingAt > Date.now() + 5 * 60 * 1000 || Date.now() - incomingAt > 23 * 3600000) { counts.messages_older++; continue; }
-          const autoNote = after.length ? "The Page sent an automatic reply right after this message (Meta Business Suite instant reply); this is the real answer." : "";
-          if (platform === "instagram") counts.instagram_direct++; else counts.messenger++;
-          if (!last.message) {
-            const kind = String(last.attachments?.data?.[0]?.mime_type || last.attachments?.data?.[0]?.type || "attachment");
-            await consider({ key: "msg_" + last.id, mediaOnly: true, platform: platform === "instagram" ? "instagram" : "facebook", channel: "message", recipient_id: last.from?.id, text: `[${/audio/i.test(kind) ? "voice message" : /image|photo/i.test(kind) ? "photo" : /video/i.test(kind) ? "video" : "attachment"}]`, from: last.from?.name || last.from?.username, incoming_at: incomingAt });
-            continue;
-          }
-          await consider({ key: "msg_" + last.id, platform: platform === "instagram" ? "instagram" : "facebook", channel: "message", recipient_id: last.from?.id, text: last.message, from: last.from?.name || last.from?.username, incoming_at: incomingAt, note: autoNote });
-        }
+        for (const cv of convs.data || []) fetched.push({ platform, msgs: (cv.messages?.data || []).slice().sort((a, b) => Date.parse(b.created_time) - Date.parse(a.created_time)) });
       } catch (e) { errors.push(`${platform} messages: ` + e.message); }
+    }
+    // A Page message is automatic (a bot such as BotSailor, a Meta instant reply or away message) when it came within
+    // 2 minutes of the customer, has no typed text (cards, buttons), or the same text was sent in another conversation
+    // (a template). Only a Page reply that is none of these counts as a person having answered.
+    const norm = (t) => String(t || "").replace(/\s+/g, " ").trim().toLowerCase();
+    const textConvs = new Map();
+    fetched.forEach((c, i) => { for (const m of c.msgs) if (ours(m) && norm(m.message)) { const k = norm(m.message); if (!textConvs.has(k)) textConvs.set(k, new Set()); textConvs.get(k).add(i); } });
+    const automatic = (m, incomingAt) => Date.parse(m.created_time) - incomingAt <= 120_000 || !norm(m.message) || (textConvs.get(norm(m.message))?.size || 0) >= 2;
+    for (const { platform, msgs } of fetched) {
+      try {
+        const last = msgs.find((m) => !ours(m));
+        if (!last) continue;
+        const incomingAt = Date.parse(last.created_time);
+        const after = msgs.filter((m) => ours(m) && Date.parse(m.created_time) >= incomingAt);
+        if (after.some((m) => !automatic(m, incomingAt))) { counts.messages_answered++; continue; }
+        if (!Number.isFinite(incomingAt) || incomingAt > Date.now() + 5 * 60 * 1000 || Date.now() - incomingAt > 23 * 3600000) { counts.messages_older++; continue; }
+        if (after.length) counts.messages_after_bot++;
+        const autoNote = after.length ? "Only an automatic reply (bot, instant reply or template) came after this message; no person has answered it yet." : "";
+        if (platform === "instagram") counts.instagram_direct++; else counts.messenger++;
+        if (!last.message) {
+          const kind = String(last.attachments?.data?.[0]?.mime_type || last.attachments?.data?.[0]?.type || "attachment");
+          await consider({ key: "msg_" + last.id, mediaOnly: true, platform: platform === "instagram" ? "instagram" : "facebook", channel: "message", recipient_id: last.from?.id, text: `[${/audio/i.test(kind) ? "voice message" : /image|photo/i.test(kind) ? "photo" : /video/i.test(kind) ? "video" : "attachment"}]`, from: last.from?.name || last.from?.username, incoming_at: incomingAt });
+          continue;
+        }
+        await consider({ key: "msg_" + last.id, platform: platform === "instagram" ? "instagram" : "facebook", channel: "message", recipient_id: last.from?.id, text: last.message, from: last.from?.name || last.from?.username, incoming_at: incomingAt, note: autoNote });
+      } catch (e) { errors.push(`${platform} message: ` + e.message); }
     }
     counts.queued = found.length;
     const status = { at: Date.now(), counts, errors: errors.slice(0, 12) };

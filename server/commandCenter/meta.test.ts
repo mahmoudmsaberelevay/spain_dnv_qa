@@ -27,7 +27,7 @@ function db() {
   };
 }
 
-function fakeMeta({ adComments = false, voiceNote = false, conversations = false, pageReplied = 0, igThread = false, mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 150 }, instagramPermission = true, instagramStatus = "FINISHED", permissions = ["ads_management", "ads_read", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", "read_insights", "leads_retrieval", "instagram_basic", "instagram_manage_insights", "instagram_manage_comments", "instagram_content_publish"] } = {}) {
+function fakeMeta({ adComments = false, voiceNote = false, conversations = false, pageReplied = 0, igThread = false, botTemplate = false, deadAdPost = false, mtd = 100000, activeDaily = 3000, cpl = { "c1": 80, "c2": 150 }, instagramPermission = true, instagramStatus = "FINISHED", permissions = ["ads_management", "ads_read", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", "read_insights", "leads_retrieval", "instagram_basic", "instagram_manage_insights", "instagram_manage_comments", "instagram_content_publish"] } = {}) {
   const posts = [];
   const fetcher = async (url, init) => {
     const u = new URL(url), path = u.pathname.split("/").slice(2).join("/"), body = init.body ? JSON.parse(init.body) : null;
@@ -50,10 +50,18 @@ function fakeMeta({ adComments = false, voiceNote = false, conversations = false
       else if (path === "ig1/media") out = !igThread ? { data: [] } : { data: [{ id: "igm9", caption: "Malta PR", timestamp: new Date().toISOString() }] };
       else if (path === "igm9/comments") out = { data: [{ id: "igtop1", text: "Price?", username: "ali.m", timestamp: new Date().toISOString(), replies: { data: [{ id: "igrep1", text: "And for a family of four?", username: "ali.m", timestamp: new Date().toISOString() }] } }] };
       else if (path === "act_548667060148825/ads") out = !adComments ? { data: [] } : { data: [{ creative: { effective_instagram_media_id: "igad1" } }] };
-      else if (path === "111/ads_posts") out = !adComments ? { data: [] } : { data: [{ id: "111_adpost" }] };
+      else if (path === "111/ads_posts") out = deadAdPost ? { data: [{ id: "111_dead" }] } : !adComments ? { data: [] } : { data: [{ id: "111_adpost" }] };
+      else if (path === "111_dead/comments") return { ok: false, status: 400, json: async () => ({ error: { code: 100, error_subcode: 33, message: "Unsupported get request. Object with ID '111_dead' does not exist, cannot be loaded due to missing permissions, or does not support this operation." } }) };
       else if (path === "111_adpost/comments") out = { data: [{ id: "adc1", message: "بكام إقامة البرتغال؟", from: { id: "u9", name: "Hany" }, created_time: new Date().toISOString() }] };
       else if (path === "igad1/comments") out = { data: [{ id: "igadc1", text: "Details please", username: "nour.a", timestamp: new Date().toISOString() }] };
       else if (path === "111/conversations" && voiceNote && u.searchParams.get("platform") === "messenger") out = { data: [{ id: "fbconv2", messages: { data: [{ id: "fbv1", from: { id: "psid-8", name: "Milad" }, created_time: new Date(Date.now() - 2 * 60_000).toISOString(), attachments: { data: [{ mime_type: "audio/mpeg" }] } }] } }] };
+      else if (path === "111/conversations" && botTemplate) {
+        // A bot (e.g. BotSailor) sends the same text 5 minutes after every customer, in both conversations.
+        const at = Date.now() - 20 * 60_000, bot = (id) => ({ id, message: "Welcome to ELEVAY! Choose a program below.", from: { id: "111", name: "Elevay Global" }, created_time: new Date(at + 5 * 60_000).toISOString() });
+        out = u.searchParams.get("platform") === "instagram" ? { data: [] } : { data: [
+          { id: "c1", messages: { data: [bot("b1"), { id: "cm1", message: "تكلفة إقامة البرتغال؟", from: { id: "psid-1", name: "Mona" }, created_time: new Date(at).toISOString() }] } },
+          { id: "c2", messages: { data: [bot("b2"), { id: "cm2", message: "عايز أعرف عن اليونان", from: { id: "psid-2", name: "Karim" }, created_time: new Date(at).toISOString() }] } }] };
+      }
       else if (path === "111/conversations" && pageReplied && u.searchParams.get("platform") === "messenger") {
         // Customer 10 min ago, then a Page message pageReplied ms later (newest first, as Meta returns them).
         const at = Date.now() - 10 * 60_000;
@@ -202,6 +210,22 @@ describe("Meta actions", () => {
     const r2 = await human.h.syncInbox();
     expect(r2.counts).toMatchObject({ messenger: 0, messages_answered: 1 });
     expect((await human.h.list()).some((a) => a.kind === "reply_message")).toBe(false);
+  });
+
+  it("treats a bot's repeated template reply as automatic and still queues the customer's message (11 Nov 2026)", async () => {
+    const { h } = hub({ meta: { botTemplate: true } });
+    const r = await h.syncInbox();
+    expect(r.counts).toMatchObject({ messenger: 2, messages_answered: 0, messages_after_bot: 2 });
+    const msgs = (await h.list()).filter((a) => a.kind === "reply_message");
+    expect(msgs.map((a) => a.recipient_id).sort()).toEqual(["psid-1", "psid-2"]);
+    expect(msgs[0].reason).toMatch(/automatic reply/);
+  });
+
+  it("skips a deleted ad post quietly instead of reporting a problem", async () => {
+    const { h } = hub({ meta: { deadAdPost: true } });
+    const r = await h.syncInbox();
+    expect(r.counts.ad_posts_unavailable).toBe(1);
+    expect(r.errors.some((e) => /111_dead/.test(e))).toBe(false);
   });
 
   it("reads Instagram replies inside a comment thread and answers them on the top-level comment", async () => {
