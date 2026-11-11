@@ -120,6 +120,7 @@ export const MOBILE_SIDEBAR_MODULES = [
     icon: FolderCheck,
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "/docs/dashboard" },
+      { icon: BarChart3, label: "Milestone Reports", path: "/docs/milestone-reports" },
       { icon: Users, label: "Clients", path: "/docs" },
       { icon: GitBranch, label: "Workflow", path: "/docs/workflow" },
       { icon: Globe, label: "National Visa", path: "/docs/national-visa" },

@@ -29,6 +29,7 @@ import AnalysisReport from "./pages/AnalysisReport";
 // ─── Client Documentation Module ─────────────────────────────────────────
 import ClientDocs from "./pages/ClientDocs";
 import ClientDocsDashboard from "./pages/ClientDocsDashboard";
+import ClientDocsMilestoneReports from "./pages/ClientDocsMilestoneReports";
 import ClientDocDetail from "./pages/ClientDocDetail";
 import WorkflowPage from "./pages/WorkflowPage";
 import NationalVisaPage from "./pages/NationalVisaPage";
@@ -276,6 +277,9 @@ function Router() {
       {/* ── Client Documentation Module ── */}
       <Route path="/docs/dashboard">
         <PageGuard pageKey="client_docs"><ClientDocsDashboard /></PageGuard>
+      </Route>
+      <Route path="/docs/milestone-reports">
+        <PageGuard pageKey="client_docs"><ClientDocsMilestoneReports /></PageGuard>
       </Route>
       <Route path="/docs">
         <PageGuard pageKey="client_docs"><MobileRoute><ClientDocs /></MobileRoute></PageGuard>

@@ -230,6 +230,7 @@ const modules = [
     icon: FolderCheck,
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "/docs/dashboard" },
+      { icon: BarChart3, label: "Milestone Reports", path: "/docs/milestone-reports" },
       { icon: Users, label: "Clients", path: "/docs" },
       { icon: GitBranch, label: "Workflow", path: "/docs/workflow" },
       { icon: Globe, label: "National Visa", path: "/docs/national-visa" },
@@ -529,7 +530,7 @@ function DashboardLayoutContent({
                     <SidebarMenu className="px-2">
                       {mod.items.map((item) => {
                         const isActive = location === item.path ||
-                          (item.path !== "/contracting" && item.path !== "/analysis" && item.path !== "/reports" && location.startsWith(item.path));
+                          (item.path !== "/contracting" && item.path !== "/analysis" && item.path !== "/reports" && (item.path !== "/docs" || location.startsWith("/docs/clients/")) && location.startsWith(item.path));
                         return (
                           <SidebarMenuItem key={item.path}>
                             <SidebarMenuButton

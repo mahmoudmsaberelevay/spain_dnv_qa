@@ -37,7 +37,7 @@ export function ClientDocumentationSpainMilestones({ clientCaseId, clientCase }:
   const [location, setLocation] = useState(clientCase.biometricsLocation ?? "");
   const [ticketLink, setTicketLink] = useState(clientCase.ticketLink ?? "");
   const [hotelLink, setHotelLink] = useState(clientCase.hotelLink ?? "");
-  const invalidate = async () => Promise.all([utils.clientDocs.get.invalidate({ id: clientCaseId }), utils.clientDocs.report.invalidate({ id: clientCaseId }), utils.clientDocs.dashboard.invalidate()]);
+  const invalidate = async () => Promise.all([utils.clientDocs.get.invalidate({ id: clientCaseId }), utils.clientDocs.report.invalidate({ id: clientCaseId }), utils.clientDocs.dashboard.invalidate(), utils.documentationMilestoneReports.report.invalidate()]);
   const mutation = trpc.clientDocs.recordSpainMilestone.useMutation({
     onSuccess: async () => { toast.success("Spain milestone saved"); setActive(null); await invalidate(); },
     onError: error => toast.error(error.message),
