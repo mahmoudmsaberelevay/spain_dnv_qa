@@ -4050,3 +4050,43 @@ export const crmShipments = mysqlTable("crmShipments", {
 ]);
 export type CrmShipment = typeof crmShipments.$inferSelect;
 export type InsertCrmShipment = typeof crmShipments.$inferInsert;
+
+// Isolated DocuSign ledger. Never drives contract signed status or financial records.
+export const contractDocusignEnvelopes = mysqlTable("contractDocusignEnvelopes", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  contractId: int("contractId").notNull(),
+  version: int("version").notNull(),
+  requestId: varchar("requestId", { length: 36 }).notNull(),
+  documentSourceUrl: text("documentSourceUrl").notNull(),
+  documentHash: varchar("documentHash", { length: 64 }).notNull(),
+  documentSourceSnapshot: json("documentSourceSnapshot").$type<{ contractCode: string; clientName: string; sourceUrl: string }>().notNull(),
+  documentName: varchar("documentName", { length: 255 }).notNull(),
+  documentExtension: varchar("documentExtension", { length: 10 }).notNull(),
+  recipientName: varchar("recipientName", { length: 100 }).notNull(),
+  recipientEmail: varchar("recipientEmail", { length: 254 }).notNull(),
+  recipientDigest: varchar("recipientDigest", { length: 64 }).notNull(),
+  clientUserId: varchar("clientUserId", { length: 100 }).notNull(),
+  recipientId: varchar("recipientId", { length: 10 }).notNull(),
+  providerEnvelopeId: varchar("providerEnvelopeId", { length: 36 }),
+  environment: mysqlEnum("environment", ["demo", "production"]).notNull(),
+  accountId: varchar("accountId", { length: 36 }).notNull(),
+  status: mysqlEnum("status", ["preparing", "draft", "sent", "delivered", "completed", "declined", "voided", "error", "uncertain"]).notNull(),
+  hasSignatureTabs: boolean("hasSignatureTabs").default(false).notNull(),
+  recipientVerified: boolean("recipientVerified").default(false).notNull(),
+  errorCode: varchar("errorCode", { length: 80 }),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdByName: varchar("createdByName", { length: 255 }).notNull(),
+  linkNonce: varchar("linkNonce", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  lastCheckedAt: timestamp("lastCheckedAt"),
+  lastCheckAttemptAt: timestamp("lastCheckAttemptAt"),
+  linkExpiresAt: timestamp("linkExpiresAt"),
+  revokedAt: timestamp("revokedAt"),
+}, table => [
+  uniqueIndex("contractDocusign_contract_version").on(table.contractId, table.version),
+  uniqueIndex("contractDocusign_request").on(table.requestId),
+  uniqueIndex("contractDocusign_provider").on(table.providerEnvelopeId),
+  index("contractDocusign_contract").on(table.contractId),
+]);
+export type ContractDocusignEnvelope = typeof contractDocusignEnvelopes.$inferSelect;

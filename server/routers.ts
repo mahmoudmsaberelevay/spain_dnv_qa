@@ -2,6 +2,7 @@ import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { leadsRouter } from "./routers/leads";
 import { leadCallsRouter } from "./leadCallsRouter";
+import { contractDocusignRouter } from "./contractDocusignRouter";
 import { leadCallRecoveryRouter } from "./leadCallRecovery";
 import { leadsSettingsRouter } from "./routers/leadsSettings";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -2789,6 +2790,7 @@ export const appRouter = router({
   documents: documentsRouter,
   analysis: analysisRouter,
   contracting: contractingRouter,
+  contractDocusign: contractDocusignRouter,
   clientDocs: clientDocsRouter,
   documentationMilestoneReports: clientDocumentationMilestoneReportsRouter,
   financial: financialRouter,

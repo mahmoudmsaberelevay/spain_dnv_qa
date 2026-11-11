@@ -19,6 +19,7 @@ import { startRateScheduler } from "../rateScheduler";
 import { startMetaLeadSyncScheduler } from "../metaLeadSyncScheduler";
 import rateLimit from "express-rate-limit";
 import { requireBackupAdmin } from "../backupAccess";
+import { registerContractDocusignSigningPage } from "../contractDocusignSigningPage";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -53,6 +54,9 @@ async function startServer() {
 
   // Trust the first proxy (Manus reverse proxy / load balancer)
   app.set("trust proxy", 1);
+
+  // Public invitation handoff has no CRM data, analytics or account providers.
+  registerContractDocusignSigningPage(app);
 
   // Apple App Site Association — must be served with application/json content-type
   app.get("/.well-known/apple-app-site-association", (_req, res) => {

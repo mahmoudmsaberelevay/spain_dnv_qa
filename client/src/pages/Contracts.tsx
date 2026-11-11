@@ -16,9 +16,10 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Plus, Download, Search, FileText, Users, Calendar, CheckCircle, XCircle, Clock, Filter, Pencil,
+  Plus, Download, Search, FileText, Users, Calendar, CheckCircle, XCircle, Clock, Filter, Pencil, FileSignature, History,
 } from "lucide-react";
 import NewContractDialog from "@/components/NewContractDialog";
+import ContractDocusignDialog, { docusignDraftDisabledReason, type DocusignContract } from "@/components/ContractDocusignDialog";
 import { formatCurrency, formatDate, getStatusBadgeClass } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { usePermissions } from "@/contexts/PermissionsContext";
@@ -102,6 +103,8 @@ export default function Contracts() {
   const isAdmin = user?.role === "admin";
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; code: string; client: string } | null>(null);
   const [showNewContract, setShowNewContract] = useState(false);
+  const [docusignContract, setDocusignContract] = useState<DocusignContract | null>(null);
+  const [showDocusign, setShowDocusign] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [consultantFilter, setConsultantFilter] = useState<string>("all");
@@ -461,6 +464,37 @@ export default function Contracts() {
                             </Button>
                           )}
                           {canEdit("contracts") && (
+                            <span title={docusignDraftDisabledReason(contract) ?? "Prepare contract in DocuSign"}>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 gap-1 text-xs text-primary hover:bg-primary/10"
+                                disabled={!!docusignDraftDisabledReason(contract)}
+                                title="Prepare contract in DocuSign"
+                                aria-describedby={docusignDraftDisabledReason(contract) ? `docusign-unavailable-${contract.id}` : undefined}
+                                onClick={() => { setDocusignContract(contract); setShowDocusign(true); }}
+                              >
+                                <FileSignature className="h-3.5 w-3.5" />
+                                DocuSign
+                              </Button>
+                              {docusignDraftDisabledReason(contract) && (
+                                <span id={`docusign-unavailable-${contract.id}`} className="sr-only">{docusignDraftDisabledReason(contract)}</span>
+                              )}
+                            </span>
+                          )}
+                          {canAccess("contracts") && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                              title="View DocuSign version history"
+                              onClick={() => { setDocusignContract(contract); setShowDocusign(true); }}
+                            >
+                              <History className="h-3.5 w-3.5" />
+                              Signing history
+                            </Button>
+                          )}
+                          {canEdit("contracts") && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -520,6 +554,14 @@ export default function Contracts() {
       </Card>
 
       <NewContractDialog open={showNewContract} onClose={() => setShowNewContract(false)} />
+      {docusignContract && (
+        <ContractDocusignDialog
+          key={docusignContract.id}
+          contract={contracts?.find(contract => contract.id === docusignContract.id) ?? docusignContract}
+          open={showDocusign}
+          onOpenChange={setShowDocusign}
+        />
+      )}
 
       <Dialog open={!!editConsultant} onOpenChange={(open) => !open && setEditConsultant(null)}>
         <DialogContent className="max-w-md">
