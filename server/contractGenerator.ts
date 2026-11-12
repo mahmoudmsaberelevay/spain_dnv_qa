@@ -312,13 +312,29 @@ function formatContractValue(value: number): string {
   }).format(value);
 }
 
+export type ContractFinancialSummary={currency:string;originalValue:number;discountValue:number};
+/** Adds the owner's agreed commercial amount, never substitutes a government contribution. */
+export function addNetContractSummary(xml:string,net:number,summary:ContractFinancialSummary):string{
+  const {currency,originalValue,discountValue}=summary;
+  if(!["EUR","USD"].includes(currency)||![net,originalValue,discountValue].every(n=>Number.isFinite(n)&&n>=0)||Math.round(originalValue*100)-Math.round(discountValue*100)!==Math.round(net*100))throw new Error("Invalid contract financial summary");
+  if(originalValue===0&&discountValue===0)return xml;
+  const unit=currency==="EUR"?"يورو":"دولار أمريكي";
+  const words=`قيمة العقد قبل الخصم: ${formatContractValue(originalValue)} ${unit} — الخصم: ${formatContractValue(discountValue)} ${unit} — قيمة العقد بعد الخصم: ${formatContractValue(net)} ${unit}`;
+  const paragraph=`<w:p><w:pPr><w:bidi/><w:spacing w:after="120"/></w:pPr><w:r><w:rPr><w:b/><w:rtl/></w:rPr><w:t xml:space="preserve">${escapeXml(words)}</w:t></w:r></w:p>`;
+  const paragraphs=xml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)??[];
+  const heads=paragraphs.filter(p=>/المادة\s*\(6\)/.test(p.replace(/<[^>]+>/g,""))&&/الأتعاب المالية/.test(p.replace(/<[^>]+>/g,"")));
+  if(heads.length!==1)throw new Error("Contract financial section requires review");
+  return xml.replace(heads[0],heads[0]+paragraph);
+}
+
 // ── Main generator ─────────────────────────────────────────────────────────
 export async function generateContractDoc(
   clientName: string,
   familyMembers: number,
   contractCode: string,
   country = "spain",
-  contractValueOverride?: number
+  contractValueOverride?: number,
+  financialSummary?:ContractFinancialSummary
 ): Promise<{ buffer: Buffer; filename: string }> {
   const contractValue =
     contractValueOverride !== undefined
@@ -363,6 +379,7 @@ export async function generateContractDoc(
     );
   }
 
+  if(country!=="spain"&&financialSummary)docXml=addNetContractSummary(docXml,contractValue,financialSummary);
   zip.file("word/document.xml", docXml);
 
   const outputBuffer = Buffer.from(

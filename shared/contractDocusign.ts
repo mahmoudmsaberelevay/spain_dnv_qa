@@ -7,6 +7,7 @@ export type SafeEnvelope = {
   createdAt: Date; updatedAt: Date; lastCheckedAt: Date | null;
   linkExpiresAt: Date | null; nextRefreshAt: Date | null;
   canShare: boolean; hasSignatureTabs: boolean; errorCode: string | null;
+  canRegenerate?:boolean; linkRevoked?:boolean; autoSignEligible?:boolean; crmSigned?:boolean; financeReviewRequired?:boolean;
   documentHash: string;
   signingRequirements?: { profile: string; pageCount: number; fullSignaturePages: number[]; pageInitialCount: number; clauseInitialCount: number; verified: boolean };
 };

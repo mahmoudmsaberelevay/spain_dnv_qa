@@ -4051,7 +4051,7 @@ export const crmShipments = mysqlTable("crmShipments", {
 export type CrmShipment = typeof crmShipments.$inferSelect;
 export type InsertCrmShipment = typeof crmShipments.$inferInsert;
 
-// Isolated DocuSign ledger. Never drives contract signed status or financial records.
+// Versioned DocuSign ledger; only verified future production profiles may drive Signed.
 export const contractDocusignEnvelopes = mysqlTable("contractDocusignEnvelopes", {
   id: varchar("id", { length: 36 }).primaryKey(),
   contractId: int("contractId").notNull(),
@@ -4059,7 +4059,7 @@ export const contractDocusignEnvelopes = mysqlTable("contractDocusignEnvelopes",
   requestId: varchar("requestId", { length: 36 }).notNull(),
   documentSourceUrl: text("documentSourceUrl").notNull(),
   documentHash: varchar("documentHash", { length: 64 }).notNull(),
-  documentSourceSnapshot: json("documentSourceSnapshot").$type<{ contractCode: string; clientName: string; sourceUrl: string; country?: string; signingProfile?: string; signingPlan?: import("../server/contractDocusignSpainSigning").SpainSigningPlan; signingSetupAttempted?: boolean }>().notNull(),
+  documentSourceSnapshot: json("documentSourceSnapshot").$type<{ contractCode: string; clientName: string; sourceUrl: string; country?: string; signingProfile?: string; signingPlan?: import("../server/contractDocusignSpainSigning").SpainSigningPlan; signingSetupAttempted?: boolean; financialSnapshot?: { originalValue:string; netValue:string; discount:string; currency:string }; lastLinkRenewalRequestId?:string; linkRenewalRequestIds?:string[]; completionProfile?:"verified-production-v1"; completionDocumentProof?:import("../server/contractDocusignCompletionProof").CompletionDocumentProof; completionTabsHash?:string; completionVerifiedAt?:number; completionSignedAt?:string; syncCompletedAt?:number; financeReviewRequired?:boolean }>().notNull(),
   documentName: varchar("documentName", { length: 255 }).notNull(),
   documentExtension: varchar("documentExtension", { length: 10 }).notNull(),
   recipientName: varchar("recipientName", { length: 100 }).notNull(),
@@ -4090,3 +4090,15 @@ export const contractDocusignEnvelopes = mysqlTable("contractDocusignEnvelopes",
   index("contractDocusign_contract").on(table.contractId),
 ]);
 export type ContractDocusignEnvelope = typeof contractDocusignEnvelopes.$inferSelect;
+
+// Application-owned production-only polling. No schedules are enabled by a migration.
+export const contractDocusignSyncSettings = mysqlTable("contractDocusignSyncSettings", {
+  id: int("id").primaryKey(),
+  enabled: boolean("enabled").default(false).notNull(),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length:65 }),
+  leaseToken: varchar("leaseToken", { length:64 }),
+  leaseExpiresAt: bigint("leaseExpiresAt", { mode:"number" }),
+  lastRunAt: bigint("lastRunAt", { mode:"number" }),
+  lastErrorCode: varchar("lastErrorCode", { length:80 }),
+}, table => [uniqueIndex("contract_docusign_sync_task_uid").on(table.scheduleCronTaskUid)]);
+export type ContractDocusignSyncSetting = typeof contractDocusignSyncSettings.$inferSelect;

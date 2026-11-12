@@ -8,7 +8,7 @@ const harness = vi.hoisted(() => ({
   slots: [] as unknown[], cursor: 0, canEdit: true, canAccess: true,
   configured: true, canManage: true, missingSettings: [] as string[],
   history: [] as SafeEnvelope[], historyError: false, fetching: false,
-  prepare: vi.fn(), senderView: vi.fn(), refresh: vi.fn(), signingLink: vi.fn(), revokeLink: vi.fn(),
+  prepare: vi.fn(), senderView: vi.fn(), refresh: vi.fn(), signingLink: vi.fn(), revokeLink: vi.fn(), regenerateLink:vi.fn(),
   invalidate: vi.fn(), refetch: vi.fn(),
 }));
 
@@ -42,11 +42,12 @@ vi.mock("@/lib/trpc", () => ({
       refresh: { useMutation: () => ({ mutateAsync: harness.refresh }) },
       signingLink: { useMutation: () => ({ mutateAsync: harness.signingLink }) },
       revokeLink: { useMutation: () => ({ mutateAsync: harness.revokeLink }) },
+      regenerateSigningLink:{useMutation:()=>({mutateAsync:harness.regenerateLink})},
     },
     useUtils: () => ({ contractDocusign: { history: {
       setData: (_input: unknown, updater: (current: SafeEnvelope[]) => SafeEnvelope[]) => { harness.history = updater(harness.history); },
       invalidate: harness.invalidate,
-    } } }),
+    } },contracting:{contracts:{list:{invalidate:harness.invalidate}}} }),
   },
 }));
 
@@ -106,6 +107,7 @@ beforeEach(() => {
   harness.prepare.mockResolvedValue({ envelope: envelope(), senderUrl: "https://demo.docusign.net/synthetic-sender" });
   harness.senderView.mockResolvedValue({ url: "https://demo.docusign.net/synthetic-sender" });
   harness.signingLink.mockResolvedValue({ url: "https://elevay.vip/sign-contract/synthetic#not-a-real-token", expiresAt: new Date("2030-01-01T00:00:00Z") });
+  harness.regenerateLink.mockResolvedValue({url:"https://elevay.vip/sign-contract/synthetic#new-synthetic-token",expiresAt:new Date("2030-01-01T00:00:00Z")});
   harness.revokeLink.mockResolvedValue({ success: true });
 });
 
@@ -197,7 +199,7 @@ describe("DocuSign guarded actions", () => {
     expect(text(tree)).not.toContain("DOCUSIGN_RSA_PRIVATE_KEY");
     expect(text(tree)).not.toContain("Create DocuSign draft");
     expect(text(tree)).not.toContain("Open sender preparation");
-    for (const fn of [harness.prepare, harness.senderView, harness.refresh, harness.signingLink, harness.revokeLink]) expect(fn).not.toHaveBeenCalled();
+    for (const fn of [harness.prepare, harness.senderView, harness.refresh, harness.signingLink, harness.revokeLink,harness.regenerateLink]) expect(fn).not.toHaveBeenCalled();
   });
   it("blocks draft creation when settings are missing, permission is denied, or history is unavailable", async () => {
     approve(); harness.configured = false; harness.missingSettings = ["DOCUSIGN_LINK_SECRET"];
@@ -283,6 +285,27 @@ describe("DocuSign guarded actions", () => {
     await click(render(), "Confirm revoke local link");
     expect(harness.revokeLink).toHaveBeenCalledWith({ id: envelope().id });
   });
+  it("requires explicit confirmation for a same-envelope 48-hour renewal and never creates or sends another envelope",async()=>{
+    harness.history=[envelope({status:"sent",canRegenerate:true,linkRevoked:true,linkExpiresAt:new Date(0)})];
+    await click(render(),"Generate / regenerate 48-hour link");
+    expect(harness.regenerateLink).not.toHaveBeenCalled();
+    expect(text(render())).toContain("previous ELEVAY link will immediately become invalid");
+    await click(render(),"Confirm new 48-hour link");
+    expect(harness.regenerateLink).toHaveBeenCalledWith({id:envelope().id,requestId:"33333333-3333-4333-8333-333333333333",confirmed:true});
+    expect(harness.prepare).not.toHaveBeenCalled();expect(harness.senderView).not.toHaveBeenCalled();expect(window.open).not.toHaveBeenCalled();
+    expect(text(render())).toContain("New 48-hour signing link copied");
+  });
+  it("blocks copying a locally expired invitation even when a stale server result was shareable",async()=>{
+    harness.history=[envelope({status:"sent",canShare:true,canRegenerate:true,linkExpiresAt:new Date(0)})];
+    await click(render(),"Copy client signing link");expect(harness.signingLink).not.toHaveBeenCalled();
+    expect(text(render())).toContain("Invitation expired");
+  });
+  it("reflects only verified CRM Signed status and invalidates the contract list after completion refresh",async()=>{
+    harness.history=[envelope({status:"sent"})];
+    harness.refresh.mockResolvedValue(envelope({status:"completed",crmSigned:true,lastCheckedAt:new Date()}));
+    await click(render(),"Refresh provider status");
+    expect(text(render())).toContain("CRM: signed");expect(text(render())).toContain("This CRM contract is now Signed");expect(harness.invalidate).toHaveBeenCalled();
+  });
 });
 
 describe("DocuSign source and existing-contract UI regressions", () => {
@@ -310,6 +333,6 @@ describe("DocuSign source and existing-contract UI regressions", () => {
     expect(ui).toContain("navigator.clipboard.writeText(result.url)");
   });
   it("keeps a mobile-safe glass modal and truthful sandbox, bearer-link and manual-field instructions", () => {
-    for (const phrase of ["max-h-[85dvh]", "grid-rows-[auto_minmax(0,1fr)_auto]", "overflow-x-hidden", "grid-cols-1", "elevay-glass-panel", "sandbox only", "not legally live", "30-day expiry", "single-use", "5 minutes", "does not need a DocuSign account", "Copying a link does not open it", "local settings only"]) expect(ui).toContain(phrase);
+    for (const phrase of ["max-h-[85dvh]", "grid-rows-[auto_minmax(0,1fr)_auto]", "overflow-x-hidden", "grid-cols-1", "elevay-glass-panel", "sandbox only", "not legally live", "expire after 48 hours", "single-use", "5 minutes", "does not need a DocuSign account", "Copying a link does not send an email", "local settings only"]) expect(ui).toContain(phrase);
   });
 });

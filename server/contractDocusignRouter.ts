@@ -4,6 +4,8 @@ import { router, publicProcedure } from "./_core/trpc";
 import { requireDocusignActor, requireSigningOrigin } from "./contractDocusignAccess";
 import { configReadiness, DocusignError } from "./contractDocusignConfig";
 import { getContractDocusignService } from "./contractDocusignService";
+import { isOwner } from "./permissionsRouter";
+import { getContractDocusignSyncStatus, configureContractDocusignSync } from "./contractDocusignSync";
 const staffRead = publicProcedure.use(async ({ ctx, next }) => next({ ctx: { ...ctx, docusignActor: await requireDocusignActor(ctx.req) } }));
 const staffManage = publicProcedure.use(async ({ ctx, next }) => next({ ctx: { ...ctx, docusignActor: await requireDocusignActor(ctx.req, true) } }));
 const contractInput = z.object({ contractId: z.number().int().positive() }).strict();
@@ -16,7 +18,13 @@ async function safe<T>(operation: () => Promise<T>, publicRequest = false): Prom
   }
 }
 export const contractDocusignRouter = router({
-  readiness: staffRead.query(({ ctx }) => ({ ...configReadiness(), canManage: ctx.docusignActor.canManage })),
+  readiness: staffRead.query(({ ctx }) => ({ ...configReadiness(), canManage: ctx.docusignActor.canManage,canConfigureSync:isOwner(ctx.docusignActor) })),
+  syncStatus:staffRead.query(()=>safe(()=>getContractDocusignSyncStatus())),
+  configureSync:staffManage.input(z.object({enabled:z.boolean()}).strict()).mutation(({ctx,input})=>safe(async()=>{
+    if(!isOwner(ctx.docusignActor))throw new TRPCError({code:"FORBIDDEN",message:"Owner access required"});
+    const token=ctx.req.cookies?.app_session_id;if(typeof token!=="string"||!token)throw new TRPCError({code:"UNAUTHORIZED",message:"Sign in again"});
+    return configureContractDocusignSync(input.enabled,token);
+  })),
   history: staffRead.input(contractInput).query(({ input }) => safe(async () => {
     // History is available before credentials are configured; never contacts provider.
     const { docusignStore } = await import("./contractDocusignStore");
@@ -28,6 +36,7 @@ export const contractDocusignRouter = router({
   senderView: staffManage.input(envelopeInput).mutation(({ input }) => safe(() => getContractDocusignService().senderView(input.id))),
   refresh: staffManage.input(envelopeInput).mutation(({ input }) => safe(() => getContractDocusignService().refresh(input.id))),
   signingLink: staffManage.input(envelopeInput).mutation(({ input }) => safe(() => getContractDocusignService().signingLink(input.id))),
+  regenerateSigningLink: staffManage.input(envelopeInput.extend({requestId:z.string().uuid(),confirmed:z.literal(true)})).mutation(({input})=>safe(()=>getContractDocusignService().regenerateSigningLink(input.id,input.requestId))),
   revokeLink: staffManage.input(envelopeInput).mutation(({ input }) => safe(async () => {
     const { docusignStore } = await import("./contractDocusignStore");
     await docusignStore.withEnvelopeLock(input.id, async (_row, ledger) => ledger.patch(input.id, { revokedAt: new Date(), updatedAt: new Date() }));

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Copy, Download, ExternalLink, FileSignature, History, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import ContractDocusignSyncControls from "./ContractDocusignSyncControls";
 
 type Envelope = SafeEnvelope;
 export type DocusignContract = {
@@ -100,6 +101,7 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
   const refresh = trpc.contractDocusign.refresh.useMutation({ retry: false });
   const signingLink = trpc.contractDocusign.signingLink.useMutation({ retry: false });
   const revokeLink = trpc.contractDocusign.revokeLink.useMutation({ retry: false });
+  const regenerateLink = trpc.contractDocusign.regenerateSigningLink.useMutation({ retry:false });
 
   const [recipientName, setRecipientName] = useState(contract.clientName);
   const [recipientEmail, setRecipientEmail] = useState("");
@@ -116,6 +118,8 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
   const [senderFallbackId, setSenderFallbackId] = useState<string | null>(null);
   const [copyFallback, setCopyFallback] = useState<{ id: string; url: string; expiresAt: Date | string | number } | null>(null);
   const [revokeId, setRevokeId] = useState<string | null>(null);
+  const [renewId,setRenewId]=useState<string|null>(null);
+  const renewalRequest=useRef<{id:string;requestId:string}|null>(null);
   const [now, setNow] = useState(Date.now);
   const canManage = canEdit("contracts") && readiness.data?.canManage === true;
   const connected = readiness.data?.configured === true && !readiness.isError;
@@ -210,7 +214,8 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
     try {
       const result = await refresh.mutateAsync({ id: envelope.id });
       rememberEnvelope(result);
-      setMessage(timestamp(result.lastCheckedAt) > timestamp(envelope.lastCheckedAt)
+      if(result.crmSigned){void utils.contracting.contracts.list.invalidate();setMessage("DocuSign completion was verified. This CRM contract is now Signed; existing payment history was preserved.");}
+      else setMessage(timestamp(result.lastCheckedAt) > timestamp(envelope.lastCheckedAt)
         ? "Fresh DocuSign provider status received. CRM status and financial records were not changed."
         : `Cached provider status. Next refresh allowed: ${localTime(result.nextRefreshAt)}. CRM status and financial records were not changed.`);
     } catch { setError("Provider status could not be refreshed. The displayed status remains cached; no CRM status was changed."); }
@@ -218,7 +223,7 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
   }
 
   async function copySigningLink(envelope: Envelope) {
-    if (!envelope.canShare || !startAction(`copy:${envelope.id}`)) return;
+    if (!envelope.canShare || envelope.linkRevoked || envelope.linkExpiresAt&&timestamp(envelope.linkExpiresAt)<=Date.now() || !startAction(`copy:${envelope.id}`)) return;
     setCopyFallback(null);
     try {
       const result = await signingLink.mutateAsync({ id: envelope.id });
@@ -232,6 +237,19 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
       void utils.contractDocusign.history.invalidate(historyInput);
     } catch { setError("A signing link is not available. Send the reviewed draft in DocuSign, refresh provider status, and try again."); }
     finally { finishAction(); }
+  }
+
+  async function confirmRenewal(envelope:Envelope){
+    if(renewId!==envelope.id||!envelope.canRegenerate||!startAction(`renew:${envelope.id}`))return;
+    setCopyFallback(null);
+    try{
+      if(renewalRequest.current?.id!==envelope.id)renewalRequest.current={id:envelope.id,requestId:crypto.randomUUID()};
+      const result=await regenerateLink.mutateAsync({id:envelope.id,requestId:renewalRequest.current.requestId,confirmed:true});
+      try{await navigator.clipboard.writeText(result.url);setMessage(`New 48-hour signing link copied. The previous ELEVAY link is invalid. Expires ${localTime(result.expiresAt)}.`);}
+      catch{setCopyFallback({id:envelope.id,url:result.url,expiresAt:result.expiresAt});setMessage("New 48-hour link generated; the old ELEVAY link is invalid. Copy the confidential link below manually.");}
+      renewalRequest.current=null;setRenewId(null);void utils.contractDocusign.history.invalidate(historyInput);
+    }catch{setError("Could not regenerate the link. Refresh provider status and retry the same confirmed operation; no new envelope is created.");}
+    finally{finishAction();}
   }
 
   async function confirmRevoke(envelope: Envelope) {
@@ -261,7 +279,7 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
           <div className="elevay-glass-panel rounded-xl border p-3 leading-relaxed">
             <p className="font-semibold">1. Create draft → 2. Review & place fields → 3. Send in DocuSign</p>
             {(contract.country ?? "spain") === "spain" ? <div className="mt-1 space-y-2 text-muted-foreground"><p>Spain template 12 November 2026: required full client signatures are placed on the first page and the final signature pages of the main contract, services annex and acknowledgment. All other physical pages require bottom-left initials. Placement follows the actual DocuSign conversion, not old page numbers.</p><p>Additional required initials: 6-1 (ب، ج), 7-5, 7-7, 8-5, Article 9, 10-2, 12-4 and 12-1 (ج). Staff must REVIEW every page and field, then SEND themselves. Missing, moved or optional required fields block CRM signing links.</p><p>Older saved Word documents are never rewritten automatically. Regenerate and review a pending contract explicitly to use the revised template. Existing sent and signed versions retain their history.</p></div> : <p className="mt-1 text-muted-foreground">Staff must REVIEW the entire document and PLACE all required client signature fields in sender preparation, then SEND in DocuSign themselves. A draft is not sent and cannot be shared for signing.</p>}
-            <p className="mt-2 text-muted-foreground">DocuSign provider status is separate from CRM status. This workflow never automatically marks the CRM contract signed or changes financial records.</p>
+            <p className="mt-2 text-muted-foreground">Future production envelopes automatically mark this CRM contract Signed only after authoritative completion, exact client/signature checks and unchanged document verification. Demo envelopes and older versions never change CRM status automatically. A browser return is not proof of signing.</p>
           </div>
           {!canManage && !readiness.isLoading && <p className="text-muted-foreground">Read-only DocuSign history. Full contract-edit permission is required to prepare drafts, refresh provider status or manage links.</p>}
           {readiness.isLoading && <p role="status">Checking DocuSign configuration…</p>}
@@ -280,6 +298,7 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
               </div>
             </details>
           )}
+          {canManage&&<ContractDocusignSyncControls canConfigure={readiness.data?.canConfigureSync===true} />}
           {error && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-foreground">{error}</div>}
           {message && <div role="status" aria-live="polite" className="rounded-xl border border-primary/30 bg-primary/10 p-3 text-foreground">{message}</div>}
           {canManage && !activeEnvelope && (
@@ -311,7 +330,7 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
               const coolingDown = nextAllowed > now;
               return (
                 <article key={envelope.id} className="elevay-glass-panel min-w-0 space-y-3 rounded-xl border p-3 sm:p-4">
-                  <div className="flex flex-wrap items-center gap-2"><strong>Version {envelope.version}</strong><Badge variant="outline" className="break-all">DocuSign: {envelope.status}</Badge><Badge variant="secondary">CRM: {contract.status}</Badge></div>
+                  <div className="flex flex-wrap items-center gap-2"><strong>Version {envelope.version}</strong><Badge variant="outline" className="break-all">DocuSign: {envelope.status}</Badge><Badge variant="secondary">CRM: {envelope.crmSigned?"signed":contract.status}</Badge></div>
                   <p className="break-words">{envelope.recipientName} · {envelope.email}</p>
                   {envelope.signingRequirements && <p className="rounded-lg border p-2 text-xs text-muted-foreground">Spain required fields: 4 full signatures on physical pages {envelope.signingRequirements.fullSignaturePages.join(", ")}; {envelope.signingRequirements.pageInitialCount} page initials and {envelope.signingRequirements.clauseInitialCount} clause initials. {envelope.signingRequirements.verified ? "Verified against provider fields." : "Verification required; do not send/share until reviewed."}</p>}
                   <dl className="grid min-w-0 grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-2">
@@ -320,27 +339,32 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
                     {!!nextAllowed && <div><dt>Next refresh allowed</dt><dd>{localTime(envelope.nextRefreshAt)}{coolingDown ? " (please wait)" : ""}</dd></div>}
                     {envelope.linkExpiresAt && <div><dt>ELEVAY link expires</dt><dd>{localTime(envelope.linkExpiresAt)}</dd></div>}
                   </dl>
+                  {envelope.linkRevoked&&<p className="text-xs text-muted-foreground">Invitation revoked. Only an explicitly confirmed regeneration can replace it.</p>}
+                  {envelope.linkExpiresAt&&timestamp(envelope.linkExpiresAt)<=now&&<p className="text-xs text-muted-foreground">Invitation expired. Regenerate a new 48-hour link for this same envelope after refreshing its status.</p>}
+                  {envelope.financeReviewRequired&&<p className="text-xs text-destructive">Signed status is verified, but Finance needs a recorded currency conversion. No EUR rate or payment was invented.</p>}
                   {envelope.documentHash && <p className="break-all text-xs text-muted-foreground">Saved document SHA-256: {envelope.documentHash}</p>}
                   {envelope.errorCode && <p className="text-sm text-destructive">{envelope.errorCode.startsWith("SPAIN_SIGNING_") ? docusignPreparationError({message:envelope.errorCode}) : "This version needs attention. Check the connection or contact an administrator before retrying."}</p>}
                   {canManage && (
                     <div className="flex flex-wrap gap-2">
                       {isDraft(envelope) && <Button size="sm" variant="outline" className="h-auto min-h-9 whitespace-normal" disabled={!!busy || !connected} onClick={() => void reopenSender(envelope)}><ExternalLink className="h-4 w-4" />Open sender preparation</Button>}
                       {!!envelope.envelopeId && <Button size="sm" variant="outline" disabled={!!busy || !connected || coolingDown} onClick={() => void refreshEnvelope(envelope)}><RefreshCw className={`h-4 w-4 ${busy === `refresh:${envelope.id}` ? "animate-spin" : ""}`} />Refresh provider status</Button>}
-                      <Button size="sm" className="h-auto min-h-9 whitespace-normal" disabled={!!busy || !connected || !envelope.canShare || history.isFetching || history.isError} onClick={() => void copySigningLink(envelope)}><Copy className="h-4 w-4" />Copy client signing link</Button>
+                      <Button size="sm" title="Generate or copy the current confidential ELEVAY signing link" className="h-auto min-h-9 whitespace-normal" disabled={!!busy || !connected || !envelope.canShare || envelope.linkRevoked || !!envelope.linkExpiresAt&&timestamp(envelope.linkExpiresAt)<=now || history.isFetching || history.isError} onClick={() => void copySigningLink(envelope)}><Copy className="h-4 w-4" />Copy client signing link</Button>
+                      <Button size="sm" variant="outline" className="h-auto min-h-9 whitespace-normal" disabled={!!busy||!connected||!envelope.canRegenerate||history.isFetching||history.isError} onClick={()=>{setCopyFallback(null);setRenewId(envelope.id);}}>Generate / regenerate 48-hour link</Button>
                       {envelope.linkExpiresAt && <Button size="sm" variant="outline" disabled={!!busy || !connected} onClick={() => setRevokeId(envelope.id)}>Revoke ELEVAY link</Button>}
                     </div>
                   )}
                   {!envelope.canShare && <p className="text-xs text-muted-foreground">Client sharing is disabled until DocuSign authoritatively confirms the envelope can be signed. For a draft: review, place required fields, and send in DocuSign, then refresh here.</p>}
                   {senderFallbackId === envelope.id && isDraft(envelope) && <p className="text-xs text-muted-foreground">If the sender window did not open, allow pop-ups and use Open sender preparation again. Sender links expire quickly; reopening gets a fresh link for this same draft.</p>}
-                  {copyFallback && copyFallback.id === envelope.id && canManage && envelope.canShare && (
+                  {copyFallback && copyFallback.id === envelope.id && canManage && (envelope.canShare||envelope.canRegenerate) && (
                     <div className="min-w-0 space-y-2"><Label htmlFor={`docusign-copy-${envelope.id}`}>Confidential link — select and copy manually</Label><Input id={`docusign-copy-${envelope.id}`} readOnly value={copyFallback.url} onFocus={event => event.target.select()} /><p className="text-xs text-muted-foreground">Expires {localTime(copyFallback.expiresAt)}. Share with the confirmed client only.</p><Button size="sm" variant="outline" onClick={() => setCopyFallback(null)}>Hide link</Button></div>
                   )}
+                  {renewId===envelope.id&&canManage&&<div role="alert" className="space-y-3 rounded-xl border border-primary/30 p-3"><p>Generate a new 48-hour invitation for this same DocuSign envelope? The previous ELEVAY link will immediately become invalid, including an expired or revoked link. This does not create or resend a contract.</p><div className="flex flex-wrap gap-2"><Button size="sm" disabled={!!busy||!envelope.canRegenerate} onClick={()=>void confirmRenewal(envelope)}>Confirm new 48-hour link</Button><Button size="sm" variant="outline" disabled={!!busy} onClick={()=>{setRenewId(null);renewalRequest.current=null;}}>Keep current invitation</Button></div></div>}
                   {revokeId === envelope.id && canManage && <div role="alert" className="space-y-3 rounded-xl border border-destructive/30 p-3"><p>Revoke this confidential ELEVAY link for version {envelope.version}? Anyone holding it will lose access through ELEVAY. This only revokes the local link; it does not void or cancel the DocuSign envelope.</p><div className="flex flex-wrap gap-2"><Button size="sm" variant="destructive" disabled={!!busy} onClick={() => void confirmRevoke(envelope)}>Confirm revoke local link</Button><Button size="sm" variant="outline" disabled={!!busy} onClick={() => setRevokeId(null)}>Keep link</Button></div></div>}
                 </article>
               );
             })}
           </section>
-          <div className="flex items-start gap-2 rounded-xl border p-3 text-xs leading-relaxed text-muted-foreground"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><p>The copied URL is an ELEVAY <code>/sign-contract</code> secure bearer link, confidential to the client, with a 30-day expiry. It dynamically opens DocuSign; the provider signing links are single-use and expire in about 5 minutes. The embedded client does not need a DocuSign account. Copying a link does not open it or send an email.</p></div>
+          <div className="flex items-start gap-2 rounded-xl border p-3 text-xs leading-relaxed text-muted-foreground"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><p>New ELEVAY <code>/sign-contract</code> confidential bearer links expire after 48 hours. Copying an active link does not extend its expiry; explicit regeneration replaces it for this same envelope. Existing historical invitations retain their recorded expiry until replaced. DocuSign sessions themselves remain single-use and short-lived (about 5 minutes); opening a valid ELEVAY invitation obtains a fresh session. The embedded client does not need a DocuSign account. Copying a link does not send an email.</p></div>
         </div>
         <DialogFooter className="min-w-0 border-t pt-3"><Button variant="outline" disabled={!!busy} onClick={() => onOpenChange(false)}>Close</Button></DialogFooter>
       </DialogContent>

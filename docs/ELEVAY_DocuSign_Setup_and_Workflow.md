@@ -1,6 +1,10 @@
 # ELEVAY Contracting — DocuSign setup and workflow
 
-The integration adds a DocuSign action to the existing Contracting → Contracts page. It uploads the exact saved generated contract, keeps an envelope history, and creates a shareable invitation that opens a fresh DocuSign signing session. It does not regenerate the contract or modify its original value, discounts, receipts, payments or Lead conversion.
+The integration adds a DocuSign action to the existing Contracting → Contracts page. It uploads the exact saved generated contract, keeps an envelope history, and creates a shareable invitation that opens a fresh DocuSign signing session. New contracts support an optional creation-time discount, renewable 48-hour invitations and verified production signing completion. Existing contract documents, payments and histories are never silently rewritten.
+
+## Optional discount when creating a contract
+
+The New Contract form shows the original family-size value (or the entered original override), optional discount and resulting net value. The original, discount and net amounts are saved once, and the document is generated using **net = original − discount**. Negative, non-finite, over-value or fractional-cent discounts are rejected. A creation-time discount cannot be applied again through a later receipt. Spain's approved monetary placeholders print the net value; other supported country templates receive an original/discount/net commercial summary in the financial section without changing government contribution amounts or legal clauses. The selected currency is preserved and never converted using an invented rate.
 
 ## Connect your DocuSign account
 
@@ -62,7 +66,7 @@ After managed settings are saved, redeploy the website so its production server 
 3. Choose **Create DocuSign draft**. This uploads the existing file to DocuSign and stores a separate envelope record. It does not automatically send the contract to the client.
 4. Open DocuSign's preparation view. For Spain's **12 November 2026** template, required client signatures and initials are placed automatically and checked against the converted document. Review every page and field before using DocuSign's own **Send** action. Other programs retain manual placement of necessary client signature fields. This application never sends an envelope automatically.
 5. Return to ELEVAY and refresh the envelope status. Refreshes use a cached status and respect DocuSign's polling limits. Only a sent/delivered envelope with the expected recipient and required signature fields is eligible for a client invitation.
-6. Copy the ELEVAY signing link and send it to the intended client by your usual channel. The invitation is valid for up to 30 days, unless revoked, expired or invalidated by a document change. Treat it as confidential: anyone with the complete link may be able to open that recipient's signing session.
+6. Generate/copy the ELEVAY signing link and send it to the intended client by your usual channel. New invitations are valid for **48 hours** unless revoked, expired or invalidated by a document/monetary change. Copying an active invitation does not extend its expiry. After expiry, or when a replacement is needed, use **Generate / regenerate 48-hour link** and explicitly confirm. The same contract, provider envelope and version are retained; the old link becomes invalid. Expired/revoked invitations are never silently revived, and terminal/completed envelopes cannot receive another signing link. Historical invitations are not retroactively shortened. Treat every full link as confidential.
 
 ### Spain: required client signatures and initials
 
@@ -84,7 +88,15 @@ The sender-preparation URL also expires. Reopen it from ELEVAY if the original t
 
 ## Status, preservation and limitations
 
-DocuSign envelope status remains separate from the CRM's contract status. A return URL containing `signing_complete` is not evidence of completion. This release preserves the existing manual **Mark Signed** workflow and does not trigger financial postings, change balances or convert a Lead based on a browser redirect. [4]
+Only **new, eligible production envelopes** opt into automatic CRM completion. A browser redirect, intermediate `signed` state or client claim never marks a contract Signed. The backend requires authoritative provider **Completed**, the exact completed embedded recipient and mandatory fields, the latest envelope version, current saved source and original/discount/net/currency snapshot, plus a before/after PDF-content proof outside the fixed signing areas. Missing baseline evidence, source drift or changed fields fail closed with sanitized review codes. [4]
+
+After verification, a short atomic transaction marks the pending linked CRM contract **Signed**, converts its exact linked marketing Lead once, and creates only any missing EUR Financial Client/commission metadata. Existing receipts, payments, payment bases, financial balances, commission amounts and history are never recalculated. Non-EUR/unsupported financial mapping is flagged for review rather than pretending another currency is EUR. Cancellation/manual Signed states are not reversed. Repeat status checks do not duplicate clients, commission rows or Lead activities.
+
+Automatic polling uses the application-owned, authenticated **15-minute** heartbeat, not a background assistant loop. After production settings are validated and deployed, the project owner must explicitly enable **Automatic Signed status (every 15 minutes)** in the DocuSign dialog. The initially empty configuration table is disabled by default. Callbacks must carry the exact authenticated scheduler task UID, use a fenced lease and inspect only a bounded six-row batch. Setup never enables it in Demo, and existing Demo/legacy envelopes and the preserved dummy are excluded. A normal manual **Refresh provider status** also performs the same verified completion checks for eligible production envelopes.
+
+## Removing Demo branding: production activation
+
+Normal generated CRM contracts contain no added Demo cover or test notices; those belong only to the preserved nonbinding dummy. DocuSign's own Demo branding cannot legitimately be hidden or removed by this integration. Obtain an API-entitled production account, promote the integration through DocuSign Go-Live, configure its separate production RSA/sender/account values securely, grant production consent, redeploy and validate authentication/account entitlement. Only then activate automatic Signed synchronization. No plan purchase, environment/secret replacement or real envelope send is part of this code deployment. [1]
 
 Existing contract and envelope histories are preserved. A retry must not silently create duplicate envelopes after an uncertain provider response. If the original source contract is changed, the invitation must be rejected rather than opening a stale document for signing. Revoking the local ELEVAY invitation does not void or delete the envelope in DocuSign.
 

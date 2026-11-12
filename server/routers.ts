@@ -939,10 +939,21 @@ const contractingRouter = router({
         clientOrigin: z.enum(["referral", "marketing"]),
         marketingLeadId: z.number().int().positive().nullable().optional(),
         country: z.string().default("spain"),
-        contractValueOverride: z.number().optional(),
+        contractValueOverride: z.number().finite().min(0).optional(),
+        discountValue: z.number().finite().min(0).refine(value => Number(value.toFixed(2)) === value, "Discount must have at most two decimal places.").optional(),
         currency: z.enum(["EUR", "USD"]).default("EUR"),
       }))
       .mutation(async ({ ctx, input }) => {
+        const { calculateContractCreationPricing } = await import("./contractCreationPricing");
+        let pricing;
+        try {
+          pricing = calculateContractCreationPricing(
+            input.contractValueOverride ?? calculateContractValue(input.familyMembers, input.country),
+            input.discountValue,
+          );
+        } catch (error) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Invalid contract pricing." });
+        }
         if (input.consultantName) {
           const { isActiveContractConsultant } = await import("./finDb");
           if (!await isActiveContractConsultant(input.consultantName)) {
@@ -961,12 +972,10 @@ const contractingRouter = router({
           }
         }
         const contractCode = await generateContractCode();
-        const contractValue = input.contractValueOverride !== undefined
-          ? input.contractValueOverride
-          : calculateContractValue(input.familyMembers, input.country);
         const { buffer, filename } = await generateContractDoc(
           input.clientName, input.familyMembers, contractCode,
-          input.country, input.contractValueOverride
+          input.country, pricing.netContractValue,
+          ...(input.country!=="spain"?[{currency:input.currency,originalValue:pricing.originalContractValue,discountValue:pricing.discountValue}] as const:[] as const)
         );
         const docUrl = await uploadContractToStorage(buffer, contractCode, input.clientName);
         let contract;
@@ -975,9 +984,10 @@ const contractingRouter = router({
             contract: {
               contractCode, clientName: input.clientName, invoicingName: input.invoicingName,
               clientMobile: input.clientMobile, familyMembers: input.familyMembers,
-              originalContractValueEur: contractValue.toFixed(2),
-              netContractValueEur: contractValue.toFixed(2),
-              contractValue: contractValue.toString(), currency: input.currency, status: "pending",
+              originalContractValueEur: pricing.originalContractValue.toFixed(2),
+              discountValue: pricing.discountValue.toFixed(2),
+              netContractValueEur: pricing.netContractValue.toFixed(2),
+              contractValue: pricing.netContractValue.toFixed(2), currency: input.currency, status: "pending",
               country: input.country,
               docUrl, consultantName: input.consultantName ?? null,
             },
@@ -992,7 +1002,7 @@ const contractingRouter = router({
           if (error instanceof Error && error.message === "REFERRAL_LEAD_NOT_ALLOWED") throw new TRPCError({ code: "BAD_REQUEST", message: "Referral Contracts cannot include a Marketing Lead ID" });
           throw error;
         }
-        await notifyNewContract(contractCode, input.clientName, input.familyMembers, contractValue);
+        await notifyNewContract(contractCode, input.clientName, input.familyMembers, pricing.netContractValue);
         const { createNotification } = await import("./db");
         await createNotification({ type: "contract_created", title: "📄 عقد جديد", body: `تم إنشاء عقد جديد لـ ${input.clientName} (كود: ${contractCode})`, entityId: contract.id, entityType: "contract" });
         return { contract, docUrl, filename };
@@ -1121,6 +1131,7 @@ const contractingRouter = router({
           contract.contractCode,
           contract.country ?? "spain",
           Number(contract.contractValue),
+          ...((contract.country??"spain")!=="spain"?[{currency:contract.currency??"EUR",originalValue:Number(contract.originalContractValueEur??String(Number(contract.contractValue)+Number(contract.discountValue??0))),discountValue:Number(contract.discountValue??0)}] as const:[] as const)
         );
         const docUrl = await uploadContractToStorage(buffer, contract.contractCode, contract.clientName);
         await updateContractDocUrl(contract.id, docUrl);

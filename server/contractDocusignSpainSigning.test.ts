@@ -26,6 +26,8 @@ describe("Spain versioned mandatory signing plan",()=>{
  it("tracks conversion pagination rather than fixed pages16/18/19/21/22",()=>{
   const p=buildSpainSigningPlan(syntheticPages(22),hash);expect(p.fullSignaturePages).toEqual([1,19,21,22]);expect(p.tabs.initialHereTabs).toHaveLength(27);
  });
+ it("keeps Article8-5 initials two points clear of the adjacent legal clause while preserving other clause locations",()=>{const p=buildSpainSigningPlan(syntheticPages(),hash);expect(p.tabs.initialHereTabs.find(t=>t.tabLabel===SPAIN_INITIAL_MARKERS["8-5"])?.xPosition).toBe("6");expect(p.tabs.initialHereTabs.filter(t=>t.tabLabel.startsWith("ELEVAY_ES_INIT")&&t.tabLabel!==SPAIN_INITIAL_MARKERS["8-5"]).every(t=>t.xPosition==="8")).toBe(true);});
+ it("rejects an approved document whose printed value differs from the saved net contract amount",()=>{const zip=new PizZip(readFileSync(new URL("./spain_dnv_contract_template_2026_11_12.docx",import.meta.url)));zip.file("word/document.xml",zip.file("word/document.xml")!.asText().replaceAll("{{CLIENT_NAME_AR}}","Synthetic").replace("{{FAMILY_MEMBERS}}","5").replace("{{CONTRACT_VALUE}}","10,000"));const bytes=zip.generate({type:"nodebuffer"});expect(()=>requireSpainSigningTemplate(bytes,"10000.00")).not.toThrow();expect(()=>requireSpainSigningTemplate(bytes,"15000.00")).toThrow("SPAIN_SIGNING_TEMPLATE_REQUIRED");});
  it.each(SPAIN_MARKERS)("fails closed if required marker %s is missing or duplicated",marker=>{
   const pages=syntheticPages();const owner=pages.find(p=>p.items.some(i=>i.text===marker))!;
   owner.items=owner.items.filter(i=>i.text!==marker);expect(()=>buildSpainSigningPlan(pages,hash)).toThrow("SPAIN_SIGNING_LAYOUT_UNVERIFIED");

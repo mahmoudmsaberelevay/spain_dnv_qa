@@ -14,6 +14,8 @@ export interface DocusignProvider {
   assertOnlyDocumentOne?(envelopeId: string): Promise<void>;
   getDocumentPdf?(envelopeId: string): Promise<Buffer>;
   createRequiredTabs?(envelopeId: string, recipientId: string, tabs: ProviderTabs): Promise<void>;
+  assertSignedDocumentOne?(envelopeId:string):Promise<void>;
+  getCompletionDate?(envelopeId:string):Date|null;
 }
 const SAFE_CODES = new Set(["consent_required", "invalid_grant", "USER_AUTHENTICATION_FAILED", "AUTHORIZATION_INVALID_TOKEN", "ENVELOPE_DOES_NOT_EXIST", "ENVELOPE_NOT_IN_DRAFT_STATUS", "ENVELOPE_HAS_BEEN_COMPLETED", "ENVELOPE_IS_VOIDED", "UNKNOWN_ENVELOPE_RECIPIENT", "HOURLY_APIINVOCATION_LIMIT_EXCEEDED", "BURST_APIINVOCATION_LIMIT_EXCEEDED", "DUPLICATE_TRANSACTION_ID", "ACCOUNT_NOT_AUTHORIZED_FOR_ENVELOPE"]);
 const TAB_KEYS = ["documentId", "recipientId", "pageNumber", "xPosition", "yPosition", "tabLabel", "optional", "scaleValue", "templateLocked", "templateRequired"];
@@ -44,6 +46,7 @@ export class JwtDocusignProvider implements DocusignProvider {
   private token?: { value: string; expiresAt: number };
   private apiRoot?: string;
   private authInFlight?: Promise<void>;
+  private lastCompletion?:{id:string;date:Date|null};
   constructor(private readonly config: DocusignConfig, private readonly fetcher: typeof fetch = fetch, private readonly now = Date.now) {}
   private async request(url: string, method: "GET" | "POST", body?: unknown, authorization?: string, write = false, pdf = false): Promise<any> {
     const controller = new AbortController();
@@ -143,7 +146,20 @@ export class JwtDocusignProvider implements DocusignProvider {
     const result = await this.api(`${this.path(id)}/views/sender`, "POST", { returnUrl: `${this.config.publicBaseUrl}/sign-contract/return`, viewAccess: "envelope", settings: { startingScreen: "Tagger", showBackButton: "false", showDiscardAction: "false", showAdvancedOptions: "false", showSignNow: "false", documentSettings: { showEditDocuments: "false", showEditPages: "false", showEditDocumentVisibility: "false" }, recipientSettings: { showEditRecipients: "false", showContactsList: "false", showBulkSend: "false", showEditMessage: "false" } } });
     return validateSenderViewUrl(result.url, this.config.environment);
   }
-  async getEnvelopeStatus(id: string) { const result = await this.api(this.path(id), "GET"); if (typeof result?.status !== "string") throw new DocusignError("INVALID_PROVIDER_RESPONSE"); return result.status; }
+  async getEnvelopeStatus(id:string){
+    const result=await this.api(this.path(id),"GET");
+    if(typeof result?.status!=="string"||(result.envelopeId!==undefined&&result.envelopeId!==id))throw new DocusignError("INVALID_PROVIDER_RESPONSE");
+    const t=typeof result.completedDateTime==="string"?Date.parse(result.completedDateTime):NaN;
+    this.lastCompletion={id,date:result.status==="completed"&&Number.isFinite(t)&&t>0&&t<=this.now()+60000?new Date(t):null};
+    return result.status;
+  }
+  getCompletionDate(id:string){return this.lastCompletion?.id===id?this.lastCompletion.date:null;}
+  async assertSignedDocumentOne(id:string):Promise<void>{
+    const result=await this.api(`${this.path(id)}/documents`,"GET"),docs=result?.envelopeDocuments;
+    if(!Array.isArray(docs)||docs.length<1||docs.length>2)throw new DocusignError("COMPLETION_DOCUMENT_UNVERIFIED");
+    const content=docs.filter(d=>d&&d.documentId==="1"&&(d.type===undefined||d.type==="content"));
+    if(content.length!==1||docs.some(d=>d!==content[0]&&!(d?.documentId==="certificate"&&d.type==="summary")))throw new DocusignError("COMPLETION_DOCUMENT_UNVERIFIED");
+  }
   async getRecipients(id: string) { const result = await this.api(`${this.path(id)}/recipients?include_tabs=true`, "GET"); if (!result || typeof result !== "object" || !Array.isArray(result.signers)) throw new DocusignError("INVALID_PROVIDER_RESPONSE"); return result as Record<string, unknown>; }
   async createRecipientView(id: string, recipient: DraftInput) {
     const result = await this.api(`${this.path(id)}/views/recipient`, "POST", { authenticationMethod: "none", returnUrl: `${this.config.publicBaseUrl}/sign-contract/return`, userName: recipient.recipientName, email: recipient.recipientEmail, clientUserId: recipient.clientUserId, recipientId: recipient.recipientId });

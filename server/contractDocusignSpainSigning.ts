@@ -27,7 +27,7 @@ export type SpainSigningPlan = {
 };
 const fail = (code = "SPAIN_SIGNING_LAYOUT_UNVERIFIED"): never => { throw new DocusignError(code); };
 /** Existing saved bytes remain immutable. Old files require an owner-initiated regeneration, never silent rewriting. */
-export function requireSpainSigningTemplate(bytes: Buffer): void {
+export function requireSpainSigningTemplate(bytes: Buffer,expectedNetValue?:string): void {
   try {
     const zip = new PizZip(bytes), approved = new PizZip(readFileSync(new URL("./spain_dnv_contract_template_2026_11_12.docx",import.meta.url)));
     const xml = zip.file("word/document.xml")?.asText(), expected=approved.file("word/document.xml")?.asText();
@@ -49,6 +49,7 @@ export function requireSpainSigningTemplate(bytes: Buffer): void {
       if(values.has(part)&&values.get(part)!==value)fail("SPAIN_SIGNING_TEMPLATE_REQUIRED");values.set(part,value);offset=end;
     }
     if(offset!==xml.length || values.size!==3)fail("SPAIN_SIGNING_TEMPLATE_REQUIRED");
+    if(expectedNetValue!==undefined){const printed=Number(values.get("{{CONTRACT_VALUE}}")!.replace(/,/g,"")),saved=Number(expectedNetValue);if(!Number.isFinite(saved)||saved<0||Math.round(printed*100)!==Math.round(saved*100))fail("SPAIN_SIGNING_TEMPLATE_REQUIRED");}
   } catch { fail("SPAIN_SIGNING_TEMPLATE_REQUIRED"); }
 }
 function locate(pages: SigningPdfPage[], marker: string): { page: SigningPdfPage; item: PdfItem } {
@@ -89,7 +90,8 @@ export function buildSpainSigningPlan(pages: SigningPdfPage[], pdfHash: string):
     const hit = locate(pages, marker);
     if (hit.item.y < 30 || hit.item.y > hit.page.height - 70) fail();
     // Clause initials occupy the left margin, not the clause's legal text or another party's signature.
-    initialHereTabs.push(tab(hit.page, marker, 8, Math.max(0, hit.item.y - 8), false));
+    // 8-5 needs two additional points of clearance from the actual clause's left edge.
+    initialHereTabs.push(tab(hit.page, marker, marker===SPAIN_INITIAL_MARKERS["8-5"]?6:8, Math.max(0, hit.item.y - 8), false));
   }
   const tabs = { signHereTabs, initialHereTabs };
   // Prevent a short clause from placing two initial boxes over each other or a signature box.

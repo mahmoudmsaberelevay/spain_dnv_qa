@@ -645,6 +645,8 @@ async function startServer() {
   app.post("/api/scheduled/weekly-command-center-operations", scheduledWeeklyCommandCenterOperationsHandler);
   const { leadCallRecoveryHandler } = await import("../leadCallRecovery");
   app.post("/api/scheduled/lead-calls", leadCallRecoveryHandler);
+  const { scheduledContractDocusignSyncHandler } = await import("../contractDocusignSync");
+  app.post("/api/scheduled/contract-docusign-sync", scheduledContractDocusignSyncHandler);
   const { registerClientPortalRoutes } = await import("../clientPortalRoutes.js");
   registerClientPortalRoutes(app);
 
