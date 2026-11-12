@@ -1,5 +1,5 @@
 import { createPrivateKey, sign } from "node:crypto";
-import { DocusignError, UUID, validateApiRoot, validateViewUrl, validateSenderViewUrl, type DocusignConfig } from "./contractDocusignConfig";
+import { DocusignError, UUID, validateApiRoot, validateRecipientViewUrl, validateSenderViewUrl, type DocusignConfig } from "./contractDocusignConfig";
 export type DraftInput = { id: string; document: Buffer; documentName: string; recipientName: string; recipientEmail: string; recipientId: string; clientUserId: string };
 export type ProviderRecipient = { name?: string; email?: string; clientUserId?: string; recipientId?: string; status?: string; tabs?: Record<string, unknown[]> };
 export type ProviderSnapshot = { status: string; recipients: Record<string, unknown> };
@@ -74,6 +74,6 @@ export class JwtDocusignProvider implements DocusignProvider {
   async getRecipients(id: string) { const result = await this.api(`${this.path(id)}/recipients?include_tabs=true`, "GET"); if (!result || typeof result !== "object" || !Array.isArray(result.signers)) throw new DocusignError("INVALID_PROVIDER_RESPONSE"); return result as Record<string, unknown>; }
   async createRecipientView(id: string, recipient: DraftInput) {
     const result = await this.api(`${this.path(id)}/views/recipient`, "POST", { authenticationMethod: "none", returnUrl: `${this.config.publicBaseUrl}/sign-contract/return`, userName: recipient.recipientName, email: recipient.recipientEmail, clientUserId: recipient.clientUserId, recipientId: recipient.recipientId });
-    return validateViewUrl(result.url, this.config.environment);
+    return validateRecipientViewUrl(result.url, this.config.environment);
   }
 }

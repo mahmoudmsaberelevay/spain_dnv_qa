@@ -97,3 +97,21 @@ export function validateSenderViewUrl(raw: unknown, environment: DocusignEnviron
   }
   return validateViewUrl(raw, environment);
 }
+
+/** Modern recipient views use the app's authentication entry point, not an API
+ * base URI. Preserve its opaque session query; do not expose it outside handoff.
+ */
+export function validateRecipientViewUrl(raw: unknown, environment: DocusignEnvironment): string {
+  if (typeof raw !== "string") throw new DocusignError("INVALID_PROVIDER_RESPONSE");
+  let url: URL; try { url = new URL(raw); } catch { throw new DocusignError("INVALID_PROVIDER_RESPONSE"); }
+  const appHost = environment === "demo" ? "apps-d.docusign.com" : "apps.docusign.com";
+  if (url.hostname === appHost) {
+    if (url.protocol !== "https:" || url.username || url.password || url.port || url.hash ||
+        url.pathname !== "/authenticate" || !url.search || raw.length > 4000 ||
+        !raw.startsWith(`https://${appHost}/authenticate?`) || /[\s\x00-\x1f\x7f#]/.test(raw)) {
+      throw new DocusignError("INVALID_PROVIDER_RESPONSE");
+    }
+    return raw;
+  }
+  return validateViewUrl(raw, environment);
+}
