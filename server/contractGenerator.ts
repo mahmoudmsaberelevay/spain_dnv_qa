@@ -3,6 +3,7 @@ import { storagePut, storageGet } from "./storage";
 import PizZip from "pizzip";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { validateDocumentUrl } from "./contractDocusignDocument";
 
 export const SPAIN_DNV_TEMPLATE_VERSION = "2026-11-12";
 export const SPAIN_DNV_TEMPLATE_PATH = fileURLToPath(
@@ -327,6 +328,14 @@ export function addNetContractSummary(xml:string,net:number,summary:ContractFina
   return xml.replace(heads[0],heads[0]+paragraph);
 }
 
+/** Sanitize filename components only; never alter the client's legal name in XML. */
+function sanitizeContractFilenameComponent(value: string): string {
+  return value
+    .replace(new RegExp("[^\\p{L}\\p{N}\\p{M}_-]+", "gu"), "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "") || "unnamed";
+}
+
 // ── Main generator ─────────────────────────────────────────────────────────
 export async function generateContractDoc(
   clientName: string,
@@ -386,7 +395,7 @@ export async function generateContractDoc(
     zip.generate({ type: "nodebuffer", compression: "DEFLATE" })
   );
 
-  const filename = `Contract_${contractCode}_${clientName.replace(/\s+/g, "_")}.docx`;
+  const filename = `Contract_${sanitizeContractFilenameComponent(contractCode)}_${sanitizeContractFilenameComponent(clientName)}.docx`;
 
   console.log(
     `[ContractGenerator] Generated contract ${contractCode} for "${clientName}" | country: ${country} | ${familyMembers} members | value: ${contractValue} EUR | size: ${outputBuffer.length} bytes`
@@ -400,11 +409,24 @@ export async function uploadContractToStorage(
   contractCode: string,
   clientName: string
 ): Promise<string> {
-  const filename = `contracts/${contractCode}_${clientName.replace(/\s+/g, "_")}_${Date.now()}.docx`;
+  const filename = `contracts/${sanitizeContractFilenameComponent(contractCode)}_${sanitizeContractFilenameComponent(clientName)}_${Date.now()}.docx`;
   const { url } = await storagePut(
     filename,
     buffer,
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   );
+  try {
+    const parsed = validateDocumentUrl(url);
+    const basename = filename.slice("contracts/".length);
+    if (
+      typeof url !== "string" || url !== url.trim() || /[\x00-\x1f\x7f?#]/.test(url) ||
+      parsed.search || !decodeURIComponent(parsed.pathname).endsWith(`/${basename}`)
+    ) {
+      throw new Error("CONTRACT_DOCUMENT_STORAGE_URL_INVALID");
+    }
+  } catch {
+    // Do not expose the raw storage response URL, validator error, or its cause.
+    throw new Error("CONTRACT_DOCUMENT_STORAGE_URL_INVALID");
+  }
   return url;
 }
