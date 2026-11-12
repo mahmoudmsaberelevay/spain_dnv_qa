@@ -1,0 +1,33 @@
+{
+  "version": "2026-11-12",
+  "modifiedBy": "Manus for Mahmoud Saber",
+  "modifiedDate": "2026-11-12",
+  "sourceVersion": "2026-09-23",
+  "sourceSha256": "2445f48c8cbade8dff11ba8577b3288287ba049cb2e326f883ccbfe4379bae14",
+  "revisedSha256": "36f3d119385f3e281e0dd7ece893be22e44e7f2cdd8bbbb5c29896ee62c57214",
+  "legalTextUnchanged": true,
+  "legalTextSha256": "c73746c70811fc61f3f678fafb7b88aabb80c6b4cd5309a02fc90470ee77ac25",
+  "removedBlankParagraphs": 13,
+  "clientSignatureSpacingPoints": {
+    "before": 24,
+    "after": 12
+  },
+  "signingMarkerParagraphs": {
+    "ELEVAY_ES_SIGN_FIRST": "5B639E84",
+    "ELEVAY_ES_SIGN_MAIN": "6DF3538F",
+    "ELEVAY_ES_SIGN_SERVICES": "2105EABA",
+    "ELEVAY_ES_SIGN_ACK": "7CA32825",
+    "ELEVAY_ES_INIT_6_1_B": "1DB72802",
+    "ELEVAY_ES_INIT_6_1_J": "78F0D8FB",
+    "ELEVAY_ES_INIT_7_5": "34DD67D1",
+    "ELEVAY_ES_INIT_7_7": "08064ED9",
+    "ELEVAY_ES_INIT_8_5": "354CC541",
+    "ELEVAY_ES_INIT_9": "199B0FA9",
+    "ELEVAY_ES_INIT_10_2": "353195E9",
+    "ELEVAY_ES_INIT_12_4": "47D56E4A",
+    "ELEVAY_ES_INIT_12_1_J": "760F4AD3"
+  },
+  "changedZipParts": [
+    "word/document.xml"
+  ]
+}

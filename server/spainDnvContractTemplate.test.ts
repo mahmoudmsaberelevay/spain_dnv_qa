@@ -18,7 +18,7 @@ describe("Spain Digital Nomad approved contract template", () => {
     const template = readFileSync(SPAIN_DNV_TEMPLATE_PATH);
     const xml = documentXml(template);
 
-    expect(SPAIN_DNV_TEMPLATE_VERSION).toBe("2026-09-23");
+    expect(SPAIN_DNV_TEMPLATE_VERSION).toBe("2026-11-12");
     expect(template.length).toBeGreaterThan(100_000);
     expect(xml.match(/\{\{CLIENT_NAME_AR\}\}/g)).toHaveLength(2);
     expect(xml.match(/\{\{FAMILY_MEMBERS\}\}/g)).toHaveLength(1);

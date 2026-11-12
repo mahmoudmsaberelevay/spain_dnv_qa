@@ -28,6 +28,7 @@ class MemoryStore implements DocusignStore {
   async patch(id: string, patch: Partial<EnvelopeRow>) { const row = { ...this.rows.get(id)!, ...patch }; this.rows.set(id, row); return row; }
   async withContractLock<T>(id: number, fn: (source: ContractSource, ledger: MemoryStore) => Promise<T>) { return this.lock(`c${id}`, () => fn({ ...this.source }, this)); }
   async withEnvelopeLock<T>(id: string, fn: (row: EnvelopeRow, ledger: MemoryStore) => Promise<T>) { return this.lock(id, () => fn(this.rows.get(id)!, this)); }
+  async withSigningLock<T>(id: string, fn: (row: EnvelopeRow, source: ContractSource, ledger: MemoryStore) => Promise<T>) { return this.lock(`c${this.source.id}`,()=>this.lock(id,()=>fn(this.rows.get(id)!,{...this.source},this))); }
 }
 let store: MemoryStore; let service: ContractDocusignService; let provider: DocusignProvider; let now: number; let bytes: Buffer; let hash: string; let config: DocusignConfig;
 const actor = { id: 41, name: "Synthetic Staff", email: "synthetic@example.test", openId: "synthetic-staff", role: "user" as const, canManage: true };

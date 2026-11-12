@@ -8,6 +8,7 @@ export type SafeEnvelope = {
   linkExpiresAt: Date | null; nextRefreshAt: Date | null;
   canShare: boolean; hasSignatureTabs: boolean; errorCode: string | null;
   documentHash: string;
+  signingRequirements?: { profile: string; pageCount: number; fullSignaturePages: number[]; pageInitialCount: number; clauseInitialCount: number; verified: boolean };
 };
 export type DocusignReadiness = { configured: boolean; environment: DocusignEnvironment; missingSettings: string[]; canManage: boolean };
 export type PrepareDocusignInput = { contractId: number; requestId: string; recipientName: string; recipientEmail: string; confirmed: true };

@@ -4,9 +4,9 @@ import PizZip from "pizzip";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-export const SPAIN_DNV_TEMPLATE_VERSION = "2026-09-23";
+export const SPAIN_DNV_TEMPLATE_VERSION = "2026-11-12";
 export const SPAIN_DNV_TEMPLATE_PATH = fileURLToPath(
-  new URL("./spain_dnv_contract_template_2026_09_23.docx", import.meta.url),
+  new URL("./spain_dnv_contract_template_2026_11_12.docx", import.meta.url),
 );
 
 const SPAIN_CLIENT_NAME_PLACEHOLDER = "{{CLIENT_NAME_AR}}";

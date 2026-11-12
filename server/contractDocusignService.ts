@@ -5,6 +5,8 @@ import { JwtDocusignProvider, type DocusignProvider, type DraftInput, type Provi
 import { fetchSavedDocument, type SavedDocument } from "./contractDocusignDocument";
 import { docusignStore, type DocusignStore, type EnvelopeRow, type ContractSource } from "./contractDocusignStore";
 import type { DocusignActor } from "./contractDocusignAccess";
+import { SPAIN_SIGNING_PROFILE, requireSpainSigningTemplate, readSpainSigningPdf, verifySpainSigningTabs } from "./contractDocusignSpainSigning";
+import { isValidSpainSigningPlan } from "./contractDocusignSpainPlan";
 export const POLL_INTERVAL_MS = 15 * 60 * 1000;
 const terminal = new Set<ContractDocusignStatus>(["completed", "declined", "voided"]);
 const digest = (name: string, email: string) => createHash("sha256").update(JSON.stringify([name, email])).digest("hex");
@@ -14,7 +16,12 @@ function shareable(row: EnvelopeRow, now: number) {
   return ["sent", "delivered"].includes(row.status) && row.hasSignatureTabs && row.recipientVerified && !row.errorCode && !row.revokedAt && (!row.linkExpiresAt || time(row.linkExpiresAt) > now) && !!row.lastCheckedAt && now - time(row.lastCheckedAt) < POLL_INTERVAL_MS && time(row.lastCheckAttemptAt) <= time(row.lastCheckedAt);
 }
 export function safeEnvelope(row: EnvelopeRow, now = Date.now()): SafeEnvelope {
-  return { id: row.id, version: row.version, contractId: row.contractId, envelopeId: row.providerEnvelopeId, status: row.status, recipientName: row.recipientName, email: row.recipientEmail, createdAt: row.createdAt, updatedAt: row.updatedAt, lastCheckedAt: row.lastCheckedAt, linkExpiresAt: row.linkExpiresAt, nextRefreshAt: terminal.has(row.status) || !row.providerEnvelopeId ? null : row.lastCheckAttemptAt ? new Date(time(row.lastCheckAttemptAt) + POLL_INTERVAL_MS) : null, canShare: shareable(row, now), hasSignatureTabs: row.hasSignatureTabs, errorCode: row.errorCode, documentHash: row.documentHash };
+  const metadata=row.documentSourceSnapshot;
+  const isSpain=metadata.signingProfile===SPAIN_SIGNING_PROFILE||metadata.country==="spain"||!!metadata.signingPlan;
+  const invalid=isSpain&&(metadata.signingProfile!==SPAIN_SIGNING_PROFILE||!isValidSpainSigningPlan(metadata.signingPlan));
+  const plan = isValidSpainSigningPlan(metadata.signingPlan)?metadata.signingPlan:undefined;
+  const signingRequirements = plan ? { profile:plan.profile,pageCount:plan.pageCount,fullSignaturePages:plan.fullSignaturePages,pageInitialCount:plan.initialPages.length,clauseInitialCount:9,verified:row.hasSignatureTabs && row.recipientVerified && !row.errorCode } : undefined;
+  return { id: row.id, version: row.version, contractId: row.contractId, envelopeId: row.providerEnvelopeId, status: row.status, recipientName: row.recipientName, email: row.recipientEmail, createdAt: row.createdAt, updatedAt: row.updatedAt, lastCheckedAt: row.lastCheckedAt, linkExpiresAt: row.linkExpiresAt, nextRefreshAt: terminal.has(row.status) || !row.providerEnvelopeId ? null : row.lastCheckAttemptAt ? new Date(time(row.lastCheckAttemptAt) + POLL_INTERVAL_MS) : null, canShare: !invalid&&shareable(row, now), hasSignatureTabs: !invalid&&row.hasSignatureTabs, errorCode: invalid?"SPAIN_SIGNING_FIELDS_REVIEW_REQUIRED":row.errorCode, documentHash: row.documentHash, ...(signingRequirements ? {signingRequirements} : {}) };
 }
 export function inspectSigner(row: EnvelopeRow, recipients: Record<string, unknown>) {
   const signers = recipients.signers as ProviderRecipient[];
@@ -23,7 +30,9 @@ export function inspectSigner(row: EnvelopeRow, recipients: Record<string, unkno
   const verified = signer.recipientId === row.recipientId && signer.clientUserId === row.clientUserId && signer.name === row.recipientName && signer.email?.toLowerCase() === row.recipientEmail && !["declined", "autoresponded"].includes(signer.status ?? "");
   const tabs = signer.tabs?.signHereTabs as any[] | undefined;
   const mandatory = verified && Array.isArray(tabs) && tabs.some(tab => tab.documentId === "1" && (tab.optional === undefined || tab.optional === false || tab.optional === "false") && !tab.tabGroupLabels?.length && !tab.conditionalParentLabel && !tab.conditionalParentValue && !tab.conditionalParentId && Number(tab.pageNumber) >= 1 && Number.isFinite(Number(tab.xPosition)) && Number.isFinite(Number(tab.yPosition)) && Number(tab.xPosition) >= 0 && Number(tab.yPosition) >= 0 && (tab.recipientId === undefined || tab.recipientId === row.recipientId));
-  return { verified, mandatory, completed: signer.status === "completed" || signer.status === "signed" };
+  const needsSpain=row.documentSourceSnapshot.signingProfile||row.documentSourceSnapshot.country==="spain"||row.documentSourceSnapshot.signingPlan;
+  const spainMandatory = needsSpain ? row.documentSourceSnapshot.signingProfile===SPAIN_SIGNING_PROFILE&&verifySpainSigningTabs(row.documentSourceSnapshot.signingPlan, signer.tabs) : true;
+  return { verified, mandatory: mandatory && spainMandatory, completed: signer.status === "completed" || signer.status === "signed" };
 }
 export class ContractDocusignService {
   constructor(private readonly store: DocusignStore, private readonly provider: DocusignProvider, private readonly config: DocusignConfig, private readonly document: (url: string) => Promise<SavedDocument> = fetchSavedDocument, private readonly now = Date.now) {}
@@ -33,10 +42,11 @@ export class ContractDocusignService {
   private async sourceMatches(row: EnvelopeRow) {
     const source = await this.store.contract(row.contractId); pending(source);
     if (source.docUrl !== row.documentSourceUrl || source.contractCode !== row.documentSourceSnapshot.contractCode || source.clientName !== row.documentSourceSnapshot.clientName) throw new DocusignError("CONTRACT_SOURCE_CHANGED");
+    if (row.documentSourceSnapshot.country && source.country !== row.documentSourceSnapshot.country) throw new DocusignError("CONTRACT_SOURCE_CHANGED");
     const document = await this.document(source.docUrl);
     if (document.hash !== row.documentHash) throw new DocusignError("CONTRACT_SOURCE_CHANGED");
     const after = await this.store.contract(row.contractId); pending(after);
-    if (after.docUrl !== source.docUrl || after.contractCode !== source.contractCode || after.clientName !== source.clientName) throw new DocusignError("CONTRACT_SOURCE_CHANGED");
+    if (after.docUrl !== source.docUrl || after.contractCode !== source.contractCode || after.clientName !== source.clientName || after.country !== source.country) throw new DocusignError("CONTRACT_SOURCE_CHANGED");
   }
   private recipient(row: EnvelopeRow): DraftInput { return { id: row.id, document: Buffer.alloc(0), documentName: row.documentName, recipientName: row.recipientName, recipientEmail: row.recipientEmail, clientUserId: row.clientUserId, recipientId: row.recipientId }; }
   async history(contractId: number) { if (!await this.store.contract(contractId)) throw new DocusignError("CONTRACT_UNAVAILABLE"); return (await this.store.list(contractId)).map(row => safeEnvelope(row, this.now())); }
@@ -44,8 +54,10 @@ export class ContractDocusignService {
     const recipientName = input.recipientName.trim(); const recipientEmail = input.recipientEmail.trim().toLowerCase();
     const source = await this.store.contract(input.contractId); pending(source);
     const document = await this.document(source.docUrl);
+    const spain = source.country === "spain";
+    if (spain) requireSpainSigningTemplate(document.bytes);
     const reservation = await this.store.withContractLock(input.contractId, async (locked, ledger) => {
-      pending(locked); if (locked.docUrl !== source.docUrl || locked.clientName !== source.clientName || locked.contractCode !== source.contractCode) throw new DocusignError("CONTRACT_SOURCE_CHANGED");
+      pending(locked); if (locked.docUrl !== source.docUrl || locked.clientName !== source.clientName || locked.contractCode !== source.contractCode || locked.country !== source.country) throw new DocusignError("CONTRACT_SOURCE_CHANGED");
       const existing = await ledger.byRequest(input.requestId);
       if (existing) {
         this.binding(existing);
@@ -55,12 +67,13 @@ export class ContractDocusignService {
       const history = await ledger.list(input.contractId); const latest = history[0];
       if (latest && !terminal.has(latest.status) && !(latest.status === "error" && !latest.providerEnvelopeId)) throw new DocusignError(latest.status === "uncertain" || latest.status === "preparing" ? "MANUAL_RECONCILIATION_REQUIRED" : "ACTIVE_ENVELOPE_EXISTS");
       const id = randomUUID(); const date = this.date();
-      const row: EnvelopeRow = { id, contractId: input.contractId, version: (latest?.version ?? 0) + 1, requestId: input.requestId, documentSourceUrl: locked.docUrl, documentHash: document.hash, documentSourceSnapshot: { contractCode: locked.contractCode, clientName: locked.clientName, sourceUrl: locked.docUrl }, documentName: document.name, documentExtension: "docx", recipientName, recipientEmail, recipientDigest: digest(recipientName, recipientEmail), clientUserId: `elevay-${id}`, recipientId: "1", providerEnvelopeId: null, environment: this.config.environment, accountId: this.config.accountId, status: "preparing", hasSignatureTabs: false, recipientVerified: false, errorCode: null, createdByUserId: actor.id, createdByName: (actor.name ?? "CRM user").slice(0,255), linkNonce: randomBytes(32).toString("hex"), createdAt: date, updatedAt: date, lastCheckedAt: null, lastCheckAttemptAt: null, linkExpiresAt: null, revokedAt: null };
+      const row: EnvelopeRow = { id, contractId: input.contractId, version: (latest?.version ?? 0) + 1, requestId: input.requestId, documentSourceUrl: locked.docUrl, documentHash: document.hash, documentSourceSnapshot: { contractCode: locked.contractCode, clientName: locked.clientName, sourceUrl: locked.docUrl, ...(locked.country ? { country: locked.country } : {}), ...(spain ? { signingProfile: SPAIN_SIGNING_PROFILE } : {}) }, documentName: document.name, documentExtension: "docx", recipientName, recipientEmail, recipientDigest: digest(recipientName, recipientEmail), clientUserId: `elevay-${id}`, recipientId: "1", providerEnvelopeId: null, environment: this.config.environment, accountId: this.config.accountId, status: "preparing", hasSignatureTabs: false, recipientVerified: false, errorCode: null, createdByUserId: actor.id, createdByName: (actor.name ?? "CRM user").slice(0,255), linkNonce: randomBytes(32).toString("hex"), createdAt: date, updatedAt: date, lastCheckedAt: null, lastCheckAttemptAt: null, linkExpiresAt: null, revokedAt: null };
       await ledger.insert(row); return { row, reserved: true };
     });
     if (!reservation.reserved) {
       if (reservation.row.status !== "draft" || !reservation.row.providerEnvelopeId) throw new DocusignError("MANUAL_RECONCILIATION_REQUIRED");
-      return { envelope: safeEnvelope(reservation.row, this.now()), senderUrl: (await this.senderView(reservation.row.id)).url };
+      const sender = await this.senderView(reservation.row.id);
+      return { envelope: safeEnvelope(await this.row(reservation.row.id), this.now()), senderUrl: sender.url };
     }
     let row = reservation.row;
     try {
@@ -73,9 +86,71 @@ export class ContractDocusignService {
       throw safe;
     }
     // A sender-view failure never discards/recreates the safely persisted draft.
-    return { envelope: safeEnvelope(row, this.now()), senderUrl: (await this.senderView(row.id)).url };
+    const sender = await this.senderView(row.id);
+    return { envelope: safeEnvelope(await this.row(row.id), this.now()), senderUrl: sender.url };
   }
-  async senderView(id: string) { const row = await this.row(id); if (row.status !== "draft" || !row.providerEnvelopeId) throw new DocusignError("DRAFT_REQUIRED"); await this.sourceMatches(row); return { url: await this.provider.createSenderView(row.providerEnvelopeId) }; }
+  private spainPolicy(row:EnvelopeRow) {
+    const s=row.documentSourceSnapshot;
+    if(s.signingProfile===SPAIN_SIGNING_PROFILE)return true;
+    if(s.signingProfile||s.signingPlan||s.signingSetupAttempted||s.country==="spain")throw new DocusignError("SPAIN_SIGNING_FIELDS_REVIEW_REQUIRED");
+    return false; // genuinely legacy rows and other programs retain their original workflow
+  }
+  private async checkedSpainDocument(row:EnvelopeRow) {
+    if(!this.provider.assertOnlyDocumentOne||!this.provider.getDocumentPdf||!row.providerEnvelopeId)throw new DocusignError("SPAIN_SIGNING_FIELDS_UNAVAILABLE");
+    await this.provider.assertOnlyDocumentOne(row.providerEnvelopeId);
+    const fresh=await readSpainSigningPdf(await this.provider.getDocumentPdf(row.providerEnvelopeId));
+    const saved=row.documentSourceSnapshot.signingPlan;
+    if(saved&&(!isValidSpainSigningPlan(saved)||saved.layoutHash!==fresh.layoutHash))throw new DocusignError("SPAIN_SIGNING_DOCUMENT_CHANGED");
+    if(!isValidSpainSigningPlan(fresh))throw new DocusignError("SPAIN_SIGNING_LAYOUT_UNVERIFIED");
+    if(saved) {
+      const canonical=(p:typeof fresh)=>JSON.stringify([p.pageCount,p.pageSizes.map(s=>[s.width,s.height]),p.fullSignaturePages,p.initialPages,...[p.tabs.signHereTabs,p.tabs.initialHereTabs].map(ts=>ts.map(t=>[t.tabLabel,t.documentId,t.recipientId,t.pageNumber,t.xPosition,t.yPosition,t.optional,t.scaleValue,t.templateLocked,t.templateRequired]))]);
+      if(canonical(saved)!==canonical(fresh))throw new DocusignError("SPAIN_SIGNING_DOCUMENT_CHANGED");
+    }
+    return fresh;
+  }
+  private async checkSpainRecipient(row:EnvelopeRow,publicRequest=false) {
+    if(!this.spainPolicy(row))return;
+    await this.checkedSpainDocument(row);
+    const result=inspectSigner(row,await this.provider.getRecipients(row.providerEnvelopeId!));
+    if(!result.verified||!result.mandatory||result.completed)throw new DocusignError(publicRequest?"SIGNING_LINK_UNAVAILABLE":"SPAIN_SIGNING_FIELDS_REVIEW_REQUIRED");
+  }
+  private async prepareSpainFields(id: string) {
+    const row=await this.row(id);
+    if(!this.spainPolicy(row))return row;
+    if(row.status!=="draft"||!row.providerEnvelopeId||!this.provider.createRequiredTabs||!this.store.withSigningLock)throw new DocusignError("SPAIN_SIGNING_FIELDS_UNAVAILABLE");
+    await this.sourceMatches(row);
+    if(await this.provider.getEnvelopeStatus(row.providerEnvelopeId)!=="created")throw new DocusignError("DRAFT_REQUIRED");
+    const plan=await this.checkedSpainDocument(row),recipients=await this.provider.getRecipients(row.providerEnvelopeId);
+    const checked=inspectSigner({...row,documentSourceSnapshot:{...row.documentSourceSnapshot,signingPlan:plan}},recipients);
+    if(!checked.verified||checked.completed)throw new DocusignError("RECIPIENT_MISMATCH");
+    const signer=(recipients.signers as ProviderRecipient[])[0];
+    const signatureKinds=["signHereTabs","initialHereTabs","approveTabs","declineTabs","signerAttachmentTabs","notarizeTabs"];
+    const existing=signatureKinds.some(k=>Array.isArray(signer.tabs?.[k])&&signer.tabs![k].length>0);
+    if(existing&&!checked.mandatory)throw new DocusignError("SPAIN_SIGNING_FIELDS_REVIEW_REQUIRED");
+    const reservation=await this.store.withSigningLock(id,async(locked,source,ledger)=>{
+      this.binding(locked);pending(source);
+      if(locked.status!=="draft"||locked.providerEnvelopeId!==row.providerEnvelopeId||locked.documentHash!==row.documentHash||source.docUrl!==row.documentSourceUrl||source.clientName!==row.documentSourceSnapshot.clientName||source.contractCode!==row.documentSourceSnapshot.contractCode||source.country!==row.documentSourceSnapshot.country)throw new DocusignError("CONTRACT_SOURCE_CHANGED");
+      if(locked.documentSourceSnapshot.signingPlan&&!isValidSpainSigningPlan(locked.documentSourceSnapshot.signingPlan))throw new DocusignError("SPAIN_SIGNING_FIELDS_REVIEW_REQUIRED");
+      if(checked.mandatory)return {row:await ledger.patch(id,{errorCode:null,hasSignatureTabs:true,recipientVerified:true,updatedAt:this.date()}),write:false as const};
+      if(locked.documentSourceSnapshot.signingSetupAttempted)throw new DocusignError("SPAIN_SIGNING_FIELDS_REVIEW_REQUIRED");
+      const reserved=await ledger.patch(id,{documentSourceSnapshot:{...locked.documentSourceSnapshot,signingPlan:plan,signingSetupAttempted:true},updatedAt:this.date()});
+      return {row:reserved,plan,write:true as const};
+    }); // commits the durable attempt before the external POST; no network call holds this connection
+    if (!reservation.write) return reservation.row;
+    const reserved=reservation.row;
+    try {
+      await this.sourceMatches(reserved);
+      await this.provider.createRequiredTabs!(reserved.providerEnvelopeId!,"1",reservation.plan.tabs);
+      const checked=inspectSigner(reserved,await this.provider.getRecipients(reserved.providerEnvelopeId!));
+      if (!checked.verified || !checked.mandatory) throw new DocusignError("SPAIN_SIGNING_FIELDS_REVIEW_REQUIRED");
+      return await this.store.patch(id,{errorCode:null,hasSignatureTabs:true,recipientVerified:true,updatedAt:this.date()});
+    } catch(error) {
+      const safe=error instanceof DocusignError ? error : new DocusignError("SPAIN_SIGNING_FIELDS_UNCERTAIN",true);
+      await this.store.patch(id,{errorCode:safe.safeCode,hasSignatureTabs:false,recipientVerified:false,updatedAt:this.date()});
+      throw safe;
+    }
+  }
+  async senderView(id: string) { let row = await this.row(id); if (row.status !== "draft" || !row.providerEnvelopeId) throw new DocusignError("DRAFT_REQUIRED"); await this.sourceMatches(row); row = await this.prepareSpainFields(id); return { url: await this.provider.createSenderView(row.providerEnvelopeId!) }; }
   async refresh(id: string): Promise<SafeEnvelope> { return safeEnvelope(await this.refreshRow(id), this.now()); }
   private async refreshRow(id: string): Promise<EnvelopeRow> {
     const reservation = await this.store.withEnvelopeLock(id, async (row, ledger) => {
@@ -100,6 +175,7 @@ export class ContractDocusignService {
   async signingLink(id: string) {
     let row = await this.row(id); await this.sourceMatches(row); row = await this.refreshRow(id);
     if (!shareable(row, this.now())) throw new DocusignError(row.revokedAt ? "LINK_REVOKED" : row.errorCode ?? "SENT_VERIFIED_ENVELOPE_REQUIRED");
+    await this.checkSpainRecipient(row);
     row = await this.store.withEnvelopeLock(id, async (locked, ledger) => {
       if (!shareable(locked, this.now())) throw new DocusignError("SENT_VERIFIED_ENVELOPE_REQUIRED");
       return locked.linkExpiresAt ? locked : ledger.patch(id, { linkExpiresAt: new Date(this.date().getTime() + 30 * 24 * 60 * 60 * 1000), updatedAt: this.date() });
@@ -112,17 +188,21 @@ export class ContractDocusignService {
     if (!/^[0-9a-f]{64}$/i.test(token) || !row.linkExpiresAt || row.revokedAt || time(row.linkExpiresAt) <= this.now() || !timingSafeEqual(Buffer.from(token, "hex"), Buffer.from(this.token(row), "hex")) || terminal.has(row.status)) throw new DocusignError("SIGNING_LINK_UNAVAILABLE");
     await this.sourceMatches(row); row = await this.refreshRow(id);
     if (!shareable(row, this.now()) || !row.providerEnvelopeId) throw new DocusignError("SIGNING_LINK_UNAVAILABLE");
-    // Serialize with revocation and recheck immediately before short-lived provider POST.
-    return this.store.withEnvelopeLock(id, async (locked) => {
+    await this.checkSpainRecipient(row,true);
+    if(!this.store.withSigningLock)throw new DocusignError("SIGNING_LINK_UNAVAILABLE");
+    const validate=(locked:EnvelopeRow,source:ContractSource)=>{
+      this.binding(locked);
       if (!shareable(locked, this.now()) || !locked.linkExpiresAt || !timingSafeEqual(Buffer.from(token, "hex"), Buffer.from(this.token(locked), "hex"))) throw new DocusignError("SIGNING_LINK_UNAVAILABLE");
-      return this.store.withContractLock(locked.contractId, async source => {
-        pending(source);
-        if (source.docUrl !== locked.documentSourceUrl || source.contractCode !== locked.documentSourceSnapshot.contractCode || source.clientName !== locked.documentSourceSnapshot.clientName) throw new DocusignError("SIGNING_LINK_UNAVAILABLE");
-        const document = await this.document(source.docUrl);
-        if (document.hash !== locked.documentHash) throw new DocusignError("SIGNING_LINK_UNAVAILABLE");
-        return { url: await this.provider.createRecipientView(locked.providerEnvelopeId!, this.recipient(locked)) };
-      });
-    });
+      pending(source);
+      if(locked.providerEnvelopeId!==row.providerEnvelopeId||locked.documentHash!==row.documentHash||source.docUrl!==locked.documentSourceUrl||source.contractCode!==locked.documentSourceSnapshot.contractCode||source.clientName!==locked.documentSourceSnapshot.clientName)throw new DocusignError("SIGNING_LINK_UNAVAILABLE");
+      if(locked.documentSourceSnapshot.country&&source.country!==locked.documentSourceSnapshot.country)throw new DocusignError("SIGNING_LINK_UNAVAILABLE");
+      if(locked.documentSourceSnapshot.signingProfile===SPAIN_SIGNING_PROFILE&&(!isValidSpainSigningPlan(locked.documentSourceSnapshot.signingPlan)||locked.documentSourceSnapshot.signingPlan.layoutHash!==row.documentSourceSnapshot.signingPlan?.layoutHash))throw new DocusignError("SIGNING_LINK_UNAVAILABLE");
+    };
+    await this.store.withSigningLock(id,async(locked,source)=>validate(locked,source));
+    const url=await this.provider.createRecipientView(row.providerEnvelopeId!,this.recipient(row));
+    // A concurrent local revoke/source/status change discards the fresh private URL, never returns it.
+    await this.store.withSigningLock(id,async(locked,source)=>validate(locked,source));
+    return {url};
   }
 }
 let singleton: { binding: string; service: ContractDocusignService } | undefined;

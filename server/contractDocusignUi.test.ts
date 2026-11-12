@@ -50,7 +50,7 @@ vi.mock("@/lib/trpc", () => ({
   },
 }));
 
-import ContractDocusignDialog, { docusignAcknowledgement, docusignDraftDisabledReason, validateDocusignRecipient, type DocusignContract } from "../client/src/components/ContractDocusignDialog";
+import ContractDocusignDialog, { docusignAcknowledgement, docusignPreparationError, docusignDraftDisabledReason, validateDocusignRecipient, type DocusignContract } from "../client/src/components/ContractDocusignDialog";
 
 type Node = { props?: Record<string, any> };
 const contract: DocusignContract = { id: 17, contractCode: "TEST-001", clientName: "Synthetic Client", status: "pending", docUrl: "https://example.invalid/saved.docx" };
@@ -133,9 +133,21 @@ describe("DocuSign recipient, source and acknowledgement rules", () => {
   });
   it("acknowledges exact contract, client, version, recipient and external draft-only upload", () => {
     const acknowledgement = docusignAcknowledgement(contract, 3, "Synthetic Client", "synthetic@example.invalid");
-    for (const required of [contract.contractCode, contract.clientName, "version 3", "synthetic@example.invalid", "exact saved Word document", "external DocuSign", "draft only", "place all required client signature fields", "send it myself"]) {
+    for (const required of [contract.contractCode, contract.clientName, "version 3", "synthetic@example.invalid", "exact saved Word document", "external DocuSign", "draft only", "review all automatically placed required client signatures and initials", "send it myself"]) {
       expect(acknowledgement).toContain(required);
     }
+    expect(docusignAcknowledgement({...contract,country:"greece"},3,"Synthetic Client","synthetic@example.invalid")).toContain("place all required client signature fields");
+  });
+  it("shows only known-code canned errors and never displays raw provider details",()=>{
+    expect(docusignPreparationError(new Error("SPAIN_SIGNING_TEMPLATE_REQUIRED"))).toContain("regenerate and review");
+    expect(docusignPreparationError(new Error("SPAIN_SIGNING_LAYOUT_UNVERIFIED"))).toContain("no fields were guessed");
+    expect(docusignPreparationError(new Error("SPAIN_SIGNING_FIELDS_REVIEW_REQUIRED"))).toContain("Do not create another envelope");
+    for(const error of [new Error("RAW_TOKEN_private_URL_or_provider_body"),{message:"arbitrary secret"},null,undefined])expect(docusignPreparationError(error)).toBe("Could not prepare the DocuSign draft. Check connection and history before retrying. Retrying the unchanged recipient form uses the same request ID to avoid duplicates.");
+  });
+  it("shows the sanitized Spain page/field summary without performing any action on render",()=>{
+    harness.history=[envelope({signingRequirements:{profile:"spain-2026-11-12-v1",pageCount:19,fullSignaturePages:[1,16,18,19],pageInitialCount:15,clauseInitialCount:9,verified:true}})];
+    expect(text(render())).toContain("4 full signatures on physical pages 1, 16, 18, 19");
+    expect(text(render())).toContain("15 page initials and 9 clause initials");expect(harness.prepare).not.toHaveBeenCalled();
   });
   it("resets acknowledgement and retry identity when the recipient changes", async () => {
     approve();
@@ -288,7 +300,10 @@ describe("DocuSign source and existing-contract UI regressions", () => {
     for (const forbidden of ["updateStatus", "regenerateDoc", "markAsPaid", "createTransaction", "contracting.analytics"]) expect(ui).not.toContain(forbidden);
   });
   it("does not expose credentials, raw error details, persistent bearer storage or automatic signing", () => {
-    expect(ui).not.toMatch(/console\.|localStorage|sessionStorage|err\.message|error\.message|accessToken|refreshToken|clientUserId/);
+    // The only message read is the isolated allow-listed error mapper; raw provider text is never rendered.
+    expect(ui.replace("String(error.message)","KNOWN_CODE_LOOKUP_ONLY")).not.toMatch(/console\.|localStorage|sessionStorage|err\.message|error\.message|accessToken|refreshToken|clientUserId/);
+    expect(ui.match(/String\(error\.message\)/g)).toHaveLength(1);
+    expect(docusignPreparationError({message:"access_token=RAW_PRIVATE_PROVIDER_MESSAGE"})).not.toContain("RAW_PRIVATE_PROVIDER_MESSAGE");
     expect(ui).not.toContain("startSigning");
     expect(ui).not.toMatch(/type="password"|\bfetch\(|axios/);
     expect(ui).toContain('window.open(url, "_blank", "noopener,noreferrer")');

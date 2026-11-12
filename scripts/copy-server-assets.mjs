@@ -11,6 +11,10 @@ const assets = [
     destination: join(projectRoot, "dist", "spain_dnv_contract_template_2026_09_23.docx"),
   },
   {
+    source: join(projectRoot, "server", "spain_dnv_contract_template_2026_11_12.docx"),
+    destination: join(projectRoot, "dist", "spain_dnv_contract_template_2026_11_12.docx"),
+  },
+  {
     source: join(projectRoot, "server", "questionnaire-font-regular.ttf"),
     destination: join(projectRoot, "dist", "questionnaire-font-regular.ttf"),
   },

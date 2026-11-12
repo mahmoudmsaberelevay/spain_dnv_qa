@@ -17,6 +17,7 @@ export type DocusignContract = {
   clientName: string;
   status: string;
   docUrl: string | null;
+  country?: string | null;
 };
 
 // UI-only rules: the server independently enforces permissions, source bytes and provider state.
@@ -39,7 +40,16 @@ export function validateDocusignRecipient(name: string, email: string): string |
 }
 
 export function docusignAcknowledgement(contract: DocusignContract, version: number, name: string, email: string): string {
-  return `I reviewed the exact saved Word document for contract ${contract.contractCode}, client ${contract.clientName}, DocuSign version ${version}. I confirm the recipient is ${name.trim() || "[client full name]"} (${email.trim() || "[client email]"}) and authorize uploading this document and recipient details to external DocuSign to create a draft only. I will review the document, place all required client signature fields, and send it myself in DocuSign.`;
+  const fields = (contract.country ?? "spain") === "spain" ? "review all automatically placed required client signatures and initials" : "place all required client signature fields";
+  return `I reviewed the exact saved Word document for contract ${contract.contractCode}, client ${contract.clientName}, DocuSign version ${version}. I confirm the recipient is ${name.trim() || "[client full name]"} (${email.trim() || "[client email]"}) and authorize uploading this document and recipient details to external DocuSign to create a draft only. I will review the document, ${fields}, and send it myself in DocuSign.`;
+}
+
+export function docusignPreparationError(error: unknown): string {
+  const code = error && typeof error === "object" && "message" in error ? String(error.message) : "";
+  if (code === "SPAIN_SIGNING_TEMPLATE_REQUIRED") return "This saved Spain Word document predates the required signing layout. An authorized user must regenerate and review the pending contract with the 12 November 2026 template before creating a draft. No document was silently rewritten or uploaded.";
+  if (code === "SPAIN_SIGNING_LAYOUT_UNVERIFIED") return "The converted Spain document could not be mapped safely. The existing draft is preserved; no fields were guessed. Ask an administrator to review the layout before continuing.";
+  if (code === "SPAIN_SIGNING_FIELDS_REVIEW_REQUIRED" || code === "SPAIN_SIGNING_FIELDS_UNCERTAIN") return "The existing draft's required field setup needs review. Do not create another envelope. Reopen the same draft only after an administrator checks its signature and initial fields.";
+  return "Could not prepare the DocuSign draft. Check connection and history before retrying. Retrying the unchanged recipient form uses the same request ID to avoid duplicates.";
 }
 
 function timestamp(value: Date | string | number | null | undefined): number {
@@ -176,10 +186,10 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
       rememberEnvelope(result.envelope);
       setConfirmed(false);
       setSenderFallbackId(result.envelope.id);
-      setMessage("Draft created, not sent. Open sender preparation to REVIEW, PLACE required client signature fields, then SEND yourself in DocuSign.");
+      setMessage(result.envelope.signingRequirements?.verified ? "Draft created, not sent. Spain's required signatures and initials are placed and verified. REVIEW every page and field, then SEND yourself in DocuSign." : "Draft created, not sent. Open sender preparation to REVIEW, PLACE required client signature fields, then SEND yourself in DocuSign.");
       try { openSender(result.senderUrl); } catch { setError("The sender window could not open. Use Open sender preparation below for a fresh link."); }
-    } catch {
-      setError("Could not prepare the DocuSign draft. Check connection and history before retrying. Retrying the unchanged recipient form uses the same request ID to avoid duplicates.");
+    } catch (error) {
+      setError(docusignPreparationError(error));
       void utils.contractDocusign.history.invalidate(historyInput);
     } finally { finishAction(); }
   }
@@ -250,7 +260,7 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
           {readiness.data?.environment === "production" && <Badge variant="outline">DocuSign production</Badge>}
           <div className="elevay-glass-panel rounded-xl border p-3 leading-relaxed">
             <p className="font-semibold">1. Create draft → 2. Review & place fields → 3. Send in DocuSign</p>
-            <p className="mt-1 text-muted-foreground">The approved template has multiple signatures without safe unique anchors. Staff must REVIEW the entire document and PLACE all required client signature fields in sender preparation, then SEND in DocuSign themselves. A draft is not sent and cannot be shared for signing.</p>
+            {(contract.country ?? "spain") === "spain" ? <div className="mt-1 space-y-2 text-muted-foreground"><p>Spain template 12 November 2026: required full client signatures are placed on the first page and the final signature pages of the main contract, services annex and acknowledgment. All other physical pages require bottom-left initials. Placement follows the actual DocuSign conversion, not old page numbers.</p><p>Additional required initials: 6-1 (ب، ج), 7-5, 7-7, 8-5, Article 9, 10-2, 12-4 and 12-1 (ج). Staff must REVIEW every page and field, then SEND themselves. Missing, moved or optional required fields block CRM signing links.</p><p>Older saved Word documents are never rewritten automatically. Regenerate and review a pending contract explicitly to use the revised template. Existing sent and signed versions retain their history.</p></div> : <p className="mt-1 text-muted-foreground">Staff must REVIEW the entire document and PLACE all required client signature fields in sender preparation, then SEND in DocuSign themselves. A draft is not sent and cannot be shared for signing.</p>}
             <p className="mt-2 text-muted-foreground">DocuSign provider status is separate from CRM status. This workflow never automatically marks the CRM contract signed or changes financial records.</p>
           </div>
           {!canManage && !readiness.isLoading && <p className="text-muted-foreground">Read-only DocuSign history. Full contract-edit permission is required to prepare drafts, refresh provider status or manage links.</p>}
@@ -303,6 +313,7 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
                 <article key={envelope.id} className="elevay-glass-panel min-w-0 space-y-3 rounded-xl border p-3 sm:p-4">
                   <div className="flex flex-wrap items-center gap-2"><strong>Version {envelope.version}</strong><Badge variant="outline" className="break-all">DocuSign: {envelope.status}</Badge><Badge variant="secondary">CRM: {contract.status}</Badge></div>
                   <p className="break-words">{envelope.recipientName} · {envelope.email}</p>
+                  {envelope.signingRequirements && <p className="rounded-lg border p-2 text-xs text-muted-foreground">Spain required fields: 4 full signatures on physical pages {envelope.signingRequirements.fullSignaturePages.join(", ")}; {envelope.signingRequirements.pageInitialCount} page initials and {envelope.signingRequirements.clauseInitialCount} clause initials. {envelope.signingRequirements.verified ? "Verified against provider fields." : "Verification required; do not send/share until reviewed."}</p>}
                   <dl className="grid min-w-0 grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-2">
                     <div><dt>Created</dt><dd>{localTime(envelope.createdAt)}</dd></div>
                     <div><dt>Cached provider status · last checked</dt><dd>{localTime(envelope.lastCheckedAt)}</dd></div>
@@ -310,7 +321,7 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
                     {envelope.linkExpiresAt && <div><dt>ELEVAY link expires</dt><dd>{localTime(envelope.linkExpiresAt)}</dd></div>}
                   </dl>
                   {envelope.documentHash && <p className="break-all text-xs text-muted-foreground">Saved document SHA-256: {envelope.documentHash}</p>}
-                  {envelope.errorCode && <p className="text-sm text-destructive">This version needs attention. Check the connection or contact an administrator before retrying.</p>}
+                  {envelope.errorCode && <p className="text-sm text-destructive">{envelope.errorCode.startsWith("SPAIN_SIGNING_") ? docusignPreparationError({message:envelope.errorCode}) : "This version needs attention. Check the connection or contact an administrator before retrying."}</p>}
                   {canManage && (
                     <div className="flex flex-wrap gap-2">
                       {isDraft(envelope) && <Button size="sm" variant="outline" className="h-auto min-h-9 whitespace-normal" disabled={!!busy || !connected} onClick={() => void reopenSender(envelope)}><ExternalLink className="h-4 w-4" />Open sender preparation</Button>}
