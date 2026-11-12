@@ -1225,7 +1225,7 @@ export const leadNotes = mysqlTable("lead_notes", {
   leadId: int("leadId").notNull(),
   userId: int("userId").notNull(),
   userName: varchar("userName", { length: 255 }),
-  note: text("note").notNull(),
+  note: mediumtext("note").notNull(),
   isPinned: boolean("isPinned").default(false),
   isImportant: boolean("isImportant").default(false),
   createdAt: bigint("createdAt", { mode: "number" }).notNull(),
@@ -4102,3 +4102,47 @@ export const contractDocusignSyncSettings = mysqlTable("contractDocusignSyncSett
   lastErrorCode: varchar("lastErrorCode", { length:80 }),
 }, table => [uniqueIndex("contract_docusign_sync_task_uid").on(table.scheduleCronTaskUid)]);
 export type ContractDocusignSyncSetting = typeof contractDocusignSyncSettings.$inferSelect;
+
+// ─── Private per-user Plaud connection and shared successful-import provenance ──
+export const plaudConnections = mysqlTable("plaud_connections", {
+  userId: int("userId").primaryKey(),
+  sealedCredentials: text("sealedCredentials").notNull(),
+  version: int("version").notNull().default(1),
+  leaseToken: varchar("leaseToken", { length: 64 }),
+  leaseUntil: bigint("leaseUntil", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export const plaudOauthStates = mysqlTable("plaud_oauth_states", {
+  stateHash: varchar("stateHash", { length: 64 }).primaryKey(),
+  userId: int("userId").notNull(),
+  sessionHash: varchar("sessionHash", { length: 64 }).notNull(),
+  sealedState: text("sealedState").notNull(),
+  expiresAt: bigint("expiresAt", { mode: "number" }).notNull(),
+  consumedAt: bigint("consumedAt", { mode: "number" }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+}, table => [index("plaud_oauth_state_expiry_idx").on(table.expiresAt)]);
+export const plaudTranscriptImports = mysqlTable("plaud_transcript_imports", {
+  id: int("id").autoincrement().primaryKey(),
+  identityHash: varchar("identityHash", { length: 64 }).notNull(),
+  source: varchar("source", { length: 20 }).notNull().default("plaud"),
+  sourceScope: varchar("sourceScope", { length: 64 }).notNull(),
+  recordingId: varchar("recordingId", { length: 255 }).notNull(),
+  leadId: int("leadId").notNull(),
+  noteId: int("noteId").notNull(),
+  importerId: int("importerId").notNull(),
+  importerName: varchar("importerName", { length: 255 }).notNull(),
+  recordingTitle: varchar("recordingTitle", { length: 500 }).notNull(),
+  callAt: bigint("callAt", { mode: "number" }),
+  effectiveAt: bigint("effectiveAt", { mode: "number" }).notNull(),
+  durationMs: bigint("durationMs", { mode: "number" }),
+  transcript: mediumtext("transcript"),
+  transcriptHash: varchar("transcriptHash", { length: 64 }).notNull(),
+  importedAt: bigint("importedAt", { mode: "number" }).notNull(),
+  deletedAt: bigint("deletedAt", { mode: "number" }),
+}, table => [
+  uniqueIndex("plaud_import_identity_uq").on(table.identityHash),
+  uniqueIndex("plaud_import_note_uq").on(table.noteId),
+  index("plaud_import_date_id_idx").on(table.effectiveAt, table.id),
+  index("plaud_import_lead_idx").on(table.leadId),
+]);

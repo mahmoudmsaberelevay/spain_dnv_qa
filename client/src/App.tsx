@@ -12,6 +12,7 @@ import TermsConditions from "./pages/TermsConditions";
 import SupportPage from "./pages/SupportPage";
 import AccountDeletion from "./pages/AccountDeletion";
 import ClientQuestionnaire from "./pages/ClientQuestionnaire";
+import TrainYourAiAgent from "./pages/TrainYourAiAgent";
 import TeamChat from "./pages/TeamChat";
 import BroadcastCenter from "./pages/BroadcastCenter";
 import Settings from "./pages/Settings";
@@ -272,6 +273,11 @@ function Router() {
       {/* Shipment is available to every authenticated CRM team account. */}
       <Route path="/shipments">
         <MobileRoute><Shipments /></MobileRoute>
+      </Route>
+
+      {/* Shared imported transcripts: authenticated shell, no additional role/page permission. */}
+      <Route path="/train-your-ai-agent">
+        <MobileRoute><TrainYourAiAgent /></MobileRoute>
       </Route>
 
       {/* ── Client Documentation Module ── */}

@@ -58,6 +58,7 @@ export default function MobileHome() {
     { id: "analysis", label: "Analysis", icon: Search, path: "/analysis/dashboard", color: "bg-violet-500/15 text-violet-600" },
     { id: "marketing", label: "Marketing", icon: Megaphone, path: "/marketing", color: "bg-purple-500/15 text-purple-600" },
     { id: "shipments", label: "Shipment", icon: Package, path: "/shipments", color: "bg-primary/15 text-primary" },
+    { id: "train-ai-agent", label: "Train Your AI Agent", icon: FileText, path: "/train-your-ai-agent", color: "bg-primary/15 text-primary" },
   ];
 
   return (

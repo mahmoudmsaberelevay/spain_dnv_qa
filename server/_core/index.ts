@@ -235,6 +235,8 @@ async function startServer() {
   registerOAuthRoutes(app);
   // Email/password authentication routes
   registerAuthRoutes(app);
+  const { registerPlaudRoutes } = await import("../plaudHttp");
+  registerPlaudRoutes(app);
   // ELEVAY Marketing Command Center: separate section at /admin/ (dashboard,
   // team API on elevay.vip sessions, Manus agent API and webhook). Only the
   // exact /admin and /admin/api/* paths are claimed; /admin/permissions etc.

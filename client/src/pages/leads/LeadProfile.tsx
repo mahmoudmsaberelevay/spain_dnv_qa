@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
+import PlaudImportDialog from "@/components/PlaudImportDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -123,6 +124,7 @@ export default function LeadProfile() {
   const [editNoteText, setEditNoteText] = useState("");
   const [editNoteImportant, setEditNoteImportant] = useState(false);
   const [showSpecialNoteDialog, setShowSpecialNoteDialog] = useState(false);
+  const [showPlaudImport, setShowPlaudImport] = useState(false);
   const [specialNoteType, setSpecialNoteType] = useState<LeadSpecialNoteType>("zoom_meeting");
   const [specialNoteText, setSpecialNoteText] = useState("");
   const [showTaskDialog, setShowTaskDialog] = useState(false);
@@ -584,7 +586,10 @@ export default function LeadProfile() {
           <Card>
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <CardTitle className="text-base">Notes</CardTitle>
-              <span className="text-xs text-muted-foreground">{notes.length} note{notes.length !== 1 ? "s" : ""}</span>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <span className="text-xs text-muted-foreground">{notes.length} note{notes.length !== 1 ? "s" : ""}</span>
+                <Button size="sm" variant="outline" onClick={() => setShowPlaudImport(true)}>Import from Plaud</Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               {/* Add note */}
@@ -766,6 +771,8 @@ export default function LeadProfile() {
           </Card>
         </div>
       </div>
+
+      <PlaudImportDialog leadId={leadId} open={showPlaudImport} onOpenChange={setShowPlaudImport} />
 
       {/* Add / Edit Special Note Dialog */}
       <Dialog open={showSpecialNoteDialog} onOpenChange={setShowSpecialNoteDialog}>

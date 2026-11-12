@@ -114,6 +114,14 @@ const BASE_MODULE_CARDS = [
     icon: Package,
     pageKey: null,
   },
+  {
+    id: "train-ai-agent",
+    label: "Train Your AI Agent",
+    description: "Browse and export shared Plaud transcripts imported into Lead notes",
+    path: "/train-your-ai-agent",
+    icon: FileText,
+    pageKey: null,
+  },
 ];
 
 // ─── Alert Widget ─────────────────────────────────────────────────────────────

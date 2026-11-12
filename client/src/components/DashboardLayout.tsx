@@ -85,6 +85,7 @@ import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { isHrAdministrator } from "@shared/hrAccess";
+import { useClearPlaudPrivateCache } from "./PlaudImportDialog";
 
 // ─── Notification Bell Component ─────────────────────────────────────────────────────────────────────
 function NotificationBell() {
@@ -198,6 +199,7 @@ const MODULE_COLORS: Record<string, { bg: string; text: string; dot: string }> =
   marketing: { bg: "module-accent-badge module-accent--marketing", text: "module-accent-text module-accent--marketing", dot: "module-accent-dot module-accent--marketing" },
   reports: { bg: "module-accent-badge module-accent--reports", text: "module-accent-text module-accent--reports", dot: "module-accent-dot module-accent--reports" },
   backup: { bg: "module-accent-badge module-accent--backup", text: "module-accent-text module-accent--backup", dot: "module-accent-dot module-accent--backup" },
+  trainAiAgent: { bg: "module-accent-badge module-accent--docs", text: "module-accent-text module-accent--docs", dot: "module-accent-dot module-accent--docs" },
   aiCouncil: { bg: "module-accent-badge module-accent--ai-council", text: "module-accent-text module-accent--ai-council", dot: "module-accent-dot module-accent--ai-council" },
 };
 
@@ -313,6 +315,14 @@ const modules = [
     ],
   },
   {
+    id: "trainAiAgent",
+    label: "Train Your AI Agent",
+    icon: FileText,
+    items: [
+      { icon: FileText, label: "Train Your AI Agent", path: "/train-your-ai-agent" },
+    ],
+  },
+  {
     id: "waQc",
     label: "WhatsApp Quality Control",
     icon: MessageSquare,
@@ -357,6 +367,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   });
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem(SIDEBAR_OPEN_KEY) !== "false");
   const { loading, user } = useAuth();
+  const clearPlaudPrivateCache = useClearPlaudPrivateCache();
+  useEffect(() => () => clearPlaudPrivateCache(), [user?.id, clearPlaudPrivateCache]);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
@@ -418,7 +430,7 @@ function DashboardLayoutContent({
   const isMobile = useIsMobile();
 
   // Determine active module from current path
-  const activeModuleId = location.startsWith("/shipments") ? "shipments" : location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : location.startsWith("/hr") ? "hr" : location.startsWith("/wa-qc") ? "waQc" : location.startsWith("/leads") ? "leads" : location.startsWith("/marketing") ? "marketing" : location.startsWith("/reports") ? "reports" : location.startsWith("/ai-council") ? "aiCouncil" : location.startsWith("/backup") ? "backup" : "contracting";
+  const activeModuleId = location.startsWith("/train-your-ai-agent") ? "trainAiAgent" : location.startsWith("/shipments") ? "shipments" : location.startsWith("/analysis") ? "analysis" : location.startsWith("/docs") ? "docs" : location.startsWith("/finance") ? "financial" : location.startsWith("/hr") ? "hr" : location.startsWith("/wa-qc") ? "waQc" : location.startsWith("/leads") ? "leads" : location.startsWith("/marketing") ? "marketing" : location.startsWith("/reports") ? "reports" : location.startsWith("/ai-council") ? "aiCouncil" : location.startsWith("/backup") ? "backup" : "contracting";
   const [expandedModule, setExpandedModule] = useState<string>(activeModuleId);
 
   const visibleModules = modules

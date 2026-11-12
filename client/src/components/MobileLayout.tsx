@@ -68,6 +68,7 @@ import { useLocation } from "wouter";
 import { startSystemLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
+import { useClearPlaudPrivateCache } from "./PlaudImportDialog";
 
 // Tab definitions
 const TABS = [
@@ -203,6 +204,14 @@ export const MOBILE_SIDEBAR_MODULES = [
     ],
   },
   {
+    id: "trainAiAgent",
+    label: "Train Your AI Agent",
+    icon: FileText,
+    items: [
+      { icon: FileText, label: "Train Your AI Agent", path: "/train-your-ai-agent" },
+    ],
+  },
+  {
     id: "waQc",
     label: "WhatsApp QC",
     icon: MessageSquare,
@@ -252,6 +261,7 @@ function getActiveTab(location: string): string {
 }
 
 function getActiveModuleId(location: string): string {
+  if (location.startsWith("/train-your-ai-agent")) return "trainAiAgent";
   if (location.startsWith("/analysis")) return "analysis";
   if (location.startsWith("/docs")) return "docs";
   if (location.startsWith("/finance")) return "financial";
@@ -303,13 +313,15 @@ interface MobileLayoutProps {
 
 export default function MobileLayout({ children }: MobileLayoutProps) {
   const { user, loading } = useAuth();
+  const clearPlaudPrivateCache = useClearPlaudPrivateCache();
+  useEffect(() => () => clearPlaudPrivateCache(), [user?.id, clearPlaudPrivateCache]);
   const [location, setLocation] = useLocation();
   const [showMore, setShowMore] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const [expandedModule, setExpandedModule] = useState<string>(getActiveModuleId(location));
   const { data: myPermissions } = trpc.permissions.getMyPermissions.useQuery(undefined, { enabled: !!user });
   const logoutMut = trpc.auth.logout.useMutation({
-    onSuccess: () => { window.location.href = "/"; },
+    onSuccess: () => { clearPlaudPrivateCache(); window.location.href = "/"; },
   });
 
   const activeTab = getActiveTab(location);

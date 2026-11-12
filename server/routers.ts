@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { leadsRouter } from "./routers/leads";
+import { plaudRouter } from "./plaudRouter";
 import { leadCallsRouter } from "./leadCallsRouter";
 import { contractDocusignRouter } from "./contractDocusignRouter";
 import { leadCallRecoveryRouter } from "./leadCallRecovery";
@@ -2816,6 +2817,7 @@ export const appRouter = router({
   nationalVisa: nationalVisaRouter,
   notifications: notificationsRouter,
   leads: leadsRouter,
+  plaud: plaudRouter,
   calls: leadCallsRouter,
   callRecovery: leadCallRecoveryRouter,
   leadsSettings: leadsSettingsRouter,
