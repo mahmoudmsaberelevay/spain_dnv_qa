@@ -39,7 +39,7 @@ describe("DocuSign public signing handoff", () => {
     const text = await response.text();
     expect(text).toContain("Continue to DocuSign");
     expect(text).not.toMatch(
-      /<script[^>]+src=|umami|auth\.me|permissions\.get|clientName|recipientEmail|DOCUSIGN_RSA_PRIVATE_KEY/
+      /<script[^>]+src=|umami|auth\.me|permissions\.get|clientName|recipientEmail|DOCUSIGN_RSA_PRIVATE_KEY|DOCUSIGN_PRIVATE_KEY_BASE64/
     );
     expect(text).toContain("history.replaceState(null,'',location.pathname)");
     expect(text).toContain("credentials:'omit'");

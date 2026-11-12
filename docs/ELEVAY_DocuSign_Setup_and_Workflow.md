@@ -14,10 +14,44 @@ Add these settings in the ELEVAY website's managed **Settings → Secrets** pane
 - `DOCUSIGN_INTEGRATION_KEY`: the integration key UUID from DocuSign.
 - `DOCUSIGN_USER_ID`: the UUID of the DocuSign sender user, not their email address.
 - `DOCUSIGN_ACCOUNT_ID`: the exact DocuSign account UUID selected for this integration.
-- `DOCUSIGN_RSA_PRIVATE_KEY`: the complete RSA private key in PEM format, including its begin/end lines and line breaks.
+- `DOCUSIGN_PRIVATE_KEY_BASE64` (recommended): single-line standard Base64 encoding of the **complete original RSA private-key PEM**, including its begin/end lines and original line breaks. This avoids multiline secret-entry problems. The backend alone decodes it, checks canonical Base64 and UTF-8, and validates an unencrypted RSA private key of at least 2048 bits before JWT signing. Both PKCS8 `BEGIN PRIVATE KEY` and PKCS1 `BEGIN RSA PRIVATE KEY` are accepted. The encoded value remains a secret: Base64 is **encoding, not encryption**.
+- `DOCUSIGN_RSA_PRIVATE_KEY` (legacy alternative): the complete original private-key PEM. It is used only if `DOCUSIGN_PRIVATE_KEY_BASE64` is absent or explicitly empty. If a nonempty Base64 setting is invalid, the connection fails closed; it does not silently use an old PEM key. Neither format is ever returned by readiness or the public signing page.
 - `DOCUSIGN_LINK_SECRET`: a cryptographically random value of at least 32 characters, dedicated to protecting ELEVAY signing invitations. Keep it stable; replacing it invalidates existing invitations.
 
-DocuSign requires one-time consent from the configured sender for the `signature` and `impersonation` scopes. Register `https://elevay.vip/contracting/contracts` as an allowed redirect URI in your integration. Open DocuSign's consent URL in your own browser for the correct environment, using your integration key as `client_id`, `response_type=code`, `scope=signature%20impersonation`, and that exact redirect URI. The returned authorization code is not used by this server-side JWT integration and must not be pasted into chat. [2] [3]
+Encode the entire original PEM **locally on the owner's computer**, not just its inner key body, and paste the result only into the managed `DOCUSIGN_PRIVATE_KEY_BASE64` secret field. Do not add quotes, a data-URL prefix, or line wrapping. Do not upload the PEM, print the encoded key in Terminal, or paste either representation in chat. Keep the original private key in protected local storage. Encoding must not change the RSA pair registered with DocuSign.
+
+For the Mac key saved by the earlier validated clipboard-save step in a protected `~/.elevay-docusign-*` directory, run the command below. It requires exactly one such directory, validates the existing private key, and copies the **single-line encoded value only to the clipboard**. It displays neither the original nor the encoded key, changes no file, and refuses to guess if multiple saved key directories exist. After it reports success, paste directly into the secret field without copying any other text first.
+
+```bash
+node -e '
+try {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const home = require("node:os").homedir();
+  const crypto = require("node:crypto");
+  const { execFileSync } = require("node:child_process");
+  const dirs = fs.readdirSync(home).filter(name => name.startsWith(".elevay-docusign-"));
+  if (dirs.length !== 1) throw 0;
+  const file = path.join(home, dirs[0], "private-key.pem");
+  const info = fs.lstatSync(file);
+  if (!info.isFile() || (info.mode & 0o077) !== 0) throw 0;
+  const pem = fs.readFileSync(file);
+  const key = crypto.createPrivateKey(pem);
+  if (key.asymmetricKeyType !== "rsa" || (key.asymmetricKeyDetails?.modulusLength ?? 0) < 2048) throw 0;
+  execFileSync("/usr/bin/pbcopy", { input: pem.toString("base64"), stdio: ["pipe", "ignore", "ignore"] });
+  console.log("BASE64 COPIED SECURELY. Paste directly into DOCUSIGN_PRIVATE_KEY_BASE64. Do not paste in chat.");
+} catch {
+  console.log("COPY FAILED: exactly one protected saved key is required. No key was displayed.");
+  process.exitCode = 1;
+}
+'
+```
+
+Base64 is not encryption: treat the clipboard as confidential. After the secret has been saved, clear the clipboard with `printf "" | pbcopy`.
+
+The backend bounds the decoded PEM to 16 KiB, rejects malformed or noncanonical Base64 (including invalid padding), invalid UTF-8, public keys, encrypted keys, non-RSA keys, multiple PEM blocks, and undersized RSA keys. Readiness exposes only configured/environment/missing-setting **names**. Configuration failures return `SETTINGS_REQUIRED`; raw Base64, decoded PEM, key fragments and OpenSSL errors are never logged or attached as an error cause.
+
+DocuSign requires one-time consent from the configured sender for the `signature` and `impersonation` scopes. Register `https://elevay.vip/sign-contract/return` as an allowed redirect URI in your integration. Open DocuSign's consent URL in your own browser for the correct environment, using your integration key as `client_id`, `response_type=code`, `scope=signature%20impersonation`, and that exact redirect URI. The returned authorization code is not used by this server-side JWT integration and must not be pasted into chat. The standalone return page uses no-store/no-referrer headers and removes the query from the visible address. [2] [3]
 
 After managed settings are saved, redeploy the website so its production server reloads them. A readiness indicator reporting that settings are present is not proof that DocuSign authentication or account entitlement works; credential validation must succeed before a real contract upload.
 

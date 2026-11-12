@@ -263,7 +263,8 @@ export default function ContractDocusignDialog({ contract, open, onOpenChange }:
               <div className="mt-3 space-y-2 break-words text-muted-foreground">
                 <p>Configure these names in managed server secrets; never enter credentials in this dialog. No account login is handled here. An administrator must authorize the integration outside this app.</p>
                 <p>A successful configuration check validates local settings only; it does not verify live DocuSign authorization or connectivity.</p>
-                <p><code>DOCUSIGN_ENVIRONMENT</code>: demo or production. Also configure <code>DOCUSIGN_INTEGRATION_KEY</code>, <code>DOCUSIGN_USER_ID</code>, <code>DOCUSIGN_ACCOUNT_ID</code>, <code>DOCUSIGN_RSA_PRIVATE_KEY</code> and <code>DOCUSIGN_LINK_SECRET</code>.</p>
+                <p><code>DOCUSIGN_ENVIRONMENT</code>: demo or production. Also configure <code>DOCUSIGN_INTEGRATION_KEY</code>, <code>DOCUSIGN_USER_ID</code>, <code>DOCUSIGN_ACCOUNT_ID</code>, <code>DOCUSIGN_PRIVATE_KEY_BASE64</code> and <code>DOCUSIGN_LINK_SECRET</code>.</p>
+                <p><code>DOCUSIGN_PRIVATE_KEY_BASE64</code>: single-line Base64 encoding of the complete original private-key PEM. It is decoded and validated only on the server. Legacy <code>DOCUSIGN_RSA_PRIVATE_KEY</code> is used only when the Base64 setting is absent or empty; invalid Base64 never silently falls back.</p>
                 {!!readiness.data?.missingSettings.length && <p className="break-all">Missing settings: {readiness.data.missingSettings.join(", ")}</p>}
                 <Button variant="outline" size="sm" disabled={readiness.isFetching || !!busy} onClick={() => void readiness.refetch()}>Recheck connection</Button>
               </div>
