@@ -1,5 +1,5 @@
 import { createPrivateKey, sign } from "node:crypto";
-import { DocusignError, UUID, validateApiRoot, validateViewUrl, type DocusignConfig } from "./contractDocusignConfig";
+import { DocusignError, UUID, validateApiRoot, validateViewUrl, validateSenderViewUrl, type DocusignConfig } from "./contractDocusignConfig";
 export type DraftInput = { id: string; document: Buffer; documentName: string; recipientName: string; recipientEmail: string; recipientId: string; clientUserId: string };
 export type ProviderRecipient = { name?: string; email?: string; clientUserId?: string; recipientId?: string; status?: string; tabs?: Record<string, unknown[]> };
 export type ProviderSnapshot = { status: string; recipients: Record<string, unknown> };
@@ -68,7 +68,7 @@ export class JwtDocusignProvider implements DocusignProvider {
   }
   async createSenderView(id: string) {
     const result = await this.api(`${this.path(id)}/views/sender`, "POST", { returnUrl: `${this.config.publicBaseUrl}/sign-contract/return`, viewAccess: "envelope", settings: { startingScreen: "Tagger", showBackButton: "false", showDiscardAction: "false", showAdvancedOptions: "false", showSignNow: "false", documentSettings: { showEditDocuments: "false", showEditPages: "false", showEditDocumentVisibility: "false" }, recipientSettings: { showEditRecipients: "false", showContactsList: "false", showBulkSend: "false", showEditMessage: "false" } } });
-    return validateViewUrl(result.url, this.config.environment);
+    return validateSenderViewUrl(result.url, this.config.environment);
   }
   async getEnvelopeStatus(id: string) { const result = await this.api(this.path(id), "GET"); if (typeof result.status !== "string") throw new DocusignError("INVALID_PROVIDER_RESPONSE"); return result.status; }
   async getRecipients(id: string) { const result = await this.api(`${this.path(id)}/recipients?include_tabs=true`, "GET"); if (!result || typeof result !== "object" || !Array.isArray(result.signers)) throw new DocusignError("INVALID_PROVIDER_RESPONSE"); return result as Record<string, unknown>; }

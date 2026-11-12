@@ -78,3 +78,22 @@ export function validateViewUrl(raw: unknown, environment: DocusignEnvironment):
   if (url.username || url.password || url.port || !/^\/(?:Signing|signing|Member|member)\//.test(url.pathname)) throw new DocusignError("INVALID_PROVIDER_RESPONSE");
   return url.href;
 }
+
+/** Sender views can begin at DocuSign's managed-token redemption endpoint.
+ * This exception is not an API root or a client signing destination. Keep the
+ * environment, exact origin and exact public path bound; never inspect/log tokens.
+ */
+export function validateSenderViewUrl(raw: unknown, environment: DocusignEnvironment): string {
+  if (typeof raw !== "string") throw new DocusignError("INVALID_PROVIDER_RESPONSE");
+  let url: URL; try { url = new URL(raw); } catch { throw new DocusignError("INVALID_PROVIDER_RESPONSE"); }
+  const accountHost = environment === "demo" ? "account-d.docusign.com" : "account.docusign.com";
+  if (url.hostname === accountHost) {
+    if (url.protocol !== "https:" || url.username || url.password || url.port || url.hash ||
+        url.pathname !== "/managed_token/v1/redeem" || !url.search ||
+        raw !== raw.trim() || /[\x00-\x1f\x7f]/.test(raw)) {
+      throw new DocusignError("INVALID_PROVIDER_RESPONSE");
+    }
+    return raw; // Preserve DocuSign's opaque, short-lived handoff exactly as issued.
+  }
+  return validateViewUrl(raw, environment);
+}
