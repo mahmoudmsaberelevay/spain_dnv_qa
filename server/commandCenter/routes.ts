@@ -413,7 +413,8 @@ function studio() {
     await renderQueue.ensure();
     // Renders reels inside the website only when ELEVAY_EMBEDDED_RENDER=1 and the server has enough memory.
     startEmbeddedRenderWorker(q).catch((e) => console.error("[render] " + String(e?.message || e).slice(0, 200)));
-    const o = createOrchestrator({ q, mutate, loadState, liveReport, providers: makeProviders(fetch, renderQueue), E, R, meta: await metaHub(), notifyFailure: notifyAiFailure });
+    const o = createOrchestrator({ q, mutate, loadState, liveReport, providers: makeProviders(fetch, renderQueue), E, R, meta: await metaHub(), notifyFailure: notifyAiFailure,
+      renderWorkerStatus: async () => { const s = await (await renderWorkerBridge()).status(); const w = s?.workers?.[0]; return { online: !!w?.online, lastSeen: w?.lastSeen || null }; } });
     await o.ensureTable();
     return o;
   })().catch((e) => { studioPromise = null; throw e; });
