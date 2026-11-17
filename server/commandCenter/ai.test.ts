@@ -311,6 +311,16 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(r.status).not.toBe("failed");
     expect(r.auto_render_resumes).toBe(1);
     expect(r.steps.find((s) => s.action === "compose_reel").status).not.toBe("failed");
+    // A reel the owner recreated (marked no_auto_resume) stays failed.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    doc = JSON.parse(ctx.q.rows.get(run.id).doc);
+    const c2 = doc.steps.find((s) => s.action === "compose_reel");
+    c2.status = "failed"; c2.error = c.error; doc.status = "failed"; doc.no_auto_resume = true;
+    ctx.q.rows.get(run.id).doc = JSON.stringify(doc); ctx.q.rows.get(run.id).status = "failed";
+    await ctx.o.watchdog();
+    r = await ctx.o.get(run.id);
+    expect(r.status).toBe("failed");
+    expect(r.auto_render_resumes).toBe(1);
   });
 
   it("uses exactly storyboard, keyframes, keyframe check, clips, voice, compose, one final Claude check, and weekly plan", async () => {

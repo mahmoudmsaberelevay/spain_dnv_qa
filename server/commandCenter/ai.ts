@@ -2127,6 +2127,9 @@ Return JSON only: {"summary":"3–5 sentences on how the ads did against the tar
     if (["queued", "running", "waiting", "awaiting_approval", "sandbox_queued", "sandbox_running", "sandbox_waiting"].includes(source.status)) {
       throw new Error("This creative is still running. Cancel or wait for it before creating a separate fresh version.");
     }
+    // The old run is replaced by the new version: it must never resume by itself later (e.g. when the Mac comes back).
+    source.no_auto_resume = true;
+    try { await save(source, g.ver); g.ver += 1; } catch { /* resume guard below also checks for newer runs */ }
 
     const A = source.artifacts || {};
     const sourceBrief = A.brief || {};
@@ -2470,6 +2473,15 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
       const st = snap?.steps?.find((x) => x.status === "failed");
       if (snap?.kind !== "reel" || st?.action !== "compose_reel" || !/^External-step watchdog:.*render-worker/.test(String(st.error || ""))) continue;
       if (Number(snap.auto_render_resumes || 0) >= MAX_AUTO_RENDER_RESUMES) continue;
+      // Never revive work the owner moved on from: recreated or revised since, or older than 14 days.
+      if (snap.no_auto_resume) continue;
+      const createdMs = typeof snap.created_at === "number" ? snap.created_at : Date.parse(snap.created_at || "") || 0;
+      if (createdMs && Date.now() - createdMs > 14 * 86400000) continue;
+      const itemId = String(snap.artifacts?.item_id || "");
+      if (itemId) {
+        const newer = await q("SELECT id, doc FROM ec_ai_runs WHERE id > ? ORDER BY id DESC LIMIT 200", [row.id]);
+        if (newer.some((n) => { try { const d = JSON.parse(n.doc); return String(d?.artifacts?.item_id || "") === itemId || Number(d?.options?.recreatedFromRunId) === Number(row.id); } catch { return false; } })) continue;
+      }
       const g = await get(row.id);
       const step = g?.run?.steps?.find((x) => x.status === "failed");
       if (!g || step?.action !== "compose_reel") continue;
