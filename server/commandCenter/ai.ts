@@ -2434,9 +2434,59 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     }
   }
 
+  // Owner rule (17 Nov 2026): a reel never fails because the Mac render worker is offline. While the Mac is away the
+  // final edit just waits (no retry is used up); when the Mac is back, its clock restarts, and any reel that already
+  // failed for that reason resumes by itself with its saved clips and voice (nothing is paid again).
+  async function macRenderStatus() {
+    if (!deps.renderWorkerStatus) return null;
+    try { const s = await deps.renderWorkerStatus(); return s && typeof s.online === "boolean" ? s : null; } catch { return null; }
+  }
+  /** True when the step should keep waiting because the Mac is offline (and records that once on the run). */
+  async function waitForMac(run, C, mac) {
+    if (!mac) return false;
+    if (!mac.online) {
+      if (!C.macOfflineSince) {
+        C.macOfflineSince = nowIso();
+        C.waitReason = "Waiting for the Mac render worker to come back online (the reel will not fail while it is offline).";
+        log(run, "studio", "team", "The Mac render worker is offline; the final edit waits for it instead of failing. No retry is used.");
+        return "changed";
+      }
+      return true;
+    }
+    if (C.macOfflineSince) {
+      // Back online: restart the progress clock so the time it was away doesn't count against the render.
+      log(run, "studio", "team", `The Mac render worker is back online (it was away since ${C.macOfflineSince}); the final edit continues.`);
+      delete C.macOfflineSince; C.lastProgressAt = nowIso(); C.waitReason = "Waiting for render worker";
+      return "changed";
+    }
+    return false;
+  }
+  const MAX_AUTO_RENDER_RESUMES = 5;
+  async function resumeRendersFailedWhileMacAway(mac) {
+    if (!mac?.online) return;
+    const rows = await q("SELECT id, doc FROM ec_ai_runs WHERE status='failed' ORDER BY id DESC LIMIT 30");
+    for (const row of rows) {
+      let snap; try { snap = JSON.parse(row.doc); } catch { continue; }
+      const st = snap?.steps?.find((x) => x.status === "failed");
+      if (snap?.kind !== "reel" || st?.action !== "compose_reel" || !/^External-step watchdog:.*render-worker/.test(String(st.error || ""))) continue;
+      if (Number(snap.auto_render_resumes || 0) >= MAX_AUTO_RENDER_RESUMES) continue;
+      const g = await get(row.id);
+      const step = g?.run?.steps?.find((x) => x.status === "failed");
+      if (!g || step?.action !== "compose_reel") continue;
+      g.run.auto_render_resumes = Number(g.run.auto_render_resumes || 0) + 1;
+      step.status = "pending"; step.error = null; step.watchdog_retry_count = 0; delete step.watchdog_retry_not_before;
+      if (g.run.artifacts?.compose) delete g.run.artifacts.compose.macOfflineSince;
+      g.run.status = "queued";
+      log(g.run, "studio", "team", `The Mac render worker is online again; the final edit resumes automatically (attempt ${g.run.auto_render_resumes} of ${MAX_AUTO_RENDER_RESUMES}) with the saved clips and voice — nothing is regenerated or paid again.`);
+      try { await save(g.run, g.ver); kick(row.id); } catch { /* another worker changed it; next heartbeat */ }
+    }
+  }
+
   /** Durable external-step watchdog; production invokes this through a Heartbeat. */
   async function watchdog() {
     await recoverCompletedExternalRenders();
+    const mac = await macRenderStatus();
+    await resumeRendersFailedWhileMacAway(mac).catch(() => {});
     const rows = await q("SELECT id, status, doc FROM ec_ai_runs WHERE status IN ('waiting','queued','running') ORDER BY id LIMIT 30");
     for (const r of rows) {
       if (r.status !== "running") {
@@ -2449,6 +2499,9 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
         // or the worker stopped reporting progress.
         if (r.status === "waiting" && pendingStep?.action === "compose_reel") {
           const C = pending.run.artifacts?.compose || {};
+          const away = await waitForMac(pending.run, C, mac);
+          if (away === "changed") { if (pending.run.artifacts) pending.run.artifacts.compose = C; await save(pending.run, pending.ver).catch(() => {}); continue; }
+          if (away) continue;
           const hasJob = !!C.jobId;
           const started = Date.parse(pendingStep.started_at || C.attemptStartedAt || pending.run.updated_at || pending.run.created_at || "") || Date.now();
           const progressAt = Date.parse(C.lastProgressAt || "") || 0;
@@ -2490,6 +2543,11 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
       const g = await get(r.id);
       const step = g.run.steps.find((s) => s.status === "running");
       if (!step) continue;
+      if (step.action === "compose_reel" && g.run.artifacts?.compose) {
+        const away = await waitForMac(g.run, g.run.artifacts.compose, mac);
+        if (away === "changed") { await save(g.run, g.ver).catch(() => {}); continue; }
+        if (away) continue;
+      }
       const isHiggsfield = step.provider === "higgsfield";
       const hasHiggsfieldIds = isHiggsfield && (g.run.artifacts.clips || []).length === 4 && (g.run.artifacts.clips || []).every((c) => typeof c?.requestId === "string" && c.requestId);
       const hasRenderJob = step.action === "compose_reel" && !!g.run.artifacts.compose?.jobId;

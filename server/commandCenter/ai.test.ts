@@ -53,7 +53,7 @@ function memoryDb() {
   return q;
 }
 
-function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = null, externalRender = false } = {}) {
+function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = null, externalRender = false, mac = null } = {}) {
   const state = E.emptyState();
   // Unit fixtures drive one explicit run. The live scheduler covers calendar
   // autoplan separately; it must not consume mocked Claude responses here.
@@ -110,7 +110,7 @@ function setup(claudeAnswers, { autoClips = false, notify = true, voiceError = n
   };
   const q = memoryDb();
   const mutate = async (_ctx, fn) => fn(state);
-  const o = createOrchestrator({ q, mutate, loadState: async () => ({ state }), liveReport: async () => ({ window: {}, ads: { total: { spend: 1000 } } }), providers, E, R, notifyFailure: notify ? async (payload) => calls.notify.push(payload) : undefined });
+  const o = createOrchestrator({ q, mutate, loadState: async () => ({ state }), liveReport: async () => ({ window: {}, ads: { total: { spend: 1000 } } }), providers, E, R, notifyFailure: notify ? async (payload) => calls.notify.push(payload) : undefined, ...(mac ? { renderWorkerStatus: async () => mac } : {}) });
   const completeRender = () => q.renderJobs.set("render-1", { status: "done", doc: { final: { url: "https://cdn.example/final.mp4", seconds: 23, sha256: "f".repeat(64), music: false, mode: "cuts", renderJobId: "render-1", qcFrames: Array.from({ length: 75 }, (_, i) => ({ url: `https://cdn.example/qc-${i}.jpg`, label: `Scene ${Math.min(4, Math.floor(i / 19) + 1)} frames ${i * 8 + 1}-${i * 8 + 8}` })) } } });
   return { o, q, state, calls, finishClips: () => { clipsDone = true; }, setClipsDone: (value) => { clipsDone = value; }, failRequest: (id) => { failedRequestId = id; }, completeRender };
 }
@@ -273,6 +273,46 @@ describe("seven-step ELEVAY reel flow", () => {
     expect(delayed.watchdog_retry_count).toBe(1);
     expect(Date.parse(delayed.watchdog_retry_not_before)).toBeGreaterThan(Date.now());
   });
+  it("waits for an offline Mac instead of failing, restarts the clock when it returns, and resumes a reel that failed while it was away (17 Nov 2026)", async () => {
+    const mac = { online: false };
+    const ctx = setup([STORYBOARD], { externalRender: true, mac });
+    const run = await ctx.o.create({ kind: "reel", request: "Mac offline", user: marketer });
+    await settle(ctx.o, run.id);
+    ctx.finishClips();
+    await ctx.o.tick();
+    const row = ctx.q.rows.get(run.id);
+    const old = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    let doc = JSON.parse(row.doc);
+    doc.steps.find((s) => s.action === "compose_reel").started_at = old;
+    doc.artifacts.compose.lastProgressAt = old;
+    row.doc = JSON.stringify(doc);
+    for (let i = 0; i < 3; i++) await ctx.o.watchdog();
+    let r = await ctx.o.get(run.id);
+    let step = r.steps.find((s) => s.action === "compose_reel");
+    expect(r.status).toBe("waiting");
+    expect(step.status).toBe("waiting");
+    expect(step.watchdog_retry_count || 0).toBe(0);
+    expect(r.artifacts.compose.macOfflineSince).toBeTruthy();
+    expect(ctx.calls.notify).toHaveLength(0);
+    mac.online = true;
+    await ctx.o.watchdog();
+    r = await ctx.o.get(run.id);
+    step = r.steps.find((s) => s.action === "compose_reel");
+    expect(r.artifacts.compose.macOfflineSince).toBeUndefined();
+    expect(Date.now() - Date.parse(r.artifacts.compose.lastProgressAt)).toBeLessThan(60_000);
+    expect(step.watchdog_retry_count || 0).toBe(0);
+    // A reel that already failed while the Mac was away resumes by itself once it is online.
+    doc = JSON.parse(ctx.q.rows.get(run.id).doc);
+    const c = doc.steps.find((s) => s.action === "compose_reel");
+    c.status = "failed"; c.error = "External-step watchdog: External render worker combines clips had no render-worker progress for 20 minutes. Automatic retry limit exhausted after 3 of 3 retries (1m, 5m, 15m backoff).";
+    doc.status = "failed"; ctx.q.rows.get(run.id).doc = JSON.stringify(doc); ctx.q.rows.get(run.id).status = "failed";
+    await ctx.o.watchdog();
+    r = await ctx.o.get(run.id);
+    expect(r.status).not.toBe("failed");
+    expect(r.auto_render_resumes).toBe(1);
+    expect(r.steps.find((s) => s.action === "compose_reel").status).not.toBe("failed");
+  });
+
   it("uses exactly storyboard, keyframes, keyframe check, clips, voice, compose, one final Claude check, and weekly plan", async () => {
     expect(PIPELINES.reel.steps().map((s) => s.action)).toEqual(["reel_storyboard", "reel_keyframes", "qc_visual", "voice", "clips", "compose_reel", "qc_final", "to_weekly_plan"]);
     expect(PIPELINES.static.steps().map((s) => s.action)).toContain("check_brief");
