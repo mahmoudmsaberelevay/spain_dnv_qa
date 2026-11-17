@@ -2173,7 +2173,7 @@ Return JSON only: {"summary":"3–5 sentences on how the ads did against the tar
       const g = await get(id);
       if (!g || g.run.no_auto_resume) break;
       g.run.no_auto_resume = true;
-      try { await save(g.run, g.ver); break; } catch { /* changed meanwhile; retry */ }
+      try { await save(g.run, g.ver); break; } catch { if (i === 2) console.error(`[studio] could not mark run #${id} as replaced; the newer-run scan still blocks its revival`); }
     }
     return result;
   }
@@ -2493,12 +2493,14 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
         const item = (ctx.state.items || []).find((i) => i.item_id === id);
         if (item && ["rejected", "published"].includes(item.status)) return `weekly item ${id} is ${item.status}`;
       }
-      ctx.newer = ctx.newer || await q("SELECT id, doc FROM ec_ai_runs WHERE id > ? ORDER BY id DESC LIMIT 300", [ctx.minId || 0]);
-      for (const n of ctx.newer) {
-        if (Number(n.id) <= Number(run.id)) continue;
-        let d; try { d = JSON.parse(n.doc); } catch { continue; }
-        if (Number(d?.options?.recreatedFromRunId) === Number(run.id) || runItemIds(d).some((x) => ids.includes(x))) return `replaced by run #${n.id}`;
-      }
+    }
+    // Always scan newer runs (studio-only work too): a recreation or a later run for the same item replaces this one,
+    // even if marking the old run failed. Runs within 14 days easily fit in this window.
+    ctx.newer = ctx.newer || await q("SELECT id, doc FROM ec_ai_runs WHERE id > ? ORDER BY id DESC LIMIT 1000", [ctx.minId || 0]);
+    for (const n of ctx.newer) {
+      if (Number(n.id) <= Number(run.id)) continue;
+      let d; try { d = JSON.parse(n.doc); } catch { continue; }
+      if (Number(d?.options?.recreatedFromRunId) === Number(run.id) || (ids.length && runItemIds(d).some((x) => ids.includes(x)))) return `replaced by run #${n.id}`;
     }
     return null;
   }
@@ -2507,7 +2509,8 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     if (run?.status !== "failed") return null;
     const st = run.steps?.find((x) => x.status === "failed");
     if (st?.action !== "compose_reel" || !/^External-step watchdog:.*render-worker/.test(String(st.error || ""))) return null;
-    if (st.mac_online_at_failure === true) return null;
+    // Only failures recorded with the Mac offline (false), or older ones from before this was recorded, qualify.
+    if (st.mac_online_at_failure !== false && st.mac_online_at_failure !== undefined) return null;
     if (Number(run.auto_render_resumes || 0) >= MAX_AUTO_RENDER_RESUMES) return null;
     return st;
   }
@@ -2598,7 +2601,16 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
       if (step.action === "compose_reel" && g.run.artifacts?.compose) {
         const away = await waitForMac(g.run, g.run.artifacts.compose, mac);
         if (away === "changed") { await save(g.run, g.ver).catch(() => {}); continue; }
-        if (away) continue;
+        if (away) {
+          // A step left "running" by a restart whose render already finished is collected now, even with the Mac away.
+          const jobId = g.run.artifacts.compose.jobId;
+          const job = jobId ? (await q("SELECT status, doc FROM ec_render_jobs WHERE id=?", [String(jobId)]).catch(() => []))[0] : null;
+          if (job?.status !== "done") continue;
+          step.status = "pending"; step.error = null; g.run.status = "queued";
+          log(g.run, "studio", "team", "The finished render was found after a restart; collecting it now (the Mac is not needed for this).");
+          await save(g.run, g.ver).catch(() => {});
+          continue;
+        }
       }
       const isHiggsfield = step.provider === "higgsfield";
       const hasHiggsfieldIds = isHiggsfield && (g.run.artifacts.clips || []).length === 4 && (g.run.artifacts.clips || []).every((c) => typeof c?.requestId === "string" && c.requestId);

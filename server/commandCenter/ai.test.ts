@@ -373,6 +373,35 @@ describe("seven-step ELEVAY reel flow", () => {
       await ctx.o.watchdog();
       expect((await ctx.o.get(run.id)).status).toBe("failed");
     });
+    it("does not revive a failure with no Mac status evidence", async () => {
+      const { ctx, run } = await failedReel({ online: true }, { step: { mac_online_at_failure: null } });
+      await ctx.o.watchdog();
+      expect((await ctx.o.get(run.id)).status).toBe("failed");
+    });
+    it("does not revive studio-only work that was recreated, even if marking it failed", async () => {
+      const { ctx, run } = await failedReel({ online: true });
+      await ctx.q("INSERT INTO ec_ai_runs (created_at, status, doc) VALUES (?, ?, ?)", [Date.now(), "queued", JSON.stringify({ kind: "reel", status: "queued", steps: [], options: { recreatedFromRunId: run.id } })]);
+      await ctx.o.watchdog();
+      expect((await ctx.o.get(run.id)).status).toBe("failed");
+    });
+    it("collects a finished render for a step left running by a restart while the Mac is offline", async () => {
+      const mac = { online: false };
+      const ctx = setup([STORYBOARD, PASS], { externalRender: true, mac });
+      const run = await ctx.o.create({ kind: "reel", request: "Restart while offline", user: marketer });
+      await settle(ctx.o, run.id);
+      ctx.finishClips();
+      await ctx.o.tick();
+      await ctx.o.watchdog(); // records Mac offline
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const row = ctx.q.rows.get(run.id), doc = JSON.parse(row.doc);
+      doc.steps.find((x) => x.action === "compose_reel").status = "running"; doc.status = "running";
+      row.doc = JSON.stringify(doc); row.status = "running";
+      ctx.completeRender();
+      await ctx.o.watchdog();
+      const r = await ctx.o.get(run.id);
+      expect(r.status).not.toBe("running");
+      expect(["pending", "done", "waiting"]).toContain(r.steps.find((x) => x.action === "compose_reel").status);
+    });
     it("stops after two automatic revivals", async () => {
       const { ctx, run } = await failedReel({ online: true }, { run: { auto_render_resumes: 2 } });
       await ctx.o.watchdog();
