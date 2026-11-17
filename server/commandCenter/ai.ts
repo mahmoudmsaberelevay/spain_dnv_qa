@@ -2127,9 +2127,6 @@ Return JSON only: {"summary":"3–5 sentences on how the ads did against the tar
     if (["queued", "running", "waiting", "awaiting_approval", "sandbox_queued", "sandbox_running", "sandbox_waiting"].includes(source.status)) {
       throw new Error("This creative is still running. Cancel or wait for it before creating a separate fresh version.");
     }
-    // The old run is replaced by the new version: it must never resume by itself later (e.g. when the Mac comes back).
-    source.no_auto_resume = true;
-    try { await save(source, g.ver); g.ver += 1; } catch { /* resume guard below also checks for newer runs */ }
 
     const A = source.artifacts || {};
     const sourceBrief = A.brief || {};
@@ -2156,18 +2153,29 @@ Return JSON only: {"summary":"3–5 sentences on how the ads did against the tar
       const item = state.items.find((x) => x.item_id === itemId);
       if (!item) throw new Error("The linked weekly-plan item no longer exists, so its version history cannot be protected.");
       if (item.revision?.status === "revision_pending") throw new Error("A revision is already in progress for this creative. Wait for it to finish before recreating it again.");
-      return reviseItem(itemId, { comment: recreationRequest, scope: "whole_concept" }, user);
+      return markReplaced(id, await reviseItem(itemId, { comment: recreationRequest, scope: "whole_concept" }, user));
     }
 
     // Historical studio-only work has no linked item to version. It still gets
     // a wholly empty asset set and leaves the source run untouched.
     const week = /^\d{4}-W\d{2}$/.test(String(sourceOptions.week || "")) ? sourceOptions.week : undefined;
-    return create({
+    return markReplaced(id, await create({
       kind: source.kind,
       request: recreationRequest,
       options: { program, datetime_cairo: datetime, week, manualReviewOnly: true, recreatedFromRunId: source.id, fullRecreation: true },
       user,
-    });
+    }));
+  }
+
+  /** After a replacement exists, the old run must never resume by itself (e.g. when the Mac comes back). */
+  async function markReplaced(id, result) {
+    for (let i = 0; i < 3; i++) {
+      const g = await get(id);
+      if (!g || g.run.no_auto_resume) break;
+      g.run.no_auto_resume = true;
+      try { await save(g.run, g.ver); break; } catch { /* changed meanwhile; retry */ }
+    }
+    return result;
   }
 
   async function cancel(id, user) {
@@ -2349,10 +2357,11 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     const why = String(note || "").trim() || `Owner reset of ${month} and ${week}.`;
     const cancelled = [];
     for (const r of await list(200)) {
-      if (["done", "failed", "cancelled"].includes(r.status)) continue;
       const o = r.options || {};
       const hit = o.week === week || (r.kind === "plan" && String(o.month || "").startsWith(month)) || (r.kind === "weekly_plan" && o.week === week);
       if (!hit) continue;
+      if (r.status === "failed") { await markReplaced(r.id, null).catch(() => {}); continue; } // a reset week's failed work never resumes
+      if (["done", "cancelled"].includes(r.status)) continue;
       try { await cancel(r.id, user); cancelled.push(r.id); } catch { /* already gone */ }
     }
     const rejected = [], kept = [], superseded = [];
@@ -2418,6 +2427,7 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
       try { snapshot = { ...JSON.parse(row.doc), id: row.id }; } catch { continue; }
       const candidate = completedRenderRecoveryCandidate(snapshot);
       if (!candidate) continue;
+      if (await autoRevivalBlocked(snapshot, {})) continue;
       const rendered = (await q("SELECT status, doc FROM ec_render_jobs WHERE id=?", [candidate.jobId]))[0];
       let renderDoc;
       try { renderDoc = rendered?.doc ? JSON.parse(rendered.doc) : null; } catch { renderDoc = null; }
@@ -2427,6 +2437,7 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
       if (!g) continue;
       const live = completedRenderRecoveryCandidate(g.run);
       if (!live || live.jobId !== candidate.jobId) continue;
+      if (await autoRevivalBlocked(g.run, {})) continue;
       g.run.status = "waiting";
       live.compose.error = null;
       live.compose.output = { pending: true, jobId: live.jobId, waitReason: "Render output received; resuming final review." };
@@ -2464,33 +2475,60 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     }
     return false;
   }
-  const MAX_AUTO_RENDER_RESUMES = 5;
+  const MAX_AUTO_RENDER_RESUMES = 2;
+  /** Every weekly-item identity a run can carry (artifacts, options, a revision job). */
+  function runItemIds(run) {
+    return [run?.artifacts?.item_id, run?.options?.item_id, run?.options?.revision?.itemId, run?.options?.itemId].map((x) => String(x || "")).filter(Boolean);
+  }
+  /** One check, used before and after reloading a run, for any automatic revival of a stopped reel. Returns a reason to skip, or null. */
+  async function autoRevivalBlocked(run, ctx) {
+    if (!run || run.kind !== "reel") return "not a reel";
+    if (run.no_auto_resume) return "owner moved on (recreated or reset)";
+    const createdMs = typeof run.created_at === "number" ? run.created_at : Date.parse(run.created_at || "") || 0;
+    if (!createdMs || Date.now() - createdMs > 14 * 86400000) return "older than 14 days";
+    const ids = runItemIds(run);
+    if (ids.length) {
+      ctx.state = ctx.state || (await deps.loadState()).state;
+      for (const id of ids) {
+        const item = (ctx.state.items || []).find((i) => i.item_id === id);
+        if (item && ["rejected", "published"].includes(item.status)) return `weekly item ${id} is ${item.status}`;
+      }
+      ctx.newer = ctx.newer || await q("SELECT id, doc FROM ec_ai_runs WHERE id > ? ORDER BY id DESC LIMIT 300", [ctx.minId || 0]);
+      for (const n of ctx.newer) {
+        if (Number(n.id) <= Number(run.id)) continue;
+        let d; try { d = JSON.parse(n.doc); } catch { continue; }
+        if (Number(d?.options?.recreatedFromRunId) === Number(run.id) || runItemIds(d).some((x) => ids.includes(x))) return `replaced by run #${n.id}`;
+      }
+    }
+    return null;
+  }
+  /** A reel whose final edit failed only because the Mac was away (failures recorded with the Mac online never qualify). */
+  function failedWhileMacAway(run) {
+    if (run?.status !== "failed") return null;
+    const st = run.steps?.find((x) => x.status === "failed");
+    if (st?.action !== "compose_reel" || !/^External-step watchdog:.*render-worker/.test(String(st.error || ""))) return null;
+    if (st.mac_online_at_failure === true) return null;
+    if (Number(run.auto_render_resumes || 0) >= MAX_AUTO_RENDER_RESUMES) return null;
+    return st;
+  }
   async function resumeRendersFailedWhileMacAway(mac) {
     if (!mac?.online) return;
     const rows = await q("SELECT id, doc FROM ec_ai_runs WHERE status='failed' ORDER BY id DESC LIMIT 30");
+    const ctx = { minId: Math.min(...rows.map((r) => Number(r.id)), Number.MAX_SAFE_INTEGER) };
     for (const row of rows) {
-      let snap; try { snap = JSON.parse(row.doc); } catch { continue; }
-      const st = snap?.steps?.find((x) => x.status === "failed");
-      if (snap?.kind !== "reel" || st?.action !== "compose_reel" || !/^External-step watchdog:.*render-worker/.test(String(st.error || ""))) continue;
-      if (Number(snap.auto_render_resumes || 0) >= MAX_AUTO_RENDER_RESUMES) continue;
-      // Never revive work the owner moved on from: recreated or revised since, or older than 14 days.
-      if (snap.no_auto_resume) continue;
-      const createdMs = typeof snap.created_at === "number" ? snap.created_at : Date.parse(snap.created_at || "") || 0;
-      if (createdMs && Date.now() - createdMs > 14 * 86400000) continue;
-      const itemId = String(snap.artifacts?.item_id || "");
-      if (itemId) {
-        const newer = await q("SELECT id, doc FROM ec_ai_runs WHERE id > ? ORDER BY id DESC LIMIT 200", [row.id]);
-        if (newer.some((n) => { try { const d = JSON.parse(n.doc); return String(d?.artifacts?.item_id || "") === itemId || Number(d?.options?.recreatedFromRunId) === Number(row.id); } catch { return false; } })) continue;
-      }
+      let snap; try { snap = { ...JSON.parse(row.doc), id: row.id }; } catch { continue; }
+      if (!failedWhileMacAway(snap) || await autoRevivalBlocked(snap, ctx)) continue;
+      // Reload under version control and check everything again: a cancel, recreate or reset saved in between wins.
       const g = await get(row.id);
-      const step = g?.run?.steps?.find((x) => x.status === "failed");
-      if (!g || step?.action !== "compose_reel") continue;
+      if (!g) continue;
+      const step = failedWhileMacAway(g.run);
+      if (!step || await autoRevivalBlocked(g.run, { ...ctx, state: null, newer: null })) continue;
       g.run.auto_render_resumes = Number(g.run.auto_render_resumes || 0) + 1;
       step.status = "pending"; step.error = null; step.watchdog_retry_count = 0; delete step.watchdog_retry_not_before;
       if (g.run.artifacts?.compose) delete g.run.artifacts.compose.macOfflineSince;
       g.run.status = "queued";
       log(g.run, "studio", "team", `The Mac render worker is online again; the final edit resumes automatically (attempt ${g.run.auto_render_resumes} of ${MAX_AUTO_RENDER_RESUMES}) with the saved clips and voice — nothing is regenerated or paid again.`);
-      try { await save(g.run, g.ver); kick(row.id); } catch { /* another worker changed it; next heartbeat */ }
+      try { await save(g.run, g.ver); kick(row.id); } catch { /* changed meanwhile (e.g. cancelled): leave it */ }
     }
   }
 
@@ -2503,6 +2541,7 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
     for (const r of rows) {
       if (r.status !== "running") {
         const pending = await get(r.id);
+        if (!pending || ["cancelled", "failed", "done"].includes(pending.run.status)) continue; // cancelled or finished since the query
         const pendingStep = pending?.run?.steps?.find((s) => !["done", "skipped", "needs_review"].includes(s.status));
         const retryNotBefore = Date.parse(pendingStep?.watchdog_retry_not_before || "") || 0;
         if (retryNotBefore > Date.now()) continue;
@@ -2513,13 +2552,12 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
           const C = pending.run.artifacts?.compose || {};
           const away = await waitForMac(pending.run, C, mac);
           if (away === "changed") { if (pending.run.artifacts) pending.run.artifacts.compose = C; await save(pending.run, pending.ver).catch(() => {}); continue; }
-          if (away) continue;
           const hasJob = !!C.jobId;
           const started = Date.parse(pendingStep.started_at || C.attemptStartedAt || pending.run.updated_at || pending.run.created_at || "") || Date.now();
           const progressAt = Date.parse(C.lastProgressAt || "") || 0;
           const observedAt = hasJob ? Math.max(started, progressAt) : started;
           const timeout = hasJob ? EXTERNAL_PROGRESS_DEADLINE_MS : EXTERNAL_RECEIPT_DEADLINE_MS;
-          if (Date.now() - observedAt >= timeout) {
+          if (!away && Date.now() - observedAt >= timeout) {
             const reason = `${pendingStep.title} had ${hasJob ? "no render-worker progress" : "no render-worker job ID"} for ${hasJob ? "20" : "5"} minutes`;
             const retries = Number(pendingStep.watchdog_retry_count || 0);
             if (retries < EXTERNAL_MAX_AUTO_RETRIES) {
@@ -2536,6 +2574,7 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
               continue;
             }
             pendingStep.status = "failed";
+            pendingStep.mac_online_at_failure = mac ? mac.online === true : null;
             pendingStep.error = `External-step watchdog: ${reason}. Automatic retry limit exhausted after ${EXTERNAL_MAX_AUTO_RETRIES} of ${EXTERNAL_MAX_AUTO_RETRIES} retries (1m, 5m, 15m backoff).`;
             pending.run.status = "failed";
             await notifyFailureOnce(pending.run, pendingStep.error);
@@ -2553,6 +2592,7 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
       if (running.has(r.id)) continue;
       const doc = JSON.parse(r.doc);
       const g = await get(r.id);
+      if (["cancelled", "failed", "done"].includes(g.run.status)) continue; // cancelled or finished since the query
       const step = g.run.steps.find((s) => s.status === "running");
       if (!step) continue;
       if (step.action === "compose_reel" && g.run.artifacts?.compose) {
@@ -2599,6 +2639,7 @@ Return JSON only: {"news": [{"headline": "English, max 120 chars", "country": ".
         continue;
       }
       step.status = "failed";
+      if (step.action === "compose_reel") step.mac_online_at_failure = mac ? mac.online === true : null;
       step.error = external || restartable
         ? `External-step watchdog: ${reason}. Automatic retry limit exhausted after ${EXTERNAL_MAX_AUTO_RETRIES} of ${EXTERNAL_MAX_AUTO_RETRIES} retries (1m, 5m, 15m backoff).`
         : `Watchdog: ${step.title} was interrupted (site restart) for 5 minutes. Press Retry to continue from this step; earlier results are kept.`;

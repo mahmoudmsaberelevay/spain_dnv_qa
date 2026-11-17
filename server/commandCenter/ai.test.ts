@@ -43,7 +43,8 @@ function memoryDb() {
     if (sql.startsWith("UPDATE ec_ai_runs")) { const [doc, status, id, ver] = args; const r = rows.get(id); if (!r || r.ver !== ver) return { affectedRows: 0 }; Object.assign(r, { doc, status, ver: ver + 1 }); return { affectedRows: 1 }; }
     if (sql.startsWith("INSERT IGNORE INTO ec_kv")) { if (kv.has(args[0])) return { affectedRows: 0 }; kv.set(args[0], args[1]); return { affectedRows: 1 }; }
     if (sql.startsWith("SELECT status, doc FROM ec_render_jobs")) { const r = renderJobs.get(String(args[0])); return r ? [{ ...r, doc: JSON.stringify(r.doc) }] : []; }
-    if (sql.includes("FROM ec_ai_runs WHERE status='failed'")) return [...rows.values()].filter((r) => r.status === "failed").sort((a, b) => a.id - b.id);
+    if (sql.includes("FROM ec_ai_runs WHERE status='failed'")) { const out = [...rows.values()].filter((r) => r.status === "failed").sort((a, b) => a.id - b.id).map((r) => ({ ...r })); if (q.afterFailedSelect) { const f = q.afterFailedSelect; q.afterFailedSelect = null; f(); } return out; }
+    if (sql.includes("FROM ec_ai_runs WHERE id > ?")) return [...rows.values()].filter((r) => r.id > Number(args[0])).sort((a, b) => b.id - a.id).map((r) => ({ ...r }));
     if (sql.startsWith("SELECT id, doc")) return [...rows.values()].sort((a, b) => b.id - a.id).slice(0, args[0]);
     if (sql.startsWith("SELECT id, status, doc")) return [...rows.values()].filter((r) => ["waiting", "queued", "running"].includes(r.status));
     throw new Error("unexpected sql " + sql);
@@ -321,6 +322,75 @@ describe("seven-step ELEVAY reel flow", () => {
     r = await ctx.o.get(run.id);
     expect(r.status).toBe("failed");
     expect(r.auto_render_resumes).toBe(1);
+  });
+
+  describe("automatic render revival guards (17 Nov 2026)", () => {
+    const ERR = "External-step watchdog: External render worker combines clips had no render-worker progress for 20 minutes. Automatic retry limit exhausted after 3 of 3 retries (1m, 5m, 15m backoff).";
+    async function failedReel(mac, extra = {}) {
+      const ctx = setup([STORYBOARD], { externalRender: true, mac });
+      const run = await ctx.o.create({ kind: "reel", request: "Guard", user: marketer });
+      await settle(ctx.o, run.id);
+      ctx.finishClips();
+      await ctx.o.tick();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const row = ctx.q.rows.get(run.id), doc = JSON.parse(row.doc);
+      const c = doc.steps.find((x) => x.action === "compose_reel");
+      c.status = "failed"; c.error = ERR; Object.assign(c, extra.step || {});
+      doc.status = "failed"; Object.assign(doc, extra.run || {});
+      row.doc = JSON.stringify(doc); row.status = "failed";
+      return { ctx, run };
+    }
+    it("revives a reel that failed while the Mac was away", async () => {
+      const { ctx, run } = await failedReel({ online: true });
+      await ctx.o.watchdog();
+      expect((await ctx.o.get(run.id)).auto_render_resumes).toBe(1);
+    });
+    it("does not revive a reel cancelled between the selection and the reload", async () => {
+      const { ctx, run } = await failedReel({ online: true });
+      ctx.q.afterFailedSelect = () => { const row = ctx.q.rows.get(run.id), d = JSON.parse(row.doc); d.status = "cancelled"; row.doc = JSON.stringify(d); row.status = "cancelled"; row.ver += 1; };
+      await ctx.o.watchdog();
+      const r = await ctx.o.get(run.id);
+      expect(r.status).toBe("cancelled");
+      expect(r.auto_render_resumes).toBeUndefined();
+    });
+    it("does not revive a reel whose weekly item has a newer run, under any item identity", async () => {
+      for (const where of ["artifacts", "options", "revision"]) {
+        const { ctx, run } = await failedReel({ online: true }, { run: { options: { item_id: "2026-W46-03" } } });
+        const ids = where === "artifacts" ? { artifacts: { item_id: "2026-W46-03" } } : where === "options" ? { options: { item_id: "2026-W46-03" } } : { options: { revision: { itemId: "2026-W46-03" } } };
+        await ctx.q("INSERT INTO ec_ai_runs (created_at, status, doc) VALUES (?, ?, ?)", [Date.now(), "done", JSON.stringify({ kind: "reel", status: "done", steps: [], ...ids })]);
+        await ctx.o.watchdog();
+        expect((await ctx.o.get(run.id)).status).toBe("failed");
+      }
+    });
+    it("does not revive a reel whose weekly item was rejected by a reset", async () => {
+      const { ctx, run } = await failedReel({ online: true }, { run: { options: { item_id: "2026-W46-05" } } });
+      ctx.state.items.push({ item_id: "2026-W46-05", status: "rejected", version: 1 });
+      await ctx.o.watchdog();
+      expect((await ctx.o.get(run.id)).status).toBe("failed");
+    });
+    it("does not revive a render that failed while the Mac was online", async () => {
+      const { ctx, run } = await failedReel({ online: true }, { step: { mac_online_at_failure: true } });
+      await ctx.o.watchdog();
+      expect((await ctx.o.get(run.id)).status).toBe("failed");
+    });
+    it("stops after two automatic revivals", async () => {
+      const { ctx, run } = await failedReel({ online: true }, { run: { auto_render_resumes: 2 } });
+      await ctx.o.watchdog();
+      expect((await ctx.o.get(run.id)).status).toBe("failed");
+    });
+    it("still collects a finished render while the Mac is offline", async () => {
+      const mac = { online: false };
+      const ctx = setup([STORYBOARD, PASS], { externalRender: true, mac });
+      const run = await ctx.o.create({ kind: "reel", request: "Collect while offline", user: marketer });
+      await settle(ctx.o, run.id);
+      ctx.finishClips();
+      await ctx.o.tick();
+      await ctx.o.watchdog();
+      ctx.completeRender();
+      for (let i = 0; i < 5; i++) { await ctx.o.watchdog(); await new Promise((resolve) => setTimeout(resolve, 10)); }
+      const r = await ctx.o.get(run.id);
+      expect(r.steps.find((x) => x.action === "compose_reel").status).toBe("done");
+    });
   });
 
   it("uses exactly storyboard, keyframes, keyframe check, clips, voice, compose, one final Claude check, and weekly plan", async () => {

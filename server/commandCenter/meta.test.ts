@@ -219,6 +219,7 @@ describe("Meta actions", () => {
     const msgs = (await h.list()).filter((a) => a.kind === "reply_message");
     expect(msgs.map((a) => a.recipient_id).sort()).toEqual(["psid-1", "psid-2"]);
     expect(msgs[0].reason).toMatch(/automatic reply/);
+    expect(msgs.every((a) => a.needs_human === true && a.status === "pending")).toBe(true); // a person always checks; autopilot never sends these
   });
 
   it("skips a deleted ad post quietly instead of reporting a problem", async () => {

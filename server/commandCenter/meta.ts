@@ -395,7 +395,7 @@ export function createMetaHub(deps) {
       const queued = await enqueue({
         kind: item.channel === "comment" ? "reply_comment" : "reply_message", platform: item.platform, target_id: item.target_id, recipient_id: item.recipient_id,
         from: item.from, incoming: clip(item.text, 1500), ...(item.incoming_at ? { incoming_at: item.incoming_at } : {}), context: clip(item.context || "", 300), permalink: item.permalink || null,
-        text: d.reply || "", category: d.category, needs_human: !!d.needs_human || !d.reply || problems.length > 0, reason: note + (problems.length ? "Draft broke a rule: " + problems.join(" ") : d.reason || ""),
+        text: d.reply || "", category: d.category, needs_human: !!d.needs_human || !d.reply || problems.length > 0 || !!item.forceHuman, reason: note + (problems.length ? "Draft broke a rule: " + problems.join(" ") : d.reason || ""),
         preview: `${item.platform === "instagram" ? "Instagram" : "Facebook"} ${item.channel} from ${item.from || "someone"}`,
       }, "claude");
       if (queued.auto_replied) counts.auto_replied++;
@@ -498,7 +498,7 @@ export function createMetaHub(deps) {
           await consider({ key: "msg_" + last.id, mediaOnly: true, platform: platform === "instagram" ? "instagram" : "facebook", channel: "message", recipient_id: last.from?.id, text: `[${/audio/i.test(kind) ? "voice message" : /image|photo/i.test(kind) ? "photo" : /video/i.test(kind) ? "video" : "attachment"}]`, from: last.from?.name || last.from?.username, incoming_at: incomingAt });
           continue;
         }
-        await consider({ key: "msg_" + last.id, platform: platform === "instagram" ? "instagram" : "facebook", channel: "message", recipient_id: last.from?.id, text: last.message, from: last.from?.name || last.from?.username, incoming_at: incomingAt, note: autoNote });
+        await consider({ key: "msg_" + last.id, platform: platform === "instagram" ? "instagram" : "facebook", channel: "message", recipient_id: last.from?.id, text: last.message, from: last.from?.name || last.from?.username, incoming_at: incomingAt, note: autoNote, forceHuman: after.length > 0 });
       } catch (e) { errors.push(`${platform} message: ` + e.message); }
     }
     counts.queued = found.length;
