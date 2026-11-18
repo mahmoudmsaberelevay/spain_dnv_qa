@@ -32,12 +32,12 @@ const to = "2026-01-08";
 const generatedAt = new Date("2026-02-01T22:30:00Z");
 const punch = (
   date: string,
-  start: string,
+  start: string | null,
   end: string | null,
   offset = "+02:00"
 ) => ({
   attendanceDate: date,
-  checkInAt: `${date}T${start}:00${offset}`,
+  checkInAt: start === null ? null : `${date}T${start}:00${offset}`,
   checkOutAt: end === null ? null : `${date}T${end}:00${offset}`,
 });
 function fixture(overrides: Partial<HrPayrollInput> = {}) {
@@ -166,6 +166,106 @@ describe("deterministic attendance timing projection", () => {
     expect(timing.lateHours).toBe(0);
   });
 
+  it.each([
+    { start: "09:00", end: null, checkInAt: "2026-01-04T07:00:00.000Z", checkOutAt: null },
+    { start: "14:59", end: null, checkInAt: "2026-01-04T12:59:00.000Z", checkOutAt: null },
+    { start: null, end: "08:00", checkInAt: null, checkOutAt: "2026-01-04T06:00:00.000Z" },
+    { start: null, end: "15:00", checkInAt: null, checkOutAt: "2026-01-04T13:00:00.000Z" },
+    { start: null, end: "23:30", checkInAt: null, checkOutAt: "2026-01-04T21:30:00.000Z" },
+  ])("retains single punches $start / $end with zero invented duration and exactly half-day payroll", ({ start, end, checkInAt, checkOutAt }) => {
+    const row = fixture({ from, to: from, attendance: [punch(from, start, end)] });
+    expect(row.payroll).toMatchObject({
+      incompleteDays: 1, incompleteDeductionDays: 1, absentDays: 0,
+      equivalentDays: 0.5, totalLostMinutes: 180,
+      totalDeduction: 50, netSalary: 2950,
+    });
+    expect(row.timing.days[0]).toMatchObject({
+      checkInAt, checkOutAt, recordedMinutes: 0, scheduledPresenceMinutes: 0,
+    });
+    expect(row.timing).toMatchObject({
+      scheduledMinutes: 360, evaluatedScheduledMinutes: 360,
+      recordedMinutes: 0, scheduledPresenceMinutes: 0,
+      lateHours: 0, lateEquivalentDays: 0, earlyEquivalentDays: 0,
+      presentDays: 0, creditedDays: 0, approvedLeaveDays: 0,
+    });
+    expect(projectHrAttendanceTiming(row.timing, row.timingInput)).toEqual(row.timing);
+    expect(buildHrAttendanceReport(row.reportInput).employees[0].timing).toEqual(row.timing);
+  });
+
+  it("finalizes checkout-only at shift end, while retaining zero recorded duration before and after", () => {
+    for (const [now, status, evaluatedMinutes, deduction] of [
+      ["2026-01-04T12:59:59Z", "in_progress", 0, 0],
+      ["2026-01-04T13:00:00Z", "incomplete", 360, 50],
+    ] as const) {
+      const row = fixture({ from, to: from, now: new Date(now), attendance: [punch(from, null, "15:00")] });
+      expect(row.payroll.days[0].status).toBe(status);
+      expect(row.payroll.totalDeduction).toBe(deduction);
+      expect(row.payroll.incompleteDeductionDays).toBe(status === "incomplete" ? 1 : 0);
+      expect(row.timing.evaluatedScheduledMinutes).toBe(evaluatedMinutes);
+      expect(row.timing.days[0]).toMatchObject({ checkInAt: null, checkOutAt: "2026-01-04T13:00:00.000Z", recordedMinutes: 0, scheduledPresenceMinutes: 0 });
+      expect(projectHrAttendanceTiming(row.timing, row.timingInput)).toEqual(row.timing);
+    }
+  });
+
+  it.each([{ attendance: [] }, { attendance: [punch(from, null, null)] }])(
+    "projects neither punch as full absence, without fabricated duration %#",
+    ({ attendance }) => {
+      const row = fixture({ from, to: from, attendance });
+      expect(row.payroll).toMatchObject({
+        absentDays: 1, incompleteDays: 0, incompleteDeductionDays: 0,
+        totalLostMinutes: 360, equivalentDays: 1, totalDeduction: 100, netSalary: 2900,
+      });
+      expect(row.timing.days[0]).toMatchObject({ checkInAt: null, checkOutAt: null, recordedMinutes: 0, scheduledPresenceMinutes: 0 });
+      expect(row.timing.evaluatedScheduledMinutes).toBe(360);
+      expect(projectHrAttendanceTiming(row.timing, row.timingInput)).toEqual(row.timing);
+    }
+  );
+
+  it("keeps mixed-schedule single-punch durations zero without recalculating their half-day penalties", () => {
+    const row = fixture({
+      to: "2026-01-05",
+      schedules: [schedule, { ...schedule, effectiveFrom: "2026-01-05", endTime: "18:00" }],
+      attendance: [punch(from, "14:59", null), punch("2026-01-05", null, "18:00")],
+    });
+    expect(row.payroll.days.map(day => day.missingMinutes)).toEqual([180, 270]);
+    expect(row.payroll).toMatchObject({ incompleteDays: 2, incompleteDeductionDays: 2, equivalentDays: 1, totalDeduction: 100 });
+    expect(row.timing).toMatchObject({ scheduledMinutes: 900, evaluatedScheduledMinutes: 900, recordedMinutes: 0, scheduledPresenceMinutes: 0, lateEquivalentDays: 0, earlyEquivalentDays: 0 });
+    expect(projectHrAttendanceTiming(row.timing, row.timingInput)).toEqual(row.timing);
+  });
+
+  it.each([
+    { status: "leave", overrides: { approvedLeaveDates: [from] } },
+    { status: "credited", overrides: { attendanceCreditDates: [from] } },
+    { status: "holiday", overrides: { holidays: [from] } },
+    { status: "weekend", overrides: { from: "2026-01-09", to: "2026-01-09" } },
+    { status: "future", overrides: { now: new Date("2026-01-03T10:00:00Z") } },
+    { status: "in_progress", overrides: { now: new Date("2026-01-04T12:59:59Z") } },
+    { status: "unconfigured", overrides: { schedules: [] } },
+  ])("retains checkout-only on exempt $status dates with zero duration or deduction", ({ status, overrides }) => {
+    const date = overrides.from ?? from;
+    const row = fixture({ from: date, to: date, ...overrides, attendance: [punch(date, null, "10:00")] });
+    expect(row.payroll.days[0].status).toBe(status);
+    expect(row.payroll).toMatchObject({ totalDeduction: 0, incompleteDays: 0, incompleteDeductionDays: 0, absentDays: 0 });
+    expect(row.timing.days[0].checkInAt).toBeNull();
+    expect(row.timing.days[0].checkOutAt).not.toBeNull();
+    expect(row.timing).toMatchObject({ recordedMinutes: 0, scheduledPresenceMinutes: 0, lateEquivalentDays: 0, earlyEquivalentDays: 0 });
+    expect(projectHrAttendanceTiming(row.timing, row.timingInput)).toEqual(row.timing);
+  });
+
+  it.each([
+    { date: from, checkOutAt: "2026-01-03T22:30:00Z" },
+    { date: "2026-07-05", checkOutAt: "2026-07-04T21:30:00Z" },
+  ])("validates checkout-only by the Cairo date rather than the UTC date on $date", ({ date, checkOutAt }) => {
+    const row = fixture({
+      from: date, to: date, now: new Date("2026-12-01T18:00:00Z"),
+      attendance: [{ attendanceDate: date, checkInAt: null, checkOutAt }],
+    });
+    expect(row.payroll.days[0].status).toBe("incomplete");
+    expect(row.timing.days[0].checkOutAt).toBe(new Date(checkOutAt).toISOString());
+    expect(row.timing.recordedMinutes).toBe(0);
+    expect(projectHrAttendanceTiming(row.timing, row.timingInput)).toEqual(row.timing);
+  });
+
   it("never hides real closed punches behind rollout credits, nor fabricates unrecorded ones", () => {
     const { timing, reportInput } = fixture({
       attendanceCreditDates: [from, "2026-01-05"],
@@ -258,6 +358,28 @@ describe("deterministic attendance timing projection", () => {
     expect(summer.timing.scheduledPresenceMinutes).toBe(360);
   });
 
+  it.each([
+    "2026-01-03T21:59:59Z", "2026-01-04T22:00:00Z", "2026-01-05T00:30:00+02:00",
+  ])("rejects checkout-only on a different Cairo date during build and projection: %s", checkOutAt => {
+    const row = fixture({ from, to: from, attendance: [punch(from, null, "15:00")] });
+    expect(() => buildHrAttendanceTiming({ ...row.timingInput, attendance: [{ attendanceDate: from, checkInAt: null, checkOutAt }] })).toThrow("Cairo attendance date");
+    row.timing.days[0].checkOutAt = checkOutAt;
+    expect(() => projectHrAttendanceTiming(row.timing, row.timingInput)).toThrow("Cairo attendance date");
+  });
+
+  it.each([
+    "not-a-date", new Date("invalid"), "2026-02-30T12:00:00Z", "2026-01-04T25:00:00Z",
+    "2026-01-04T12:00:00", "2026-01-04", "", undefined, 0,
+  ])("rejects malformed checkout-only timestamps in the pure read model: %s", checkOutAt => {
+    const row = fixture({ from, to: from, attendance: [punch(from, null, "15:00")] });
+    expect(() => buildHrAttendanceTiming({
+      ...row.timingInput,
+      attendance: [{ attendanceDate: from, checkInAt: null, checkOutAt: checkOutAt as unknown as string }],
+    })).toThrow();
+    row.timing.days[0].checkOutAt = checkOutAt as unknown as string;
+    expect(() => projectHrAttendanceTiming(row.timing, row.timingInput)).toThrow();
+  });
+
   it("rejects duplicates, reversed/offsetless punches and mismatched Cairo dates", () => {
     const { timingInput } = fixture();
     expect(() =>
@@ -330,6 +452,27 @@ describe("timing report validation and privacy", () => {
     }
   });
 
+  it("requires exactly one punch for incomplete status and neither for absent status", () => {
+    const row = fixture({ from, to: from });
+    for (const record of [punch(from, "09:00", null), punch(from, null, "15:00"), punch(from, "09:00", "15:00")]) {
+      expect(() => buildHrAttendanceTiming({ ...row.timingInput, attendance: [record] })).toThrow("absent dates cannot");
+    }
+    for (const record of [punch(from, null, null), punch(from, "09:00", "15:00")]) {
+      expect(() => buildHrAttendanceTiming({
+        ...row.timingInput,
+        payrollDays: [{ ...row.payroll.days[0], status: "incomplete" }],
+        attendance: [record],
+      })).toThrow("exactly one recorded punch");
+    }
+    for (const record of [punch(from, "09:00", null), punch(from, null, "15:00"), punch(from, null, null)]) {
+      expect(() => buildHrAttendanceTiming({
+        ...row.timingInput,
+        payrollDays: [{ ...row.payroll.days[0], status: "present" }],
+        attendance: [record],
+      })).toThrow("closed recorded punch");
+    }
+  });
+
   it("projects only timing whitelist fields and preserves authoritative wage values", () => {
     const row = fixture({ attendance: [punch(from, "09:30", "14:50")] });
     Object.assign(row.timing, {
@@ -388,7 +531,7 @@ describe("timing report validation and privacy", () => {
     ).toBe(true);
   });
 
-  it("keeps selected incomplete penalties from full-cycle payroll, not a fresh three-for-one sequence", () => {
+  it("keeps the selected date's half-day incomplete penalty from full-cycle payroll", () => {
     const row = fixture({
       attendance: [
         punch(from, "09:00", null),
@@ -402,7 +545,8 @@ describe("timing report validation and privacy", () => {
       to: "2026-01-06",
       payrollDays: [row.payroll.days[2]],
     });
-    expect(row.payroll.days[2].missingMinutes).toBe(360);
+    expect(row.payroll.days[2].missingMinutes).toBe(180);
+    expect(row.payroll).toMatchObject({ incompleteDays: 3, incompleteDeductionDays: 3, equivalentDays: 3.5 });
     expect(selected.days[0]).toMatchObject({
       checkOutAt: null,
       recordedMinutes: 0,
@@ -429,7 +573,7 @@ describe("enhanced attendance PDF (synthetic in-memory data only)", () => {
       "Report reference:",
       "HR-ATT-20260104-20260108-20260201223000000",
       "02/02/2026, 00:30",
-      "Employee recorded timing sheet",
+      "Employee daily attendance sheet",
       "08:30:00",
       "16:00:00",
       "09:00 - 15:00",
@@ -472,7 +616,7 @@ describe("enhanced attendance PDF (synthetic in-memory data only)", () => {
     const parsed = await pdfText(await createHrAttendancePdf(row.reportInput));
     expect(parsed.text).toContain("2026-01-05 00:30:00");
     const pages = parsed.pages.filter(page =>
-      page.text.includes("Employee recorded timing sheet")
+      page.text.includes("Employee daily attendance sheet")
     );
     expect(pages.length).toBeGreaterThan(2);
     for (const page of pages) {

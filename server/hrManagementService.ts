@@ -876,9 +876,9 @@ function aggregatePayroll(
     const workingDays = days.filter(day =>
       configuredWorkingDay(day.date)
     ).length;
-    // The incomplete 3-for-1 sequence is computed across the FULL cycle above.
-    // Only selected days carry deductions; a third incomplete day outside the
-    // report is not charged to the selected range, but still sets its context.
+    // Every finalized incomplete day carries its own half-shift penalty.
+    // Restrict that charge to the selected dates, never import penalties from
+    // the surrounding cycle context used for salary and schedule selection.
     const incompleteDeductionDays = days.filter(
       day => day.status === "incomplete" && day.missingMinutes > 0
     ).length;

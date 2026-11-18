@@ -71,8 +71,11 @@ describe("HR reporting workspace integration", () => {
       "reviewedAt",
       "No vacation requests during",
       "Preview only — no financial posting",
+      "deducts half a day; a no-show deducts a full day",
+      "Net due salary preview",
+      "Yellow: late minutes. Red: no show / full-day deduction",
     ])
-      expect(workspace).toContain(text);
+      expect(workspace.replace(/\s+/g, " ")).toContain(text);
     expect(workspace).toContain("onAttendancePdf([employee.id])");
     expect(workspace).toContain("onVacationPdf([employee.id])");
     expect(workspace).toContain("const ids = visible.map");

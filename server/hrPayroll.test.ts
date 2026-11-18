@@ -20,13 +20,13 @@ const schedule: HrPayrollSchedule = {
 
 function punch(
   date: string,
-  checkIn = "09:00",
+  checkIn: string | null = "09:00",
   checkOut: string | null = "17:00",
   offset = "+02:00"
 ): HrPayrollAttendance {
   return {
     attendanceDate: date,
-    checkInAt: `${date}T${checkIn}:00${offset}`,
+    checkInAt: checkIn === null ? null : `${date}T${checkIn}:00${offset}`,
     checkOutAt: checkOut === null ? null : `${date}T${checkOut}:00${offset}`,
   };
 }
@@ -341,6 +341,24 @@ describe("deterministic HR payroll", () => {
     });
   });
 
+  it("deducts exactly EGP 62.50 for 90 missed minutes at EGP 10000 / 30 / 480", () => {
+    const result = singleDay({
+      salary: 10000,
+      attendance: [punch("2026-01-04", "10:15", "16:30")],
+    });
+    expect(result).toMatchObject({
+      lateMinutes: 60,
+      earlyMinutes: 30,
+      totalLostMinutes: 90,
+      lostHours: 1.5,
+      equivalentDays: 90 / 480,
+      dailyRate: 10000 / 30,
+      minuteRate: 10000 / 30 / 480,
+      totalDeduction: 62.50,
+      netSalary: 9937.50,
+    });
+  });
+
   it("does not prematurely round the EGP 10000 daily rate before three absences", () => {
     const result = calculateHrPayroll(
       input({ salary: 10000, to: "2026-01-06" })
@@ -402,58 +420,96 @@ describe("deterministic HR payroll", () => {
     });
   });
 
-  it.each([0, 2, 3, 5, 6])(
-    "applies floor(%i incomplete days / 3), not fractional penalties",
+  it.each([0, 1, 2, 3, 4, 5, 6])(
+    "charges half a day for each of %i incomplete dates, without grouping",
     incompleteDays => {
       const dates = listHrDates("2026-01-04", "2026-01-11").filter(date =>
         isHrWorkingDay(date)
       );
       const records = dates.map((date, index) =>
-        punch(date, "15:00", index < incompleteDays ? null : "17:00")
+        index >= incompleteDays
+          ? punch(date)
+          : index % 2 === 0
+            ? punch(date, "15:00", null)
+            : punch(date, null, "10:00")
       );
-      // Complete days use punctual punches; incomplete late check-ins receive no lateness.
-      for (let index = incompleteDays; index < records.length; index += 1)
-        records[index] = punch(dates[index]);
+      // A late login or early checkout alone never adds minute penalties.
       const result = calculateHrPayroll(
         input({ to: "2026-01-11", attendance: records })
       );
-      const deductionDays = Math.floor(incompleteDays / 3);
+      const equivalentDays = incompleteDays / 2;
       expect(result).toMatchObject({
         workingDays: 6,
         evaluatedDays: 6,
         incompleteDays,
-        incompleteDeductionDays: deductionDays,
+        incompleteDeductionDays: incompleteDays,
         absentDays: 0,
         lateMinutes: 0,
         earlyMinutes: 0,
-        equivalentDays: deductionDays,
-        totalLostMinutes: deductionDays * 8 * 60,
-        lostHours: deductionDays * 8,
-        totalDeduction: Number(((1000 / 30) * deductionDays).toFixed(2)),
-        netSalary: Number((1000 - (1000 / 30) * deductionDays).toFixed(2)),
+        equivalentDays,
+        totalLostMinutes: equivalentDays * 8 * 60,
+        lostHours: equivalentDays * 8,
+        totalDeduction: Number(((1000 / 30) * equivalentDays).toFixed(2)),
+        netSalary: Number((1000 - (1000 / 30) * equivalentDays).toFixed(2)),
       });
       const incomplete = result.days.filter(day => day.status === "incomplete");
       expect(incomplete).toHaveLength(incompleteDays);
       expect(incomplete.map(day => day.missingMinutes)).toEqual(
-        Array.from({ length: incompleteDays }, (_, index) =>
-          (index + 1) % 3 === 0 ? 8 * 60 : 0
-        )
+        Array(incompleteDays).fill(8 * 60 / 2)
       );
     }
   );
 
-  it("does not count out-of-cycle incomplete punches toward this cycle's floor", () => {
+  it.each([
+    ["09:00", null],
+    ["16:59", null],
+    ["23:30", null],
+    [null, "08:00"],
+    [null, "09:00"],
+    [null, "17:00"],
+    [null, "23:30"],
+  ])("charges exactly half a day for the single punch %s / %s", (checkIn, checkOut) => {
+    const result = singleDay({
+      salary: 10000,
+      attendance: [punch("2026-01-04", checkIn, checkOut)],
+    });
+    expect(result.days[0]).toMatchObject({
+      status: "incomplete", lateMinutes: 0, earlyMinutes: 0, missingMinutes: 240,
+    });
+    expect(result).toMatchObject({
+      incompleteDays: 1, incompleteDeductionDays: 1, absentDays: 0,
+      lateMinutes: 0, earlyMinutes: 0, totalLostMinutes: 240, lostHours: 4,
+      equivalentDays: 0.5, totalDeduction: 166.67, netSalary: 9833.33,
+    });
+  });
+
+  it.each([{ attendance: [] }, { attendance: [punch("2026-01-04", null, null)] }])(
+    "charges a full absence for neither punch whether the record is missing or empty %#",
+    ({ attendance }) => {
+      const result = singleDay({ salary: 10000, attendance });
+      expect(result.days[0]).toMatchObject({ status: "absent", missingMinutes: 480 });
+      expect(result).toMatchObject({
+        absentDays: 1, incompleteDays: 0, incompleteDeductionDays: 0,
+        equivalentDays: 1, totalLostMinutes: 480,
+        totalDeduction: 333.33, netSalary: 9666.67,
+      });
+    }
+  );
+
+  it("does not count out-of-cycle incomplete punches toward this cycle's half-day charges", () => {
     const result = singleDay({
       attendance: [
         punch("2026-01-01", "15:00", null),
-        punch("2026-01-04", "15:00", null),
+        punch("2026-01-04", null, "17:00"),
       ],
     });
-    expect(result.incompleteDays).toBe(1);
-    expectNoLoss(result);
+    expect(result).toMatchObject({
+      incompleteDays: 1, incompleteDeductionDays: 1, equivalentDays: 0.5,
+      totalLostMinutes: 240, totalDeduction: 16.67, netSalary: 983.33,
+    });
   });
 
-  it("combines absent full days, grouped incomplete days, and minute losses without double deductions", () => {
+  it("combines absent full days, individual incomplete half-days, and minute losses without double deductions", () => {
     const result = calculateHrPayroll(
       input({
         attendance: [
@@ -464,15 +520,15 @@ describe("deterministic HR payroll", () => {
         ],
       })
     );
-    const equivalentDays = 2 + 60 / 480;
+    const equivalentDays = 1 + 3 / 2 + 60 / 480;
     expect(result).toMatchObject({
       absentDays: 1,
       incompleteDays: 3,
-      incompleteDeductionDays: 1,
+      incompleteDeductionDays: 3,
       lateMinutes: 30,
       earlyMinutes: 30,
     });
-    expect(result.totalLostMinutes).toBe(2 * 480 + 60);
+    expect(result.totalLostMinutes).toBe(480 + 3 * 240 + 60);
     expect(result.equivalentDays).toBe(equivalentDays);
     expect(result.totalDeduction).toBe(
       Number(((1000 / 30) * equivalentDays).toFixed(2))
@@ -601,6 +657,8 @@ describe("deterministic HR payroll", () => {
   it.each([
     { attendance: [] },
     { attendance: [punch("2026-01-04", "10:00", null)] },
+    { attendance: [punch("2026-01-04", null, "10:00")] },
+    { attendance: [punch("2026-01-04", null, null)] },
     { attendance: [punch("2026-01-04", "09:45", "10:00")] },
   ])(
     "never finalizes today's live shift, including a complete early checkout",
@@ -619,8 +677,15 @@ describe("deterministic HR payroll", () => {
 
   it.each([
     { records: [], status: "absent", absentDays: 1, incompleteDays: 0 },
+    { records: [punch("2026-01-04", null, null)], status: "absent", absentDays: 1, incompleteDays: 0 },
     {
       records: [punch("2026-01-04", "15:00", null)],
+      status: "incomplete",
+      absentDays: 0,
+      incompleteDays: 1,
+    },
+    {
+      records: [punch("2026-01-04", null, "17:00")],
       status: "incomplete",
       absentDays: 0,
       incompleteDays: 1,
@@ -644,6 +709,11 @@ describe("deterministic HR payroll", () => {
         incompleteDays,
       });
       expect(result.days[0].status).toBe(status);
+      const equivalentDays = absentDays + incompleteDays / 2;
+      expect(result.incompleteDeductionDays).toBe(incompleteDays);
+      expect(result.days[0].missingMinutes).toBe(480 * equivalentDays);
+      expect(result.equivalentDays).toBe(equivalentDays);
+      expect(result.totalDeduction).toBe(Number(((1000 / 30) * equivalentDays).toFixed(2)));
     }
   );
 
@@ -657,6 +727,24 @@ describe("deterministic HR payroll", () => {
     expect(result.evaluatedDays).toBe(0);
     expect(result.incompleteDays).toBe(0);
     expectNoLoss(result);
+  });
+
+  it.each([
+    { status: "leave", overrides: { approvedLeaveDates: ["2026-01-04"] } },
+    { status: "credited", overrides: { attendanceCreditDates: ["2026-01-04"] } },
+    { status: "holiday", overrides: { holidays: ["2026-01-04"] } },
+    { status: "weekend", overrides: { from: "2026-01-09", to: "2026-01-09" } },
+    { status: "future", overrides: { now: new Date("2026-01-03T10:00:00Z") } },
+    { status: "in_progress", overrides: { now: new Date("2026-01-04T14:59:59Z") } },
+    { status: "unconfigured", overrides: { schedules: [] } },
+  ])("exempts single and absent punches on $status dates", ({ status, overrides }) => {
+    const date = overrides.from ?? "2026-01-04";
+    for (const record of [punch(date, "16:00", null), punch(date, null, "10:00"), punch(date, null, null)]) {
+      const result = singleDay({ ...overrides, attendance: [record] });
+      expect(result.days[0].status).toBe(status);
+      expect(result.incompleteDays).toBe(0);
+      expectNoLoss(result);
+    }
   });
 
   it("compares now to the Cairo business date rather than the UTC date", () => {
@@ -889,7 +977,7 @@ describe("deterministic HR payroll", () => {
     });
   });
 
-  it("turns three mixed-span incomplete days into exactly one daily deduction", () => {
+  it("charges each mixed-span incomplete date half its applicable shift and half its daily wage", () => {
     const result = calculateHrPayroll(
       input({
         from: "2026-01-04",
@@ -905,21 +993,39 @@ describe("deterministic HR payroll", () => {
         ],
         attendance: [
           punch("2026-01-04", "15:00", null),
-          punch("2026-01-05", "15:00", null),
+          punch("2026-01-05", null, "17:00"),
           punch("2026-01-06", "12:00", null),
         ],
       })
     );
     expect(result).toMatchObject({
       incompleteDays: 3,
-      incompleteDeductionDays: 1,
+      incompleteDeductionDays: 3,
       lateMinutes: 0,
       earlyMinutes: 0,
-      totalLostMinutes: 240,
-      equivalentDays: 1,
+      totalLostMinutes: 600,
+      equivalentDays: 1.5,
     });
-    expect(result.days.map(day => day.missingMinutes)).toEqual([0, 0, 240]);
-    expect(result.totalDeduction).toBe(Number((1000 / 30).toFixed(2)));
+    expect(result.days.map(day => day.missingMinutes)).toEqual([240, 240, 120]);
+    expect(result.minuteRate).toBe(1000 / 30 / ((480 + 480 + 240) / 3));
+    expect(result.totalDeduction).toBe(50);
+    expect(result.netSalary).toBe(950);
+  });
+
+  it("preserves fractional missing minutes for an odd-length incomplete shift", () => {
+    const result = singleDay({
+      salary: 101,
+      schedules: [{ ...schedule, endTime: "09:03", graceMinutes: 0 }],
+      attendance: [punch("2026-01-04", null, "09:03")],
+    });
+    expect(result).toMatchObject({
+      incompleteDays: 1, incompleteDeductionDays: 1,
+      totalLostMinutes: 1.5, lostHours: 1.5 / 60, equivalentDays: 0.5,
+      dailyRate: 101 / 30, minuteRate: 101 / 30 / 3,
+      totalDeduction: Number((101 / 30 / 2).toFixed(2)),
+      netSalary: Number((101 - 101 / 30 / 2).toFixed(2)),
+    });
+    expect(result.days[0].missingMinutes).toBe(1.5);
   });
 
   it("does not round rates, fractions, or individual daily losses before final money", () => {
@@ -1102,6 +1208,42 @@ describe("HR payroll input validation", () => {
       ],
     });
     expectNoLoss(result);
+  });
+
+  it.each([
+    "2026-01-03T22:30:00Z",
+    new Date("2026-01-04T15:00:00Z"),
+  ])("accepts checkout-only instants on the Cairo date, even with a differing UTC date: %s", checkOutAt => {
+    const result = singleDay({
+      attendance: [{ attendanceDate: "2026-01-04", checkInAt: null, checkOutAt }],
+    });
+    expect(result).toMatchObject({
+      incompleteDays: 1, incompleteDeductionDays: 1, absentDays: 0,
+      totalLostMinutes: 240, equivalentDays: 0.5, totalDeduction: 16.67,
+    });
+  });
+
+  it.each([
+    "2026-01-03T21:59:59Z",
+    "2026-01-04T22:00:00Z",
+    "2026-01-05T00:30:00+02:00",
+  ])("rejects checkout-only punches outside their Cairo attendance date: %s", checkOutAt => {
+    expect(() => singleDay({
+      attendance: [{ attendanceDate: "2026-01-04", checkInAt: null, checkOutAt }],
+    })).toThrow("Cairo attendance date");
+  });
+
+  it.each([
+    "not-a-date", new Date("invalid"), "2026-02-30T12:00:00Z",
+    "2026-01-04T25:00:00Z", "2026-01-04T12:00:00", "2026-01-04",
+    "", undefined, 0,
+  ])("rejects malformed checkout-only instants rather than charging a half day: %s", checkOutAt => {
+    expect(() => singleDay({
+      attendance: [{
+        attendanceDate: "2026-01-04", checkInAt: null,
+        checkOutAt: checkOutAt as unknown as HrPayrollAttendance["checkOutAt"],
+      }],
+    })).toThrow();
   });
 
   it("rejects reversed complete punches even when both are outside the scheduled window", () => {

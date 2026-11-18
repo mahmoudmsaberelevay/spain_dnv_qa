@@ -355,9 +355,12 @@ export default function HrAdminReports(props: Props) {
               Late days = sum of each finalized day's late minutes ÷ its
               scheduled shift minutes, not 24-hour days. Recorded time uses real
               closed punches only; rollout credits and open shifts are not
-              fabricated work time. Absence, early departure and the cycle's 3:1
-              incomplete-punch rule are included once in total loss. Salary ÷ 30
-              always. Preview only — no financial posting.
+              fabricated work time. Each finalized incomplete working day
+              deducts half a day; a no-show deducts a full day. Late arrival,
+              early exit, no-show and half-day penalties are included once in
+              total loss. Approved leave and non-working days are paid without
+              penalties. Salary ÷ 30 always. Preview only — no financial
+              posting.
             </p>
             <Table className="w-max min-w-full">
               <TableHeader>
@@ -723,7 +726,16 @@ export default function HrAdminReports(props: Props) {
                       item => item.date === day.date
                     );
                     return (
-                      <TableRow key={day.date}>
+                      <TableRow
+                        key={day.date}
+                        className={
+                          day.status === "absent"
+                            ? "bg-red-100/80 text-red-950 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-100"
+                            : day.status === "incomplete"
+                              ? "bg-amber-100/70 text-amber-950 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-100"
+                              : undefined
+                        }
+                      >
                         <TableCell>
                           {day.date}
                           <p className="mt-1 text-xs text-muted-foreground">
@@ -748,7 +760,13 @@ export default function HrAdminReports(props: Props) {
                           {n(timing?.recordedMinutes)} /{" "}
                           {n(timing?.scheduledPresenceMinutes)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell
+                          className={
+                            day.lateMinutes > 0
+                              ? "bg-yellow-100 font-semibold text-yellow-950 dark:bg-yellow-950/50 dark:text-yellow-100"
+                              : undefined
+                          }
+                        >
                           {n(day.lateMinutes)} / {n(day.earlyMinutes)}
                         </TableCell>
                         <TableCell>
@@ -761,6 +779,29 @@ export default function HrAdminReports(props: Props) {
                   })}
                 </TableBody>
               </Table>
+              <p className="text-xs leading-5 text-muted-foreground">
+                Yellow: late minutes. Red: no show / full-day deduction. Amber:
+                missing clock-in or clock-out / half-day deduction. Status text
+                remains visible when printing without color.
+              </p>
+              <dl className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <SmallMetric
+                  title="Total lost min / hours / days"
+                  value={`${n(selected.payroll.totalLostMinutes)} / ${n(selected.payroll.lostHours)} / ${n(selected.payroll.equivalentDays, 4)}`}
+                />
+                <SmallMetric
+                  title="Covered base salary"
+                  value={egp(selected.payroll.coveredBaseSalary)}
+                />
+                <SmallMetric
+                  title="Total amount to deduct"
+                  value={egp(selected.payroll.totalDeduction)}
+                />
+                <SmallMetric
+                  title="Net due salary preview"
+                  value={egp(selected.payroll.netSalary)}
+                />
+              </dl>
               <p className="text-xs leading-5 text-muted-foreground">
                 Paid break minutes show the active daily allowance; excused
                 minutes show only lateness or early departure overlapping the

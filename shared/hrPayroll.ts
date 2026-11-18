@@ -32,7 +32,7 @@ export type HrPayrollSchedule = HrMaternityBreakPolicy & {
 
 export type HrPayrollAttendance = {
   attendanceDate: string;
-  checkInAt: Date | string;
+  checkInAt: Date | string | null;
   checkOutAt: Date | string | null;
 };
 
@@ -79,6 +79,7 @@ export type HrPayrollResult = {
   earlyMinutes: number;
   absentDays: number;
   incompleteDays: number;
+  /** Count of charged incomplete dates, not their half-day equivalents. */
   incompleteDeductionDays: number;
   totalLostMinutes: number;
   lostHours: number;
@@ -200,9 +201,9 @@ function roundMoney(value: number): number {
  * Explicit attendance credits have zero loss, including future/unconfigured dates;
  * credited scheduled working days also count as evaluated without altering punches.
  *
- * Each third finalized incomplete date carries one scheduled day's missingMinutes
- * for the cycle-level 3-for-1 rule. Other incomplete dates carry zero; none receive
- * late/early penalties. Absent dates carry their full span. Thus totalLostMinutes
+ * Each finalized incomplete date with exactly one valid punch carries half its
+ * scheduled span in missingMinutes; none receive additional late/early penalties.
+ * Dates with neither punch carry their full span. Thus totalLostMinutes
  * sums days[].missingMinutes, while equivalentDays sums missingMinutes / that
  * date's span, not minutes divided by an arbitrary fixed eight-hour shift.
  *
@@ -212,9 +213,10 @@ function roundMoney(value: number): number {
  * spans vary; deductions use dailyRate * equivalentDays, capped at salary.
  * Only final monetary outputs are rounded.
  *
- * Schedules must be same-day shifts. Check-in must belong to attendanceDate in
- * Cairo; reversed or duplicate punches are rejected. Late next-day checkouts are
- * allowed and clamped to this shift's end, never wrapped into an early departure.
+ * Schedules must be same-day shifts. Check-in or a checkout-only punch must belong
+ * to attendanceDate in Cairo; reversed or duplicate punches are rejected. Complete
+ * records may have late next-day checkouts, clamped to this shift's end rather
+ * than wrapped into an early departure.
  */
 export function calculateHrPayroll(input: HrPayrollInput): HrPayrollResult {
   const dates = listHrDates(input.from, input.to);
@@ -265,28 +267,29 @@ export function calculateHrPayroll(input: HrPayrollInput): HrPayrollResult {
   const attendance = new Map<
     string,
     {
-      checkIn: ReturnType<typeof cairoClock>;
+      checkIn: ReturnType<typeof cairoClock> | null;
       checkOut: ReturnType<typeof cairoClock> | null;
     }
   >();
   for (const record of input.attendance) {
     const date = hrDateKey(record.attendanceDate);
     if (attendance.has(date)) throw new Error("Duplicate HR attendance date");
-    const checkInAt = instant(record.checkInAt, "HR check-in");
+    const checkInAt =
+      record.checkInAt === null ? null : instant(record.checkInAt, "HR check-in");
     const checkOutAt =
       record.checkOutAt === null
         ? null
         : instant(record.checkOutAt, "HR check-out");
-    const checkIn = cairoClock(checkInAt);
-    if (checkIn.date !== date)
+    const checkIn = checkInAt ? cairoClock(checkInAt) : null;
+    const checkOut = checkOutAt ? cairoClock(checkOutAt) : null;
+    if (checkIn && checkIn.date !== date)
       throw new Error("HR check-in must belong to its Cairo attendance date");
-    if (checkOutAt && checkOutAt.getTime() < checkInAt.getTime()) {
+    if (!checkIn && checkOut && checkOut.date !== date)
+      throw new Error("HR check-out must belong to its Cairo attendance date");
+    if (checkInAt && checkOutAt && checkOutAt.getTime() < checkInAt.getTime()) {
       throw new Error("HR check-out must not precede check-in");
     }
-    attendance.set(date, {
-      checkIn,
-      checkOut: checkOutAt ? cairoClock(checkOutAt) : null,
-    });
+    attendance.set(date, { checkIn, checkOut });
   }
 
   const result: HrPayrollResult = {
@@ -367,17 +370,15 @@ export function calculateHrPayroll(input: HrPayrollInput): HrPayrollResult {
       continue;
     }
     const record = attendance.get(date);
-    if (!record) {
+    if (!record || (!record.checkIn && !record.checkOut)) {
       day.status = "absent";
       result.absentDays += 1;
       day.missingMinutes = schedule.span;
-    } else if (!record.checkOut) {
+    } else if (!record.checkIn || !record.checkOut) {
       day.status = "incomplete";
       result.incompleteDays += 1;
-      if (result.incompleteDays % 3 === 0) {
-        result.incompleteDeductionDays += 1;
-        day.missingMinutes = schedule.span;
-      }
+      result.incompleteDeductionDays += 1;
+      day.missingMinutes = schedule.span / 2;
     } else {
       day.status = "present";
       const start = clamp(record.checkIn.minute, schedule.start, schedule.end);

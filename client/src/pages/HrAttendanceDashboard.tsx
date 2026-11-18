@@ -54,6 +54,7 @@ import {
   formatCairoAttendanceTime,
 } from "@shared/hrAttendance";
 import { getCairoBusinessDate } from "@shared/financialEmployeeSalaryRates";
+import { hrReportExportErrorMessage } from "@shared/hrReportExportError";
 import {
   AlertCircle,
   CalendarDays,
@@ -454,7 +455,11 @@ function Status({ status }: { status: string }) {
     >
       {status === "credited"
         ? "Present (rollout credit)"
-        : status.replaceAll("_", " ")}
+        : status === "absent"
+          ? "No show (full day)"
+          : status === "incomplete"
+            ? "Incomplete punch (half day)"
+            : status.replaceAll("_", " ")}
     </Badge>
   );
 }
@@ -1506,7 +1511,7 @@ function HrAdmin() {
       await exportHrAttendancePdf(report);
       toast.success("HR attendance PDF downloaded.");
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(hrReportExportErrorMessage(error));
     } finally {
       setExportingPdf(false);
     }
@@ -1531,7 +1536,7 @@ function HrAdmin() {
       });
       toast.success("HR vacation PDF downloaded.");
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(hrReportExportErrorMessage(error));
     } finally {
       setExportingPdf(false);
     }
@@ -1828,9 +1833,10 @@ function HrAdmin() {
                 Daily salary = monthly salary ÷ 30, always. EGP 10,000 gives EGP
                 333.33 per day. Hourly and minute rates use the scheduled
                 working duration; calculations keep full precision until final
-                monetary rounding. No schedule means no deductions. Three
-                finalized incomplete attendance days convert to one deduction
-                day.
+                monetary rounding. Every finalized working day with only one
+                punch deducts half a day; no punches deduct a full day. Approved
+                paid leave, weekends and holidays have no deduction. A shift in
+                progress or a date with no schedule is not charged.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -2116,7 +2122,7 @@ function EmployeePreview({
             ["Absent days", numberLabel(payroll.absentDays, 0)],
             ["Incomplete days", numberLabel(payroll.incompleteDays, 0)],
             [
-              "Incomplete → deduction days (3:1)",
+              "Charged incomplete dates (half day each)",
               numberLabel(payroll.incompleteDeductionDays),
             ],
             [
@@ -2127,7 +2133,7 @@ function EmployeePreview({
             ["Latest cycle daily rate", money(payroll.dailyRate)],
             [
               "Latest cycle hourly / minute rate",
-              `${money(payroll.hourlyRate)} / ${money(payroll.minuteRate)}`,
+              `${numberLabel(payroll.hourlyRate, 6)} / ${numberLabel(payroll.minuteRate, 6)} EGP (unrounded calculation)`,
             ],
             ["Covered base salary preview", money(payroll.coveredBaseSalary)],
             ["Deduction preview", money(payroll.totalDeduction)],
@@ -2198,12 +2204,28 @@ function EmployeePreview({
               </TableHeader>
               <TableBody>
                 {payroll.days.map(day => (
-                  <TableRow key={day.date}>
+                  <TableRow
+                    key={day.date}
+                    className={cn(
+                      day.status === "absent" &&
+                        "bg-red-100/80 text-red-950 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-100",
+                      day.status === "incomplete" &&
+                        "bg-amber-100/70 text-amber-950 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-100"
+                    )}
+                  >
                     <TableCell>{dateLabel(day.date)}</TableCell>
                     <TableCell>
                       <Status status={day.status} />
                     </TableCell>
-                    <TableCell>{numberLabel(day.lateMinutes, 0)}</TableCell>
+                    <TableCell
+                      className={
+                        day.lateMinutes > 0
+                          ? "bg-yellow-100 font-semibold text-yellow-950 dark:bg-yellow-950/50 dark:text-yellow-100"
+                          : undefined
+                      }
+                    >
+                      {numberLabel(day.lateMinutes, 0)}
+                    </TableCell>
                     <TableCell>{numberLabel(day.earlyMinutes, 0)}</TableCell>
                     <TableCell>{numberLabel(day.missingMinutes, 0)}</TableCell>
                   </TableRow>

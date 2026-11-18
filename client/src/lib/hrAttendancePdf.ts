@@ -16,6 +16,9 @@ const TEAL = "#5BA3B8";
 const PALE = "#EDF5F7";
 const INK = "#26394A";
 const MUTED = "#526575";
+const LATE_YELLOW = "#FFF3A3";
+const ABSENCE_RED = "#FDE2E2";
+const INCOMPLETE_AMBER = "#FFE4B5";
 const unicode = (value: string) => /[^\x20-\x7e]/.test(value);
 const number = (value: number, places = 2) =>
   value.toLocaleString("en-GB", {
@@ -29,7 +32,8 @@ const money = (value: number) =>
   });
 
 type Column = { title: string; weight: number; align?: "left" | "right" };
-type Cell = string | { name: string };
+type Cell = string | { name: string } | { text: string; fill: string };
+type TableRow = Cell[] | { cells: Cell[]; fill: string };
 
 /**
  * Generates an in-memory PDF without saving, network requests or CRM reads.
@@ -104,6 +108,12 @@ export async function createHrAttendancePdf(
     isName = false
   ): string[] {
     if (!text) return [""];
+    // Preserve deliberate labels in compact paired-metric daily cells.
+    if (text.includes("\n")) {
+      return text
+        .split("\n")
+        .flatMap(line => wrap(line, cellWidth, fontSize, isName));
+    }
     pdf.setFontSize(fontSize);
     const measure =
       isName && unicode(text)
@@ -262,7 +272,7 @@ export async function createHrAttendancePdf(
     y += rowHeight;
     pdf.setFont("helvetica", "normal");
   }
-  function table(columns: Column[], rows: Cell[][]) {
+  function table(columns: Column[], rows: TableRow[]) {
     // Set widths before entering a continuation page so repeated headers have
     // exactly the same geometry as the initial table header.
     activeColumns = columns;
@@ -270,14 +280,24 @@ export async function createHrAttendancePdf(
     activeWidths = columns.map(col => (usable * col.weight) / weights);
     if (y + 28 > bottom) page();
     else tableHeader();
-    rows.forEach((row, rowIndex) => {
+    rows.forEach((entry, rowIndex) => {
+      const row = Array.isArray(entry) ? entry : entry.cells;
+      const rowFill = Array.isArray(entry)
+        ? rowIndex % 2 === 0
+          ? PALE
+          : "#FFFFFF"
+        : entry.fill;
       pdf.setFont("helvetica", "normal");
       const lines = row.map((cell, index) =>
         wrap(
-          typeof cell === "string" ? cell : cell.name,
+          typeof cell === "string"
+            ? cell
+            : "name" in cell
+              ? cell.name
+              : cell.text,
           activeWidths[index] - 5,
           size,
-          typeof cell !== "string"
+          typeof cell !== "string" && "name" in cell
         )
       );
       const count = Math.max(...lines.map(cell => cell.length));
@@ -287,16 +307,22 @@ export async function createHrAttendancePdf(
         const capacity = Math.max(1, Math.floor((bottom - y - 4) / lineHeight));
         const take = Math.min(count - offset, capacity);
         const rowHeight = take * lineHeight + 4;
-        pdf.setFillColor(rowIndex % 2 === 0 ? PALE : "#FFFFFF");
+        pdf.setFillColor(rowFill);
         pdf.rect(margin, y, usable, rowHeight, "F");
         pdf.setFont("helvetica", "normal");
         pdf.setFontSize(size);
         pdf.setTextColor(INK);
         let x = margin;
         lines.forEach((cell, index) => {
+          const value = row[index];
+          if (typeof value !== "string" && "fill" in value) {
+            pdf.setFillColor(value.fill);
+            pdf.rect(x, y, activeWidths[index], rowHeight, "F");
+          }
           cell.slice(offset, offset + take).forEach((line, lineIndex) => {
             const baseline = y + 4 + lineIndex * lineHeight;
-            if (typeof row[index] !== "string") nameLine(line, x + 2, baseline);
+            if (typeof value !== "string" && "name" in value)
+              nameLine(line, x + 2, baseline);
             else
               pdf.text(
                 line,
@@ -379,7 +405,7 @@ export async function createHrAttendancePdf(
     "Units: min = minutes; hours = lost minutes / 60. Equivalent days are the authoritative sum of each day's lost minutes / that day's configured shift length; no fixed eight-hour conversion is used. Team equivalent days are employee-day equivalents."
   );
   paragraph(
-    "Total lost minutes already include late arrival, early exit, absence and incomplete-punch penalties. Do not add the components to the total again. Incomplete penalties follow the payroll cycle's three-for-one rule; only charged dates carry missing minutes."
+    "Total lost minutes already include late arrival, early exit, absence and incomplete-punch penalties. Do not add the components to the total again. Each finalized incomplete date (one missing punch) carries a HALF-DAY deduction using half its configured shift span. A no-show (neither punch) carries a FULL-DAY deduction."
   );
   paragraph(
     "Approved paid leave, weekends, public holidays, future days, shifts in progress and unconfigured dates carry no penalties. Only the supplied employee selection is included, in its supplied order. EGP figures are payroll previews using the existing cycle/salary context."
@@ -464,7 +490,7 @@ export async function createHrAttendancePdf(
           number(cycle.fullCycleWorkingDays),
           number(cycle.workingDays),
           money(cycle.salary),
-          `${money(cycle.salary)} / 30`,
+          `${money(cycle.salary)} / 30 = ${number(cycle.salary / 30, 6)}`,
           money(cycle.coveredBaseSalary),
           money(cycle.totalDeduction),
           number(cycle.equivalentDays, 4),
@@ -474,99 +500,132 @@ export async function createHrAttendancePdf(
         "Cycle money rows are rounded individually by payroll. The authoritative selected-period summary can differ from their sum by rounding; it has not been recomputed here."
       );
     }
+    paragraph(
+      `Informational payroll rates: salary / 30 = ${number(employee.dailyRate, 6)} EGP per day | ${number(employee.hourlyRate, 6)} EGP per hour | ${number(employee.minuteRate, 6)} EGP per minute. Rates are displayed to six decimals, not rounded to cents before calculation. Aggregate hourly/minute rates are not used to calculate deductions here, particularly where schedules or salaries vary.`
+    );
+    section = "Employee daily attendance sheet";
+    page();
+    paragraph(
+      "One row per inclusive Cairo business date, with timing and penalties together. Lost min is the source missingMinutes value, not late + early + missing. Only safe clock timestamps are exported; GPS, emails and CRM user/login identities are never exported."
+    );
+    paragraph(
+      "Legend: YELLOW late-minute cell = Present - late arrival; light RED row = No show - FULL-DAY deduction; AMBER row = Incomplete punch - HALF-DAY deduction. Approved paid leave / paid vacation is paid, with no attendance deduction. Labels remain readable without color."
+    );
     if (employee.timingAvailable) {
-      section = "Employee recorded timing sheet";
-      page();
       paragraph(
-        "Actual clock-in/out is displayed in Africa/Cairo. Recorded duration is elapsed time for closed valid punches only, including outside-shift time; shift overlap is the closed interval within the scheduled shift. Open check-ins show no assumed checkout and contribute zero duration. Next-day checkouts show their Cairo date."
+        "Actual clock-in/out is displayed in Africa/Cairo. Recorded duration is elapsed time for closed valid punches only, including outside-shift time; shift overlap is the closed interval within the scheduled shift. Open check-ins show no assumed checkout and contribute zero duration. Next-day checkouts show their Cairo date. Durations retain fractional minutes."
       );
+    } else {
       paragraph(
-        "Scheduled minutes cover configured working dates across the entire selected range; evaluated scheduled minutes follow finalized payroll statuses. Late hours are late minutes / 60; late equivalent days sum finalized late minutes / each date's configured shift span, not an eight-hour default. Durations retain fractional minutes."
+        "Timing unavailable in this older source snapshot: no clock-in/out, schedule or duration is inferred. Payroll penalties and totals remain the supplied authoritative values."
       );
-      const cairoClock = (value: string | null, date: string): string => {
-        if (value === null) return "Not recorded";
-        const parts = new Map(
-          new Intl.DateTimeFormat("en-GB", {
-            timeZone: report.timeZone,
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hourCycle: "h23",
-          })
-            .formatToParts(new Date(value))
-            .map(part => [part.type, part.value])
-        );
-        const localDate = `${parts.get("year")}-${parts.get("month")}-${parts.get("day")}`;
-        const time = `${parts.get("hour")}:${parts.get("minute")}:${parts.get("second")}`;
-        return localDate === date ? time : `${localDate} ${time}`;
-      };
-      table(
-        [
-          { title: "Cairo date", weight: 29 },
-          { title: "Payroll status", weight: 54 },
-          { title: "Scheduled Cairo time", weight: 34 },
-          numeric("Scheduled min", 24),
-          { title: "Actual clock in Cairo", weight: 34 },
-          { title: "Actual clock out Cairo", weight: 38 },
-          numeric("Recorded duration min", 30),
-          numeric("Shift overlap min", 28),
-        ],
-        employee.timing.days.map((day, index) => [
+    }
+    const cairoClock = (value: string | null, date: string): string => {
+      if (value === null) return "Not recorded";
+      const parts = new Map(
+        new Intl.DateTimeFormat("en-GB", {
+          timeZone: report.timeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hourCycle: "h23",
+        })
+          .formatToParts(new Date(value))
+          .map(part => [part.type, part.value])
+      );
+      const localDate = `${parts.get("year")}-${parts.get("month")}-${parts.get("day")}`;
+      const time = `${parts.get("hour")}:${parts.get("minute")}:${parts.get("second")}`;
+      return localDate === date ? time : `${localDate} ${time}`;
+    };
+    table(
+      [
+        { title: "Cairo date", weight: 26 },
+        { title: "Payroll status / deduction", weight: 51 },
+        { title: "Scheduled Cairo time / min", weight: 30 },
+        { title: "Actual clock in / out Cairo", weight: 44 },
+        { title: "Recorded duration / shift overlap min", weight: 30 },
+        numeric("Late min", 18),
+        numeric("Early exit min", 18),
+        { title: "Absence / incomplete penalty min", weight: 32 },
+        { title: "Paid maternity allowance / excused min", weight: 30 },
+        numeric("Total lost min", 24),
+      ],
+      employee.days.map((day, index): TableRow => {
+        const timing = employee.timing.days[index];
+        const statusLabel =
+          day.status === "absent"
+            ? "No show - FULL-DAY deduction"
+            : day.status === "incomplete"
+              ? day.incompletePenaltyMinutes > 0
+                ? "Incomplete punch - HALF-DAY deduction"
+                : "Incomplete punch - no charge in source"
+              : day.status === "leave"
+                ? "Approved paid leave - paid / no deduction"
+                : day.status === "present" && day.lateMinutes > 0
+                  ? `${day.statusLabel} - late arrival`
+                  : day.statusLabel;
+        const cells: Cell[] = [
           day.date,
-          employee.days[index].statusLabel,
-          day.scheduleStart === null
-            ? "Not scheduled"
-            : `${day.scheduleStart} - ${day.scheduleEnd}`,
-          number(day.scheduledMinutes),
-          cairoClock(day.checkInAt, day.date),
-          cairoClock(day.checkOutAt, day.date),
-          number(day.recordedMinutes, 4),
-          number(day.scheduledPresenceMinutes, 4),
-        ])
-      );
-      section = "Employee timing totals";
+          statusLabel,
+          !employee.timingAvailable
+            ? "Unavailable"
+            : timing.scheduleStart === null
+              ? "Not scheduled\n0 min"
+              : `${timing.scheduleStart} - ${timing.scheduleEnd}\n${number(timing.scheduledMinutes)} min`,
+          employee.timingAvailable
+            ? `In: ${cairoClock(timing.checkInAt, day.date)}\nOut: ${cairoClock(timing.checkOutAt, day.date)}`
+            : "Unavailable",
+          employee.timingAvailable
+            ? `Recorded: ${number(timing.recordedMinutes, 4)}\nOverlap: ${number(timing.scheduledPresenceMinutes, 4)}`
+            : "Unavailable",
+          day.status === "present" && day.lateMinutes > 0
+            ? { text: number(day.lateMinutes), fill: LATE_YELLOW }
+            : number(day.lateMinutes),
+          number(day.earlyMinutes),
+          `Full-day: ${number(day.absenceMinutes)}\nHalf-day: ${number(day.incompletePenaltyMinutes)}`,
+          `Allowance: ${number(day.maternityBreakMinutes)}\nExcused: ${number(day.maternityExcusedMinutes)}`,
+          number(day.missingMinutes),
+        ];
+        return day.status === "absent"
+          ? { cells, fill: ABSENCE_RED }
+          : day.status === "incomplete"
+            ? { cells, fill: INCOMPLETE_AMBER }
+            : cells;
+      })
+    );
+    section = "Employee attendance totals";
+    if (employee.timingAvailable) {
       paragraph(
         `Timing totals | Scheduled: ${number(employee.timing.scheduledMinutes)} min | Evaluated scheduled: ${number(employee.timing.evaluatedScheduledMinutes)} min | Recorded duration: ${number(employee.timing.recordedMinutes, 4)} min | Shift overlap: ${number(employee.timing.scheduledPresenceMinutes, 4)} min`
       );
     }
-    section = "Employee daily attendance sheet";
-    page();
-    paragraph(
-      "One row per inclusive Cairo business date. Lost min is the source missingMinutes value, not late + early + missing. Only safe clock timestamps appear on the timing sheet; GPS, emails and CRM user/login identities are never exported."
-    );
-    table(
-      [
-        { title: "Cairo date", weight: 29 },
-        { title: "Payroll status", weight: 74 },
-        numeric("Late min", 25),
-        numeric("Early exit min", 27),
-        numeric("Absence min", 29),
-        numeric("Incomplete penalty min", 36),
-        numeric("Paid maternity allowance min", 34),
-        numeric("Maternity excused min", 30),
-        numeric("Total lost min", 29),
-      ],
-      employee.days.map(day => [
-        day.date,
-        day.statusLabel,
-        number(day.lateMinutes),
-        number(day.earlyMinutes),
-        number(day.absenceMinutes),
-        number(day.incompletePenaltyMinutes),
-        number(day.maternityBreakMinutes),
-        number(day.maternityExcusedMinutes),
-        number(day.missingMinutes),
-      ])
-    );
-    section = "Employee attendance totals";
     paragraph(
       `Period totals | Late: ${number(employee.lateMinutes)} min | Early exit: ${number(employee.earlyMinutes)} min | Absent: ${number(employee.absentDays)} days / ${number(employee.absenceMinutes)} min | Incomplete penalties: ${number(employee.incompletePenaltyMinutes)} min`
     );
     paragraph(
       `Total lost: ${number(employee.totalLostMinutes)} min / ${number(employee.lostHours, 4)} hours / ${number(employee.equivalentDays, 4)} equivalent days | Preview deduction: ${money(employee.totalDeduction)} EGP`
+    );
+    // These are payroll's selected-period amounts, never total minutes * an
+    // aggregate rate. Keep the final financial block below all daily rows.
+    table(
+      [
+        numeric("Covered base salary EGP", 1),
+        numeric("TOTAL DEDUCTION EGP - preview", 1),
+        numeric("NET DUE SALARY EGP - preview", 1),
+      ],
+      [
+        [
+          money(employee.coveredBaseSalary),
+          money(employee.totalDeduction),
+          money(employee.netSalary),
+        ],
+      ]
+    );
+    paragraph(
+      "Payroll preview only: no salary payment, receipt or actual deduction is created by this report."
     );
   }
   const pages = pdf.getNumberOfPages();

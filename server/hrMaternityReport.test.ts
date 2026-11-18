@@ -95,7 +95,11 @@ describe("paid maternity-break attendance reports", () => {
       expect(result.text).toContain(
         "actually excused from late/early penalties: 60 min"
       );
-      expect(result.text).toMatch(/Paid maternity\s+allowance min/);
+      expect(result.text.replace(/\s+/g, " ")).toContain(
+        "Paid maternity allowance / excused min"
+      );
+      expect(result.text).toContain("Allowance: 60");
+      expect(result.text).toContain("Excused: 60");
       expect(result.text).not.toContain("private-policy-token");
       expect(result.text).not.toContain("88.12345");
       expect(result.text).toContain("monthly salary / 30 calendar days");

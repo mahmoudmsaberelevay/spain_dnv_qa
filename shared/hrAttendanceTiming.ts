@@ -14,7 +14,7 @@ export type HrAttendanceTimingDay = {
   scheduleStart: string | null;
   scheduleEnd: string | null;
   scheduledMinutes: number;
-  /** Real recorded instants only, including open check-ins; never rollout credits. */
+  /** Real recorded instants only, including either single punch; never credits. */
   checkInAt: string | null;
   checkOutAt: string | null;
   recordedMinutes: number;
@@ -217,7 +217,11 @@ function measuredDay(
     throw new Error(
       "Attendance timing check-in must belong to its Cairo attendance date"
     );
-  if (end && (!start || end.getTime() < start.getTime()))
+  if (!start && end && clock(end).date !== date)
+    throw new Error(
+      "Attendance timing check-out must belong to its Cairo attendance date"
+    );
+  if (start && end && end.getTime() < start.getTime())
     throw new Error("Attendance timing check-out must not precede check-in");
   const recordedMinutes =
     start && end ? (end.getTime() - start.getTime()) / 60_000 : 0;
@@ -293,12 +297,15 @@ function summarize(
         "Attendance timing present dates require a closed recorded punch"
       );
     }
-    if (source.status === "incomplete" && (!day.checkInAt || day.checkOutAt)) {
+    if (
+      source.status === "incomplete" &&
+      Boolean(day.checkInAt) === Boolean(day.checkOutAt)
+    ) {
       throw new Error(
-        "Attendance timing incomplete dates require an open recorded punch"
+        "Attendance timing incomplete dates require exactly one recorded punch"
       );
     }
-    if (source.status === "absent" && day.checkInAt) {
+    if (source.status === "absent" && (day.checkInAt || day.checkOutAt)) {
       throw new Error(
         "Attendance timing absent dates cannot contain a recorded punch"
       );
@@ -358,8 +365,8 @@ export function buildHrAttendanceTiming(
       date,
       schedule?.startTime ?? null,
       schedule?.endTime ?? null,
-      record?.checkInAt ?? null,
-      record?.checkOutAt ?? null
+      record ? record.checkInAt : null,
+      record ? record.checkOutAt : null
     );
   });
   return summarize(days, byDate);

@@ -58,8 +58,8 @@ export type HrAttendanceReportInput = {
 export const HR_ATTENDANCE_STATUS_LABELS: Record<HrPayrollDayStatus, string> = {
   present: "Present",
   credited: "Present - rollout credit (no recorded punch)",
-  absent: "Absent",
-  incomplete: "Incomplete punch",
+  absent: "No show - full-day deduction",
+  incomplete: "Incomplete punch - half-day deduction",
   leave: "Approved paid leave",
   future: "Future - not evaluated",
   in_progress: "Shift in progress - not finalized",
@@ -186,7 +186,7 @@ function sameAmount(left: number, right: number): boolean {
  * Pure projection of an overview fetched for EXACTLY this inclusive Cairo period.
  * Reject mismatched daily coverage instead of exporting stale totals under a new
  * date label. Never infer absence from missing records or recalculate a wage,
- * schedule denominator, or the full-cycle incomplete-punch sequence.
+ * schedule denominator, or an incomplete-punch penalty.
  */
 export function buildHrAttendanceReport(
   input: HrAttendanceReportInput

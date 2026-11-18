@@ -44,4 +44,34 @@ describe("HR Admin PDF export integration", () => {
     expect(admin).toContain("async function exportReport(");
     expect(admin).toContain("Deductions remain previews only.");
   });
+
+  it("describes one half-day deduction per incomplete working day and displays precision-aware rates", () => {
+    expect(page).toContain("Charged incomplete dates (half day each)");
+    expect(page).toContain(
+      "punch deducts half a day; no punches deduct a full day"
+    );
+    expect(page).toContain("numberLabel(payroll.minuteRate, 6)");
+    expect(page).not.toMatch(/3:1|Three\s+finalized incomplete/);
+  });
+
+  it("highlights daily late minutes yellow and no-shows red without relying on color alone", () => {
+    expect(page).toContain('day.status === "absent"');
+    expect(page).toContain("bg-red-100");
+    expect(page).toContain("bg-yellow-100");
+    expect(page).toContain("No show (full day)");
+    expect(page).toContain("Incomplete punch (half day)");
+  });
+
+  it("uses a safe stale-module message for both HR exports without auto-reloading forms", () => {
+    const handlers = page.slice(
+      page.indexOf("async function exportReport("),
+      page.indexOf("function apply(next:")
+    );
+    expect(
+      handlers.match(/toast\.error\(hrReportExportErrorMessage\(error\)\)/g)
+    ).toHaveLength(2);
+    expect(handlers).not.toMatch(
+      /location\.reload|window\.location|sessionStorage/
+    );
+  });
 });

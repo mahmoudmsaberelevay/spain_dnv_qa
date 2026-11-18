@@ -126,12 +126,30 @@ describe("paid maternity windows in finalized HR payroll", () => {
     expect(result.days.map(day => day.maternityBreakMinutes)).toEqual([60, 0]);
     expect(result.days.map(day => day.missingMinutes)).toEqual([0, 60]);
   });
-  it("does not waive full absences or any third incomplete-day penalty", () => {
+  it("does not waive full absences or any individual incomplete half-day penalty", () => {
     expect(calculate({ attendance: [] }).days[0]).toMatchObject({ status: "absent", missingMinutes: 480, maternityExcusedMinutes: 0, maternityBreakMinutes: 60 });
-    const result = calculate({ to: "2026-01-06", attendance: [punch("2026-01-04", "09:30", null), punch("2026-01-05", "09:30", null), punch("2026-01-06", "09:30", null)] });
-    expect(result).toMatchObject({ incompleteDays: 3, incompleteDeductionDays: 1, totalLostMinutes: 480, totalDeduction: 333.33 });
+    const result = calculate({ to: "2026-01-06", attendance: [punch("2026-01-04", "09:30", null), { ...punch("2026-01-05"), checkInAt: null }, punch("2026-01-06", "09:30", null)] });
+    expect(result).toMatchObject({ incompleteDays: 3, incompleteDeductionDays: 3, totalLostMinutes: 720, equivalentDays: 1.5, totalDeduction: 500, netSalary: 9500 });
+    expect(result.days.map(day => day.missingMinutes)).toEqual([240, 240, 240]);
     expect(result.days.map(day => day.maternityExcusedMinutes)).toEqual([0, 0, 0]);
   });
+
+  it.each([
+    { ...punch(), checkOutAt: null },
+    { ...punch(), checkInAt: null },
+  ])("never uses maternity breaks or grace to discount a single-punch half day %#", record => {
+    const result = calculate({ schedules: [{ ...base, graceMinutes: 120 }], attendance: [record] });
+    expect(result.days[0]).toMatchObject({ status: "incomplete", missingMinutes: 240, maternityBreakMinutes: 60, maternityExcusedMinutes: 0, lateMinutes: 0, earlyMinutes: 0 });
+    expect(result).toMatchObject({ incompleteDays: 1, incompleteDeductionDays: 1, equivalentDays: 0.5, totalDeduction: 166.67, netSalary: 9833.33 });
+    expect(result.minuteRate).toBe(10000 / 30 / 480);
+  });
+
+  it("treats an explicit both-null record as full absence without maternity relief", () => {
+    const result = calculate({ attendance: [{ attendanceDate: "2026-01-04", checkInAt: null, checkOutAt: null }] });
+    expect(result.days[0]).toMatchObject({ status: "absent", missingMinutes: 480, maternityBreakMinutes: 60, maternityExcusedMinutes: 0 });
+    expect(result).toMatchObject({ absentDays: 1, incompleteDays: 0, incompleteDeductionDays: 0, equivalentDays: 1, totalDeduction: 333.33 });
+  });
+
   it.each([
     { now: new Date("2026-01-04T14:59:00Z") },
     { now: new Date("2026-01-03T18:00:00Z") },

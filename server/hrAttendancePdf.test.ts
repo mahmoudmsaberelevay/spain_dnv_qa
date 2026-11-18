@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { inflateSync } from "node:zlib";
 import { PDFParse } from "pdf-parse";
 import {
   calculateHrPayroll,
@@ -11,6 +12,7 @@ import {
   type HrAttendanceReportInput,
   type HrAttendanceReportSourceEmployee,
 } from "../shared/hrAttendanceReport";
+import { buildHrAttendanceTiming } from "../shared/hrAttendanceTiming";
 import {
   createHrAttendancePdf,
   exportHrAttendancePdf,
@@ -100,12 +102,41 @@ function incompleteAndPresent() {
 }
 
 async function parse(buffer: ArrayBuffer) {
-  const parser = new PDFParse({ data: new Uint8Array(buffer) });
+  // pdf.js transfers its input to a worker; use a copy so callers can inspect
+  // the exported bytes independently after searchable-text verification.
+  const parser = new PDFParse({ data: new Uint8Array(buffer.slice(0)) });
   try {
     return await parser.getText();
   } finally {
     await parser.destroy();
   }
+}
+
+function timedSource(options: Partial<HrPayrollInput> = {}, id = 905) {
+  const employee = source(options, id);
+  return {
+    ...employee,
+    timing: buildHrAttendanceTiming({
+      from: options.from ?? from,
+      to: options.to ?? to,
+      payrollDays: employee.payroll.days,
+      schedules: options.schedules ?? [schedule],
+      holidays: options.holidays ?? [],
+      attendance: options.attendance ?? [],
+    }),
+  };
+}
+
+/** Inspect actual compressed PDF paint operators, not just legend text. */
+function pdfPaintStreams(buffer: ArrayBuffer) {
+  const pdf = Buffer.from(buffer).toString("latin1");
+  return Array.from(
+    pdf.matchAll(/(<<[\s\S]*?>>)\s*stream\r?\n([\s\S]*?)\r?\nendstream/g),
+    match =>
+      match[1].includes("/FlateDecode")
+        ? inflateSync(Buffer.from(match[2], "latin1")).toString("latin1")
+        : match[2]
+  ).join("\n");
 }
 
 describe("pure HR attendance report projection", () => {
@@ -118,13 +149,13 @@ describe("pure HR attendance report projection", () => {
       absentDays: 1,
       absenceMinutes: 360,
       incompleteDays: 3,
-      incompleteDeductionDays: 1,
-      incompletePenaltyMinutes: 360,
-      totalLostMinutes: 750,
-      lostHours: 12.5,
+      incompleteDeductionDays: 3,
+      incompletePenaltyMinutes: 540,
+      totalLostMinutes: 930,
+      lostHours: 15.5,
       totalDeduction: employee.payroll.totalDeduction,
     });
-    expect(report.employees[0].equivalentDays).toBeCloseTo(2 + 30 / 360);
+    expect(report.employees[0].equivalentDays).toBeCloseTo(2.5 + 30 / 360);
     expect(report.employees[0].days[0]).toMatchObject({
       missingMinutes: 30,
       lateMinutes: 20,
@@ -133,8 +164,8 @@ describe("pure HR attendance report projection", () => {
     });
     expect(
       report.employees[0].days.map(day => day.incompletePenaltyMinutes)
-    ).toEqual([0, 0, 0, 0, 360]);
-    expect(report.totals.totalLostMinutes).toBe(20 + 10 + 360 + 360);
+    ).toEqual([0, 0, 180, 180, 180]);
+    expect(report.totals.totalLostMinutes).toBe(20 + 10 + 360 + 540);
   });
 
   it("uses schedule-aware days and source monetary/rate summaries, not eight-hour or current-rate math", () => {
@@ -215,7 +246,7 @@ describe("pure HR attendance report projection", () => {
     ).toBe("Approved paid leave");
   });
 
-  it("does not re-run the incomplete sequence on a selected slice of a full cycle", () => {
+  it("preserves the authoritative half-day charge on a selected slice of a full cycle", () => {
     const full = source({
       attendance: [
         punch(from, "09:00", null),
@@ -233,12 +264,12 @@ describe("pure HR attendance report projection", () => {
         absentDays: 0,
         incompleteDays: 1,
         incompleteDeductionDays: 1,
-        totalLostMinutes: 360,
-        lostHours: 6,
-        equivalentDays: 1,
-        totalDeduction: 600,
+        totalLostMinutes: 180,
+        lostHours: 3,
+        equivalentDays: 0.5,
+        totalDeduction: 50,
         coveredBaseSalary: 600,
-        netSalary: 0,
+        netSalary: 550,
       },
     };
     const report = buildHrAttendanceReport({
@@ -249,8 +280,9 @@ describe("pure HR attendance report projection", () => {
     expect(report.employees[0]).toMatchObject({
       incompleteDays: 1,
       incompleteDeductionDays: 1,
-      incompletePenaltyMinutes: 360,
-      totalDeduction: 600,
+      incompletePenaltyMinutes: 180,
+      totalDeduction: 50,
+      netSalary: 550,
     });
   });
 
@@ -426,16 +458,20 @@ describe("jsPDF attendance document (synthetic records only)", () => {
       "Employee daily attendance sheet",
       "2026-01-04",
       "2026-01-08",
-      "750",
-      "12.5",
+      "930",
+      "15.5",
       employee.payroll.totalDeduction.toLocaleString("en-GB", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }),
       "02/02/2026, 00:30",
       "Africa/Cairo",
-      "Absent",
+      "No show",
       "Incomplete punch",
+      "HALF-DAY deduction",
+      "FULL-DAY deduction",
+      "NET DUE SALARY EGP",
+      "TOTAL DEDUCTION EGP",
       "monthly salary / 30 calendar days",
     ]) {
       expect(parsed.text).toContain(phrase);
@@ -498,5 +534,103 @@ describe("jsPDF attendance document (synthetic records only)", () => {
     await expect(exportHrAttendancePdf(input())).rejects.toThrow(
       "require a browser"
     );
+  });
+
+  it("combines actual punches and penalties once, with accessible labels and actual colored fills", async () => {
+    const employee = timedSource({
+      approvedLeaveDates: ["2026-01-05"],
+      attendance: [
+        punch(from, "09:20", "14:50"),
+        punch("2026-01-06", "09:00", null),
+        {
+          attendanceDate: "2026-01-08",
+          checkInAt: "2026-01-08T09:00:00+02:00",
+          checkOutAt: "2026-01-09T01:10:00+02:00",
+        },
+      ],
+    });
+    const buffer = await generateHrAttendancePdfArrayBuffer(input([employee]));
+    const parsed = await parse(buffer);
+    const daily = parsed.pages
+      .filter(page => page.text.includes("Employee daily attendance sheet"))
+      .map(page => page.text)
+      .join("\n")
+      .replace(/\s+/g, " ");
+    for (const phrase of [
+      "Present - late arrival",
+      "No show - FULL-DAY deduction",
+      "Incomplete punch - HALF-DAY deduction",
+      "Approved paid leave - paid / no deduction",
+      "In: 09:20:00",
+      "Out: 14:50:00",
+      "Out: Not recorded",
+      "2026-01-09 01:10:00",
+      "Full-day: 360",
+      "Half-day: 180",
+      "Recorded:",
+      "Overlap:",
+      "Allowance:",
+      "Excused:",
+    ])
+      expect(daily).toContain(phrase);
+    expect(parsed.text.match(/In: 09:20:00/g)).toHaveLength(1);
+    expect(parsed.text).not.toContain("Employee recorded timing sheet");
+    expect(parsed.text).not.toContain("three-for-one");
+    const projection = buildHrAttendanceReport(input([employee])).employees[0];
+    expect(projection.days[1]).toMatchObject({
+      status: "leave",
+      missingMinutes: 0,
+      absenceMinutes: 0,
+      incompletePenaltyMinutes: 0,
+    });
+    expect(projection.incompleteDeductionDays).toBe(1);
+    expect(projection.incompletePenaltyMinutes).toBe(180);
+    const paint = pdfPaintStreams(buffer);
+    // RGB operators for #FFF3A3, #FDE2E2 and #FFE4B5, followed by a
+    // filled rectangle, validate the exported paint rather than legend words.
+    expect(/1\. 0\.95 0\.64 rg\s+[-\d. ]+ re\s+f/.test(paint)).toBe(true);
+    expect(/0\.99 0\.89 0\.89 rg\s+[-\d. ]+ re\s+f/.test(paint)).toBe(true);
+    expect(/1\. 0\.89 0\.71 rg\s+[-\d. ]+ re\s+f/.test(paint)).toBe(true);
+  });
+
+  it("places authoritative deduction and net due at the bottom without applying the aggregate minute rate", async () => {
+    const employee = timedSource({
+      schedules: [
+        schedule,
+        { ...schedule, effectiveFrom: "2026-01-06", endTime: "18:00" },
+      ],
+      attendance: [punch(from, "09:30")],
+      approvedLeaveDates: ["2026-01-05", "2026-01-07", "2026-01-08"],
+    });
+    employee.payroll.totalDeduction = 555.37;
+    employee.payroll.netSalary = 2444.63;
+    employee.payroll.minuteRate = 0.694444444444;
+    // Deliberately different cycle money must not overwrite selected totals.
+    employee.payroll.cycleBreakdown = employee.payroll.cycleBreakdown.map(
+      cycle => ({
+        ...cycle,
+        totalDeduction: 111.11,
+      })
+    );
+    const before = JSON.stringify(employee);
+    const parsed = await parse(
+      await generateHrAttendancePdfArrayBuffer(input([employee]))
+    );
+    const text = parsed.text.replace(/\s+/g, " ");
+    expect(text).toContain("0.694444 EGP per minute");
+    expect(text).not.toContain("0.69 EGP per minute");
+    expect(text).toContain("salary / 30 = 100 EGP per day");
+    const bottomText = text.slice(text.lastIndexOf("Covered base salary EGP"));
+    expect(bottomText).toContain("TOTAL DEDUCTION EGP - preview");
+    expect(bottomText).toContain("NET DUE SALARY EGP - preview");
+    expect(bottomText).toContain("3,000.00 555.37 2,444.63");
+    expect(bottomText).not.toContain("111.11");
+    expect(text.lastIndexOf("NET DUE SALARY EGP")).toBeGreaterThan(
+      text.lastIndexOf("Period totals")
+    );
+    expect(text).toContain(
+      "no salary payment, receipt or actual deduction is created"
+    );
+    expect(JSON.stringify(employee)).toBe(before);
   });
 });
