@@ -249,22 +249,24 @@ const finClientsRouter = router({
       signingDate: z.date().optional(),
       salesPerson: z.string().optional(),
       consultant: z.string().optional(),
-      contractValueEur: z.number().optional(),
-      paidAmountEur: z.number().optional(),
+      contractValueEur: z.number().min(0).optional(),
+      paidAmountEur: z.number().min(0).max(0, "Record payments as linked Finance Income, not a client balance override.").optional(),
       remainingAmountEur: z.number().optional(),
       isLegacy: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
       const { contractValueEur, paidAmountEur, remainingAmountEur, ...rest } = input;
-      // For new clients: remaining = contractValue - paid (at 55.5 rate)
+      // New clients have no linked income yet; receipts/manual paid fields are not credits.
       const cvEur = contractValueEur ?? 0;
-      const paidEur = paidAmountEur ?? 0;
-      const remEur = remainingAmountEur ?? (cvEur - paidEur);
+      if (remainingAmountEur !== undefined && remainingAmountEur !== cvEur) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Remaining balance is calculated from Finance Income." });
+      }
       const newClient = await createFinClient({
         ...rest,
         contractValueEur: cvEur.toString(),
-        paidAmountEur: paidEur.toString(),
-        remainingAmountEur: remEur.toString(),
+        paidAmountEur: "0.00",
+        paidAmountEgp: "0.00",
+        remainingAmountEur: cvEur.toFixed(2),
         stage: 'started',
         isLegacy: input.isLegacy ?? false,
       });
@@ -294,10 +296,12 @@ const finClientsRouter = router({
     }))
     .mutation(async ({ input }) => {
       const { id, contractValueEur, remainingAmountEur, ...rest } = input;
+      if (remainingAmountEur !== undefined) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Remaining balance is calculated from Finance Income and cannot be overridden." });
+      }
       await updateFinClient(id, {
         ...rest,
         contractValueEur: contractValueEur !== undefined ? contractValueEur.toString() : undefined,
-        remainingAmountEur: remainingAmountEur !== undefined ? remainingAmountEur.toString() : undefined,
       });
     }),
   recordPayment: finWriteProcedure
@@ -356,6 +360,8 @@ const finClientsRouter = router({
         "Original Contract Value (EUR)", "Discount (EUR)", "Net Contract Value (EUR)",
         "Paid Amount (EUR)", "Remaining Amount (EUR)",
         "Family Members", "Stage", "Is Legacy",
+        "Income Paid (EGP)", "Balance Verification", "Reconciliation Issues",
+        "Previous Unverified Paid (EUR)", "Previous Unverified Remaining (EUR)",
       ];
       const escape = (v: unknown) => {
         const s = v == null ? "" : String(v);
@@ -375,11 +381,16 @@ const finClientsRouter = router({
         escape(c.originalContractValueEur),
         escape(c.discountValue),
         escape(c.finalContractValueEur),
-        escape(c.paidAmountEur),
-        escape(c.remainingAmountEur),
+        escape(c.incomeBalanceStatus === "verified" ? c.paidAmountEur : ""),
+        escape(c.incomeBalanceStatus === "verified" ? c.remainingAmountEur : ""),
         escape(c.familyMembers),
         escape(c.stage),
         escape(c.isLegacy ? "Yes" : "No"),
+        escape(c.paidAmountEgp),
+        escape(c.incomeBalanceStatus),
+        escape(c.incomeBalanceIssueCodes.join("; ")),
+        escape(c.incomeBalanceStatus !== "verified" ? c.paidAmountEur : ""),
+        escape(c.incomeBalanceStatus !== "verified" ? c.remainingAmountEur : ""),
       ].join(","));
       const csv = [headers.join(","), ...rows].join("\n");
       return { csv };

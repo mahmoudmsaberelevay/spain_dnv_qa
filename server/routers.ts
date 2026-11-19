@@ -18,7 +18,7 @@ import {
   createDocument, getDocumentsByCaseId, getDocumentById, updateDocument, deleteDocument,
   upsertAnalysisResult, getAnalysisResultByCaseId,
   createContract, getAllContracts, getContractById, updateContractConsultant, updateContractDocUrl, applyContractDiscount, createInvoice, getAllInvoices, getInvoicesByContractId,
-  getInvoiceById, markInvoicePaidAndSyncFinancial, updateInvoiceReceiptDate, updateInvoicePdfUrl, deleteInvoice,
+  getInvoiceById, markInvoicePaidAndSyncFinancial, updateInvoiceReceiptDate, deleteInvoice,
   getTotalPaidByContractId, getContractStats, getFamilyMemberDistribution,
   getRecentContracts, getPaymentsByContractId, getNextContractSequence, getNextContractSequenceForYear,
   getConsultantStats,
@@ -30,8 +30,9 @@ import {
 } from "./db";
 import { generateContractDoc, uploadContractToStorage, calculateContractValue, CONTRACT_COUNTRIES } from "./contractGenerator";
 import { getAutomaticPostingExchangeRate, getEurToEgpRate, convertEurToEgp } from "./exchangeRate";
-import { generateAndUploadInvoicePdf } from "./invoiceGenerator";
-import { calculatePaymentEurEquivalent, calculateReceiptBalanceSnapshot, normalizePaymentCurrency } from "../shared/financialPaymentSnapshots";
+import { generateAndUploadInvoicePdf, type ReceiptData } from "./invoiceGenerator";
+import { calculatePaymentEurEquivalent, calculateEvidenceReceiptBalanceSnapshot, normalizePaymentCurrency } from "../shared/financialPaymentSnapshots";
+import { getClientIncomeBalance } from "./clientPaymentLedger";
 import { generateAndUploadProformaPdf } from "./proformaGenerator";
 import { notifyNewContract, notifyContractStatusChange, notifyReceiptPaid, sendReceiptToClient, notifyNewInvoice, notifyFinClientAdded, notifyNewClientAssigned } from "./emailService";
 import { sendEmail } from "./backupEmailService";
@@ -843,52 +844,62 @@ function parseReceiptDate(value: string): Date {
 
 type StoredInvoice = NonNullable<Awaited<ReturnType<typeof getInvoiceById>>>;
 
-async function regenerateStoredReceiptPdf(invoice: StoredInvoice): Promise<string> {
-  if (invoice.amountEgp == null || invoice.exchangeRate == null) {
-    throw new TRPCError({
-      code: "PRECONDITION_FAILED",
-      message: "This historical receipt has no saved exchange-rate snapshot and cannot be regenerated automatically.",
-    });
-  }
-  const amountEgp = Number(invoice.amountEgp);
-  const exchangeRate = Number(invoice.exchangeRate);
-  let contractValue = 0;
-  let totalPaid = 0;
-  let remainingBalance = 0;
-  let clientMobile: string | undefined;
+type ReceiptFinancialSummary = NonNullable<ReceiptData["financialSummary"]>;
 
-  if (invoice.contractId != null) {
-    const contract = await getContractById(invoice.contractId);
-    contractValue = Number(contract?.contractValue ?? 0);
-    totalPaid = await getTotalPaidByContractId(invoice.contractId);
-    remainingBalance = Math.max(0, contractValue - totalPaid);
-    clientMobile = contract?.clientMobile ?? undefined;
-  } else if (invoice.legacyFinClientId != null) {
+function receiptMoney(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? Math.round((amount + Number.EPSILON) * 100) / 100 : undefined;
+}
+
+/** Read-only: never trust cached client aggregates, receipt statuses or payment sums. */
+async function getCurrentReceiptFinancialSummary(reference: { contractId?: number | null; legacyFinClientId?: number | null }): Promise<ReceiptFinancialSummary> {
+  let netContractValueEur: number | undefined;
+  try {
     const { getDb } = await import("./db");
     const db = await getDb();
-    if (db) {
+    if (!db) return { status: "reconciliation_required" };
+    if (reference.contractId != null) {
+      const contract = await getContractById(reference.contractId);
+      if (!contract) return { status: "reconciliation_required" };
+      if (contract.currency !== "EUR") return { status: "reconciliation_required" };
+      netContractValueEur = receiptMoney(contract.netContractValueEur ?? contract.contractValue);
+      const totalPaidEur = receiptMoney(await getTotalPaidByContractId(reference.contractId));
+      if (netContractValueEur == null || totalPaidEur == null) return { status: "reconciliation_required", netContractValueEur };
+      return { status: "available", netContractValueEur, totalPaidEur, remainingEur: Math.max(0, Math.round((netContractValueEur - totalPaidEur) * 100) / 100) };
+    }
+    if (reference.legacyFinClientId != null) {
       const { finClients } = await import("../drizzle/schema");
       const { eq } = await import("drizzle-orm");
-      const [client] = await db.select().from(finClients).where(eq(finClients.id, invoice.legacyFinClientId)).limit(1);
-      if (client) {
-        contractValue = Number(client.contractValueEur ?? 0);
-        totalPaid = Number(client.paidAmountEur ?? 0);
-        remainingBalance = Math.max(0, contractValue - totalPaid);
+      const [client] = await db.select().from(finClients).where(eq(finClients.id, reference.legacyFinClientId)).limit(1);
+      if (!client) return { status: "reconciliation_required" };
+      if (client.contractId != null) return getCurrentReceiptFinancialSummary({ contractId: client.contractId });
+      netContractValueEur = receiptMoney(client.contractValueEur);
+      const balance = await getClientIncomeBalance(db, reference.legacyFinClientId);
+      if (!balance || balance.status !== "verified" || netContractValueEur == null || balance.paidAmountEur == null) {
+        return { status: "reconciliation_required", netContractValueEur };
       }
+      return { status: "available", netContractValueEur, totalPaidEur: balance.paidAmountEur, remainingEur: Math.max(0, Math.round((netContractValueEur - balance.paidAmountEur) * 100) / 100) };
     }
+    return { status: "reconciliation_required" };
+  } catch (error) {
+    if (error instanceof Error && ["CLIENT_INCOME_VALUATION_REQUIRED", "CLIENT_LEGACY_INCOME_RECONCILIATION_REQUIRED"].includes(error.message)) {
+      return { status: "reconciliation_required", netContractValueEur };
+    }
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Current financial totals are unavailable. The original receipt evidence is unchanged." });
   }
+}
 
-  return generateAndUploadInvoicePdf({
+async function regenerateStoredReceiptPdf(invoice: StoredInvoice) {
+  const financialSummary = await getCurrentReceiptFinancialSummary(invoice);
+  const pdfBuffer = await generateInvoicePdfBuffer({
     invoiceCode: invoice.invoiceCode,
     contractCode: invoice.contractCode ?? undefined,
     clientName: invoice.clientName,
-    clientMobile,
     amountEur: Number(invoice.amountEur),
-    amountEgp,
-    exchangeRate,
-    contractValue,
-    totalPaid,
-    remainingBalance,
+    amountEgp: invoice.amountEgp == null ? NaN : Number(invoice.amountEgp),
+    exchangeRate: invoice.exchangeRate == null ? NaN : Number(invoice.exchangeRate),
+    financialSummary,
     netContractValueEur: invoice.netContractValueEur != null ? Number(invoice.netContractValueEur) : undefined,
     remainingBeforeEur: invoice.remainingBeforeEur != null ? Number(invoice.remainingBeforeEur) : undefined,
     paymentEurEquivalent: invoice.paymentEurEquivalent != null ? Number(invoice.paymentEurEquivalent) : undefined,
@@ -900,9 +911,14 @@ async function regenerateStoredReceiptPdf(invoice: StoredInvoice): Promise<strin
     remainingAfterEur: invoice.remainingAfterEur != null ? Number(invoice.remainingAfterEur) : undefined,
     createdAt: new Date(invoice.receiptDate ?? invoice.createdAt),
     notes: invoice.notes ?? undefined,
-    actualPaidAmountEgp: invoice.actualPaidAmountEgp ? Number(invoice.actualPaidAmountEgp) : undefined,
-    remainingAmountEgp: invoice.remainingAmountEgp ? Number(invoice.remainingAmountEgp) : undefined,
+    actualPaidAmountEgp: invoice.actualPaidAmountEgp != null ? Number(invoice.actualPaidAmountEgp) : undefined,
+    remainingAmountEgp: invoice.remainingAmountEgp != null ? Number(invoice.remainingAmountEgp) : undefined,
   });
+  return {
+    pdfBase64: pdfBuffer.toString("base64"),
+    filename: `${invoice.invoiceCode.replace(/[^A-Za-z0-9_-]/g, "_")}_current_report.pdf`,
+    originalPdfUrl: invoice.pdfUrl,
+  };
 }
 
 // ─── Contracting Router ───────────────────────────────────────────────────────
@@ -1143,7 +1159,11 @@ const contractingRouter = router({
       .query(async ({ input }) => {
         const contract = await getContractById(input.contractId);
         if (!contract) throw new TRPCError({ code: "NOT_FOUND" });
-        const totalPaid = await getTotalPaidByContractId(input.contractId);
+        const financialSummary = await getCurrentReceiptFinancialSummary({ contractId: input.contractId });
+        if (financialSummary.status !== "available") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Financial totals require reconciliation. Receipt evidence can still be created; no balance credit is inferred." });
+        }
+        const totalPaid = financialSummary.totalPaidEur!;
         const originalContractValue = Number(contract.originalContractValueEur ?? contract.contractValue) + (contract.originalContractValueEur == null ? Number(contract.discountValue ?? 0) : 0);
         const netContractValue = Number(contract.netContractValueEur ?? contract.contractValue);
         return {
@@ -1165,16 +1185,29 @@ const contractingRouter = router({
       }),
   }),
   invoices: router({
-    list: protectedProcedure.query(async () => getAllInvoices()),
+    list: protectedProcedure.query(async () => {
+      const invoices = await getAllInvoices();
+      const summaries = new Map<string, ReceiptFinancialSummary>();
+      const result = [];
+      for (const invoice of invoices) {
+        const key = `${invoice.contractId ?? ""}:${invoice.legacyFinClientId ?? ""}`;
+        if (!summaries.has(key)) summaries.set(key, await getCurrentReceiptFinancialSummary(invoice));
+        result.push({ ...invoice, financialSummary: summaries.get(key)! });
+      }
+      return result;
+    }),
     listByContract: protectedProcedure
       .input(z.object({ contractId: z.number() }))
-      .query(async ({ input }) => getInvoicesByContractId(input.contractId)),
+      .query(async ({ input }) => {
+        const financialSummary = await getCurrentReceiptFinancialSummary({ contractId: input.contractId });
+        return (await getInvoicesByContractId(input.contractId)).map(invoice => ({ ...invoice, financialSummary }));
+      }),
     getById: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
         const invoice = await getInvoiceById(input.id);
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
-        return invoice;
+        return { ...invoice, financialSummary: await getCurrentReceiptFinancialSummary(invoice) };
       }),
     create: protectedProcedure
       .input(z.object({
@@ -1219,7 +1252,7 @@ const contractingRouter = router({
         const amountEgp = convertEurToEgp(input.amountEur, exchangeRate);
         const invoiceCode = generateInvoiceCode();
         const receiptDate = input.receiptDate ? parseReceiptDate(input.receiptDate) : new Date();
-        const totalPaid = await getTotalPaidByContractId(input.contractId);
+        const financialSummary = await getCurrentReceiptFinancialSummary({ contractId: input.contractId });
         const netContractValueEur = Number(contract.netContractValueEur ?? contract.contractValue);
         const actualReceivedAmount = input.actualReceivedAmount
           ?? input.actualPaidAmountEgp
@@ -1229,11 +1262,11 @@ const contractingRouter = router({
           currency: normalizePaymentCurrency(actualReceivedCurrency),
           exchangeRate: paymentExchangeRate,
         });
-        const balanceSnapshot = calculateReceiptBalanceSnapshot({
+        const balanceSnapshot = financialSummary.status === "available" ? calculateEvidenceReceiptBalanceSnapshot({
           netContractValueEur,
-          totalPaidBeforeEur: totalPaid,
+          totalPaidBeforeEur: financialSummary.totalPaidEur!,
           paymentEurEquivalent,
-        });
+        }) : undefined;
         const actualPaidEgp = actualReceivedCurrency === "EGP" ? actualReceivedAmount : undefined;
         const remainingEgp = actualPaidEgp != null ? Math.max(0, amountEgp - actualPaidEgp) : undefined;
         const billingName = contract.invoicingName || contract.clientName;
@@ -1241,13 +1274,14 @@ const contractingRouter = router({
         const pdfUrl = await generateAndUploadInvoicePdf({
           invoiceCode, contractCode: contract.contractCode, clientName: billingName, clientMobile,
           amountEur: input.amountEur, amountEgp, exchangeRate,
-          netContractValueEur: balanceSnapshot.netContractValueEur,
-          remainingBeforeEur: balanceSnapshot.remainingBeforeEur,
-          paymentEurEquivalent: balanceSnapshot.paymentEurEquivalent,
+          financialSummary,
+          netContractValueEur,
+          remainingBeforeEur: balanceSnapshot?.remainingBeforeEur,
+          paymentEurEquivalent,
           actualReceivedAmount,
           actualReceivedCurrency,
           paymentExchangeRate,
-          remainingAfterEur: balanceSnapshot.remainingAfterEur,
+          remainingAfterEur: balanceSnapshot?.remainingAfterEur,
           createdAt: receiptDate, notes: input.notes,
           actualPaidAmountEgp: actualPaidEgp,
           remainingAmountEgp: remainingEgp,
@@ -1259,22 +1293,22 @@ const contractingRouter = router({
           actualReceivedAmount: actualReceivedAmount.toFixed(2),
           actualReceivedCurrency,
           paymentExchangeRate: paymentExchangeRate.toFixed(4),
-          paymentEurEquivalent: balanceSnapshot.paymentEurEquivalent.toFixed(2),
-          netContractValueEur: balanceSnapshot.netContractValueEur.toFixed(2),
-          remainingBeforeEur: balanceSnapshot.remainingBeforeEur.toFixed(2),
-          remainingAfterEur: balanceSnapshot.remainingAfterEur.toFixed(2),
+          paymentEurEquivalent: paymentEurEquivalent.toFixed(2),
+          netContractValueEur: netContractValueEur.toFixed(2),
+          remainingBeforeEur: balanceSnapshot?.remainingBeforeEur.toFixed(2),
+          remainingAfterEur: balanceSnapshot?.remainingAfterEur.toFixed(2),
           status: "unpaid", pdfUrl, notes: input.notes,
           receiptDate,
           actualPaidAmountEgp: actualPaidEgp != null ? actualPaidEgp.toString() : undefined,
           remainingAmountEgp: remainingEgp != null ? remainingEgp.toString() : undefined,
         });
         // Notify team that a new invoice was created
-        notifyNewInvoice(
+        if (financialSummary.remainingEur != null) notifyNewInvoice(
           invoiceCode,
           contract.contractCode,
           billingName,
           input.amountEur,
-          balanceSnapshot.remainingAfterEur
+          financialSummary.remainingEur
         ).catch(() => {});
         const { createNotification: cnInv } = await import("./db");
         await cnInv({ type: "receipt_created", title: "🧳 إيصال جديد", body: `تم إنشاء إيصال ${invoiceCode} لـ ${billingName} بمبلغ €${input.amountEur}`, entityId: invoice.id, entityType: "invoice" });
@@ -1293,8 +1327,8 @@ const contractingRouter = router({
           const message = error instanceof Error ? error.message : String(error);
           if (message === "INVOICE_ALREADY_PAID") throw new TRPCError({ code: "CONFLICT", message: "Invoice already paid" });
           if (message === "INVOICE_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND" });
-          if (message === "INVOICE_CONTRACT_NOT_SIGNED") throw new TRPCError({ code: "BAD_REQUEST", message: "Mark the linked Contract as Signed before recording a receipt payment." });
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Receipt payment could not be recorded. No partial financial update was saved." });
+          if (message === "INVOICE_CONTRACT_NOT_SIGNED") throw new TRPCError({ code: "BAD_REQUEST", message: "Mark the linked Contract as Signed before recording a receipt payment. Receipts remain proof only; Finance Income controls balances." });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Receipt status could not be updated. Financial balances are unchanged." });
         }
         // Notifications run only after commit, so their failure cannot roll back a settled payment.
         if (paymentResult.clientCreated && paymentResult.contract) {
@@ -1304,7 +1338,7 @@ const contractingRouter = router({
             paymentResult.contract.country ?? "spain"
           ).catch(() => {});
         }
-        await notifyReceiptPaid(invoice.invoiceCode, invoice.contractCode ?? "—", invoice.clientName, Number(invoice.amountEur), paymentResult.remainingEur);
+        if (paymentResult.remainingEur != null) await notifyReceiptPaid(invoice.invoiceCode, invoice.contractCode ?? "—", invoice.clientName, Number(invoice.amountEur), paymentResult.remainingEur);
         const { createNotification: cnPaid } = await import("./db");
         await cnPaid({ type: "receipt_paid", title: "✅ إيصال مدفوع", body: `تم تسجيل دفع الإيصال ${invoice.invoiceCode} لـ ${invoice.clientName} بمبلغ €${Number(invoice.amountEur).toFixed(2)}`, entityId: invoice.id, entityType: "invoice" });
         return getInvoiceById(input.id);
@@ -1322,8 +1356,6 @@ const contractingRouter = router({
         receiptDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       }))
       .mutation(async ({ input }) => {
-        const { listFinClients } = await import("./finDb");
-        const clients = await listFinClients({ limit: 1, offset: 0 });
         // Fetch the specific client
         const { getDb } = await import("./db");
         const db = await getDb();
@@ -1354,32 +1386,32 @@ const contractingRouter = router({
           ?? (actualReceivedCurrency === "EUR" ? input.amountEur : amountEgp);
         const actualPaidEgp = actualReceivedCurrency === "EGP" ? actualReceivedAmount : undefined;
         const remainingEgp = actualPaidEgp != null ? Math.max(0, amountEgp - actualPaidEgp) : undefined;
-        // Use finClient financial data for the PDF summary table
-        const finContractValue = Number(client.contractValueEur ?? 0);
-        // Total paid = existing paidAmountEur + actual EUR equivalent of this payment
+        const financialSummary = await getCurrentReceiptFinancialSummary({ legacyFinClientId: input.legacyFinClientId });
+        const finContractValue = financialSummary.netContractValueEur;
         const paymentEurEquivalent = calculatePaymentEurEquivalent({
           actualAmount: actualReceivedAmount,
           currency: normalizePaymentCurrency(actualReceivedCurrency),
           exchangeRate: paymentExchangeRate,
         });
-        const balanceSnapshot = calculateReceiptBalanceSnapshot({
-          netContractValueEur: finContractValue,
-          totalPaidBeforeEur: Number(client.paidAmountEur ?? 0),
+        const balanceSnapshot = financialSummary.status === "available" ? calculateEvidenceReceiptBalanceSnapshot({
+          netContractValueEur: finContractValue!,
+          totalPaidBeforeEur: financialSummary.totalPaidEur!,
           paymentEurEquivalent,
-        });
+        }) : undefined;
         const pdfUrl = await generateAndUploadInvoicePdf({
           invoiceCode,
           clientName: client.name,
           amountEur: input.amountEur,
           amountEgp,
           exchangeRate,
-          netContractValueEur: balanceSnapshot.netContractValueEur,
-          remainingBeforeEur: balanceSnapshot.remainingBeforeEur,
-          paymentEurEquivalent: balanceSnapshot.paymentEurEquivalent,
+          financialSummary,
+          netContractValueEur: finContractValue,
+          remainingBeforeEur: balanceSnapshot?.remainingBeforeEur,
+          paymentEurEquivalent,
           actualReceivedAmount,
           actualReceivedCurrency,
           paymentExchangeRate,
-          remainingAfterEur: balanceSnapshot.remainingAfterEur,
+          remainingAfterEur: balanceSnapshot?.remainingAfterEur,
           createdAt: receiptDate,
           notes: input.notes,
           actualPaidAmountEgp: actualPaidEgp,
@@ -1396,10 +1428,10 @@ const contractingRouter = router({
           actualReceivedAmount: actualReceivedAmount.toFixed(2),
           actualReceivedCurrency,
           paymentExchangeRate: paymentExchangeRate.toFixed(4),
-          paymentEurEquivalent: balanceSnapshot.paymentEurEquivalent.toFixed(2),
-          netContractValueEur: balanceSnapshot.netContractValueEur.toFixed(2),
-          remainingBeforeEur: balanceSnapshot.remainingBeforeEur.toFixed(2),
-          remainingAfterEur: balanceSnapshot.remainingAfterEur.toFixed(2),
+          paymentEurEquivalent: paymentEurEquivalent.toFixed(2),
+          netContractValueEur: finContractValue?.toFixed(2),
+          remainingBeforeEur: balanceSnapshot?.remainingBeforeEur.toFixed(2),
+          remainingAfterEur: balanceSnapshot?.remainingAfterEur.toFixed(2),
           status: "unpaid",
           pdfUrl,
           notes: input.notes,
@@ -1409,12 +1441,12 @@ const contractingRouter = router({
           actualPaidAmountEgp: actualPaidEgp != null ? actualPaidEgp.toString() : undefined,
           remainingAmountEgp: remainingEgp != null ? remainingEgp.toString() : undefined,
         });
-        notifyNewInvoice(
+        if (financialSummary.remainingEur != null) notifyNewInvoice(
           invoiceCode,
           `Legacy — ${client.clientCode ?? client.name}`,
           client.name,
           input.amountEur,
-          0
+          financialSummary.remainingEur
         ).catch(() => {});
         return invoice;
       }),
@@ -1463,21 +1495,24 @@ const contractingRouter = router({
         const invoice = await getInvoiceById(input.id);
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
         const receiptDate = parseReceiptDate(input.receiptDate);
+        const updatedInvoice = { ...invoice, receiptDate };
+        const report = await regenerateStoredReceiptPdf(updatedInvoice);
         await updateInvoiceReceiptDate(input.id, receiptDate);
-        const updatedInvoice = await getInvoiceById(input.id);
-        if (!updatedInvoice) throw new TRPCError({ code: "NOT_FOUND" });
-        const pdfUrl = await regenerateStoredReceiptPdf(updatedInvoice);
-        await updateInvoicePdfUrl(input.id, pdfUrl);
-        return getInvoiceById(input.id);
+        return report;
+      }),
+    downloadCurrentPdf: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const invoice = await getInvoiceById(input.id);
+        if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+        return regenerateStoredReceiptPdf(invoice);
       }),
     regeneratePdf: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const invoice = await getInvoiceById(input.id);
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
-        const pdfUrl = await regenerateStoredReceiptPdf(invoice);
-        await updateInvoicePdfUrl(input.id, pdfUrl);
-        return { pdfUrl };
+        return regenerateStoredReceiptPdf(invoice);
       }),
   }),
   proformaInvoices: router({
@@ -1597,16 +1632,14 @@ const contractingRouter = router({
         const amountEur = Number(inv.amountEur);
         const amountEgp = convertEurToEgp(amountEur, rateInfo.rate);
         const invoiceCode = generateInvoiceCode();
-        const totalPaid = await getTotalPaidByContractId(inv.contractId);
-        const contractValue = Number(contract.contractValue);
-        const remainingBalance = contractValue - totalPaid - amountEur;
+        const financialSummary = await getCurrentReceiptFinancialSummary({ contractId: inv.contractId });
         const billingName = contract.invoicingName || contract.clientName;
         const clientMobile = contract.clientMobile || "";
         const notes = inv.notes ?? `Converted from Proforma Invoice ${inv.proformaCode}`;
         const pdfUrl = await generateAndUploadInvoicePdf({
           invoiceCode, contractCode: contract.contractCode, clientName: billingName, clientMobile,
           amountEur, amountEgp, exchangeRate: rateInfo.rate,
-          contractValue, totalPaid: totalPaid + amountEur, remainingBalance,
+          financialSummary,
           createdAt: new Date(), notes,
         });
         const invoice = await createInvoice({
@@ -1615,7 +1648,7 @@ const contractingRouter = router({
           amountEgp: amountEgp.toString(), exchangeRate: rateInfo.rate.toString(),
           status: "unpaid", pdfUrl, notes,
         });
-        notifyNewInvoice(invoiceCode, contract.contractCode, billingName, amountEur, remainingBalance).catch(() => {});
+        if (financialSummary.remainingEur != null) notifyNewInvoice(invoiceCode, contract.contractCode, billingName, amountEur, financialSummary.remainingEur).catch(() => {});
         return { invoiceCode, invoiceId: invoice.id, pdfUrl };
       }),
     delete: adminProcedure

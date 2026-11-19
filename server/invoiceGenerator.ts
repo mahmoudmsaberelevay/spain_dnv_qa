@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import https from "https";
 import http from "http";
+import { readFileSync } from "node:fs";
 import { storagePut } from "./storage";
 
 // CDN assets
@@ -28,6 +29,12 @@ export interface ReceiptData {
   paymentExchangeRate?: number;
   remainingAfterEur?: number;
   createdAt: Date;
+  financialSummary?: {
+    status: "available" | "reconciliation_required";
+    netContractValueEur?: number;
+    totalPaidEur?: number;
+    remainingEur?: number;
+  };
   notes?: string;
   // Partial payment fields (EGP)
   actualPaidAmountEgp?: number;
@@ -48,6 +55,32 @@ function formatDate(date: Date): string {
     month: "long",
     day: "numeric",
   }).format(date);
+}
+
+/** Current Income totals and immutable receipt evidence are deliberately separate. */
+export function getReceiptPresentationRows(data: ReceiptData): { label: string; value: string }[] {
+  const summary = data.financialSummary;
+  const money = (value: number | undefined, currency: string) =>
+    value != null && Number.isFinite(value) ? formatCurrency(value, currency) : "Reconciliation required";
+  const isAvailable = summary ? summary.status === "available" : data.totalPaid != null && data.remainingBalance != null;
+  const rows = [
+    { label: "TOTAL NET CONTRACT VALUE (EUR)", value: money(summary ? summary.netContractValueEur : data.contractValue ?? data.netContractValueEur, "EUR") },
+    { label: "TOTAL PAID FROM INCOME (EUR)", value: money(isAvailable ? (summary ? summary.totalPaidEur : data.totalPaid) : undefined, "EUR") },
+    { label: "TOTAL REMAINING FROM INCOME (EUR)", value: money(isAvailable ? (summary ? summary.remainingEur : data.remainingBalance) : undefined, "EUR") },
+    { label: "CURRENT PAYMENT DUE (EUR)", value: money(data.amountEur, "EUR") },
+  ];
+  if (Number.isFinite(data.amountEgp)) {
+    rows.push({ label: "CURRENT PAYMENT DUE (EGP)", value: money(data.amountEgp, "EGP") });
+  }
+  const currency = data.actualReceivedCurrency ?? "EGP";
+  const actual = data.actualReceivedAmount ?? data.actualPaidAmountEgp;
+  rows.push({ label: `RECEIPT ACTUAL PAID (${currency})`, value: actual != null && Number.isFinite(actual) ? formatCurrency(actual, currency) : "Not recorded" });
+  if (data.paymentEurEquivalent != null) {
+    rows.push({ label: "RECEIPT EUR EQUIVALENT (EVIDENCE)", value: money(data.paymentEurEquivalent, "EUR") });
+  }
+  const rate = data.paymentExchangeRate ?? (currency === "EGP" ? data.exchangeRate : undefined);
+  rows.push({ label: `STORED RATE (1 EUR = ${currency})`, value: rate != null && Number.isFinite(rate) && rate > 0 ? rate.toFixed(4) : "Not recorded" });
+  return rows;
 }
 
 /** Download a remote image and return a Buffer */
@@ -80,15 +113,13 @@ export async function generateAndUploadInvoicePdf(data: ReceiptData): Promise<st
   return url;
 }
 
-/** Generate the PDF buffer only (without uploading) — used for Google Drive sync */
+/** Generate a current report without network calls, storage writes or changes to original evidence. */
 export async function generateInvoicePdfBuffer(data: ReceiptData): Promise<Buffer> {
-  const [logoBuffer, signatureBuffer] = await Promise.allSettled([
-    downloadImage(LOGO_CDN_URL),
-    downloadImage(SIGNATURE_CDN_URL),
-  ]).then((results) =>
-    results.map((r) => (r.status === "fulfilled" ? r.value : null))
-  );
-  return buildPdf(data, logoBuffer as Buffer | null, signatureBuffer as Buffer | null);
+  let logo: Buffer | null = null;
+  for (const asset of ["./command-center-assets/elevay-logo.png", "./commandCenter/assets/elevay-logo.png"]) {
+    try { logo = readFileSync(new URL(asset, import.meta.url)); break; } catch { /* fixed packaged paths only */ }
+  }
+  return buildPdf(data, logo, null);
 }
 
 export { downloadImage };
@@ -139,7 +170,7 @@ function buildPdf(
 
     // "Reciept" title on the right (italic-style, light grey)
     doc.fontSize(32).fillColor(lightGrey).font("Helvetica")
-       .text("Reciept", R - 160, y + 20, { width: 160, align: "right", lineBreak: false });
+       .text("Receipt", R - 160, y + 20, { width: 160, align: "right", lineBreak: false });
 
     y += logoBoxSize + 30;
 
@@ -195,10 +226,10 @@ function buildPdf(
     const serviceRowH = 20;
     doc.rect(L, y, W, serviceRowH).lineWidth(0.5).strokeColor("#CCCCCC").stroke();
     doc.fontSize(9).fillColor(darkText).font("Helvetica")
-       .text("Service Payment - Spain Digital Nomad Residency", L + 6, y + 6, { width: col1W - 12, lineBreak: false });
+       .text("Current receipt payment due - Client services", L + 6, y + 6, { width: col1W - 12, lineBreak: false });
     // Add space between € sign and number in description table
     const eurAmtFormatted = formatCurrency(data.amountEur, "EUR").replace(/^(€|EUR\s*)/, "€ ");
-    const egpAmtFormatted = formatCurrency(data.amountEgp, "EGP").replace(/^(EGP\s*)/, "EGP ");
+    const egpAmtFormatted = Number.isFinite(data.amountEgp) ? formatCurrency(data.amountEgp, "EGP").replace(/^(EGP\s*)/, "EGP ") : "Not recorded";
     doc.fontSize(9).fillColor(darkText).font("Helvetica-Bold")
        .text(eurAmtFormatted, col2X, y + 6, { width: col2W, align: "center", lineBreak: false });
     doc.fontSize(9).fillColor(darkText).font("Helvetica-Bold")
@@ -220,7 +251,9 @@ function buildPdf(
     y += 6;
     doc.fontSize(9).fillColor(midGrey).font("Helvetica")
        .text(
-         `Exchange Rate: 1 EUR = ${data.exchangeRate.toFixed(4)} EGP (as of ${formatDate(data.createdAt)})`,
+         Number.isFinite(data.exchangeRate) && data.exchangeRate > 0
+           ? `Stored due rate: 1 EUR = ${data.exchangeRate.toFixed(4)} EGP`
+           : "Stored due rate: Not recorded (original evidence unchanged)",
          L, y, { lineBreak: false }
        );
     y += 20;
@@ -230,39 +263,10 @@ function buildPdf(
     // ══════════════════════════════════════════════════════════════════════
     // SUMMARY TABLE (2 columns: label | value)
     // ══════════════════════════════════════════════════════════════════════
-    const hasSnapshot = data.netContractValueEur != null
-      && data.remainingBeforeEur != null
-      && data.paymentEurEquivalent != null
-      && data.remainingAfterEur != null;
-    const summaryRows: { label: string; value: string }[] = hasSnapshot
-      ? [
-        { label: "NET CONTRACT VALUE", value: formatCurrency(data.netContractValueEur!, "EUR") },
-        { label: "REMAINING BEFORE THIS PAYMENT", value: formatCurrency(data.remainingBeforeEur!, "EUR") },
-        { label: "PAYMENT CREDITED", value: formatCurrency(data.paymentEurEquivalent!, "EUR") },
-        {
-          label: `ACTUAL AMOUNT RECEIVED (${data.actualReceivedCurrency ?? "EGP"})`,
-          value: formatCurrency(data.actualReceivedAmount ?? data.actualPaidAmountEgp ?? data.amountEgp, data.actualReceivedCurrency ?? "EGP"),
-        },
-        ...(data.paymentExchangeRate != null ? [{
-          label: `PAYMENT RATE (1 EUR = ${data.actualReceivedCurrency ?? "EGP"})`,
-          value: Number(data.paymentExchangeRate).toFixed(4),
-        }] : []),
-        { label: "REMAINING AFTER THIS PAYMENT", value: formatCurrency(data.remainingAfterEur!, "EUR") },
-      ]
-      : [
-        { label: "NET CONTRACT VALUE", value: formatCurrency(data.contractValue ?? 0, "EUR") },
-        { label: "TOTAL PAID", value: formatCurrency(data.totalPaid ?? 0, "EUR") },
-        { label: "REMAINING BALANCE", value: formatCurrency(data.remainingBalance ?? 0, "EUR") },
-      ];
-    // Append EGP partial-payment rows only when provided
-    if (data.actualPaidAmountEgp != null) {
-      summaryRows.push({ label: "DUE AMOUNT (EGP)",    value: formatCurrency(data.amountEgp, "EGP").replace(/^EGP\s*/, "EGP ") });
-      summaryRows.push({ label: "ACTUAL PAID (EGP)",   value: formatCurrency(data.actualPaidAmountEgp, "EGP").replace(/^EGP\s*/, "EGP ") });
-      summaryRows.push({ label: "REMAINING (EGP)",     value: formatCurrency(data.remainingAmountEgp ?? 0, "EGP").replace(/^EGP\s*/, "EGP ") });
-    }
+    const summaryRows = getReceiptPresentationRows(data);
 
-    const sLabelW = W * 0.55;
-    const sValW   = W * 0.45;
+    const sLabelW = W * 0.64;
+    const sValW   = W * 0.36;
     const sValX   = L + sLabelW;
 
     for (const row of summaryRows) {
@@ -280,6 +284,12 @@ function buildPdf(
       y += rH;
     }
 
+    y += 8;
+    doc.fontSize(8).fillColor(midGrey).font("Helvetica").text(
+      "Current financial totals use Finance Income only. This receipt is evidence; issuing or marking it paid does not credit the balance. Original amounts and stored rates are unchanged.",
+      L, y, { width: W }
+    );
+    y = doc.y;
     y += 20;
 
     // ══════════════════════════════════════════════════════════════════════
@@ -319,7 +329,9 @@ function buildPdf(
   });
 }
 
-/** Keep for reference */
+/** HTML uses the same presentation model as the PDF. */
 export function generateInvoiceHtml(data: ReceiptData): string {
-  return `<html><body><h1>Receipt ${data.invoiceCode}</h1><p>${data.clientName}</p></body></html>`;
+  const escape = (value: string) => value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]!));
+  const rows = getReceiptPresentationRows(data).map(row => `<tr><th>${escape(row.label)}</th><td>${escape(row.value)}</td></tr>`).join("");
+  return `<html><body><h1>Receipt ${escape(data.invoiceCode)}</h1><p>${escape(data.clientName)}</p><table>${rows}</table><p>Finance Income only changes the balance. Receipt amounts are evidence, not additional credit.</p></body></html>`;
 }

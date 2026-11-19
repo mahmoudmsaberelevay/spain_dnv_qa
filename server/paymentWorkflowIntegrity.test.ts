@@ -20,20 +20,20 @@ describe("contract, receipt, and client payment workflow", () => {
     expect(db).toContain("netContractValueEur: newValue.toFixed(2)");
   });
 
-  it("freezes every receipt's actual payment, rate, EUR credit, and balance snapshots", () => {
+  it("freezes every receipt's payment evidence and income-based balance snapshots", () => {
     expect(schema).toContain('actualReceivedAmount: decimal("actualReceivedAmount"');
     expect(schema).toContain('actualReceivedCurrency: varchar("actualReceivedCurrency"');
     expect(schema).toContain('paymentEurEquivalent: decimal("paymentEurEquivalent"');
     expect(schema).toContain('remainingBeforeEur: decimal("remainingBeforeEur"');
     expect(schema).toContain('remainingAfterEur: decimal("remainingAfterEur"');
-    expect(router).toContain("calculateReceiptBalanceSnapshot");
-    expect(router).toContain("paymentEurEquivalent: balanceSnapshot.paymentEurEquivalent.toFixed(2)");
-    expect(receiptPdf).toContain("REMAINING BEFORE THIS PAYMENT");
-    expect(receiptPdf).toContain("PAYMENT CREDITED");
-    expect(receiptPdf).toContain("REMAINING AFTER THIS PAYMENT");
+    expect(router).toContain("calculateEvidenceReceiptBalanceSnapshot");
+    expect(router).toContain("paymentEurEquivalent: paymentEurEquivalent.toFixed(2)");
+    expect(router).toContain("getClientIncomeBalance");
+    expect(receiptPdf).toContain("TOTAL REMAINING FROM INCOME (EUR)");
+    expect(receiptPdf).not.toContain("PAYMENT CREDITED");
   });
 
-  it("uses immutable payment and income ledgers rather than a fixed exchange rate", () => {
+  it("uses the immutable income ledger rather than receipt credits or a fixed exchange rate", () => {
     expect(finDb).toContain("rebuildClientPaymentLedger");
     expect(finDb).not.toContain("amountEgp / 55.5");
     expect(finDb).not.toContain("baseEur * 55.5");
@@ -54,6 +54,6 @@ describe("contract, receipt, and client payment workflow", () => {
     expect(router).toContain("paymentExchangeRate: paymentExchangeRate.toFixed(4)");
     expect(schema).toContain('paymentExchangeRate: decimal("paymentExchangeRate"');
     expect(db).toContain("paymentExchangeRate ?? invoice.exchangeRate");
-    expect(receiptPdf).toContain("PAYMENT RATE (1 EUR =");
+    expect(receiptPdf).not.toContain("PAYMENT CREDITED");
   });
 });

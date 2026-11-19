@@ -44,6 +44,15 @@ export function calculateReceiptBalanceSnapshot(input: ReceiptBalanceSnapshotInp
   };
 }
 
+/** Receipt issuance records evidence only; only Finance Income changes totals. */
+export function calculateEvidenceReceiptBalanceSnapshot(input: ReceiptBalanceSnapshotInput) {
+  if (![input.netContractValueEur, input.totalPaidBeforeEur, input.paymentEurEquivalent].every(Number.isFinite)) {
+    throw new Error("Financial totals require reconciliation.");
+  }
+  const snapshot = calculateReceiptBalanceSnapshot(input);
+  return { ...snapshot, remainingAfterEur: snapshot.remainingBeforeEur };
+}
+
 export function normalizePaymentCurrency(value: string | null | undefined): PaymentCurrency {
   const normalized = String(value ?? "").trim().toUpperCase();
   if (normalized === "EUR" || normalized === "EGP" || normalized === "USD") return normalized;

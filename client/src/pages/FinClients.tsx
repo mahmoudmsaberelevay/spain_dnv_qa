@@ -58,8 +58,6 @@ export default function FinClients() {
   const [showAdd, setShowAdd] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
-  const [paymentClient, setPaymentClient] = useState<{ id: number; name: string; remaining: number } | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState("");
   // Edit client state
   const [editClient, setEditClient] = useState<{ id: number; name: string; phone: string; contractUrl: string } | null>(null);
   const [editName, setEditName] = useState("");
@@ -168,18 +166,6 @@ export default function FinClients() {
     onError: (e) => toast.error(e.message),
   });
 
-  const setPaidAmountMutation = trpc.financial.clients.setPaidAmount.useMutation({
-    onSuccess: (data) => {
-      toast.success(`Paid amount updated! Paid EGP: ${Number(data.newPaidEgp).toLocaleString()} | Paid EUR: €${Number(data.newPaidEur).toFixed(2)} | Remaining: €${Number(data.newRemaining).toFixed(2)}`);
-      utils.financial.clients.list.invalidate();
-      utils.financial.clients.count.invalidate();
-      utils.financial.clients.totals.invalidate();
-      setPaymentClient(null);
-      setPaymentAmount("");
-    },
-    onError: (err) => toast.error(err.message),
-  });
-
   // Use server-sorted data directly (no client-side sort)
   const sortedClients = clients ?? [];
 
@@ -215,10 +201,11 @@ export default function FinClients() {
       const rows = sorted.map(c => {
         const remaining = Number(c.remainingAmountEur ?? 0);
         const paid = Number(c.paidAmountEur ?? 0);
+        const balanceUnverified = c.incomeBalanceStatus !== "verified";
         const netContractValue = Number(c.finalContractValueEur ?? c.contractValueEur ?? 0);
         const discountValue = Number(c.discountValue ?? 0);
         const originalContractValue = Number(c.originalContractValueEur ?? (netContractValue + discountValue));
-        const remainingStr = remaining < 0
+        const remainingStr = balanceUnverified ? "Reconciliation required" : remaining < 0
           ? `€ ${fmtEur(Math.abs(remaining))} (overpaid)`
           : remaining === 0 ? "Fully Paid"
           : `€ ${fmtEur(remaining)}`;
@@ -231,7 +218,7 @@ export default function FinClients() {
           <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px">${originalContractValue > 0 ? `€ ${fmtEur(originalContractValue)}` : "—"}</td>
           <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;color:#b45309">${discountValue > 0 ? `- € ${fmtEur(discountValue)}` : "—"}</td>
           <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;font-weight:600;color:#1d4ed8">${netContractValue > 0 ? `€ ${fmtEur(netContractValue)}` : "—"}</td>
-          <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;color:#15803d">${paid > 0 ? `€ ${fmtEur(paid)}` : "—"}</td>
+          <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;color:#15803d">${balanceUnverified ? "Reconciliation required" : `€ ${fmtEur(paid)}`}</td>
           <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;font-weight:600;color:${remainingColor}">${remainingStr}</td>
           <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;color:#dc2626">${Number(c.totalDirectCostEgp) > 0 ? 'EGP ' + Number(c.totalDirectCostEgp).toLocaleString('en-US',{maximumFractionDigits:0}) : '\u2014'}</td>
           <td style="border:1px solid #e5e7eb;padding:6px 8px;text-align:right;font-size:11px;font-weight:600;color:${(Number(c.totalDirectIncomeEgp)||0)-(Number(c.totalDirectCostEgp)||0)>=0?'#16a34a':'#dc2626'}">${(() => { const inc=Number(c.totalDirectIncomeEgp)||0; const cst=Number(c.totalDirectCostEgp)||0; if(!inc&&!cst) return '\u2014'; const p=inc-cst; return (p>=0?'+':'-')+'EGP '+Math.abs(p).toLocaleString('en-US',{maximumFractionDigits:0}); })()}</td>
@@ -342,7 +329,6 @@ export default function FinClients() {
   const handleAdd = () => {
     if (!form.name.trim()) return toast.error("Client name is required");
     const cvEur = parseFloat(form.contractValueEur) || 0;
-    const paidEur = parseFloat(form.paidAmountEur) || 0;
     createMutation.mutate({
       clientCode: form.clientCode || undefined,
       name: form.name.trim(),
@@ -352,7 +338,6 @@ export default function FinClients() {
       salesPerson: form.salesPerson || undefined,
       consultant: form.consultant || undefined,
       contractValueEur: cvEur,
-      paidAmountEur: paidEur,
       isLegacy: false,
     });
   };
@@ -395,6 +380,14 @@ export default function FinClients() {
           </Button>
         </div>
       </div>
+
+      <p className="text-sm text-muted-foreground">Paid and remaining balances come only from linked Finance Income. Historical balances needing evidence are not treated as verified.</p>
+      {grandTotals && grandTotals.incomeBalanceReconciliationCount > 0 && (
+        <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          {grandTotals.incomeBalanceReconciliationCount} matching clients need historical income reconciliation. Their previous EUR balances are preserved but excluded from verified totals.
+          {grandTotals.incomeEgpUnverifiedClientCount > 0 && <p>{grandTotals.incomeEgpUnverifiedClientCount} clients also have incomplete native cash evidence; the EGP total is unavailable.</p>}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex gap-3 flex-wrap">
@@ -539,6 +532,7 @@ export default function FinClients() {
                   {sortedClients.map((c) => {
                     const remaining = Number(c.remainingAmountEur ?? 0);
                     const paid = Number(c.paidAmountEur ?? 0);
+                    const balanceUnverified = c.incomeBalanceStatus !== "verified";
                     const netContractValue = Number(c.finalContractValueEur ?? c.contractValueEur ?? 0);
                     const discountValue = Number(c.discountValue ?? 0);
                     const originalContractValue = Number(c.originalContractValueEur ?? (netContractValue + discountValue));
@@ -576,16 +570,18 @@ export default function FinClients() {
                           {netContractValue > 0 ? `€ ${fmtEur(netContractValue)}` : "—"}
                         </td>
                         <td className="py-3 px-4 text-right text-green-700 font-medium">
-                          {paid > 0 ? `€ ${fmtEur(paid)}` : "—"}
+                          {balanceUnverified ? <div className="text-amber-700 dark:text-amber-300"><div>Reconciliation required</div><div className="text-xs">Previous: € {fmtEur(paid)} (unverified)</div></div> : `€ ${fmtEur(paid)}`}
                         </td>
                         <td className="py-3 px-4 text-right text-blue-700 font-medium">
-                          {Number(c.paidAmountEgp ?? 0) > 0
+                          {c.incomeBalance.paidAmountEgp === null ? "Reconciliation required" : Number(c.paidAmountEgp ?? 0) > 0
                             ? `EGP ${Number(c.paidAmountEgp ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                             : "—"}
                         </td>
                         <td className="py-3 px-4 text-right font-semibold">
                           <span className={isNegative ? "text-green-600" : remaining === 0 ? "text-muted-foreground" : "text-red-600"}>
-                            {isNegative ? (
+                            {balanceUnverified ? (
+                              <span className="text-amber-700 dark:text-amber-300">Reconciliation required<br /><span className="text-xs font-normal">Previous: € {fmtEur(remaining)} (unverified)</span></span>
+                            ) : isNegative ? (
                               <span className="flex items-center justify-end gap-1">
                                 <TrendingUp className="h-3 w-3" /> € {fmtEur(Math.abs(remaining))} overpaid
                               </span>
@@ -694,7 +690,7 @@ export default function FinClients() {
                       <td className="py-3 px-4 text-right text-amber-700">{Number(grandTotals.totalDiscountEur) > 0 ? `- € ${fmtEur(grandTotals.totalDiscountEur)}` : "—"}</td>
                       <td className="py-3 px-4 text-right text-blue-700">{Number(grandTotals.totalNetContractValueEur ?? grandTotals.totalContractValueEur) > 0 ? `€ ${fmtEur(grandTotals.totalNetContractValueEur ?? grandTotals.totalContractValueEur)}` : "—"}</td>
                       <td className="py-3 px-4 text-right text-green-700">{Number(grandTotals.totalPaidEur) > 0 ? `€ ${fmtEur(grandTotals.totalPaidEur)}` : "—"}</td>
-                      <td className="py-3 px-4 text-right text-blue-700">{Number(grandTotals.totalPaidEgp) > 0 ? `EGP ${Number(grandTotals.totalPaidEgp).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</td>
+                      <td className="py-3 px-4 text-right text-blue-700">{grandTotals.incomeEgpUnverifiedClientCount > 0 ? "Reconciliation required" : Number(grandTotals.totalPaidEgp) > 0 ? `EGP ${Number(grandTotals.totalPaidEgp).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</td>
                       <td className="py-3 px-4 text-right text-red-600">{`€ ${fmtEur(grandTotals.totalRemainingEur)}`}</td>
                       <td className="py-3 px-4 text-right text-red-600">{Number(grandTotals.totalDirectCostEgp) > 0 ? `EGP ${Number(grandTotals.totalDirectCostEgp).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : "—"}</td>
                       <td className="py-3 px-4 text-right">
@@ -794,7 +790,8 @@ export default function FinClients() {
               </div>
               <div>
                 <Label>Paid Amount (€)</Label>
-                <Input type="number" placeholder="0" value={form.paidAmountEur} onChange={e => setForm(f => ({ ...f, paidAmountEur: e.target.value }))} />
+                <Input value="0.00" readOnly aria-describedby="income-only-payment-help" />
+                <p id="income-only-payment-help" className="text-xs text-muted-foreground mt-1">Add linked Finance Income after saving this client. Receipts do not change balances.</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -810,7 +807,7 @@ export default function FinClients() {
             {form.contractValueEur && (
               <div className="text-sm text-muted-foreground bg-muted/50 rounded p-3">
                 Remaining due: <span className="font-semibold text-foreground">
-                  € {fmtEur((parseFloat(form.contractValueEur) || 0) - (parseFloat(form.paidAmountEur) || 0))}
+                  € {fmtEur(parseFloat(form.contractValueEur) || 0)}
                 </span>
               </div>
             )}
@@ -957,58 +954,6 @@ export default function FinClients() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Edit Paid Amount Dialog */}
-      <Dialog open={!!paymentClient} onOpenChange={(open) => { if (!open) { setPaymentClient(null); setPaymentAmount(""); } }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <PlusCircle className="h-5 w-5 text-blue-600" />
-              Edit Paid Amount
-            </DialogTitle>
-          </DialogHeader>
-          {paymentClient && (
-            <div className="space-y-4 py-2">
-              <div className="bg-muted/50 rounded-lg p-3 text-sm">
-                <p className="font-medium text-foreground">{paymentClient.name}</p>
-                <p className="text-muted-foreground mt-1 text-xs">Enter the total paid amount in EGP. This will <strong>replace</strong> the current value and recalculate EUR and remaining balance.</p>
-              </div>
-              <div className="space-y-1">
-                <Label>Total Paid Amount (EGP) <span className="text-red-500">*</span></Label>
-                <Input
-                  type="number"
-                  placeholder="e.g. 555000"
-                  value={paymentAmount}
-                  onChange={e => setPaymentAmount(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              {paymentAmount !== "" && Number(paymentAmount) >= 0 && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm space-y-1">
-                  <p className="text-blue-800">
-                    <span className="font-medium">Paid EUR (new):</span> € {fmtEur(Number(paymentAmount) / 55.5)}
-                  </p>
-                  <p className="text-blue-800">
-                    <span className="font-medium">Remaining (new):</span> € {fmtEur(paymentClient.remaining + (Number(paymentAmount === "" ? 0 : paymentAmount) / 55.5) - (Number(paymentAmount) / 55.5))}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setPaymentClient(null); setPaymentAmount(""); }}>Cancel</Button>
-            <Button
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-              disabled={paymentAmount === "" || Number(paymentAmount) < 0 || setPaidAmountMutation.isPending}
-              onClick={() => {
-                if (!paymentClient || paymentAmount === "") return;
-                setPaidAmountMutation.mutate({ clientId: paymentClient.id, paidAmountEgp: Number(paymentAmount) });
-              }}
-            >
-              {setPaidAmountMutation.isPending ? "Saving..." : "Save Paid Amount"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

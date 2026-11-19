@@ -7,10 +7,9 @@ import {
 } from "../drizzle/schema";
 import { enforceQualifierCommissionMarketingSource } from "../shared/commissionSourcePolicy";
 import { isContractConsultantPosition } from "../shared/elevayEmployeePositions";
-import { rebuildClientPaymentLedger } from "./clientPaymentLedger";
+import { assertClientIncomeLedgerComplete, calculateClientIncomeLedger, getClientIncomeBalance, readClientIncomeHistoryMarkers, readClientIncomeLedger, rebuildClientPaymentLedger, type ClientIncomeLedgerClient } from "./clientPaymentLedger";
 import { getCairoBusinessDate } from "../shared/financialEmployeeSalaryRates";
 import { assertHrEmployeeOnboarding } from "../shared/hrEmployeeOnboarding";
-
 // ─── Accounts ────────────────────────────────────────────────────────────────
 export async function listAccounts() {
   const db = await getDb(); if (!db) return [];
@@ -258,6 +257,40 @@ export async function deleteEmployee(id: number) {
 }
 
 // ─── Fin Clients ─────────────────────────────────────────────────────────────
+/** Batch read-only projection. Cached historical values are explicitly unverified. */
+async function projectClientIncomeBalances<T extends ClientIncomeLedgerClient>(db: any, clients: T[]) {
+  if (clients.length === 0) return [];
+  const rows = await db.select({
+    id: finTransactions.id, finClientId: finTransactions.finClientId, type: finTransactions.type,
+    amount: finTransactions.amount, transactionCurrency: finTransactions.transactionCurrency,
+    eurEquivalent: finTransactions.eurEquivalent,
+  }).from(finTransactions).where(and(
+    inArray(finTransactions.finClientId, clients.map(client => client.id)),
+    eq(finTransactions.type, "income"),
+  ));
+  const reconciledHistory = await readClientIncomeHistoryMarkers(db, clients);
+  return clients.map(client => {
+    const incomeBalance = calculateClientIncomeLedger({ ...client, incomeHistoryReconciled: reconciledHistory.has(client.id) }, rows);
+    const verified = incomeBalance.status === "verified";
+    return {
+      ...client,
+      ...(verified ? {
+        paidAmountEur: incomeBalance.paidAmountEur!.toFixed(2),
+        paidAmountEgp: incomeBalance.paidAmountEgp!.toFixed(2),
+        remainingAmountEur: incomeBalance.remainingAmountEur!.toFixed(2),
+      } : {}),
+      incomeBalance,
+      incomeBalanceStatus: incomeBalance.status,
+      incomeBalanceIssueCodes: Array.from(new Set(incomeBalance.issues.map(issue => issue.code))),
+      incomeBalanceVerified: verified,
+      // Native EGP cash is independently known even if the EUR snapshot is absent.
+      paidAmountEgp: incomeBalance.paidAmountEgp === null ? null : incomeBalance.paidAmountEgp.toFixed(2),
+      previousUnverifiedPaidAmountEgp: incomeBalance.paidAmountEgp === null ? client.paidAmountEgp : null,
+      balanceSource: verified ? "income" as const : "cached_unverified" as const,
+    };
+  });
+}
+
 type FinClientSortField = "clientCode" | "name" | "program" | "consultant" | "contractValueEur" | "paidAmountEur" | "remainingAmountEur" | "signingDate";
 export type SigningDateRange = "this_month" | "previous_month" | "this_year";
 type SigningDateFilter = {
@@ -327,6 +360,7 @@ export async function listFinClients(opts?: { search?: string; consultant?: stri
     paidAmountEur: finClients.paidAmountEur,
     paidAmountEgp: finClients.paidAmountEgp,
     remainingAmountEur: finClients.remainingAmountEur,
+    basePaidAmountEur: finClients.basePaidAmountEur,
     isLegacy: finClients.isLegacy,
     contractUrl: finClients.contractUrl,
     discountValue: sql<number>`COALESCE((SELECT CAST(discountValue AS DECIMAL(10,2)) FROM contracts WHERE id = ${finClients.contractId}), 0)`,
@@ -343,7 +377,7 @@ export async function listFinClients(opts?: { search?: string; consultant?: stri
   query.orderBy(sd === "asc" ? asc(col) : desc(col));
   if (opts?.limit) query.limit(opts.limit);
   if (opts?.offset) query.offset(opts.offset);
-  return query;
+  return projectClientIncomeBalances(db, await query);
 }
 export async function getFinClientTotals(opts?: { search?: string; consultant?: string; signingDateRange?: SigningDateRange; signingDateFrom?: string; signingDateTo?: string }) {
   const db = await getDb(); if (!db) return null;
@@ -367,7 +401,24 @@ export async function getFinClientTotals(opts?: { search?: string; consultant?: 
     totalDirectIncomeEgp: sql<number>`COALESCE(SUM((SELECT COALESCE(SUM(ft.amount), 0) FROM finTransactions ft WHERE ft.finClientId = ${finClients.id} AND ft.type = 'income')), 0)`,
   }).from(finClients)
     .where(conditions.length === 0 ? undefined : conditions.length === 1 ? conditions[0] : and(...conditions));
-  return row ?? null;
+  if (!row) return null;
+  const clients = await listFinClients(opts);
+  const verifiedClients = clients.filter(client => client.incomeBalanceVerified);
+  const sumCents = (field: "paidAmountEur" | "paidAmountEgp" | "remainingAmountEur") => verifiedClients
+    .reduce((sum, client) => sum + Math.round(Number(client.incomeBalance[field]) * 100), 0) / 100;
+  return {
+    ...row,
+    totalPaidEur: sumCents("paidAmountEur"),
+    totalPaidEgp: clients.some(client => client.incomeBalance.paidAmountEgp === null) ? null : clients.reduce((sum, client) => sum + Math.round(Number(client.incomeBalance.paidAmountEgp) * 100), 0) / 100,
+    totalRemainingEur: sumCents("remainingAmountEur"),
+    verifiedClientCount: verifiedClients.length,
+    unverifiedClientCount: clients.length - verifiedClients.length,
+    incomeBalanceReconciliationCount: clients.length - verifiedClients.length,
+    incomeBalanceValuationRequiredCount: clients.filter(client => client.incomeBalanceIssueCodes.includes("CLIENT_INCOME_VALUATION_REQUIRED")).length,
+    incomeBalanceLegacyReconciliationCount: clients.filter(client => client.incomeBalanceIssueCodes.includes("CLIENT_LEGACY_INCOME_RECONCILIATION_REQUIRED")).length,
+    incomeEgpUnverifiedClientCount: clients.filter(client => client.incomeBalance.paidAmountEgp === null).length,
+    incomeBalanceStatus: clients.length === verifiedClients.length ? "verified" as const : "incomplete" as const,
+  };
 }
 export async function countFinClients(opts?: { search?: string; consultant?: string; signingDateRange?: SigningDateRange; signingDateFrom?: string; signingDateTo?: string }) {
   const db = await getDb(); if (!db) return 0;
@@ -386,40 +437,74 @@ export async function countFinClients(opts?: { search?: string; consultant?: str
 export async function getFinClientById(id: number) {
   const db = await getDb(); if (!db) return null;
   const rows = await db.select().from(finClients).where(eq(finClients.id, id));
-  return rows[0] ?? null;
+  return (await projectClientIncomeBalances(db, rows))[0] ?? null;
 }
-// Deprecated direct aggregate write path. Every client payment must instead be
-// recorded as a receipt or an immutable Finance Income transaction.
+// Deprecated direct aggregate write path. Client credits must be linked Income.
 export async function applyClientPayment(clientId: number, amountEgp: number, accountCurrency: string) {
   void clientId; void amountEgp; void accountCurrency;
-  throw new Error("Record payments through a receipt or Finance Income transaction with a stored exchange rate.");
+  throw new Error("CLIENT_INCOME_LEDGER_ONLY");
 }
 /**
- * Rebuild client totals from the immutable receipt-payment and Finance Income
- * ledgers. No current exchange rate, account configuration, or fixed fallback
- * is used, so historic EUR equivalents cannot drift.
+ * Refresh after a posted Finance mutation. Unresolved valuation/baseline means
+ * no summary write, not a false posting failure that could cause duplicate retries.
+ * Database failures still propagate. Strict rebuild remains separately exported.
  */
 export async function recalcClientPaidAmount(clientId: number) {
   const db = await getDb(); if (!db) return;
-  return db.transaction((tx) => rebuildClientPaymentLedger(tx, clientId));
+  return db.transaction(async tx => {
+    const audit = await getClientIncomeBalance(tx, clientId);
+    if (!audit || audit.status !== "verified") return audit;
+    await rebuildClientPaymentLedger(tx, clientId);
+    return audit;
+  });
 }
 
 export async function setClientPaidAmount(clientId: number, paidAmountEgp: number) {
   void clientId; void paidAmountEgp;
-  throw new Error("Set paid amount is retired. Record an immutable receipt or Finance Income transaction instead.");
+  throw new Error("CLIENT_INCOME_LEDGER_ONLY");
 }
 export async function recordClientManualPayment(clientId: number, amountEgp: number) {
   void clientId; void amountEgp;
-  throw new Error("Manual payment is retired. Record an immutable receipt or Finance Income transaction instead.");
+  throw new Error("CLIENT_INCOME_LEDGER_ONLY");
 }
 export async function createFinClient(data: InsertFinClient) {
+  if ([data.paidAmountEur, data.paidAmountEgp, data.basePaidAmountEur].some(value => value != null && Number(value) !== 0)) {
+    throw new Error("CLIENT_INCOME_LEDGER_ONLY");
+  }
   const db = await getDb(); if (!db) return null;
-  const [result] = await db.insert(finClients).values(data);
-  return { id: result.insertId, ...data };
+  const summary = calculateClientIncomeLedger({ id: 0, ...data, basePaidAmountEur: data.basePaidAmountEur ?? "0" }, []);
+  assertClientIncomeLedgerComplete(summary);
+  const values = { ...data, paidAmountEur: "0.00", paidAmountEgp: "0.00", remainingAmountEur: summary.remainingAmountEur!.toFixed(2) };
+  const [result] = await db.insert(finClients).values(values);
+  return { id: result.insertId, ...values };
 }
 export async function updateFinClient(id: number, data: Partial<InsertFinClient>) {
+  if ([data.paidAmountEur, data.paidAmountEgp, data.basePaidAmountEur, data.remainingAmountEur].some(value => value !== undefined)) {
+    throw new Error("CLIENT_INCOME_LEDGER_ONLY");
+  }
   const db = await getDb(); if (!db) return;
-  await db.update(finClients).set(data).where(eq(finClients.id, id));
+  return db.transaction(async tx => {
+    if (data.contractValueEur !== undefined || data.contractValue !== undefined) {
+      const [client] = await tx.select().from(finClients).where(eq(finClients.id, id)).limit(1);
+      if (!client) return;
+      const audit = await readClientIncomeLedger(tx, { ...client, ...data, id });
+      if (audit.status !== "verified") {
+        // Commercial metadata may change while reconciliation is pending, but
+        // unresolved historical summaries must never be overwritten by a partial sum.
+        await tx.update(finClients).set(data).where(eq(finClients.id, id));
+        return;
+      }
+      assertClientIncomeLedgerComplete(audit);
+      await tx.update(finClients).set({
+        ...data,
+        paidAmountEur: audit.paidAmountEur.toFixed(2),
+        paidAmountEgp: audit.paidAmountEgp.toFixed(2),
+        remainingAmountEur: audit.remainingAmountEur.toFixed(2),
+      }).where(eq(finClients.id, id));
+    } else {
+      await tx.update(finClients).set(data).where(eq(finClients.id, id));
+    }
+  });
 }
 export async function deleteFinClient(id: number) {
   const db = await getDb(); if (!db) return;
@@ -428,7 +513,7 @@ export async function deleteFinClient(id: number) {
 export async function getFinClientByContractId(contractId: number) {
   const db = await getDb(); if (!db) return null;
   const rows = await db.select().from(finClients).where(eq(finClients.contractId, contractId));
-  return rows[0] ?? null;
+  return (await projectClientIncomeBalances(db, rows))[0] ?? null;
 }
 
 export async function syncConsultantForContract(contractId: number, consultant: string) {

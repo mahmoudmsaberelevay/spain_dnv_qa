@@ -10,12 +10,16 @@ describe("atomic receipt payment integrity", () => {
   const schema = read("drizzle/schema.ts");
   const migration = read("drizzle/0105_atomic_receipt_payment_integrity.sql");
 
-  it("settles a receipt and all derived Financial state within one transaction", () => {
+  it("settles receipt evidence atomically without aggregate financial writes", () => {
     expect(db).toContain("export async function markInvoicePaidAndSyncFinancial");
     expect(db).toContain("return db.transaction(async tx => {");
     expect(db).toContain("eq(invoices.status, \"unpaid\")");
     expect(db).toContain("INVOICE_ALREADY_PAID");
-    expect(db).toContain("reconcileContractReceiptFinancials(tx, contract.id)");
+    const settleBlock = db.slice(db.indexOf("export async function markInvoicePaidAndSyncFinancial"), db.indexOf("export async function recalcLegacyClientPaidFromReceipts"));
+    expect(settleBlock).not.toContain("tx.update(finClients)");
+    expect(settleBlock).not.toContain("tx.insert(finClients)");
+    expect(settleBlock).not.toContain("rebuildClientPaymentLedger");
+    expect(settleBlock).toContain("readClientIncomeLedger(tx, client)");
   });
 
   it("uses the paid EGP amount and receipt rate for partial-payment EUR reconciliation", () => {
@@ -38,11 +42,12 @@ describe("atomic receipt payment integrity", () => {
     expect(markPaidBlock).not.toContain("markInvoicePaid(input.id)");
   });
 
-  it("reconciles a contract after receipt deletion so an orphan payment cannot remain", () => {
+  it("deletes linked receipt evidence without modifying client balances", () => {
     const deleteBlock = db.slice(db.indexOf("export async function deleteInvoice"), db.indexOf("function actualReceiptPaidEur"));
     expect(deleteBlock).toContain("return db.transaction(async tx => {");
     expect(deleteBlock).toContain("tx.delete(payments).where(eq(payments.invoiceId, id))");
-    expect(deleteBlock).toContain("reconcileContractReceiptFinancials(tx, invoice.contractId)");
+    expect(deleteBlock).not.toContain("rebuildClientPaymentLedger");
+    expect(deleteBlock).not.toContain("tx.update(finClients)");
   });
 
   it("keeps historical repair separate from the schema migration", () => {

@@ -32,6 +32,16 @@ function getTodayDateInput(): string {
   return localTime.toISOString().slice(0, 10);
 }
 
+function saveCurrentReceiptReport(data: { pdfBase64: string; filename: string }) {
+  const bytes = Uint8Array.from(atob(data.pdfBase64), character => character.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = data.filename;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export default function Invoices() {
   const { canEdit } = usePermissions();
   const { user } = useAuth();
@@ -85,9 +95,9 @@ export default function Invoices() {
   const signedContracts = contracts ?? [];
 
   // Fetch remaining balance for the selected contract and pre-fill the amount
-  const { data: paymentSummary } = trpc.contracting.contracts.getPaymentSummary.useQuery(
+  const { data: paymentSummary, error: paymentSummaryError } = trpc.contracting.contracts.getPaymentSummary.useQuery(
     { contractId: Number(selectedContractId) },
-    { enabled: !!selectedContractId && Number(selectedContractId) > 0 }
+    { enabled: !!selectedContractId && Number(selectedContractId) > 0, retry: false }
   );
 
   // When a contract is selected, pre-fill the amount with the remaining balance
@@ -161,18 +171,30 @@ export default function Invoices() {
 
   const regenMutation = trpc.contracting.invoices.regeneratePdf.useMutation({
     onSuccess: (data) => {
-      utils.contracting.invoices.list.invalidate();
-      toast.success("PDF regenerated successfully!");
+      toast.success("Current report generated. Original PDF unchanged.");
       setRegenId(null);
-      if (data.pdfUrl) window.open(data.pdfUrl, "_blank");
+      saveCurrentReceiptReport(data);
     },
     onError: (err) => { toast.error(`Failed to regenerate PDF: ${err.message}`); setRegenId(null); },
   });
 
+  const downloadCurrentReport = async (id: number) => {
+    setRegenId(id);
+    try {
+      const report = await utils.contracting.invoices.downloadCurrentPdf.fetch({ id });
+      saveCurrentReceiptReport(report);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Current report unavailable. The original evidence remains accessible.");
+    } finally {
+      setRegenId(null);
+    }
+  };
+
   const updateDateMutation = trpc.contracting.invoices.updateDate.useMutation({
-    onSuccess: () => {
+    onSuccess: (report) => {
       utils.contracting.invoices.list.invalidate();
-      toast.success("Receipt date and PDF updated successfully!");
+      toast.success("Receipt date updated. Original PDF preserved.");
+      saveCurrentReceiptReport(report);
       setEditDateDialog(null);
       setEditReceiptDate("");
     },
@@ -247,7 +269,7 @@ export default function Invoices() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Receipts</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Create and manage payment receipts for contracts
+            Receipts are evidence only. Net, paid and remaining totals use Finance Income; issuing or marking a receipt paid does not credit the balance.
           </p>
         </div>
         {canEdit("receipts") && (
@@ -325,10 +347,13 @@ export default function Invoices() {
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-6 py-3">Receipt Code</th>
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Client</th>
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Contract</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Amount (EUR)</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Total net (EUR)</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Total paid · Income (EUR)</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Total remaining · Income (EUR)</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Current due (EUR)</th>
                     <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Due (EGP)</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Paid (EGP)</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Remaining (EGP)</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Actual paid · Evidence</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Stored rate · Evidence</th>
                     <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Date</th>
                     <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Status</th>
                     <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Actions</th>
@@ -346,6 +371,15 @@ export default function Invoices() {
                       <td className="px-4 py-4">
                         <span className="font-mono text-xs text-muted-foreground">{invoice.contractCode}</span>
                       </td>
+                      <td className="px-4 py-4 text-right text-sm">
+                        {invoice.financialSummary.netContractValueEur != null ? formatCurrency(invoice.financialSummary.netContractValueEur, "EUR") : "Reconciliation required"}
+                      </td>
+                      <td className="px-4 py-4 text-right text-sm">
+                        {invoice.financialSummary.status === "available" && invoice.financialSummary.totalPaidEur != null ? formatCurrency(invoice.financialSummary.totalPaidEur, "EUR") : <span className="text-amber-700">Reconciliation required</span>}
+                      </td>
+                      <td className="px-4 py-4 text-right text-sm">
+                        {invoice.financialSummary.status === "available" && invoice.financialSummary.remainingEur != null ? formatCurrency(invoice.financialSummary.remainingEur, "EUR") : <span className="text-amber-700">Reconciliation required</span>}
+                      </td>
                       <td className="px-4 py-4 text-right">
                         <span className="text-sm font-semibold">{formatCurrency(Number(invoice.amountEur), "EUR")}</span>
                       </td>
@@ -356,19 +390,18 @@ export default function Invoices() {
                       </td>
                       <td className="px-4 py-4 text-right">
                         <span className="text-sm text-muted-foreground">
-                          {invoice.actualPaidAmountEgp != null ? formatCurrency(Number(invoice.actualPaidAmountEgp), "EGP") : "—"}
+                          {invoice.actualReceivedAmount != null && ["EUR", "EGP", "USD"].includes(invoice.actualReceivedCurrency ?? "")
+                            ? formatCurrency(Number(invoice.actualReceivedAmount), invoice.actualReceivedCurrency!)
+                            : invoice.actualPaidAmountEgp != null ? formatCurrency(Number(invoice.actualPaidAmountEgp), "EGP") : "Not recorded"}
                         </span>
                       </td>
                       <td className="px-4 py-4 text-right">
-                        {invoice.remainingAmountEgp != null ? (
-                          <span className={`text-sm font-semibold ${
-                            Number(invoice.remainingAmountEgp) > 0 ? "text-amber-700" : "text-green-700"
-                          }`}>
-                            {formatCurrency(Number(invoice.remainingAmountEgp), "EGP")}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">—</span>
-                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {invoice.paymentExchangeRate != null
+                            ? `1 EUR = ${Number(invoice.paymentExchangeRate).toFixed(4)} ${invoice.actualReceivedCurrency ?? "EGP"}`
+                            : invoice.exchangeRate != null && (invoice.actualReceivedCurrency == null || invoice.actualReceivedCurrency === "EGP")
+                              ? `1 EUR = ${Number(invoice.exchangeRate).toFixed(4)} EGP` : "Not recorded"}
+                        </span>
                       </td>
                       <td className="px-4 py-4 text-center">
                         <div className="flex items-center justify-center gap-1 text-muted-foreground">
@@ -383,16 +416,20 @@ export default function Invoices() {
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex items-center justify-center gap-1">
+                          <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-xs" onClick={() => downloadCurrentReport(invoice.id)} disabled={regenId === invoice.id} title="Download current Income totals; saved original PDF is unchanged">
+                            {regenId === invoice.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                            Current PDF
+                          </Button>
                           {invoice.pdfUrl && (
                             <Button
                               variant="ghost"
                               size="sm"
                               className="h-7 px-2 gap-1 text-xs text-muted-foreground hover:text-foreground"
                               onClick={() => window.open(invoice.pdfUrl!, "_blank")}
-                              title="Download PDF"
+                              title="Saved original receipt evidence; historical totals may differ from the current ledger"
                             >
-                              <Download className="h-3.5 w-3.5" />
-                              PDF
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Original
                             </Button>
                           )}
 
@@ -405,7 +442,7 @@ export default function Invoices() {
                                 setSendEmailDialog({ id: invoice.id, invoiceCode: invoice.invoiceCode, clientName: invoice.clientName });
                                 setClientEmail("");
                               }}
-                              title="Send receipt to client by email"
+                              title="Send original saved receipt evidence by email"
                             >
                               <Mail className="h-3.5 w-3.5" />
                               Email
@@ -443,7 +480,7 @@ export default function Invoices() {
                             className="h-7 px-2 gap-1 text-xs text-amber-600 hover:text-amber-800 hover:bg-amber-50"
                             onClick={() => { setRegenId(invoice.id); regenMutation.mutate({ id: invoice.id }); }}
                             disabled={regenMutation.isPending && regenId === invoice.id}
-                            title="Regenerate PDF with correct values"
+                            title="Generate current report without replacing original evidence"
                           >
                             {regenMutation.isPending && regenId === invoice.id
                               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -560,6 +597,10 @@ export default function Invoices() {
                     <span className="font-bold text-primary">{formatCurrency(paymentSummary.remainingBalance, "EUR")}</span>
                   </div>
                 </div>
+              )}
+
+              {paymentSummaryError && (
+                <p className="text-sm text-amber-700">Financial totals require reconciliation. You can still create receipt evidence; it will not change the balance.</p>
               )}
 
               {/* One-time discount field — only shown if no discount has been applied yet */}
@@ -855,7 +896,7 @@ export default function Invoices() {
               Edit Receipt Date
             </DialogTitle>
             <DialogDescription>
-              Update <strong>{editDateDialog?.invoiceCode}</strong> for <strong>{editDateDialog?.clientName}</strong>. The receipt PDF will be regenerated automatically. Its payment date and financial amounts will not change.
+              Update <strong>{editDateDialog?.invoiceCode}</strong> for <strong>{editDateDialog?.clientName}</strong>. A current report will be downloaded; the original saved PDF and stored rates remain unchanged. Its payment date and financial amounts will not change.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -907,8 +948,8 @@ export default function Invoices() {
               Send Receipt to Client
             </DialogTitle>
             <DialogDescription>
-              Send receipt <strong>{sendEmailDialog?.invoiceCode}</strong> for{" "}
-              <strong>{sendEmailDialog?.clientName}</strong> by email.
+              Send the original saved receipt <strong>{sendEmailDialog?.invoiceCode}</strong> for{" "}
+              <strong>{sendEmailDialog?.clientName}</strong> by email. For current Income totals, use Current PDF.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSendEmail} className="space-y-4 py-2">
@@ -948,7 +989,7 @@ export default function Invoices() {
             <AlertDialogTitle>Mark Receipt as Paid</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to mark receipt <strong>{confirmPaid?.invoiceCode}</strong> for{" "}
-              <strong>{confirmPaid?.clientName}</strong> as paid? This action cannot be undone.
+              <strong>{confirmPaid?.clientName}</strong> as paid? This changes receipt status only. Record Finance Income separately to change the client balance. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
