@@ -8,6 +8,7 @@
  * file here and uploaded to managed storage from the server process.
  */
 import crypto from "node:crypto";
+import { commandCenterOn, DISABLED_MESSAGE } from "./mode";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
@@ -689,6 +690,7 @@ async function uploadBridge() {
 export function registerRenderWorkerUploadRoute(app: any) {
   app.post("/admin/api/render-worker/jobs/:jobId/artifacts/:kind/chunks", async (req: any, res: any) => {
     res.setHeader("Cache-Control", "no-store");
+    if (!commandCenterOn()) return res.status(423).json({ ok: false, error: DISABLED_MESSAGE, disabled: true });
     try {
       const bridge = await uploadBridge();
       if (!bridge.authenticate(header(req, "authorization"))) return res.status(401).json({ ok: false, error: "Worker token missing or invalid." });
@@ -702,6 +704,7 @@ export function registerRenderWorkerUploadRoute(app: any) {
   });
   app.post("/admin/api/render-worker/jobs/:jobId/artifacts/:kind", async (req: any, res: any) => {
     res.setHeader("Cache-Control", "no-store");
+    if (!commandCenterOn()) return res.status(423).json({ ok: false, error: DISABLED_MESSAGE, disabled: true });
     try {
       const bridge = await uploadBridge();
       if (!bridge.authenticate(header(req, "authorization"))) return res.status(401).json({ ok: false, error: "Worker token missing or invalid." });

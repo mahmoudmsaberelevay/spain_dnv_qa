@@ -38,6 +38,7 @@ import { startEmbeddedRenderWorker, embeddedRenderStatus } from "./embeddedRende
 import { notifyAiFailure } from "./alerts";
 import { createMetaHub, META_KINDS, cleanMetaAction as cleanMeta } from "./meta";
 import { createWeeklyOperations } from "./weeklyOperations";
+import { commandCenterMode, commandCenterOn, DISABLED_MESSAGE } from "./mode";
 import { getMetaPlatformWebhookHealth } from "../metaPlatformEvents";
 import { notifyOwner } from "../_core/notification";
 const cleanMetaAction = (b) => cleanMeta(b, R);
@@ -424,6 +425,7 @@ function studio() {
 /** Called only by the cron-authenticated scheduled handler. It intentionally
  * excludes Meta, CRM and Lead work: this is AI Studio recovery only. */
 export async function runAiStudioWatchdog() {
+  if (!commandCenterOn()) return { ok: true, disabled: true };
   const result = await (await studio()).watchdog();
   await (await renderWorkerBridge()).checkOfflineWaiting();
   return result;
@@ -447,9 +449,11 @@ function weeklyOperations() {
   return weeklyOperationsPromise;
 }
 export async function runWeeklyCommandCenterOperations() {
+  if (!commandCenterOn()) return { ok: true, disabled: true, events: [] };
   return (await weeklyOperations()).run();
 }
 export async function startWeeklyCommandCenterNow(week: string) {
+  if (!commandCenterOn()) throw new Error(DISABLED_MESSAGE);
   return (await weeklyOperations()).startNow(week);
 }
 
@@ -650,6 +654,10 @@ async function handle(req: Request, res: Response) {
   const sub = req.path.slice((BASE + "/api").length) || "/";
   const r = routes.find((x) => x.method === req.method && x.re.test(sub));
   if (!r) return res.status(404).json({ ok: false, error: "Not found" });
+  // Disabled (owner, 23 Nov 2026): read-only while approved posts finish publishing; fully closed when "off".
+  const mode = commandCenterMode();
+  if (mode === "off" && sub !== "/health") return res.status(423).json({ ok: false, error: DISABLED_MESSAGE, disabled: true });
+  if (mode === "publish_only" && (req.method !== "GET" || r.auth === "agent" || r.auth === "worker" || r.auth === "webhook") && sub !== "/health") return res.status(423).json({ ok: false, error: DISABLED_MESSAGE, disabled: true });
   const m = sub.match(r.re);
   // Behind the hosting proxy the Host header can be an internal name, so accept the browser's
   // own same-origin signal, the forwarded host, or the site's public names.
@@ -711,6 +719,7 @@ export function registerCommandCenterRoutes(app: Express) {
     if (!rawPath.endsWith("/")) return res.redirect(302, BASE + "/");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    if (commandCenterMode() === "off") return res.type("html").send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Command Center disabled</title><body style="font-family:system-ui;background:#0A1628;color:#eef;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px"><div style="max-width:520px"><h1 style="font-weight:600">ELEVAY Command Center is disabled</h1><p>The owner switched it off. Its data is kept. Meta lead capture into the CRM is not affected.</p></div></body>`);
     res.type("html").send(PAGE_WITH_VERSION);
   });
   // Public by design: these two files contain no settings or credentials. The
@@ -727,6 +736,9 @@ export function registerCommandCenterRoutes(app: Express) {
   // Resume AI Studio runs that wait on Higgsfield clips or Manus jobs.
   const t = setInterval(() => {
     if (!process.env.DATABASE_URL) return;
+    const mode = commandCenterMode();
+    if (mode === "off") return;
+    if (mode === "publish_only") { metaHub().then((m) => m.publishDue()).catch(() => {}); return; } // only already-approved posts
     studio().then((o) => o.tick()).catch(() => {});
     metaHub().then((m) => m.tick()).catch(() => {});
   }, 45000);
